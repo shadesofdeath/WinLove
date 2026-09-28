@@ -1,5 +1,7 @@
 #include "core/image/DriverInf.h"
 
+#include "base/Utf8.h"
+
 #include <windows.h>
 
 #include <algorithm>
@@ -37,24 +39,6 @@ std::wstring unquote(std::wstring value) {
         value = value.substr(1, value.size() - 2);
     }
     return value;
-}
-
-std::wstring decode(const std::string& bytes) {
-    if (bytes.size() >= 2 && static_cast<unsigned char>(bytes[0]) == 0xFF && static_cast<unsigned char>(bytes[1]) == 0xFE) {
-        std::wstring text((bytes.size() - 2) / 2, L'\0');
-        std::memcpy(text.data(), bytes.data() + 2, text.size() * sizeof(wchar_t));
-        return text;
-    }
-    const bool utf8Bom = bytes.size() >= 3 && static_cast<unsigned char>(bytes[0]) == 0xEF;
-    const char* data = bytes.data() + (utf8Bom ? 3 : 0);
-    const int size = static_cast<int>(bytes.size() - (utf8Bom ? 3 : 0));
-    // UTF-8 when it decodes cleanly, otherwise the system ANSI code page (classic INFs).
-    int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, data, size, nullptr, 0);
-    const UINT cp = n > 0 ? CP_UTF8 : CP_ACP;
-    n = MultiByteToWideChar(cp, 0, data, size, nullptr, 0);
-    std::wstring text(static_cast<std::size_t>(std::max(n, 0)), L'\0');
-    MultiByteToWideChar(cp, 0, data, size, text.data(), n);
-    return text;
 }
 
 } // namespace
@@ -149,7 +133,7 @@ DriverInf parseInf(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
     std::stringstream buffer;
     buffer << in.rdbuf();
-    return parseInfText(decode(buffer.str()), path);
+    return parseInfText(utf8::decodeText(buffer.str()), path);
 }
 
 std::vector<DriverInf> scanDrivers(const std::filesystem::path& folder) {

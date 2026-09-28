@@ -7,6 +7,7 @@
 #include "app/Localization.h"
 #include "app/controllers/ApplyController.h"
 #include "app/controllers/ComponentController.h"
+#include "app/controllers/RegistryController.h"
 #include "app/controllers/ServiceController.h"
 #include "app/controllers/FeatureController.h"
 #include "app/controllers/IsoController.h"
@@ -44,6 +45,7 @@ class ComponentsPage;
 class UpdatesPage;
 class DriversPage;
 class ServicesPage;
+class RegistryPage;
 
 class Shell : public ui::Widget {
 public:
@@ -73,6 +75,7 @@ public:
     ApplyController& apply() { return *m_apply; }
     ComponentController& components() { return *m_components; }
     ServiceController& services() { return *m_serviceCtl; }
+    RegistryController& registry() { return *m_registry; }
     // "Uygula": straight to the run, or through the 13b confirmation when something is irreversible.
     void requestApply();
     [[nodiscard]] PageId currentPage() const noexcept { return m_page; }
@@ -130,6 +133,8 @@ private:
     void addUpdates(const std::vector<std::filesystem::path>& files);
     [[nodiscard]] DriversPage* driversPage() const;
     [[nodiscard]] ServicesPage* servicesPage() const;
+    [[nodiscard]] RegistryPage* registryPage() const;
+    void importRegFiles(const std::vector<std::filesystem::path>& files);
     void scanDriverFolder();
     void updateIsoChrome();
     void startIso();
@@ -151,6 +156,7 @@ private:
     std::unique_ptr<IsoController> m_iso;
     std::unique_ptr<ComponentController> m_components;
     std::unique_ptr<ServiceController> m_serviceCtl;
+    std::unique_ptr<RegistryController> m_registry;
     ui::Widget* m_sideInspector = nullptr; // pages other than Images (Components)
     ui::Button* m_actionExpand = nullptr;  // Components: "Tümünü genişlet / daralt"
     ui::Button* m_actionIso = nullptr; // ISO page: "ISO Oluştur" / "İptal"

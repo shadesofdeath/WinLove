@@ -27,6 +27,7 @@ enum class OpKind : std::uint8_t {
     AddPackage,
     SetRegistryValue,
     SetServiceStart,
+    SetRegistryFirstLogon, // written offline AND re-applied after OOBE (SetupComplete / first logon)
 };
 
 enum class Risk : std::uint8_t { Low, Medium, High };

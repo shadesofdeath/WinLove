@@ -7,6 +7,7 @@
 #include "app/pages/ComponentsPage.h"
 #include "app/pages/DriversPage.h"
 #include "app/pages/ServicesPage.h"
+#include "app/pages/RegistryPage.h"
 #include "app/pages/components/ComponentInspector.h"
 #include "app/pages/FeaturesPage.h"
 #include "app/pages/apply/RiskConfirm.h"
@@ -96,6 +97,13 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
             catalog = AppxCatalog::parse(R"({"format":"winlove.catalog.appx","groups":[],"apps":[]})");
         }
         m_components = std::make_unique<ComponentController>(m_state, std::move(*catalog), m_language, m_services.postToUi);
+    }
+    {
+        auto tweaks = TweakCatalog::parse(embeddedTweakCatalog());
+        if (!tweaks) {
+            tweaks = TweakCatalog::parse(R"({"format":"winlove.catalog.tweaks","categories":[],"tweaks":[]})");
+        }
+        m_registry = std::make_unique<RegistryController>(m_state, std::move(*tweaks));
     }
     m_serviceCtl = std::make_unique<ServiceController>(m_state, embeddedServiceCatalog(), m_services.postToUi);
     m_iso = std::make_unique<IsoController>(m_state, IsoController::Events{
@@ -199,6 +207,56 @@ ComponentsPage* Shell::componentsPage() const {
 
 UpdatesPage* Shell::updatesPage() const {
     return m_page == PageId::Updates ? dynamic_cast<UpdatesPage*>(m_pageBody) : nullptr;
+}
+
+RegistryPage* Shell::registryPage() const {
+    return m_page == PageId::Registry ? dynamic_cast<RegistryPage*>(m_pageBody) : nullptr;
+}
+
+void Shell::importRegFiles(const std::vector<std::filesystem::path>& files) {
+    if (files.empty()) {
+        return;
+    }
+    if (!m_state.mounted()) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::RegistryNoMountTitle), m_strings.get(Str::RegistryNoMountBody));
+        return;
+    }
+    struct Parsed {
+        std::filesystem::path file;
+        Result<std::vector<core::RegistryWrite>> writes;
+    };
+    auto parsed = std::make_shared<std::vector<Parsed>>();
+    m_state.reader().run<bool>(
+        [files, parsed](const core::TaskContext&) -> Result<bool> {
+            for (const auto& f : files) {
+                parsed->push_back({f, core::readRegFile(f)});
+            }
+            return true;
+        },
+        [this, post = m_services.postToUi, alive = std::weak_ptr<bool>(m_alive), parsed](Result<bool>) {
+            post([this, alive, parsed] {
+                if (const auto a = alive.lock(); !a || !*a) {
+                    return;
+                }
+                std::size_t values = 0;
+                for (auto& p : *parsed) {
+                    if (!p.writes) {
+                        showToast(ui::InfoKind::Error, m_strings.get(Str::RegistryImportFailed),
+                                  p.writes.error().message + L" \u2014 " + p.writes.error().context);
+                        continue;
+                    }
+                    values += p.writes->size();
+                    m_registry->addImport(p.file, std::move(*p.writes));
+                }
+                if (values > 0) {
+                    showToast(ui::InfoKind::Success,
+                              m_strings.format(Str::RegistryImported, {{L"n", std::to_wstring(values)}}), L"");
+                }
+                if (auto* page = registryPage()) {
+                    page->showCustom();
+                }
+            });
+        });
 }
 
 ServicesPage* Shell::servicesPage() const {
@@ -455,6 +513,7 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::Updates, static_cast<int>(changes.count(core::ops::OpKind::AddPackage)));
     m_nav->setBadge(PageId::Drivers, static_cast<int>(changes.count(core::ops::OpKind::AddDriver)));
     m_nav->setBadge(PageId::Services, static_cast<int>(changes.count(core::ops::OpKind::SetServiceStart)));
+    m_nav->setBadge(PageId::Registry, m_registry->checkedCount());
     if (m_actionReset) {
         m_actionReset->setEnabled(featureOps > 0);
     }
@@ -611,6 +670,17 @@ void Shell::showPage(PageId page) {
                 }
             };
             body.onSelectionChanged = [this] { updateComponentInspector(); };
+        } else if (page == PageId::Registry) {
+            auto pick = [this] {
+                const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+                importRegFiles(ui::pickFiles(owner, m_strings.get(Str::RegistryImportReg),
+                                             {{m_strings.get(Str::RegistryFilter), L"*.reg"}}));
+            };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::RegistryImportReg), ui::icons::Icon::RegFile)
+                .onInvoke = pick;
+            m_pageBody = &m_pageView->setBody<RegistryPage>(
+                m_state, *m_registry, m_strings, m_language,
+                RegistryPage::Intents{pick, [this] { showPage(PageId::Images); }});
         } else if (page == PageId::Services) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ServicesReset)).onInvoke = [this] {
                 m_serviceCtl->resetChanges();
@@ -904,6 +974,9 @@ void Shell::showAdminRequired(std::wstring relaunchArgs) {
 }
 
 bool Shell::dragEnter(const std::vector<std::filesystem::path>& files) {
+    if (registryPage() && m_state.mounted()) {
+        return std::ranges::any_of(files, [](const auto& f) { return _wcsicmp(f.extension().c_str(), L".reg") == 0; });
+    }
     if (auto* updates = updatesPage(); updates && m_state.mounted()) {
         const bool any = std::ranges::any_of(files, [](const auto& f) { return core::isUpdateFile(f); });
         updates->setDragState(any ? ui::DropZone::DragState::Valid : ui::DropZone::DragState::Invalid);
@@ -926,6 +999,13 @@ void Shell::dragLeave() {
 }
 
 void Shell::drop(const std::vector<std::filesystem::path>& files) {
+    if (registryPage() && m_state.mounted()) {
+        std::vector<std::filesystem::path> regs;
+        std::ranges::copy_if(files, std::back_inserter(regs),
+                             [](const auto& f) { return _wcsicmp(f.extension().c_str(), L".reg") == 0; });
+        importRegFiles(regs);
+        return;
+    }
     if (auto* updates = updatesPage(); updates && m_state.mounted()) {
         updates->setDragState(ui::DropZone::DragState::None);
         addUpdates(files);

@@ -18,6 +18,8 @@ namespace wl::app {
 [[nodiscard]] std::string_view embeddedAppxCatalog();
 // resources/catalog/services.json (P10 risk / notes).
 [[nodiscard]] std::string_view embeddedServiceCatalog();
+// resources/catalog/tweaks.json (P11 registry tweaks).
+[[nodiscard]] std::string_view embeddedTweakCatalog();
 
 [[nodiscard]] HICON appIcon();
 

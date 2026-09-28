@@ -2,10 +2,12 @@
 add_library(wl_app STATIC
     App.cpp
     catalog/AppxCatalog.cpp
+    catalog/TweakCatalog.cpp
     controllers/ApplyController.cpp
     controllers/ComponentController.cpp
     controllers/FeatureController.cpp
     controllers/ServiceController.cpp
+    controllers/RegistryController.cpp
     controllers/ImageController.cpp
     controllers/IsoController.cpp
     Format.cpp
@@ -19,6 +21,7 @@ add_library(wl_app STATIC
     pages/ComponentsPage.cpp
     pages/DriversPage.cpp
     pages/ServicesPage.cpp
+    pages/RegistryPage.cpp
     pages/FeaturesPage.cpp
     pages/ImagesPage.cpp
     pages/IsoPage.cpp
