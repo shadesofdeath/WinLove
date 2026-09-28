@@ -8,6 +8,7 @@ namespace wl::app {
 
 struct AppSettings {
     std::filesystem::path workRoot = defaultWorkRoot();
+    std::filesystem::path isoFolder; // last "ISO Oluştur" output folder (empty: Desktop)
 
     [[nodiscard]] std::filesystem::path mountDirectory() const { return workRoot / L"mount"; }
     // Extracted setup media for a source, e.g. ...\WinLove\work\Win11_25H2_Turkish_x64_v2

@@ -30,7 +30,9 @@ ImageController::~ImageController() {
 
 bool ImageController::busy() const {
     const auto& run = m_state.applyRun(); // an "Uygula" run owns the mounted image
-    return m_state.operation().has_value() || (run && run->stage != AppState::ApplyRun::Stage::Done);
+    const auto& iso = m_state.isoRun();   // an ISO build reads the setup folder
+    return m_state.operation().has_value() || (run && run->stage != AppState::ApplyRun::Stage::Done) ||
+           (iso && iso->running);
 }
 
 bool ImageController::isEsdSource() const {

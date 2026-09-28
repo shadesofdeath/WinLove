@@ -5,7 +5,7 @@
 namespace wl::app {
 
 AppState::AppState(std::filesystem::path recentFile, std::filesystem::path settingsFile)
-    : m_settings(AppSettings::load(settingsFile)), m_recent(std::move(recentFile)) {
+    : m_settings(AppSettings::load(settingsFile)), m_settingsFile(settingsFile), m_recent(std::move(recentFile)) {
     log::addSink(m_logBuffer);
     m_recent.load();
 }
@@ -90,6 +90,16 @@ void AppState::unqueueIf(const std::function<bool(const core::ops::Operation&)>&
     if (any) {
         notify(Change::Queue);
     }
+}
+
+void AppState::setIsoFolder(std::filesystem::path folder) {
+    m_settings.isoFolder = std::move(folder);
+    m_settings.save(m_settingsFile);
+}
+
+void AppState::setIsoRun(std::optional<IsoRun> run) {
+    m_iso = std::move(run);
+    notify(Change::Iso);
 }
 
 void AppState::setApplyRun(std::optional<ApplyRun> run) {

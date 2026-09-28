@@ -34,6 +34,9 @@ AppSettings AppSettings::load(const std::filesystem::path& file) {
     if (const auto root = doc.value("workRoot", std::string{}); !root.empty()) {
         settings.workRoot = utf8::toWide(root);
     }
+    if (const auto iso = doc.value("isoFolder", std::string{}); !iso.empty()) {
+        settings.isoFolder = utf8::toWide(iso);
+    }
     return settings;
 }
 
@@ -41,7 +44,10 @@ void AppSettings::save(const std::filesystem::path& file) const {
     std::error_code ec;
     std::filesystem::create_directories(file.parent_path(), ec);
     std::ofstream out(file, std::ios::binary | std::ios::trunc);
-    out << nlohmann::json{{"version", 1}, {"workRoot", utf8::fromWide(workRoot.wstring())}}.dump(2);
+    out << nlohmann::json{{"version", 1},
+                          {"workRoot", utf8::fromWide(workRoot.wstring())},
+                          {"isoFolder", utf8::fromWide(isoFolder.wstring())}}
+               .dump(2);
 }
 
 } // namespace wl::app

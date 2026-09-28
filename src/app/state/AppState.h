@@ -9,6 +9,7 @@
 #include "core/image/Source.h"
 #include "core/image/dism/MountHealth.h"
 #include "core/image/dism/OptionalFeatures.h"
+#include "core/iso/IsoBuilder.h"
 #include "core/ops/ApplyJob.h"
 #include "core/ops/ChangeSet.h"
 #include "core/tasks/TaskRunner.h"
@@ -42,7 +43,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso };
     using Listener = std::function<void(Change)>;
 
     explicit AppState(std::filesystem::path recentFile = RecentSources::defaultFile(),
@@ -56,6 +57,7 @@ public:
     // Quick file reads that must not wait behind a long DISM job (opening a source: ~50 ms).
     [[nodiscard]] core::TaskRunner& reader() noexcept { return m_reader; }
     [[nodiscard]] const AppSettings& settings() const noexcept { return m_settings; }
+    void setIsoFolder(std::filesystem::path folder); // saved to settings.json
 
     [[nodiscard]] const std::optional<core::SourceInfo>& source() const noexcept { return m_source; }
     void setSource(core::SourceInfo source); // records it in the recent list; resets the selection
@@ -110,6 +112,22 @@ public:
     void setApplyRun(std::optional<ApplyRun> run);
     void notifyApply() { notify(Change::Apply); }
 
+    // P06: the running / last ISO build (IsoController).
+    struct IsoRun {
+        bool running = false;
+        double fraction = 0;
+        int stage = 0; // 0 extract, 1 repack, 2 write, 3 sha256
+        double startedMs = 0;
+        std::filesystem::path output;
+        std::optional<core::IsoResult> result;
+        std::optional<Error> error;
+        core::CancelToken cancel;
+    };
+    [[nodiscard]] const std::optional<IsoRun>& isoRun() const noexcept { return m_iso; }
+    [[nodiscard]] std::optional<IsoRun>& isoRunMutable() noexcept { return m_iso; }
+    void setIsoRun(std::optional<IsoRun> run);
+    void notifyIso() { notify(Change::Iso); }
+
     // Last inspection of the WinLove mount folder (MountHealth.h); empty until first checked.
     [[nodiscard]] const std::optional<core::MountCheck>& mountFolder() const noexcept { return m_mountFolder; }
     void setMountFolder(std::optional<core::MountCheck> check);
@@ -145,6 +163,8 @@ private:
     core::ops::ChangeSet m_changes;
     std::optional<OptionalFeatures> m_features;
     std::optional<ApplyRun> m_apply;
+    std::optional<IsoRun> m_iso;
+    std::filesystem::path m_settingsFile;
     std::shared_ptr<log::RingBufferSink> m_logBuffer = std::make_shared<log::RingBufferSink>();
     std::uint64_t m_logCleared = 0;
     RecentSources m_recent;

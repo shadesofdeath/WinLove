@@ -7,6 +7,7 @@
 #include "app/Localization.h"
 #include "app/controllers/ApplyController.h"
 #include "app/controllers/FeatureController.h"
+#include "app/controllers/IsoController.h"
 #include "app/controllers/ImageController.h"
 #include "app/pages/PageInfo.h"
 #include "app/shell/NavRail.h"
@@ -36,6 +37,7 @@ class ImageInspector;
 class LogsPage;
 class FeaturesPage;
 class ApplyPage;
+class IsoPage;
 
 class Shell : public ui::Widget {
 public:
@@ -112,6 +114,9 @@ private:
     [[nodiscard]] LogsPage* logsPage() const;
     [[nodiscard]] FeaturesPage* featuresPage() const;
     [[nodiscard]] ApplyPage* applyPage() const;
+    [[nodiscard]] IsoPage* isoPage() const;
+    void updateIsoChrome();
+    void startIso();
     void updateApplyChrome();                         // CTA label, Apply page mode/header
     void savePreset(const core::ops::ChangeSet& changes);
     void saveApplyLog();
@@ -127,6 +132,8 @@ private:
     std::unique_ptr<ImageController> m_images;
     std::unique_ptr<FeatureController> m_features;
     std::unique_ptr<ApplyController> m_apply;
+    std::unique_ptr<IsoController> m_iso;
+    ui::Button* m_actionIso = nullptr; // ISO page: "ISO Oluştur" / "İptal"
     int m_applyMode = -1; // ApplyPage::Mode the Apply page was built for
     ui::Button* m_actionReset = nullptr; // Özellikler: "Değişiklikleri sıfırla"
     std::size_t m_subscription = 0;
