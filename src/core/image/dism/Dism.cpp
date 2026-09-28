@@ -1,6 +1,7 @@
 #include "core/image/dism/Dism.h"
 
 #include "base/Log.h"
+#include "base/Path.h"
 #include "core/image/dism/DismApi.h"
 #include "core/system/Privileges.h"
 
@@ -138,8 +139,10 @@ Error Dism::error(HRESULT hr, std::wstring context) const {
     return Error{kCode, std::move(message), std::move(context), static_cast<std::int32_t>(hr)};
 }
 
-Result<void> Dism::mount(const std::filesystem::path& wim, int index, const std::filesystem::path& mountDir,
+Result<void> Dism::mount(const std::filesystem::path& wimInput, int index, const std::filesystem::path& mountDirInput,
                          bool readOnly, const TaskContext& task) {
+    const std::filesystem::path wim = nativePath(wimInput);
+    const std::filesystem::path mountDir = nativePath(mountDirInput);
     std::error_code ec;
     std::filesystem::create_directories(mountDir, ec);
     if (!std::filesystem::is_empty(mountDir, ec)) {
@@ -160,7 +163,8 @@ Result<void> Dism::mount(const std::filesystem::path& wim, int index, const std:
     return {};
 }
 
-Result<void> Dism::unmount(const std::filesystem::path& mountDir, bool commit, const TaskContext& task) {
+Result<void> Dism::unmount(const std::filesystem::path& mountDirInput, bool commit, const TaskContext& task) {
+    const std::filesystem::path mountDir = nativePath(mountDirInput);
     log::info("dism", std::format(L"unmount {} ({})", mountDir.wstring(), commit ? L"commit" : L"discard"));
     ProgressBridge bridge{&task, commit ? L"commit" : L"discard"};
     const HRESULT hr = m_api->unmountImage(mountDir.c_str(), commit ? dismapi::kCommitImage : dismapi::kDiscardImage,
@@ -202,7 +206,8 @@ const wchar_t* dismMountStatusName(DismMountStatus status) noexcept {
     return L"?";
 }
 
-Result<void> Dism::remount(const std::filesystem::path& mountDir) {
+Result<void> Dism::remount(const std::filesystem::path& mountDirInput) {
+    const std::filesystem::path mountDir = nativePath(mountDirInput);
     log::info("dism", L"remount " + mountDir.wstring());
     const HRESULT hr = m_api->remountImage(mountDir.c_str());
     if (FAILED(hr)) {
@@ -220,7 +225,8 @@ Result<void> Dism::cleanupMountpoints() {
     return {};
 }
 
-Result<std::unique_ptr<DismSession>> Dism::openSession(const std::filesystem::path& mountDir) {
+Result<std::unique_ptr<DismSession>> Dism::openSession(const std::filesystem::path& mountDirInput) {
+    const std::filesystem::path mountDir = nativePath(mountDirInput);
     dismapi::Session session = 0;
     const HRESULT hr = m_api->openSession(mountDir.c_str(), nullptr, nullptr, &session);
     if (FAILED(hr)) {

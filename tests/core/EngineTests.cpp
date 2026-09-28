@@ -1,5 +1,6 @@
 // Engine unit tests: WIM XML parsing, header validation, UDF rejection, log ring buffer, tasks.
 #include "base/Log.h"
+#include "base/Path.h"
 #include "core/image/UdfImage.h"
 #include "core/image/WimFile.h"
 #include "core/image/dism/DismErrors.h"
@@ -240,4 +241,11 @@ TEST_CASE("forceRemoveContents refuses folders near the drive root") {
 
 TEST_CASE("no Explorer window shows a folder that does not exist") {
     CHECK(wl::core::explorerWindowsIn(L"C:\\WinLoveLab\\no-such-folder\\x").empty());
+}
+
+TEST_CASE("nativePath: absolute, backslashes only (DISM rejects mixed separators)") {
+    CHECK(wl::nativePath(L"C:/WinLoveLab/iso/sources/install.wim").wstring() == LR"(C:\WinLoveLab\iso\sources\install.wim)");
+    CHECK(wl::nativePath(std::filesystem::path(L"C:/WinLoveLab/iso") / L"sources/install.wim").wstring() ==
+          LR"(C:\WinLoveLab\iso\sources\install.wim)");
+    CHECK(wl::nativePath(LR"(C:\WinLove\.\mount\)").wstring() == LR"(C:\WinLove\mount\)");
 }

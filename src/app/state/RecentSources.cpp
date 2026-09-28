@@ -1,6 +1,7 @@
 #include "app/state/RecentSources.h"
 
 #include "base/Log.h"
+#include "base/Path.h"
 #include "base/Utf8.h"
 #include "core/image/WindowsRelease.h"
 
@@ -49,7 +50,7 @@ void RecentSources::load() {
     }
     for (const auto& e : doc.value("sources", nlohmann::json::array())) {
         RecentSource entry;
-        entry.path = utf8::toWide(e.value("path", ""));
+        entry.path = nativePath(utf8::toWide(e.value("path", "")));
         entry.format = utf8::toWide(e.value("format", ""));
         entry.summary = utf8::toWide(e.value("summary", ""));
         entry.size = e.value("size", std::uint64_t{0});

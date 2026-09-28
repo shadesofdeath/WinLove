@@ -53,6 +53,7 @@ constexpr std::array kCatalog{
     Entry{0xC15101FD, L"image being serviced by another DISM operation", Remedy::WaitForOther},
     // Win32 errors DISM passes through from the mount folder.
     Entry{0x80070005, L"access denied in mount folder", Remedy::CloseOpenFiles},
+    Entry{0x800704D3, L"mount folder stub refused (folder in use)", Remedy::CloseOpenFiles},
     Entry{0x80070020, L"sharing violation", Remedy::CloseOpenFiles},
     Entry{0x80070021, L"lock violation", Remedy::CloseOpenFiles},
     Entry{0x80070091, L"directory not empty", Remedy::RepairFolder},

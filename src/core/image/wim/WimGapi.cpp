@@ -1,6 +1,7 @@
 #include "core/image/wim/WimGapi.h"
 
 #include "base/Log.h"
+#include "base/Path.h"
 
 #include <windows.h>
 
@@ -119,8 +120,10 @@ DWORD CALLBACK onMessage(DWORD message, WPARAM wParam, LPARAM, PVOID user) {
 
 } // namespace
 
-Result<void> exportImage(const std::filesystem::path& source, int index, const std::filesystem::path& destination,
+Result<void> exportImage(const std::filesystem::path& sourceInput, int index, const std::filesystem::path& destinationInput,
                          WimCompression compression, const TaskContext& task) {
+    const std::filesystem::path source = nativePath(sourceInput);
+    const std::filesystem::path destination = nativePath(destinationInput);
     auto a = api();
     if (!a) {
         return std::unexpected(a.error());
@@ -168,7 +171,8 @@ Result<void> exportImage(const std::filesystem::path& source, int index, const s
     return {};
 }
 
-Result<void> deleteImage(const std::filesystem::path& wim, int index) {
+Result<void> deleteImage(const std::filesystem::path& wimInput, int index) {
+    const std::filesystem::path wim = nativePath(wimInput);
     auto a = api();
     if (!a) {
         return std::unexpected(a.error());
