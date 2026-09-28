@@ -312,4 +312,100 @@ Result<UnmountOutcome> unmountSafely(Dism& dism, const std::filesystem::path& fo
     return outcome;
 }
 
+namespace {
+
+// Deletes the (empty or leftover-only) mount folder itself and creates it again.
+Result<void> recreateFolder(const std::filesystem::path& folder) {
+    std::error_code ec;
+    if (std::filesystem::exists(folder, ec)) {
+        if (auto r = forceRemoveContents(folder); !r) {
+            return r;
+        }
+        if (!RemoveDirectoryW(folder.c_str())) {
+            const DWORD status = GetLastError();
+            log::warn("dism", std::format(L"could not recreate {} (0x{:08X}); reusing it", folder.wstring(),
+                                          static_cast<std::uint32_t>(HRESULT_FROM_WIN32(status))));
+            return {};
+        }
+    }
+    std::filesystem::create_directories(folder, ec);
+    if (ec) {
+        return fail(ErrorCode::IoError, L"could not create the mount folder", folder.wstring(),
+                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(ec.value())));
+    }
+    return {};
+}
+
+bool folderBusyCode(std::int32_t hr) {
+    switch (static_cast<std::uint32_t>(hr)) {
+    case 0xC1420113: // directory already contains a mounted image
+    case 0xC1420114: // directory not empty
+    case 0xC1420103: // directory already exists
+    case 0xC1420120: // corrupted mount in directory
+    case 0x800704D3: // stub refused (folder in use)
+    case 0x80070005: // access denied in the folder
+        return true;
+    default: return false;
+    }
+}
+
+} // namespace
+
+Result<MountOutcome> mountSafely(Dism& dism, const std::filesystem::path& wimInput, int index,
+                                 const std::filesystem::path& folderInput, bool readOnly, const TaskContext& task) {
+    const std::filesystem::path wim = nativePath(wimInput);
+    const std::filesystem::path folder = nativePath(folderInput);
+    MountOutcome outcome;
+    releaseExplorerWindows(folder);
+
+    auto check = inspectMount(dism, folder);
+    if (!check) {
+        return std::unexpected(check.error());
+    }
+    if ((check->state == MountState::Ok || check->state == MountState::NeedsRemount) && check->record &&
+        _wcsicmp(nativePath(check->record->imagePath).c_str(), wim.c_str()) == 0 && check->record->index == index) {
+        // Same image already there (e.g. the app was closed while mounted): use it.
+        if (check->state == MountState::NeedsRemount) {
+            if (auto r = dism.remount(folder); !r) {
+                return std::unexpected(r.error());
+            }
+        }
+        outcome.reused = true;
+        return outcome;
+    }
+    if (check->state == MountState::Ok || check->state == MountState::NeedsRemount) {
+        return fail(ErrorCode::DismFailure, L"another image is mounted in the mount folder",
+                    std::format(L"{} holds {} index {}", folder.wstring(),
+                                check->record ? check->record->imagePath.wstring() : L"?",
+                                check->record ? check->record->index : 0),
+                    static_cast<std::int32_t>(0xC1420113));
+    }
+    if (check->state != MountState::Free) {
+        outcome.recovered = true;
+        auto repaired = repairMount(dism, *check, task);
+        if (!repaired) {
+            return std::unexpected(repaired.error());
+        }
+    }
+    if (auto r = recreateFolder(folder); !r) {
+        return std::unexpected(r.error());
+    }
+    auto mounted = dism.mount(wim, index, folder, readOnly, task);
+    if (!mounted && folderBusyCode(mounted.error().hresult) && !task.cancel.cancelled()) {
+        log::warn("dism", std::format(L"mount refused (0x{:08X}); cleaning up and retrying once",
+                                      static_cast<std::uint32_t>(mounted.error().hresult)));
+        outcome.recovered = true;
+        (void)dism.cleanupMountpoints();
+        releaseExplorerWindows(folder);
+        if (auto r = recreateFolder(folder); !r) {
+            return std::unexpected(r.error());
+        }
+        mounted = dism.mount(wim, index, folder, readOnly, task);
+    }
+    if (!mounted) {
+        return std::unexpected(mounted.error());
+    }
+    return outcome;
+}
+
 } // namespace wl::core

@@ -180,27 +180,12 @@ void ImageController::mount(int index) {
                 if (!dism) {
                     return std::unexpected(dism.error());
                 }
-                // The folder must be Free. Leftovers (partial unmount, invalid or orphaned mount)
-                // hold nothing worth keeping and are repaired; a live mount is refused.
-                core::releaseExplorerWindows(mountDir);
-                auto folder = core::inspectMount(**dism, mountDir);
-                if (!folder) {
-                    return std::unexpected(folder.error());
+                // Leftovers, stale folder state and "folder busy" retries: see mountSafely.
+                auto outcome = core::mountSafely(**dism, wim, index, mountDir, /*readOnly=*/false, task);
+                if (!outcome) {
+                    return std::unexpected(outcome.error());
                 }
-                if (folder->state == core::MountState::Orphaned || folder->state == core::MountState::Invalid ||
-                    folder->state == core::MountState::ImageMissing) {
-                    auto repaired = core::repairMount(**dism, *folder, task);
-                    if (!repaired) {
-                        return std::unexpected(repaired.error());
-                    }
-                    folder = std::move(*repaired);
-                }
-                if (folder->state != core::MountState::Free) {
-                    return fail(ErrorCode::DismFailure, L"the mount folder already holds a mounted image",
-                                std::format(L"{} ({})", mountDir.wstring(), core::mountStateName(folder->state)),
-                                static_cast<std::int32_t>(0xC1420113));
-                }
-                return (*dism)->mount(wim, index, mountDir, /*readOnly=*/false, task);
+                return {};
             },
             [this, wim = *wim, mountDir, index, edition] {
                 m_state.setMounted(MountedImage{mountDir, wim, index, edition, false});

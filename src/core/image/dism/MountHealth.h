@@ -63,6 +63,19 @@ struct MountCheck {
 // "file in use" / partial unmount (0xC1420112 / 0xC1420117) releases again and retries; if the
 // image is detached but leftovers remain, cleans the folder. The WIM commit happens before the
 // detach step, so a partial unmount after commit keeps the changes.
+// Mount that starts from a clean slate: moves Explorer away, repairs leftovers (orphaned /
+// invalid / image missing), deletes and recreates the mount folder itself (a reused folder can
+// keep stale wimmount state after a partial unmount: DISM then answers 0xC1420113 on an empty
+// folder), mounts, and on "folder busy/not empty" codes cleans up and retries once.
+// If the folder already holds a healthy mount of the same WIM + index, that mount is reused.
+struct MountOutcome {
+    bool reused = false;    // the image was already mounted there
+    bool recovered = false; // needed a repair or a retry
+};
+[[nodiscard]] Result<MountOutcome> mountSafely(Dism& dism, const std::filesystem::path& wim, int index,
+                                               const std::filesystem::path& folder, bool readOnly,
+                                               const TaskContext& task);
+
 struct UnmountOutcome {
     bool recovered = false; // needed retries or a folder repair
     int attempts = 0;
