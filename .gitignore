@@ -12,3 +12,4 @@ __pycache__/
 *.swm
 *.vhd
 *.vhdx
+/dist/
