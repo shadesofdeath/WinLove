@@ -323,11 +323,22 @@ Result<void> DismSession::disableFeature(const std::wstring& name, const TaskCon
     return {};
 }
 
-Result<void> DismSession::enableFeature(const std::wstring& name, const TaskContext& task) {
+Result<void> DismSession::enableFeature(const std::wstring& name, const TaskContext& task,
+                                        const std::vector<std::filesystem::path>& sources) {
     ProgressBridge bridge{&task, name.c_str()};
-    // LimitAccess: never reach out to Windows Update from an offline image; EnableAll: parent features too.
+    std::vector<std::wstring> paths;
+    for (const auto& p : sources) {
+        paths.push_back(p.wstring());
+    }
+    std::vector<PCWSTR> pointers;
+    for (const auto& p : paths) {
+        pointers.push_back(p.c_str());
+    }
+    // EnableAll: parent features are enabled too (like /All); LimitAccess: no Windows Update.
     const HRESULT hr = m_dism.m_api->enableFeature(m_session, name.c_str(), nullptr, dismapi::PackageNone, TRUE,
-                                                   nullptr, 0, TRUE, task.cancel.event(), &onProgress, &bridge);
+                                                   pointers.empty() ? nullptr : pointers.data(),
+                                                   static_cast<UINT>(pointers.size()), TRUE, task.cancel.event(),
+                                                   &onProgress, &bridge);
     if (FAILED(hr)) {
         return std::unexpected(m_dism.error(hr, L"enable feature " + name));
     }

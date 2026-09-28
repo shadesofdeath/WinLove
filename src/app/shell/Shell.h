@@ -5,6 +5,7 @@
 // (interaction.md "Kısayollar"), the source-opening flow, P02 image operations (through
 // ImageController), dialogs and the toast.
 #include "app/Localization.h"
+#include "app/controllers/ApplyController.h"
 #include "app/controllers/FeatureController.h"
 #include "app/controllers/ImageController.h"
 #include "app/pages/PageInfo.h"
@@ -34,6 +35,7 @@ class ImagesPage;
 class ImageInspector;
 class LogsPage;
 class FeaturesPage;
+class ApplyPage;
 
 class Shell : public ui::Widget {
 public:
@@ -60,6 +62,9 @@ public:
     NavRail& nav() { return *m_nav; }
     ImageController& images() { return *m_images; }
     FeatureController& features() { return *m_features; }
+    ApplyController& apply() { return *m_apply; }
+    // "Uygula": straight to the run, or through the 13b confirmation when something is irreversible.
+    void requestApply();
     [[nodiscard]] PageId currentPage() const noexcept { return m_page; }
 
     void showPage(PageId page);
@@ -106,6 +111,11 @@ private:
     [[nodiscard]] ImagesPage* imagesPage() const;
     [[nodiscard]] LogsPage* logsPage() const;
     [[nodiscard]] FeaturesPage* featuresPage() const;
+    [[nodiscard]] ApplyPage* applyPage() const;
+    void updateApplyChrome();                         // CTA label, Apply page mode/header
+    void savePreset(const core::ops::ChangeSet& changes);
+    void saveApplyLog();
+    void showApplyConfirm();
     void updateQueue(); // CTA count, nav badges, page actions that depend on the queue
     [[nodiscard]] bool inspectorVisible() const;
     ui::Dialog& pushDialog(std::unique_ptr<ui::Dialog> dialog);
@@ -116,6 +126,8 @@ private:
     Services m_services;
     std::unique_ptr<ImageController> m_images;
     std::unique_ptr<FeatureController> m_features;
+    std::unique_ptr<ApplyController> m_apply;
+    int m_applyMode = -1; // ApplyPage::Mode the Apply page was built for
     ui::Button* m_actionReset = nullptr; // Özellikler: "Değişiklikleri sıfırla"
     std::size_t m_subscription = 0;
     // Engine results arrive later on the UI thread; they check this before touching the shell

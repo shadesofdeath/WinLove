@@ -26,6 +26,9 @@ public:
         return body;
     }
 
+    // Live header text (e.g. "Uygulanıyor · 3 / 8 işlem · 42%").
+    void setHeader(std::wstring title, std::wstring description);
+
     // Header buttons, added left to right; the group is right-aligned.
     ui::Button& addAction(ui::ButtonKind kind, std::wstring label, std::optional<ui::icons::Icon> icon = std::nullopt);
 

@@ -17,6 +17,8 @@ public:
     std::function<void()> onInvoke;
 
     void setQueue(int count);
+    // Replaces "Uygula · n" (e.g. "Durdur" while applying); empty = back to the queue label.
+    void setOverride(std::wstring label);
     [[nodiscard]] ui::SizeF measure(ui::SizeF available) override;
     void paint(ui::Canvas& canvas) override;
     void onHoverChanged(bool hovered) override;
@@ -28,6 +30,7 @@ private:
     [[nodiscard]] std::wstring text() const;
     std::wstring m_label;
     int m_queue = 0;
+    std::wstring m_override;
     ui::Tween m_hover;
 };
 

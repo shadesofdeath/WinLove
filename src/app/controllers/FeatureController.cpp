@@ -65,7 +65,7 @@ Operation FeatureController::operationFor(const OptionalFeature& item) {
     op.target = item.name;
     if (item.kind == OptionalFeature::Kind::Capability) {
         op.kind = OpKind::RemoveCapability;
-        op.risk = core::ops::Risk::Medium;
+        op.risk = core::ops::Risk::High; // cannot be added back offline without the FoD media
         op.sizeDelta = -static_cast<std::int64_t>(item.size);
     } else {
         op.kind = item.isOn() ? OpKind::DisableFeature : OpKind::EnableFeature;

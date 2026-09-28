@@ -108,7 +108,10 @@ public:
 
     // Servicing mutations — called by ops::Applier only (never directly from UI code).
     [[nodiscard]] Result<void> disableFeature(const std::wstring& name, const TaskContext& task);
-    [[nodiscard]] Result<void> enableFeature(const std::wstring& name, const TaskContext& task);
+    // `sources`: folders with the feature payload (e.g. the setup media's sources\sxs for
+    // NetFx3 or a feature whose payload was removed). Windows Update is never used (LimitAccess).
+    [[nodiscard]] Result<void> enableFeature(const std::wstring& name, const TaskContext& task,
+                                             const std::vector<std::filesystem::path>& sources = {});
     [[nodiscard]] Result<void> removePackage(const std::wstring& name, const TaskContext& task);
     [[nodiscard]] Result<void> removeCapability(const std::wstring& name, const TaskContext& task);
 

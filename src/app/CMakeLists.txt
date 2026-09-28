@@ -1,12 +1,16 @@
 # wl_app — shell, pages, app state, localization. Joins ui and core. Library so tests can link it.
 add_library(wl_app STATIC
     App.cpp
+    controllers/ApplyController.cpp
     controllers/FeatureController.cpp
     controllers/ImageController.cpp
     Format.cpp
     Localization.cpp
     Resources.cpp
     pages/GalleryPage.cpp
+    pages/apply/RiskConfirm.cpp
+    pages/apply/StatStrip.cpp
+    pages/ApplyPage.cpp
     pages/FeaturesPage.cpp
     pages/ImagesPage.cpp
     pages/LogsPage.cpp

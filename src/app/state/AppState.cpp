@@ -92,6 +92,11 @@ void AppState::unqueueIf(const std::function<bool(const core::ops::Operation&)>&
     }
 }
 
+void AppState::setApplyRun(std::optional<ApplyRun> run) {
+    m_apply = std::move(run);
+    notify(Change::Apply);
+}
+
 void AppState::setOptionalFeatures(std::optional<OptionalFeatures> features) {
     m_features = std::move(features);
     notify(Change::Features);

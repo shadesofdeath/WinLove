@@ -2,7 +2,9 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <format>
 
 namespace wl::app {
@@ -97,6 +99,31 @@ std::wstring formatCount(std::uint64_t value, Language language) {
         digits.insert(static_cast<std::size_t>(i), 1, separator);
     }
     return digits;
+}
+
+std::wstring formatDuration(double seconds, Language language, bool approx) {
+    const bool tr = language == Language::Turkish;
+    const wchar_t* h = tr ? L"sa" : L"h";
+    const wchar_t* m = tr ? L"dk" : L"min";
+    const wchar_t* sec = tr ? L"sn" : L"s";
+    const auto total = static_cast<long long>(std::llround(std::max(seconds, 0.0)));
+    const std::wstring prefix = approx ? L"~" : L"";
+    if (approx) {
+        if (total >= 3600) {
+            return std::format(L"~{} {}", (total + 1800) / 3600, h);
+        }
+        if (total >= 60) {
+            return std::format(L"~{} {}", (total + 30) / 60, m);
+        }
+        return std::format(L"~{} {}", std::max(total, 1LL), sec);
+    }
+    if (total >= 3600) {
+        return std::format(L"{} {} {} {}", total / 3600, h, (total % 3600) / 60, m);
+    }
+    if (total >= 60) {
+        return std::format(L"{} {} {} {}", total / 60, m, total % 60, sec);
+    }
+    return std::format(L"{} {}", total, sec);
 }
 
 } // namespace wl::app

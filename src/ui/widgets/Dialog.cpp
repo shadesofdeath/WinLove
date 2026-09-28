@@ -38,8 +38,14 @@ void Dialog::layout() {
     if (host()) {
         m_bodyHeight = std::ceil(host()->text().measureWrapped(m_body, tokens::TypeStyle::Body, contentWidth));
     }
-    const float height = kPadding + kTitleLine + kTitleGap + m_bodyHeight + kButtonsGap + tokens::size::control + kPadding;
+    const float content = m_content ? kTitleGap + m_contentHeight : 0.0f;
+    const float height =
+        kPadding + kTitleLine + kTitleGap + m_bodyHeight + content + kButtonsGap + tokens::size::control + kPadding;
     m_box = {b.x + std::round((b.width - m_width) / 2), b.y + std::round((b.height - height) / 2), m_width, height};
+    if (m_content) {
+        m_content->setBounds({m_box.x + kPadding, m_box.y + kPadding + kTitleLine + kTitleGap + m_bodyHeight + kTitleGap,
+                              contentWidth, m_contentHeight});
+    }
 
     // Buttons right-aligned on the last row.
     float right = m_box.right() - kPadding;
