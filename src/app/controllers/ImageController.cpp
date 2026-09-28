@@ -3,6 +3,7 @@
 #include "base/Log.h"
 #include "core/image/UdfImage.h"
 #include "core/image/dism/Dism.h"
+#include "core/image/dism/MountHealth.h"
 #include "core/image/wim/WimGapi.h"
 #include "core/system/Privileges.h"
 #include "ui/anim/Tween.h"
@@ -11,14 +12,6 @@
 #include <format>
 
 namespace wl::app {
-
-namespace {
-
-bool sameDir(const std::filesystem::path& a, const std::filesystem::path& b) {
-    return _wcsicmp(a.lexically_normal().c_str(), b.lexically_normal().c_str()) == 0;
-}
-
-} // namespace
 
 ImageController::ImageController(AppState& state, Events events) : m_state(state), m_events(std::move(events)) {}
 
@@ -184,10 +177,27 @@ void ImageController::mount(int index) {
                 if (!dism) {
                     return std::unexpected(dism.error());
                 }
+                // The folder must be Free: leftovers from an interrupted run are cleared first,
+                // anything still mounted there is an error (unmount it first).
+                auto folder = core::inspectMount(**dism, mountDir);
+                if (!folder) {
+                    return std::unexpected(folder.error());
+                }
+                if (folder->state == core::MountState::Orphaned) {
+                    auto cleared = core::repairMount(**dism, *folder, task);
+                    if (!cleared) {
+                        return std::unexpected(cleared.error());
+                    }
+                    folder = std::move(*cleared);
+                }
+                if (folder->state != core::MountState::Free) {
+                    return fail(ErrorCode::DismFailure, L"the mount folder is in use",
+                                std::format(L"{} ({})", mountDir.wstring(), core::mountStateName(folder->state)));
+                }
                 return (*dism)->mount(wim, index, mountDir, /*readOnly=*/false, task);
             },
             [this, wim = *wim, mountDir, index, edition] {
-                m_state.setMounted(MountedImage{mountDir, wim, index, edition});
+                m_state.setMounted(MountedImage{mountDir, wim, index, edition, false});
                 m_events.succeeded(Str::ImagesMountedToast, edition);
             },
             Failure::Mount);
@@ -204,6 +214,10 @@ void ImageController::unmount(bool commit) {
             auto dism = core::Dism::instance();
             if (!dism) {
                 return std::unexpected(dism.error());
+            }
+            // Hives loaded from the image (later pages) make DISM fail with 0xC1420117.
+            if (auto r = core::unloadHivesUnder(dir); !r) {
+                return r;
             }
             return (*dism)->unmount(dir, commit, task);
         },
@@ -322,42 +336,60 @@ void ImageController::adoptExistingMount() {
     if (!core::isElevated()) {
         return;
     }
+    // Inspect the WinLove mount folder and bring it to a usable state (MountHealth.h):
+    // Ok → restore, NeedsRemount → remount then restore, Invalid/ImageMissing → discard,
+    // Orphaned → clear the folder. `before` is what we found, `after` the state after repair.
+    struct Found {
+        core::MountCheck before;
+        core::MountCheck after;
+    };
     auto post = m_events.postToUi;
     std::weak_ptr<bool> alive = m_alive;
     const auto mountRoot = m_state.settings().mountDirectory();
-    m_state.engine().run<std::optional<core::MountInfo>>(
-        [mountRoot](const core::TaskContext&) -> Result<std::optional<core::MountInfo>> {
+    m_state.engine().run<Found>(
+        [mountRoot](const core::TaskContext& task) -> Result<Found> {
             auto dism = core::Dism::instance();
             if (!dism) {
                 return std::unexpected(dism.error());
             }
-            auto mounts = (*dism)->mounts();
-            if (!mounts) {
-                return std::unexpected(mounts.error());
+            auto before = core::inspectMount(**dism, mountRoot);
+            if (!before) {
+                return std::unexpected(before.error());
             }
-            for (const auto& m : *mounts) {
-                if (sameDir(m.mountPath, mountRoot) && m.healthy) {
-                    return std::optional<core::MountInfo>(m);
-                }
+            auto after = core::repairMount(**dism, *before, task);
+            if (!after) {
+                return std::unexpected(after.error());
             }
-            return std::optional<core::MountInfo>();
+            return Found{std::move(*before), std::move(*after)};
         },
-        [this, post, alive](Result<std::optional<core::MountInfo>> result) {
+        [this, post, alive](Result<Found> result) {
             post([this, alive, result = std::move(result)] {
-                if (const auto a = alive.lock(); !a || !*a || !result || !*result) {
+                if (const auto a = alive.lock(); !a || !*a) {
                     return;
                 }
-                const auto& m = **result;
-                log::info("app", L"adopting existing mount " + m.mountPath.wstring());
-                std::wstring edition = std::format(L"#{}", m.index);
-                if (auto info = core::openSource(m.imagePath)) {
-                    for (const auto& image : info->install.images) {
-                        if (image.index == m.index) {
-                            edition = image.name;
-                        }
-                    }
+                if (!result) {
+                    log::warn("app", describe(result.error()));
+                    m_events.failed(Failure::Cleanup, result.error(), 0);
+                    return;
                 }
-                m_state.setMounted(MountedImage{m.mountPath, m.imagePath, m.index, edition});
+                const auto& [before, after] = *result;
+                log::info("app", std::format(L"mount folder {}: {} → {}", before.folder.wstring(),
+                                             core::mountStateName(before.state), core::mountStateName(after.state)));
+                if (before.action == core::MountAction::Discard) {
+                    m_events.refused(Str::ImagesMountDiscarded);
+                }
+                if (after.state != core::MountState::Ok || !after.record) {
+                    return;
+                }
+                const auto& m = *after.record;
+                // The source to show: the setup folder (...\sources\install.wim) or the WIM itself.
+                std::filesystem::path source = m.imagePath;
+                if (_wcsicmp(m.imagePath.parent_path().filename().c_str(), L"sources") == 0) {
+                    source = m.imagePath.parent_path().parent_path();
+                }
+                if (m_events.restored) {
+                    m_events.restored(source, MountedImage{m.mountPath, m.imagePath, m.index, {}, m.readOnly});
+                }
             });
         },
         {});

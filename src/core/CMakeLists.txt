@@ -6,6 +6,7 @@ add_library(wl_core STATIC
     image/WimFile.cpp
     image/WindowsRelease.cpp
     image/dism/Dism.cpp
+    image/dism/MountHealth.cpp
     image/wim/WimGapi.cpp
     io/ByteSource.cpp
     ops/Applier.cpp

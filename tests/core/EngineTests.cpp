@@ -2,12 +2,14 @@
 #include "base/Log.h"
 #include "core/image/UdfImage.h"
 #include "core/image/WimFile.h"
+#include "core/image/dism/MountHealth.h"
 #include "core/tasks/TaskRunner.h"
 
 #include <doctest.h>
 
 #include <atomic>
 #include <cstring>
+#include <optional>
 #include <vector>
 
 using namespace wl;
@@ -160,4 +162,31 @@ TEST_CASE("CancelToken: shared state and Win32 event") {
     CHECK(copy.cancelled());
     CHECK(WaitForSingleObject(copy.event(), 0) == WAIT_OBJECT_0);
     CHECK(copy.check(L"x").error().code == ErrorCode::Cancelled);
+}
+
+TEST_CASE("mount health: DISM status + our checks → state → action") {
+    using wl::core::DismMountStatus;
+    using wl::core::MountAction;
+    using wl::core::MountState;
+    auto record = [](DismMountStatus status) {
+        return std::optional<wl::core::MountInfo>(wl::core::MountInfo{L"C:/WinLove/mount", L"C:/x/install.wim", 1, false, status});
+    };
+    CHECK(wl::core::classifyMount(std::nullopt, false, false) == MountState::Free);
+    CHECK(wl::core::classifyMount(std::nullopt, false, true) == MountState::Orphaned);
+    CHECK(wl::core::classifyMount(record(DismMountStatus::Ok), true, true) == MountState::Ok);
+    CHECK(wl::core::classifyMount(record(DismMountStatus::Ok), false, true) == MountState::ImageMissing);
+    CHECK(wl::core::classifyMount(record(DismMountStatus::NeedsRemount), true, true) == MountState::NeedsRemount);
+    CHECK(wl::core::classifyMount(record(DismMountStatus::NeedsRemount), false, true) == MountState::ImageMissing);
+    CHECK(wl::core::classifyMount(record(DismMountStatus::Invalid), true, true) == MountState::Invalid);
+
+    CHECK(wl::core::recommendedAction(MountState::Free) == MountAction::None);
+    CHECK(wl::core::recommendedAction(MountState::Ok) == MountAction::None);
+    CHECK(wl::core::recommendedAction(MountState::NeedsRemount) == MountAction::Remount);
+    CHECK(wl::core::recommendedAction(MountState::Invalid) == MountAction::Discard);
+    CHECK(wl::core::recommendedAction(MountState::ImageMissing) == MountAction::Discard);
+    CHECK(wl::core::recommendedAction(MountState::Orphaned) == MountAction::ClearFolder);
+}
+
+TEST_CASE("mount health: no hives are loaded from a folder that is not mounted") {
+    CHECK(wl::core::hivesLoadedFrom(L"C:/WinLoveLab/no-such-mount").empty());
 }

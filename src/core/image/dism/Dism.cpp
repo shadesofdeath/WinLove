@@ -86,7 +86,7 @@ Result<Dism*> Dism::instance() {
                     load(m, "DismOpenSession", a.openSession) && load(m, "DismCloseSession", a.closeSession) &&
                     load(m, "DismGetLastErrorMessage", a.getLastErrorMessage) &&
                     load(m, "DismGetMountedImageInfo", a.getMountedImageInfo) &&
-                    load(m, "DismCleanupMountpoints", a.cleanupMountpoints) && load(m, "DismDelete", a.deleteStructure) &&
+                    load(m, "DismCleanupMountpoints", a.cleanupMountpoints) && load(m, "DismRemountImage", a.remountImage) && load(m, "DismDelete", a.deleteStructure) &&
                     load(m, "DismGetPackages", a.getPackages) && load(m, "DismGetFeatures", a.getFeatures) &&
                     load(m, "DismGetCapabilities", a.getCapabilities) &&
                     load(m, "DismDisableFeature", a.disableFeature) && load(m, "DismEnableFeature", a.enableFeature) &&
@@ -183,15 +183,32 @@ Result<std::vector<MountInfo>> Dism::mounts() {
         const auto& m = info[i];
         result.push_back({m.mountPath ? m.mountPath : L"", m.imageFilePath ? m.imageFilePath : L"",
                           static_cast<int>(m.imageIndex), m.mountMode == dismapi::ReadOnly,
-                          m.mountStatus == dismapi::MountOk,
-                          m.mountStatus == dismapi::MountOk ? L"ok"
-                          : m.mountStatus == dismapi::MountNeedsRemount ? L"needs remount"
-                                                                        : L"invalid"});
+                          m.mountStatus == dismapi::MountOk             ? DismMountStatus::Ok
+                          : m.mountStatus == dismapi::MountNeedsRemount ? DismMountStatus::NeedsRemount
+                                                                        : DismMountStatus::Invalid});
     }
     if (info) {
         m_api->deleteStructure(info);
     }
     return result;
+}
+
+const wchar_t* dismMountStatusName(DismMountStatus status) noexcept {
+    switch (status) {
+    case DismMountStatus::Ok: return L"ok";
+    case DismMountStatus::NeedsRemount: return L"needs remount";
+    case DismMountStatus::Invalid: return L"invalid";
+    }
+    return L"?";
+}
+
+Result<void> Dism::remount(const std::filesystem::path& mountDir) {
+    log::info("dism", L"remount " + mountDir.wstring());
+    const HRESULT hr = m_api->remountImage(mountDir.c_str());
+    if (FAILED(hr)) {
+        return std::unexpected(error(hr, L"remount " + mountDir.wstring()));
+    }
+    return {};
 }
 
 Result<void> Dism::cleanupMountpoints() {

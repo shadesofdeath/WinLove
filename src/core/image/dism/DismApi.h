@@ -76,6 +76,7 @@ struct Api {
     HRESULT(WINAPI* getLastErrorMessage)(String**) = nullptr;
     HRESULT(WINAPI* getMountedImageInfo)(MountedImageInfo**, UINT*) = nullptr;
     HRESULT(WINAPI* cleanupMountpoints)() = nullptr;
+    HRESULT(WINAPI* remountImage)(PCWSTR mountPath) = nullptr;
     HRESULT(WINAPI* deleteStructure)(void*) = nullptr;
     HRESULT(WINAPI* getPackages)(Session, Package**, UINT*) = nullptr;
     HRESULT(WINAPI* getFeatures)(Session, PCWSTR identifier, PackageIdentifier, Feature**, UINT*) = nullptr;

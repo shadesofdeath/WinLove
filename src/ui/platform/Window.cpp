@@ -1,6 +1,7 @@
 #include "ui/platform/Window.h"
 
 #include <dwmapi.h>
+#include <shellapi.h>
 #include <windowsx.h>
 
 #include <algorithm>
@@ -156,6 +157,18 @@ bool Window::isMaximized() const noexcept {
 int Window::frameThicknessPx() const {
     const UINT dpi = GetDpiForWindow(m_hwnd);
     return GetSystemMetricsForDpi(SM_CYFRAME, dpi) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+}
+
+void Window::setFileDropHandler(std::function<void(std::vector<std::filesystem::path>, PointF)> handler) {
+    m_fileDrop = std::move(handler);
+    DragAcceptFiles(m_hwnd, m_fileDrop ? TRUE : FALSE);
+    if (m_fileDrop) {
+        // Let a non-elevated Explorer deliver drops to this (elevated) window.
+        constexpr UINT kCopyGlobalData = 0x0049;
+        for (const UINT message : {static_cast<UINT>(WM_DROPFILES), static_cast<UINT>(WM_COPYDATA), kCopyGlobalData}) {
+            ChangeWindowMessageFilterEx(m_hwnd, message, MSGFLT_ALLOW, nullptr);
+        }
+    }
 }
 
 PointF Window::toClientDips(POINT screen) const {
@@ -380,6 +393,24 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
             return TRUE;
         }
         break;
+    case WM_DROPFILES: {
+        const auto drop = reinterpret_cast<HDROP>(wParam);
+        std::vector<std::filesystem::path> files;
+        const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+        for (UINT i = 0; i < count; ++i) {
+            std::wstring name(DragQueryFileW(drop, i, nullptr, 0), wchar_t{});
+            DragQueryFileW(drop, i, name.data(), static_cast<UINT>(name.size() + 1));
+            files.emplace_back(std::move(name));
+        }
+        POINT at{};
+        DragQueryPoint(drop, &at);
+        ClientToScreen(m_hwnd, &at);
+        DragFinish(drop);
+        if (m_fileDrop) {
+            m_fileDrop(std::move(files), toClientDips(at));
+        }
+        return 0;
+    }
     case WM_SETTINGCHANGE:
         if (m_callbacks.settingsChanged) {
             m_callbacks.settingsChanged();

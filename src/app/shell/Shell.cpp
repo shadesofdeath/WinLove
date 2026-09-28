@@ -69,6 +69,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         },
         [this](Str title) { showToast(ui::InfoKind::Warning, m_strings.get(title), L""); },
         [this](std::wstring args) { showAdminRequired(std::move(args)); },
+        [this](std::filesystem::path source, MountedImage mounted) { restoreMount(source, std::move(mounted)); },
     });
 
     m_subscription = m_state.subscribe([this](AppState::Change change) {
@@ -316,6 +317,24 @@ void Shell::openSource(const std::filesystem::path& path, std::function<void()> 
                 }
             });
         });
+}
+
+void Shell::restoreMount(const std::filesystem::path& source, MountedImage mounted) {
+    openSource(source, [this, mounted = std::move(mounted)]() mutable {
+        mounted.edition = std::format(L"#{}", mounted.index);
+        if (const auto& info = m_state.source()) {
+            for (const auto& image : info->install.images) {
+                if (image.index == mounted.index) {
+                    mounted.edition = image.name;
+                }
+            }
+        }
+        m_state.select(mounted.index);
+        const std::wstring edition = mounted.edition;
+        m_state.setMounted(std::move(mounted));
+        showToast(ui::InfoKind::Info, m_strings.format(Str::ImagesMountRestored, {{L"edition", edition}}),
+                  m_state.mounted()->imagePath.wstring());
+    });
 }
 
 void Shell::pickSourceFile() {

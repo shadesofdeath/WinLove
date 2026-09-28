@@ -198,8 +198,10 @@ enum class Str : std::uint16_t {
     ImagesLang,
     ImagesMerge,
     ImagesMount,
+    ImagesMountDiscarded,
     ImagesMountFailed,
     ImagesMountFailedHint,
+    ImagesMountRestored,
     ImagesMounted,
     ImagesMountedState,
     ImagesMountedToast,
@@ -463,7 +465,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 453;
+inline constexpr std::size_t kStrCount = 455;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -656,8 +658,10 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "images.lang",
     "images.merge",
     "images.mount",
+    "images.mountDiscarded",
     "images.mountFailed",
     "images.mountFailedHint",
+    "images.mountRestored",
     "images.mounted",
     "images.mountedState",
     "images.mountedToast",

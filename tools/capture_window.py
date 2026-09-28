@@ -69,7 +69,7 @@ def main() -> int:
                str(ROOT / "build" / "x64-debug" / "bin" / "WinLove.exe"))
 
     user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # per-monitor v2: physical pixels
-    process = subprocess.Popen([exe, *app_args])
+    process = subprocess.Popen([exe, "--no-elevate", *app_args])
     hwnd = 0
     for _ in range(100):
         hwnd = user32.FindWindowW("WinLove.Window", None)

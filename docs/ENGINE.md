@@ -72,6 +72,31 @@ wlcli iso <dir> <out.iso>
 Örnek change set: `tests/integration/fixtures/sample-changeset.json`. Yönetici duman testi: `tools/dism_smoke.ps1` → `C:\WinLoveLab\out\dism-smoke.json`.
 Her komut `--json` çıktı verebilir → integration testleri ve AI bunu ayrıştırır.
 
+## 4b. Mount durumları (core/image/dism/MountHealth.h)
+
+DISM `DismGetMountedImageInfo` yalnızca `MountStatus = Ok | NeedsRemount | Invalid` ve `MountMode = ReadWrite | ReadOnly` verir.
+Sahada karşılaşılan hataların bir kısmı DISM kaydında görünmez; bu yüzden kendi denetimlerimizi ekleriz.
+Durum hesabı saf fonksiyondur (`classifyMount`, unit test'li); `inspectMount` bunu DISM kaydı ve dosya sistemi ile besler, `repairMount` önerilen eylemi uygular.
+
+| Durum | Nasıl anlaşılır | Eylem (`MountAction`) |
+|---|---|---|
+| Free | DISM kaydı yok, klasör yok/boş | None — bağlanabilir |
+| Ok | DISM `Ok` + WIM dosyası duruyor | None — kullanılabilir (açılışta geri yüklenir) |
+| NeedsRemount | DISM `NeedsRemount` + WIM duruyor (tipik: yeniden başlatma sonrası WIM filtresi kopar) | Remount → `DismRemountImage` |
+| Invalid | DISM `Invalid` | Discard → hive'ları boşalt, discard unmount, `DismCleanupMountpoints` |
+| ImageMissing | DISM kaydı var ama WIM silinmiş/taşınmış (commit imkânsız) | Discard |
+| Orphaned | DISM kaydı yok ama klasörde dosya var (yarım kalmış mount/unmount; yeni mount 0xC1420116 verir) | ClearFolder → cleanup + klasörü boşalt |
+
+Ek denetimler (`MountCheck`):
+- `loadedHives`: `HKLM\SYSTEM\CurrentControlSet\Control\hivelist` içinde dosyası mount altında olan hive'lar (`\Device\HarddiskVolumeN\...` yoluyla karşılaştırılır). Açık hive varken unmount 0xC1420117 verir; her unmount öncesi `unloadHivesUnder` çalışır (SeBackup/SeRestore açılır).
+- `windowsImage`: `Windows\System32\config\SOFTWARE` var mı.
+- `record->readOnly`: salt okunur mount'ta commit yapılamaz.
+
+Uygulama davranışı:
+- Açılış (yönetici): WinLove mount klasörü incelenir → Ok ise kaynağı açar ve "bağlı" gösterir; NeedsRemount ise remount edip aynısını yapar; Invalid/ImageMissing ise atar ve bildirim gösterir; Orphaned ise klasörü temizler.
+- Mount öncesi: klasör Free olmalı; Orphaned ise otomatik temizlenir, başka bir durum hata verir.
+- CLI: `wlcli mounts` (durum + önerilen eylem + açık hive'lar, `--json`), `wlcli repair <klasör>`.
+
 ## 5. Saha notları (öğrendikçe EKLE — AI oturumları buraya yazar)
 > Format: `- [tarih] [konu] gözlem → çözüm`
 - [2026-09-28] [DISM init] `DismInitialize` log dosyasının klasörünü oluşturmaz; klasör yoksa `0xC0040009 DISMAPI_E_LOGGING_DISABLED` döner. → Klasörü önce oluştur; bu kodu uyarı say (DISM log'suz çalışır).
