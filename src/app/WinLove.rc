@@ -1,0 +1,36 @@
+#include <winres.h>
+#include "resource.h"
+
+1 RT_MANIFEST "../../resources/WinLove.manifest"
+IDI_WINLOVE ICON "../../resources/brand/WinLove.ico"
+
+IDR_FONT_UI_REGULAR RCDATA "../../resources/fonts/IBMPlexSans-Regular.ttf"
+IDR_FONT_UI_MEDIUM RCDATA "../../resources/fonts/IBMPlexSans-Medium.ttf"
+IDR_FONT_UI_SEMIBOLD RCDATA "../../resources/fonts/IBMPlexSans-SemiBold.ttf"
+IDR_FONT_MONO_REGULAR RCDATA "../../resources/fonts/JetBrainsMono-Regular.ttf"
+
+IDR_STRINGS_TR RCDATA "../../resources/strings/tr.json"
+IDR_STRINGS_EN RCDATA "../../resources/strings/en.json"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 0,1,0,0
+ PRODUCTVERSION 0,1,0,0
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "WinLove - Windows image customization"
+            VALUE "ProductName", "WinLove"
+            VALUE "FileVersion", "0.1.0"
+            VALUE "ProductVersion", "0.1.0"
+            VALUE "OriginalFilename", "WinLove.exe"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

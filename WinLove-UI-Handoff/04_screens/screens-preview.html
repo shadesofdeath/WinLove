@@ -1,0 +1,11 @@
+<!doctype html><html><head><meta charset="utf-8"><title>WinLove screens</title>
+<style>body{margin:0;background:#101010;color:#ECE7E0;font:12px/16px "IBM Plex Sans","Segoe UI",sans-serif;padding:24px}h1{font-size:16px;line-height:22px;font-weight:600;margin:0 0 4px}p{margin:0 0 16px;color:#A39B91}.bar{display:flex;gap:4px;margin-bottom:16px}.bar button{height:24px;padding:0 8px;border:1px solid #423D38;border-radius:3px;background:none;color:inherit;font:inherit;cursor:pointer}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(720px,1fr));gap:24px}figure{margin:0}img{width:100%;display:block;border:1px solid #2E2B28}figcaption{font:11px/16px "JetBrains Mono",monospace;color:#A39B91;margin-top:4px}</style></head><body>
+<h1>04_screens — önizleme</h1><p>Her ekran 1440×900 SVG. Koyu / açık geçişi dosya adındaki temayı değiştirir.</p>
+<div class="bar"><button onclick="setTheme('dark')">Koyu</button><button onclick="setTheme('light')">Açık</button></div>
+<div class="grid" id="g"></div>
+<script>
+const ids=['01-welcome-source','02-image-list','03-mounting','04-components','04b-components-search','05-features','06-updates','07-drivers','08-registry','09-services','10-tweaks','11-unattended','12-post-setup','13-apply-summary','13b-apply-confirm','14-apply-running','15-done','16-iso-build','17-presets','18-logs','19-app-settings','20-about','21-command-palette','s1-empty-no-source','s2-loading-skeleton','s3-error','s4-admin-required'];
+let theme='dark';
+function render(){document.getElementById('g').innerHTML=ids.map(i=>`<figure><img src="${i}-${theme}.svg" loading="lazy"><figcaption>${i}-${theme}.svg</figcaption></figure>`).join('')}
+function setTheme(t){theme=t;render()}render();
+</script></body></html>

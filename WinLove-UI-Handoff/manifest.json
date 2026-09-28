@@ -1,0 +1,1796 @@
+{
+ "package": "WinLove-UI-Handoff",
+ "version": "0.1.0",
+ "generated": "2026-09-28",
+ "fileCount": 447,
+ "files": [
+  {
+   "path": "00_brand/app-icon-128.svg",
+   "description": "Uygulama ikonu, belirtilen boyut"
+  },
+  {
+   "path": "00_brand/app-icon-16.svg",
+   "description": "Uygulama ikonu, belirtilen boyut"
+  },
+  {
+   "path": "00_brand/app-icon-20.svg",
+   "description": "Uygulama ikonu, belirtilen boyut"
+  },
+  {
+   "path": "00_brand/app-icon-24.svg",
+   "description": "Uygulama ikonu, belirtilen boyut"
+  },
+  {
+   "path": "00_brand/app-icon-256.svg",
+   "description": "Uygulama ikonu, belirtilen boyut"
+  },
+  {
+   "path": "00_brand/app-icon-32.svg",
+   "description": "Uygulama ikonu, belirtilen boyut"
+  },
+  {
+   "path": "00_brand/app-icon-40.svg",
+   "description": "Uygulama ikonu, belirtilen boyut"
+  },
+  {
+   "path": "00_brand/app-icon-48.svg",
+   "description": "Uygulama ikonu, belirtilen boyut"
+  },
+  {
+   "path": "00_brand/app-icon-64.svg",
+   "description": "Uygulama ikonu, belirtilen boyut"
+  },
+  {
+   "path": "00_brand/app-icon-96.svg",
+   "description": "Uygulama ikonu, belirtilen boyut"
+  },
+  {
+   "path": "00_brand/app-icon.svg",
+   "description": "Uygulama ikonu (256)"
+  },
+  {
+   "path": "00_brand/brand-guidelines.md",
+   "description": "Marka kullanım kuralları"
+  },
+  {
+   "path": "00_brand/logo-full.svg",
+   "description": "Mark + wordmark (wordmark text — TODO outline)"
+  },
+  {
+   "path": "00_brand/logo-mark.svg",
+   "description": "Logo işareti (accent)"
+  },
+  {
+   "path": "00_brand/logo-mono-dark.svg",
+   "description": "Tek renk koyu mark"
+  },
+  {
+   "path": "00_brand/logo-mono-light.svg",
+   "description": "Tek renk beyaz mark"
+  },
+  {
+   "path": "00_brand/splash.svg",
+   "description": "Açılış ekranı 480×300"
+  },
+  {
+   "path": "01_tokens/tokens.h",
+   "description": "C++ header, wl::tokens"
+  },
+  {
+   "path": "01_tokens/tokens.json",
+   "description": "Tüm tokenlar (tek kaynak)"
+  },
+  {
+   "path": "01_tokens/tokens.md",
+   "description": "Token sözlüğü + kontrast tablosu"
+  },
+  {
+   "path": "02_icons/16/filled/about-info.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/add.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/apply-play.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/appx-package.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/arrow-down.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/arrow-left.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/arrow-right.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/arrow-up.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/bluetooth.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/cab-file.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/caption-close.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/caption-maximize.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/caption-minimize.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/caption-restore.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/check.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/chevron-down.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/chevron-left.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/chevron-right.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/chevron-up.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/close.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/collapse.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/command-palette.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/compare.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/components-remove.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/copy.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/defender-shield.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/delete.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/density-comfortable.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/density-compact.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/dependency-link.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/disc-iso.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/disk-partition.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/dotnet-generic.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/download.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/drag-handle.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/driver-chip.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/duplicate.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/edge-browser-generic.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/edit.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/error-octagon.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/expand.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/export.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/external-link.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/eye-off.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/eye.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/file.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/filter.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/folder.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/image-wim.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/import.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/inf-file.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/info-circle.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/iso-build.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/keyboard.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/language-globe.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/layers-editions.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/link.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/lock.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/log-terminal.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/more-horizontal.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/more-vertical.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/mount.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/msu-file.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/network.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/open-folder.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/panel-right-toggle.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/paste.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/pause.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/pin.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/play.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/post-setup-rocket.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/preset-bookmark.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/printer.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/puzzle-features.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/question-circle.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/queue-clock.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/redo.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/refresh.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/reg-file.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/registry.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/remove.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/restart.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/risk-high.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/risk-low.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/risk-medium.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/save.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/script-file.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/search.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/secure-boot.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/services-gear.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/settings.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/shield-check.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/shield-warning.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/sidebar-toggle.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/size-saved.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/sort.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/source.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/spinner.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/stop.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/success-circle.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/telemetry-signal.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/tpm-chip.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/tweaks-sliders.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/unattended-robot.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/undo.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/unlock.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/unmount.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/unpin.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/update-download.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/upload.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/usb-drive.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/user-account.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/warning-triangle.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/windows-logo-generic.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/filled/xml-file.svg",
+   "description": "İkon 16 filled (seçili durum)"
+  },
+  {
+   "path": "02_icons/16/regular/about-info.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/add.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/apply-play.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/appx-package.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/arrow-down.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/arrow-left.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/arrow-right.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/arrow-up.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/bluetooth.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/cab-file.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/caption-close.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/caption-maximize.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/caption-minimize.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/caption-restore.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/check.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/chevron-down.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/chevron-left.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/chevron-right.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/chevron-up.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/close.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/collapse.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/command-palette.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/compare.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/components-remove.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/copy.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/defender-shield.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/delete.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/density-comfortable.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/density-compact.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/dependency-link.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/disc-iso.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/disk-partition.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/dotnet-generic.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/download.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/drag-handle.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/driver-chip.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/duplicate.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/edge-browser-generic.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/edit.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/error-octagon.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/expand.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/export.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/external-link.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/eye-off.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/eye.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/file.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/filter.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/folder.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/image-wim.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/import.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/inf-file.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/info-circle.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/iso-build.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/keyboard.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/language-globe.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/layers-editions.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/link.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/lock.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/log-terminal.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/more-horizontal.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/more-vertical.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/mount.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/msu-file.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/network.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/open-folder.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/panel-right-toggle.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/paste.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/pause.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/pin.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/play.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/post-setup-rocket.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/preset-bookmark.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/printer.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/puzzle-features.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/question-circle.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/queue-clock.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/redo.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/refresh.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/reg-file.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/registry.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/remove.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/restart.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/risk-high.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/risk-low.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/risk-medium.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/save.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/script-file.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/search.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/secure-boot.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/services-gear.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/settings.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/shield-check.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/shield-warning.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/sidebar-toggle.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/size-saved.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/sort.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/source.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/spinner.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/stop.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/success-circle.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/telemetry-signal.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/tpm-chip.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/tweaks-sliders.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/unattended-robot.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/undo.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/unlock.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/unmount.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/unpin.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/update-download.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/upload.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/usb-drive.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/user-account.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/warning-triangle.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/windows-logo-generic.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/16/regular/xml-file.svg",
+   "description": "İkon 16 regular"
+  },
+  {
+   "path": "02_icons/24/regular/about-info.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/add.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/apply-play.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/appx-package.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/arrow-down.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/arrow-left.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/arrow-right.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/arrow-up.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/bluetooth.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/cab-file.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/caption-close.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/caption-maximize.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/caption-minimize.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/caption-restore.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/check.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/chevron-down.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/chevron-left.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/chevron-right.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/chevron-up.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/close.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/collapse.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/command-palette.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/compare.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/components-remove.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/copy.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/defender-shield.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/delete.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/density-comfortable.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/density-compact.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/dependency-link.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/disc-iso.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/disk-partition.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/dotnet-generic.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/download.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/drag-handle.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/driver-chip.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/duplicate.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/edge-browser-generic.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/edit.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/error-octagon.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/expand.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/export.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/external-link.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/eye-off.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/eye.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/file.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/filter.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/folder.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/image-wim.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/import.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/inf-file.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/info-circle.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/iso-build.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/keyboard.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/language-globe.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/layers-editions.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/link.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/lock.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/log-terminal.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/more-horizontal.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/more-vertical.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/mount.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/msu-file.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/network.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/open-folder.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/panel-right-toggle.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/paste.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/pause.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/pin.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/play.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/post-setup-rocket.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/preset-bookmark.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/printer.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/puzzle-features.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/question-circle.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/queue-clock.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/redo.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/refresh.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/reg-file.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/registry.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/remove.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/restart.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/risk-high.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/risk-low.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/risk-medium.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/save.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/script-file.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/search.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/secure-boot.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/services-gear.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/settings.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/shield-check.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/shield-warning.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/sidebar-toggle.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/size-saved.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/sort.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/source.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/spinner.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/stop.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/success-circle.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/telemetry-signal.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/tpm-chip.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/tweaks-sliders.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/unattended-robot.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/undo.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/unlock.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/unmount.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/unpin.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/update-download.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/upload.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/usb-drive.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/user-account.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/warning-triangle.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/windows-logo-generic.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/24/regular/xml-file.svg",
+   "description": "İkon 24 (türetilmiş)"
+  },
+  {
+   "path": "02_icons/icons-paths.json",
+   "description": "İkon path verisi (16 ve 24)"
+  },
+  {
+   "path": "02_icons/icons-preview.html",
+   "description": "İkon ızgarası koyu/açık"
+  },
+  {
+   "path": "02_icons/icons.md",
+   "description": "İkon stil kuralları"
+  },
+  {
+   "path": "03_components/README.md",
+   "description": "Bileşen spec dizini"
+  },
+  {
+   "path": "03_components/button-states.svg",
+   "description": "Bileşen state redline"
+  },
+  {
+   "path": "03_components/button.md",
+   "description": "Bileşen spec"
+  },
+  {
+   "path": "03_components/checkbox-states.svg",
+   "description": "Bileşen state redline"
+  },
+  {
+   "path": "03_components/checkbox.md",
+   "description": "Bileşen spec"
+  },
+  {
+   "path": "03_components/components-gallery.html",
+   "description": "Canlı bileşen galerisi"
+  },
+  {
+   "path": "03_components/contextmenu.md",
+   "description": "Bileşen spec"
+  },
+  {
+   "path": "03_components/datagrid.md",
+   "description": "Bileşen spec"
+  },
+  {
+   "path": "03_components/infobar-toast-dialog.md",
+   "description": "Bileşen spec"
+  },
+  {
+   "path": "03_components/log-console-inspector-diff-palette.md",
+   "description": "Bileşen spec"
+  },
+  {
+   "path": "03_components/navigation-rail.md",
+   "description": "Bileşen spec"
+  },
+  {
+   "path": "03_components/progress-skeleton-empty.md",
+   "description": "Bileşen spec"
+  },
+  {
+   "path": "03_components/statusbar-titlebar.md",
+   "description": "Bileşen spec"
+  },
+  {
+   "path": "03_components/textbox-states.svg",
+   "description": "Bileşen state redline"
+  },
+  {
+   "path": "03_components/textbox.md",
+   "description": "Bileşen spec"
+  },
+  {
+   "path": "03_components/tree-row-states.svg",
+   "description": "Bileşen state redline"
+  },
+  {
+   "path": "03_components/treeview.md",
+   "description": "Bileşen spec"
+  },
+  {
+   "path": "04_screens/01-welcome-source-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/01-welcome-source-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/02-image-list-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/02-image-list-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/03-mounting-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/03-mounting-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/04-components-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/04-components-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/04b-components-search-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/04b-components-search-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/05-features-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/05-features-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/06-updates-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/06-updates-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/07-drivers-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/07-drivers-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/08-registry-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/08-registry-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/09-services-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/09-services-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/10-tweaks-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/10-tweaks-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/11-unattended-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/11-unattended-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/12-post-setup-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/12-post-setup-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/13-apply-summary-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/13-apply-summary-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/13b-apply-confirm-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/13b-apply-confirm-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/14-apply-running-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/14-apply-running-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/15-done-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/15-done-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/16-iso-build-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/16-iso-build-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/17-presets-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/17-presets-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/18-logs-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/18-logs-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/19-app-settings-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/19-app-settings-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/20-about-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/20-about-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/21-command-palette-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/21-command-palette-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/s1-empty-no-source-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/s1-empty-no-source-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/s2-loading-skeleton-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/s2-loading-skeleton-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/s3-error-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/s3-error-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/s4-admin-required-dark.svg",
+   "description": "Ekran 1440×900 koyu"
+  },
+  {
+   "path": "04_screens/s4-admin-required-light.svg",
+   "description": "Ekran 1440×900 açık"
+  },
+  {
+   "path": "04_screens/screens-preview.html",
+   "description": "Ekran SVG listesi"
+  },
+  {
+   "path": "04_screens/screens.md",
+   "description": "Ekran açıklamaları"
+  },
+  {
+   "path": "05_motion/motion.md",
+   "description": "Hareket spec"
+  },
+  {
+   "path": "06_prototype/index.html",
+   "description": "Tıklanabilir prototip"
+  },
+  {
+   "path": "07_copy/strings.en.json",
+   "description": "İngilizce metinler (aynı anahtarlar)"
+  },
+  {
+   "path": "07_copy/strings.tr.json",
+   "description": "Türkçe metinler (412 anahtar)"
+  },
+  {
+   "path": "README.md",
+   "description": "Paket rehberi ve okuma sırası"
+  },
+  {
+   "path": "manifest.json",
+   "description": "Bu dosya"
+  }
+ ]
+}

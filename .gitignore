@@ -1,0 +1,14 @@
+/build/
+/out/
+/.vs/
+/.vscode/
+*.user
+__pycache__/
+*.pyc
+# test lab and images never belong in the repo
+*.iso
+*.wim
+*.esd
+*.swm
+*.vhd
+*.vhdx
