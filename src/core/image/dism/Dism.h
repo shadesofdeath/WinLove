@@ -1,0 +1,93 @@
+#pragma once
+// DismApiBackend (docs/ENGINE.md §1): mount/unmount and servicing queries over dismapi.dll.
+// Rules: call only from the engine thread (TaskRunner); requires an elevated process — every
+// entry point returns ErrorCode::AccessDenied up front when not elevated, with a clear message.
+#include "core/tasks/Task.h"
+
+#include <filesystem>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace wl::core {
+
+enum class ServicingState : std::uint8_t {
+    NotPresent,
+    UninstallPending,
+    Staged,
+    Removed,
+    Installed,
+    InstallPending,
+    Superseded,
+    PartiallyInstalled,
+};
+[[nodiscard]] const wchar_t* servicingStateName(ServicingState state) noexcept;
+
+struct MountInfo {
+    std::filesystem::path mountPath;
+    std::filesystem::path imagePath;
+    int index = 0;
+    bool readOnly = false;
+    bool healthy = true; // false: needs remount or invalid → cleanup/remount
+    std::wstring status;
+};
+
+struct PackageEntry {
+    std::wstring name;
+    ServicingState state = ServicingState::NotPresent;
+    int releaseType = 0;
+};
+
+struct FeatureEntry {
+    std::wstring name;
+    ServicingState state = ServicingState::NotPresent;
+};
+
+struct CapabilityEntry {
+    std::wstring name;
+    ServicingState state = ServicingState::NotPresent;
+};
+
+class DismSession;
+
+class Dism {
+public:
+    // Loads dismapi.dll and calls DismInitialize once (log into the WinLove log folder).
+    [[nodiscard]] static Result<Dism*> instance();
+    ~Dism();
+
+    [[nodiscard]] Result<void> mount(const std::filesystem::path& wim, int index, const std::filesystem::path& mountDir,
+                                     bool readOnly, const TaskContext& task);
+    [[nodiscard]] Result<void> unmount(const std::filesystem::path& mountDir, bool commit, const TaskContext& task);
+    [[nodiscard]] Result<std::vector<MountInfo>> mounts();
+    [[nodiscard]] Result<void> cleanupMountpoints();
+    [[nodiscard]] Result<std::unique_ptr<DismSession>> openSession(const std::filesystem::path& mountDir);
+
+private:
+    friend class DismSession;
+    Dism() = default;
+    [[nodiscard]] Error error(HRESULT hr, std::wstring context) const; // HRESULT + DISM's last message
+
+    HMODULE m_module = nullptr;
+    struct Api;
+    std::unique_ptr<Api> m_api;
+};
+
+// An open servicing session on a mounted image (DismOpenSession). Close before unmounting.
+class DismSession {
+public:
+    ~DismSession();
+    [[nodiscard]] Result<std::vector<PackageEntry>> packages();
+    [[nodiscard]] Result<std::vector<FeatureEntry>> features();
+    [[nodiscard]] Result<std::vector<CapabilityEntry>> capabilities();
+
+private:
+    friend class Dism;
+    DismSession(Dism& dism, unsigned session, std::filesystem::path path)
+        : m_dism(dism), m_session(session), m_path(std::move(path)) {}
+    Dism& m_dism;
+    unsigned m_session;
+    std::filesystem::path m_path;
+};
+
+} // namespace wl::core

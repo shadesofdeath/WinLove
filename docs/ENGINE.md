@@ -67,4 +67,7 @@ Her komut `--json` çıktı verebilir → integration testleri ve AI bunu ayrı�
 
 ## 5. Saha notları (öğrendikçe EKLE — AI oturumları buraya yazar)
 > Format: `- [tarih] [konu] gözlem → çözüm`
-- (henüz yok)
+- [2026-09-28] [DISM init] `DismInitialize` log dosyasının klasörünü oluşturmaz; klasör yoksa `0xC0040009 DISMAPI_E_LOGGING_DISABLED` döner. → Klasörü önce oluştur; bu kodu uyarı say (DISM log'suz çalışır).
+- [2026-09-28] [DISM header] `dismapi.h/.lib` Windows SDK'da yok, yalnızca ADK'da (`Deployment Tools\SDKs\DismApi`). → Kendi bildirimlerimiz (`core/image/dism/DismApi.h`) + System32 `dismapi.dll` çalışma anında yüklenir (D-017).
+- [2026-09-28] [UDF] Win11 25H2 TR ISO: UDF 1.02, tek Type-1 partition map, bölüm başlangıcı sektör 304; `install.wim` LZX, 6 index, 6.72 GB. ISO içinden okuma 72 ms; 700 MB/s çıkarma.
+- [2026-09-28] [DISM süreleri] Pro (index 4) salt okunur mount 39 s; features 5.6 s (137, 14 açık), packages 2.2 s (195), capabilities 2.6 s (443, 58 kurulu); **unmount /discard 89.5 s** (salt okunurda bile). → UI'da mount kadar unmount'a da ilerleme + iptal gerekli; testlerde uzun zaman aşımı.

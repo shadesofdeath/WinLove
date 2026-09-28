@@ -27,12 +27,12 @@ Durum simgeleri: ⬜ başlamadı · 🟨 sürüyor · ✅ bitti (kullanıcı ona
 ## Faz 2 — Motor temeli
 | # | İş | Durum |
 |---|---|---|
-| 2.1 | `Result/Error`, `Log` (dosya + halka tampon), `TaskRunner`, `CancelToken`, `Progress`, UI dispatcher | ⬜ |
-| 2.2 | Yetki: admin tespiti, "yönetici olarak yeniden başlat", SeBackup/SeRestore | ⬜ |
-| 2.3 | `WimgApiBackend`: listImages; `IsoIO` okuma; `wlcli info/extract` | ⬜ |
-| 2.4 | `DismApiBackend`: init, mount/unmount, mounts/cleanup, `mounts.json` kurtarma; `wlcli` komutları | ⬜ |
+| 2.1 | `base/Log` (dosya + halka tampon + stdout), `core/tasks` (TaskRunner tek motor thread'i, CancelToken + Win32 event, TaskContext/ilerleme), `Window::post` (UI thread'ine aktarım) | ✅ |
+| 2.2 | `core/system/Privileges`: isElevated, enablePrivilege, relaunchElevated (UAC runas) | ✅ |
+| 2.3 | **Kendi okuyucularımız:** `UdfImage` (ISO, bağlamasız), `WimFile` (başlık + XML), `openSource`; `wlcli info/ls/extract`. wimgapi.dll ile çapraz doğrulandı (D-018) | ✅ |
+| 2.4 | `core/image/dism`: kendi DISM bildirimleri + dinamik yükleme (D-017), mount/unmount/mounts/cleanup, session: packages/features/capabilities; `wlcli` komutları; `tools/dism_smoke.ps1` gerçek imajda geçti. `mounts.json` yerine DISM'in kendi bağlama listesi kullanılıyor | ✅ |
 | 2.5 | `ops`: Operation, ChangeSet (undo/redo, JSON), Planner iskeleti, Applier iskeleti | ⬜ |
-| 2.6 | Integration test altyapısı: `C:\WinLoveLab` hazırlama betiği, test ISO'sundan install.wim çıkarımı | ⬜ |
+| 2.6 | `tools/lab_setup.ps1` (C:\WinLoveLab + install.wim çıkarımı), `tools/dism_smoke.ps1` (yönetici), ISO testleri birim testlerinde (ISO yoksa atlanır). Tek index'lik golden WIM henüz yok | ✅ |
 
 ## Faz 3 — Sayfalar (sırayla, her biri tam döngü: `WORKFLOW.md` §2)
 Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **uçtan uca** (seç → değiştir → uygula → ISO → VM'de kur) hattı kurmak; zor sayfalar (Bileşenler) sağlam hattın üstüne gelir.
