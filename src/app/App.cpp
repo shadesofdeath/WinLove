@@ -1,5 +1,7 @@
 #include "app/App.h"
 
+#include "core/image/DriverInf.h"
+
 #include "app/pages/UpdatesPage.h"
 
 #include "base/Log.h"
@@ -126,6 +128,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             // handled in main.cpp (skip the startup UAC relaunch)
         } else if (startsWith(a, L"--demo-apply=")) {
             options.demoApply = std::wstring(value(L"--demo-apply="));
+        } else if (a == L"--demo-drivers") {
+            options.demoDrivers = true;
         } else if (a == L"--demo-updates") {
             options.demoUpdates = true;
         } else if (a == L"--demo-components") {
@@ -385,6 +389,39 @@ int App::renderOffscreen() {
             }
         }
         m_shell->showPage(m_options.page.value_or(PageId::Features));
+    }
+    if (m_options.demoDrivers) {
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,
+                                         L"Windows 11 Pro"});
+        auto inf = [](const wchar_t* file, const wchar_t* cls, const wchar_t* provider, const wchar_t* ver,
+                      const wchar_t* arch, std::uint64_t kb) {
+            std::wstring text = std::wstring(L"[Version]\nClass=") + cls + L"\nProvider=\"" + provider +
+                                L"\"\nDriverVer=05/14/2024," + ver + L"\n[Manufacturer]\n%M%=M," + arch + L"\n";
+            auto d = core::parseInfText(text, std::filesystem::path(L"D:\\Drivers\\Dell\\") / file);
+            d.size = kb * 1024;
+            return d;
+        };
+        std::vector<core::DriverInf> infs{
+            inf(L"e2f68.inf", L"Net", L"Intel", L"12.19.2.45", L"NTamd64", 1840),
+            inf(L"netwtw08.inf", L"Net", L"Intel", L"23.60.1.2", L"NTamd64", 38200),
+            inf(L"rt640x64.inf", L"Net", L"Realtek", L"10.68.815.2023", L"NTamd64", 1200),
+            inf(L"iaStorVD.inf", L"SCSIAdapter", L"Intel Corporation", L"19.5.2.1049", L"NTamd64", 2950),
+            inf(L"stornvme_oem.inf", L"SCSIAdapter", L"Samsung", L"3.3.0.2003", L"NTamd64", 410),
+            inf(L"HdBusExt.inf", L"System", L"Intel", L"10.29.0.9677", L"NTamd64", 96),
+            inf(L"iaLPSS2_I2C.inf", L"System", L"Intel", L"30.100.2229.2", L"NTamd64", 220),
+            inf(L"RTKVHD64.inf", L"MEDIA", L"Realtek", L"6.0.9601.1", L"NTamd64", 51300),
+            inf(L"ibtusb.inf", L"Bluetooth", L"Intel", L"23.60.0.1", L"NTamd64", 4600),
+            inf(L"qcwlan_arm.inf", L"Net", L"Qualcomm", L"3.0.0.912", L"NTarm64", 6100),
+        };
+        m_state->addDriverScan(L"D:\\Drivers\\Dell", std::move(infs));
+        for (const auto& d : m_state->driverScan().infs) {
+            if (d.className == L"SCSIAdapter" || d.path.filename() == L"netwtw08.inf") {
+                core::ops::Operation op{core::ops::OpKind::AddDriver, d.path.wstring(), d.className};
+                op.sizeDelta = static_cast<std::int64_t>(d.size);
+                m_state->queue(std::move(op));
+            }
+        }
+        m_shell->showPage(m_options.page.value_or(PageId::Drivers));
     }
     if (m_options.openPath) {
         // Headless: open synchronously so the frame shows the Images page with real data.

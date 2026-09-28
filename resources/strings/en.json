@@ -312,7 +312,16 @@
     "desc": "Scan INF folders, group by class, integrate into the image.",
     "class": "Class",
     "provider": "Provider · Version",
-    "summary": "{f} folders · {n} INF · {size}"
+    "summary": "{f} folders · {n} INF · {size}",
+    "search": "Search drivers",
+    "infN": "{n} INF",
+    "noMountTitle": "No image mounted",
+    "noMountBody": "Mount an edition on the Images page to add drivers.",
+    "emptyTitle": "No driver folder yet",
+    "emptyBody": "Scan a folder with INF files (e.g. a vendor driver pack). Subfolders are included.",
+    "scanning": "Scanning drivers",
+    "scanned": "{n} INF found",
+    "noneFound": "No .inf found in the folder"
   },
   "registry": {
     "title": "Registry",

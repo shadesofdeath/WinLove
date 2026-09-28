@@ -16,6 +16,7 @@ add_library(wl_app STATIC
     pages/components/ComponentInspector.cpp
     pages/ApplyPage.cpp
     pages/ComponentsPage.cpp
+    pages/DriversPage.cpp
     pages/FeaturesPage.cpp
     pages/ImagesPage.cpp
     pages/IsoPage.cpp

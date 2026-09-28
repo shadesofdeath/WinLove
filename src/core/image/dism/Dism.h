@@ -129,6 +129,8 @@ public:
     [[nodiscard]] Result<void> removeAppx(const std::wstring& packageName);
     // DismAddPackage: .msu / .cab (servicing stack, cumulative, .NET, language packs…).
     [[nodiscard]] Result<void> addPackage(const std::filesystem::path& package, const TaskContext& task);
+    // DismAddDriver: one .inf into the driver store of the image (unsigned only with forceUnsigned).
+    [[nodiscard]] Result<void> addDriver(const std::filesystem::path& inf, bool forceUnsigned = false);
 
 private:
     friend class Dism;

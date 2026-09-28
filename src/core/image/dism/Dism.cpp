@@ -96,7 +96,7 @@ Result<Dism*> Dism::instance() {
                     load(m, "DismCleanupMountpoints", a.cleanupMountpoints) && load(m, "DismRemountImage", a.remountImage) && load(m, "DismDelete", a.deleteStructure) &&
                     load(m, "DismGetPackages", a.getPackages) && load(m, "DismGetFeatures", a.getFeatures) &&
                     load(m, "DismGetCapabilities", a.getCapabilities) && load(m, "DismGetFeatureInfo", a.getFeatureInfo) &&
-                    load(m, "DismGetCapabilityInfo", a.getCapabilityInfo) && load(m, "DismAddPackage", a.addPackage) &&
+                    load(m, "DismGetCapabilityInfo", a.getCapabilityInfo) && load(m, "DismAddPackage", a.addPackage) && load(m, "DismAddDriver", a.addDriver) &&
                     loadEither(m, "DismGetProvisionedAppxPackages", "_DismGetProvisionedAppxPackages",
                                a.getProvisionedAppx) &&
                     loadEither(m, "DismRemoveProvisionedAppxPackage", "_DismRemoveProvisionedAppxPackage",
@@ -359,6 +359,14 @@ Result<void> DismSession::addPackage(const std::filesystem::path& package, const
                                                 &bridge);
     if (FAILED(hr)) {
         return std::unexpected(m_dism.error(hr, L"add package " + path));
+    }
+    return {};
+}
+
+Result<void> DismSession::addDriver(const std::filesystem::path& inf, bool forceUnsigned) {
+    const HRESULT hr = m_dism.m_api->addDriver(m_session, inf.c_str(), forceUnsigned ? TRUE : FALSE);
+    if (FAILED(hr)) {
+        return std::unexpected(m_dism.error(hr, L"add driver " + inf.wstring()));
     }
     return {};
 }

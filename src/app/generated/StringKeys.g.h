@@ -184,7 +184,16 @@ enum class Str : std::uint16_t {
     DialogsUnsavedTitle,
     DriversClass,
     DriversDesc,
+    DriversEmptyBody,
+    DriversEmptyTitle,
+    DriversInfN,
+    DriversNoMountBody,
+    DriversNoMountTitle,
+    DriversNoneFound,
     DriversProvider,
+    DriversScanned,
+    DriversScanning,
+    DriversSearch,
     DriversSummary,
     DriversTitle,
     ErrorsAccessDenied,
@@ -622,7 +631,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 612;
+inline constexpr std::size_t kStrCount = 621;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -801,7 +810,16 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "dialogs.unsavedTitle",
     "drivers.class",
     "drivers.desc",
+    "drivers.emptyBody",
+    "drivers.emptyTitle",
+    "drivers.infN",
+    "drivers.noMountBody",
+    "drivers.noMountTitle",
+    "drivers.noneFound",
     "drivers.provider",
+    "drivers.scanned",
+    "drivers.scanning",
+    "drivers.search",
     "drivers.summary",
     "drivers.title",
     "errors.accessDenied",

@@ -41,6 +41,7 @@ class ApplyPage;
 class IsoPage;
 class ComponentsPage;
 class UpdatesPage;
+class DriversPage;
 
 class Shell : public ui::Widget {
 public:
@@ -124,6 +125,8 @@ private:
     void loadPreset();
     [[nodiscard]] UpdatesPage* updatesPage() const;
     void addUpdates(const std::vector<std::filesystem::path>& files);
+    [[nodiscard]] DriversPage* driversPage() const;
+    void scanDriverFolder();
     void updateIsoChrome();
     void startIso();
     void updateApplyChrome();                         // CTA label, Apply page mode/header

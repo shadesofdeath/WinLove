@@ -6,6 +6,7 @@
 #include "app/state/AppSettings.h"
 #include "app/state/RecentSources.h"
 #include "base/Log.h"
+#include "core/image/DriverInf.h"
 #include "core/image/Source.h"
 #include "core/image/dism/Appx.h"
 #include "core/image/dism/MountHealth.h"
@@ -44,7 +45,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers };
     using Listener = std::function<void(Change)>;
 
     explicit AppState(std::filesystem::path recentFile = RecentSources::defaultFile(),
@@ -99,6 +100,14 @@ public:
     };
     [[nodiscard]] const std::optional<AppxList>& appxList() const noexcept { return m_appx; }
     void setAppxList(std::optional<AppxList> list);
+
+    // P09: driver folders the user scanned (kept across pages and mounts) and their INFs.
+    struct DriverScan {
+        std::vector<std::filesystem::path> folders;
+        std::vector<core::DriverInf> infs;
+    };
+    [[nodiscard]] const DriverScan& driverScan() const noexcept { return m_drivers; }
+    void addDriverScan(const std::filesystem::path& folder, std::vector<core::DriverInf> infs);
 
     // P05: the running / last "Uygula" run (ApplyController). Lives until the next run.
     struct ApplyRun {
@@ -176,6 +185,7 @@ private:
     std::optional<OptionalFeatures> m_features;
     std::optional<ApplyRun> m_apply;
     std::optional<AppxList> m_appx;
+    DriverScan m_drivers;
     std::optional<IsoRun> m_iso;
     std::filesystem::path m_settingsFile;
     std::shared_ptr<log::RingBufferSink> m_logBuffer = std::make_shared<log::RingBufferSink>();

@@ -312,7 +312,16 @@
     "desc": "INF klasörlerini tara, sınıfa göre grupla, imaja entegre et.",
     "class": "Sınıf",
     "provider": "Sağlayıcı · Sürüm",
-    "summary": "{f} klasör · {n} INF · {size}"
+    "summary": "{f} klasör · {n} INF · {size}",
+    "search": "Sürücü ara",
+    "infN": "{n} INF",
+    "noMountTitle": "Bağlı imaj yok",
+    "noMountBody": "Sürücü eklemek için İmajlar sayfasından bir sürüm bağla.",
+    "emptyTitle": "Sürücü klasörü seçilmedi",
+    "emptyBody": "INF dosyaları olan bir klasörü tara (ör. üreticinin sürücü paketi). Alt klasörler de taranır.",
+    "scanning": "Sürücüler taranıyor",
+    "scanned": "{n} INF bulundu",
+    "noneFound": "Klasörde .inf bulunamadı"
   },
   "registry": {
     "title": "Kayıt Defteri",

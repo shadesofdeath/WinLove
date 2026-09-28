@@ -3,21 +3,21 @@
 > Her oturumun sonunda güncellenir. En üstte güncel durum; geçmiş en altta kısa satırlar.
 
 ## Güncel
-- **Faz:** 3 — sayfalar. **P01 ✅, P02 ✅, P03 ✅ (kullanıcı "devam" dedi), P04 Özellikler: geliştirme bitti, kullanıcı testi bekliyor** (`docs/pages/04-features.md` §6).
-- **Bir sonraki somut adım:** P04 onayı → P05 Uygula (Planner/Applier + ekranlar 13/13b/14/15). NetFx3 / kaldırılmış
-  özellikler için `sources\sxs` kaynak yolu Applier'da.
-- **Motor doğrulaması (yönetici gerekir):** `wlcli optional-features <mount>` gerçek imajda henüz çalıştırılmadı
-  (bu terminal yönetici değil); kullanıcı testi aynı kodu uygulama içinden çalıştırıyor.
-- **Kullanıcının tekrar test edeceği:** P02 — imaj bağlıyken uygulamayı kapat/aç → geri yüklenmeli
-  (otomatik; olmazsa sayfada "Devam et").
-- **Build:** `./build.ps1 -Dist` yeşil. Kullanıcıya her zaman `dist\WinLove.exe` verilir (çalışıyorsa
-  betik eskisini `.old` yapar).
-- **Kurallar (bu oturumda öğrenildi):** kullanıcının diskinde klasör açma (lab = `build\lab`), kullanıcının
-  "Son kullanılanlar" listesine test yolu yazma, DISM'e giden yolları `nativePath` ile ver.
-- **Bilinen sorunlar / açık konular:**
-  - Tasarımdaki arama/filtre (İmajlar) ertelendi; ScrollView hâlâ yok (uzun listeler P04'te gerekecek).
-  - Restart Manager yalnız ilk iki seviye + hive dosyalarına bakar; konsolun çalışma klasörü tespit edilmez.
-  - DComp/dirty-rect (D-011), UIA (Faz 4), F6.
+- **Faz:** 3 — sayfalar. P01–P04 ✅. P05 Uygula, P06 ISO, P08 Güncellemeler, P09 Sürücüler: 🟨 geliştirme bitti,
+  kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v1 (yalnız AppX; CBS paket kaldırma kararı bekliyor).
+- **Çalışma şekli:** kullanıcı "her seferinde durma" dedi — sayfa bitince build + test + `-Dist` + yerel commit,
+  sonra doğrudan bir sonraki sayfa. Kullanıcı `dist\WinLove.exe`'yi paralel test ediyor.
+- **Bir sonraki somut adım:** P10 Servisler — bağlı imajın `Windows\System32\config\SYSTEM` hive'ını çevrimdışı
+  yükle (OfflineRegistry, core), `ControlSet001\Services` → servis listesi (Start/Type/ImagePath/DisplayName),
+  değişiklik = `SetServiceStart` işlemi.
+- **Yönetici gerektiren, terminalden doğrulanamayanlar:** P04 özellik okuma, P05 uygula, P07 AppX, P08 paket,
+  P09 sürücü ekleme — gerçek imajda kullanıcı uygulama içinden test ediyor (terminal yönetici değil).
+- **Build:** `./build.ps1 -Dist` yeşil, 80 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
+  "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
+- **Açık konular / sonraya:** P06 USB sekmesi; güncellemelerde sürükle-sırala; imajdaki mevcut sürücüleri
+  listeleme/kaldırma; `C:\WinLove` eski klasörü (kullanıcı unmount sonrası silebilir); DComp/dirty-rect (D-011),
+  UIA (Faz 4).
 
 ## Son eklenenler (P01)
 - Motor: klasör kaynağı, `WindowsRelease` (sürüm adları), `LiveSystem`; `wlcli live`, `wlcli info <klasör>`.
@@ -28,6 +28,7 @@
 VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Tools, dismapi.dll 10.0.26100, Python 3.14 (fonttools, pillow, playwright), Git. CMake yalnızca VS içinde. C: ~323 GB boş (lab ~7 GB). Ana ekran 144 DPI. PowerShell betik politikası kısıtlı (`-ExecutionPolicy Bypass`). UAC istemiyle yönetici betiği çalıştırılabiliyor.
 
 ## Geçmiş
+- 2026-09-28 — P02–P04 onaylandı; P05, P06, P07 (AppX), P08, P09 geliştirildi (test bekliyor).
 - 2026-09-28 — P01 Kaynak geliştirildi (kullanıcı testi bekliyor).
 - 2026-09-28 — Faz 2 tamamlandı: log/görevler/yetki, UDF+WIM okuyucular, DISM backend (gerçek imajda test), ChangeSet/Planner/Applier.
 - 2026-09-28 — Faz 1 tamamlandı: widget sistemi, temel widget'lar, uygulama kabuğu, galeri, otomatik daralma.
