@@ -51,8 +51,50 @@ const core::ImageInfo* AppState::selectedImage() const {
 }
 
 void AppState::setMounted(std::optional<MountedImage> mounted) {
+    const bool sameImage = m_mounted && mounted && m_mounted->mountDir == mounted->mountDir &&
+                           m_mounted->imagePath == mounted->imagePath && m_mounted->index == mounted->index;
     m_mounted = std::move(mounted);
+    if (!sameImage) {
+        // Queue and feature list belong to the image that was mounted.
+        m_features.reset();
+        if (!m_changes.empty()) {
+            m_changes.clear();
+            notify(Change::Queue);
+        }
+        notify(Change::Features);
+    }
     notify(Change::Mount);
+}
+
+void AppState::queue(core::ops::Operation op) {
+    m_changes.add(std::move(op));
+    notify(Change::Queue);
+}
+
+bool AppState::unqueue(core::ops::OpKind kind, std::wstring_view target) {
+    const bool removed = m_changes.remove(kind, target);
+    if (removed) {
+        notify(Change::Queue);
+    }
+    return removed;
+}
+
+void AppState::unqueueIf(const std::function<bool(const core::ops::Operation&)>& which) {
+    const auto ops = m_changes.operations(); // copy: remove() edits the list
+    bool any = false;
+    for (const auto& op : ops) {
+        if (which(op)) {
+            any = m_changes.remove(op.kind, op.target) || any;
+        }
+    }
+    if (any) {
+        notify(Change::Queue);
+    }
+}
+
+void AppState::setOptionalFeatures(std::optional<OptionalFeatures> features) {
+    m_features = std::move(features);
+    notify(Change::Features);
 }
 
 void AppState::setMountFolder(std::optional<core::MountCheck> check) {

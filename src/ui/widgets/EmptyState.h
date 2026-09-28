@@ -11,8 +11,12 @@ class EmptyState : public Widget {
 public:
     EmptyState(icons::Icon icon, std::wstring title, std::wstring body);
 
-    // Adds the secondary action button; returns it so the caller can wire onInvoke.
+    // Adds the secondary action button (or relabels the existing one); returns it so the caller
+    // can wire onInvoke.
     Button& setAction(std::wstring label);
+    // In-place content change (safe to call from the action's own onInvoke).
+    void setContent(icons::Icon icon, std::wstring title, std::wstring body);
+    void hideAction();
 
     void layout() override;
     void paint(Canvas& canvas) override;

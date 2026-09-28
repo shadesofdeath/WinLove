@@ -17,6 +17,8 @@ public:
     std::function<void(bool)> onChange;
 
     [[nodiscard]] bool isOn() const noexcept { return m_on; }
+    // The 24×12 switch alone (table cells): `t` 0 = off … 1 = on.
+    static void paintSwitch(Canvas& canvas, RectF track, float t, bool hovered);
     void setOn(bool on, bool animated = true); // no onChange
 
     [[nodiscard]] SizeF measure(SizeF available) override;

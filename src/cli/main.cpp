@@ -7,6 +7,7 @@
 #include "core/image/UdfImage.h"
 #include "core/image/dism/Dism.h"
 #include "core/image/dism/MountHealth.h"
+#include "core/image/dism/OptionalFeatures.h"
 #include "core/image/wim/WimGapi.h"
 #include "core/ops/Applier.h"
 #include "core/ops/Planner.h"
@@ -307,6 +308,35 @@ int cmdCleanup() {
     return 0;
 }
 
+// P04 data: features + present capabilities with display names and sizes (what the page shows).
+int cmdOptionalFeatures(const std::wstring& dir, bool asJson) {
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    const core::TaskContext task{g_cancel, {}};
+    auto list = core::readOptionalFeatures(**d, dir, task);
+    if (!list) {
+        return reportError(list.error());
+    }
+    json out = json::array();
+    for (const auto& f : *list) {
+        const bool feature = f.kind == core::OptionalFeature::Kind::Feature;
+        if (asJson) {
+            out.push_back({{"kind", feature ? "feature" : "capability"}, {"name", narrow(f.name)},
+                           {"displayName", narrow(f.displayName)}, {"state", narrow(core::servicingStateName(f.state))},
+                           {"size", f.size}, {"restart", f.restartRequired}});
+        } else {
+            print(std::format(L"  {:<3} {:<18} {:<48} {}\n", feature ? L"F" : L"C", core::servicingStateName(f.state),
+                              f.displayName.substr(0, 48), f.name));
+        }
+    }
+    if (asJson) {
+        printJson(out);
+    }
+    return 0;
+}
+
 int cmdServicing(const std::wstring& what, const std::wstring& dir, bool asJson) {
     auto d = dism();
     if (!d) {
@@ -465,6 +495,7 @@ void printUsage() {
           L"  wlcli unmount <dir> --commit|--discard\n"
           L"  wlcli mounts | cleanup\n"
           L"  wlcli packages|features|capabilities <mountdir>\n"
+          L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
           L"  wlcli apply <changeset.json> <mountdir> [--skip-errors]\n"
           L"\n  Change sets (no admin):\n"
           L"  wlcli plan <changeset.json>              Show the ordered apply plan\n"
@@ -553,6 +584,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"repair" && args.size() == 2) {
         return cmdRepair(args[1]);
+    }
+    if (command == L"optional-features" && args.size() == 2) {
+        return cmdOptionalFeatures(args[1], asJson);
     }
     if ((command == L"packages" || command == L"features" || command == L"capabilities") && args.size() == 2) {
         return cmdServicing(command, args[1], asJson);

@@ -8,6 +8,8 @@
 #include "base/Log.h"
 #include "core/image/Source.h"
 #include "core/image/dism/MountHealth.h"
+#include "core/image/dism/OptionalFeatures.h"
+#include "core/ops/ChangeSet.h"
 #include "core/tasks/TaskRunner.h"
 
 #include <functional>
@@ -39,7 +41,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features };
     using Listener = std::function<void(Change)>;
 
     explicit AppState(std::filesystem::path recentFile = RecentSources::defaultFile(),
@@ -61,6 +63,24 @@ public:
 
     [[nodiscard]] const std::optional<MountedImage>& mounted() const noexcept { return m_mounted; }
     void setMounted(std::optional<MountedImage> mounted);
+
+    // The change queue (D-003): nothing touches the image until "Uygula". Cleared when the
+    // mounted image changes (the queue belongs to that image).
+    [[nodiscard]] const core::ops::ChangeSet& changes() const noexcept { return m_changes; }
+    void queue(core::ops::Operation op);
+    bool unqueue(core::ops::OpKind kind, std::wstring_view target);
+    void unqueueIf(const std::function<bool(const core::ops::Operation&)>& which);
+
+    // P04 data for the mounted image (read once per mount, FeatureController).
+    struct OptionalFeatures {
+        enum class Status : std::uint8_t { Loading, Ready, Failed };
+        Status status = Status::Loading;
+        std::filesystem::path mountDir;
+        std::vector<core::OptionalFeature> items;
+        Error error;
+    };
+    [[nodiscard]] const std::optional<OptionalFeatures>& optionalFeatures() const noexcept { return m_features; }
+    void setOptionalFeatures(std::optional<OptionalFeatures> features);
 
     // Last inspection of the WinLove mount folder (MountHealth.h); empty until first checked.
     [[nodiscard]] const std::optional<core::MountCheck>& mountFolder() const noexcept { return m_mountFolder; }
@@ -93,6 +113,8 @@ private:
     std::optional<MountedImage> m_mounted;
     std::optional<EngineOperation> m_operation;
     std::optional<core::MountCheck> m_mountFolder;
+    core::ops::ChangeSet m_changes;
+    std::optional<OptionalFeatures> m_features;
     std::shared_ptr<log::RingBufferSink> m_logBuffer = std::make_shared<log::RingBufferSink>();
     std::uint64_t m_logCleared = 0;
     RecentSources m_recent;

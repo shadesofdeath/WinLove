@@ -89,7 +89,8 @@ Result<Dism*> Dism::instance() {
                     load(m, "DismGetMountedImageInfo", a.getMountedImageInfo) &&
                     load(m, "DismCleanupMountpoints", a.cleanupMountpoints) && load(m, "DismRemountImage", a.remountImage) && load(m, "DismDelete", a.deleteStructure) &&
                     load(m, "DismGetPackages", a.getPackages) && load(m, "DismGetFeatures", a.getFeatures) &&
-                    load(m, "DismGetCapabilities", a.getCapabilities) &&
+                    load(m, "DismGetCapabilities", a.getCapabilities) && load(m, "DismGetFeatureInfo", a.getFeatureInfo) &&
+                    load(m, "DismGetCapabilityInfo", a.getCapabilityInfo) &&
                     load(m, "DismDisableFeature", a.disableFeature) && load(m, "DismEnableFeature", a.enableFeature) &&
                     load(m, "DismRemovePackage", a.removePackage) &&
                     load(m, "DismRemoveCapability", a.removeCapability);
@@ -286,6 +287,30 @@ Result<std::vector<CapabilityEntry>> DismSession::capabilities() {
     }
     m_dism.m_api->deleteStructure(list);
     return result;
+}
+
+Result<FeatureDetail> DismSession::featureInfo(const std::wstring& name) {
+    dismapi::FeatureInfo* info = nullptr;
+    const HRESULT hr = m_dism.m_api->getFeatureInfo(m_session, name.c_str(), nullptr, dismapi::PackageNone, &info);
+    if (FAILED(hr) || !info) {
+        return std::unexpected(m_dism.error(hr, L"feature info " + name));
+    }
+    FeatureDetail detail{name, stateFrom(info->featureState), info->displayName ? info->displayName : L"",
+                         info->description ? info->description : L"", info->restartRequired != dismapi::RestartNo};
+    m_dism.m_api->deleteStructure(info);
+    return detail;
+}
+
+Result<CapabilityDetail> DismSession::capabilityInfo(const std::wstring& name) {
+    dismapi::CapabilityDetail* info = nullptr;
+    const HRESULT hr = m_dism.m_api->getCapabilityInfo(m_session, name.c_str(), &info);
+    if (FAILED(hr) || !info) {
+        return std::unexpected(m_dism.error(hr, L"capability info " + name));
+    }
+    CapabilityDetail detail{name, stateFrom(info->state), info->displayName ? info->displayName : L"",
+                            info->description ? info->description : L"", info->downloadSize, info->installSize};
+    m_dism.m_api->deleteStructure(info);
+    return detail;
 }
 
 Result<void> DismSession::disableFeature(const std::wstring& name, const TaskContext& task) {

@@ -18,14 +18,34 @@ EmptyState::EmptyState(icons::Icon icon, std::wstring title, std::wstring body)
 }
 
 Button& EmptyState::setAction(std::wstring label) {
-    m_action = &add<Button>(ButtonKind::Secondary, std::move(label));
+    if (m_action) {
+        m_action->setText(std::move(label));
+        m_action->setVisible(true);
+    } else {
+        m_action = &add<Button>(ButtonKind::Secondary, std::move(label));
+    }
     layout();
     return *m_action;
 }
 
+void EmptyState::setContent(icons::Icon icon, std::wstring title, std::wstring body) {
+    m_icon = icon;
+    m_title = std::move(title);
+    m_body = std::move(body);
+    layout();
+    invalidate();
+}
+
+void EmptyState::hideAction() {
+    if (m_action) {
+        m_action->setVisible(false);
+        layout();
+    }
+}
+
 float EmptyState::contentTop() const {
     float height = kIconSize + kIconGap + kTextLine + kTextGap + kTextLine;
-    if (m_action) {
+    if (m_action && m_action->visible()) {
         height += kActionGap + tokens::size::control;
     }
     return bounds().y + std::round((bounds().height - height) / 2);

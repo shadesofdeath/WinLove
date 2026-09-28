@@ -2,6 +2,7 @@
 
 #include "app/Format.h"
 #include "app/pages/GalleryPage.h"
+#include "app/pages/FeaturesPage.h"
 #include "app/pages/ImagesPage.h"
 #include "app/pages/LogsPage.h"
 #include "app/pages/SourcePage.h"
@@ -66,6 +67,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         setNavCollapsed(m_userCollapsed, /*animated=*/true);
     };
 
+    m_features = std::make_unique<FeatureController>(m_state, m_services.postToUi);
     m_images = std::make_unique<ImageController>(m_state, ImageController::Events{
         m_services.postToUi,
         [this](ImageController::Failure f, const Error& e, int index) { onImageFailure(f, e, index); },
@@ -84,6 +86,9 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
                 m_autoRestoreTried = true;
                 continueFolderMount();
             }
+        }
+        if (change == AppState::Change::Queue) {
+            updateQueue();
         }
         if (change != AppState::Change::Recent) {
             updateBreadcrumb();
@@ -112,6 +117,10 @@ LogsPage* Shell::logsPage() const {
     return m_page == PageId::Logs ? dynamic_cast<LogsPage*>(m_pageBody) : nullptr;
 }
 
+FeaturesPage* Shell::featuresPage() const {
+    return m_page == PageId::Features ? dynamic_cast<FeaturesPage*>(m_pageBody) : nullptr;
+}
+
 bool Shell::inspectorVisible() const {
     // Screen 02 shows it for the selected edition; screen 03 hides it while the engine works.
     return m_inspector && m_page == PageId::Images && m_state.selectedImage() && !m_state.operation();
@@ -136,6 +145,16 @@ void Shell::updateBreadcrumb() {
         m_titleBar->setBreadcrumb({L"Widget gallery"});
     } else {
         m_titleBar->setBreadcrumb({m_strings.get(pageInfo(m_page).title)});
+    }
+}
+
+void Shell::updateQueue() {
+    const auto& changes = m_state.changes();
+    m_status->cta().setQueue(static_cast<int>(changes.size()));
+    const auto featureOps = static_cast<int>(m_features->queuedCount());
+    m_nav->setBadge(PageId::Features, featureOps);
+    if (m_actionReset) {
+        m_actionReset->setEnabled(featureOps > 0);
     }
 }
 
@@ -207,6 +226,7 @@ void Shell::showPage(PageId page) {
         m_inspector = nullptr;
     }
     m_actionMount = m_actionExport = m_actionEsd = nullptr;
+    m_actionReset = nullptr;
 
     if (page == PageId::Gallery) {
         m_pageView = &add<PageView>(L"Widget gallery", L"Faz 1.8 — every widget in every state (dev only).");
@@ -250,6 +270,11 @@ void Shell::showPage(PageId page) {
             };
             m_inspector->onUnmount = [this] { askUnmount(); };
             m_inspector->onDelete = [this] { askDeleteSelected(); };
+        } else if (page == PageId::Features) {
+            m_actionReset = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::FeaturesResetChanges));
+            m_actionReset->onInvoke = [this] { m_features->resetChanges(); };
+            m_pageBody = &m_pageView->setBody<FeaturesPage>(m_state, *m_features, m_strings, m_language,
+                                                            [this] { showPage(PageId::Images); });
         } else if (page == PageId::Logs) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::LogsClear)).onInvoke = [this] {
                 if (auto* logs = logsPage()) {
@@ -274,6 +299,7 @@ void Shell::showPage(PageId page) {
         m_toast = &add<ui::Toast>();
     }
     bringToFront(m_toast);
+    updateQueue();
     updateBreadcrumb();
     updateImagesChrome();
     layout();
@@ -602,6 +628,10 @@ bool Shell::handleShortcut(const ui::KeyEvent& key) {
     if (key.ctrl && !key.shift && !key.alt && key.virtualKey == 'F') {
         if (auto* logs = logsPage()) {
             logs->focusSearch();
+            return true;
+        }
+        if (auto* features = featuresPage()) {
+            features->focusSearch();
             return true;
         }
     }

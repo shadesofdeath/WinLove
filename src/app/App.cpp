@@ -122,6 +122,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             }
         } else if (a == L"--no-elevate") {
             // handled in main.cpp (skip the startup UAC relaunch)
+        } else if (a == L"--demo-features") {
+            options.demoFeatures = true;
         } else if (a == L"--demo-logs") {
             options.demoLogs = true;
         } else if (a == L"--nav-collapsed") {
@@ -276,6 +278,34 @@ int App::renderOffscreen() {
         log::debug("dism", L"dism.exe exit=0 (1188 ms)");
     }
     buildUi({});
+    if (m_options.demoFeatures) {
+        using core::OptionalFeature;
+        using S = core::ServicingState;
+        const std::filesystem::path mountDir = L"C:\\WinLove\\mount";
+        m_state->setMounted(MountedImage{mountDir, L"C:\\WinLove\\work\\sources\\install.wim", 4, L"Windows 11 Pro"});
+        auto feature = [](std::wstring name, std::wstring display, S state) {
+            return OptionalFeature{OptionalFeature::Kind::Feature, std::move(name), std::move(display), {}, state, 0, false};
+        };
+        auto capability = [](std::wstring name, std::wstring display, std::uint64_t mb) {
+            return OptionalFeature{OptionalFeature::Kind::Capability, std::move(name), std::move(display), {},
+                                   S::Installed, mb * 1024 * 1024, false};
+        };
+        std::vector<OptionalFeature> items{
+            feature(L"NetFx3", L".NET Framework 3.5", S::Installed),
+            feature(L"Microsoft-Hyper-V-All", L"Hyper-V", S::Staged),
+            feature(L"Containers-DisposableClientVM", L"Windows Sandbox", S::Staged),
+            capability(L"Browser.InternetExplorer~~~~0.0.11.0", L"Internet Explorer modu", 42),
+            capability(L"OpenSSH.Client~~~~0.0.1.0", L"OpenSSH \u0130stemcisi", 6),
+            capability(L"Media.WindowsMediaPlayer~~~~0.0.12.0", L"Windows Media Player (eski)", 31),
+            capability(L"Microsoft.Windows.WordPad~~~~0.0.1.0", L"Wordpad", 9),
+            feature(L"Microsoft-Windows-Subsystem-Linux", L"WSL", S::Staged),
+        };
+        m_state->setOptionalFeatures(AppState::OptionalFeatures{AppState::OptionalFeatures::Status::Ready, mountDir,
+                                                                std::move(items), {}});
+        m_state->queue(FeatureController::operationFor(m_state->optionalFeatures()->items[4]));
+        m_state->queue(FeatureController::operationFor(m_state->optionalFeatures()->items[7]));
+        m_shell->showPage(PageId::Features);
+    }
     if (m_options.openPath) {
         // Headless: open synchronously so the frame shows the Images page with real data.
         if (auto info = core::openSource(*m_options.openPath)) {
