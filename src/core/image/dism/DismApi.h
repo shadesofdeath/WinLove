@@ -128,6 +128,8 @@ struct Api {
                                    ProgressCallback, PVOID) = nullptr;
     HRESULT(WINAPI* removePackage)(Session, PCWSTR identifier, PackageIdentifier, HANDLE cancel, ProgressCallback,
                                    PVOID) = nullptr;
+    HRESULT(WINAPI* addPackage)(Session, PCWSTR packagePath, BOOL ignoreCheck, BOOL preventPending, HANDLE cancel,
+                                ProgressCallback, PVOID) = nullptr;
     HRESULT(WINAPI* removeCapability)(Session, PCWSTR name, HANDLE cancel, ProgressCallback, PVOID) = nullptr;
 };
 

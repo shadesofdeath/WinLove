@@ -3,6 +3,7 @@ add_library(wl_core STATIC
     image/ImageFormat.cpp
     image/Source.cpp
     image/UdfImage.cpp
+    image/UpdatePackage.cpp
     image/WimFile.cpp
     image/WindowsRelease.cpp
     image/dism/Appx.cpp

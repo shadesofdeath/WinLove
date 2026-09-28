@@ -96,7 +96,7 @@ Result<Dism*> Dism::instance() {
                     load(m, "DismCleanupMountpoints", a.cleanupMountpoints) && load(m, "DismRemountImage", a.remountImage) && load(m, "DismDelete", a.deleteStructure) &&
                     load(m, "DismGetPackages", a.getPackages) && load(m, "DismGetFeatures", a.getFeatures) &&
                     load(m, "DismGetCapabilities", a.getCapabilities) && load(m, "DismGetFeatureInfo", a.getFeatureInfo) &&
-                    load(m, "DismGetCapabilityInfo", a.getCapabilityInfo) &&
+                    load(m, "DismGetCapabilityInfo", a.getCapabilityInfo) && load(m, "DismAddPackage", a.addPackage) &&
                     loadEither(m, "DismGetProvisionedAppxPackages", "_DismGetProvisionedAppxPackages",
                                a.getProvisionedAppx) &&
                     loadEither(m, "DismRemoveProvisionedAppxPackage", "_DismRemoveProvisionedAppxPackage",
@@ -347,6 +347,18 @@ Result<void> DismSession::removeAppx(const std::wstring& packageName) {
     const HRESULT hr = m_dism.m_api->removeProvisionedAppx(m_session, packageName.c_str());
     if (FAILED(hr)) {
         return std::unexpected(m_dism.error(hr, L"remove appx " + packageName));
+    }
+    return {};
+}
+
+Result<void> DismSession::addPackage(const std::filesystem::path& package, const TaskContext& task) {
+    const std::wstring path = package.wstring();
+    ProgressBridge bridge{&task, path.c_str()};
+    // IgnoreCheck FALSE: DISM verifies applicability; PreventPending FALSE: pending online actions allowed.
+    const HRESULT hr = m_dism.m_api->addPackage(m_session, path.c_str(), FALSE, FALSE, task.cancel.event(), &onProgress,
+                                                &bridge);
+    if (FAILED(hr)) {
+        return std::unexpected(m_dism.error(hr, L"add package " + path));
     }
     return {};
 }

@@ -40,6 +40,7 @@ class FeaturesPage;
 class ApplyPage;
 class IsoPage;
 class ComponentsPage;
+class UpdatesPage;
 
 class Shell : public ui::Widget {
 public:
@@ -121,6 +122,8 @@ private:
     [[nodiscard]] ComponentsPage* componentsPage() const;
     void updateComponentInspector();
     void loadPreset();
+    [[nodiscard]] UpdatesPage* updatesPage() const;
+    void addUpdates(const std::vector<std::filesystem::path>& files);
     void updateIsoChrome();
     void startIso();
     void updateApplyChrome();                         // CTA label, Apply page mode/header

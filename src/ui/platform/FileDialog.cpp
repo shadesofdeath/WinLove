@@ -46,6 +46,40 @@ std::optional<std::filesystem::path> pickFile(HWND owner, const std::wstring& ti
     return show(owner, title, filters, false);
 }
 
+std::vector<std::filesystem::path> pickFiles(HWND owner, const std::wstring& title, const std::vector<FileFilter>& filters) {
+    std::vector<std::filesystem::path> result;
+    ComPtr<IFileOpenDialog> dialog;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) {
+        return result;
+    }
+    DWORD options = 0;
+    dialog->GetOptions(&options);
+    dialog->SetOptions(options | FOS_FORCEFILESYSTEM | FOS_ALLOWMULTISELECT | FOS_FILEMUSTEXIST);
+    dialog->SetTitle(title.c_str());
+    std::vector<COMDLG_FILTERSPEC> specs;
+    for (const auto& f : filters) {
+        specs.push_back({f.label.c_str(), f.pattern.c_str()});
+    }
+    if (!specs.empty()) {
+        dialog->SetFileTypes(static_cast<UINT>(specs.size()), specs.data());
+    }
+    ComPtr<IShellItemArray> items;
+    if (FAILED(dialog->Show(owner)) || FAILED(dialog->GetResults(&items))) {
+        return result;
+    }
+    DWORD count = 0;
+    items->GetCount(&count);
+    for (DWORD i = 0; i < count; ++i) {
+        ComPtr<IShellItem> item;
+        PWSTR path = nullptr;
+        if (SUCCEEDED(items->GetItemAt(i, &item)) && SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
+            result.emplace_back(path);
+            CoTaskMemFree(path);
+        }
+    }
+    return result;
+}
+
 std::optional<std::filesystem::path> pickFolder(HWND owner, const std::wstring& title) {
     return show(owner, title, {}, true);
 }

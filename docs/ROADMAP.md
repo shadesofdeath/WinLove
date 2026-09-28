@@ -46,7 +46,7 @@ Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **
 | P05 | Uygula (özet, onay, çalışıyor, bitti) | 13, 13b, 14, 15 | `pages/05-apply.md` | 🟨 test | Planner/Applier burada tamamlanır |
 | P06 | ISO Oluştur / USB | 16 | `pages/06-iso.md` | 🟨 test (USB sonra) | Bittiğinde: uçtan uca VM kurulum testi |
 | P07 | Bileşenler (paket + AppX + capability, katalog, bağımlılık, arama) | 04, 04b | `pages/07-components.md` | 🟨 v1 AppX | En büyük sayfa; alt adımlara bölünecek |
-| P08 | Güncellemeler | 06 | `pages/08-updates.md` | ⬜ | |
+| P08 | Güncellemeler | 06 | `pages/08-updates.md` | 🟨 test | |
 | P09 | Sürücüler | 07 | `pages/09-drivers.md` | ⬜ | |
 | P10 | Servisler | 09 | `pages/10-services.md` | ⬜ | OfflineRegistry burada gelir |
 | P11 | Kayıt Defteri | 08 | `pages/11-registry.md` | ⬜ | |

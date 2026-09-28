@@ -290,7 +290,22 @@
     "order": "Sıra",
     "package": "Paket",
     "compatible": "Uyumlu",
-    "incompatible": "Sürüm uyumsuz ({ver})"
+    "incompatible": "Sürüm uyumsuz ({ver})",
+    "type": "Tür",
+    "kb": "KB",
+    "noMountTitle": "Bağlı imaj yok",
+    "noMountBody": "Güncelleme eklemek için İmajlar sayfasından bir sürüm bağla.",
+    "kindSsu": "SSU",
+    "kindLcu": "LCU",
+    "kindDotnet": ".NET",
+    "kindOther": "Diğer",
+    "archMismatch": "Mimari uyumsuz ({arch})",
+    "unknown": "Dosya adından denetlenemedi",
+    "emptyList": "Henüz paket yok — .msu / .cab dosyalarını bırak veya Paket ekle.",
+    "added": "{n} paket kuyruğa eklendi",
+    "noneFound": "Klasörde .msu / .cab bulunamadı",
+    "pickTitle": "Güncelleme paketleri seç",
+    "filter": "Güncelleme paketleri"
   },
   "drivers": {
     "title": "Sürücüler",

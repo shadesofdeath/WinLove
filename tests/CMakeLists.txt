@@ -8,6 +8,7 @@ add_executable(wl_tests
     core/EngineTests.cpp
     core/ImageFormatTests.cpp
     core/IsoTests.cpp
+    core/UpdateTests.cpp
     ui/TokensTests.cpp
     ui/IconsTests.cpp
     ui/RenderTests.cpp
