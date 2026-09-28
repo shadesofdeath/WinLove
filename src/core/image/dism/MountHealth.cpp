@@ -1,6 +1,7 @@
 #include "core/image/dism/MountHealth.h"
 
 #include "base/Log.h"
+#include "base/Path.h"
 #include "core/image/dism/DismErrors.h"
 #include "core/system/Privileges.h"
 
@@ -117,7 +118,8 @@ MountState classifyMount(const std::optional<MountInfo>& record, bool imageExist
     return MountState::Invalid;
 }
 
-Result<MountCheck> inspectMount(Dism& dism, const std::filesystem::path& folder) {
+Result<MountCheck> inspectMount(Dism& dism, const std::filesystem::path& folderInput) {
+    const std::filesystem::path folder = nativePath(folderInput);
     auto mounts = dism.mounts();
     if (!mounts) {
         return std::unexpected(mounts.error());
@@ -244,8 +246,9 @@ Result<MountCheck> repairMount(Dism& dism, const MountCheck& check, const TaskCo
     return after;
 }
 
-Result<UnmountOutcome> unmountSafely(Dism& dism, const std::filesystem::path& folder, bool commit,
+Result<UnmountOutcome> unmountSafely(Dism& dism, const std::filesystem::path& folderInput, bool commit,
                                      const TaskContext& task) {
+    const std::filesystem::path folder = nativePath(folderInput);
     UnmountOutcome outcome;
     if (auto r = unloadHivesUnder(folder); !r) {
         return std::unexpected(r.error());

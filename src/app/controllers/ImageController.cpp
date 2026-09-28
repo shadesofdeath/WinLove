@@ -1,6 +1,7 @@
 #include "app/controllers/ImageController.h"
 
 #include "base/Log.h"
+#include "base/Path.h"
 #include "core/image/UdfImage.h"
 #include "core/image/dism/Dism.h"
 #include "core/image/dism/DismErrors.h"
@@ -48,8 +49,8 @@ std::optional<std::filesystem::path> ImageController::installWimPath() const {
     switch (source->format) {
     case core::ImageFormat::Wim:
     case core::ImageFormat::Esd:
-    case core::ImageFormat::Swm: return source->path;
-    case core::ImageFormat::Folder: return source->path / source->installImage;
+    case core::ImageFormat::Swm: return nativePath(source->path);
+    case core::ImageFormat::Folder: return nativePath(source->path / source->installImage);
     default: return std::nullopt; // inside an ISO: not a file yet
     }
 }

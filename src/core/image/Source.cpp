@@ -1,6 +1,7 @@
 #include "core/image/Source.h"
 
 #include "base/Log.h"
+#include "base/Path.h"
 
 #include <format>
 
@@ -13,7 +14,8 @@ constexpr const wchar_t* kInstallCandidates[] = {L"sources/install.wim", L"sourc
 
 } // namespace
 
-Result<SourceInfo> openSource(const std::filesystem::path& path) {
+Result<SourceInfo> openSource(const std::filesystem::path& input) {
+    const std::filesystem::path path = nativePath(input);
     SourceInfo info;
     info.path = path;
     std::error_code ec;
