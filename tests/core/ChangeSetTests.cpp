@@ -63,6 +63,12 @@ TEST_CASE("ChangeSet: JSON round trip (preset format) and validation") {
     CHECK(ChangeSet::fromJson(R"({"format":"winlove.changeset","version":9})").error().code == ErrorCode::Unsupported);
     CHECK(ChangeSet::fromJson(R"({"format":"winlove.changeset","version":1,"operations":[{"kind":"nope","target":"x"}]})")
               .error().code == ErrorCode::ParseError);
+    // Wrongly typed fields are parse errors, not exceptions (a preset is user input).
+    CHECK(ChangeSet::fromJson(R"({"format":"winlove.changeset","version":"1"})").error().code == ErrorCode::ParseError);
+    CHECK(ChangeSet::fromJson(R"({"format":"winlove.changeset","version":1,"operations":[{"kind":"addDriver","target":5}]})")
+              .error().code == ErrorCode::ParseError);
+    CHECK(ChangeSet::fromJson(R"({"format":"winlove.changeset","version":1,"operations":[7]})").error().code ==
+          ErrorCode::ParseError);
 }
 
 TEST_CASE("Planner: removals, features, drivers, updates, settings — user order kept inside a phase") {

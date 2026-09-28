@@ -266,6 +266,8 @@ Result<UnmountOutcome> unmountSafely(Dism& dism, const std::filesystem::path& fo
     }
     releaseExplorerWindows(folder);
     Error last;
+    bool sawPartial = false;   // an earlier attempt committed but left files behind
+    bool notCommitted = false; // detached without a commit ever succeeding
     for (int attempt = 0; attempt < 3; ++attempt) {
         ++outcome.attempts;
         auto r = dism.unmount(folder, commit, task);
@@ -281,6 +283,7 @@ Result<UnmountOutcome> unmountSafely(Dism& dism, const std::filesystem::path& fo
                                       static_cast<std::uint32_t>(last.hresult), info.label));
         outcome.recovered = true;
         if (last.hresult == kPartialUnmount || last.hresult == kFileInUse) {
+            sawPartial = sawPartial || last.hresult == kPartialUnmount;
             // Something still holds files: move Explorer away, give handles time to close, retry.
             releaseExplorerWindows(folder);
             Sleep(1500);
@@ -288,6 +291,8 @@ Result<UnmountOutcome> unmountSafely(Dism& dism, const std::filesystem::path& fo
         }
         if (last.hresult == kCannotCommit || last.hresult == kNotMounted || last.hresult == kNotMountDir) {
             // The image is already detached (earlier partial unmount): only leftovers remain.
+            // Without such an earlier attempt nothing was saved: never report a commit then.
+            notCommitted = commit && !sawPartial;
             break;
         }
         return std::unexpected(last); // any other error: report as is
@@ -298,7 +303,14 @@ Result<UnmountOutcome> unmountSafely(Dism& dism, const std::filesystem::path& fo
     if (!check) {
         return std::unexpected(check.error());
     }
+    auto uncommitted = [&]() -> Result<UnmountOutcome> {
+        return fail(ErrorCode::DismFailure, L"the image was detached but the changes could not be committed",
+                    folder.wstring(), last.hresult);
+    };
     if (check->state == MountState::Free) {
+        if (notCommitted) {
+            return uncommitted();
+        }
         return outcome;
     }
     if (check->state == MountState::Ok || check->state == MountState::NeedsRemount) {
@@ -319,6 +331,9 @@ Result<UnmountOutcome> unmountSafely(Dism& dism, const std::filesystem::path& fo
     if (repaired->state != MountState::Free) {
         return fail(ErrorCode::DismFailure, L"mount folder could not be freed",
                     std::format(L"{} ({})", folder.wstring(), mountStateName(repaired->state)), last.hresult);
+    }
+    if (notCommitted || (commit && !sawPartial && check->action == MountAction::Discard)) {
+        return uncommitted(); // folder is clean again, but the repair discarded the image
     }
     return outcome;
 }
@@ -396,6 +411,11 @@ Result<MountOutcome> mountSafely(Dism& dism, const std::filesystem::path& wimInp
         auto repaired = repairMount(dism, *check, task);
         if (!repaired) {
             return std::unexpected(repaired.error());
+        }
+        if (repaired->state != MountState::Free) {
+            // Never clear files out of a folder DISM still has attached.
+            return fail(ErrorCode::DismFailure, L"mount folder could not be freed",
+                        std::format(L"{} ({})", folder.wstring(), mountStateName(repaired->state)));
         }
     }
     if (auto r = recreateFolder(folder); !r) {

@@ -250,6 +250,27 @@ DismSession::~DismSession() {
     m_dism.m_api->closeSession(m_session);
 }
 
+void DismSession::noteReload(long hr) noexcept {
+    // DISMAPI_S_RELOAD_IMAGE_SESSION_REQUIRED: success, but the next operation needs a fresh session
+    // (e.g. after a servicing stack update).
+    if (hr == 1) {
+        m_reloadRequired = true;
+    }
+}
+
+Result<void> DismSession::reload() {
+    m_dism.m_api->closeSession(m_session);
+    dismapi::Session session = 0;
+    const HRESULT hr = m_dism.m_api->openSession(m_path.c_str(), nullptr, nullptr, &session);
+    if (FAILED(hr)) {
+        m_session = 0;
+        return std::unexpected(m_dism.error(hr, L"reopen session " + m_path.wstring()));
+    }
+    m_session = session;
+    m_reloadRequired = false;
+    return {};
+}
+
 Result<std::vector<PackageEntry>> DismSession::packages() {
     dismapi::Package* list = nullptr;
     UINT count = 0;
@@ -348,6 +369,7 @@ Result<void> DismSession::removeAppx(const std::wstring& packageName) {
     if (FAILED(hr)) {
         return std::unexpected(m_dism.error(hr, L"remove appx " + packageName));
     }
+    noteReload(hr);
     return {};
 }
 
@@ -360,6 +382,7 @@ Result<void> DismSession::addPackage(const std::filesystem::path& package, const
     if (FAILED(hr)) {
         return std::unexpected(m_dism.error(hr, L"add package " + path));
     }
+    noteReload(hr);
     return {};
 }
 
@@ -368,6 +391,7 @@ Result<void> DismSession::addDriver(const std::filesystem::path& inf, bool force
     if (FAILED(hr)) {
         return std::unexpected(m_dism.error(hr, L"add driver " + inf.wstring()));
     }
+    noteReload(hr);
     return {};
 }
 
@@ -378,6 +402,7 @@ Result<void> DismSession::disableFeature(const std::wstring& name, const TaskCon
     if (FAILED(hr)) {
         return std::unexpected(m_dism.error(hr, L"disable feature " + name));
     }
+    noteReload(hr);
     return {};
 }
 
@@ -400,6 +425,7 @@ Result<void> DismSession::enableFeature(const std::wstring& name, const TaskCont
     if (FAILED(hr)) {
         return std::unexpected(m_dism.error(hr, L"enable feature " + name));
     }
+    noteReload(hr);
     return {};
 }
 
@@ -410,6 +436,7 @@ Result<void> DismSession::removePackage(const std::wstring& name, const TaskCont
     if (FAILED(hr)) {
         return std::unexpected(m_dism.error(hr, L"remove package " + name));
     }
+    noteReload(hr);
     return {};
 }
 
@@ -419,6 +446,7 @@ Result<void> DismSession::removeCapability(const std::wstring& name, const TaskC
     if (FAILED(hr)) {
         return std::unexpected(m_dism.error(hr, L"remove capability " + name));
     }
+    noteReload(hr);
     return {};
 }
 

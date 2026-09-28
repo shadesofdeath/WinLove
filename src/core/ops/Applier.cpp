@@ -90,6 +90,14 @@ ApplyReport apply(const ApplyPlan& plan, DismSession& session, const TaskContext
         if (!result.outcome) {
             log::error("apply", describe(result.outcome.error()));
         }
+        if (session.reloadRequired()) {
+            log::info("apply", L"DISM asked for a new session (servicing stack changed); reopening");
+            if (auto reloaded = session.reload(); !reloaded) {
+                log::error("apply", describe(reloaded.error()));
+                report.results.push_back(std::move(result));
+                return report; // cannot continue without a session
+            }
+        }
         const bool failed = !result.outcome;
         report.results.push_back(std::move(result));
         if (callbacks.stepFinished) {
@@ -99,7 +107,13 @@ ApplyReport apply(const ApplyPlan& plan, DismSession& session, const TaskContext
             return report;
         }
     }
-    report.completed = true;
+    // A step aborted by the cancel event fails like any other under Skip: never call that complete
+    // (ApplyJob would go on to commit).
+    report.completed = !task.cancel.cancelled();
+    if (!report.completed) {
+        log::warn("apply", L"cancelled during the last step");
+        return report;
+    }
     task.report(1.0, L"done");
     return report;
 }
