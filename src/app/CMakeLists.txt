@@ -5,6 +5,7 @@ add_library(wl_app STATIC
     controllers/ApplyController.cpp
     controllers/ComponentController.cpp
     controllers/FeatureController.cpp
+    controllers/ServiceController.cpp
     controllers/ImageController.cpp
     controllers/IsoController.cpp
     Format.cpp
@@ -17,6 +18,7 @@ add_library(wl_app STATIC
     pages/ApplyPage.cpp
     pages/ComponentsPage.cpp
     pages/DriversPage.cpp
+    pages/ServicesPage.cpp
     pages/FeaturesPage.cpp
     pages/ImagesPage.cpp
     pages/IsoPage.cpp

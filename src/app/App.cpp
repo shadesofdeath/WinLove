@@ -128,6 +128,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             // handled in main.cpp (skip the startup UAC relaunch)
         } else if (startsWith(a, L"--demo-apply=")) {
             options.demoApply = std::wstring(value(L"--demo-apply="));
+        } else if (a == L"--demo-services") {
+            options.demoServices = true;
         } else if (a == L"--demo-drivers") {
             options.demoDrivers = true;
         } else if (a == L"--demo-updates") {
@@ -389,6 +391,35 @@ int App::renderOffscreen() {
             }
         }
         m_shell->showPage(m_options.page.value_or(PageId::Features));
+    }
+    if (m_options.demoServices) {
+        const std::filesystem::path mountDir = L"C:\\WinLove\\mount";
+        m_state->setMounted(MountedImage{mountDir, L"C:\\WinLove\\work\\sources\\install.wim", 4, L"Windows 11 Pro"});
+        using core::StartType;
+        auto svc = [](const wchar_t* name, const wchar_t* display, StartType start,
+                      std::vector<std::wstring> deps = {}) {
+            core::ServiceEntry s;
+            s.name = name;
+            s.displayName = display;
+            s.start = start;
+            s.type = 0x10;
+            s.dependsOn = std::move(deps);
+            return s;
+        };
+        std::vector<core::ServiceEntry> items{
+            svc(L"DiagTrack", L"Ba\u011fl\u0131 Kullan\u0131c\u0131 Deneyimleri ve Telemetri", StartType::Auto),
+            svc(L"WSearch", L"Windows Arama", StartType::AutoDelayed, {L"RPCSS"}),
+            svc(L"Spooler", L"Yazd\u0131rma Biriktiricisi", StartType::Auto, {L"RPCSS", L"http"}),
+            svc(L"wuauserv", L"Windows Update", StartType::Manual, {L"rpcss"}),
+            svc(L"RemoteRegistry", L"Uzak Kay\u0131t Defteri", StartType::Disabled, {L"RPCSS"}),
+            svc(L"XblAuthManager", L"Xbox Live Kimlik Do\u011frulama", StartType::Manual),
+            svc(L"PrintNotify", L"Yaz\u0131c\u0131 Uzant\u0131lar\u0131 ve Bildirimleri", StartType::Manual, {L"Spooler"}),
+            svc(L"BITS", L"Arka Plan Ak\u0131ll\u0131 Aktarma Hizmeti", StartType::AutoDelayed, {L"RpcSs"}),
+        };
+        m_state->setServiceList(AppState::ServiceList{AppState::ServiceList::Status::Ready, mountDir, std::move(items), {}});
+        auto& controller = m_shell->services();
+        controller.set(m_state->serviceList()->items[0], StartType::Disabled);
+        m_shell->showPage(m_options.page.value_or(PageId::Services));
     }
     if (m_options.demoDrivers) {
         m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,

@@ -7,6 +7,7 @@
 #include "app/Localization.h"
 #include "app/controllers/ApplyController.h"
 #include "app/controllers/ComponentController.h"
+#include "app/controllers/ServiceController.h"
 #include "app/controllers/FeatureController.h"
 #include "app/controllers/IsoController.h"
 #include "app/controllers/ImageController.h"
@@ -42,6 +43,7 @@ class IsoPage;
 class ComponentsPage;
 class UpdatesPage;
 class DriversPage;
+class ServicesPage;
 
 class Shell : public ui::Widget {
 public:
@@ -70,6 +72,7 @@ public:
     FeatureController& features() { return *m_features; }
     ApplyController& apply() { return *m_apply; }
     ComponentController& components() { return *m_components; }
+    ServiceController& services() { return *m_serviceCtl; }
     // "Uygula": straight to the run, or through the 13b confirmation when something is irreversible.
     void requestApply();
     [[nodiscard]] PageId currentPage() const noexcept { return m_page; }
@@ -126,6 +129,7 @@ private:
     [[nodiscard]] UpdatesPage* updatesPage() const;
     void addUpdates(const std::vector<std::filesystem::path>& files);
     [[nodiscard]] DriversPage* driversPage() const;
+    [[nodiscard]] ServicesPage* servicesPage() const;
     void scanDriverFolder();
     void updateIsoChrome();
     void startIso();
@@ -146,6 +150,7 @@ private:
     std::unique_ptr<ApplyController> m_apply;
     std::unique_ptr<IsoController> m_iso;
     std::unique_ptr<ComponentController> m_components;
+    std::unique_ptr<ServiceController> m_serviceCtl;
     ui::Widget* m_sideInspector = nullptr; // pages other than Images (Components)
     ui::Button* m_actionExpand = nullptr;  // Components: "Tümünü genişlet / daralt"
     ui::Button* m_actionIso = nullptr; // ISO page: "ISO Oluştur" / "İptal"

@@ -16,6 +16,8 @@ namespace wl::app {
 [[nodiscard]] Result<Localization> embeddedStrings(Language language);
 // resources/catalog/appx.json as embedded bytes (empty when missing).
 [[nodiscard]] std::string_view embeddedAppxCatalog();
+// resources/catalog/services.json (P10 risk / notes).
+[[nodiscard]] std::string_view embeddedServiceCatalog();
 
 [[nodiscard]] HICON appIcon();
 

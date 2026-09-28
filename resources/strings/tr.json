@@ -352,8 +352,20 @@
       "auto": "Otomatik",
       "autoDelayed": "Otomatik (Gecikmeli)",
       "manual": "El ile",
-      "disabled": "Devre dışı"
-    }
+      "disabled": "Devre dışı",
+      "boot": "Önyükleme",
+      "system": "Sistem"
+    },
+    "search": "Servis ara",
+    "startFilter": "Başlangıç",
+    "noMountTitle": "Bağlı imaj yok",
+    "noMountBody": "Servisleri düzenlemek için İmajlar sayfasından bir sürüm bağla.",
+    "loadingTitle": "Servisler okunuyor",
+    "loadingBody": "İmajın SYSTEM kayıt defteri yükleniyor, servis adları imajdaki dosyalardan çözülüyor.",
+    "failedTitle": "Servisler okunamadı",
+    "noResults": "Eşleşen servis yok",
+    "dependentsWarn": "{name} devre dışı: ona bağlı {n} servis de başlayamaz",
+    "reset": "Varsayılanlara dön"
   },
   "tweaks": {
     "title": "Ayarlar / Tweaks",

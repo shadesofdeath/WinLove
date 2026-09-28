@@ -48,7 +48,7 @@ Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **
 | P07 | Bileşenler (paket + AppX + capability, katalog, bağımlılık, arama) | 04, 04b | `pages/07-components.md` | 🟨 v1 AppX | En büyük sayfa; alt adımlara bölünecek |
 | P08 | Güncellemeler | 06 | `pages/08-updates.md` | 🟨 test | |
 | P09 | Sürücüler | 07 | `pages/09-drivers.md` | 🟨 test | |
-| P10 | Servisler | 09 | `pages/10-services.md` | ⬜ | OfflineRegistry burada gelir |
+| P10 | Servisler | 09 | `pages/10-services.md` | 🟨 test | OfflineRegistry burada gelir |
 | P11 | Kayıt Defteri | 08 | `pages/11-registry.md` | ⬜ | |
 | P12 | Ayarlar / Tweaks | 10 | `pages/12-tweaks.md` | ⬜ | |
 | P13 | Katılımsız Kurulum | 11 | `pages/13-unattended.md` | ⬜ | |
