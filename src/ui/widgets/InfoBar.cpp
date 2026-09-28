@@ -35,8 +35,8 @@ InfoBar::InfoBar(InfoKind kind, std::wstring title, std::wstring message, std::w
     auto close = Button::iconOnly(icons::Icon::Close, std::move(closeTooltip));
     m_close = close.get();
     m_close->onInvoke = [this] {
-        if (onClose) {
-            onClose();
+        if (auto close = onClose) { // copy: closing may destroy this bar
+            close();
         }
     };
     addChild(std::move(close));

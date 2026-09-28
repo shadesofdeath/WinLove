@@ -77,12 +77,14 @@ void Dialog::paint(Canvas& canvas) {
 
 bool Dialog::onKeyDown(const KeyEvent& key) {
     if (key.virtualKey == VK_ESCAPE) {
-        if (onCancel) {
-            onCancel();
+        if (auto cancel = onCancel) { // copy: cancelling pops (destroys) this dialog
+            cancel();
         }
         return true;
     }
-    if (key.virtualKey == VK_RETURN && m_primary) {
+    // A disabled primary (e.g. "Go" before the risk acknowledgement is ticked) must not be
+    // reachable through Enter either.
+    if (key.virtualKey == VK_RETURN && m_primary && m_primary->enabled()) {
         m_primary->onClick();
         return true;
     }
@@ -95,8 +97,10 @@ void Dialog::onPointerUp(PointF p) {
 
 void Dialog::onClick() {
     // Clicks reach the dialog itself only on its backdrop or empty box area.
-    if (!m_box.contains(m_lastUp) && onCancel) {
-        onCancel();
+    if (!m_box.contains(m_lastUp)) {
+        if (auto cancel = onCancel) {
+            cancel();
+        }
     }
 }
 

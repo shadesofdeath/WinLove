@@ -20,7 +20,7 @@ namespace wl::ui {
 
 enum class HitZone : std::uint8_t { Client, Caption, MinimizeButton, MaximizeButton, CloseButton };
 
-enum class PointerAction : std::uint8_t { Move, Leave, Down, Up };
+enum class PointerAction : std::uint8_t { Move, Leave, Down, Up, Cancel }; // Cancel: capture lost mid-press
 
 enum class Cursor : std::uint8_t { Arrow, Hand, SizeWE, IBeam };
 

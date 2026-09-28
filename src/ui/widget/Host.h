@@ -86,6 +86,7 @@ private:
     PointF m_lastPointer{-1, -1};
     double m_lastClickTime = 0;
     Widget* m_lastClickWidget = nullptr;
+    PointF m_lastClickPos{-1000, -1000};
 };
 
 } // namespace wl::ui

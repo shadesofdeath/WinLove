@@ -73,6 +73,8 @@ private:
     int m_hoverRow = -1;
     int m_hoverColumn = -1;
     int m_downRow = -1;
+    int m_clickRow = -1;
+    int m_previousClickRow = -1;
     int m_downColumn = -1;
     PointF m_downPoint{};
     float m_offset = 0;

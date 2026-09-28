@@ -109,11 +109,12 @@ void TableView::reveal(int row) {
     }
 }
 
-bool TableView::onWheel(PointF /*p*/, float lines) {
+bool TableView::onWheel(PointF p, float lines) {
     if (!m_scrollBar->needed()) {
         return false;
     }
     setOffset(m_offset - lines * kRow);
+    onPointerMove(p); // no mouse-move follows a wheel: the row under the pointer changed
     return true;
 }
 
@@ -157,19 +158,24 @@ void TableView::onPointerDown(PointF p) {
     m_downRow = rowAt(p);
     m_downPoint = p;
     m_downColumn = m_downRow >= 0 ? columnAt(p.x) : -1;
+    m_hoverRow = m_downRow; // the press point is authoritative even if hover is stale
+    m_hoverColumn = m_downColumn;
     if (m_downRow >= 0) {
         setSelected(m_downRow, /*reveal=*/false);
     }
 }
 
 void TableView::onClick() {
+    m_previousClickRow = m_clickRow;
+    m_clickRow = m_downRow;
     if (m_downRow >= 0 && m_downRow == m_hoverRow && onCellClick) {
         onCellClick(m_downRow, m_downColumn, m_downPoint);
     }
 }
 
 void TableView::onDoubleClick() {
-    if (m_downRow >= 0 && onActivate) {
+    // Both clicks must land on the same row.
+    if (m_downRow >= 0 && m_downRow == m_previousClickRow && onActivate) {
         onActivate(m_downRow);
     }
 }
