@@ -56,6 +56,18 @@ try {
     Import-VsDevEnvironment
     if ($Clean -and (Test-Path "build/$Preset")) { Remove-Item -Recurse -Force "build/$Preset" }
     Invoke-Step "configure ($Preset)" { cmake --preset $Preset --log-level=WARNING }
+    # The user may be running an exe from the build folder: Windows cannot overwrite a running
+    # exe but can rename it, so move locked outputs aside and link fresh ones.
+    foreach ($exe in "build/$Preset/bin/WinLove.exe", "build/$Preset/bin/wlcli.exe") {
+        if (Test-Path $exe) {
+            try { [IO.File]::Open((Resolve-Path $exe), 'Open', 'ReadWrite', 'None').Close() }
+            catch {
+                Remove-Item "$exe.old" -Force -ErrorAction SilentlyContinue
+                Rename-Item $exe ((Split-Path $exe -Leaf) + '.old')
+                Write-Host "note: $exe is running; renamed to .old" -ForegroundColor Yellow
+            }
+        }
+    }
     if ($Target) {
         Invoke-Step "build $Target ($Preset)" { cmake --build --preset $Preset --target $Target }
     } else {

@@ -1,6 +1,7 @@
 #include "ui/render/Canvas.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace wl::ui {
 
@@ -127,7 +128,15 @@ void Canvas::drawTextWrapped(std::wstring_view text, RectF rect, tokens::TypeSty
     m_context->DrawTextLayout({rect.x, rect.y}, layout->Get(), brush(ink), D2D1_DRAW_TEXT_OPTIONS_CLIP);
 }
 
-void Canvas::drawIcon(icons::Icon icon, PointF topLeft, Ink ink, IconVariant variant, float size) {
+void Canvas::progressBar(RectF track, float fraction, Ink fill) {
+    fillRect(track, tokens::Color::LineStrong);
+    const float f = std::clamp(fraction, 0.0f, 1.0f);
+    if (f > 0) {
+        fillRect({track.x, track.y, std::round(track.width * f), track.height}, fill);
+    }
+}
+
+void Canvas::drawIcon(icons::Icon icon, PointF topLeft, Ink ink, IconVariant variant, float size, float rotationDegrees) {
     const auto entry = m_icons.get(icon, variant);
     if (!entry.geometry) {
         return;
@@ -136,7 +145,10 @@ void Canvas::drawIcon(icons::Icon icon, PointF topLeft, Ink ink, IconVariant var
     const float k = target / entry.gridSize;
     D2D1_MATRIX_3X2_F previous;
     m_context->GetTransform(&previous);
-    m_context->SetTransform(D2D1::Matrix3x2F::Scale(k, k) *
+    const float half = entry.gridSize / 2;
+    const auto rotation = rotationDegrees != 0 ? D2D1::Matrix3x2F::Rotation(rotationDegrees, {half, half})
+                                               : D2D1::Matrix3x2F::Identity();
+    m_context->SetTransform(rotation * D2D1::Matrix3x2F::Scale(k, k) *
                             D2D1::Matrix3x2F::Translation(snap(topLeft.x, m_scale), snap(topLeft.y, m_scale)) *
                             previous);
     auto* b = brush(ink);

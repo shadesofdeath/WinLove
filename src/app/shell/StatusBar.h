@@ -6,6 +6,7 @@
 #include "ui/widget/Widget.h"
 
 #include <functional>
+#include <optional>
 #include <string>
 
 namespace wl::app {
@@ -32,14 +33,28 @@ private:
 
 class StatusBar : public ui::Widget {
 public:
-    StatusBar(std::wstring noMountLabel, std::wstring applyLabel);
+    struct Labels {
+        std::wstring noMount;   // "Bağlı imaj yok"
+        std::wstring mounted;   // "Mounted"
+        std::wstring image;     // "İmaj"
+        std::wstring apply;     // "Uygula"
+    };
+    explicit StatusBar(Labels labels);
 
     ApplyCta& cta() { return *m_cta; }
+    // Mount segment: nullopt = nothing mounted. `size` is preformatted ("4,80 GB").
+    void setMount(std::optional<std::wstring> mountPath, std::wstring size);
+    // Background task segment right of the segments: label + 80×2 bar + percent; nullopt hides it.
+    void setTask(std::optional<std::wstring> label, float fraction);
     void layout() override;
     void paint(ui::Canvas& canvas) override;
 
 private:
-    std::wstring m_noMount;
+    Labels m_labels;
+    std::optional<std::wstring> m_mountPath;
+    std::wstring m_size;
+    std::optional<std::wstring> m_task;
+    float m_taskFraction = 0;
     ApplyCta* m_cta = nullptr;
 };
 

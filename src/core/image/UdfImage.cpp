@@ -368,6 +368,66 @@ Result<void> UdfImage::extract(const Node& file, const std::filesystem::path& de
     if (file.directory) {
         return fail(ErrorCode::InvalidArgument, L"cannot extract a directory as a file", file.name);
     }
+    return copyNode(file, destination, task, 0, file.size);
+}
+
+Result<void> UdfImage::extractAll(const std::filesystem::path& destination, const TaskContext& task) const {
+    // Pass 1: collect files and total size so progress is by bytes.
+    struct Item {
+        Node node;
+        std::filesystem::path target;
+    };
+    std::vector<Item> files;
+    std::uint64_t total = 0;
+    auto root = readFileEntry(m_rootBlock, L"");
+    if (!root) {
+        return std::unexpected(root.error());
+    }
+    std::vector<std::pair<Node, std::filesystem::path>> pending{{std::move(*root), destination}};
+    while (!pending.empty()) {
+        auto [dir, target] = std::move(pending.back());
+        pending.pop_back();
+        std::error_code ec;
+        std::filesystem::create_directories(target, ec);
+        if (ec) {
+            return fail(ErrorCode::IoError, L"cannot create folder", target.wstring(), ec.value());
+        }
+        auto children = readDirectory(dir);
+        if (!children) {
+            return std::unexpected(children.error());
+        }
+        for (auto& child : *children) {
+            auto childTarget = target / child.name;
+            if (child.directory) {
+                pending.emplace_back(std::move(child), std::move(childTarget));
+            } else {
+                total += child.size;
+                files.push_back({std::move(child), std::move(childTarget)});
+            }
+        }
+    }
+    log::info("udf", std::format(L"extract {} files ({} bytes) -> {}", files.size(), total, destination.wstring()));
+
+    // Pass 2: copy (skip files already complete from an earlier run).
+    std::uint64_t done = 0;
+    for (const auto& item : files) {
+        std::error_code ec;
+        if (std::filesystem::exists(item.target, ec) && std::filesystem::file_size(item.target, ec) == item.node.size) {
+            done += item.node.size;
+            task.report(total ? static_cast<double>(done) / static_cast<double>(total) : 1.0, item.node.name);
+            continue;
+        }
+        if (auto r = copyNode(item.node, item.target, task, done, total); !r) {
+            return r;
+        }
+        done += item.node.size;
+    }
+    task.report(1.0, L"");
+    return {};
+}
+
+Result<void> UdfImage::copyNode(const Node& file, const std::filesystem::path& destination, const TaskContext& task,
+                                std::uint64_t doneBefore, std::uint64_t total) const {
     const std::filesystem::path partial = destination.wstring() + L".partial";
     {
         std::ofstream out(partial, std::ios::binary | std::ios::trunc);
@@ -393,7 +453,7 @@ Result<void> UdfImage::extract(const Node& file, const std::filesystem::path& de
                 return fail(ErrorCode::IoError, L"write failed (disk full?)", partial.wstring());
             }
             offset += chunk;
-            task.report(static_cast<double>(offset) / static_cast<double>(file.size), file.name);
+            task.report(total ? static_cast<double>(doneBefore + offset) / static_cast<double>(total) : 1.0, file.name);
         }
     }
     // Only a complete file gets the final name.

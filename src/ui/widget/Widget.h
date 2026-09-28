@@ -41,6 +41,8 @@ public:
     void clearChildren();
     // Destroys `child` (must be a direct child).
     void removeChild(Widget* child);
+    // Moves a direct child to the end: painted last, hit-tested first (toasts, overlays).
+    void bringToFront(Widget* child);
     [[nodiscard]] std::span<const std::unique_ptr<Widget>> children() const noexcept { return m_children; }
     [[nodiscard]] Widget* parent() const noexcept { return m_parent; }
     [[nodiscard]] Host* host() const noexcept;

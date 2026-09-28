@@ -1,9 +1,11 @@
 #pragma once
 // Root widget of the main window (layout-system.md): TitleBar 32 on top, StatusBar 24 at the
-// bottom, NavRail 200/44 on the left, the current page in the rest. Owns page switching,
-// nav collapse animation, app-level shortcuts (interaction.md "Kısayollar") and the
-// "open a source" flow (engine thread → UI thread → AppState → Images page).
+// bottom, NavRail 200/44 on the left, the current page, and the Inspector column (280) on the
+// right when the page has one. Owns page switching, nav collapse, app-level shortcuts
+// (interaction.md "Kısayollar"), the source-opening flow, P02 image operations (through
+// ImageController), dialogs and the toast.
 #include "app/Localization.h"
+#include "app/controllers/ImageController.h"
 #include "app/pages/PageInfo.h"
 #include "app/shell/NavRail.h"
 #include "app/shell/PageView.h"
@@ -11,6 +13,7 @@
 #include "app/shell/TitleBar.h"
 #include "app/state/AppState.h"
 #include "ui/anim/Tween.h"
+#include "ui/widgets/Toast.h"
 
 #include <windows.h>
 
@@ -19,9 +22,15 @@
 #include <memory>
 #include <vector>
 
+namespace wl::ui {
+class Dialog;
+}
+
 namespace wl::app {
 
 class SourcePage;
+class ImagesPage;
+class ImageInspector;
 
 class Shell : public ui::Widget {
 public:
@@ -32,16 +41,20 @@ public:
         std::function<void()> toggleMaximize;
         std::function<void()> close;
         std::function<void()> toggleTheme;
-        std::function<void(std::function<void()>)> postToUi; // run on the UI thread later
-        std::function<HWND()> ownerWindow;                   // for system dialogs (may be null)
-        std::function<bool()> relaunchElevated;              // true = new process started, exit this one
+        std::function<void(std::function<void()>)> postToUi;     // run on the UI thread later
+        std::function<HWND()> ownerWindow;                       // for system dialogs (may be null)
+        std::function<bool(const std::wstring& args)> relaunchElevated; // true = new process started
+        std::function<void(UINT id, UINT ms)> startTimer;
+        std::function<void(UINT id)> stopTimer;
     };
+    static constexpr UINT kToastTimer = 2;
 
     Shell(const Localization& strings, Language language, AppState& state, Services services);
     ~Shell() override;
 
     TitleBar& titleBar() { return *m_titleBar; }
     NavRail& nav() { return *m_nav; }
+    ImageController& images() { return *m_images; }
     [[nodiscard]] PageId currentPage() const noexcept { return m_page; }
 
     void showPage(PageId page);
@@ -49,28 +62,45 @@ public:
     [[nodiscard]] bool navCollapsed() const noexcept { return m_navTarget < 0.5f; }
     // Shortcuts not consumed by the focused widget. Returns true if handled.
     bool handleShortcut(const ui::KeyEvent& key);
+    void onTimer(UINT id);
+    void showToast(ui::InfoKind kind, std::wstring title, std::wstring message);
 
     // ---- sources --------------------------------------------------------------------------
-    void openSource(const std::filesystem::path& path);
+    // `then` runs after a successful open (e.g. --mount=N after a UAC relaunch).
+    void openSource(const std::filesystem::path& path, std::function<void()> then = {});
     void pickSourceFile();
     void pickSourceFolder();
-    void showAdminRequired();
+    // s4: explains why admin is needed; "Yönetici olarak yeniden başlat" relaunches with `args`.
+    void showAdminRequired(std::wstring relaunchArgs = L"--page=source");
     // Window-wide drag & drop (interaction.md): returns true when the drop would be accepted.
     bool dragEnter(const std::vector<std::filesystem::path>& files);
     void dragLeave();
     void drop(const std::vector<std::filesystem::path>& files);
+
+    // ---- images (P02) ---------------------------------------------------------------------
+    void askUnmount();
+    void askDeleteSelected();
+    void exportSelected();
+    void convertEsd();
 
     void layout() override;
     bool tick(double now) override;
 
 private:
     void updateBreadcrumb();
+    void updateImagesChrome();
+    void updateStatus();
+    void onImageFailure(ImageController::Failure failure, const Error& error, int index);
     [[nodiscard]] SourcePage* sourcePage() const;
+    [[nodiscard]] ImagesPage* imagesPage() const;
+    [[nodiscard]] bool inspectorVisible() const;
+    ui::Dialog& pushDialog(std::unique_ptr<ui::Dialog> dialog);
 
     const Localization& m_strings;
     Language m_language;
     AppState& m_state;
     Services m_services;
+    std::unique_ptr<ImageController> m_images;
     std::size_t m_subscription = 0;
     // Engine results arrive later on the UI thread; they check this before touching the shell
     // (it is rebuilt on device loss and destroyed at exit).
@@ -80,6 +110,12 @@ private:
     StatusBar* m_status = nullptr;
     PageView* m_pageView = nullptr;
     ui::Widget* m_pageBody = nullptr;
+    ImageInspector* m_inspector = nullptr;
+    ui::Toast* m_toast = nullptr;
+    // Images page header actions (kept to update enabled/text as state changes).
+    ui::Button* m_actionMount = nullptr;
+    ui::Button* m_actionExport = nullptr;
+    ui::Button* m_actionEsd = nullptr;
     PageId m_page = PageId::Source;
     bool m_opening = false;
     ui::Tween m_navExpansion{1.0f};

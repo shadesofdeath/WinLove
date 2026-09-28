@@ -53,7 +53,9 @@ public:
     void drawTextWrapped(std::wstring_view text, RectF rect, tokens::TypeStyle style, Ink ink,
                          TextAlign align = TextAlign::Leading);
     void drawIcon(icons::Icon icon, PointF topLeft, Ink ink, IconVariant variant = IconVariant::Regular16,
-                  float size = 0 /* 0 = the variant's grid size */);
+                  float size = 0 /* 0 = the variant's grid size */, float rotationDegrees = 0);
+    // 2px progress track (line.strong) with a fill (progress-skeleton-empty.md "ProgressBar").
+    void progressBar(RectF track, float fraction, Ink fill = tokens::Color::AccentBase);
 
     void pushClip(RectF rect);
     void popClip();

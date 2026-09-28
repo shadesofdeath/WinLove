@@ -16,6 +16,9 @@ public:
     InfoBar(InfoKind kind, std::wstring title, std::wstring message, std::wstring closeTooltip);
     std::function<void()> onClose;
 
+    // Optional text action left of the close button ("Mount'ları temizle"); empty label hides it.
+    void setAction(std::wstring label, std::function<void()> onInvoke);
+
     void set(InfoKind kind, std::wstring title, std::wstring message);
     [[nodiscard]] SizeF measure(SizeF available) override { return {available.width, 32.0f}; }
     void layout() override;
@@ -26,6 +29,7 @@ private:
     std::wstring m_title;
     std::wstring m_message;
     Button* m_close = nullptr;
+    Button* m_action = nullptr;
 };
 
 } // namespace wl::ui

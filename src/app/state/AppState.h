@@ -1,7 +1,9 @@
 #pragma once
-// Application state shared by the shell and pages (ARCHITECTURE §4): the engine thread, the open
-// source, recent sources. Pages observe changes through subscribe(); all mutation happens on the
-// UI thread (engine results are posted back with ui::Window::post before reaching here).
+// Application state shared by the shell and pages (ARCHITECTURE §4): the engine thread, settings,
+// the open source, the selected edition, the mounted image and the running engine operation.
+// Pages observe changes through subscribe(); all mutation happens on the UI thread (engine
+// results are posted back with ui::Window::post before reaching here).
+#include "app/state/AppSettings.h"
 #include "app/state/RecentSources.h"
 #include "core/image/Source.h"
 #include "core/tasks/TaskRunner.h"
@@ -12,18 +14,52 @@
 
 namespace wl::app {
 
+struct MountedImage {
+    std::filesystem::path mountDir;
+    std::filesystem::path imagePath; // the WIM that is mounted
+    int index = 0;
+    std::wstring edition;
+};
+
+// One engine operation at a time (TaskRunner is single-threaded anyway); drives the progress
+// strip on the Images page and the status-bar task segment.
+struct EngineOperation {
+    enum class Kind : std::uint8_t { Preparing, Mounting, Unmounting, Exporting, Deleting, Cleaning };
+    Kind kind;
+    std::wstring edition;      // "Windows 11 Pro"
+    std::filesystem::path path; // mount dir, work dir or export target (shown in the strip)
+    int index = 0;
+    double fraction = 0;       // 0..1
+    double startedMs = 0;      // ui::nowMs() at start, for the ETA
+    core::CancelToken cancel;
+};
+
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation };
     using Listener = std::function<void(Change)>;
 
-    explicit AppState(std::filesystem::path recentFile = RecentSources::defaultFile());
+    explicit AppState(std::filesystem::path recentFile = RecentSources::defaultFile(),
+                      std::filesystem::path settingsFile = AppSettings::defaultFile());
 
     [[nodiscard]] core::TaskRunner& engine() noexcept { return m_engine; }
+    [[nodiscard]] const AppSettings& settings() const noexcept { return m_settings; }
 
     [[nodiscard]] const std::optional<core::SourceInfo>& source() const noexcept { return m_source; }
-    void setSource(core::SourceInfo source); // also records it in the recent list
+    void setSource(core::SourceInfo source); // records it in the recent list; resets the selection
     void clearSource();
+
+    [[nodiscard]] std::optional<int> selectedIndex() const noexcept { return m_selected; }
+    void select(std::optional<int> index);
+    [[nodiscard]] const core::ImageInfo* selectedImage() const;
+
+    [[nodiscard]] const std::optional<MountedImage>& mounted() const noexcept { return m_mounted; }
+    void setMounted(std::optional<MountedImage> mounted);
+
+    [[nodiscard]] const std::optional<EngineOperation>& operation() const noexcept { return m_operation; }
+    void beginOperation(EngineOperation operation);
+    void updateOperation(double fraction);
+    void endOperation();
 
     [[nodiscard]] RecentSources& recent() noexcept { return m_recent; }
     void forgetRecent(const std::filesystem::path& path);
@@ -35,7 +71,11 @@ private:
     void notify(Change change);
 
     core::TaskRunner m_engine;
+    AppSettings m_settings;
     std::optional<core::SourceInfo> m_source;
+    std::optional<int> m_selected;
+    std::optional<MountedImage> m_mounted;
+    std::optional<EngineOperation> m_operation;
     RecentSources m_recent;
     std::vector<std::pair<std::size_t, Listener>> m_listeners;
     std::size_t m_nextId = 1;

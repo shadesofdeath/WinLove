@@ -12,6 +12,9 @@
 //      --recent-file=<json>   (recent-sources file to show; default %LOCALAPPDATA%\WinLove\recent.json)
 //      --dialog=admin         (open the administrator dialog, s4)
 //      --drag=valid|invalid   (Source page drop zone drag state)
+//      --mount=N              (windowed: after opening the source, mount edition N — UAC relaunch)
+//      --select=N             (select edition N on the Images page)
+//      --operation=mount|prepare --progress=0.38   (render: show the operation strip)
 #include "app/Localization.h"
 #include "app/pages/PageInfo.h"
 #include "app/shell/Shell.h"
@@ -46,6 +49,10 @@ struct LaunchOptions {
     bool adminDialog = false;
     std::optional<bool> dragValid;
     std::optional<std::filesystem::path> openPath; // positional argument
+    std::optional<int> mountIndex;
+    std::optional<int> selectIndex;
+    std::optional<std::wstring> fakeOperation; // render only
+    float fakeProgress = 0.38f;
 };
 
 [[nodiscard]] Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args);
