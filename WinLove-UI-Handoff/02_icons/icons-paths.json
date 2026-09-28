@@ -1,0 +1,1595 @@
+{
+ "source": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 4h12v9H2z",
+   "M2 7h12"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 6h18v13.5H3zM3 10.5h18"
+  ]
+ },
+ "disc-iso": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2a6 6 0 1 0 0 12a6 6 0 1 0 0-12z",
+   "M8 6.5a1.5 1.5 0 1 0 0 3a1.5 1.5 0 1 0 0-3z"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0 -18zM12 9.75a2.25 2.25 0 1 0 0 4.5a2.25 2.25 0 1 0 0 -4.5z"
+  ]
+ },
+ "image-wim": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 3h12v10H2z",
+   "M2 10l3-3 3 3 2-2 4 4"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 4.5h18v15H3zM3 15l4.5-4.5 4.5 4.5 3-3 6 6"
+  ]
+ },
+ "layers-editions": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2l6 3-6 3-6-3z",
+   "M2 8l6 3 6-3",
+   "M2 11l6 3 6-3"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3l9 4.5-9 4.5-9-4.5zM3 12l9 4.5 9-4.5M3 16.5l9 4.5 9-4.5"
+  ]
+ },
+ "mount": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 9h10v4H3z",
+   "M8 2v5",
+   "M5.5 4.5L8 7l2.5-2.5"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 13.5h15v6H4.5zM12 3v7.5M8.25 6.75L12 10.5l3.75-3.75"
+  ]
+ },
+ "unmount": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 9h10v4H3z",
+   "M8 7V2",
+   "M5.5 4.5L8 2l2.5 2.5"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 13.5h15v6H4.5zM12 10.5V3M8.25 6.75L12 3l3.75 3.75"
+  ]
+ },
+ "components-remove": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2a6 6 0 1 0 0 12a6 6 0 1 0 0-12z",
+   "M5 8h6"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0 -18zM7.5 12h9"
+  ]
+ },
+ "puzzle-features": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 3h4v2a1 1 0 0 0 2 0V3h4v4h-2a1 1 0 0 0 0 2h2v4H3z"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 4.5h6v3a1.5 1.5 0 0 0 3 0V4.5h6v6h-3a1.5 1.5 0 0 0 0 3h3v6H4.5z"
+  ]
+ },
+ "update-download": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2v8",
+   "M5 7l3 3 3-3",
+   "M3 13h10"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3v12M7.5 10.5l4.5 4.5 4.5-4.5M4.5 19.5h15"
+  ]
+ },
+ "driver-chip": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M5 5h6v6H5z",
+   "M8 2v3",
+   "M8 11v3",
+   "M2 8h3",
+   "M11 8h3"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M7.5 7.5h9v9H7.5zM12 3v4.5M12 16.5v4.5M3 12h4.5M16.5 12h4.5"
+  ]
+ },
+ "registry": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 2v12",
+   "M4 5h5",
+   "M4 9h5",
+   "M9 4v2",
+   "M9 8v2"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 3v18M6 7.5h7.5M6 13.5h7.5M13.5 6v3M13.5 12v3"
+  ]
+ },
+ "services-gear": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 5a3 3 0 1 0 0 6a3 3 0 1 0 0-6z",
+   "M8 1.5v2",
+   "M8 12.5v2",
+   "M1.5 8h2",
+   "M12.5 8h2",
+   "M3.4 3.4l1.4 1.4",
+   "M11.2 11.2l1.4 1.4",
+   "M3.4 12.6l1.4-1.4",
+   "M11.2 4.8l1.4-1.4"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 7.5a4.5 4.5 0 1 0 0 9a4.5 4.5 0 1 0 0 -9zM12 2.25v3M12 18.75v3M2.25 12h3M18.75 12h3M5.1 5.1l2.1 2.1M16.8 16.8l2.1 2.1M5.1 18.9l2.1-2.1M16.8 7.2l2.1-2.1"
+  ]
+ },
+ "tweaks-sliders": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 4h12",
+   "M2 8h12",
+   "M2 12h12",
+   "M5 2.5v3",
+   "M11 6.5v3",
+   "M7 10.5v3"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 6h18M3 12h18M3 18h18M7.5 3.75v4.5M16.5 9.75v4.5M10.5 15.75v4.5"
+  ]
+ },
+ "unattended-robot": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 5h10v8H3z",
+   "M6 8.5h1",
+   "M9 8.5h1",
+   "M8 2v3",
+   "M5 13v1",
+   "M11 13v1"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 7.5h15v12H4.5zM9 12.75h1.5M13.5 12.75h1.5M12 3v4.5M7.5 19.5v1.5M16.5 19.5v1.5"
+  ]
+ },
+ "post-setup-rocket": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 1.5c3 2 4 5.5 4 8.5H4c0-3 1-6.5 4-8.5z",
+   "M4 10l-2 3h12l-2-3",
+   "M8 10v4"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 2.25c4.5 3 6 8.25 6 12.75H6c0-4.5 1.5-9.75 6-12.75zM6 15l-3 4.5h18l-3-4.5M12 15v6"
+  ]
+ },
+ "apply-play": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 2l9 6-9 6z"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 3l13.5 9-13.5 9z"
+  ]
+ },
+ "iso-build": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M7 3a5 5 0 1 0 0 10a5 5 0 1 0 0-10z",
+   "M7 6.5a1.5 1.5 0 1 0 0 3a1.5 1.5 0 1 0 0-3z",
+   "M13 1v4",
+   "M11 3h4"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M10.5 4.5a7.5 7.5 0 1 0 0 15a7.5 7.5 0 1 0 0 -15zM10.5 9.75a2.25 2.25 0 1 0 0 4.5a2.25 2.25 0 1 0 0 -4.5zM19.5 1.5v6M16.5 4.5h6"
+  ]
+ },
+ "usb-drive": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 7h8v7H4z",
+   "M6 2h4v5H6z",
+   "M7.5 4h1",
+   "M9 4h1"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 10.5h12v10.5H6zM9 3h6v7.5H9zM11.25 6h1.5M13.5 6h1.5"
+  ]
+ },
+ "preset-bookmark": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 2h8v12l-4-3-4 3z"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 3h12v18l-6-4.5-6 4.5z"
+  ]
+ },
+ "log-terminal": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 3h12v10H2z",
+   "M4 6l2 2-2 2",
+   "M8 10h3"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 4.5h18v15H3zM6 9l3 3-3 3M12 15h4.5"
+  ]
+ },
+ "settings": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 4a4 4 0 1 0 0 8a4 4 0 1 0 0-8z",
+   "M8 6.5a1.5 1.5 0 1 0 0 3a1.5 1.5 0 1 0 0-3z",
+   "M8 1v3",
+   "M8 12v3",
+   "M1 8h3",
+   "M12 8h3"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 6a6 6 0 1 0 0 12a6 6 0 1 0 0 -12zM12 9.75a2.25 2.25 0 1 0 0 4.5a2.25 2.25 0 1 0 0 -4.5zM12 1.5v4.5M12 18v4.5M1.5 12h4.5M18 12h4.5"
+  ]
+ },
+ "about-info": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2a6 6 0 1 0 0 12a6 6 0 1 0 0-12z",
+   "M8 7v4",
+   "M8 4.5v.5"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0 -18zM12 10.5v6M12 6.75v0.75"
+  ]
+ },
+ "add": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 3v10",
+   "M3 8h10"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 4.5v15M4.5 12h15"
+  ]
+ },
+ "remove": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 8h10"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 12h15"
+  ]
+ },
+ "delete": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 4h10",
+   "M6 4V2.5h4V4",
+   "M4.5 4l.5 9.5h6l.5-9.5",
+   "M7 7v4",
+   "M9 7v4"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 6h15M9 6V3.75h6V6M6.75 6l0.75 14.25h9l0.75-14.25M10.5 10.5v6M13.5 10.5v6"
+  ]
+ },
+ "edit": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M11 2l3 3-8 8H3v-3z",
+   "M9.5 3.5l3 3"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M16.5 3l4.5 4.5-12 12H4.5v-4.5zM14.25 5.25l4.5 4.5"
+  ]
+ },
+ "duplicate": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M5 5h8v8H5z",
+   "M3 11V3h8"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M7.5 7.5h12v12H7.5zM4.5 16.5V4.5h12"
+  ]
+ },
+ "save": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 2h8l2 2v10H3z",
+   "M5 2v4h5V2",
+   "M5 9h6v5"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 3h12l3 3v15H4.5zM7.5 3v6h7.5V3M7.5 13.5h9v7.5"
+  ]
+ },
+ "open-folder": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 4h4l1.5 1.5H14V13H2z",
+   "M2 8h12"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 6h6l2.25 2.25H21V19.5H3zM3 12h18"
+  ]
+ },
+ "import": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 9v4h10V9",
+   "M8 2v8",
+   "M5 7l3 3 3-3"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 13.5v6h15V13.5M12 3v12M7.5 10.5l4.5 4.5 4.5-4.5"
+  ]
+ },
+ "export": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 9v4h10V9",
+   "M8 10V2",
+   "M5 5l3-3 3 3"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 13.5v6h15V13.5M12 15V3M7.5 7.5l4.5-4.5 4.5 4.5"
+  ]
+ },
+ "refresh": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M13 8a5 5 0 1 1-1.5-3.5",
+   "M13 2v3h-3"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M19.5 12a7.5 7.5 0 1 1 -2.25 -5.25M19.5 3v4.5h-4.5"
+  ]
+ },
+ "search": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M7 2.5a4.5 4.5 0 1 0 0 9a4.5 4.5 0 1 0 0-9z",
+   "M10.5 10.5L14 14"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M10.5 3.75a6.75 6.75 0 1 0 0 13.5a6.75 6.75 0 1 0 0 -13.5zM15.75 15.75L21 21"
+  ]
+ },
+ "filter": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 3h12l-4.5 5v5l-3-1.5V8z"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 4.5h18l-6.75 7.5v7.5l-4.5-2.25V12z"
+  ]
+ },
+ "sort": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 4h10",
+   "M5 8h6",
+   "M7 12h2"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 6h15M7.5 12h9M10.5 18h3"
+  ]
+ },
+ "more-horizontal": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3.5 8h1",
+   "M7.5 8h1",
+   "M11.5 8h1"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M5.25 12h1.5M11.25 12h1.5M17.25 12h1.5"
+  ]
+ },
+ "more-vertical": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 3.5v1",
+   "M8 7.5v1",
+   "M8 11.5v1"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 5.25v1.5M12 11.25v1.5M12 17.25v1.5"
+  ]
+ },
+ "close": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 4l8 8",
+   "M12 4l-8 8"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 6l12 12M18 6l-12 12"
+  ]
+ },
+ "check": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 8l3.5 3.5L13 5"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 12l5.25 5.25L19.5 7.5"
+  ]
+ },
+ "chevron-up": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 10l4-4 4 4"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 15l6-6 6 6"
+  ]
+ },
+ "chevron-down": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 6l4 4 4-4"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 9l6 6 6-6"
+  ]
+ },
+ "chevron-left": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M10 4L6 8l4 4"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M15 6L9 12l6 6"
+  ]
+ },
+ "chevron-right": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M6 4l4 4-4 4"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M9 6l6 6-6 6"
+  ]
+ },
+ "arrow-up": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 13V3",
+   "M4 7l4-4 4 4"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 19.5V4.5M6 10.5l6-6 6 6"
+  ]
+ },
+ "arrow-down": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 3v10",
+   "M4 9l4 4 4-4"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 4.5v15M6 13.5l6 6 6-6"
+  ]
+ },
+ "arrow-left": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M13 8H3",
+   "M7 4L3 8l4 4"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M19.5 12H4.5M10.5 6L4.5 12l6 6"
+  ]
+ },
+ "arrow-right": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 8h10",
+   "M9 4l4 4-4 4"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 12h15M13.5 6l6 6-6 6"
+  ]
+ },
+ "expand": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 5l4 4 4-4",
+   "M4 10l4 4 4-4"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 7.5l6 6 6-6M6 15l6 6 6-6"
+  ]
+ },
+ "collapse": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 7l4-4 4 4",
+   "M4 13l4-4 4 4"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 10.5l6-6 6 6M6 19.5l6-6 6 6"
+  ]
+ },
+ "pin": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M6 2h4v5l2 2v1H4V9l2-2z",
+   "M8 10v4"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M9 3h6v7.5l3 3v1.5H6V13.5l3-3zM12 15v6"
+  ]
+ },
+ "unpin": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M6 2h4v5l2 2v1H4V9l2-2z",
+   "M8 10v4",
+   "M3 3l10 10"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M9 3h6v7.5l3 3v1.5H6V13.5l3-3zM12 15v6M4.5 4.5l15 15"
+  ]
+ },
+ "undo": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 6h7a3 3 0 0 1 0 6H8",
+   "M3 6l3-3",
+   "M3 6l3 3"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 9h10.5a4.5 4.5 0 0 1 0 9H12M4.5 9l4.5-4.5M4.5 9l4.5 4.5"
+  ]
+ },
+ "redo": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M13 6H6a3 3 0 0 0 0 6h2",
+   "M13 6l-3-3",
+   "M13 6l-3 3"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M19.5 9H9a4.5 4.5 0 0 0 0 9h3M19.5 9l-4.5-4.5M19.5 9l-4.5 4.5"
+  ]
+ },
+ "copy": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M6 6h8v8H6z",
+   "M2 10V2h8"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M9 9h12v12H9zM3 15V3h12"
+  ]
+ },
+ "paste": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M5 3H3v11h10V3h-2",
+   "M6 2h4v2H6z"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M7.5 4.5H4.5v16.5h15V4.5h-3M9 3h6v3H9z"
+  ]
+ },
+ "link": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M6 10l4-4",
+   "M4.5 8.5l-1.5 1.5a2.1 2.1 0 0 0 3 3l1.5-1.5",
+   "M11.5 7.5L13 6a2.1 2.1 0 0 0-3-3L8.5 4.5"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M9 15l6-6M6.75 12.75l-2.25 2.25a3.15 3.15 0 0 0 4.5 4.5l2.25-2.25M17.25 11.25L19.5 9a3.15 3.15 0 0 0 -4.5 -4.5L12.75 6.75"
+  ]
+ },
+ "external-link": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M9 2h5v5",
+   "M14 2L7 9",
+   "M12 9v4H3V4h4"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M13.5 3h7.5v7.5M21 3L10.5 13.5M18 13.5v6H4.5V6h6"
+  ]
+ },
+ "play": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 2l9 6-9 6z"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 3l13.5 9-13.5 9z"
+  ]
+ },
+ "pause": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 3h2v10H4z",
+   "M10 3h2v10h-2z"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 4.5h3v15H6zM15 4.5h3v15h-3z"
+  ]
+ },
+ "stop": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 3h10v10H3z"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 4.5h15v15H4.5z"
+  ]
+ },
+ "restart": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 8a5 5 0 1 0 1.5-3.5",
+   "M3 2v3h3"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 12a7.5 7.5 0 1 0 2.25 -5.25M4.5 3v4.5h4.5"
+  ]
+ },
+ "download": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2v8",
+   "M5 7l3 3 3-3",
+   "M3 13h10"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3v12M7.5 10.5l4.5 4.5 4.5-4.5M4.5 19.5h15"
+  ]
+ },
+ "upload": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 10V2",
+   "M5 5l3-3 3 3",
+   "M3 13h10"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 15V3M7.5 7.5l4.5-4.5 4.5 4.5M4.5 19.5h15"
+  ]
+ },
+ "compare": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 1v14",
+   "M2 4h4v8H2z",
+   "M10 4h4v8h-4z"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 1.5v21M3 6h6v12H3zM15 6h6v12h-6z"
+  ]
+ },
+ "lock": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 7h10v7H3z",
+   "M5 7V5a3 3 0 0 1 6 0v2"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 10.5h15v10.5H4.5zM7.5 10.5V7.5a4.5 4.5 0 0 1 9 0v3"
+  ]
+ },
+ "unlock": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 7h10v7H3z",
+   "M5 7V5a3 3 0 0 1 5.5-1.5"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 10.5h15v10.5H4.5zM7.5 10.5V7.5a4.5 4.5 0 0 1 8.25 -2.25"
+  ]
+ },
+ "eye": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z",
+   "M8 6a2 2 0 1 0 0 4a2 2 0 1 0 0-4z"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M1.5 12s4.5-7.5 10.5-7.5 10.5 7.5 10.5 7.5-4.5 7.5-10.5 7.5-10.5-7.5-10.5-7.5zM12 9a3 3 0 1 0 0 6a3 3 0 1 0 0 -6z"
+  ]
+ },
+ "eye-off": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z",
+   "M8 6a2 2 0 1 0 0 4a2 2 0 1 0 0-4z",
+   "M2 2l12 12"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M1.5 12s4.5-7.5 10.5-7.5 10.5 7.5 10.5 7.5-4.5 7.5-10.5 7.5-10.5-7.5-10.5-7.5zM12 9a3 3 0 1 0 0 6a3 3 0 1 0 0 -6zM3 3l18 18"
+  ]
+ },
+ "drag-handle": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M6 3.5v1",
+   "M10 3.5v1",
+   "M6 7.5v1",
+   "M10 7.5v1",
+   "M6 11.5v1",
+   "M10 11.5v1"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M9 5.25v1.5M15 5.25v1.5M9 11.25v1.5M15 11.25v1.5M9 17.25v1.5M15 17.25v1.5"
+  ]
+ },
+ "command-palette": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 3h12v10H2z",
+   "M4.5 6.5h3",
+   "M4.5 9.5h7"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 4.5h18v15H3zM6.75 9.75h4.5M6.75 14.25h10.5"
+  ]
+ },
+ "sidebar-toggle": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 3h12v10H2z",
+   "M6 3v10"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 4.5h18v15H3zM9 4.5v15"
+  ]
+ },
+ "panel-right-toggle": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 3h12v10H2z",
+   "M10 3v10"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 4.5h18v15H3zM15 4.5v15"
+  ]
+ },
+ "density-compact": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 4h12",
+   "M2 7h12",
+   "M2 10h12",
+   "M2 13h12"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 6h18M3 10.5h18M3 15h18M3 19.5h18"
+  ]
+ },
+ "density-comfortable": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 4h12",
+   "M2 8h12",
+   "M2 12h12"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 6h18M3 12h18M3 18h18"
+  ]
+ },
+ "success-circle": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2a6 6 0 1 0 0 12a6 6 0 1 0 0-12z",
+   "M5 8l2 2 4-4"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0 -18zM7.5 12l3 3 6-6"
+  ]
+ },
+ "warning-triangle": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2l6.5 11.5h-13z",
+   "M8 6.5v3.5",
+   "M8 12v.5"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3l9.75 17.25h-19.5zM12 9.75v5.25M12 18v0.75"
+  ]
+ },
+ "error-octagon": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M5 2h6l3 3v6l-3 3H5l-3-3V5z",
+   "M8 5v3.5",
+   "M8 11v.5"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M7.5 3h9l4.5 4.5v9l-4.5 4.5H7.5l-4.5-4.5V7.5zM12 7.5v5.25M12 16.5v0.75"
+  ]
+ },
+ "info-circle": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2a6 6 0 1 0 0 12a6 6 0 1 0 0-12z",
+   "M8 7v4",
+   "M8 4.5v.5"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0 -18zM12 10.5v6M12 6.75v0.75"
+  ]
+ },
+ "question-circle": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2a6 6 0 1 0 0 12a6 6 0 1 0 0-12z",
+   "M6 6.5a2 2 0 1 1 3 1.7c-.7.4-1 .8-1 1.8",
+   "M8 11.5v.5"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0 -18zM9 9.75a3 3 0 1 1 4.5 2.55c-1.05 0.6-1.5 1.2-1.5 2.7M12 17.25v0.75"
+  ]
+ },
+ "shield-check": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2l5 2v4c0 3-2 5-5 6-3-1-5-3-5-6V4z",
+   "M5.5 8l2 2 3-3"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3l7.5 3v6c0 4.5-3 7.5-7.5 9-4.5-1.5-7.5-4.5-7.5-9V6zM8.25 12l3 3 4.5-4.5"
+  ]
+ },
+ "shield-warning": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2l5 2v4c0 3-2 5-5 6-3-1-5-3-5-6V4z",
+   "M8 6v3",
+   "M8 10.5v.5"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3l7.5 3v6c0 4.5-3 7.5-7.5 9-4.5-1.5-7.5-4.5-7.5-9V6zM12 9v4.5M12 15.75v0.75"
+  ]
+ },
+ "spinner": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 1.5v3",
+   "M12.6 3.4l-2.1 2.1",
+   "M14.5 8h-3",
+   "M12.6 12.6l-2.1-2.1",
+   "M8 14.5v-3",
+   "M3.4 12.6l2.1-2.1",
+   "M1.5 8h3",
+   "M3.4 3.4l2.1 2.1"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 2.25v4.5M18.9 5.1l-3.15 3.15M21.75 12h-4.5M18.9 18.9l-3.15-3.15M12 21.75v-4.5M5.1 18.9l3.15-3.15M2.25 12h4.5M5.1 5.1l3.15 3.15"
+  ]
+ },
+ "queue-clock": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2.5a5.5 5.5 0 1 0 0 11a5.5 5.5 0 1 0 0-11z",
+   "M8 5v3.5l2.5 1.5"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3.75a8.25 8.25 0 1 0 0 16.5a8.25 8.25 0 1 0 0 -16.5zM12 7.5v5.25l3.75 2.25"
+  ]
+ },
+ "dependency-link": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M6 10l4-4",
+   "M4.5 8.5l-1.5 1.5a2.1 2.1 0 0 0 3 3l1.5-1.5",
+   "M11.5 7.5L13 6a2.1 2.1 0 0 0-3-3L8.5 4.5"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M9 15l6-6M6.75 12.75l-2.25 2.25a3.15 3.15 0 0 0 4.5 4.5l2.25-2.25M17.25 11.25L19.5 9a3.15 3.15 0 0 0 -4.5 -4.5L12.75 6.75"
+  ]
+ },
+ "risk-low": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 12h3V8H2z"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 18h4.5V12H3z"
+  ]
+ },
+ "risk-medium": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 12h3V8H2z",
+   "M6.5 12h3V5h-3z"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 18h4.5V12H3zM9.75 18h4.5V7.5h-4.5z"
+  ]
+ },
+ "risk-high": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 12h3V8H2z",
+   "M6.5 12h3V5h-3z",
+   "M11 12h3V2h-3z"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 18h4.5V12H3zM9.75 18h4.5V7.5h-4.5zM16.5 18h4.5V3h-4.5z"
+  ]
+ },
+ "size-saved": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 12l4-4 3 3 5-6",
+   "M10 5h4v4"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 18l6-6 4.5 4.5 7.5-9M15 7.5h6v6"
+  ]
+ },
+ "windows-logo-generic": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 3h12v10H2z",
+   "M2 6h12",
+   "M4 4.5h1"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 4.5h18v15H3zM3 9h18M6 6.75h1.5"
+  ]
+ },
+ "appx-package": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 5l6-3 6 3v6l-6 3-6-3z",
+   "M2 5l6 3 6-3",
+   "M8 8v6"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 7.5l9-4.5 9 4.5v9l-9 4.5-9-4.5zM3 7.5l9 4.5 9-4.5M12 12v9"
+  ]
+ },
+ "defender-shield": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2l5 2v4c0 3-2 5-5 6-3-1-5-3-5-6V4z"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3l7.5 3v6c0 4.5-3 7.5-7.5 9-4.5-1.5-7.5-4.5-7.5-9V6z"
+  ]
+ },
+ "edge-browser-generic": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 3h12v10H2z",
+   "M2 6h12",
+   "M4 4.5h1",
+   "M6 4.5h1"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 4.5h18v15H3zM3 9h18M6 6.75h1.5M9 6.75h1.5"
+  ]
+ },
+ "telemetry-signal": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 13a11 11 0 0 1 11-11",
+   "M2 9a7 7 0 0 1 7-7",
+   "M2 5a3 3 0 0 1 3-3",
+   "M2.5 13h.5"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 19.5a16.5 16.5 0 0 1 16.5 -16.5M3 13.5a10.5 10.5 0 0 1 10.5 -10.5M3 7.5a4.5 4.5 0 0 1 4.5 -4.5M3.75 19.5h0.75"
+  ]
+ },
+ "network": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M6 2h4v4H6z",
+   "M2 10h4v4H2z",
+   "M10 10h4v4h-4z",
+   "M8 6v2",
+   "M4 10V8h8v2"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M9 3h6v6H9zM3 15h6v6H3zM15 15h6v6h-6zM12 9v3M6 15V12h12v3"
+  ]
+ },
+ "bluetooth": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 4.5l8 7-4 3V1.5l4 3-8 7"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 6.75l12 10.5-6 4.5V2.25l6 4.5-12 10.5"
+  ]
+ },
+ "printer": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 6V2h8v4",
+   "M2 6h12v6h-3v2H5v-2H2z",
+   "M5 10h6"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 9V3h12v6M3 9h18v9h-4.5v3H7.5v-3H3zM7.5 15h9"
+  ]
+ },
+ "language-globe": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2a6 6 0 1 0 0 12a6 6 0 1 0 0-12z",
+   "M2 8h12",
+   "M8 2c-2 2-2 10 0 12",
+   "M8 2c2 2 2 10 0 12"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0 -18zM3 12h18M12 3c-3 3-3 15 0 18M12 3c3 3 3 15 0 18"
+  ]
+ },
+ "keyboard": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M1 4h14v8H1z",
+   "M3.5 6.5h1",
+   "M6.5 6.5h1",
+   "M9.5 6.5h1",
+   "M12 6.5h.5",
+   "M4 9.5h8"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M1.5 6h21v12H1.5zM5.25 9.75h1.5M9.75 9.75h1.5M14.25 9.75h1.5M18 9.75h0.75M6 14.25h12"
+  ]
+ },
+ "user-account": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2a3 3 0 1 0 0 6a3 3 0 1 0 0-6z",
+   "M2 14c0-3 3-5 6-5s6 2 6 5"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3a4.5 4.5 0 1 0 0 9a4.5 4.5 0 1 0 0 -9zM3 21c0-4.5 4.5-7.5 9-7.5s9 3 9 7.5"
+  ]
+ },
+ "disk-partition": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M1 5h14v6H1z",
+   "M6 5v6",
+   "M10 5v6"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M1.5 7.5h21v9H1.5zM9 7.5v9M15 7.5v9"
+  ]
+ },
+ "tpm-chip": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 4h8v8H4z",
+   "M7 7h2v2H7z",
+   "M6 1v3",
+   "M10 1v3",
+   "M6 12v3",
+   "M10 12v3",
+   "M1 6h3",
+   "M1 10h3",
+   "M12 6h3",
+   "M12 10h3"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 6h12v12H6zM10.5 10.5h3v3H10.5zM9 1.5v4.5M15 1.5v4.5M9 18v4.5M15 18v4.5M1.5 9h4.5M1.5 15h4.5M18 9h4.5M18 15h4.5"
+  ]
+ },
+ "secure-boot": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 2l5 2v4c0 3-2 5-5 6-3-1-5-3-5-6V4z",
+   "M8 5v3",
+   "M6 6.5a2.5 2.5 0 1 0 4 0"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 3l7.5 3v6c0 4.5-3 7.5-7.5 9-4.5-1.5-7.5-4.5-7.5-9V6zM12 7.5v4.5M9 9.75a3.75 3.75 0 1 0 6 0"
+  ]
+ },
+ "dotnet-generic": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M8 1.5l5.5 3.25v6.5L8 14.5l-5.5-3.25v-6.5z",
+   "M8 5v6",
+   "M5.5 6.5l5 3",
+   "M10.5 6.5l-5 3"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M12 2.25l8.25 4.88v9.75L12 21.75l-8.25-4.87v-9.75zM12 7.5v9M8.25 9.75l7.5 4.5M15.75 9.75l-7.5 4.5"
+  ]
+ },
+ "cab-file": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 2h5l3 3v9H4z",
+   "M9 2v3h3",
+   "M6 9h4v3H6z"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 3h7.5l4.5 4.5v13.5H6zM13.5 3v4.5h4.5M9 13.5h6v4.5H9z"
+  ]
+ },
+ "msu-file": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 2h5l3 3v9H4z",
+   "M9 2v3h3",
+   "M8 7v5",
+   "M6 10l2 2 2-2"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 3h7.5l4.5 4.5v13.5H6zM13.5 3v4.5h4.5M12 10.5v7.5M9 15l3 3 3-3"
+  ]
+ },
+ "inf-file": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 2h5l3 3v9H4z",
+   "M9 2v3h3",
+   "M6.5 8v4",
+   "M9.5 8v4",
+   "M6.5 8h3"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 3h7.5l4.5 4.5v13.5H6zM13.5 3v4.5h4.5M9.75 12v6M14.25 12v6M9.75 12h4.5"
+  ]
+ },
+ "reg-file": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 2h5l3 3v9H4z",
+   "M9 2v3h3",
+   "M6 7v6",
+   "M6 9h3",
+   "M6 12h3"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 3h7.5l4.5 4.5v13.5H6zM13.5 3v4.5h4.5M9 10.5v9M9 13.5h4.5M9 18h4.5"
+  ]
+ },
+ "xml-file": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 2h5l3 3v9H4z",
+   "M9 2v3h3",
+   "M6.5 8l-1.5 2 1.5 2",
+   "M9.5 8l1.5 2-1.5 2"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 3h7.5l4.5 4.5v13.5H6zM13.5 3v4.5h4.5M9.75 12l-2.25 3 2.25 3M14.25 12l2.25 3-2.25 3"
+  ]
+ },
+ "script-file": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 2h5l3 3v9H4z",
+   "M9 2v3h3",
+   "M6 8l2 2-2 2",
+   "M9 12h2"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 3h7.5l4.5 4.5v13.5H6zM13.5 3v4.5h4.5M9 12l3 3-3 3M13.5 18h3"
+  ]
+ },
+ "folder": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M2 4h4l1.5 1.5H14V13H2z"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M3 6h6l2.25 2.25H21V19.5H3z"
+  ]
+ },
+ "file": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 2h5l3 3v9H4z",
+   "M9 2v3h3"
+  ],
+  "filledVariant": "fill+stroke evenodd",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 3h7.5l4.5 4.5v13.5H6zM13.5 3v4.5h4.5"
+  ]
+ },
+ "caption-minimize": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3 8h10"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M4.5 12h15"
+  ]
+ },
+ "caption-maximize": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3.5 3.5h9v9h-9z"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M5.25 5.25h13.5v13.5h-13.5z"
+  ]
+ },
+ "caption-restore": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M3.5 5.5h7v7h-7z",
+   "M5.5 5.5v-2h7v7h-2"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M5.25 8.25h10.5v10.5h-10.5zM8.25 8.25v-3h10.5v10.5h-3"
+  ]
+ },
+ "caption-close": {
+  "viewBox": "0 0 16 16",
+  "strokeWidth": 1.25,
+  "paths": [
+   "M4 4l8 8",
+   "M12 4l-8 8"
+  ],
+  "filledVariant": "stroke 1.75",
+  "viewBox24": "0 0 24 24",
+  "paths24": [
+   "M6 6l12 12M18 6l-12 12"
+  ]
+ }
+}
