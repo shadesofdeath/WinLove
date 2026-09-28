@@ -31,6 +31,7 @@ namespace wl::app {
 class SourcePage;
 class ImagesPage;
 class ImageInspector;
+class LogsPage;
 
 class Shell : public ui::Widget {
 public:
@@ -48,6 +49,7 @@ public:
         std::function<void(UINT id)> stopTimer;
     };
     static constexpr UINT kToastTimer = 2;
+    static constexpr UINT kLogTimer = 3; // Loglar: poll the log buffer while the page is shown
 
     Shell(const Localization& strings, Language language, AppState& state, Services services);
     ~Shell() override;
@@ -87,6 +89,7 @@ public:
     void askDeleteSelected();
     void exportSelected();
     void convertEsd();
+    void exportLog();
 
     void layout() override;
     bool tick(double now) override;
@@ -98,6 +101,7 @@ private:
     void onImageFailure(ImageController::Failure failure, const Error& error, int index);
     [[nodiscard]] SourcePage* sourcePage() const;
     [[nodiscard]] ImagesPage* imagesPage() const;
+    [[nodiscard]] LogsPage* logsPage() const;
     [[nodiscard]] bool inspectorVisible() const;
     ui::Dialog& pushDialog(std::unique_ptr<ui::Dialog> dialog);
 

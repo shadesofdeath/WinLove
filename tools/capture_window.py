@@ -9,6 +9,7 @@ Prints the window's DPI, visible bounds and the app's exit code.
 import ctypes
 import ctypes.wintypes as wt
 import subprocess
+import tempfile
 import sys
 import time
 from pathlib import Path
@@ -69,6 +70,9 @@ def main() -> int:
                str(ROOT / "build" / "x64-debug" / "bin" / "WinLove.exe"))
 
     user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # per-monitor v2: physical pixels
+    # Never touch the user's recent list: a throw-away one unless the caller passes a fixture.
+    if not any(a.startswith("--recent-file=") for a in app_args):
+        app_args = [f"--recent-file={Path(tempfile.gettempdir()) / 'WinLove-capture-recent.json'}", *app_args]
     process = subprocess.Popen([exe, "--no-elevate", *app_args])
     hwnd = 0
     for _ in range(100):

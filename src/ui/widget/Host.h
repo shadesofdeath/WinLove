@@ -35,11 +35,15 @@ public:
     void onPointer(const PointerEvent& event);
     // Returns true when the key was consumed by the tree (focus navigation or a widget).
     bool onKeyDown(const KeyEvent& key);
+    void onWheel(PointF p, float lines);
+    void onChar(wchar_t ch);
     void onTimer(UINT id);
 
     // Modal layer (dialogs, command palette): covers the window, gets a scrim, traps focus and
     // input. The widget's bounds are set to the whole window. popModal restores the old focus.
-    Widget& pushModal(std::unique_ptr<Widget> modal, Widget* initialFocus = nullptr);
+    // `scrim` false: popups (menus, dropdown lists) — same input trapping, no dimming; the popup
+    // widget covers the window and closes itself on a click outside its panel.
+    Widget& pushModal(std::unique_ptr<Widget> modal, Widget* initialFocus = nullptr, bool scrim = true);
     void popModal(Widget* modal);
     [[nodiscard]] bool hasModal() const noexcept { return !m_modals.empty(); }
 
@@ -67,6 +71,7 @@ private:
     struct Modal {
         std::unique_ptr<Widget> widget;
         Widget* previousFocus;
+        bool scrim = true;
     };
     std::vector<Modal> m_modals;
     SizeF m_size{};

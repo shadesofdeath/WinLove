@@ -4,6 +4,10 @@
 #include "ui/widget/Host.h"
 #include "ui/widget/Stack.h"
 #include "ui/widgets/Button.h"
+#include "ui/widgets/Dropdown.h"
+#include "ui/widgets/LogConsole.h"
+#include "ui/widgets/SearchBox.h"
+#include "ui/widgets/Toggle.h"
 
 #include <doctest.h>
 
@@ -195,4 +199,101 @@ TEST_CASE("Tween reaches its target and snaps under instant motion") {
     CHECK_FALSE(t.animateTo(1.0f, 140));
     CHECK(t.value() == 1.0f);
     forceInstantMotion(false);
+}
+
+namespace {
+std::unique_ptr<Widget> single(std::unique_ptr<Widget> child, RectF bounds) {
+    // A plain root that places one child at `bounds`.
+    class Root : public Widget {
+    public:
+        Root(std::unique_ptr<Widget> c, RectF r) : m_rect(r) { addChild(std::move(c)); }
+        void layout() override { children()[0]->setBounds(m_rect); }
+
+    private:
+        RectF m_rect;
+    };
+    return std::make_unique<Root>(std::move(child), bounds);
+}
+} // namespace
+
+TEST_CASE("SearchBox: typing, caret moves, word delete, select all + replace, Esc clears") {
+    auto box = std::make_unique<SearchBox>(L"Ara");
+    SearchBox* raw = box.get();
+    std::vector<std::wstring> changes;
+    raw->onChange = [&](const std::wstring& t) { changes.push_back(t); };
+    Harness h(single(std::move(box), {10, 10, 240, 24}));
+    h.down(20, 20);
+    h.up(20, 20);
+    REQUIRE(h.host->focused() == raw);
+    for (wchar_t c : std::wstring(L"dism mount")) {
+        h.host->onChar(c);
+    }
+    CHECK(raw->text() == L"dism mount");
+    h.host->onKeyDown({VK_BACK, true, false, false}); // Ctrl+Backspace: previous word
+    CHECK(raw->text() == L"dism ");
+    h.key(VK_HOME);
+    h.host->onChar(L'>');
+    CHECK(raw->text() == L">dism ");
+    h.host->onKeyDown({'A', true, false, false});
+    h.host->onChar(L'x');
+    CHECK(raw->text() == L"x");
+    h.key(VK_ESCAPE);
+    CHECK(raw->text().empty());
+    CHECK(changes.back().empty());
+}
+
+TEST_CASE("Toggle flips on click and Space and reports the new state") {
+    auto toggle = std::make_unique<Toggle>(L"Otomatik kaydır", true);
+    Toggle* raw = toggle.get();
+    std::vector<bool> states;
+    raw->onChange = [&](bool on) { states.push_back(on); };
+    Harness h(single(std::move(toggle), {10, 10, 120, 24}));
+    h.down(15, 20);
+    h.up(15, 20);
+    CHECK_FALSE(raw->isOn());
+    h.key(VK_SPACE);
+    CHECK(raw->isOn());
+    CHECK(states == std::vector<bool>{false, true});
+}
+
+TEST_CASE("Dropdown opens a popup; a pick changes the value and closes it; outside click cancels") {
+    auto dropdown = std::make_unique<Dropdown>(L"Seviye", std::vector<std::wstring>{L"A", L"B", L"C"}, 0);
+    Dropdown* raw = dropdown.get();
+    int changed = -1;
+    raw->onChange = [&](int i) { changed = i; };
+    Harness h(single(std::move(dropdown), {10, 10, 120, 24}), {400, 300});
+    h.down(20, 20);
+    h.up(20, 20);
+    REQUIRE(h.host->hasModal());
+    // Items start at panel y = 10 + 24 + 2 + 4 padding; the second item is 24px below the first.
+    h.move(40, 40 + 24 + 12);
+    h.down(40, 40 + 24 + 12);
+    CHECK_FALSE(h.host->hasModal());
+    CHECK(changed == 1);
+    CHECK(raw->selected() == 1);
+    h.down(20, 20);
+    h.up(20, 20);
+    REQUIRE(h.host->hasModal());
+    h.down(390, 290); // outside
+    CHECK_FALSE(h.host->hasModal());
+    CHECK(raw->selected() == 1);
+}
+
+TEST_CASE("LogConsole follows new lines until the user scrolls up, then counts them") {
+    auto console = std::make_unique<LogConsole>();
+    LogConsole* raw = console.get();
+    std::vector<bool> follow;
+    raw->onAutoScrollChanged = [&](bool on) { follow.push_back(on); };
+    Harness h(single(std::move(console), {0, 0, 400, 116}), {400, 200}); // 100px of rows = 5 lines
+    std::vector<LogLine> lines(20, LogLine{L"12:00:00", LogLevel::Info, L"app", L"line"});
+    raw->setLines(lines);
+    CHECK(raw->autoScroll());
+    h.host->onWheel({50, 50}, 3.0f); // up
+    CHECK_FALSE(raw->autoScroll());
+    REQUIRE(follow == std::vector<bool>{false});
+    raw->append(std::span(lines).first(2));
+    CHECK(raw->lineCount() == 22);
+    raw->scrollToEnd();
+    CHECK(raw->autoScroll());
+    CHECK(follow == std::vector<bool>{false, true});
 }

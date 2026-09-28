@@ -122,12 +122,20 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             }
         } else if (a == L"--no-elevate") {
             // handled in main.cpp (skip the startup UAC relaunch)
+        } else if (a == L"--demo-logs") {
+            options.demoLogs = true;
         } else if (a == L"--nav-collapsed") {
             options.navCollapsed = true;
         } else if (a == L"--maximized") {
             options.maximized = true;
         } else if (startsWith(a, L"--hover-at=")) {
             ok = point(L"--hover-at=", options.hoverAt);
+        } else if (startsWith(a, L"--click-at=")) {
+            std::optional<ui::PointF> p;
+            ok = point(L"--click-at=", p);
+            if (p) {
+                options.clickAt.push_back(*p);
+            }
         } else if (startsWith(a, L"--press-at=")) {
             ok = point(L"--press-at=", options.pressAt);
         } else if (startsWith(a, L"--tooltip-at=")) {
@@ -186,7 +194,13 @@ Result<void> App::initialize() {
         return std::unexpected(strings.error());
     }
     m_strings = std::move(*strings);
-    m_state = std::make_unique<AppState>(m_options.recentFile.value_or(RecentSources::defaultFile()));
+    // Headless renders (tests, AI sessions) never touch the user's recent list or settings: they
+    // get throw-away files unless a fixture is passed with --recent-file.
+    const bool render = m_options.renderTo.has_value();
+    const auto scratch = std::filesystem::temp_directory_path() / L"WinLove-render";
+    m_state = std::make_unique<AppState>(
+        m_options.recentFile.value_or(render ? scratch / L"recent.json" : RecentSources::defaultFile()),
+        render ? scratch / L"settings.json" : AppSettings::defaultFile());
     return {};
 }
 
@@ -247,6 +261,20 @@ int App::renderOffscreen() {
         return 1;
     }
     ui::forceInstantMotion(true);
+    if (m_options.demoLogs) {
+        // Screen 18 sample (render only: the lines go to this process's buffer, nowhere else).
+        log::setMinimumLevel(log::Level::Debug);
+        log::info("core", L"Oturum başladı · WinLove 0.1.0 · DISM 10.0.26100.1");
+        log::info("mount", L"Mount-Image /ImageFile:install.wim /Index:2 → C:\\WinLove\\mount");
+        log::info("appx", L"Remove-ProvisionedAppxPackage Microsoft.XboxGamingOverlay … ok");
+        log::warn("appx", L"Microsoft.OneNote bağımlılığı: Microsoft.Office.Desktop — atlanıyor");
+        log::info("pkg", L"Remove-Package Windows-Defender-Client-Package …");
+        log::info("pkg", L"↳ SmartScreen bileşenleri (3)");
+        log::error("reg", L"HKLM\\SOFTWARE\\Policies\\…\\DataCollection: erişim reddedildi (hive kilitli) — yeniden denenecek");
+        log::info("reg", L"Yeniden deneme 1/3 … ok");
+        log::info("pkg", L"Cleanup-Image /StartComponentCleanup planlandı");
+        log::debug("dism", L"dism.exe exit=0 (1188 ms)");
+    }
     buildUi({});
     if (m_options.openPath) {
         // Headless: open synchronously so the frame shows the Images page with real data.
@@ -282,6 +310,12 @@ int App::renderOffscreen() {
     if (m_options.tooltipAt) {
         pointerAt(*m_options.tooltipAt);
         m_host->onTimer(ui::Host::kTooltipTimer);
+    }
+    for (const auto& p : m_options.clickAt) {
+        pointerAt(p);
+        m_host->onPointer({ui::PointerAction::Down, p, m_host->windowZone(p)});
+        m_host->onPointer({ui::PointerAction::Up, p, m_host->windowZone(p)});
+        m_host->layout(m_options.size); // popups get their bounds from the host size
     }
     if (m_options.pressAt) {
         pointerAt(*m_options.pressAt);
@@ -331,6 +365,16 @@ int App::runWindowed() {
         paint(); // draw right away: keeps live resizing smooth
     };
     callbacks.hitTest = [this](ui::PointF p) { return m_host ? m_host->windowZone(p) : ui::HitZone::Client; };
+    callbacks.wheel = [this](ui::PointF p, float lines) {
+        if (m_host) {
+            m_host->onWheel(p, lines);
+        }
+    };
+    callbacks.character = [this](wchar_t ch) {
+        if (m_host) {
+            m_host->onChar(ch);
+        }
+    };
     callbacks.cursor = [this](ui::PointF p) { return m_host ? m_host->cursorAt(p) : ui::Cursor::Arrow; };
     callbacks.pointer = [this](const ui::PointerEvent& event) {
         if (m_host) {
@@ -353,7 +397,7 @@ int App::runWindowed() {
         }
     };
     callbacks.timer = [this](UINT id) {
-        if (id == Shell::kToastTimer) {
+        if (id == Shell::kToastTimer || id == Shell::kLogTimer) {
             if (m_shell) {
                 m_shell->onTimer(id);
             }

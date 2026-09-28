@@ -454,7 +454,16 @@
       "info": "INFO",
       "warn": "WARN",
       "error": "ERR"
-    }
+    },
+    "debugAndUp": "Hata ayıklama ve üzeri",
+    "warnAndUp": "Uyarı ve üzeri",
+    "errorsOnly": "Yalnız hatalar",
+    "autoScroll": "Otomatik kaydır",
+    "newLines": "↓ {n} yeni satır",
+    "exportTitle": "Logu dışa aktar",
+    "logFiles": "Log dosyaları",
+    "exported": "Log dışa aktarıldı",
+    "exportFailed": "Log yazılamadı"
   },
   "settings": {
     "title": "Uygulama ayarları",

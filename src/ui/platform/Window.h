@@ -48,6 +48,8 @@ struct WindowCallbacks {
     std::function<void(UINT id)> timer;
     std::function<Cursor(PointF)> cursor;        // client area only
     std::function<void()> settingsChanged;       // WM_SETTINGCHANGE (theme, animations)
+    std::function<void(PointF, float lines)> wheel; // vertical wheel, in lines (+ = up), client DIPs
+    std::function<void(wchar_t)> character;          // WM_CHAR, printable characters only
 };
 
 struct WindowAppearance {

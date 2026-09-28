@@ -6,7 +6,12 @@ namespace wl::app {
 
 AppState::AppState(std::filesystem::path recentFile, std::filesystem::path settingsFile)
     : m_settings(AppSettings::load(settingsFile)), m_recent(std::move(recentFile)) {
+    log::addSink(m_logBuffer);
     m_recent.load();
+}
+
+AppState::~AppState() {
+    log::removeSink(m_logBuffer);
 }
 
 void AppState::setSource(core::SourceInfo source) {
