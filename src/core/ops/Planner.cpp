@@ -57,8 +57,20 @@ ApplyPlan plan(const ChangeSet& changes) {
     for (const auto& op : changes.operations()) {
         result.steps.push_back({phaseOf(op.kind), op});
     }
-    // stable: keeps the user's order inside each phase
-    std::ranges::stable_sort(result.steps, {}, [](const PlanStep& s) { return static_cast<int>(s.phase); });
+    // stable: keeps the user's order inside each phase; updates go SSU → LCU → .NET → other
+    // (op.value holds the kind from UpdatePackage.h).
+    const auto updateRank = [](const Operation& op) {
+        if (op.kind != OpKind::AddPackage) {
+            return 0;
+        }
+        return op.value == L"ssu" ? 0 : op.value == L"lcu" ? 1 : op.value == L"dotnet" ? 2 : 3;
+    };
+    std::ranges::stable_sort(result.steps, [&](const PlanStep& a, const PlanStep& b) {
+        if (a.phase != b.phase) {
+            return static_cast<int>(a.phase) < static_cast<int>(b.phase);
+        }
+        return updateRank(a.operation) < updateRank(b.operation);
+    });
 
     const auto highRisk = std::ranges::count_if(result.steps, [](const PlanStep& s) { return s.operation.risk == Risk::High; });
     if (highRisk > 0) {

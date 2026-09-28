@@ -20,6 +20,8 @@ public:
 
     void setDragState(DragState state);
     void setLoading(bool loading);
+    // 56px horizontal variant (updates, drivers): 16px icon + one line of text, centred.
+    void setCompact(bool compact) noexcept { m_compact = compact; }
 
     void paint(Canvas& canvas) override;
     [[nodiscard]] Cursor cursor() const override { return Cursor::Hand; }
@@ -36,6 +38,7 @@ private:
     std::wstring m_loading;
     DragState m_drag = DragState::None;
     bool m_isLoading = false;
+    bool m_compact = false;
     Tween m_hover;
 };
 

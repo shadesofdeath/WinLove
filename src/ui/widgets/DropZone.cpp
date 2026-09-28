@@ -80,6 +80,17 @@ void DropZone::paint(Canvas& canvas) {
     }
     canvas.strokeRoundRect(b, radius, border);
 
+    if (m_compact) {
+        const std::wstring_view line = m_drag == DragState::Invalid ? titleText : (m_isLoading ? titleText : m_hint);
+        const float textWidth = std::ceil(canvas.text().measure(line, tokens::TypeStyle::Body));
+        const float total = tokens::size::icon + 8 + textWidth;
+        const float x = b.x + std::round((b.width - total) / 2);
+        canvas.drawIcon(m_drag == DragState::Invalid ? icons::Icon::ErrorOctagon : icons::Icon::Download,
+                        {x, b.y + std::round((b.height - tokens::size::icon) / 2)}, icon);
+        canvas.drawText(line, {x + tokens::size::icon + 8, b.y, textWidth + 2, b.height}, tokens::TypeStyle::Body,
+                        m_drag == DragState::None ? Ink(Color::TextSecondary) : title);
+        return;
+    }
     const float content = kIcon + kIconGap + kLine + kLineGap + kLine;
     float y = b.y + std::round((b.height - content) / 2);
     canvas.drawIcon(m_drag == DragState::Invalid ? icons::Icon::ErrorOctagon : icons::Icon::Download,

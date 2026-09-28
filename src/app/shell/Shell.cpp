@@ -12,11 +12,13 @@
 #include "app/pages/IsoPage.h"
 #include "app/pages/LogsPage.h"
 #include "app/pages/SourcePage.h"
+#include "app/pages/UpdatesPage.h"
 #include "app/pages/images/ImageInspector.h"
 #include "base/Log.h"
 #include "base/Path.h"
 #include "base/Utf8.h"
 #include "core/image/Source.h"
+#include "core/image/UpdatePackage.h"
 #include "core/image/dism/DismErrors.h"
 #include "ui/platform/FileDialog.h"
 #include "ui/widget/Host.h"
@@ -25,6 +27,7 @@
 
 #include <shellapi.h>
 
+#include <algorithm>
 #include <cmath>
 #include <format>
 #include <fstream>
@@ -189,6 +192,20 @@ IsoPage* Shell::isoPage() const {
 
 ComponentsPage* Shell::componentsPage() const {
     return m_page == PageId::Components ? dynamic_cast<ComponentsPage*>(m_pageBody) : nullptr;
+}
+
+UpdatesPage* Shell::updatesPage() const {
+    return m_page == PageId::Updates ? dynamic_cast<UpdatesPage*>(m_pageBody) : nullptr;
+}
+
+void Shell::addUpdates(const std::vector<std::filesystem::path>& files) {
+    if (files.empty()) {
+        return;
+    }
+    const std::size_t added = UpdatesPage::queuePackages(m_state, files);
+    if (added > 0) {
+        showToast(ui::InfoKind::Success, m_strings.format(Str::UpdatesAdded, {{L"n", std::to_wstring(added)}}), L"");
+    }
 }
 
 void Shell::updateComponentInspector() {
@@ -394,6 +411,7 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::Features, featureOps);
     m_nav->setBadge(PageId::Apply, static_cast<int>(changes.size()));
     m_nav->setBadge(PageId::Components, static_cast<int>(m_components->queuedCount()));
+    m_nav->setBadge(PageId::Updates, static_cast<int>(changes.count(core::ops::OpKind::AddPackage)));
     if (m_actionReset) {
         m_actionReset->setEnabled(featureOps > 0);
     }
@@ -550,6 +568,28 @@ void Shell::showPage(PageId page) {
                 }
             };
             body.onSelectionChanged = [this] { updateComponentInspector(); };
+        } else if (page == PageId::Updates) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesScanFolder), ui::icons::Icon::OpenFolder)
+                .onInvoke = [this] {
+                    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+                    if (const auto folder = ui::pickFolder(owner, m_strings.get(Str::UpdatesScanFolder))) {
+                        const auto files = core::scanUpdates(*folder);
+                        if (files.empty()) {
+                            showToast(ui::InfoKind::Warning, m_strings.get(Str::UpdatesNoneFound), folder->wstring());
+                        } else {
+                            addUpdates(files);
+                        }
+                    }
+                };
+            auto pick = [this] {
+                const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+                addUpdates(ui::pickFiles(owner, m_strings.get(Str::UpdatesPickTitle),
+                                         {{m_strings.get(Str::UpdatesFilter), L"*.msu;*.cab"}}));
+            };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesAddPackage), ui::icons::Icon::Add)
+                .onInvoke = pick;
+            m_pageBody = &m_pageView->setBody<UpdatesPage>(m_state, m_strings, m_language,
+                                                           UpdatesPage::Intents{pick, [this] { showPage(PageId::Images); }});
         } else if (page == PageId::Features) {
             m_actionReset = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::FeaturesResetChanges));
             m_actionReset->onInvoke = [this] { m_features->resetChanges(); };
@@ -805,6 +845,11 @@ void Shell::showAdminRequired(std::wstring relaunchArgs) {
 }
 
 bool Shell::dragEnter(const std::vector<std::filesystem::path>& files) {
+    if (auto* updates = updatesPage(); updates && m_state.mounted()) {
+        const bool any = std::ranges::any_of(files, [](const auto& f) { return core::isUpdateFile(f); });
+        updates->setDragState(any ? ui::DropZone::DragState::Valid : ui::DropZone::DragState::Invalid);
+        return any;
+    }
     const bool valid = !files.empty() && isSourceCandidate(files.front());
     if (auto* page = sourcePage()) {
         page->setDragState(valid ? ui::DropZone::DragState::Valid : ui::DropZone::DragState::Invalid);
@@ -813,12 +858,20 @@ bool Shell::dragEnter(const std::vector<std::filesystem::path>& files) {
 }
 
 void Shell::dragLeave() {
+    if (auto* updates = updatesPage()) {
+        updates->setDragState(ui::DropZone::DragState::None);
+    }
     if (auto* page = sourcePage()) {
         page->setDragState(ui::DropZone::DragState::None);
     }
 }
 
 void Shell::drop(const std::vector<std::filesystem::path>& files) {
+    if (auto* updates = updatesPage(); updates && m_state.mounted()) {
+        updates->setDragState(ui::DropZone::DragState::None);
+        addUpdates(files);
+        return;
+    }
     // Several files may be dropped; the first source-type one opens (others are ignored for now).
     for (const auto& file : files) {
         if (isSourceCandidate(file)) {

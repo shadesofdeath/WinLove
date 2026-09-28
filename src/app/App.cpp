@@ -1,5 +1,7 @@
 #include "app/App.h"
 
+#include "app/pages/UpdatesPage.h"
+
 #include "base/Log.h"
 
 #include "app/Format.h"
@@ -124,6 +126,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             // handled in main.cpp (skip the startup UAC relaunch)
         } else if (startsWith(a, L"--demo-apply=")) {
             options.demoApply = std::wstring(value(L"--demo-apply="));
+        } else if (a == L"--demo-updates") {
+            options.demoUpdates = true;
         } else if (a == L"--demo-components") {
             options.demoComponents = true;
         } else if (a == L"--demo-features") {
@@ -391,6 +395,16 @@ int App::renderOffscreen() {
             }
             m_shell->showPage(m_options.page.value_or(PageId::Images));
         }
+    }
+    if (m_options.demoUpdates && m_state->source()) {
+        const int index = m_state->source()->install.images.back().index;
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", index,
+                                         m_state->source()->install.images.back().name});
+        UpdatesPage::queuePackages(*m_state, {LR"(C:\Updates\windows11.0-kb5044284-x64_8d2c.msu)",
+                                              LR"(C:\Updates\windows11.0-kb5043080-x64_ssu_7e8f.msu)",
+                                              LR"(C:\Updates\windows11.0-kb5044030-x64-ndp481_a1b2.msu)",
+                                              LR"(C:\Updates\windows10.0-kb5041585-x64.msu)"});
+        m_shell->showPage(PageId::Updates);
     }
     if (m_options.fakeOperation && m_state->source()) {
         EngineOperation op{*m_options.fakeOperation == L"prepare" ? EngineOperation::Kind::Preparing

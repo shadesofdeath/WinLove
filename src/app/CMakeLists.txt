@@ -25,6 +25,7 @@ add_library(wl_app STATIC
     pages/images/OperationStrip.cpp
     pages/PageInfo.cpp
     pages/SourcePage.cpp
+    pages/UpdatesPage.cpp
     pages/source/RecentList.cpp
     shell/NavRail.cpp
     shell/PageView.cpp

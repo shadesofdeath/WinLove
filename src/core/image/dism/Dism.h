@@ -127,6 +127,8 @@ public:
     [[nodiscard]] Result<void> removeCapability(const std::wstring& name, const TaskContext& task);
     // DismRemoveProvisionedAppxPackage: new users no longer get the app (no progress / cancel in the API).
     [[nodiscard]] Result<void> removeAppx(const std::wstring& packageName);
+    // DismAddPackage: .msu / .cab (servicing stack, cumulative, .NET, language packs…).
+    [[nodiscard]] Result<void> addPackage(const std::filesystem::path& package, const TaskContext& task);
 
 private:
     friend class Dism;

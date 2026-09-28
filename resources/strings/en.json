@@ -290,7 +290,22 @@
     "order": "Order",
     "package": "Package",
     "compatible": "Compatible",
-    "incompatible": "Version mismatch ({ver})"
+    "incompatible": "Version mismatch ({ver})",
+    "type": "Type",
+    "kb": "KB",
+    "noMountTitle": "No image mounted",
+    "noMountBody": "Mount an edition on the Images page to add updates.",
+    "kindSsu": "SSU",
+    "kindLcu": "LCU",
+    "kindDotnet": ".NET",
+    "kindOther": "Other",
+    "archMismatch": "Architecture mismatch ({arch})",
+    "unknown": "Not checkable from the file name",
+    "emptyList": "No packages yet — drop .msu / .cab files or use Add package.",
+    "added": "{n} packages added to the queue",
+    "noneFound": "No .msu / .cab found in the folder",
+    "pickTitle": "Choose update packages",
+    "filter": "Update packages"
   },
   "drivers": {
     "title": "Drivers",

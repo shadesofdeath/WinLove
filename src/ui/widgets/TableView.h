@@ -37,6 +37,7 @@ public:
     std::function<void(int row)> onSelect;
     std::function<void(int row, int column, PointF p)> onCellClick; // single click; p = press point
     std::function<void(int row)> onActivate;              // Enter / double click / Space
+    std::function<bool(const KeyEvent&)> onKey;           // runs first (e.g. Delete removes a row)
 
     void setRowCount(int count); // keeps the selection when still in range
     [[nodiscard]] int rowCount() const noexcept { return m_count; }

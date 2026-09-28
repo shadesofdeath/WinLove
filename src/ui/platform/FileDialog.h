@@ -19,6 +19,9 @@ struct FileFilter {
 [[nodiscard]] std::optional<std::filesystem::path> pickFile(HWND owner, const std::wstring& title,
                                                             const std::vector<FileFilter>& filters);
 [[nodiscard]] std::optional<std::filesystem::path> pickFolder(HWND owner, const std::wstring& title);
+// Several files at once (empty = cancelled).
+[[nodiscard]] std::vector<std::filesystem::path> pickFiles(HWND owner, const std::wstring& title,
+                                                           const std::vector<FileFilter>& filters);
 // Save As: `defaultName` prefilled, `extension` ("wim") appended when the user types none.
 [[nodiscard]] std::optional<std::filesystem::path> pickSaveFile(HWND owner, const std::wstring& title,
                                                                 const std::vector<FileFilter>& filters,

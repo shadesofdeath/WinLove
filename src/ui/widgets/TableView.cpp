@@ -175,6 +175,9 @@ void TableView::onDoubleClick() {
 }
 
 bool TableView::onKeyDown(const KeyEvent& key) {
+    if (onKey && onKey(key)) {
+        return true;
+    }
     if (m_count == 0) {
         return false;
     }
