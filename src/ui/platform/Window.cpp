@@ -124,6 +124,14 @@ void Window::close() {
     PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
 }
 
+void Window::setTimer(UINT id, UINT ms) {
+    SetTimer(m_hwnd, id, ms, nullptr);
+}
+
+void Window::stopTimer(UINT id) {
+    KillTimer(m_hwnd, id);
+}
+
 void Window::setFrameColors(bool dark, COLORREF border) {
     const BOOL darkMode = dark ? TRUE : FALSE;
     DwmSetWindowAttribute(m_hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
@@ -332,6 +340,29 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
             m_callbacks.keyDown({static_cast<UINT>(wParam), down(VK_CONTROL), down(VK_SHIFT), down(VK_MENU)});
         }
         return 0;
+    case WM_TIMER:
+        if (m_callbacks.timer) {
+            m_callbacks.timer(static_cast<UINT>(wParam));
+        }
+        return 0;
+    case WM_SETCURSOR:
+        if (LOWORD(lParam) == HTCLIENT && m_callbacks.cursor) {
+            POINT screen{};
+            GetCursorPos(&screen);
+            const Cursor cursor = m_callbacks.cursor(toClientDips(screen));
+            const wchar_t* id = cursor == Cursor::Hand     ? IDC_HAND
+                                : cursor == Cursor::SizeWE ? IDC_SIZEWE
+                                : cursor == Cursor::IBeam  ? IDC_IBEAM
+                                                           : IDC_ARROW;
+            SetCursor(LoadCursorW(nullptr, id));
+            return TRUE;
+        }
+        break;
+    case WM_SETTINGCHANGE:
+        if (m_callbacks.settingsChanged) {
+            m_callbacks.settingsChanged();
+        }
+        break;
     case WM_DESTROY:
         if (m_background) {
             DeleteObject(m_background);

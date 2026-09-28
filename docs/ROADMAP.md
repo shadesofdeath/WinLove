@@ -18,11 +18,11 @@ Durum simgeleri: ⬜ başlamadı · 🟨 sürüyor · ✅ bitti (kullanıcı ona
 | 1.1 | Window: custom titlebar, caption butonları, Snap Layouts, DPI v2, min boyut | ✅ (Snap Layouts hover'ı kullanıcı elle doğrulamalı) |
 | 1.2 | Render: D3D11/DXGI/D2D (flip swapchain), WARP yedeği, device lost, boşta %0 CPU (ölçüldü). DComp ve dirty-rect → 1.4 (D-011) | ✅ |
 | 1.3 | Canvas (piksel hizalı 1px), Palette/kontrast, Text (gömülü fontlar, tipografik aile), Icons (SVG path → D2D, 116 ikon) | ✅ |
-| 1.4 | Widget ağacı, layout, hit-test, focus, klavye, animasyon saati | ⬜ |
+| 1.4 | `ui/widget`: Widget ağacı, Host (hover/press/capture/tıklama, Tab + roving focus, klavye odak halkası, tooltip), `Stack` yerleşimi, `Tween` animasyon (motion token'ları, hareketi azalt). DComp/dirty-rect hâlâ D-011 | ✅ |
 | 1.5 | `--render=x.png` offscreen render, `tools/compare_design.py`, `tools/capture_window.py` (gerçek pencere). Sayfa seçimi (`--page=`) 1.7 ile gelecek | ✅ |
-| 1.6 | Temel widget'lar: Button, IconButton, Tooltip, Badge, Splitter, ScrollBar, Text | ⬜ |
-| 1.7 | Shell: titlebar + nav (rozet, daralma, Ctrl+B) + içerik + inspector + statusbar; tema/dil değiştirme; boş sayfalar | ⬜ |
-| 1.8 | Dev galeri sayfası (widget'ların tüm state'leri) | ⬜ |
+| 1.6 | `ui/widgets`: Button (4 tür, ikonlu, yalnız ikon), Label, Kbd, Splitter, EmptyState; tooltip Host'ta. **ScrollBar/ScrollView ilk kaydırma gereken sayfaya (P01/P02) ertelendi** | ✅ |
+| 1.7 | `app/shell`: TitleBar (widget'lar + breadcrumb), NavRail (6 grup, rozet, daralma animasyonu, <1200'de otomatik daralma, roving focus, tooltip), StatusBar, PageView + sayfa kaydı (`pages/PageInfo`), yer tutucu sayfalar. Kısayollar: Ctrl+B, Ctrl+1…9, Ctrl+Shift+T/G, Ctrl+,. **Inspector paneli ilk kullanan sayfaya (P02), dil değiştirme P16'ya** | ✅ |
+| 1.8 | Galeri sayfası (`--page=gallery`, Ctrl+Shift+G): tüm butonlar × rest/hover/pressed/disabled, Kbd, tipografi, Splitter, EmptyState | ✅ |
 
 ## Faz 2 — Motor temeli
 | # | İş | Durum |

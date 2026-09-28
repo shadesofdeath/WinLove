@@ -1,13 +1,13 @@
 #include "app/shell/TitleBar.h"
 
-#include <array>
+#include "ui/widget/Host.h"
+#include "ui/widgets/Kbd.h"
+
 #include <cmath>
-#include <string_view>
 
 namespace wl::app {
 
 using ui::HitZone;
-using ui::PointF;
 using ui::RectF;
 using ui::tokens::Color;
 using ui::tokens::TypeStyle;
@@ -21,143 +21,126 @@ constexpr float kBrandPadding = 10.0f;
 constexpr float kPaletteWidth = 280.0f;
 constexpr float kPaletteHeight = 20.0f;
 constexpr float kPaletteInset = 6.0f;
-constexpr float kGlyph = 10.0f; // caption glyph box (d2d-rendering-guide.md: 10px, offset 18,11)
-constexpr float kKbdHeight = 14.0f;
-constexpr float kKbdPadding = 3.0f;
+constexpr float kSeparatorGap = 12.0f;
+constexpr float kGlyph = 10.0f; // caption glyph box (d2d-rendering-guide.md)
+
+bool isActivationKey(const ui::KeyEvent& key) {
+    return key.virtualKey == VK_SPACE || key.virtualKey == VK_RETURN;
+}
 
 } // namespace
 
-void TitleBar::layout(float width) {
-    m_width = width;
-    const float button = size::captionButton;
-    m_close = {width - button, 0, button, size::titleBar};
-    m_maximize = {m_close.x - button, 0, button, size::titleBar};
-    m_minimize = {m_maximize.x - button, 0, button, size::titleBar};
-    m_palette = {std::round((width - kPaletteWidth) / 2), (size::titleBar - kPaletteHeight) / 2, kPaletteWidth,
-                 kPaletteHeight};
+// ---- PaletteTrigger ----------------------------------------------------------------------------
+
+PaletteTrigger::PaletteTrigger(std::wstring hint, std::vector<std::wstring> keys)
+    : m_hint(std::move(hint)), m_keys(std::move(keys)) {
+    setFocusable(true);
+    setAccessible(ui::AccessRole::Button, m_hint);
 }
 
-HitZone TitleBar::hitTest(PointF p) const {
-    if (p.y >= size::titleBar) {
-        return HitZone::Client;
+void PaletteTrigger::paint(ui::Canvas& canvas) {
+    const RectF b = bounds();
+    canvas.fillRoundRect(b, ui::tokens::radius::r2, Color::BgBase);
+    canvas.strokeRoundRect(b, ui::tokens::radius::r2, hovered() ? Color::TextTertiary : Color::LineStrong);
+    canvas.drawIcon(ui::icons::Icon::Search, {b.x + kPaletteInset, b.y + std::round((b.height - size::icon) / 2)},
+                    Color::TextTertiary);
+    const float keysLeft = ui::Kbd::paintKeys(canvas, m_keys, b.right() - kPaletteInset, b.y + b.height / 2);
+    const float labelX = b.x + kPaletteInset + size::icon + kPaletteInset;
+    canvas.drawText(m_hint, {labelX, b.y, keysLeft - labelX - kPaletteInset, b.height}, TypeStyle::Caption,
+                    Color::TextTertiary);
+}
+
+void PaletteTrigger::onClick() {
+    if (onInvoke) {
+        onInvoke();
     }
-    if (m_close.contains(p)) return HitZone::CloseButton;
-    if (m_maximize.contains(p)) return HitZone::MaximizeButton;
-    if (m_minimize.contains(p)) return HitZone::MinimizeButton;
-    if (m_palette.contains(p)) return HitZone::Client;
-    return HitZone::Caption; // everything else drags the window
 }
 
-TitleBar::Part TitleBar::partAt(PointF p, HitZone zone) const {
-    switch (zone) {
-    case HitZone::MinimizeButton: return Part::Minimize;
-    case HitZone::MaximizeButton: return Part::Maximize;
-    case HitZone::CloseButton: return Part::Close;
-    case HitZone::Caption: return Part::None;
-    case HitZone::Client: break;
+bool PaletteTrigger::onKeyDown(const ui::KeyEvent& key) {
+    if (isActivationKey(key)) {
+        onClick();
+        return true;
     }
-    return m_palette.contains(p) ? Part::Palette : Part::None;
+    return false;
 }
 
-bool TitleBar::onPointer(const ui::PointerEvent& event, Action& action) {
-    action = Action::None;
-    const Part before = m_hovered;
-    const Part pressedBefore = m_pressed;
-    const Part part = event.action == ui::PointerAction::Leave ? Part::None : partAt(event.position, event.zone);
+// ---- CaptionButton -----------------------------------------------------------------------------
 
-    switch (event.action) {
-    case ui::PointerAction::Move:
-        m_hovered = part;
-        break;
-    case ui::PointerAction::Leave:
-        m_hovered = Part::None;
-        m_pressed = Part::None;
-        break;
-    case ui::PointerAction::Down:
-        m_hovered = part;
-        m_pressed = part;
-        break;
-    case ui::PointerAction::Up:
-        if (m_pressed != Part::None && m_pressed == part) {
-            switch (part) {
-            case Part::Palette: action = Action::OpenPalette; break;
-            case Part::Minimize: action = Action::Minimize; break;
-            case Part::Maximize: action = Action::ToggleMaximize; break;
-            case Part::Close: action = Action::Close; break;
-            case Part::None: break;
-            }
+CaptionButton::CaptionButton(Kind kind) : m_kind(kind) {
+    setFocusable(true);
+}
+
+void CaptionButton::setMaximized(bool maximized) {
+    m_maximized = maximized;
+    invalidate();
+}
+
+void CaptionButton::setWindowActive(bool active) {
+    m_windowActive = active;
+    invalidate();
+}
+
+HitZone CaptionButton::windowZone() const {
+    switch (m_kind) {
+    case Kind::Minimize: return HitZone::MinimizeButton;
+    case Kind::Maximize: return HitZone::MaximizeButton;
+    case Kind::Close: return HitZone::CloseButton;
+    }
+    return HitZone::Client;
+}
+
+void CaptionButton::onHoverChanged(bool hovered) {
+    if (m_hover.animateTo(hovered ? 1.0f : 0.0f, ui::tokens::motion::fastMs)) {
+        animate();
+    }
+    invalidate();
+}
+
+bool CaptionButton::tick(double now) {
+    const bool running = m_hover.tick(now);
+    invalidate();
+    return running;
+}
+
+void CaptionButton::onClick() {
+    if (onInvoke) {
+        onInvoke();
+    }
+}
+
+bool CaptionButton::onKeyDown(const ui::KeyEvent& key) {
+    if (isActivationKey(key)) {
+        onClick();
+        return true;
+    }
+    return false;
+}
+
+void CaptionButton::paint(ui::Canvas& canvas) {
+    const RectF b = bounds();
+    const float h = hovered() && !m_hover.running() ? 1.0f : m_hover.value();
+    const Color rest = m_windowActive ? Color::TextSecondary : Color::TextTertiary;
+    ui::Ink glyph = rest;
+    if (m_kind == Kind::Close) {
+        if (h > 0) {
+            canvas.fillRect(b, ui::Ink(Color::StatusError, Color::StatusError, 0, pressed() ? 0.85f * h : h));
+            glyph = ui::Ink(rest, ui::bestContrast(canvas.theme(), Color::StatusError, Color::TextPrimary,
+                                                   Color::TextOnAccent), h);
         }
-        m_pressed = Part::None;
-        m_hovered = part;
-        break;
-    }
-    return m_hovered != before || m_pressed != pressedBefore;
-}
-
-void TitleBar::paint(ui::Canvas& canvas) const {
-    canvas.fillRect({0, 0, m_width, size::titleBar}, Color::BgPanel);
-    canvas.hairlineH(0, size::titleBar - 1.0f / canvas.scale(), m_width, Color::LineSubtle);
-
-    // Brand: mark 16 (accent) + 8 gap + app name (bodyStrong). Inactive window: tertiary.
-    const Color ink = m_active ? Color::TextPrimary : Color::TextTertiary;
-    const float markY = (size::titleBar - size::icon) / 2;
-    canvas.drawIcon(ui::icons::Icon::BrandMark, {kBrandPadding, markY}, m_active ? Color::AccentBase : Color::TextTertiary);
-    const float nameX = kBrandPadding + size::icon + spacing::s4;
-    canvas.drawText(m_labels.appName, {nameX, 0, 120, size::titleBar}, TypeStyle::BodyStrong, ink);
-
-    paintPalette(canvas);
-    paintCaptionButton(canvas, Part::Minimize, m_minimize);
-    paintCaptionButton(canvas, Part::Maximize, m_maximize);
-    paintCaptionButton(canvas, Part::Close, m_close);
-}
-
-void TitleBar::paintPalette(ui::Canvas& canvas) const {
-    const bool hovered = m_hovered == Part::Palette;
-    canvas.fillRoundRect(m_palette, ui::tokens::radius::r2, Color::BgBase);
-    canvas.strokeRoundRect(m_palette, ui::tokens::radius::r2, hovered ? Color::TextTertiary : Color::LineStrong);
-
-    const float iconY = m_palette.y + (m_palette.height - size::icon) / 2;
-    canvas.drawIcon(ui::icons::Icon::Search, {m_palette.x + kPaletteInset, iconY}, Color::TextTertiary);
-
-    // Keycaps "Ctrl" "K", right-aligned, 6 gap (kbd: mono 10/14, 1px line.strong, r2, padding 0 3).
-    const auto& text = canvas.text();
-    float right = m_palette.right() - kPaletteInset;
-    const float kbdY = m_palette.y + (m_palette.height - kKbdHeight) / 2;
-    const std::array<std::wstring_view, 2> keys{L"K", m_labels.ctrlKey}; // laid out right to left
-    for (const auto key : keys) {
-        const float w = std::ceil(text.measure(key, TypeStyle::Kbd)) + 2 * kKbdPadding + 2;
-        const RectF cap{right - w, kbdY, w, kKbdHeight};
-        canvas.strokeRoundRect(cap, ui::tokens::radius::r1, Color::LineStrong);
-        canvas.drawText(key, cap, TypeStyle::Kbd, Color::TextTertiary, ui::TextAlign::Center);
-        right = cap.x - kPaletteInset / 2;
-    }
-
-    const float labelX = m_palette.x + kPaletteInset + size::icon + kPaletteInset;
-    canvas.drawText(m_labels.paletteHint, {labelX, m_palette.y, right - labelX - kPaletteInset, m_palette.height},
-                    TypeStyle::Caption, Color::TextTertiary);
-}
-
-void TitleBar::paintCaptionButton(ui::Canvas& canvas, Part part, RectF rect) const {
-    const bool hovered = m_hovered == part;
-    const bool pressed = m_pressed == part && hovered;
-    Color glyph = m_active ? Color::TextSecondary : Color::TextTertiary;
-    if (part == Part::Close && hovered) {
-        canvas.fillRect(rect, Color::StatusError, pressed ? 0.85f : 1.0f);
-        glyph = ui::bestContrast(canvas.theme(), Color::StatusError, Color::TextPrimary, Color::TextOnAccent);
-    } else if (hovered) {
-        canvas.fillRect(rect, pressed ? Color::BgPressed : Color::BgRaised);
-        glyph = Color::TextPrimary;
+    } else if (h > 0) {
+        canvas.fillRect(b, pressed() ? ui::Ink(Color::BgPressed) : ui::Ink(Color::BgRaised, Color::BgRaised, 0, h));
+        glyph = ui::Ink(rest, Color::TextPrimary, h);
     }
 
     // 10×10 glyph box centered in the 46×32 button, 1px strokes.
-    const float gx = rect.x + std::round((rect.width - kGlyph) / 2);
-    const float gy = rect.y + std::round((rect.height - kGlyph) / 2);
+    const float gx = b.x + std::round((b.width - kGlyph) / 2);
+    const float gy = b.y + std::round((b.height - kGlyph) / 2);
     const float px = 1.0f / canvas.scale();
-    switch (part) {
-    case Part::Minimize:
+    switch (m_kind) {
+    case Kind::Minimize:
         canvas.hairlineH(gx, gy + kGlyph / 2, kGlyph, glyph);
         break;
-    case Part::Maximize:
+    case Kind::Maximize:
         if (m_maximized) {
             // Restore: front square plus the top/right edges of the square behind it.
             constexpr float s = 8.0f;
@@ -168,13 +151,75 @@ void TitleBar::paintCaptionButton(ui::Canvas& canvas, Part part, RectF rect) con
             canvas.strokeRoundRect({gx, gy, kGlyph, kGlyph}, 0, glyph);
         }
         break;
-    case Part::Close:
+    case Kind::Close:
         canvas.line({gx, gy}, {gx + kGlyph, gy + kGlyph}, glyph);
         canvas.line({gx + kGlyph, gy}, {gx, gy + kGlyph}, glyph);
         break;
-    case Part::None:
-    case Part::Palette:
-        break;
+    }
+}
+
+// ---- TitleBar ----------------------------------------------------------------------------------
+
+TitleBar::TitleBar(const Labels& labels) : m_appName(labels.appName) {
+    m_palette = &add<PaletteTrigger>(labels.paletteHint, std::vector<std::wstring>{labels.ctrlKey, L"K"});
+    m_minimize = &add<CaptionButton>(CaptionButton::Kind::Minimize);
+    m_maximize = &add<CaptionButton>(CaptionButton::Kind::Maximize);
+    m_close = &add<CaptionButton>(CaptionButton::Kind::Close);
+    // No tooltip on maximize: Windows 11 shows the Snap Layouts flyout there.
+    m_minimize->setTooltip(labels.minimize);
+    m_close->setTooltip(labels.close);
+    m_minimize->setAccessible(ui::AccessRole::Button, labels.minimize);
+    m_close->setAccessible(ui::AccessRole::Button, labels.close);
+}
+
+void TitleBar::setBreadcrumb(std::wstring text) {
+    m_breadcrumb = std::move(text);
+    invalidate();
+}
+
+void TitleBar::setWindowActive(bool active) {
+    m_windowActive = active;
+    for (auto* button : {m_minimize, m_maximize, m_close}) {
+        button->setWindowActive(active);
+    }
+    invalidate();
+}
+
+void TitleBar::setMaximized(bool maximized) {
+    m_maximize->setMaximized(maximized);
+}
+
+void TitleBar::layout() {
+    const RectF b = bounds();
+    const float button = size::captionButton;
+    m_close->setBounds({b.right() - button, b.y, button, b.height});
+    m_maximize->setBounds({m_close->bounds().x - button, b.y, button, b.height});
+    m_minimize->setBounds({m_maximize->bounds().x - button, b.y, button, b.height});
+    m_palette->setBounds({b.x + std::round((b.width - kPaletteWidth) / 2), b.y + (b.height - kPaletteHeight) / 2,
+                          kPaletteWidth, kPaletteHeight});
+}
+
+void TitleBar::paint(ui::Canvas& canvas) {
+    const RectF b = bounds();
+    canvas.fillRect(b, Color::BgPanel);
+    canvas.hairlineH(b.x, b.bottom() - 1.0f / canvas.scale(), b.width, Color::LineSubtle);
+
+    // Brand: mark 16 (accent) + 8 gap + app name (bodyStrong). Inactive window: tertiary.
+    const Color ink = m_windowActive ? Color::TextPrimary : Color::TextTertiary;
+    canvas.drawIcon(ui::icons::Icon::BrandMark, {b.x + kBrandPadding, b.y + (b.height - size::icon) / 2},
+                    m_windowActive ? Color::AccentBase : Color::TextTertiary);
+    const float nameX = b.x + kBrandPadding + size::icon + spacing::s4;
+    const float nameWidth = std::ceil(canvas.text().measure(m_appName, TypeStyle::BodyStrong));
+    canvas.drawText(m_appName, {nameX, b.y, nameWidth + 1, b.height}, TypeStyle::BodyStrong, ink);
+
+    // Breadcrumb after a 1×12 separator (line.strong).
+    if (!m_breadcrumb.empty()) {
+        const float sepX = nameX + nameWidth + kSeparatorGap;
+        canvas.hairlineV(sepX, b.y + (b.height - 12) / 2, 12, Color::LineStrong);
+        const float crumbX = sepX + kSeparatorGap;
+        const float maxRight = m_palette->bounds().x - kSeparatorGap;
+        canvas.drawText(m_breadcrumb, {crumbX, b.y, std::max(maxRight - crumbX, 0.0f), b.height}, TypeStyle::Body,
+                        m_windowActive ? Color::TextPrimary : Color::TextTertiary);
     }
 }
 

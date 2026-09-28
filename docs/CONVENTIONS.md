@@ -33,7 +33,9 @@
 - Renk/ölçü/font asla literal değil: `theme().color(Token::BgBase)`, `metrics().controlHeight`.
 - Metin asla literal değil: `tr("page.features.title")`.
 - Widget `paint()` içinde bellek ayırma ve layout hesaplama yok (önbellekten).
-- Yeni widget = galeri sayfasına eklenir.
+- Yeni widget = galeri sayfasına (`app/pages/GalleryPage.cpp`) eklenir. Galeri geliştirici aracıdır; satır etiketleri literal olabilir (tek istisna).
+- Widget kuralları: renk geçişleri `Tween` + `animate()`; `tick()` dönüşü "hâlâ çalışıyor mu". Etkileşimli olmayan dekor çocuklar `setHitTestVisible(false)`. Liste/menü içi gezinme roving focus: öğeler `setTabStop(false)`, yalnızca aktif öğe Tab durağı.
+- Durum doğrulaması: yeni etkileşim için `--render` + `--hover-at/--press-at/--tooltip-at/--tab` ile PNG al; mantığı `tests/ui/WidgetTests.cpp` benzeri testle sabitle.
 
 ## Yorumlar
 Kodun *neden*'ini açıkla, *ne*'sini değil. Windows API tuhaflıkları için kısa yorum + `ENGINE.md` saha notu bağlantısı.

@@ -18,6 +18,8 @@ enum class HitZone : std::uint8_t { Client, Caption, MinimizeButton, MaximizeBut
 
 enum class PointerAction : std::uint8_t { Move, Leave, Down, Up };
 
+enum class Cursor : std::uint8_t { Arrow, Hand, SizeWE, IBeam };
+
 struct PointerEvent {
     PointerAction action;
     PointF position; // client DIPs
@@ -39,6 +41,9 @@ struct WindowCallbacks {
     std::function<void(bool active)> activated;
     std::function<void(bool maximized)> maximizedChanged;
     std::function<void(const KeyEvent&)> keyDown;
+    std::function<void(UINT id)> timer;
+    std::function<Cursor(PointF)> cursor;        // client area only
+    std::function<void()> settingsChanged;       // WM_SETTINGCHANGE (theme, animations)
 };
 
 struct WindowAppearance {
@@ -64,6 +69,8 @@ public:
     void minimize();
     void toggleMaximize();
     void close();
+    void setTimer(UINT id, UINT ms);
+    void stopTimer(UINT id);
     // Re-apply DWM frame colors after a theme change.
     void setFrameColors(bool dark, COLORREF border);
 

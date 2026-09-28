@@ -48,12 +48,15 @@ WinLover/
 ./build.ps1 -Test              # unit testler
 ./build.ps1 -Test -Integration # gerçek imaj testleri (yönetici PowerShell gerekir)
 ./build.ps1 -Gen               # yalnızca üreticiler (Tokens.g.h, Icons.g.h, StringKeys.g.h)
+./build.ps1 -Target WinLove    # tek hedef (hızlı döngü)
 python tools/build_brand.py    # handoff'tan logo/ico yeniden üret (nadiren)
-build/x64-debug/bin/WinLove.exe --render=shot.png --theme=dark|light|hc --scale=1.5 --lang=en --hover=close   # pencere açmadan PNG
+build/x64-debug/bin/WinLove.exe --render=shot.png --page=images --theme=light --scale=1.5 --lang=en   # pencere açmadan PNG
+   #   durum simülasyonu: --hover-at=x,y --press-at=x,y --tooltip-at=x,y --tab=N --nav-collapsed --maximized  (tam liste: src/app/App.h)
 python tools/compare_design.py 01-welcome-source --theme=dark --crop=0,0,1440,40   # tasarım | WinLove | fark → build/visual/
 python tools/capture_window.py out.png [--maximized] [-- --theme=light]              # gerçek pencereyi aç, YALNIZCA onu yakala, kapat
 build/x64-debug/bin/wlcli.exe help                                                         # motor testi (komutlar Faz 2'de)
 ```
+> Betik çalıştırma kapalıysa: `powershell -ExecutionPolicy Bypass -File build.ps1 -Test` (Claude Code'da PowerShell aracı sorunsuz çalıştırır).
 > Görsel doğrulamada asla tüm ekranı yakalama (ImageGrab vb.): kullanıcının diğer pencereleri görüntüye girer. Yalnızca `--render` veya `capture_window.py` (PrintWindow) kullan.
 > Not: Claude Code terminali yönetici değildir. Admin gereken komutlar (mount, apply, integration test) için kullanıcıdan `! <komut>` ile yönetici terminalinde çalıştırmasını iste veya yönetici olarak açılmış oturum kullan.
 

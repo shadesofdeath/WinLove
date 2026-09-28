@@ -482,5 +482,9 @@
     "enter": "↵",
     "esc": "Esc",
     "space": "Space"
+  },
+  "shell": {
+    "pendingTitle": "This page is not built yet",
+    "pendingBody": "Arrives with step {id} on the roadmap."
   }
 }
