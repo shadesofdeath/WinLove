@@ -74,6 +74,7 @@ public:
     [[nodiscard]] int run();
 
 private:
+    bool m_forceClose = false; // graphics could not be recreated: close without asking
     [[nodiscard]] Result<void> initialize();
     void buildUi(ui::HostServices services);
     [[nodiscard]] int runWindowed();

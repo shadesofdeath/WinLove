@@ -31,10 +31,15 @@ AppSettings AppSettings::load(const std::filesystem::path& file) {
         log::warn("app", L"settings.json is corrupt; using defaults");
         return settings;
     }
-    if (const auto root = doc.value("workRoot", std::string{}); !root.empty()) {
+    // Wrongly typed fields ("workRoot": 5) are skipped instead of throwing out of startup.
+    auto text = [&](const char* key) -> std::string {
+        const auto it = doc.find(key);
+        return it != doc.end() && it->is_string() ? it->get<std::string>() : std::string{};
+    };
+    if (const auto root = text("workRoot"); !root.empty()) {
         settings.workRoot = utf8::toWide(root);
     }
-    if (const auto iso = doc.value("isoFolder", std::string{}); !iso.empty()) {
+    if (const auto iso = text("isoFolder"); !iso.empty()) {
         settings.isoFolder = utf8::toWide(iso);
     }
     return settings;

@@ -37,7 +37,11 @@ bool ImageController::busy() const {
 
 bool ImageController::isEsdSource() const {
     const auto& source = m_state.source();
-    return source && source->installImage.ends_with(L".esd");
+    if (!source || source->installImage.size() < 4) {
+        return false;
+    }
+    // Case-insensitive: "WIN11.ESD" is as much an ESD as "install.esd".
+    return _wcsicmp(source->installImage.c_str() + source->installImage.size() - 4, L".esd") == 0;
 }
 
 bool ImageController::canMount() const {
@@ -177,7 +181,7 @@ void ImageController::mount(int index) {
     }
     if (!core::isElevated()) {
         // Relaunch through UAC and continue: reopen this source and mount the same index.
-        m_events.needsAdmin(std::format(L"\"{}\" --page=images --mount={}", m_state.source()->path.wstring(), index));
+        m_events.needsAdmin(std::format(L"{} --page=images --mount={}", core::quoteArgument(m_state.source()->path.wstring()), index));
         return;
     }
     withWritableSource(index, [this, index] {
@@ -311,7 +315,7 @@ void ImageController::cleanupMounts() {
         return;
     }
     if (!core::isElevated()) {
-        m_events.needsAdmin(m_state.source() ? std::format(L"\"{}\" --page=images", m_state.source()->path.wstring())
+        m_events.needsAdmin(m_state.source() ? std::format(L"{} --page=images", core::quoteArgument(m_state.source()->path.wstring()))
                                              : std::wstring(L"--page=images"));
         return;
     }

@@ -43,6 +43,28 @@ Result<void> enablePrivilege(const wchar_t* name) {
     return {};
 }
 
+std::wstring quoteArgument(std::wstring_view argument) {
+    std::wstring out = L"\"";
+    std::size_t backslashes = 0;
+    for (const wchar_t c : argument) {
+        if (c == L'\\') {
+            ++backslashes;
+            continue;
+        }
+        if (c == L'"') {
+            out.append(backslashes * 2 + 1, L'\\');
+            out.push_back(L'"');
+        } else {
+            out.append(backslashes, L'\\');
+            out.push_back(c);
+        }
+        backslashes = 0;
+    }
+    out.append(backslashes * 2, L'\\');
+    out.push_back(L'"');
+    return out;
+}
+
 Result<void> relaunchElevated(std::wstring_view arguments) {
     wchar_t exe[MAX_PATH]{};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);

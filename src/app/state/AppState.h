@@ -80,6 +80,11 @@ public:
     void queue(core::ops::Operation op);
     bool unqueue(core::ops::OpKind kind, std::wstring_view target);
     void unqueueIf(const std::function<bool(const core::ops::Operation&)>& which);
+    void queueMany(std::vector<core::ops::Operation> ops);
+    void unqueueMany(const std::vector<std::pair<core::ops::OpKind, std::wstring>>& slots);
+    // While Uygula runs the queue is frozen: edits would be lost (commit clears it) or undone
+    // by the post-run cleanup. Pages call the mutators freely; they are ignored then.
+    [[nodiscard]] bool queueLocked() const noexcept;
 
     // P04 data for the mounted image (read once per mount, FeatureController).
     struct OptionalFeatures {

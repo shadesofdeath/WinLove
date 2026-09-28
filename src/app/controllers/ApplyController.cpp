@@ -5,6 +5,7 @@
 #include "core/system/Privileges.h"
 #include "ui/anim/Tween.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <format>
@@ -150,7 +151,15 @@ void ApplyController::start() {
                 }
                 run->stage = Run::Stage::Done;
                 run->fraction = 1.0;
+                // The image is still mounted but may have changed: the cached lists (features,
+                // apps, services) no longer describe it, so pages must read them again.
+                auto invalidateLists = [this] {
+                    m_state.setOptionalFeatures(std::nullopt);
+                    m_state.setAppxList(std::nullopt);
+                    m_state.setServiceList(std::nullopt);
+                };
                 if (!result) {
+                    invalidateLists();
                     log::error("apply", describe(result.error()));
                     run->error = result.error();
                     m_state.notifyApply();
@@ -174,6 +183,10 @@ void ApplyController::start() {
                 run->result = std::move(outcome.job);
                 const bool committed = run->result->committed;
                 m_state.notifyApply();
+                if (!committed && std::ranges::any_of(run->result->report.results,
+                                                      [](const auto& r) { return r.outcome.has_value(); })) {
+                    invalidateLists();
+                }
                 if (committed) {
                     m_state.setMounted(std::nullopt); // saved and unmounted (also clears the rest of the queue)
                     if (outcome.source && m_events.sourceChanged) {

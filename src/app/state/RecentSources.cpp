@@ -48,15 +48,28 @@ void RecentSources::load() {
         log::warn("app", L"recent.json is corrupt; starting with an empty list");
         return;
     }
-    for (const auto& e : doc.value("sources", nlohmann::json::array())) {
-        RecentSource entry;
-        entry.path = nativePath(utf8::toWide(e.value("path", "")));
-        entry.format = utf8::toWide(e.value("format", ""));
-        entry.summary = utf8::toWide(e.value("summary", ""));
-        entry.size = e.value("size", std::uint64_t{0});
-        entry.lastOpened = std::chrono::system_clock::time_point(std::chrono::seconds(e.value("lastOpened", std::int64_t{0})));
-        if (!entry.path.empty() && m_entries.size() < kCapacity) {
-            m_entries.push_back(std::move(entry));
+    const auto sources = doc.find("sources");
+    if (sources == doc.end() || !sources->is_array()) {
+        return;
+    }
+    for (const auto& e : *sources) {
+        // value() throws on wrongly typed fields: a bad entry is skipped, never a startup crash.
+        try {
+            if (!e.is_object()) {
+                continue;
+            }
+            RecentSource entry;
+            entry.path = nativePath(utf8::toWide(e.value("path", "")));
+            entry.format = utf8::toWide(e.value("format", ""));
+            entry.summary = utf8::toWide(e.value("summary", ""));
+            entry.size = e.value("size", std::uint64_t{0});
+            entry.lastOpened =
+                std::chrono::system_clock::time_point(std::chrono::seconds(e.value("lastOpened", std::int64_t{0})));
+            if (!entry.path.empty() && m_entries.size() < kCapacity) {
+                m_entries.push_back(std::move(entry));
+            }
+        } catch (const nlohmann::json::exception&) {
+            log::warn("app", L"recent.json: skipped a malformed entry");
         }
     }
 }

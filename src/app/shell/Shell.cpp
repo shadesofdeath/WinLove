@@ -301,6 +301,11 @@ void Shell::addUpdates(const std::vector<std::filesystem::path>& files) {
     if (files.empty()) {
         return;
     }
+    if (!m_state.mounted()) {
+        // The queue belongs to a mounted image (the next mount would silently clear it).
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::UpdatesNoMountTitle), m_strings.get(Str::UpdatesNoMountBody));
+        return;
+    }
     const std::size_t added = UpdatesPage::queuePackages(m_state, files);
     if (added > 0) {
         showToast(ui::InfoKind::Success, m_strings.format(Str::UpdatesAdded, {{L"n", std::to_wstring(added)}}), L"");
@@ -1044,6 +1049,21 @@ void Shell::onImageFailure(ImageController::Failure failure, const Error& error,
     }
     showToast(ui::InfoKind::Error, mountFailure ? m_strings.get(Str::ToastsMountFailed) : m_strings.get(Str::ImagesFailedTitle),
               m_strings.format(Str::ToastsMountFailedBody, {{L"code", code}}));
+}
+
+bool Shell::confirmClose() {
+    const bool busy = m_images->busy() || m_apply->running() || m_iso->running();
+    if (!busy || !host()) {
+        return true;
+    }
+    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::DialogsBusyCloseTitle),
+                                               m_strings.get(Str::DialogsBusyCloseBody), ui::icons::Icon::WarningTriangle,
+                                               ui::tokens::Color::StatusWarning);
+    ui::Dialog* raw = dialog.get();
+    raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::CommonOk), [this, raw] { host()->popModal(raw); },
+                   /*primary=*/true);
+    pushDialog(std::move(dialog));
+    return false;
 }
 
 void Shell::askUnmount() {

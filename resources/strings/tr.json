@@ -663,7 +663,9 @@
     "deleteIndexTitle": "Index silinsin mi?",
     "deleteIndexBody": "{name} imajdan kalıcı olarak silinecek.",
     "unsavedTitle": "Kaydedilmemiş değişiklikler",
-    "unsavedBody": "Kuyrukta {n} değişiklik var. Çıkmadan preset olarak kaydetmek ister misin?"
+    "unsavedBody": "Kuyrukta {n} değişiklik var. Çıkmadan preset olarak kaydetmek ister misin?",
+    "busyCloseTitle": "Bir işlem sürüyor",
+    "busyCloseBody": "İmaj bağlama, uygulama veya ISO oluşturma devam ediyor. Şimdi kapatmak imajı yarım bırakabilir; işlem bitince (ya da durdurulunca) kapat."
   },
   "toasts": {
     "imageAdded": "İmaj eklendi",

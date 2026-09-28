@@ -76,6 +76,33 @@ void ChangeSet::snapshot() {
 
 void ChangeSet::add(Operation op) {
     snapshot();
+    addOne(std::move(op));
+}
+
+void ChangeSet::addAll(std::vector<Operation> ops) {
+    if (ops.empty()) {
+        return;
+    }
+    snapshot();
+    for (auto& op : ops) {
+        addOne(std::move(op));
+    }
+}
+
+std::size_t ChangeSet::removeAll(const std::vector<std::pair<OpKind, std::wstring>>& slots) {
+    const bool any = std::ranges::any_of(slots, [&](const auto& s) { return find(s.first, s.second) != nullptr; });
+    if (!any) {
+        return 0;
+    }
+    snapshot();
+    std::size_t removed = 0;
+    for (const auto& [kind, target] : slots) {
+        removed += removeOne(kind, target) ? 1 : 0;
+    }
+    return removed;
+}
+
+void ChangeSet::addOne(Operation op) {
     const auto opposite = std::ranges::find_if(m_ops, [&](const Operation& o) {
         return inverse(o.kind, op.kind) && sameTarget(o.target, op.target);
     });
@@ -92,13 +119,20 @@ void ChangeSet::add(Operation op) {
 }
 
 bool ChangeSet::remove(OpKind kind, std::wstring_view target) {
+    if (!find(kind, target)) {
+        return false;
+    }
+    snapshot();
+    return removeOne(kind, target);
+}
+
+bool ChangeSet::removeOne(OpKind kind, std::wstring_view target) {
     const auto it = std::ranges::find_if(m_ops, [&](const Operation& o) {
         return o.kind == kind && sameTarget(o.target, target);
     });
     if (it == m_ops.end()) {
         return false;
     }
-    snapshot(); // copies m_ops into the undo stack; `it` stays valid
     m_ops.erase(it);
     return true;
 }

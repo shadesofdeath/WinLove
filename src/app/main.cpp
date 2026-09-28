@@ -30,10 +30,10 @@ int WINAPI wWinMain(HINSTANCE /*instance*/, HINSTANCE /*previous*/, PWSTR /*comm
     if (!render && !noElevate && !wl::core::isElevated()) {
         std::wstring joined;
         for (const auto& a : args) {
-            // A trailing backslash would escape the closing quote: double it.
-            const std::wstring safe = a.ends_with(L'\\') ? a + L'\\' : a;
-            joined += (joined.empty() ? L"\"" : L" \"") + safe + L"\"";
+            joined += (joined.empty() ? L"" : L" ") + wl::core::quoteArgument(a);
         }
+        // Never relaunch twice (e.g. UAC disabled for a standard user starts the child unelevated).
+        joined += joined.empty() ? L"--no-elevate" : L" --no-elevate";
         if (wl::core::relaunchElevated(joined)) {
             OleUninitialize();
             return 0;

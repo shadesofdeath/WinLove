@@ -145,6 +145,11 @@ private:
     void updateQueue(); // CTA count, nav badges, page actions that depend on the queue
     [[nodiscard]] bool inspectorVisible() const;
     ui::Dialog& pushDialog(std::unique_ptr<ui::Dialog> dialog);
+public:
+    // WM_CLOSE: while a mount / apply / ISO job runs, closing would leave a windowless process
+    // (or a half-committed image). Shows why and keeps the window open.
+    [[nodiscard]] bool confirmClose();
+private:
 
     const Localization& m_strings;
     Language m_language;

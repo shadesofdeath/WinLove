@@ -70,12 +70,39 @@ void AppState::setMounted(std::optional<MountedImage> mounted) {
     notify(Change::Mount);
 }
 
+bool AppState::queueLocked() const noexcept {
+    return m_apply && m_apply->stage != ApplyRun::Stage::Done;
+}
+
 void AppState::queue(core::ops::Operation op) {
+    if (queueLocked()) {
+        return;
+    }
     m_changes.add(std::move(op));
     notify(Change::Queue);
 }
 
+void AppState::queueMany(std::vector<core::ops::Operation> ops) {
+    if (queueLocked() || ops.empty()) {
+        return;
+    }
+    m_changes.addAll(std::move(ops));
+    notify(Change::Queue);
+}
+
+void AppState::unqueueMany(const std::vector<std::pair<core::ops::OpKind, std::wstring>>& slots) {
+    if (queueLocked()) {
+        return;
+    }
+    if (m_changes.removeAll(slots) > 0) {
+        notify(Change::Queue);
+    }
+}
+
 bool AppState::unqueue(core::ops::OpKind kind, std::wstring_view target) {
+    if (queueLocked()) {
+        return false;
+    }
     const bool removed = m_changes.remove(kind, target);
     if (removed) {
         notify(Change::Queue);
@@ -84,6 +111,9 @@ bool AppState::unqueue(core::ops::OpKind kind, std::wstring_view target) {
 }
 
 void AppState::unqueueIf(const std::function<bool(const core::ops::Operation&)>& which) {
+    if (queueLocked()) {
+        return;
+    }
     const auto ops = m_changes.operations(); // copy: remove() edits the list
     bool any = false;
     for (const auto& op : ops) {
