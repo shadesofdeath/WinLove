@@ -16,7 +16,7 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
     case OpKind::EnableFeature: return session.enableFeature(op.target, task, options.featureSources);
     case OpKind::RemovePackage: return session.removePackage(op.target, task);
     case OpKind::RemoveCapability: return session.removeCapability(op.target, task);
-    case OpKind::RemoveAppx:
+    case OpKind::RemoveAppx: return session.removeAppx(op.target);
     case OpKind::AddDriver:
     case OpKind::AddPackage:
     case OpKind::SetRegistryValue:

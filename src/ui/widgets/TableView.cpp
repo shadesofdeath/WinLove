@@ -155,6 +155,7 @@ void TableView::onHoverChanged(bool hovered) {
 
 void TableView::onPointerDown(PointF p) {
     m_downRow = rowAt(p);
+    m_downPoint = p;
     m_downColumn = m_downRow >= 0 ? columnAt(p.x) : -1;
     if (m_downRow >= 0) {
         setSelected(m_downRow, /*reveal=*/false);
@@ -163,7 +164,7 @@ void TableView::onPointerDown(PointF p) {
 
 void TableView::onClick() {
     if (m_downRow >= 0 && m_downRow == m_hoverRow && onCellClick) {
-        onCellClick(m_downRow, m_downColumn);
+        onCellClick(m_downRow, m_downColumn, m_downPoint);
     }
 }
 

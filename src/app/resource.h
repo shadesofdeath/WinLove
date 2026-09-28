@@ -10,3 +10,5 @@
 
 #define IDR_STRINGS_TR 201
 #define IDR_STRINGS_EN 202
+
+#define IDR_CATALOG_APPX 301

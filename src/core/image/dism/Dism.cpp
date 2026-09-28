@@ -44,6 +44,12 @@ bool load(HMODULE module, const char* name, F& target) {
     return target != nullptr;
 }
 
+// Windows 10 20H1+ exports the AppX calls with a leading underscore; newer builds add plain names.
+template <class F>
+bool loadEither(HMODULE module, const char* name, const char* fallback, F& target) {
+    return load(module, name, target) || load(module, fallback, target);
+}
+
 } // namespace
 
 const wchar_t* servicingStateName(ServicingState state) noexcept {
@@ -91,6 +97,10 @@ Result<Dism*> Dism::instance() {
                     load(m, "DismGetPackages", a.getPackages) && load(m, "DismGetFeatures", a.getFeatures) &&
                     load(m, "DismGetCapabilities", a.getCapabilities) && load(m, "DismGetFeatureInfo", a.getFeatureInfo) &&
                     load(m, "DismGetCapabilityInfo", a.getCapabilityInfo) &&
+                    loadEither(m, "DismGetProvisionedAppxPackages", "_DismGetProvisionedAppxPackages",
+                               a.getProvisionedAppx) &&
+                    loadEither(m, "DismRemoveProvisionedAppxPackage", "_DismRemoveProvisionedAppxPackage",
+                               a.removeProvisionedAppx) &&
                     load(m, "DismDisableFeature", a.disableFeature) && load(m, "DismEnableFeature", a.enableFeature) &&
                     load(m, "DismRemovePackage", a.removePackage) &&
                     load(m, "DismRemoveCapability", a.removeCapability);
@@ -311,6 +321,34 @@ Result<CapabilityDetail> DismSession::capabilityInfo(const std::wstring& name) {
                             info->description ? info->description : L"", info->downloadSize, info->installSize};
     m_dism.m_api->deleteStructure(info);
     return detail;
+}
+
+Result<std::vector<AppxEntry>> DismSession::appxPackages() {
+    dismapi::AppxPackage* list = nullptr;
+    UINT count = 0;
+    const HRESULT hr = m_dism.m_api->getProvisionedAppx(m_session, &list, &count);
+    if (FAILED(hr)) {
+        return std::unexpected(m_dism.error(hr, L"get provisioned appx " + m_path.wstring()));
+    }
+    std::vector<AppxEntry> result;
+    result.reserve(count);
+    for (UINT i = 0; i < count; ++i) {
+        const auto& p = list[i];
+        result.push_back({p.packageName ? p.packageName : L"", p.displayName ? p.displayName : L"",
+                          p.publisherId ? p.publisherId : L"",
+                          std::format(L"{}.{}.{}.{}", p.majorVersion, p.minorVersion, p.build, p.revisionNumber),
+                          p.architecture, p.installLocation ? p.installLocation : L""});
+    }
+    m_dism.m_api->deleteStructure(list);
+    return result;
+}
+
+Result<void> DismSession::removeAppx(const std::wstring& packageName) {
+    const HRESULT hr = m_dism.m_api->removeProvisionedAppx(m_session, packageName.c_str());
+    if (FAILED(hr)) {
+        return std::unexpected(m_dism.error(hr, L"remove appx " + packageName));
+    }
+    return {};
 }
 
 Result<void> DismSession::disableFeature(const std::wstring& name, const TaskContext& task) {

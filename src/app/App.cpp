@@ -124,6 +124,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             // handled in main.cpp (skip the startup UAC relaunch)
         } else if (startsWith(a, L"--demo-apply=")) {
             options.demoApply = std::wstring(value(L"--demo-apply="));
+        } else if (a == L"--demo-components") {
+            options.demoComponents = true;
         } else if (a == L"--demo-features") {
             options.demoFeatures = true;
         } else if (a == L"--demo-logs") {
@@ -280,6 +282,40 @@ int App::renderOffscreen() {
         log::debug("dism", L"dism.exe exit=0 (1188 ms)");
     }
     buildUi({});
+    if (m_options.demoComponents) {
+        const std::filesystem::path mountDir = L"C:\\WinLove\\mount";
+        m_state->setMounted(MountedImage{mountDir, L"C:\\WinLove\\work\\sources\\install.wim", 4, L"Windows 11 Pro"});
+        auto app = [](const wchar_t* identity, const wchar_t* version, std::uint64_t mb) {
+            core::AppxComponent c;
+            c.package.displayName = identity;
+            c.package.packageName = std::wstring(identity) + L"_" + version + L"_neutral_~_8wekyb3d8bbwe";
+            c.package.version = version;
+            c.size = mb * 1024 * 1024;
+            return c;
+        };
+        std::vector<core::AppxComponent> items{
+            app(L"Microsoft.GamingApp", L"2410.1001.4.0", 412), app(L"Microsoft.XboxGamingOverlay", L"7.224.11061.0", 96),
+            app(L"Microsoft.XboxIdentityProvider", L"12.115.1001.0", 8), app(L"Microsoft.ZuneMusic", L"11.2408.12.0", 142),
+            app(L"Microsoft.Windows.Photos", L"2024.11100.16010.0", 94), app(L"Clipchamp.Clipchamp", L"3.1.10020.0", 71),
+            app(L"Microsoft.MicrosoftOfficeHub", L"18.2408.1122.0", 41), app(L"Microsoft.Todos", L"2.114.7122.0", 38),
+            app(L"Microsoft.MicrosoftStickyNotes", L"6.1.2.0", 12), app(L"Microsoft.BingWeather", L"4.54.63007.0", 21),
+            app(L"Microsoft.BingNews", L"4.55.62231.0", 18), app(L"MicrosoftWindows.Client.WebExperience", L"424.1301.270.9", 64),
+            app(L"Microsoft.WindowsStore", L"22410.1401.1.0", 58), app(L"Microsoft.SecHealthUI", L"1000.26100.1.0", 9),
+            app(L"Microsoft.VCLibs.140.00", L"14.0.33519.0", 6), app(L"Microsoft.WindowsCalculator", L"11.2409.0.0", 14),
+            app(L"Contoso.Unknown", L"1.0.0.0", 3),
+        };
+        m_state->setAppxList(AppState::AppxList{AppState::AppxList::Status::Ready, mountDir, std::move(items), {}});
+        auto& controller = m_shell->components();
+        for (const auto& g : controller.groups()) {
+            for (const auto& item : g.items) {
+                if (item.identity == L"Microsoft.GamingApp" || item.identity == L"Microsoft.XboxGamingOverlay" ||
+                    item.identity == L"Microsoft.ZuneMusic" || item.identity == L"Microsoft.SecHealthUI") {
+                    controller.toggle(item);
+                }
+            }
+        }
+        m_shell->showPage(m_options.page.value_or(PageId::Components));
+    }
     if (m_options.demoFeatures) {
         using core::OptionalFeature;
         using S = core::ServicingState;

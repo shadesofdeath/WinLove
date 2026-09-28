@@ -35,7 +35,7 @@ public:
     // Paint one cell's content inside `rect` (padding already applied).
     std::function<void(Canvas&, int row, int column, RectF rect, CellState)> paintCell;
     std::function<void(int row)> onSelect;
-    std::function<void(int row, int column)> onCellClick; // single click on a cell
+    std::function<void(int row, int column, PointF p)> onCellClick; // single click; p = press point
     std::function<void(int row)> onActivate;              // Enter / double click / Space
 
     void setRowCount(int count); // keeps the selection when still in range
@@ -73,6 +73,7 @@ private:
     int m_hoverColumn = -1;
     int m_downRow = -1;
     int m_downColumn = -1;
+    PointF m_downPoint{};
     float m_offset = 0;
     ScrollBar* m_scrollBar = nullptr;
 };

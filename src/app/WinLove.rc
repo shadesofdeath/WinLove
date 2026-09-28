@@ -12,6 +12,8 @@ IDR_FONT_MONO_REGULAR RCDATA "../../resources/fonts/JetBrainsMono-Regular.ttf"
 IDR_STRINGS_TR RCDATA "../../resources/strings/tr.json"
 IDR_STRINGS_EN RCDATA "../../resources/strings/en.json"
 
+IDR_CATALOG_APPX RCDATA "../../resources/catalog/appx.json"
+
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION 0,1,0,0
  PRODUCTVERSION 0,1,0,0

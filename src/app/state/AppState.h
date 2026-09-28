@@ -7,6 +7,7 @@
 #include "app/state/RecentSources.h"
 #include "base/Log.h"
 #include "core/image/Source.h"
+#include "core/image/dism/Appx.h"
 #include "core/image/dism/MountHealth.h"
 #include "core/image/dism/OptionalFeatures.h"
 #include "core/iso/IsoBuilder.h"
@@ -43,7 +44,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components };
     using Listener = std::function<void(Change)>;
 
     explicit AppState(std::filesystem::path recentFile = RecentSources::defaultFile(),
@@ -87,6 +88,17 @@ public:
     };
     [[nodiscard]] const std::optional<OptionalFeatures>& optionalFeatures() const noexcept { return m_features; }
     void setOptionalFeatures(std::optional<OptionalFeatures> features);
+
+    // P07 data: provisioned apps of the mounted image (ComponentController), read once per mount.
+    struct AppxList {
+        enum class Status : std::uint8_t { Loading, Ready, Failed };
+        Status status = Status::Loading;
+        std::filesystem::path mountDir;
+        std::vector<core::AppxComponent> items;
+        Error error;
+    };
+    [[nodiscard]] const std::optional<AppxList>& appxList() const noexcept { return m_appx; }
+    void setAppxList(std::optional<AppxList> list);
 
     // P05: the running / last "Uygula" run (ApplyController). Lives until the next run.
     struct ApplyRun {
@@ -163,6 +175,7 @@ private:
     core::ops::ChangeSet m_changes;
     std::optional<OptionalFeatures> m_features;
     std::optional<ApplyRun> m_apply;
+    std::optional<AppxList> m_appx;
     std::optional<IsoRun> m_iso;
     std::filesystem::path m_settingsFile;
     std::shared_ptr<log::RingBufferSink> m_logBuffer = std::make_shared<log::RingBufferSink>();

@@ -1,0 +1,434 @@
+#include "app/pages/ComponentsPage.h"
+
+#include "app/Format.h"
+#include "ui/widget/Host.h"
+#include "ui/widgets/Checkbox.h"
+
+#include <algorithm>
+#include <cwctype>
+
+namespace wl::app {
+
+using core::ops::Risk;
+using ui::RectF;
+using ui::tokens::Color;
+using ui::tokens::TypeStyle;
+using Item = ComponentController::Item;
+
+namespace {
+constexpr float kToolbarTop = 12.0f;
+constexpr float kToolbar = 24.0f;
+constexpr float kGap = 8.0f;
+constexpr float kInfoBar = 32.0f;
+constexpr float kIndent = 16.0f;
+constexpr float kChevron = 16.0f;
+
+enum Column : int { kName, kRisk, kSize };
+
+std::wstring lowered(std::wstring text) {
+    for (auto& c : text) {
+        c = static_cast<wchar_t>(std::towlower(c));
+    }
+    return text;
+}
+
+Color riskInk(Risk risk) {
+    switch (risk) {
+    case Risk::Low: return Color::StatusSuccess;
+    case Risk::Medium: return Color::StatusWarning;
+    case Risk::High: return Color::StatusError;
+    }
+    return Color::TextSecondary;
+}
+
+Str riskText(Risk risk) {
+    switch (risk) {
+    case Risk::Low: return Str::RiskLow;
+    case Risk::Medium: return Str::RiskMedium;
+    case Risk::High: return Str::RiskHigh;
+    }
+    return Str::RiskMedium;
+}
+} // namespace
+
+ComponentsPage::ComponentsPage(AppState& state, ComponentController& controller, const Localization& strings,
+                               Language language, std::function<void()> goToImages)
+    : m_state(state), m_controller(controller), m_strings(strings), m_language(language),
+      m_goToImages(std::move(goToImages)) {
+    m_search = &add<ui::SearchBox>(strings.get(Str::ComponentsSearch), std::vector<std::wstring>{L"/"});
+    m_search->onChange = [this](const std::wstring& text) {
+        m_needle = lowered(text);
+        rebuildRows();
+    };
+    m_category = &add<ui::Dropdown>(strings.get(Str::ComponentsCategory), std::vector<std::wstring>{strings.get(Str::CommonAll)}, 0);
+    m_category->onChange = [this](int index) {
+        m_categoryFilter = index;
+        rebuildRows();
+    };
+    m_risk = &add<ui::Dropdown>(strings.get(Str::RiskColumn),
+                                std::vector<std::wstring>{strings.get(Str::CommonAll), strings.get(Str::RiskLow),
+                                                          strings.get(Str::RiskMedium), strings.get(Str::RiskHigh)},
+                                0);
+    m_risk->onChange = [this](int index) {
+        m_riskFilter = index;
+        rebuildRows();
+    };
+    m_selectedOnly = &add<ui::Toggle>(strings.get(Str::ComponentsOnlySelected), false);
+    m_selectedOnly->onChange = [this](bool on) {
+        m_onlySelected = on;
+        rebuildRows();
+    };
+    m_riskBar = &add<ui::InfoBar>(ui::InfoKind::Warning, L"", L"", strings.get(Str::CommonClose));
+    m_riskBar->setVisible(false);
+    m_riskBar->onClose = [this] {
+        m_riskBar->setVisible(false);
+        layout();
+    };
+    m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
+        {strings.get(Str::CommonName), 0},
+        {strings.get(Str::RiskColumn), 120},
+        {strings.get(Str::CommonSize), 96, ui::TextAlign::Trailing},
+    });
+    m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
+        paintCell(c, row, column, rect, cell);
+    };
+    m_table->onCellClick = [this](int row, int column, ui::PointF p) { click(row, column, p); };
+    m_table->onActivate = [this](int row) {
+        if (row < 0 || row >= static_cast<int>(m_rows.size())) {
+            return;
+        }
+        const Row& r = m_rows[static_cast<std::size_t>(row)];
+        const auto& group = m_groups[static_cast<std::size_t>(r.group)];
+        if (r.item < 0) {
+            m_controller.toggleGroup(group);
+        } else {
+            m_controller.toggle(group.items[static_cast<std::size_t>(r.item)]);
+        }
+    };
+    m_table->onSelect = [this](int) {
+        if (onSelectionChanged) {
+            onSelectionChanged();
+        }
+    };
+    m_empty = &add<ui::EmptyState>(ui::icons::Icon::ComponentsRemove, L"", L"");
+    setAccessible(ui::AccessRole::Group, strings.get(Str::ComponentsTitle));
+
+    m_subscription = m_state.subscribe([this](AppState::Change change) {
+        if (change == AppState::Change::Mount || change == AppState::Change::Components) {
+            refresh();
+        } else if (change == AppState::Change::Queue) {
+            if (m_onlySelected) {
+                rebuildRows();
+            }
+            updateRiskBar();
+            m_table->refresh();
+            invalidate();
+            if (onSelectionChanged) {
+                onSelectionChanged();
+            }
+        }
+    });
+    m_controller.load();
+    refresh();
+}
+
+ComponentsPage::~ComponentsPage() {
+    m_state.unsubscribe(m_subscription);
+}
+
+void ComponentsPage::focusSearch() {
+    if (host()) {
+        host()->setFocus(m_search, /*visible=*/true);
+    }
+}
+
+bool ComponentsPage::onChar(wchar_t ch) {
+    if (ch == L'/') {
+        focusSearch();
+        return true;
+    }
+    return false;
+}
+
+void ComponentsPage::setAllExpanded(bool expanded) {
+    m_collapsed.clear();
+    if (!expanded) {
+        for (const auto& g : m_groups) {
+            m_collapsed.insert(g.catalogIndex);
+        }
+    }
+    rebuildRows();
+}
+
+bool ComponentsPage::allExpanded() const {
+    return m_collapsed.empty();
+}
+
+std::optional<Item> ComponentsPage::selectedItem() const {
+    const int row = m_table->selected();
+    if (row < 0 || row >= static_cast<int>(m_rows.size())) {
+        return std::nullopt;
+    }
+    const Row& r = m_rows[static_cast<std::size_t>(row)];
+    if (r.item < 0) {
+        return std::nullopt;
+    }
+    return m_groups[static_cast<std::size_t>(r.group)].items[static_cast<std::size_t>(r.item)];
+}
+
+std::wstring ComponentsPage::selectedGroupName() const {
+    const int row = m_table->selected();
+    if (row < 0 || row >= static_cast<int>(m_rows.size())) {
+        return {};
+    }
+    return m_groups[static_cast<std::size_t>(m_rows[static_cast<std::size_t>(row)].group)].name;
+}
+
+void ComponentsPage::refresh() {
+    const auto& list = m_state.appxList();
+    const bool ready = list && list->status == AppState::AppxList::Status::Ready;
+    if (!m_state.mounted()) {
+        m_empty->setContent(ui::icons::Icon::ComponentsRemove, m_strings.get(Str::ComponentsEmptyTitle),
+                            m_strings.get(Str::ComponentsEmptyBody));
+        m_empty->setAction(m_strings.get(Str::FeaturesGoImages)).onInvoke = m_goToImages;
+        m_empty->setVisible(true);
+    } else if (!list || list->status == AppState::AppxList::Status::Loading) {
+        m_controller.load();
+        m_empty->setContent(ui::icons::Icon::Spinner, m_strings.get(Str::ComponentsReading),
+                            m_strings.get(Str::ComponentsReadingBody));
+        m_empty->hideAction();
+        m_empty->setVisible(true);
+    } else if (list->status == AppState::AppxList::Status::Failed) {
+        m_empty->setContent(ui::icons::Icon::ErrorOctagon, m_strings.get(Str::ComponentsFailedTitle),
+                            list->error.message + L" — " + list->error.context);
+        m_empty->setAction(m_strings.get(Str::FeaturesRetry)).onInvoke = [this] { m_controller.load(/*force=*/true); };
+        m_empty->setVisible(true);
+    } else {
+        m_empty->setVisible(false);
+    }
+    for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_search, m_category, m_risk, m_selectedOnly, m_table}) {
+        w->setVisible(ready);
+    }
+    m_groups = m_controller.groups();
+    std::vector<std::wstring> categories{m_strings.get(Str::CommonAll)};
+    for (const auto& g : m_groups) {
+        categories.push_back(g.name);
+    }
+    m_category->setItems(std::move(categories), 0);
+    m_categoryFilter = 0;
+    rebuildRows();
+    updateRiskBar();
+    layout();
+    invalidate();
+}
+
+bool ComponentsPage::itemVisible(const Item& item) const {
+    if (m_onlySelected && !m_controller.queued(item)) {
+        return false;
+    }
+    if (m_riskFilter > 0 && static_cast<int>(item.risk) != m_riskFilter - 1) {
+        return false;
+    }
+    if (!m_needle.empty() && lowered(item.name).find(m_needle) == std::wstring::npos &&
+        lowered(item.identity).find(m_needle) == std::wstring::npos) {
+        return false;
+    }
+    return true;
+}
+
+void ComponentsPage::rebuildRows() {
+    m_rows.clear();
+    const bool filtering = !m_needle.empty() || m_riskFilter > 0 || m_onlySelected;
+    for (std::size_t g = 0; g < m_groups.size(); ++g) {
+        if (m_categoryFilter > 0 && static_cast<int>(g) != m_categoryFilter - 1) {
+            continue;
+        }
+        const auto& group = m_groups[g];
+        std::vector<int> visible;
+        for (std::size_t i = 0; i < group.items.size(); ++i) {
+            if (itemVisible(group.items[i])) {
+                visible.push_back(static_cast<int>(i));
+            }
+        }
+        if (filtering && visible.empty()) {
+            continue; // only matching branches
+        }
+        m_rows.push_back({static_cast<int>(g), -1, static_cast<int>(visible.size())});
+        // Filtering expands matching branches regardless of the collapse state.
+        if (filtering || !m_collapsed.contains(group.catalogIndex)) {
+            for (const int i : visible) {
+                m_rows.push_back({static_cast<int>(g), i, 0});
+            }
+        }
+    }
+    m_table->setRowCount(static_cast<int>(m_rows.size()));
+    invalidate();
+    if (onSelectionChanged) {
+        onSelectionChanged();
+    }
+}
+
+void ComponentsPage::updateRiskBar() {
+    // The first queued high-risk app names the warning (design: "Defender kaldırılıyor:").
+    const Item* risky = nullptr;
+    std::size_t count = 0;
+    for (const auto& g : m_groups) {
+        for (const auto& item : g.items) {
+            if (item.risk == Risk::High && m_controller.queued(item)) {
+                risky = risky ? risky : &item;
+                ++count;
+            }
+        }
+    }
+    if (!risky) {
+        if (m_riskBar->visible()) {
+            m_riskBar->setVisible(false);
+            layout();
+        }
+        return;
+    }
+    std::wstring body = risky->entry ? risky->entry->notes(m_language) : std::wstring();
+    if (count > 1) {
+        body += (body.empty() ? L"" : L" ") + m_strings.format(Str::ApplyHighRiskN, {{L"n", std::to_wstring(count)}});
+    }
+    m_riskBar->set(ui::InfoKind::Warning, m_strings.format(Str::ComponentsDepWarning, {{L"name", risky->name}}), body);
+    m_riskBar->setVisible(true);
+    layout();
+}
+
+void ComponentsPage::click(int row, int column, ui::PointF p) {
+    if (column != kName || row < 0 || row >= static_cast<int>(m_rows.size())) {
+        return;
+    }
+    const Row& r = m_rows[static_cast<std::size_t>(row)];
+    const auto& group = m_groups[static_cast<std::size_t>(r.group)];
+    const RectF cell = m_table->cellRect(row, column);
+    const float x0 = cell.x + ui::TableView::kCellPad + (r.item < 0 ? 0.0f : kIndent);
+    if (r.item < 0 && p.x >= x0 && p.x < x0 + kChevron) {
+        if (m_collapsed.contains(group.catalogIndex)) {
+            m_collapsed.erase(group.catalogIndex);
+        } else {
+            m_collapsed.insert(group.catalogIndex);
+        }
+        rebuildRows();
+        return;
+    }
+    const float boxX = x0 + kChevron + 4;
+    if (p.x >= boxX - 2 && p.x < boxX + ui::Checkbox::kBox + 4) {
+        if (r.item < 0) {
+            m_controller.toggleGroup(group);
+        } else {
+            m_controller.toggle(group.items[static_cast<std::size_t>(r.item)]);
+        }
+    }
+}
+
+void ComponentsPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect, ui::TableView::CellState cell) {
+    if (row < 0 || row >= static_cast<int>(m_rows.size())) {
+        return;
+    }
+    const Row& r = m_rows[static_cast<std::size_t>(row)];
+    const auto& group = m_groups[static_cast<std::size_t>(r.group)];
+    const bool isGroup = r.item < 0;
+    const Item* item = isGroup ? nullptr : &group.items[static_cast<std::size_t>(r.item)];
+    const bool filtering = !m_needle.empty() || m_riskFilter > 0 || m_onlySelected;
+    switch (column) {
+    case kName: {
+        float x = rect.x + (isGroup ? 0.0f : kIndent);
+        if (isGroup) {
+            const bool open = filtering || !m_collapsed.contains(group.catalogIndex);
+            canvas.drawIcon(open ? ui::icons::Icon::ChevronDown : ui::icons::Icon::ChevronRight, {x, rect.y + 4},
+                            Color::TextTertiary);
+        }
+        x += kChevron + 4;
+        const auto state = isGroup ? m_controller.check(group) : (m_controller.queued(*item) ? ComponentController::Check::On
+                                                                                            : ComponentController::Check::Off);
+        ui::Checkbox::paintBox(canvas, {x, rect.y + (rect.height - ui::Checkbox::kBox) / 2},
+                               state == ComponentController::Check::On        ? ui::CheckState::On
+                               : state == ComponentController::Check::Partial ? ui::CheckState::Indeterminate
+                                                                              : ui::CheckState::Off,
+                               cell.hoveredCell);
+        x += ui::Checkbox::kBox + 8;
+        canvas.drawIcon(isGroup ? ui::icons::Icon::Folder : ui::icons::Icon::AppxPackage, {x, rect.y + 4},
+                        Color::TextSecondary);
+        x += ui::tokens::size::icon + 6;
+        const std::wstring& name = isGroup ? group.name : item->name;
+        if (!isGroup && !m_needle.empty()) {
+            const auto at = lowered(name).find(m_needle);
+            if (at != std::wstring::npos) {
+                const float x0 = x + canvas.text().measure(std::wstring_view(name).substr(0, at), TypeStyle::Body);
+                const float x1 = x + canvas.text().measure(std::wstring_view(name).substr(0, at + m_needle.size()), TypeStyle::Body);
+                canvas.fillRect({x0, rect.y + 4, x1 - x0, rect.height - 8}, Color::AccentSubtle);
+            }
+        }
+        canvas.drawText(name, {x, rect.y, rect.right() - x, rect.height},
+                        isGroup || cell.selected ? TypeStyle::BodyStrong : TypeStyle::Body, Color::TextPrimary);
+        break;
+    }
+    case kRisk:
+        if (isGroup) {
+            const std::wstring text = filtering
+                                          ? m_strings.format(Str::ComponentsMatchesOf, {{L"m", std::to_wstring(r.matches)},
+                                                                                        {L"n", std::to_wstring(group.items.size())}})
+                                          : m_strings.format(Str::ComponentsItemsN, {{L"n", std::to_wstring(group.items.size())}});
+            canvas.drawText(text, rect, TypeStyle::Caption, Color::TextTertiary);
+        } else {
+            canvas.fillRect({rect.x, rect.y + 9, 6, 6}, riskInk(item->risk));
+            canvas.drawText(m_strings.get(riskText(item->risk)), {rect.x + 12, rect.y, rect.width - 12, rect.height},
+                            TypeStyle::Caption, Color::TextSecondary);
+        }
+        break;
+    case kSize: {
+        const std::uint64_t size = isGroup ? group.size : item->size;
+        canvas.drawText(size ? formatBytes(size, m_language) : std::wstring(L"—"), rect, TypeStyle::Mono,
+                        size ? Color::TextPrimary : Color::TextTertiary, ui::TextAlign::Trailing);
+        break;
+    }
+    default: break;
+    }
+}
+
+void ComponentsPage::layout() {
+    const RectF b = bounds();
+    m_empty->setBounds(b);
+    float y = b.y + kToolbarTop;
+    float x = b.x;
+    m_search->setWidth(240);
+    for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_search, m_category, m_risk, m_selectedOnly}) {
+        const ui::SizeF size = w->measure({});
+        // Long group names would make the category box huge: the value ellipsizes instead.
+        const float width = w == m_category ? std::min(size.width, 200.0f) : size.width;
+        w->setBounds({x, y, width, kToolbar});
+        x += width + kGap;
+    }
+    y += kToolbar + 12;
+    if (m_riskBar->visible()) {
+        m_riskBar->setBounds({b.x, y, b.width, kInfoBar});
+        y += kInfoBar + 8;
+    }
+    m_table->setBounds({b.x, y, b.width, std::max(b.bottom() - y, 0.0f)});
+}
+
+void ComponentsPage::paint(ui::Canvas& canvas) {
+    if (!m_table->visible()) {
+        return;
+    }
+    const RectF b = bounds();
+    const float left = m_selectedOnly->bounds().right() + kGap;
+    std::wstring text;
+    if (!m_needle.empty()) {
+        std::size_t n = 0;
+        for (const auto& r : m_rows) {
+            n += r.item >= 0 ? 1 : 0;
+        }
+        text = m_strings.format(Str::ComponentsResults, {{L"n", std::to_wstring(n)}}) + L" · " +
+               m_strings.get(Str::ComponentsEscClears);
+    } else {
+        text = m_strings.get(Str::ComponentsEstGain) + L" " + formatBytes(m_controller.queuedBytes(), m_language) +
+               L" · " + m_strings.format(Str::ComponentsQueuedN, {{L"n", std::to_wstring(m_controller.queuedCount())}});
+    }
+    canvas.drawText(text, {left, b.y + kToolbarTop, std::max(b.right() - left, 0.0f), kToolbar}, TypeStyle::Caption,
+                    Color::TextSecondary, ui::TextAlign::Trailing);
+}
+
+} // namespace wl::app

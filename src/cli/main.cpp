@@ -6,6 +6,7 @@
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
 #include "core/image/dism/Dism.h"
+#include "core/image/dism/Appx.h"
 #include "core/image/dism/MountHealth.h"
 #include "core/image/dism/OptionalFeatures.h"
 #include "core/iso/IsoBuilder.h"
@@ -452,6 +453,32 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
     return report.completed && report.failures() == 0 && !job->commitError ? 0 : 3;
 }
 
+// P07 data: provisioned apps with on-disk size.
+int cmdAppx(const std::wstring& dir, bool asJson) {
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    auto list = core::readAppx(**d, dir, core::TaskContext{g_cancel, {}});
+    if (!list) {
+        return reportError(list.error());
+    }
+    json out = json::array();
+    for (const auto& a : *list) {
+        if (asJson) {
+            out.push_back({{"packageName", narrow(a.package.packageName)}, {"name", narrow(a.package.displayName)},
+                           {"version", narrow(a.package.version)}, {"architecture", a.package.architecture},
+                           {"size", a.size}});
+        } else {
+            print(std::format(L"  {:>12}  {}\n", a.size, a.package.packageName));
+        }
+    }
+    if (asJson) {
+        printJson(out);
+    }
+    return 0;
+}
+
 // P06: bootable ISO from a setup folder (IMAPI2FS, no admin).
 int cmdIso(const std::wstring& folder, const std::wstring& output, const std::wstring& label, const std::wstring& boot,
            bool sha, bool noPrompt) {
@@ -529,6 +556,7 @@ void printUsage() {
           L"  wlcli mounts | cleanup\n"
           L"  wlcli packages|features|capabilities <mountdir>\n"
           L"  wlcli iso <setup-folder> <out.iso> [--label=X] [--boot=both|uefi|bios] [--sha256] [--no-prompt]\n"
+          L"  wlcli appx <mountdir>   (provisioned apps + size, as on P07)\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
           L"  wlcli apply <changeset.json> <mountdir> [--commit] [--source=<sources\\sxs>]\n"
           L"\n  Change sets (no admin):\n"
@@ -632,6 +660,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"repair" && args.size() == 2) {
         return cmdRepair(args[1]);
+    }
+    if (command == L"appx" && args.size() == 2) {
+        return cmdAppx(args[1], asJson);
     }
     if (command == L"iso" && args.size() == 3) {
         return cmdIso(args[1], args[2], label, boot, sha, noPrompt);

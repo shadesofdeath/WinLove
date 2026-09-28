@@ -2,7 +2,10 @@
 
 #include "app/Format.h"
 #include "app/pages/GalleryPage.h"
+#include "app/Resources.h"
 #include "app/pages/ApplyPage.h"
+#include "app/pages/ComponentsPage.h"
+#include "app/pages/components/ComponentInspector.h"
 #include "app/pages/FeaturesPage.h"
 #include "app/pages/apply/RiskConfirm.h"
 #include "app/pages/ImagesPage.h"
@@ -25,6 +28,7 @@
 #include <cmath>
 #include <format>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -80,6 +84,14 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     };
 
     m_features = std::make_unique<FeatureController>(m_state, m_services.postToUi);
+    {
+        // Embedded in WinLove.exe; tests and tools without the resource get an empty catalog.
+        auto catalog = AppxCatalog::parse(embeddedAppxCatalog());
+        if (!catalog) {
+            catalog = AppxCatalog::parse(R"({"format":"winlove.catalog.appx","groups":[],"apps":[]})");
+        }
+        m_components = std::make_unique<ComponentController>(m_state, std::move(*catalog), m_language, m_services.postToUi);
+    }
     m_iso = std::make_unique<IsoController>(m_state, IsoController::Events{
         m_services.postToUi,
         [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::IsoFailed), e.message); },
@@ -173,6 +185,53 @@ ApplyPage* Shell::applyPage() const {
 
 IsoPage* Shell::isoPage() const {
     return m_page == PageId::Iso ? dynamic_cast<IsoPage*>(m_pageBody) : nullptr;
+}
+
+ComponentsPage* Shell::componentsPage() const {
+    return m_page == PageId::Components ? dynamic_cast<ComponentsPage*>(m_pageBody) : nullptr;
+}
+
+void Shell::updateComponentInspector() {
+    auto* page = componentsPage();
+    auto* inspector = dynamic_cast<ComponentInspector*>(m_sideInspector);
+    if (!page || !inspector) {
+        return;
+    }
+    const auto item = page->selectedItem();
+    const bool queued = item && m_components->queued(*item);
+    const bool wasVisible = inspector->visible();
+    inspector->set(item, page->selectedGroupName(), queued);
+    inspector->setVisible(item.has_value());
+    if (wasVisible != inspector->visible()) {
+        layout();
+    }
+    invalidate();
+}
+
+void Shell::loadPreset() {
+    if (!m_state.mounted()) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::ComponentsPresetNeedsMount), L"");
+        return;
+    }
+    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+    const auto file = ui::pickFile(owner, m_strings.get(Str::ComponentsLoadPreset),
+                                   {{m_strings.get(Str::ApplyPresetFiles), L"*.wlpreset;*.json"}});
+    if (!file) {
+        return;
+    }
+    std::ifstream in(*file, std::ios::binary);
+    std::stringstream buffer;
+    buffer << in.rdbuf();
+    auto set = core::ops::ChangeSet::fromJson(buffer.str());
+    if (!set) {
+        showToast(ui::InfoKind::Error, m_strings.get(Str::ComponentsPresetFailed), set.error().message);
+        return;
+    }
+    for (const auto& op : set->operations()) {
+        m_state.queue(op);
+    }
+    showToast(ui::InfoKind::Success,
+              m_strings.format(Str::ComponentsPresetLoaded, {{L"n", std::to_wstring(set->size())}}), file->wstring());
 }
 
 void Shell::updateIsoChrome() {
@@ -300,6 +359,9 @@ void Shell::saveApplyLog() {
 
 bool Shell::inspectorVisible() const {
     // Screen 02 shows it for the selected edition; screen 03 hides it while the engine works.
+    if (m_sideInspector) {
+        return m_sideInspector->visible();
+    }
     return m_inspector && m_page == PageId::Images && m_state.selectedImage() && !m_state.operation();
 }
 
@@ -331,6 +393,7 @@ void Shell::updateQueue() {
     const auto featureOps = static_cast<int>(m_features->queuedCount());
     m_nav->setBadge(PageId::Features, featureOps);
     m_nav->setBadge(PageId::Apply, static_cast<int>(changes.size()));
+    m_nav->setBadge(PageId::Components, static_cast<int>(m_components->queuedCount()));
     if (m_actionReset) {
         m_actionReset->setEnabled(featureOps > 0);
     }
@@ -409,6 +472,11 @@ void Shell::showPage(PageId page) {
         removeChild(m_inspector);
         m_inspector = nullptr;
     }
+    if (m_sideInspector) {
+        removeChild(m_sideInspector);
+        m_sideInspector = nullptr;
+    }
+    m_actionExpand = nullptr;
     m_actionMount = m_actionExport = m_actionEsd = nullptr;
     m_actionReset = nullptr;
     m_actionIso = nullptr;
@@ -455,6 +523,33 @@ void Shell::showPage(PageId page) {
             };
             m_inspector->onUnmount = [this] { askUnmount(); };
             m_inspector->onDelete = [this] { askDeleteSelected(); };
+        } else if (page == PageId::Components) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsLoadPreset),
+                                  ui::icons::Icon::PresetBookmark)
+                .onInvoke = [this] { loadPreset(); };
+            m_actionExpand = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsCollapseAll));
+            m_actionExpand->onInvoke = [this] {
+                if (auto* p = componentsPage()) {
+                    p->setAllExpanded(!p->allExpanded());
+                    m_actionExpand->setText(
+                        m_strings.get(p->allExpanded() ? Str::ComponentsCollapseAll : Str::ComponentsExpandAll));
+                    m_pageView->layout();
+                }
+            };
+            auto& body = m_pageView->setBody<ComponentsPage>(m_state, *m_components, m_strings, m_language,
+                                                             [this] { showPage(PageId::Images); });
+            m_pageBody = &body;
+            auto& inspector = add<ComponentInspector>(m_strings, m_language);
+            m_sideInspector = &inspector;
+            inspector.setVisible(false);
+            inspector.onToggle = [this] {
+                if (auto* p = componentsPage()) {
+                    if (const auto item = p->selectedItem()) {
+                        m_components->toggle(*item);
+                    }
+                }
+            };
+            body.onSelectionChanged = [this] { updateComponentInspector(); };
         } else if (page == PageId::Features) {
             m_actionReset = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::FeaturesResetChanges));
             m_actionReset->onInvoke = [this] { m_features->resetChanges(); };
@@ -878,6 +973,10 @@ bool Shell::handleShortcut(const ui::KeyEvent& key) {
             features->focusSearch();
             return true;
         }
+        if (auto* components = componentsPage()) {
+            components->focusSearch();
+            return true;
+        }
     }
     if (key.ctrl && !key.shift && !key.alt && key.virtualKey == 'B') {
         m_userCollapsed = !navCollapsed();
@@ -937,6 +1036,9 @@ void Shell::layout() {
     }
     if (m_inspector) {
         m_inspector->setBounds({b.right() - size::inspector, top, size::inspector, middle});
+    }
+    if (m_sideInspector) {
+        m_sideInspector->setBounds({b.right() - size::inspector, top, size::inspector, middle});
     }
     if (m_toast) {
         m_toast->setBounds({b.right() - kToastMargin - ui::Toast::kWidth,

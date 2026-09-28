@@ -38,6 +38,10 @@ Result<Localization> embeddedStrings(Language language) {
     return Localization::fromJson(bytes);
 }
 
+std::string_view embeddedAppxCatalog() {
+    return resourceBytes(IDR_CATALOG_APPX);
+}
+
 HICON appIcon() {
     return LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_WINLOVE));
 }

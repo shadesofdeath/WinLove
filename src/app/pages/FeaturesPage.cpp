@@ -61,7 +61,7 @@ FeaturesPage::FeaturesPage(AppState& state, FeatureController& controller, const
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
         paintCell(c, row, column, rect, cell);
     };
-    m_table->onCellClick = [this](int row, int column) {
+    m_table->onCellClick = [this](int row, int column, ui::PointF) {
         if (column == kTarget) {
             if (const auto* item = itemAt(row)) {
                 m_controller.toggle(*item);

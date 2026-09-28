@@ -234,7 +234,16 @@
     "reading": "Bileşenler okunuyor",
     "defenderCompat": "Windows Update ile yeniden eklenemez. Üçüncü taraf antivirüs planlanmıyorsa kaldırma önerilmez.",
     "matchesOf": "{m} / {n} eşleşme",
-    "escClears": "Esc temizler"
+    "escClears": "Esc temizler",
+    "onlySelected": "Yalnızca seçili",
+    "category": "Kategori",
+    "itemsN": "{n} öğe",
+    "results": "{n} sonuç",
+    "readingBody": "DISM imajdaki önceden yüklü uygulamaları ve boyutlarını okuyor.",
+    "failedTitle": "Bileşenler okunamadı",
+    "presetLoaded": "{n} değişiklik kuyruğa eklendi",
+    "presetFailed": "Preset okunamadı",
+    "presetNeedsMount": "Preset yüklemek için önce bir sürüm bağla"
   },
   "features": {
     "title": "Windows Özellikleri",
