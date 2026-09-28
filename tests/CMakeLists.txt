@@ -5,6 +5,7 @@ add_executable(wl_tests
     support/TestGraphics.cpp
     base/ResultTests.cpp
     core/ChangeSetTests.cpp
+    core/DriverTests.cpp
     core/EngineTests.cpp
     core/ImageFormatTests.cpp
     core/IsoTests.cpp

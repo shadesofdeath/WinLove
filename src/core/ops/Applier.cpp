@@ -18,7 +18,7 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
     case OpKind::RemoveCapability: return session.removeCapability(op.target, task);
     case OpKind::RemoveAppx: return session.removeAppx(op.target);
     case OpKind::AddPackage: return session.addPackage(op.target, task);
-    case OpKind::AddDriver:
+    case OpKind::AddDriver: return session.addDriver(op.target);
     case OpKind::SetRegistryValue:
     case OpKind::SetServiceStart: break;
     }

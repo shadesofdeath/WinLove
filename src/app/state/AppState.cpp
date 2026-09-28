@@ -94,6 +94,19 @@ void AppState::unqueueIf(const std::function<bool(const core::ops::Operation&)>&
     }
 }
 
+void AppState::addDriverScan(const std::filesystem::path& folder, std::vector<core::DriverInf> infs) {
+    if (std::ranges::find(m_drivers.folders, folder) == m_drivers.folders.end()) {
+        m_drivers.folders.push_back(folder);
+    }
+    for (auto& inf : infs) {
+        const bool known = std::ranges::any_of(m_drivers.infs, [&](const core::DriverInf& d) { return d.path == inf.path; });
+        if (!known) {
+            m_drivers.infs.push_back(std::move(inf));
+        }
+    }
+    notify(Change::Drivers);
+}
+
 void AppState::setAppxList(std::optional<AppxList> list) {
     m_appx = std::move(list);
     notify(Change::Components);

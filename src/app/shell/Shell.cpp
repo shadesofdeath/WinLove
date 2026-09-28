@@ -5,6 +5,7 @@
 #include "app/Resources.h"
 #include "app/pages/ApplyPage.h"
 #include "app/pages/ComponentsPage.h"
+#include "app/pages/DriversPage.h"
 #include "app/pages/components/ComponentInspector.h"
 #include "app/pages/FeaturesPage.h"
 #include "app/pages/apply/RiskConfirm.h"
@@ -196,6 +197,40 @@ ComponentsPage* Shell::componentsPage() const {
 
 UpdatesPage* Shell::updatesPage() const {
     return m_page == PageId::Updates ? dynamic_cast<UpdatesPage*>(m_pageBody) : nullptr;
+}
+
+DriversPage* Shell::driversPage() const {
+    return m_page == PageId::Drivers ? dynamic_cast<DriversPage*>(m_pageBody) : nullptr;
+}
+
+void Shell::scanDriverFolder() {
+    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+    const auto folder = ui::pickFolder(owner, m_strings.get(Str::UpdatesScanFolder));
+    if (!folder) {
+        return;
+    }
+    showToast(ui::InfoKind::Info, m_strings.get(Str::DriversScanning), folder->wstring());
+    auto infs = std::make_shared<std::vector<core::DriverInf>>();
+    m_state.reader().run<bool>(
+        [path = *folder, infs](const core::TaskContext&) -> Result<bool> {
+            *infs = core::scanDrivers(path);
+            return true;
+        },
+        [this, post = m_services.postToUi, alive = std::weak_ptr<bool>(m_alive), path = *folder, infs](Result<bool>) {
+            post([this, alive, path, infs] {
+                if (const auto a = alive.lock(); !a || !*a) {
+                    return;
+                }
+                if (infs->empty()) {
+                    showToast(ui::InfoKind::Warning, m_strings.get(Str::DriversNoneFound), path.wstring());
+                    return;
+                }
+                const std::size_t n = infs->size();
+                m_state.addDriverScan(path, std::move(*infs));
+                showToast(ui::InfoKind::Success, m_strings.format(Str::DriversScanned, {{L"n", std::to_wstring(n)}}),
+                          path.wstring());
+            });
+        });
 }
 
 void Shell::addUpdates(const std::vector<std::filesystem::path>& files) {
@@ -412,6 +447,7 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::Apply, static_cast<int>(changes.size()));
     m_nav->setBadge(PageId::Components, static_cast<int>(m_components->queuedCount()));
     m_nav->setBadge(PageId::Updates, static_cast<int>(changes.count(core::ops::OpKind::AddPackage)));
+    m_nav->setBadge(PageId::Drivers, static_cast<int>(changes.count(core::ops::OpKind::AddDriver)));
     if (m_actionReset) {
         m_actionReset->setEnabled(featureOps > 0);
     }
@@ -568,6 +604,12 @@ void Shell::showPage(PageId page) {
                 }
             };
             body.onSelectionChanged = [this] { updateComponentInspector(); };
+        } else if (page == PageId::Drivers) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesScanFolder), ui::icons::Icon::OpenFolder)
+                .onInvoke = [this] { scanDriverFolder(); };
+            m_pageBody = &m_pageView->setBody<DriversPage>(
+                m_state, m_strings, m_language,
+                DriversPage::Intents{[this] { scanDriverFolder(); }, [this] { showPage(PageId::Images); }});
         } else if (page == PageId::Updates) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesScanFolder), ui::icons::Icon::OpenFolder)
                 .onInvoke = [this] {
@@ -1028,6 +1070,10 @@ bool Shell::handleShortcut(const ui::KeyEvent& key) {
         }
         if (auto* components = componentsPage()) {
             components->focusSearch();
+            return true;
+        }
+        if (auto* drivers = driversPage()) {
+            drivers->focusSearch();
             return true;
         }
     }

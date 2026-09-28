@@ -130,6 +130,7 @@ struct Api {
                                    PVOID) = nullptr;
     HRESULT(WINAPI* addPackage)(Session, PCWSTR packagePath, BOOL ignoreCheck, BOOL preventPending, HANDLE cancel,
                                 ProgressCallback, PVOID) = nullptr;
+    HRESULT(WINAPI* addDriver)(Session, PCWSTR driverPath, BOOL forceUnsigned) = nullptr;
     HRESULT(WINAPI* removeCapability)(Session, PCWSTR name, HANDLE cancel, ProgressCallback, PVOID) = nullptr;
 };
 
