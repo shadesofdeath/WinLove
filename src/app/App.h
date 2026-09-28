@@ -41,7 +41,8 @@ struct LaunchOptions {
     ui::SizeF size{1440, 900};
     std::optional<PageId> page;
     bool navCollapsed = false;
-    bool demoLogs = false; // render: fill the log with the design's sample lines (screen 18)
+    bool demoLogs = false;
+    bool demoFeatures = false; // render: fake mount + screen 05 sample features // render: fill the log with the design's sample lines (screen 18)
     bool maximized = false;
     std::optional<ui::PointF> hoverAt;
     std::optional<ui::PointF> pressAt;

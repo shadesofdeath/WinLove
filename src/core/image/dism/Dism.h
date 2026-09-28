@@ -51,6 +51,23 @@ struct CapabilityEntry {
     ServicingState state = ServicingState::NotPresent;
 };
 
+struct FeatureDetail {
+    std::wstring name;
+    ServicingState state = ServicingState::NotPresent;
+    std::wstring displayName;  // localized by DISM from the image ("Windows Sandbox")
+    std::wstring description;
+    bool restartRequired = false;
+};
+
+struct CapabilityDetail {
+    std::wstring name;         // "OpenSSH.Client~~~~0.0.1.0"
+    ServicingState state = ServicingState::NotPresent;
+    std::wstring displayName;
+    std::wstring description;
+    std::uint32_t downloadSize = 0; // bytes
+    std::uint32_t installSize = 0;  // bytes
+};
+
 class DismSession;
 
 class Dism {
@@ -85,6 +102,9 @@ public:
     [[nodiscard]] Result<std::vector<PackageEntry>> packages();
     [[nodiscard]] Result<std::vector<FeatureEntry>> features();
     [[nodiscard]] Result<std::vector<CapabilityEntry>> capabilities();
+    // Per-item details (one DISM call each: ~10–50 ms). Display names come from the image.
+    [[nodiscard]] Result<FeatureDetail> featureInfo(const std::wstring& name);
+    [[nodiscard]] Result<CapabilityDetail> capabilityInfo(const std::wstring& name);
 
     // Servicing mutations — called by ops::Applier only (never directly from UI code).
     [[nodiscard]] Result<void> disableFeature(const std::wstring& name, const TaskContext& task);

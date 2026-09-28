@@ -8,6 +8,7 @@ add_library(wl_core STATIC
     image/dism/Dism.cpp
     image/dism/DismErrors.cpp
     image/dism/MountHealth.cpp
+    image/dism/OptionalFeatures.cpp
     image/wim/WimGapi.cpp
     io/ByteSource.cpp
     ops/Applier.cpp

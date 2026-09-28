@@ -3,9 +3,11 @@
 > Her oturumun sonunda güncellenir. En üstte güncel durum; geçmiş en altta kısa satırlar.
 
 ## Güncel
-- **Faz:** 3 — sayfalar. **P01 ✅, P02 ✅, P03 Loglar: geliştirme bitti, kullanıcı testi bekliyor** (`docs/pages/03-logs.md` §6).
-- **Bir sonraki somut adım:** P03 onayı gelince P04 Özellikler (`docs/ROADMAP.md`). Yeni widget'lar (SearchBox,
-  Dropdown, Toggle, ScrollBar) orada da kullanılacak; uzun liste için LogConsole'daki sanal satır/scroll yaklaşımı.
+- **Faz:** 3 — sayfalar. **P01 ✅, P02 ✅, P03 ✅ (kullanıcı "devam" dedi), P04 Özellikler: geliştirme bitti, kullanıcı testi bekliyor** (`docs/pages/04-features.md` §6).
+- **Bir sonraki somut adım:** P04 onayı → P05 Uygula (Planner/Applier + ekranlar 13/13b/14/15). NetFx3 / kaldırılmış
+  özellikler için `sources\sxs` kaynak yolu Applier'da.
+- **Motor doğrulaması (yönetici gerekir):** `wlcli optional-features <mount>` gerçek imajda henüz çalıştırılmadı
+  (bu terminal yönetici değil); kullanıcı testi aynı kodu uygulama içinden çalıştırıyor.
 - **Kullanıcının tekrar test edeceği:** P02 — imaj bağlıyken uygulamayı kapat/aç → geri yüklenmeli
   (otomatik; olmazsa sayfada "Devam et").
 - **Build:** `./build.ps1 -Dist` yeşil. Kullanıcıya her zaman `dist\WinLove.exe` verilir (çalışıyorsa

@@ -5,6 +5,7 @@
 // (interaction.md "Kısayollar"), the source-opening flow, P02 image operations (through
 // ImageController), dialogs and the toast.
 #include "app/Localization.h"
+#include "app/controllers/FeatureController.h"
 #include "app/controllers/ImageController.h"
 #include "app/pages/PageInfo.h"
 #include "app/shell/NavRail.h"
@@ -32,6 +33,7 @@ class SourcePage;
 class ImagesPage;
 class ImageInspector;
 class LogsPage;
+class FeaturesPage;
 
 class Shell : public ui::Widget {
 public:
@@ -57,6 +59,7 @@ public:
     TitleBar& titleBar() { return *m_titleBar; }
     NavRail& nav() { return *m_nav; }
     ImageController& images() { return *m_images; }
+    FeatureController& features() { return *m_features; }
     [[nodiscard]] PageId currentPage() const noexcept { return m_page; }
 
     void showPage(PageId page);
@@ -102,6 +105,8 @@ private:
     [[nodiscard]] SourcePage* sourcePage() const;
     [[nodiscard]] ImagesPage* imagesPage() const;
     [[nodiscard]] LogsPage* logsPage() const;
+    [[nodiscard]] FeaturesPage* featuresPage() const;
+    void updateQueue(); // CTA count, nav badges, page actions that depend on the queue
     [[nodiscard]] bool inspectorVisible() const;
     ui::Dialog& pushDialog(std::unique_ptr<ui::Dialog> dialog);
 
@@ -110,6 +115,8 @@ private:
     AppState& m_state;
     Services m_services;
     std::unique_ptr<ImageController> m_images;
+    std::unique_ptr<FeatureController> m_features;
+    ui::Button* m_actionReset = nullptr; // Özellikler: "Değişiklikleri sıfırla"
     std::size_t m_subscription = 0;
     // Engine results arrive later on the UI thread; they check this before touching the shell
     // (it is rebuilt on device loss and destroyed at exit).

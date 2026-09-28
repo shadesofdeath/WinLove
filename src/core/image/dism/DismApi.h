@@ -60,6 +60,29 @@ struct Capability {
     PCWSTR name;
     PackageFeatureState state;
 };
+enum RestartType : int { RestartNo = 0, RestartPossible, RestartRequired };
+struct CustomProperty {
+    PCWSTR name;
+    PCWSTR value;
+    PCWSTR path;
+};
+struct FeatureInfo {
+    PCWSTR featureName;
+    PackageFeatureState featureState;
+    PCWSTR displayName;
+    PCWSTR description;
+    RestartType restartRequired;
+    CustomProperty* customProperty;
+    UINT customPropertyCount;
+};
+struct CapabilityDetail {
+    PCWSTR name;
+    PackageFeatureState state;
+    PCWSTR displayName;
+    PCWSTR description;
+    UINT downloadSize;
+    UINT installSize;
+};
 #pragma pack(pop)
 
 using ProgressCallback = void(CALLBACK*)(UINT current, UINT total, PVOID userData);
@@ -81,6 +104,8 @@ struct Api {
     HRESULT(WINAPI* getPackages)(Session, Package**, UINT*) = nullptr;
     HRESULT(WINAPI* getFeatures)(Session, PCWSTR identifier, PackageIdentifier, Feature**, UINT*) = nullptr;
     HRESULT(WINAPI* getCapabilities)(Session, Capability**, UINT*) = nullptr;
+    HRESULT(WINAPI* getFeatureInfo)(Session, PCWSTR feature, PCWSTR identifier, PackageIdentifier, FeatureInfo**) = nullptr;
+    HRESULT(WINAPI* getCapabilityInfo)(Session, PCWSTR name, CapabilityDetail**) = nullptr;
     HRESULT(WINAPI* disableFeature)(Session, PCWSTR feature, PCWSTR package, BOOL removePayload, HANDLE cancel,
                                     ProgressCallback, PVOID) = nullptr;
     HRESULT(WINAPI* enableFeature)(Session, PCWSTR feature, PCWSTR identifier, PackageIdentifier, BOOL limitAccess,

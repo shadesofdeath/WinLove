@@ -39,18 +39,21 @@ RectF Toggle::focusRect() const {
     return {b.x, b.y + (b.height - tokens::size::toggleH) / 2, tokens::size::toggleW, tokens::size::toggleH};
 }
 
-void Toggle::paint(Canvas& canvas) {
-    const RectF track = focusRect();
-    const float t = m_knob.value();
+void Toggle::paintSwitch(Canvas& canvas, RectF track, float t, bool hovered) {
     // Track: outline (off) blends into accent fill (on).
     canvas.fillRoundRect(track, tokens::radius::r1, Ink(Color::BgInput, Color::AccentBase, t));
     if (t < 1.0f) {
         canvas.strokeRoundRect(track, tokens::radius::r1,
-                               Ink(hovered() ? Color::TextTertiary : Color::LineStrong, Color::AccentBase, t));
+                               Ink(hovered ? Color::TextTertiary : Color::LineStrong, Color::AccentBase, t));
     }
     const float knobX = track.x + 2 + t * (tokens::size::toggleW - kKnob - 4);
     canvas.fillRoundRect({std::round(knobX), track.y + 2, kKnob, kKnob}, 1.0f,
                          Ink(Color::TextSecondary, Color::TextOnAccent, t));
+}
+
+void Toggle::paint(Canvas& canvas) {
+    const RectF track = focusRect();
+    paintSwitch(canvas, track, m_knob.value(), hovered());
     if (!m_label.empty()) {
         const RectF b = bounds();
         const float x = track.right() + kGap;
