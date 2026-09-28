@@ -50,10 +50,25 @@ void InfoBar::set(InfoKind kind, std::wstring title, std::wstring message) {
     invalidate();
 }
 
+void InfoBar::setAction(std::wstring label, std::function<void()> onInvoke) {
+    if (!m_action) {
+        m_action = &add<Button>(ButtonKind::Subtle, L"");
+    }
+    const bool show = !label.empty() && onInvoke;
+    m_action->setText(std::move(label));
+    m_action->onInvoke = std::move(onInvoke);
+    m_action->setVisible(show);
+    layout();
+}
+
 void InfoBar::layout() {
     const RectF b = bounds();
     const float size = tokens::size::control;
     m_close->setBounds({b.right() - 4 - size, b.y + std::round((b.height - size) / 2), size, size});
+    if (m_action && m_action->visible()) {
+        const SizeF a = m_action->measure({});
+        m_action->setBounds({m_close->bounds().x - 4 - a.width, b.y + std::round((b.height - a.height) / 2), a.width, a.height});
+    }
 }
 
 void InfoBar::paint(Canvas& canvas) {
@@ -65,7 +80,7 @@ void InfoBar::paint(Canvas& canvas) {
     float x = b.x + kPaddingLeft;
     canvas.drawIcon(style.icon, {x, b.y + std::round((b.height - tokens::size::icon) / 2)}, style.ink);
     x += tokens::size::icon + kGap;
-    const float right = m_close->bounds().x - kGap;
+    const float right = (m_action && m_action->visible() ? m_action->bounds().x : m_close->bounds().x) - kGap;
     const float titleWidth = std::min(std::ceil(canvas.text().measure(m_title, tokens::TypeStyle::BodyStrong)) + 1,
                                       std::max(right - x, 0.0f));
     canvas.drawText(m_title, {x, b.y, titleWidth, b.height}, tokens::TypeStyle::BodyStrong, Color::TextPrimary);

@@ -134,6 +134,14 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.adminDialog = true;
         } else if (startsWith(a, L"--drag=")) {
             options.dragValid = value(L"--drag=") == L"valid";
+        } else if (startsWith(a, L"--mount=")) {
+            options.mountIndex = static_cast<int>(std::wcstol(std::wstring(value(L"--mount=")).c_str(), nullptr, 10));
+        } else if (startsWith(a, L"--select=")) {
+            options.selectIndex = static_cast<int>(std::wcstol(std::wstring(value(L"--select=")).c_str(), nullptr, 10));
+        } else if (startsWith(a, L"--operation=")) {
+            options.fakeOperation = std::wstring(value(L"--operation="));
+        } else if (startsWith(a, L"--progress=")) {
+            options.fakeProgress = std::wcstof(std::wstring(value(L"--progress=")).c_str(), nullptr);
         } else if (startsWith(a, L"--tab=")) {
             options.tabPresses = static_cast<int>(std::wcstol(std::wstring(value(L"--tab=")).c_str(), nullptr, 10));
         } else if (!a.starts_with(L"--") && !options.openPath) {
@@ -198,14 +206,22 @@ void App::buildUi(ui::HostServices services) {
         }
     };
     shellServices.ownerWindow = [this] { return m_window.hwnd(); };
-    shellServices.relaunchElevated = [this] {
-        const std::wstring page(pageInfo(m_shell ? m_shell->currentPage() : PageId::Source).key.begin(),
-                                pageInfo(m_shell ? m_shell->currentPage() : PageId::Source).key.end());
-        auto relaunched = core::relaunchElevated(L"--page=" + page);
+    shellServices.relaunchElevated = [this](const std::wstring& args) {
+        auto relaunched = core::relaunchElevated(args);
         if (!relaunched && relaunched.error().code != ErrorCode::Cancelled) {
             showError(relaunched.error());
         }
         return relaunched.has_value();
+    };
+    shellServices.startTimer = [this](UINT id, UINT ms) {
+        if (!m_options.renderTo) {
+            m_window.setTimer(id, ms);
+        }
+    };
+    shellServices.stopTimer = [this](UINT id) {
+        if (!m_options.renderTo) {
+            m_window.stopTimer(id);
+        }
     };
     const Language language = m_options.language;
     auto shell = std::make_unique<Shell>(*m_strings, language, *m_state, std::move(shellServices));
@@ -228,6 +244,25 @@ int App::renderOffscreen() {
     }
     ui::forceInstantMotion(true);
     buildUi({});
+    if (m_options.openPath) {
+        // Headless: open synchronously so the frame shows the Images page with real data.
+        if (auto info = core::openSource(*m_options.openPath)) {
+            m_state->setSource(std::move(*info));
+            if (m_options.selectIndex) {
+                m_state->select(*m_options.selectIndex);
+            }
+            m_shell->showPage(m_options.page.value_or(PageId::Images));
+        }
+    }
+    if (m_options.fakeOperation && m_state->source()) {
+        EngineOperation op{*m_options.fakeOperation == L"prepare" ? EngineOperation::Kind::Preparing
+                                                                   : EngineOperation::Kind::Mounting,
+                           m_state->selectedImage() ? m_state->selectedImage()->name : L"", L"C:\\WinLove\\mount",
+                           m_state->selectedIndex().value_or(1)};
+        op.startedMs = ui::nowMs() - 60000.0 * m_options.fakeProgress;
+        m_state->beginOperation(op);
+        m_state->updateOperation(m_options.fakeProgress);
+    }
     m_host->layout(m_options.size);
 
     // Drive the real input paths so the frame shows exactly what the interaction would.
@@ -311,7 +346,11 @@ int App::runWindowed() {
         }
     };
     callbacks.timer = [this](UINT id) {
-        if (m_host) {
+        if (id == Shell::kToastTimer) {
+            if (m_shell) {
+                m_shell->onTimer(id);
+            }
+        } else if (m_host) {
             m_host->onTimer(id);
         }
     };
@@ -360,7 +399,19 @@ int App::runWindowed() {
     });
     m_window.show();
     if (m_options.openPath) {
-        m_shell->openSource(*m_options.openPath);
+        const auto mountIndex = m_options.mountIndex;
+        const auto selectIndex = m_options.selectIndex;
+        m_shell->openSource(*m_options.openPath, [this, mountIndex, selectIndex] {
+            if (selectIndex) {
+                m_state->select(*selectIndex);
+            }
+            if (mountIndex) {
+                m_state->select(*mountIndex);
+                m_shell->images().mount(*mountIndex); // continue the mount the user asked for before UAC
+            }
+        });
+    } else {
+        m_shell->images().adoptExistingMount();
     }
     const int exitCode = ui::Window::runMessageLoop();
     if (m_dropTarget) {

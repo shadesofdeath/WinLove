@@ -19,5 +19,10 @@ struct FileFilter {
 [[nodiscard]] std::optional<std::filesystem::path> pickFile(HWND owner, const std::wstring& title,
                                                             const std::vector<FileFilter>& filters);
 [[nodiscard]] std::optional<std::filesystem::path> pickFolder(HWND owner, const std::wstring& title);
+// Save As: `defaultName` prefilled, `extension` ("wim") appended when the user types none.
+[[nodiscard]] std::optional<std::filesystem::path> pickSaveFile(HWND owner, const std::wstring& title,
+                                                                const std::vector<FileFilter>& filters,
+                                                                const std::wstring& defaultName,
+                                                                const std::wstring& extension);
 
 } // namespace wl::ui

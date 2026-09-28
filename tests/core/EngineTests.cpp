@@ -35,6 +35,7 @@ private:
 constexpr char16_t kXml[] = u"﻿<WIM><TOTALBYTES>7217280579</TOTALBYTES>"
                             u"<IMAGE INDEX=\"1\"><DIRCOUNT>31000</DIRCOUNT><FILECOUNT>150000</FILECOUNT>"
                             u"<TOTALBYTES>23579823423</TOTALBYTES>"
+                            u"<CREATIONTIME><HIGHPART>0x01DB0000</HIGHPART><LOWPART>0x00000010</LOWPART></CREATIONTIME>"
                             u"<WINDOWS><ARCH>9</ARCH><EDITIONID>Core</EDITIONID><INSTALLATIONTYPE>Client</INSTALLATIONTYPE>"
                             u"<LANGUAGES><LANGUAGE>tr-TR</LANGUAGE><DEFAULT>tr-TR</DEFAULT></LANGUAGES>"
                             u"<VERSION><MAJOR>10</MAJOR><MINOR>0</MINOR><BUILD>26200</BUILD><SPBUILD>8037</SPBUILD></VERSION>"
@@ -58,6 +59,7 @@ TEST_CASE("WIM XML: editions, version, languages, sizes (decimal and hex)") {
     CHECK(home.languages.size() == 1);
     CHECK(home.totalBytes == 23579823423ull);
     CHECK(home.fileCount == 150000);
+    CHECK(home.creationTime == ((0x01DB0000ull << 32) | 0x10));
     const auto& second = (*images)[1];
     CHECK(second.architecture == Architecture::Arm64);
     CHECK(second.totalBytes == 16);

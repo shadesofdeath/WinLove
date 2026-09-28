@@ -35,6 +35,9 @@ public:
     [[nodiscard]] std::shared_ptr<const ByteSource> openFile(Node file) const;
     [[nodiscard]] Result<void> extract(const Node& file, const std::filesystem::path& destination,
                                        const TaskContext& task) const;
+    // Copies the whole image into `destination` (created if needed). Progress is by bytes across
+    // all files. Existing files of the same size are kept (resumable after a cancel).
+    [[nodiscard]] Result<void> extractAll(const std::filesystem::path& destination, const TaskContext& task) const;
 
     [[nodiscard]] std::wstring_view volumeLabel() const noexcept { return m_label; }
 
@@ -42,6 +45,8 @@ private:
     [[nodiscard]] Result<Node> readFileEntry(std::uint32_t logicalBlock, std::wstring name) const;
     [[nodiscard]] Result<std::vector<Node>> readDirectory(const Node& directory) const;
     [[nodiscard]] Result<std::vector<std::byte>> readAll(const Node& node) const;
+    [[nodiscard]] Result<void> copyNode(const Node& file, const std::filesystem::path& destination, const TaskContext& task,
+                                        std::uint64_t doneBefore, std::uint64_t total) const;
     [[nodiscard]] std::uint64_t blockOffset(std::uint32_t logicalBlock) const noexcept;
 
     std::shared_ptr<const ByteSource> m_iso;

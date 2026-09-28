@@ -25,6 +25,7 @@ struct ImageInfo {
     std::uint64_t totalBytes = 0;  // expanded size
     std::uint64_t fileCount = 0;
     std::uint64_t directoryCount = 0;
+    std::uint64_t creationTime = 0; // FILETIME (100 ns since 1601, UTC); 0 = unknown
 
     [[nodiscard]] std::wstring versionString() const; // "10.0.26200.6584"
 };

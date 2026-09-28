@@ -6,6 +6,7 @@
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
 #include "core/image/dism/Dism.h"
+#include "core/image/wim/WimGapi.h"
 #include "core/ops/Applier.h"
 #include "core/ops/Planner.h"
 #include "core/image/WindowsRelease.h"
@@ -374,6 +375,45 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
     return report.completed && report.failures() == 0 ? 0 : 3;
 }
 
+int cmdExport(const std::wstring& source, const std::wstring& index, const std::wstring& destination,
+              const std::wstring& compression) {
+    core::WimCompression c = core::WimCompression::Lzx;
+    if (compression == L"none") c = core::WimCompression::None;
+    else if (compression == L"fast" || compression == L"xpress") c = core::WimCompression::Xpress;
+    else if (compression == L"max" || compression == L"lzx" || compression.empty()) c = core::WimCompression::Lzx;
+    else if (compression == L"recovery" || compression == L"lzms") c = core::WimCompression::Lzms;
+    else return reportError(Error{ErrorCode::InvalidArgument, L"--compress must be none|fast|max|recovery", compression});
+    const auto task = progressTask(L"export");
+    if (auto r = core::exportImage(source, std::stoi(index), destination, c, task); !r) {
+        print(L"\n");
+        return reportError(r.error());
+    }
+    print(std::format(L"\n  exported index {} -> {}\n", index, destination));
+    return 0;
+}
+
+int cmdDeleteIndex(const std::wstring& wim, const std::wstring& index) {
+    if (auto r = core::deleteImage(wim, std::stoi(index)); !r) {
+        return reportError(r.error());
+    }
+    print(std::format(L"  deleted index {} from {}\n", index, wim));
+    return 0;
+}
+
+int cmdExtractAll(const std::wstring& iso, const std::wstring& destination) {
+    auto image = core::UdfImage::open(iso);
+    if (!image) {
+        return reportError(image.error());
+    }
+    const auto task = progressTask(L"extract");
+    if (auto r = image->extractAll(destination, task); !r) {
+        print(L"\n");
+        return reportError(r.error());
+    }
+    print(std::format(L"\n  extracted {} -> {}\n", iso, destination));
+    return 0;
+}
+
 void printUsage() {
     print(L"wlcli " WL_VERSION_STRING L" - WinLove image engine CLI\n"
           L"\n"
@@ -391,6 +431,9 @@ void printUsage() {
           L"  wlcli apply <changeset.json> <mountdir> [--skip-errors]\n"
           L"\n  Change sets (no admin):\n"
           L"  wlcli plan <changeset.json>              Show the ordered apply plan\n"
+          L"  wlcli extract-all <iso> <dir>             Copy the whole ISO into a folder (resumable)\n"
+          L"  wlcli export <wim|esd> <index> <dst.wim> [--compress=max|fast|none|recovery]\n"
+          L"  wlcli delete-index <wim> <index>\n"
           L"  wlcli version | help\n"
           L"\n"
           L"Options: --json (machine-readable), --verbose (log to stdout)\n");
@@ -405,10 +448,13 @@ int wmain(int argc, wchar_t** argv) {
     bool readOnly = false;
     int commit = -1;
     bool skipErrors = false;
+    std::wstring compress;
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
             asJson = true;
+        } else if (a.starts_with(L"--compress=")) {
+            compress = std::wstring(a.substr(11));
         } else if (a == L"--skip-errors") {
             skipErrors = true;
         } else if (a == L"--readonly") {
@@ -446,6 +492,15 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"unmount" && args.size() == 2 && commit >= 0) {
         return cmdUnmount(args[1], commit == 1);
+    }
+    if (command == L"export" && args.size() == 4) {
+        return cmdExport(args[1], args[2], args[3], compress);
+    }
+    if (command == L"delete-index" && args.size() == 3) {
+        return cmdDeleteIndex(args[1], args[2]);
+    }
+    if (command == L"extract-all" && args.size() == 3) {
+        return cmdExtractAll(args[1], args[2]);
     }
     if (command == L"plan" && args.size() == 2) {
         return cmdPlan(args[1]);

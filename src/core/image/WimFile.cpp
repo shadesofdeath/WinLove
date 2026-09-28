@@ -150,6 +150,9 @@ Result<std::vector<ImageInfo>> parseWimXml(std::u16string_view xml) {
         info.totalBytes = parseSize(node.child("TOTALBYTES"));
         info.fileCount = number(node, "FILECOUNT");
         info.directoryCount = number(node, "DIRCOUNT");
+        // <CREATIONTIME><HIGHPART>0x01DC…</HIGHPART><LOWPART>0x…</LOWPART></CREATIONTIME>
+        const auto created = node.child("CREATIONTIME");
+        info.creationTime = (parseSize(created.child("HIGHPART")) << 32) | (parseSize(created.child("LOWPART")) & 0xFFFFFFFFull);
         const auto windows = node.child("WINDOWS");
         info.architecture = architectureFrom(windows.child("ARCH").text().as_int(-1));
         info.editionId = text(windows, "EDITIONID");

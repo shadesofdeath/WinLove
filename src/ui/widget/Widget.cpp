@@ -2,6 +2,8 @@
 
 #include "ui/widget/Host.h"
 
+#include <algorithm>
+
 namespace wl::ui {
 
 Widget::~Widget() {
@@ -29,6 +31,14 @@ void Widget::clearChildren() {
 void Widget::removeChild(Widget* child) {
     std::erase_if(m_children, [child](const std::unique_ptr<Widget>& c) { return c.get() == child; });
     invalidate();
+}
+
+void Widget::bringToFront(Widget* child) {
+    const auto it = std::ranges::find_if(m_children, [child](const std::unique_ptr<Widget>& c) { return c.get() == child; });
+    if (it != m_children.end() && it + 1 != m_children.end()) {
+        std::rotate(it, it + 1, m_children.end());
+        invalidate();
+    }
 }
 
 void Widget::setHostRecursive(Host* host) {
