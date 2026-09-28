@@ -73,10 +73,11 @@ Bileşen adları, açıklamaları, risk seviyeleri, bağımlılıklar, "kaldır�
 | `text/FontLibrary`, `text/TextStyles` | Gömülü font baytlarından özel koleksiyon (tipografik aile modeli: Plex 400/500/600 tek aile). Her `TypeStyle` için bir `IDWriteTextFormat`: token satır yüksekliği + font metriklerinden baseline, `…` ile kesme, tek satır. `TextLayout` LRU cache → 1.4 |
 | `theme/Palette` | `tokens` → renk (dark/light/hc), WCAG kontrast, `bestContrast`. Yoğunluk ve kullanıcı vurgu rengi → P16 |
 | `icons/IconCache` | Üretilmiş tablo (`Icons.g.h`: handoff ikonları + `brand-mark`) → tembel `ID2D1PathGeometry` önbelleği, round cap/join |
-| `widget` | `Widget` temel sınıf: bounds, measure/arrange, paint, hit-test, focus, input olayları, dirty-rect invalidation |
-| `layout` | Basit kutu modelleri: `Stack` (H/V), `Dock`, `Grid` (sütun genişlikleri), `Splitter` |
-| `anim` | Zaman tabanlı animasyon (motion.md tokenları), `prefers-reduced-motion` = sistem animasyon ayarı |
-| `widgets/*` | Button, Checkbox, Toggle, TextBox, ComboBox, Menu, Tooltip, TreeView (sanal), DataGrid (sanal), InfoBar, Toast, Dialog, Progress, Spinner, LogView, ... — ihtiyaç duyan ilk sayfayla birlikte yazılır |
+| `widget/Widget` | Temel sınıf: çocuklar (sahiplik), mutlak `bounds` (pencere DIP), `measure`/`layout`, `paint`/`paintOverlay`, `hitTest`, `windowZone` (başlık sürükleme/caption), `cursor`, olaylar (hover/press/click/double-click/key/focus), `tick` (animasyon), tooltip, UIA rol+ad, `forceVisualState` (galeri/render) |
+| `widget/Host` | Bir pencerenin ağacı: işaretçi yönlendirme (hover, basılıyken yakalama, dışarıda bırakınca iptal), Tab/Shift+Tab + `tabStop=false` ile roving focus, odak halkası yalnızca klavyede, 400 ms tooltip (gölge + kenara çarpınca kayma), animasyon karesi isteme. Silinen/gizlenen widget'ları `forget` ile güvenle bırakır |
+| `widget/Stack` | Yatay/dikey yerleşim: `Sizing::fixed/autoSize/fill`, `CrossAlign`, gap, `Insets` |
+| `anim/Tween` | cubic-bezier easing (motion token'ları), Windows "animasyonları göster" kapalıysa anında; `--render` için `forceInstantMotion` |
+| `widgets/*` | Şu an: Button, Label, Kbd, Splitter, EmptyState. Checkbox, Toggle, TextBox, ComboBox, Menu, TreeView (sanal), DataGrid (sanal), InfoBar, Toast, Dialog, Progress, Spinner, LogView, ScrollBar… ihtiyaç duyan ilk sayfayla birlikte yazılır ve galeriye eklenir |
 | `a11y` | UI Automation provider'ları (widget başına rol/ad/durum) |
 
 Render akışı: input → state değişir → `invalidate(rect)` → sonraki `WM_PAINT`/vsync'te yalnızca kirli bölge çizilir → `Present1` dirty rect ile. Animasyon varken kare saati çalışır, yokken uyur (boşta %0 CPU).
@@ -88,7 +89,8 @@ Render akışı: input → state değişir → `invalidate(rect)` → sonraki `W
 - `AppState`: aktif `Source`, seçili index, `Session` durumu, `ChangeSet`, arka plan görevleri. Basit gözlemci (`Signal<>`) ile sayfalara duyurur.
 - `Page` arayüzü: `id()`, `title()`, `buildView()`, `onEnter()/onLeave()`, `inspectorContent()`, `commands()` (komut paleti için), `pendingCount()` (nav rozeti).
 - `App` (`app/App.cpp`): Graphics + Window + SwapChainTarget'ı kurar; pencere modu veya `--render` modu. Komut satırı `app/App.h` başında.
-- `Shell`: sabit iskelet (titlebar 32, nav 200/44, içerik, inspector 280, statusbar 24) — `layout-system.md`'ye birebir. Şimdilik yalnızca `shell/TitleBar` var (kendini doğrudan çiziyor; 1.4'te widget'lara bölünecek, D-012).
+- `Shell` (`app/shell`): kök widget. TitleBar 32 (PaletteTrigger + CaptionButton widget'ları, breadcrumb = sayfa başlığı), NavRail 200/44 (gruplar `pages/PageInfo`'dan, daralma animasyonu, <1200'de otomatik daralma), PageView (başlık + açıklama + gövde), StatusBar 24 (mount segmenti, imaj bağlıyken görünen "Uygula · n" CTA). Uygulama kısayolları `Shell::handleShortcut` (odaktaki widget tüketmezse).
+- `pages/PageInfo`: sayfa kataloğu (sıra, grup, metin anahtarları, ikon, yol haritası adımı). Menü, breadcrumb, Ctrl+1…9, `--page=` ve ileride komut paleti buradan beslenir. Yeni sayfa = buraya satır + `Shell::showPage`'de gövdesi.
 - `Resources`: fontlar ve `strings/*.json` exe'ye gömülüdür (`WinLove.rc`, RCDATA); tek dosya dağıtım.
 - `Localization`: `strings.tr.json` / `strings.en.json`; eksik anahtar derlemede (tools/gen) ve testte yakalanır.
 - Ayarlar: `%LOCALAPPDATA%\WinLove\settings.json`.

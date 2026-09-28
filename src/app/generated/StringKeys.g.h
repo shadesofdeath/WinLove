@@ -338,6 +338,8 @@ enum class Str : std::uint16_t {
     SettingsUiLanguage,
     SettingsUnmountAfter,
     SettingsWorkDir,
+    ShellPendingBody,
+    ShellPendingTitle,
     SourceAdmin,
     SourceAdminRequired,
     SourceDaysAgo,
@@ -422,7 +424,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 412;
+inline constexpr std::size_t kStrCount = 414;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -755,6 +757,8 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "settings.uiLanguage",
     "settings.unmountAfter",
     "settings.workDir",
+    "shell.pendingBody",
+    "shell.pendingTitle",
     "source.admin",
     "source.adminRequired",
     "source.daysAgo",

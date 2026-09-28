@@ -1,0 +1,9 @@
+# Normalize text to LF in the repo; binaries untouched.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.rc text eol=crlf
+*.ttf binary
+*.ico binary
+*.png binary
+*.iso binary
+*.wim binary

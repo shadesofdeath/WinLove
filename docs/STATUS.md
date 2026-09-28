@@ -3,34 +3,35 @@
 > Her oturumun sonunda güncellenir. En üstte güncel durum; geçmiş en altta kısa satırlar.
 
 ## Güncel
-- **Faz:** 1 — UI çatısı. 1.1, 1.2, 1.3 ve 1.5 ✅; sıradaki 1.4.
-- **Aktif iş:** yok. Kullanıcı gerçek pencereyi denemeli (aşağıdaki "Kullanıcı kontrolü").
-- **Bir sonraki somut adım:** Faz 1.4, widget ağacı: `ui/widget/Widget` (bounds, measure/arrange, paint, hitTest, focus, pointer/klavye olayları, invalidate), basit layout (Stack/Dock), odak yönetimi (Tab/F6, yalnızca klavyede focus ring), animasyon saati (motion token'ları, reduce motion). Ardından geçici `TitleBar` widget'lara bölünür (D-012).
-- **Build:** `./build.ps1 -Test` yeşil. 23 test / 1597 assertion (render testleri dahil).
+- **Faz:** 1 (UI çatısı) ✅ → Faz 2 (motor temeli) başlıyor.
+- **Aktif iş:** Faz 2.1: `Log`, `TaskRunner`, `CancelToken`, `Progress`, UI dispatcher.
+- **Bir sonraki somut adım:** `src/core/base/Log` (dosya + bellek halka tamponu + stdout), ardından `core/tasks/TaskRunner` (tek motor thread'i) ve UI'a sonuç taşıyan dispatcher (`WM_APP`). Sonra 2.2 (yetki) → 2.3 (WIM okuma, `wlcli info`).
+- **Build:** `./build.ps1 -Test` yeşil: 32 test / 1652 assertion (widget davranışı + render + token + metin).
 - **Kullanıcı kontrolü (elle, tek seferlik):** `build\x64-debug\bin\WinLove.exe` →
   1. Maximize butonunun üstünde beklet → Windows 11 Snap Layouts açılmalı.
-  2. Başlıktan sürükle / çift tıkla ekranı kapla / kenarlardan ve üst kenardan boyutlandır.
-  3. Kapat butonuna hover → kırmızı; butondan basılı tutup dışarı çekince tıklama iptal olmalı.
-  4. Ctrl+Shift+T → açık/koyu tema.
-  5. Farklı DPI'lı monitöre sürükle → keskin kalmalı.
-- **Bilinen sorunlar / açık sorular:**
-  - Başlıktaki sayfa göstergesi ("| Kaynak seç") yok; Shell/sayfalar (1.7) ile gelecek.
-  - Keycap'ler tasarımdan ~2px daha geniş: tasarım tarayıcıda JetBrains Mono yerine yedek fontla render edilmiş, gerçek font bizde. Bilinçli, sorun değil.
-  - Section stilindeki büyük harf dönüşümü Türkçe'ye duyarlı değil (i→İ). 1.7'de locale-aware helper gelecek.
-  - Handoff TODO: 24px ikonlar 16'dan türetilmiş, optik düzeltme yok.
+  2. Başlıktan sürükle / çift tıkla / kenarlardan boyutlandır. 1200'ün altına daraltınca menü 44'e inmeli.
+  3. Menüde gezin (tık, Tab ile menüye gir, ↑↓, Enter). Ctrl+B daralt/aç, Ctrl+1…9, Ctrl+Shift+T tema, Ctrl+Shift+G galeri.
+  4. Butonlarda hover/basma geçişleri (galeri), küçült/kapat tooltip'leri, daraltılmış menüde tooltip.
+- **Bilinen sorunlar / açık konular:**
+  - ScrollBar/ScrollView ve Inspector paneli henüz yok; ilk ihtiyaç duyan sayfayla (P01/P02) gelecek.
+  - DComp ve dirty-rect yok (D-011). Tüm kare çiziliyor, animasyon yokken 0 CPU.
+  - UI Automation sağlayıcısı yok (rol/ad bilgisi widget'larda tutuluyor; Faz 4).
+  - F6 ile bölgeler arası atlama ve Alt+Space özel yönlendirmesi yok.
+  - Section stilinde büyük harf Türkçe'ye duyarlı değil (i→İ).
   - Claude Code terminali admin değil → mount/apply testleri kullanıcının yönetici terminalinde.
 
-## Faz 1'de şu ana kadar yapılanlar
-- `ui/platform/Window`: `WM_NCCALCSIZE` ile özel başlık; `WM_NCHITTEST` → HTCAPTION / HTMIN/MAX/CLOSE (Snap Layouts) / üst kenar HTTOP; caption butonlarına basma olayları Windows'a verilmiyor (klasik buton çizmesin diye). Per-Monitor-V2 DPI, min 1100×700, DWM koyu çerçeve + kenar rengi + yuvarlak köşe.
-- `ui/render`: RenderDevice (WARP yedekli), SwapChainTarget, OffscreenTarget (PNG), Graphics, Canvas, SvgPath.
-- `ui/text`: gömülü fontlardan koleksiyon, TypeStyle başına TextFormat. `ui/icons/IconCache`.
-- `app`: `App` (pencere + `--render` modu), `Resources` (fontlar/metinler exe içinde), geçici `shell/TitleBar`. Ctrl+Shift+T tema.
-- Araçlar: `compare_design.py`, `capture_window.py`. Ölçüm: boşta 0 ms CPU / 3 sn, ~67 MB bellek (Debug).
+## Faz 1 özeti
+- Pencere: özel başlık, Snap Layouts için HT* bölgeleri, DPI v2, DWM çerçeve renkleri, zamanlayıcı/imleç/ayar değişikliği.
+- Render: D3D11 (+WARP) / D2D, swapchain + offscreen PNG, Canvas (Ink renk karışımı, piksel hizalı 1px, gölge efekti, opaklık katmanı), SVG path → geometri, gömülü fontlar.
+- Widget sistemi: Widget/Host/Stack/Tween; widget'lar: Button, Label, Kbd, Splitter, EmptyState.
+- Kabuk: TitleBar, NavRail, StatusBar, PageView, sayfa kataloğu, galeri, kısayollar.
+- Doğrulama: `--render` + durum simülasyonu, `compare_design.py`, `capture_window.py`.
 
 ## Ortam doğrulaması (2026-09-28)
-VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Tools, dismapi.dll 10.0.26100, Python 3.14 (fonttools, pillow, playwright; tarayıcı: Playwright Chromium / Chrome), Git. CMake yalnızca VS içinde (PATH'te değil). C: ~330 GB boş. Ana ekran 144 DPI (%150).
+VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Tools, dismapi.dll 10.0.26100, Python 3.14 (fonttools, pillow, playwright; tarayıcı: Playwright Chromium / Chrome), Git. CMake yalnızca VS içinde (PATH'te değil). C: ~330 GB boş. Ana ekran 144 DPI (%150). PowerShell betik politikası kısıtlı (`-ExecutionPolicy Bypass` gerekir).
 
 ## Geçmiş
+- 2026-09-28 — Faz 1 tamamlandı: widget sistemi, temel widget'lar, uygulama kabuğu, galeri, otomatik daralma.
 - 2026-09-28 — Faz 1.1–1.3 + 1.5: ilk pencere, özel başlık çubuğu, render altyapısı, görsel doğrulama araçları.
 - 2026-09-28 — Faz 0 tamamlandı (iskelet, build, üreticiler, fontlar, marka, testler).
 - 2026-09-28 — UI handoff paketi alındı (palet "Bakır", 115 ikon, 27 ekran). Proje planı ve dokümanlar yazıldı.

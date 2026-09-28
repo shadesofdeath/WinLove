@@ -9,13 +9,15 @@
   ./build.ps1 -Test -Integration  # + integration tests (elevated shell, C:\WinLoveLab)
   ./build.ps1 -Gen                # only run code generators
   ./build.ps1 -Clean              # delete the build directory of the chosen config first
+  ./build.ps1 -Target wl_ui       # build a single CMake target (fast iteration)
 #>
 param(
     [ValidateSet('Debug', 'Release')] [string] $Config = 'Debug',
     [switch] $Test,
     [switch] $Integration,
     [switch] $Gen,
-    [switch] $Clean
+    [switch] $Clean,
+    [string] $Target
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,7 +53,11 @@ try {
     Import-VsDevEnvironment
     if ($Clean -and (Test-Path "build/$Preset")) { Remove-Item -Recurse -Force "build/$Preset" }
     Invoke-Step "configure ($Preset)" { cmake --preset $Preset --log-level=WARNING }
-    Invoke-Step "build ($Preset)" { cmake --build --preset $Preset }
+    if ($Target) {
+        Invoke-Step "build $Target ($Preset)" { cmake --build --preset $Preset --target $Target }
+    } else {
+        Invoke-Step "build ($Preset)" { cmake --build --preset $Preset }
+    }
 
     if ($Test) {
         Invoke-Step 'unit tests' { ctest --preset $Preset -L unit }

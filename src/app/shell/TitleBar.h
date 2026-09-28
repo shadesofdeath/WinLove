@@ -1,52 +1,86 @@
 #pragma once
-// Title bar per 03_components/statusbar-titlebar.md: brand, command palette trigger, caption buttons.
-// Faz 1.1–1.3 version: draws and hit-tests itself directly. It becomes a composition of widgets
-// (IconButton, Kbd, ...) once the widget tree lands in Faz 1.4.
-#include "ui/platform/Window.h"
-#include "ui/render/Canvas.h"
+// Title bar per 03_components/statusbar-titlebar.md (32px): brand + breadcrumb, command palette
+// trigger (centered 280×20), caption buttons 46×32. The bar itself reports HitZone::Caption so
+// Windows drags the window; caption buttons report their HT* zones (Snap Layouts on maximize).
+#include "ui/anim/Tween.h"
+#include "ui/widget/Widget.h"
 
+#include <functional>
 #include <string>
+#include <vector>
 
 namespace wl::app {
 
-class TitleBar {
+class PaletteTrigger : public ui::Widget {
 public:
-    enum class Part : std::uint8_t { None, Palette, Minimize, Maximize, Close };
-    enum class Action : std::uint8_t { None, OpenPalette, Minimize, ToggleMaximize, Close };
+    PaletteTrigger(std::wstring hint, std::vector<std::wstring> keys);
+    std::function<void()> onInvoke;
 
+    void paint(ui::Canvas& canvas) override;
+    void onClick() override;
+    bool onKeyDown(const ui::KeyEvent& key) override;
+
+private:
+    std::wstring m_hint;
+    std::vector<std::wstring> m_keys;
+};
+
+class CaptionButton : public ui::Widget {
+public:
+    enum class Kind : std::uint8_t { Minimize, Maximize, Close };
+    explicit CaptionButton(Kind kind);
+    std::function<void()> onInvoke;
+
+    void setMaximized(bool maximized);
+    void setWindowActive(bool active);
+
+    void paint(ui::Canvas& canvas) override;
+    [[nodiscard]] ui::HitZone windowZone() const override;
+    void onHoverChanged(bool hovered) override;
+    void onClick() override;
+    bool onKeyDown(const ui::KeyEvent& key) override;
+    bool tick(double now) override;
+    [[nodiscard]] float focusRadius() const override { return 0; }
+
+private:
+    Kind m_kind;
+    bool m_maximized = false;
+    bool m_windowActive = true;
+    ui::Tween m_hover;
+};
+
+class TitleBar : public ui::Widget {
+public:
     struct Labels {
         std::wstring appName;
         std::wstring paletteHint;
-        std::wstring ctrlKey; // "Ctrl"
+        std::wstring ctrlKey;
+        std::wstring minimize;
+        std::wstring close;
     };
+    explicit TitleBar(const Labels& labels);
 
-    void setLabels(Labels labels) { m_labels = std::move(labels); }
-    void setActive(bool active) noexcept { m_active = active; }
-    void setMaximized(bool maximized) noexcept { m_maximized = maximized; }
-    void layout(float width);
+    PaletteTrigger& palette() { return *m_palette; }
+    CaptionButton& minimizeButton() { return *m_minimize; }
+    CaptionButton& maximizeButton() { return *m_maximize; }
+    CaptionButton& closeButton() { return *m_close; }
 
-    void paint(ui::Canvas& canvas) const;
-    [[nodiscard]] ui::HitZone hitTest(ui::PointF point) const;
+    void setBreadcrumb(std::wstring text);
+    void setWindowActive(bool active);
+    void setMaximized(bool maximized);
 
-    // Returns true when the visual state changed (repaint needed). An action, if any, is
-    // reported through `action` on pointer-up over the part that was pressed.
-    bool onPointer(const ui::PointerEvent& event, Action& action);
+    void layout() override;
+    void paint(ui::Canvas& canvas) override;
+    [[nodiscard]] ui::HitZone windowZone() const override { return ui::HitZone::Caption; }
 
 private:
-    [[nodiscard]] Part partAt(ui::PointF point, ui::HitZone zone) const;
-    void paintCaptionButton(ui::Canvas& canvas, Part part, ui::RectF rect) const;
-    void paintPalette(ui::Canvas& canvas) const;
-
-    Labels m_labels;
-    float m_width = 0;
-    ui::RectF m_palette{};
-    ui::RectF m_minimize{};
-    ui::RectF m_maximize{};
-    ui::RectF m_close{};
-    Part m_hovered = Part::None;
-    Part m_pressed = Part::None;
-    bool m_active = true;
-    bool m_maximized = false;
+    std::wstring m_appName;
+    std::wstring m_breadcrumb;
+    bool m_windowActive = true;
+    PaletteTrigger* m_palette = nullptr;
+    CaptionButton* m_minimize = nullptr;
+    CaptionButton* m_maximize = nullptr;
+    CaptionButton* m_close = nullptr;
 };
 
 } // namespace wl::app

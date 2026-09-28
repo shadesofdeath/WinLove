@@ -482,5 +482,9 @@
     "enter": "↵",
     "esc": "Esc",
     "space": "Space"
+  },
+  "shell": {
+    "pendingTitle": "Bu sayfa henüz hazır değil",
+    "pendingBody": "Yol haritasında {id} adımıyla gelecek."
   }
 }

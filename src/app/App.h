@@ -1,14 +1,20 @@
 #pragma once
-// Application object: owns graphics, the main window and the shell. Two modes:
+// Application object: owns graphics, the main window, the widget host and the shell. Two modes:
 //  - windowed (normal run)
-//  - offscreen: `WinLove.exe --render=<file.png> [--theme=dark|light|hc] [--scale=1.5]
-//               [--size=1440x900] [--lang=tr|en] [--hover=palette|min|max|close] [--maximized]`
-//    draws one frame without a window — for visual checks against WinLove-UI-Handoff/04_screens.
+//  - offscreen: WinLove.exe --render=<file.png> [options] draws one frame without a window,
+//    for visual checks against WinLove-UI-Handoff/04_screens. Options:
+//      --theme=dark|light|hc  --lang=tr|en  --scale=1.5  --size=1440x900
+//      --page=<key>           (source, images, …, settings, about, gallery)
+//      --nav-collapsed        --maximized (restore glyph)
+//      --hover-at=x,y         --press-at=x,y   --tooltip-at=x,y   (DIPs; simulate the pointer)
+//      --tab=N                (press Tab N times: keyboard focus ring)
 #include "app/Localization.h"
-#include "app/shell/TitleBar.h"
+#include "app/pages/PageInfo.h"
+#include "app/shell/Shell.h"
 #include "ui/platform/Window.h"
 #include "ui/render/Graphics.h"
 #include "ui/render/SwapChainTarget.h"
+#include "ui/widget/Host.h"
 
 #include <filesystem>
 #include <optional>
@@ -23,8 +29,13 @@ struct LaunchOptions {
     std::optional<std::filesystem::path> renderTo;
     float scale = 1.0f;
     ui::SizeF size{1440, 900};
-    std::optional<TitleBar::Part> hover; // offscreen only: simulate hover for state checks
-    bool maximized = false;              // offscreen only: draw the restore glyph
+    std::optional<PageId> page;
+    bool navCollapsed = false;
+    bool maximized = false;
+    std::optional<ui::PointF> hoverAt;
+    std::optional<ui::PointF> pressAt;
+    std::optional<ui::PointF> tooltipAt;
+    int tabPresses = 0;
 };
 
 [[nodiscard]] Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args);
@@ -32,14 +43,15 @@ struct LaunchOptions {
 class App {
 public:
     explicit App(LaunchOptions options) : m_options(std::move(options)) {}
+    ~App();
     [[nodiscard]] int run();
 
 private:
     [[nodiscard]] Result<void> initialize();
+    void buildUi(ui::HostServices services);
     [[nodiscard]] int runWindowed();
     [[nodiscard]] int renderOffscreen();
     void paint();
-    void paintFrame(ui::Canvas& canvas, ui::SizeF size);
     void applyTheme();
     [[nodiscard]] Result<void> recreateGraphics();
 
@@ -48,7 +60,8 @@ private:
     std::optional<Localization> m_strings;
     ui::Window m_window;
     std::unique_ptr<ui::SwapChainTarget> m_target;
-    TitleBar m_titleBar;
+    std::unique_ptr<ui::Host> m_host;
+    Shell* m_shell = nullptr;
 };
 
 } // namespace wl::app
