@@ -6,6 +6,7 @@
 #include "core/image/dism/DismErrors.h"
 #include "core/image/dism/MountHealth.h"
 #include "core/system/FileLocks.h"
+#include "core/system/Privileges.h"
 #include "core/tasks/TaskRunner.h"
 
 #include <doctest.h>
@@ -16,6 +17,8 @@
 #include <cstring>
 #include <optional>
 #include <vector>
+
+#include <shellapi.h>
 
 using namespace wl;
 using namespace wl::core;
@@ -248,4 +251,17 @@ TEST_CASE("nativePath: absolute, backslashes only (DISM rejects mixed separators
     CHECK(wl::nativePath(std::filesystem::path(L"C:/WinLoveLab/iso") / L"sources/install.wim").wstring() ==
           LR"(C:\WinLoveLab\iso\sources\install.wim)");
     CHECK(wl::nativePath(LR"(C:\WinLove\.\mount\)").wstring() == LR"(C:\WinLove\mount\)");
+}
+
+TEST_CASE("quoteArgument round-trips through CommandLineToArgvW") {
+    for (const std::wstring arg : {std::wstring(L"E:\\"), std::wstring(L"C:\\a b\\x.iso"), std::wstring(L"say \"hi\""),
+                                   std::wstring(L"a\\\\"), std::wstring(L"")}) {
+        const std::wstring line = L"prog.exe " + wl::core::quoteArgument(arg);
+        int argc = 0;
+        wchar_t** argv = CommandLineToArgvW(line.c_str(), &argc);
+        REQUIRE(argv);
+        REQUIRE(argc == 2);
+        CHECK(std::wstring(argv[1]) == arg);
+        LocalFree(argv);
+    }
 }

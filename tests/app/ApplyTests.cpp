@@ -57,6 +57,11 @@ TEST_CASE("Apply page mode: no mount, empty queue, summary, running, done") {
     AppState::ApplyRun run;
     state.setApplyRun(run);
     CHECK(ApplyPage::modeFor(state) == ApplyPage::Mode::Running);
+    // The queue is frozen while Uygula runs: edits would be lost or undone by the post-run cleanup.
+    CHECK(state.queueLocked());
+    state.queue(Operation{OpKind::EnableFeature, L"Other"});
+    CHECK_FALSE(state.unqueue(OpKind::EnableFeature, L"WSL"));
+    CHECK(state.changes().size() == 1);
     run.stage = AppState::ApplyRun::Stage::Done;
     state.setApplyRun(run);
     CHECK(ApplyPage::modeFor(state) == ApplyPage::Mode::Summary); // queue still has work

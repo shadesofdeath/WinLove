@@ -29,14 +29,24 @@ bool RegistryController::checked(const std::vector<RegistryWrite>& writes, OpKin
 
 void RegistryController::setChecked(const std::vector<RegistryWrite>& writes, bool on, core::ops::Risk risk,
                                     OpKind kind) {
+    // One batch = one notification and one undo step (a .reg file may hold thousands of values).
+    if (on) {
+        std::vector<Operation> ops;
+        ops.reserve(writes.size());
+        for (const auto& w : writes) {
+            ops.push_back(operationFor(w, risk, kind));
+        }
+        m_state.queueMany(std::move(ops));
+        return;
+    }
+    std::vector<std::pair<OpKind, std::wstring>> slots;
     for (const auto& w : writes) {
-        if (on) {
-            m_state.queue(operationFor(w, risk, kind));
-        } else if (const auto* op = m_state.changes().find(kind, core::registryTarget(w));
-                   op && op->value == core::formatRegValue(w)) {
-            m_state.unqueue(kind, core::registryTarget(w));
+        if (const auto* op = m_state.changes().find(kind, core::registryTarget(w));
+            op && op->value == core::formatRegValue(w)) {
+            slots.emplace_back(kind, core::registryTarget(w));
         }
     }
+    m_state.unqueueMany(slots);
 }
 
 void RegistryController::toggle(const Tweak& tweak) {

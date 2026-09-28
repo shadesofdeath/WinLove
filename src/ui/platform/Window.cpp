@@ -451,6 +451,11 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
             m_callbacks.settingsChanged();
         }
         break;
+    case WM_CLOSE:
+        if (m_callbacks.closeRequested && !m_callbacks.closeRequested()) {
+            return 0;
+        }
+        break;
     case WM_DESTROY:
         if (m_background) {
             DeleteObject(m_background);

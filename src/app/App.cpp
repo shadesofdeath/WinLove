@@ -591,6 +591,7 @@ int App::runWindowed() {
             m_host->onChar(ch);
         }
     };
+    callbacks.closeRequested = [this] { return m_forceClose || !m_shell || m_shell->confirmClose(); };
     callbacks.cursor = [this](ui::PointF p) { return m_host ? m_host->cursorAt(p) : ui::Cursor::Arrow; };
     callbacks.pointer = [this](const ui::PointerEvent& event) {
         if (m_host) {
@@ -707,6 +708,7 @@ void App::paint() {
         if (deviceLost(hr)) {
             if (auto rebuilt = recreateGraphics(); !rebuilt) {
                 showError(rebuilt.error());
+                m_forceClose = true;
                 m_window.close();
                 return;
             }

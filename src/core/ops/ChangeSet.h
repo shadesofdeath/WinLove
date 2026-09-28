@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace wl::core::ops {
@@ -49,6 +50,9 @@ class ChangeSet {
 public:
     void add(Operation op);
     bool remove(OpKind kind, std::wstring_view target);
+    // Batches (a whole .reg import): one undo step, no per-item history copy.
+    void addAll(std::vector<Operation> ops);
+    std::size_t removeAll(const std::vector<std::pair<OpKind, std::wstring>>& slots);
     void clear();
 
     [[nodiscard]] const std::vector<Operation>& operations() const noexcept { return m_ops; }
@@ -71,6 +75,8 @@ public:
 
 private:
     void snapshot();
+    void addOne(Operation op);
+    bool removeOne(OpKind kind, std::wstring_view target);
     std::vector<Operation> m_ops;
     std::vector<std::vector<Operation>> m_undo;
     std::vector<std::vector<Operation>> m_redo;

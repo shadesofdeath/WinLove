@@ -90,3 +90,16 @@ TEST_CASE("Planner: removals, features, drivers, updates, settings — user orde
     CHECK(p.hasHighRisk());
     CHECK(p.warnings.size() == 1);
 }
+
+TEST_CASE("ChangeSet batches: one undo step for addAll / removeAll") {
+    ChangeSet set;
+    set.addAll({{OpKind::SetRegistryValue, L"HKCU\\A::x", L"dword:00000001"},
+                {OpKind::SetRegistryValue, L"HKCU\\A::y", L"dword:00000002"}});
+    CHECK(set.size() == 2);
+    CHECK(set.undo());
+    CHECK(set.empty()); // the whole batch was one step
+    CHECK(set.redo());
+    CHECK(set.removeAll({{OpKind::SetRegistryValue, L"HKCU\\A::x"}, {OpKind::SetRegistryValue, L"HKCU\\A::nope"}}) == 1);
+    CHECK(set.size() == 1);
+    CHECK(set.removeAll({{OpKind::SetRegistryValue, L"HKCU\\A::nope"}}) == 0);
+}

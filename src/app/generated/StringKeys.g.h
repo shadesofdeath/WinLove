@@ -176,6 +176,8 @@ enum class Str : std::uint16_t {
     DialogsAdminBody,
     DialogsAdminGo,
     DialogsAdminTitle,
+    DialogsBusyCloseBody,
+    DialogsBusyCloseTitle,
     DialogsDeleteIndexBody,
     DialogsDeleteIndexTitle,
     DialogsRestarting,
@@ -653,7 +655,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 643;
+inline constexpr std::size_t kStrCount = 645;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -824,6 +826,8 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "dialogs.adminBody",
     "dialogs.adminGo",
     "dialogs.adminTitle",
+    "dialogs.busyCloseBody",
+    "dialogs.busyCloseTitle",
     "dialogs.deleteIndexBody",
     "dialogs.deleteIndexTitle",
     "dialogs.restarting",
