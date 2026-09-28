@@ -22,3 +22,11 @@ target_link_libraries(wl_tests PRIVATE wl_app wl_doctest wl_json ole32)
 
 add_test(NAME unit COMMAND wl_tests)
 set_tests_properties(unit PROPERTIES LABELS unit)
+
+# DISM ABI check against the official header when the ADK is installed (D-017: never required).
+set(WL_ADK_DISMAPI "$ENV{ProgramFiles\(x86\)}/Windows Kits/10/Assessment and Deployment Kit/Deployment Tools/SDKs/DismApi/Include")
+if(EXISTS "${WL_ADK_DISMAPI}/dismapi.h")
+    target_sources(wl_tests PRIVATE core/DismAbiTests.cpp)
+    target_include_directories(wl_tests SYSTEM PRIVATE "${WL_ADK_DISMAPI}")
+    message(STATUS "DISM ABI test: ${WL_ADK_DISMAPI}")
+endif()

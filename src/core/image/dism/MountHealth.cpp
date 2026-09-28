@@ -62,7 +62,8 @@ MountCheck check(const std::filesystem::path& folder, std::optional<MountInfo> r
     c.action = recommendedAction(c.state);
     c.windowsImage = fileExists(folder / L"Windows" / L"System32" / L"config" / L"SOFTWARE");
     c.loadedHives = hivesLoadedFrom(folder);
-    if (c.state != MountState::Free) {
+    // Only where it helps a decision: the scan walks the folder and asks Restart Manager.
+    if (c.state != MountState::Free && c.state != MountState::Ok) {
         c.blockers = blockersOf(folder);
     }
     if (record && fileExists(record->imagePath)) {
@@ -302,7 +303,7 @@ Result<UnmountOutcome> unmountSafely(Dism& dism, const std::filesystem::path& fo
     }
     if (check->state == MountState::Ok || check->state == MountState::NeedsRemount) {
         std::wstring who;
-        for (const auto& b : check->blockers) {
+        for (const auto& b : blockersOf(folder)) { // not in check(): healthy mounts skip the scan
             who += (who.empty() ? L"" : L", ") + b.name;
         }
         if (!who.empty()) {

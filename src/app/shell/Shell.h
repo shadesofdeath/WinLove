@@ -133,7 +133,7 @@ private:
     ui::Button* m_actionExport = nullptr;
     ui::Button* m_actionEsd = nullptr;
     PageId m_page = PageId::Source;
-    bool m_opening = false;
+    std::uint64_t m_openSerial = 0; // latest openSource request; older results are dropped
     bool m_autoRestoreTried = false; // one automatic restore per session; then the page offers it
     ui::Tween m_navExpansion{1.0f};
     float m_navTarget = 1.0f;

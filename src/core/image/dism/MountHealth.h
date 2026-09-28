@@ -43,7 +43,7 @@ struct MountCheck {
     MountAction action = MountAction::None;
     bool windowsImage = false;             // Windows\System32\config\SOFTWARE present
     std::vector<std::wstring> loadedHives; // e.g. \REGISTRY\MACHINE\WL_SOFTWARE, loaded from inside
-    std::vector<FolderBlocker> blockers;   // Explorer windows inside, processes holding files
+    std::vector<FolderBlocker> blockers;   // Explorer windows / processes; only for problem states
 };
 
 // One folder (e.g. the WinLove mount folder).

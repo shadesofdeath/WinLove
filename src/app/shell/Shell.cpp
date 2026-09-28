@@ -335,9 +335,6 @@ void Shell::onTimer(UINT id) {
 // ---- sources -------------------------------------------------------------------------------
 
 void Shell::openSource(const std::filesystem::path& path, std::function<void()> then) {
-    if (m_opening) {
-        return;
-    }
     if (m_images->busy()) {
         showToast(ui::InfoKind::Warning, m_strings.get(Str::ImagesBusy), L"");
         return;
@@ -346,22 +343,21 @@ void Shell::openSource(const std::filesystem::path& path, std::function<void()> 
         showToast(ui::InfoKind::Warning, m_strings.get(Str::ImagesUnmountFirst), L"");
         return;
     }
-    m_opening = true;
+    const std::uint64_t serial = ++m_openSerial; // a newer request wins over one still running
     if (auto* page = sourcePage()) {
         page->setLoading(true);
     }
     log::info("app", L"opening source " + path.wstring());
-    // Engine thread → UI thread: `done` runs on the engine and only hands over the result.
-    m_state.engine().run<core::SourceInfo>(
+    // Reader thread (not the DISM engine: a mount inspection or feature read must not delay this).
+    m_state.reader().run<core::SourceInfo>(
         [path](const core::TaskContext&) { return core::openSource(path); },
-        [this, post = m_services.postToUi, alive = std::weak_ptr<bool>(m_alive),
+        [this, post = m_services.postToUi, alive = std::weak_ptr<bool>(m_alive), serial,
          then = std::move(then)](Result<core::SourceInfo> result) {
-            post([this, alive, then, result = std::move(result)]() mutable {
+            post([this, alive, then, serial, result = std::move(result)]() mutable {
                 const auto stillAlive = alive.lock();
-                if (!stillAlive || !*stillAlive) {
+                if (!stillAlive || !*stillAlive || serial != m_openSerial) {
                     return;
                 }
-                m_opening = false;
                 if (auto* page = sourcePage()) {
                     page->setLoading(false);
                 }

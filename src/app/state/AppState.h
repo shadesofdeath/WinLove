@@ -50,7 +50,10 @@ public:
     AppState(const AppState&) = delete;
     AppState& operator=(const AppState&) = delete;
 
+    // DISM / WIMGAPI work, one at a time (mount, servicing, feature reads, exports).
     [[nodiscard]] core::TaskRunner& engine() noexcept { return m_engine; }
+    // Quick file reads that must not wait behind a long DISM job (opening a source: ~50 ms).
+    [[nodiscard]] core::TaskRunner& reader() noexcept { return m_reader; }
     [[nodiscard]] const AppSettings& settings() const noexcept { return m_settings; }
 
     [[nodiscard]] const std::optional<core::SourceInfo>& source() const noexcept { return m_source; }
@@ -107,6 +110,7 @@ private:
     void notify(Change change);
 
     core::TaskRunner m_engine;
+    core::TaskRunner m_reader;
     AppSettings m_settings;
     std::optional<core::SourceInfo> m_source;
     std::optional<int> m_selected;
