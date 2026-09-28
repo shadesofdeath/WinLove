@@ -11,6 +11,7 @@ namespace wl::ui {
 namespace {
 
 constexpr wchar_t kClassName[] = L"WinLove.Window";
+constexpr UINT kPostMessage = WM_APP + 1;
 
 bool isCaptionButton(WPARAM hit) {
     return hit == HTMINBUTTON || hit == HTMAXBUTTON || hit == HTCLOSE;
@@ -122,6 +123,16 @@ void Window::toggleMaximize() {
 
 void Window::close() {
     PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
+}
+
+void Window::post(std::function<void()> fn) {
+    {
+        std::scoped_lock lock(m_postMutex);
+        m_posted.push_back(std::move(fn));
+    }
+    if (m_hwnd) {
+        PostMessageW(m_hwnd, kPostMessage, 0, 0);
+    }
 }
 
 void Window::setTimer(UINT id, UINT ms) {
@@ -340,6 +351,17 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
             m_callbacks.keyDown({static_cast<UINT>(wParam), down(VK_CONTROL), down(VK_SHIFT), down(VK_MENU)});
         }
         return 0;
+    case kPostMessage: {
+        std::deque<std::function<void()>> batch;
+        {
+            std::scoped_lock lock(m_postMutex);
+            batch.swap(m_posted);
+        }
+        for (auto& fn : batch) {
+            fn();
+        }
+        return 0;
+    }
     case WM_TIMER:
         if (m_callbacks.timer) {
             m_callbacks.timer(static_cast<UINT>(wParam));
