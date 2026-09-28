@@ -2,6 +2,7 @@
 // One engine thread (docs/ARCHITECTURE.md §2.5): DISM sessions are thread-affine and image
 // operations must never run in parallel. Jobs run in FIFO order; `done` is called on the engine
 // thread — the app marshals it to the UI thread (ui::Window::post).
+#include "base/Utf8.h"
 #include "core/tasks/Task.h"
 
 #include <condition_variable>
@@ -25,9 +26,18 @@ public:
         TaskContext context{CancelToken{}, std::move(progress)};
         CancelToken token = context.cancel;
         post([work = std::move(work), done = std::move(done), context = std::move(context)] {
-            Result<T> result = context.cancel.cancelled()
-                                   ? Result<T>(fail(ErrorCode::Cancelled, L"cancelled before start"))
-                                   : work(context);
+            // `done` must always run (the UI waits for it): an exception becomes an error result.
+            Result<T> result = fail(ErrorCode::Unknown, L"engine job threw an exception");
+            if (context.cancel.cancelled()) {
+                result = fail(ErrorCode::Cancelled, L"cancelled before start");
+            } else {
+                try {
+                    result = work(context);
+                } catch (const std::exception& e) {
+                    result = fail(ErrorCode::Unknown, L"engine job threw an exception", utf8::toWide(e.what()));
+                } catch (...) {
+                }
+            }
             if (done) {
                 done(std::move(result));
             }

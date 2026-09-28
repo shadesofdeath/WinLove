@@ -87,7 +87,11 @@ bool isReparsePoint(const std::filesystem::path& path) {
     return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
 }
 
-// Owner := Administrators, DACL := Administrators full control (inherited entries kept off).
+// Owner := Administrators, DACL := Administrators full control — on THIS entry only.
+// Handle-based on purpose: SetNamedSecurityInfo follows junctions (an image's "Documents and
+// Settings" → C:\Users would rewrite the host's ACLs) and propagates inheritable ACEs down the
+// tree. With FILE_FLAG_OPEN_REPARSE_POINT the link itself is changed, and the ACE is not
+// inheritable; children get their own call when removeEntry reaches them.
 bool takeOwnership(const std::filesystem::path& path) {
     (void)enablePrivilege(SE_TAKE_OWNERSHIP_NAME);
     (void)enablePrivilege(SE_RESTORE_NAME);
@@ -98,25 +102,31 @@ bool takeOwnership(const std::filesystem::path& path) {
         return false;
     }
     PSID admins = sidBuffer;
-    std::wstring name = path.wstring();
-    if (SetNamedSecurityInfoW(name.data(), SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION, admins, nullptr, nullptr,
-                              nullptr) != ERROR_SUCCESS) {
+    const HANDLE handle = CreateFileW(path.c_str(), WRITE_OWNER | WRITE_DAC | READ_CONTROL,
+                                      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+                                      FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) {
         return false;
     }
-    EXPLICIT_ACCESSW access{};
-    access.grfAccessPermissions = GENERIC_ALL;
-    access.grfAccessMode = SET_ACCESS;
-    access.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-    access.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-    access.Trustee.TrusteeType = TRUSTEE_IS_GROUP;
-    access.Trustee.ptstrName = static_cast<LPWSTR>(admins);
-    PACL acl = nullptr;
-    if (SetEntriesInAclW(1, &access, nullptr, &acl) != ERROR_SUCCESS) {
-        return false;
+    bool ok = SetSecurityInfo(handle, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION, admins, nullptr, nullptr, nullptr) ==
+              ERROR_SUCCESS;
+    if (ok) {
+        EXPLICIT_ACCESSW access{};
+        access.grfAccessPermissions = GENERIC_ALL;
+        access.grfAccessMode = SET_ACCESS;
+        access.grfInheritance = NO_INHERITANCE;
+        access.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+        access.Trustee.TrusteeType = TRUSTEE_IS_GROUP;
+        access.Trustee.ptstrName = static_cast<LPWSTR>(admins);
+        PACL acl = nullptr;
+        ok = SetEntriesInAclW(1, &access, nullptr, &acl) == ERROR_SUCCESS &&
+             SetSecurityInfo(handle, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                             nullptr, nullptr, acl, nullptr) == ERROR_SUCCESS;
+        if (acl) {
+            LocalFree(acl);
+        }
     }
-    const bool ok = SetNamedSecurityInfoW(name.data(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, nullptr, nullptr, acl,
-                                          nullptr) == ERROR_SUCCESS;
-    LocalFree(acl);
+    CloseHandle(handle);
     return ok;
 }
 
@@ -131,14 +141,20 @@ DWORD removeEntry(const std::filesystem::path& path) {
     auto attempt = [&]() -> DWORD {
         if (directory) {
             if (!isReparsePoint(path)) {
+                // Non-throwing iteration: entries may vanish or lock mid-walk.
+                std::vector<std::filesystem::path> children;
                 std::error_code ec;
-                for (const auto& child : std::filesystem::directory_iterator(path, ec)) {
-                    if (const DWORD status = removeEntry(child.path()); status != ERROR_SUCCESS) {
-                        return status;
-                    }
+                for (auto it = std::filesystem::directory_iterator(path, ec);
+                     !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+                    children.push_back(it->path());
                 }
                 if (ec) {
                     return static_cast<DWORD>(ec.value());
+                }
+                for (const auto& child : children) {
+                    if (const DWORD status = removeEntry(child); status != ERROR_SUCCESS) {
+                        return status;
+                    }
                 }
             }
             return RemoveDirectoryW(path.c_str()) ? ERROR_SUCCESS : GetLastError();
@@ -285,15 +301,20 @@ Result<void> forceRemoveContents(const std::filesystem::path& folder) {
         return {};
     }
     releaseExplorerWindows(folder);
-    for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
-        if (const DWORD status = removeEntry(entry.path()); status != ERROR_SUCCESS) {
-            return fail(ErrorCode::AccessDenied, L"could not remove a leftover in the mount folder (still in use?)",
-                        entry.path().wstring(), static_cast<std::int32_t>(HRESULT_FROM_WIN32(status)));
-        }
+    std::vector<std::filesystem::path> entries;
+    for (auto it = std::filesystem::directory_iterator(folder, ec); !ec && it != std::filesystem::directory_iterator();
+         it.increment(ec)) {
+        entries.push_back(it->path());
     }
     if (ec) {
         return fail(ErrorCode::IoError, L"could not list the mount folder", folder.wstring(),
                     static_cast<std::int32_t>(HRESULT_FROM_WIN32(ec.value())));
+    }
+    for (const auto& entry : entries) {
+        if (const DWORD status = removeEntry(entry); status != ERROR_SUCCESS) {
+            return fail(ErrorCode::AccessDenied, L"could not remove a leftover in the mount folder (still in use?)",
+                        entry.wstring(), static_cast<std::int32_t>(HRESULT_FROM_WIN32(status)));
+        }
     }
     return {};
 }

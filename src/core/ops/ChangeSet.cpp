@@ -167,16 +167,25 @@ std::string ChangeSet::toJson() const {
     return nlohmann::json{{"format", "winlove.changeset"}, {"version", 1}, {"operations", ops}}.dump(2);
 }
 
-Result<ChangeSet> ChangeSet::fromJson(std::string_view text) {
-    const auto doc = nlohmann::json::parse(text, nullptr, /*allow_exceptions=*/false);
-    if (doc.is_discarded() || !doc.is_object() || doc.value("format", "") != "winlove.changeset") {
+namespace {
+
+// Throws nlohmann::json::exception on wrongly typed fields; fromJson turns that into ParseError.
+Result<std::vector<Operation>> parseOperations(const nlohmann::json& doc) {
+    if (doc.value("format", "") != "winlove.changeset") {
         return fail(ErrorCode::ParseError, L"not a WinLove change set");
     }
     if (doc.value("version", 0) != 1) {
         return fail(ErrorCode::Unsupported, L"unsupported change set version");
     }
-    ChangeSet set;
-    for (const auto& entry : doc.value("operations", nlohmann::json::array())) {
+    std::vector<Operation> ops;
+    const auto list = doc.value("operations", nlohmann::json::array());
+    if (!list.is_array()) {
+        return fail(ErrorCode::ParseError, L"operations is not a list");
+    }
+    for (const auto& entry : list) {
+        if (!entry.is_object()) {
+            return fail(ErrorCode::ParseError, L"operation is not an object");
+        }
         auto kind = opKindFromKey(entry.value("kind", ""));
         if (!kind) {
             return std::unexpected(kind.error());
@@ -188,8 +197,31 @@ Result<ChangeSet> ChangeSet::fromJson(std::string_view text) {
         if (op.target.empty()) {
             return fail(ErrorCode::ParseError, L"operation without target");
         }
-        set.m_ops.push_back(std::move(op)); // loaded as-is: not an undoable edit
+        ops.push_back(std::move(op));
     }
+    return ops;
+}
+
+} // namespace
+
+Result<ChangeSet> ChangeSet::fromJson(std::string_view text) {
+    const auto doc = nlohmann::json::parse(text, nullptr, /*allow_exceptions=*/false);
+    if (doc.is_discarded() || !doc.is_object()) {
+        return fail(ErrorCode::ParseError, L"not a WinLove change set");
+    }
+    // value() throws type_error on a wrongly typed field ("version":"1", "target":5): a preset file
+    // is user input, so any such exception is a parse error, never a crash.
+    Result<std::vector<Operation>> ops = fail(ErrorCode::ParseError, L"malformed change set");
+    try {
+        ops = parseOperations(doc);
+    } catch (const nlohmann::json::exception& e) {
+        return fail(ErrorCode::ParseError, L"malformed change set", utf8::toWide(e.what()));
+    }
+    if (!ops) {
+        return std::unexpected(ops.error());
+    }
+    ChangeSet set;
+    set.m_ops = std::move(*ops); // loaded as-is: not an undoable edit
     return set;
 }
 

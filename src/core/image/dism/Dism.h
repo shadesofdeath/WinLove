@@ -132,14 +132,19 @@ public:
     // DismAddDriver: one .inf into the driver store of the image (unsigned only with forceUnsigned).
     [[nodiscard]] Result<void> addDriver(const std::filesystem::path& inf, bool forceUnsigned = false);
     [[nodiscard]] const std::filesystem::path& mountPath() const noexcept { return m_path; }
+    // True after a mutation returned DISMAPI_S_RELOAD_IMAGE_SESSION_REQUIRED; reload() before the next one.
+    [[nodiscard]] bool reloadRequired() const noexcept { return m_reloadRequired; }
+    [[nodiscard]] Result<void> reload();
 
 private:
     friend class Dism;
     DismSession(Dism& dism, unsigned session, std::filesystem::path path)
         : m_dism(dism), m_session(session), m_path(std::move(path)) {}
+    void noteReload(long hr) noexcept;
     Dism& m_dism;
     unsigned m_session;
     std::filesystem::path m_path;
+    bool m_reloadRequired = false;
 };
 
 } // namespace wl::core
