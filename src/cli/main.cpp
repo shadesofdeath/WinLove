@@ -112,6 +112,14 @@ std::wstring gib(std::uint64_t bytes) {
     return std::format(L"{:.2f} GB", static_cast<double>(bytes) / (1024.0 * 1024.0 * 1024.0));
 }
 
+// Image index from the command line: whole positive number or 0 (DISM/WIMGAPI then reject it)
+// — never an exception (std::stoi threw on "abc" and accepted "2x").
+int parseIndex(const std::wstring& text) {
+    wchar_t* end = nullptr;
+    const long value = std::wcstol(text.c_str(), &end, 10);
+    return !text.empty() && *end == L'\0' && value > 0 && value < 100000 ? static_cast<int>(value) : 0;
+}
+
 int cmdInfo(const std::wstring& path, bool asJson) {
     auto source = core::openSource(path);
     if (!source) {
@@ -214,7 +222,7 @@ int cmdMount(const std::wstring& wim, const std::wstring& index, const std::wstr
         return reportError(d.error());
     }
     const auto task = progressTask(L"mount");
-    if (auto r = (*d)->mount(wim, std::stoi(index), dir, readOnly, task); !r) {
+    if (auto r = (*d)->mount(wim, parseIndex(index), dir, readOnly, task); !r) {
         print(L"\n");
         return reportError(r.error());
     }
@@ -570,7 +578,7 @@ int cmdExport(const std::wstring& source, const std::wstring& index, const std::
     else if (compression == L"recovery" || compression == L"lzms") c = core::WimCompression::Lzms;
     else return reportError(Error{ErrorCode::InvalidArgument, L"--compress must be none|fast|max|recovery", compression});
     const auto task = progressTask(L"export");
-    if (auto r = core::exportImage(source, std::stoi(index), destination, c, task); !r) {
+    if (auto r = core::exportImage(source, parseIndex(index), destination, c, task); !r) {
         print(L"\n");
         return reportError(r.error());
     }
@@ -579,7 +587,7 @@ int cmdExport(const std::wstring& source, const std::wstring& index, const std::
 }
 
 int cmdDeleteIndex(const std::wstring& wim, const std::wstring& index) {
-    if (auto r = core::deleteImage(wim, std::stoi(index)); !r) {
+    if (auto r = core::deleteImage(wim, parseIndex(index)); !r) {
         return reportError(r.error());
     }
     print(std::format(L"  deleted index {} from {}\n", index, wim));
@@ -608,7 +616,6 @@ void printUsage() {
           L"  wlcli ls <iso> [dir] [--json]             List a directory inside an ISO\n"
           L"  wlcli extract <iso> <path-in-iso> <dest>  Copy a file out of an ISO (Ctrl+C cancels)\n"
           L"  wlcli elevated                            Print whether this process is elevated\n"
-          L"  wlcli live [--json]                       The running Windows (Source page card)\n"
           L"\n  Needs an elevated shell (DISM):\n"
           L"  wlcli mount <wim> <index> <dir> [--readonly]\n"
           L"  wlcli unmount <dir> --commit|--discard\n"

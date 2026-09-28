@@ -1,5 +1,7 @@
 #include "core/iso/IsoBuilder.h"
 
+#include "base/Utf8.h"
+
 #include "base/Log.h"
 #include "base/Path.h"
 #include "core/image/Source.h"
@@ -255,8 +257,12 @@ Result<IsoResult> buildIso(const IsoOptions& options, const TaskContext& task) {
             return std::unexpected(hash.error());
         }
         iso.sha256 = *hash;
-        std::wofstream sum(std::filesystem::path(output.wstring() + L".sha256"));
-        sum << iso.sha256 << L" *" << output.filename().wstring() << L"\n";
+        // UTF-8 bytes: a wofstream in the "C" locale fails on non-ASCII names ("Türkçe.iso").
+        std::ofstream sum(std::filesystem::path(output.wstring() + L".sha256"), std::ios::binary);
+        sum << utf8::fromWide(iso.sha256 + L" *" + output.filename().wstring()) << "\n";
+        if (!sum) {
+            log::warn("iso", L"could not write the .sha256 file next to " + output.wstring());
+        }
     }
     task.report(1.0, L"done");
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started);
@@ -292,13 +298,24 @@ Result<std::wstring> sha256File(const std::filesystem::path& file, const TaskCon
         if (got == 0) {
             break;
         }
-        BCryptHashData(hash, reinterpret_cast<PUCHAR>(buffer.data()), got, 0);
+        if (!BCRYPT_SUCCESS(BCryptHashData(hash, reinterpret_cast<PUCHAR>(buffer.data()), got, 0))) {
+            ok = false;
+            result = fail(ErrorCode::Unknown, L"SHA-256 update failed", file.wstring());
+            break;
+        }
         done += got;
         task.report(size ? static_cast<double>(done) / static_cast<double>(size) : 1.0, L"sha256");
     }
+    if (ok && in.bad()) { // a read error mid-file must not yield the hash of a truncated file
+        ok = false;
+        result = fail(ErrorCode::IoError, L"read error while hashing", file.wstring());
+    }
+    std::array<UCHAR, 32> digest{};
+    if (ok && !BCRYPT_SUCCESS(BCryptFinishHash(hash, digest.data(), static_cast<ULONG>(digest.size()), 0))) {
+        ok = false;
+        result = fail(ErrorCode::Unknown, L"SHA-256 finish failed", file.wstring());
+    }
     if (ok) {
-        std::array<UCHAR, 32> digest{};
-        BCryptFinishHash(hash, digest.data(), static_cast<ULONG>(digest.size()), 0);
         std::wstring hex;
         for (const UCHAR b : digest) {
             hex += std::format(L"{:02x}", b);

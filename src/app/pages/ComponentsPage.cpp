@@ -237,6 +237,19 @@ bool ComponentsPage::itemVisible(const Item& item) const {
 }
 
 void ComponentsPage::rebuildRows() {
+    // The table keeps the selection as a row index; rows move when filters or the queue change,
+    // so remember WHAT was selected and find it again (else the inspector would act on the app
+    // that slid into that row).
+    std::wstring selectedPackage;
+    int selectedGroup = -1;
+    if (const int row = m_table->selected(); row >= 0 && row < static_cast<int>(m_rows.size())) {
+        const Row& r = m_rows[static_cast<std::size_t>(row)];
+        if (r.item >= 0) {
+            selectedPackage = m_groups[static_cast<std::size_t>(r.group)].items[static_cast<std::size_t>(r.item)].packageName;
+        } else {
+            selectedGroup = r.group;
+        }
+    }
     m_rows.clear();
     const bool filtering = !m_needle.empty() || m_riskFilter > 0 || m_onlySelected;
     for (std::size_t g = 0; g < m_groups.size(); ++g) {
@@ -262,6 +275,23 @@ void ComponentsPage::rebuildRows() {
         }
     }
     m_table->setRowCount(static_cast<int>(m_rows.size()));
+    int found = -1;
+    for (std::size_t i = 0; i < m_rows.size() && (!selectedPackage.empty() || selectedGroup >= 0); ++i) {
+        const Row& r = m_rows[i];
+        const bool match = r.item >= 0 ? !selectedPackage.empty() &&
+                                             m_groups[static_cast<std::size_t>(r.group)].items[static_cast<std::size_t>(r.item)].packageName ==
+                                                 selectedPackage
+                                       : selectedPackage.empty() && r.group == selectedGroup;
+        if (match) {
+            found = static_cast<int>(i);
+            break;
+        }
+    }
+    if (found >= 0) {
+        m_table->setSelected(found, /*reveal=*/false);
+    } else {
+        m_table->clearSelection();
+    }
     invalidate();
     if (onSelectionChanged) {
         onSelectionChanged();

@@ -667,6 +667,9 @@ int App::runWindowed() {
     });
     m_window.show();
     if (m_options.openPath) {
+        // A mount left from an earlier run must still be seen (Images page InfoBar: Onar /
+        // Devam et); mountSafely itself reuses the same image or repairs leftovers.
+        m_shell->images().inspectMountFolder();
         const auto mountIndex = m_options.mountIndex;
         const auto selectIndex = m_options.selectIndex;
         m_shell->openSource(*m_options.openPath, [this, mountIndex, selectIndex] {

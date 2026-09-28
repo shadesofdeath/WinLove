@@ -139,11 +139,28 @@ TEST_CASE("deferred .reg file replaces a slot; SetupComplete.cmd gets the import
     REQUIRE(ensureSetupCompleteImport(cmd));
     std::ifstream in(cmd, std::ios::binary);
     const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    CHECK(text.starts_with("@echo off\r\necho existing\r\n"));
+    // Inserted right after "@echo off", before the user's own commands (which may end with exit).
+    CHECK(text.starts_with("@echo off\r\nrem WinLove"));
+    CHECK(text.find("echo existing") > text.find("setupcomplete.reg"));
     const std::string line = "setupcomplete.reg";
     CHECK(text.find(line) != std::string::npos);
     CHECK(text.find(line) == text.rfind(line));
     in.close();
     std::error_code ec;
     std::filesystem::remove_all(dir, ec);
+}
+
+TEST_CASE("parseRegText: values under [-key] are skipped; comments never continue; REGEDIT4 hex(2) is ANSI") {
+    auto writes = parseRegText(L"Windows Registry Editor Version 5.00\n[-HKCU\\Software\\Gone]\n\"x\"=dword:00000001\n"
+                               L"; a comment ending in \\\n[HKCU\\Software\\Kept]\n\"y\"=\"v\"\n");
+    REQUIRE(writes);
+    REQUIRE(writes->size() == 2);
+    CHECK((*writes)[0].kind == RegistryWrite::Kind::DeleteKey);
+    CHECK((*writes)[1].key == L"HKCU\\Software\\Kept");
+
+    auto legacy = parseRegText(L"REGEDIT4\n[HKCU\\Software\\A]\n\"P\"=hex(2):25,41,00\n");
+    REQUIRE(legacy);
+    REQUIRE(legacy->size() == 1);
+    CHECK(formatRegValue(legacy->front()) == L"hex(2):25,00,41,00,00,00"); // "%A\0" as UTF-16
+    CHECK_FALSE(parseRegValue(L"HKCU\\A", L"x", L"dword:-1"));
 }

@@ -5,6 +5,8 @@
 
 #include <windows.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <cwctype>
 #include <optional>
@@ -114,6 +116,20 @@ std::optional<std::vector<std::uint8_t>> hexBytes(std::wstring_view text) {
     return bytes;
 }
 
+// REGEDIT4 hex(1/2/7) data: ANSI bytes (NUL-separated for multi-strings) → UTF-16 bytes.
+std::vector<std::uint8_t> ansiToUtf16Bytes(const std::vector<std::uint8_t>& ansi) {
+    if (ansi.empty()) {
+        return {};
+    }
+    const auto* src = reinterpret_cast<const char*>(ansi.data());
+    const int n = MultiByteToWideChar(CP_ACP, 0, src, static_cast<int>(ansi.size()), nullptr, 0);
+    std::wstring wide(static_cast<std::size_t>(std::max(n, 0)), L'\0');
+    MultiByteToWideChar(CP_ACP, 0, src, static_cast<int>(ansi.size()), wide.data(), n);
+    std::vector<std::uint8_t> out(wide.size() * sizeof(wchar_t));
+    std::memcpy(out.data(), wide.data(), out.size());
+    return out;
+}
+
 std::wstring escape(std::wstring_view text) {
     std::wstring out;
     for (const wchar_t c : text) {
@@ -216,7 +232,7 @@ Result<RegistryWrite> parseRegValue(std::wstring key, std::wstring name, std::ws
         const std::wstring digits = trim(std::wstring_view(value).substr(6));
         wchar_t* end = nullptr;
         const unsigned long long v = std::wcstoull(digits.c_str(), &end, 16);
-        if (digits.empty() || digits.size() > 8 || *end != L'\0') {
+        if (digits.empty() || digits.size() > 8 || *end != L'\0' || !std::iswxdigit(digits.front())) {
             return fail(ErrorCode::ParseError, L"bad dword value", value);
         }
         const auto d = static_cast<std::uint32_t>(v);
@@ -311,10 +327,15 @@ Result<std::vector<RegistryWrite>> parseRegText(std::wstring_view text) {
     std::vector<RegistryWrite> writes;
     std::wstring key;
     bool header = false;
+    bool regedit4 = false;     // REGEDIT4: hex(1/2/7) payloads are ANSI bytes, not UTF-16
+    bool skipValues = false;   // after [-key], until the next [key] (as regedit does)
     for (std::size_t i = 0; i < lines.size(); ++i) {
         const std::size_t lineNo = i + 1;
         std::wstring line = trim(lines[i]);
-        // Continuation: a hex list ending with '\' goes on with the next line.
+        if (!line.empty() && line.front() == L';') {
+            continue; // a comment ending in '\\' does not swallow the next line
+        }
+        // Continuation: a hex list ending with '\\' goes on with the next line.
         while (!line.empty() && line.back() == L'\\' && i + 1 < lines.size()) {
             line.pop_back();
             line += trim(lines[++i]);
@@ -325,6 +346,7 @@ Result<std::vector<RegistryWrite>> parseRegText(std::wstring_view text) {
         if (!header) {
             if (line == L"Windows Registry Editor Version 5.00" || line == L"REGEDIT4") {
                 header = true;
+                regedit4 = line == L"REGEDIT4";
                 continue;
             }
             return std::unexpected(lineError(lineNo, L"not a .reg file (missing header)"));
@@ -339,14 +361,17 @@ Result<std::vector<RegistryWrite>> parseRegText(std::wstring_view text) {
             if (key.empty()) {
                 return std::unexpected(lineError(lineNo, L"unknown registry root: " + raw));
             }
+            skipValues = remove;
             if (remove) {
                 RegistryWrite w;
                 w.kind = RegistryWrite::Kind::DeleteKey;
                 w.key = key;
                 writes.push_back(std::move(w));
-                key.clear(); // values under a deleted key are ignored until the next [key]
             }
             continue;
+        }
+        if (skipValues) {
+            continue; // values under a deleted key are ignored until the next [key]
         }
         if (key.empty()) {
             return std::unexpected(lineError(lineNo, L"value outside of a key"));
@@ -371,6 +396,11 @@ Result<std::vector<RegistryWrite>> parseRegText(std::wstring_view text) {
         auto write = parseRegValue(key, name, std::wstring_view(line).substr(pos + 1));
         if (!write) {
             return std::unexpected(lineError(lineNo, write.error().message + L": " + write.error().context));
+        }
+        if (regedit4 && write->kind == RegistryWrite::Kind::Set &&
+            (write->type == REG_SZ || write->type == REG_EXPAND_SZ || write->type == REG_MULTI_SZ) &&
+            !std::wstring_view(line).substr(pos + 1).starts_with(L"\"")) {
+            write->data = ansiToUtf16Bytes(write->data);
         }
         writes.push_back(std::move(*write));
     }
@@ -447,9 +477,16 @@ Result<void> updateDeferredRegFile(const std::filesystem::path& file, const Regi
         }
         writes = std::move(*existing);
     }
+    // Same slot replaces; a new [-K] replaces everything under K; an earlier [-K] stays before
+    // later values so the re-import reproduces "delete, then set" like the offline hive.
     std::erase_if(writes, [&](const RegistryWrite& w) {
-        return iequals(w.key, write.key) && (write.kind == RegistryWrite::Kind::DeleteKey ||
-                                             w.kind == RegistryWrite::Kind::DeleteKey || iequals(w.name, write.name));
+        if (!iequals(w.key, write.key)) {
+            return false;
+        }
+        if (write.kind == RegistryWrite::Kind::DeleteKey) {
+            return true;
+        }
+        return w.kind != RegistryWrite::Kind::DeleteKey && iequals(w.name, write.name);
     });
     writes.push_back(write);
     std::filesystem::create_directories(file.parent_path(), ec);
@@ -476,13 +513,27 @@ Result<void> ensureSetupCompleteImport(const std::filesystem::path& setupComplet
     if (existing.find(line) != std::string::npos) {
         return {};
     }
-    std::string text = existing;
-    if (text.empty()) {
-        text = "@echo off\r\n";
-    } else if (text.back() != '\n') {
-        text += "\r\n";
+    // Insert near the top: an existing script may end with exit / shutdown / del %0.
+    const std::string block = "rem WinLove: settings Windows resets during OOBE\r\n" + line + "\r\n";
+    std::string text;
+    if (existing.empty()) {
+        text = "@echo off\r\n" + block;
+    } else {
+        std::size_t at = 0;
+        const std::size_t firstEnd = existing.find('\n');
+        std::string first = existing.substr(0, firstEnd == std::string::npos ? existing.size() : firstEnd);
+        for (auto& c : first) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        if (first.find("@echo off") != std::string::npos) {
+            at = firstEnd == std::string::npos ? existing.size() : firstEnd + 1;
+        }
+        text = existing.substr(0, at);
+        if (!text.empty() && text.back() != '\n') {
+            text += "\r\n";
+        }
+        text += block + existing.substr(at);
     }
-    text += "rem WinLove: settings Windows resets during OOBE\r\n" + line + "\r\n";
     std::filesystem::create_directories(setupComplete.parent_path(), ec);
     std::ofstream out(setupComplete, std::ios::binary | std::ios::trunc);
     out.write(text.data(), static_cast<std::streamsize>(text.size()));
@@ -566,7 +617,20 @@ Result<void> OfflineRegistry::apply(const RegistryWrite& write) {
         if (mapped->path.empty()) {
             return fail(ErrorCode::InvalidArgument, L"refusing to delete a hive root", context);
         }
-        const LSTATUS status = RegDeleteTreeW(HKEY_LOCAL_MACHINE, full->c_str());
+        LSTATUS status = RegDeleteTreeW(HKEY_LOCAL_MACHINE, full->c_str());
+        if (status == ERROR_ACCESS_DENIED) {
+            // TrustedInstaller-owned: open with backup/restore semantics (SeRestore), clear it, then
+            // delete the (now empty) key through its parent.
+            HKEY backup = nullptr;
+            if (RegCreateKeyExW(HKEY_LOCAL_MACHINE, full->c_str(), 0, nullptr, REG_OPTION_BACKUP_RESTORE, 0, nullptr,
+                                &backup, nullptr) == ERROR_SUCCESS) {
+                RegKey owned(backup);
+                status = RegDeleteTreeW(owned.get(), nullptr);
+                if (status == ERROR_SUCCESS) {
+                    status = RegDeleteKeyExW(HKEY_LOCAL_MACHINE, full->c_str(), 0, 0);
+                }
+            }
+        }
         return win32(status == ERROR_FILE_NOT_FOUND ? ERROR_SUCCESS : status, L"could not delete registry key");
     }
     HKEY raw = nullptr;
@@ -574,6 +638,10 @@ Result<void> OfflineRegistry::apply(const RegistryWrite& write) {
         LSTATUS status = RegOpenKeyExW(HKEY_LOCAL_MACHINE, full->c_str(), 0, KEY_SET_VALUE, &raw);
         if (status == ERROR_FILE_NOT_FOUND) {
             return {};
+        }
+        if (status == ERROR_ACCESS_DENIED) {
+            status = RegCreateKeyExW(HKEY_LOCAL_MACHINE, full->c_str(), 0, nullptr, REG_OPTION_BACKUP_RESTORE,
+                                     KEY_SET_VALUE, nullptr, &raw, nullptr);
         }
         if (auto r = win32(status, L"could not open registry key"); !r) {
             return r;

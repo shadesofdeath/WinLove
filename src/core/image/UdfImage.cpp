@@ -259,6 +259,7 @@ Result<UdfImage::Node> UdfImage::readFileEntry(std::uint32_t logicalBlock, std::
     Bytes block = std::move(*entry);
     std::size_t pos = adStart;
     std::size_t end = adStart + adLength;
+    int continuations = 0; // a malformed ISO may chain extents in a loop
     while (pos + adSize <= end) {
         const std::byte* ad = block.data() + pos;
         const auto raw = le<std::uint32_t>(ad);
@@ -271,12 +272,16 @@ Result<UdfImage::Node> UdfImage::readFileEntry(std::uint32_t logicalBlock, std::
         }
         if (type == 3) {
             auto next = readBytes(*m_iso, blockOffset(location), kSector);
-            if (!next || !validTag(next->data(), kTagAllocationExtent)) {
+            if (!next || !validTag(next->data(), kTagAllocationExtent) || ++continuations > 4096) {
                 return fail(ErrorCode::ParseError, L"bad allocation extent", node.name);
             }
             block = std::move(*next);
             pos = 24;
-            end = 24 + le<std::uint32_t>(block.data() + 20);
+            const std::uint64_t listLength = le<std::uint32_t>(block.data() + 20);
+            if (24 + listLength > kSector) {
+                return fail(ErrorCode::ParseError, L"allocation extent overflows its block", node.name);
+            }
+            end = 24 + static_cast<std::size_t>(listLength);
             continue;
         }
         if (type == 0) { // recorded and allocated (1/2 = not recorded: sparse, reads as zeros — not used on ISOs)
@@ -285,6 +290,20 @@ Result<UdfImage::Node> UdfImage::readFileEntry(std::uint32_t logicalBlock, std::
     }
     return node;
 }
+
+namespace {
+bool safeEntryName(const std::wstring& name) {
+    if (name.empty() || name == L"." || name == L"..") {
+        return false;
+    }
+    for (const wchar_t c : name) {
+        if (c < 0x20 || c == L'\\' || c == L'/' || c == L':') {
+            return false;
+        }
+    }
+    return true;
+}
+} // namespace
 
 Result<std::vector<std::byte>> UdfImage::readAll(const Node& node) const {
     std::vector<std::byte> data(static_cast<std::size_t>(node.size));
@@ -296,6 +315,11 @@ Result<std::vector<std::byte>> UdfImage::readAll(const Node& node) const {
 }
 
 Result<std::vector<UdfImage::Node>> UdfImage::readDirectory(const Node& directory) const {
+    // Real setup ISOs have directories of a few KB; a huge claimed size is a malformed image.
+    constexpr std::uint64_t kMaxDirectory = 64ull << 20;
+    if (directory.size > kMaxDirectory) {
+        return fail(ErrorCode::ParseError, L"directory too large", directory.name);
+    }
     auto data = readAll(directory);
     if (!data) {
         return std::unexpected(data.error());
@@ -311,6 +335,9 @@ Result<std::vector<UdfImage::Node>> UdfImage::readDirectory(const Node& director
         const auto nameLength = static_cast<std::uint8_t>(p[19]);
         const auto icbBlock = le<std::uint32_t>(p + 20 + 4);
         const auto implUseLength = le<std::uint16_t>(p + 36);
+        if (pos + 38u + implUseLength + nameLength > data->size()) {
+            return fail(ErrorCode::ParseError, L"file identifier overflows the directory", directory.name);
+        }
         const std::size_t total = (38u + implUseLength + nameLength + 3u) & ~std::size_t{3};
         const bool parent = (characteristics & 0x08) != 0;
         const bool deleted = (characteristics & 0x04) != 0;
@@ -384,7 +411,11 @@ Result<void> UdfImage::extractAll(const std::filesystem::path& destination, cons
         return std::unexpected(root.error());
     }
     std::vector<std::pair<Node, std::filesystem::path>> pending{{std::move(*root), destination}};
+    std::size_t directories = 0;
     while (!pending.empty()) {
+        if (++directories > 200000) { // a directory entry pointing back at an ancestor
+            return fail(ErrorCode::ParseError, L"directory tree loops", destination.wstring());
+        }
         auto [dir, target] = std::move(pending.back());
         pending.pop_back();
         std::error_code ec;
@@ -397,6 +428,10 @@ Result<void> UdfImage::extractAll(const std::filesystem::path& destination, cons
             return std::unexpected(children.error());
         }
         for (auto& child : *children) {
+            // Names come from the ISO: never let one leave the destination (".." / drive / separators).
+            if (!safeEntryName(child.name)) {
+                return fail(ErrorCode::ParseError, L"unsafe file name in ISO", child.name);
+            }
             auto childTarget = target / child.name;
             if (child.directory) {
                 pending.emplace_back(std::move(child), std::move(childTarget));

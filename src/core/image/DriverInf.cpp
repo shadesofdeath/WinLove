@@ -126,6 +126,11 @@ DriverInf parseInfText(const std::wstring& text, const std::filesystem::path& pa
             }
         }
     }
+    // Models sections without an NTamd64/NTarm64 decoration are only used on x86 Windows
+    // (64-bit Windows requires the decoration).
+    if (!manufacturerValues.empty() && inf.architectures.empty()) {
+        inf.architectures.emplace_back(L"x86");
+    }
     return inf;
 }
 

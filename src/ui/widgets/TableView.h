@@ -42,6 +42,7 @@ public:
     void setRowCount(int count); // keeps the selection when still in range
     [[nodiscard]] int rowCount() const noexcept { return m_count; }
     void setSelected(int row, bool reveal = true);
+    void clearSelection(); // no row selected (rows were rebuilt and the old one is gone)
     [[nodiscard]] int selected() const noexcept { return m_selected; }
     void refresh() { invalidate(); } // data changed, same rows
 

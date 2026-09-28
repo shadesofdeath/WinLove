@@ -47,6 +47,44 @@ std::wstring resolveText(const std::wstring& value, const std::filesystem::path&
     return {};
 }
 
+// The image's UI language: the System32 "ll-CC" folder that holds kernel32.dll.mui.
+std::wstring imageLanguage(const std::filesystem::path& mountDir) {
+    std::error_code ec;
+    const auto system32 = mountDir / L"Windows" / L"System32";
+    for (auto it = std::filesystem::directory_iterator(system32, ec); !ec && it != std::filesystem::directory_iterator();
+         it.increment(ec)) {
+        const std::wstring name = it->path().filename().wstring();
+        if (name.size() == 5 && name[2] == L'-' && it->is_directory(ec) &&
+            std::filesystem::exists(it->path() / L"kernel32.dll.mui", ec)) {
+            return name;
+        }
+    }
+    return {};
+}
+
+// While alive, MUI lookups on this thread prefer `language` (the image's), then the defaults.
+class PreferredUiLanguage {
+public:
+    explicit PreferredUiLanguage(const std::wstring& language) {
+        if (language.empty()) {
+            return;
+        }
+        std::wstring list = language;
+        list.push_back(L'\0'); // double-NUL terminated list
+        m_set = SetThreadPreferredUILanguages(MUI_LANGUAGE_NAME, list.c_str(), nullptr) != FALSE;
+    }
+    ~PreferredUiLanguage() {
+        if (m_set) {
+            SetThreadPreferredUILanguages(0, nullptr, nullptr); // back to the process defaults
+        }
+    }
+    PreferredUiLanguage(const PreferredUiLanguage&) = delete;
+    PreferredUiLanguage& operator=(const PreferredUiLanguage&) = delete;
+
+private:
+    bool m_set = false;
+};
+
 StartType startOf(const RegKey& key) {
     switch (key.dword(L"Start").value_or(3)) {
     case 0: return StartType::Boot;
@@ -110,6 +148,8 @@ std::wstring offlineResourcePath(std::wstring_view value, const std::filesystem:
 }
 
 Result<std::vector<ServiceEntry>> readServices(const std::filesystem::path& mountDir) {
+    // A Turkish image on an English host: resolve names from the image's tr-TR .mui files.
+    const PreferredUiLanguage language(imageLanguage(mountDir));
     auto hive = OfflineHive::load(hivePath(mountDir));
     if (!hive) {
         return std::unexpected(hive.error());
@@ -175,6 +215,18 @@ std::vector<RegistryWrite> serviceStartWrites(const std::wstring& name, StartTyp
 }
 
 Result<void> setServiceStart(const std::filesystem::path& mountDir, const std::wstring& name, StartType start) {
+    if (name.empty() || name.find(L'\\') != std::wstring::npos) {
+        return fail(ErrorCode::InvalidArgument, L"bad service name", name);
+    }
+    {
+        auto services = readServices(mountDir);
+        if (!services) {
+            return std::unexpected(services.error());
+        }
+        if (std::ranges::none_of(*services, [&](const ServiceEntry& s) { return _wcsicmp(s.name.c_str(), name.c_str()) == 0; })) {
+            return fail(ErrorCode::NotFound, L"no such service in the image", name);
+        }
+    }
     OfflineRegistry registry(mountDir);
     for (const auto& write : serviceStartWrites(name, start)) {
         if (auto r = registry.apply(write); !r) {
