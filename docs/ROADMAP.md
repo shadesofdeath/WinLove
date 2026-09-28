@@ -42,8 +42,8 @@ Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **
 | P01 | Kaynak (karşılama, sürükle-bırak, son kullanılanlar) | 01, s1, s4 | `pages/01-source.md` | ✅ | Kullanıcı onayladı; canlı sistem kaldırıldı (D-021) |
 | P02 | İmajlar (index listesi, mount/unmount, export, sil, ESD→WIM) + mount ilerlemesi | 02, 03, s2, s3 | `pages/02-images.md` | ✅ | Mount sağlığı + hata kataloğu (ENGINE.md) |
 | P03 | Loglar | 18 | `pages/03-logs.md` | ✅ | Sonraki sayfaların hata ayıklamasını kolaylaştırır |
-| P04 | Özellikler | 05 | `pages/04-features.md` | 🟨 | İlk ChangeSet kullanan sayfa |
-| P05 | Uygula (özet, onay, çalışıyor, bitti) | 13, 13b, 14, 15 | `pages/05-apply.md` | ⬜ | Planner/Applier burada tamamlanır |
+| P04 | Özellikler | 05 | `pages/04-features.md` | ✅ | İlk ChangeSet kullanan sayfa |
+| P05 | Uygula (özet, onay, çalışıyor, bitti) | 13, 13b, 14, 15 | `pages/05-apply.md` | 🟨 | Planner/Applier burada tamamlanır |
 | P06 | ISO Oluştur / USB | 16 | `pages/06-iso.md` | ⬜ | Bittiğinde: uçtan uca VM kurulum testi |
 | P07 | Bileşenler (paket + AppX + capability, katalog, bağımlılık, arama) | 04, 04b | `pages/07-components.md` | ⬜ | En büyük sayfa; alt adımlara bölünecek |
 | P08 | Güncellemeler | 06 | `pages/08-updates.md` | ⬜ | |
