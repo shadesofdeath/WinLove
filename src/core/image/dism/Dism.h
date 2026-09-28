@@ -23,13 +23,16 @@ enum class ServicingState : std::uint8_t {
 };
 [[nodiscard]] const wchar_t* servicingStateName(ServicingState state) noexcept;
 
+// DismMountStatus as DISM reports it. Our own, richer view is MountState (MountHealth.h).
+enum class DismMountStatus : std::uint8_t { Ok, NeedsRemount, Invalid };
+[[nodiscard]] const wchar_t* dismMountStatusName(DismMountStatus status) noexcept;
+
 struct MountInfo {
     std::filesystem::path mountPath;
     std::filesystem::path imagePath;
     int index = 0;
     bool readOnly = false;
-    bool healthy = true; // false: needs remount or invalid → cleanup/remount
-    std::wstring status;
+    DismMountStatus status = DismMountStatus::Ok;
 };
 
 struct PackageEntry {
@@ -60,6 +63,8 @@ public:
                                      bool readOnly, const TaskContext& task);
     [[nodiscard]] Result<void> unmount(const std::filesystem::path& mountDir, bool commit, const TaskContext& task);
     [[nodiscard]] Result<std::vector<MountInfo>> mounts();
+    // Reattaches a mount left in "needs remount" state (e.g. after a reboot).
+    [[nodiscard]] Result<void> remount(const std::filesystem::path& mountDir);
     [[nodiscard]] Result<void> cleanupMountpoints();
     [[nodiscard]] Result<std::unique_ptr<DismSession>> openSession(const std::filesystem::path& mountDir);
 

@@ -4,8 +4,41 @@
 
 namespace wl::ui {
 
+namespace {
+
+bool processElevated() {
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+        return false;
+    }
+    TOKEN_ELEVATION elevation{};
+    DWORD size = 0;
+    const bool elevated = GetTokenInformation(token, TokenElevation, &elevation, sizeof(elevation), &size) &&
+                          elevation.TokenIsElevated != 0;
+    CloseHandle(token);
+    return elevated;
+}
+
+} // namespace
+
 DropTarget* DropTarget::registerOn(Window& window, DropCallbacks callbacks) {
     auto* target = new DropTarget(window, std::move(callbacks));
+    if (processElevated()) {
+        // UIPI blocks OLE drag & drop from a non-elevated Explorer into an elevated window, so
+        // fall back to WM_DROPFILES: no hover feedback, but the drop itself works.
+        target->m_legacy = true;
+        window.setFileDropHandler([target](std::vector<std::filesystem::path> files, PointF where) {
+            const auto& cb = target->m_callbacks;
+            if (cb.enter && cb.enter(files, where)) {
+                if (cb.drop) {
+                    cb.drop(files, where);
+                }
+            } else if (cb.leave) {
+                cb.leave();
+            }
+        });
+        return target;
+    }
     if (FAILED(RegisterDragDrop(window.hwnd(), target))) {
         target->Release();
         return nullptr;
@@ -14,7 +47,11 @@ DropTarget* DropTarget::registerOn(Window& window, DropCallbacks callbacks) {
 }
 
 void DropTarget::revoke() {
-    RevokeDragDrop(m_window.hwnd());
+    if (m_legacy) {
+        m_window.setFileDropHandler(nullptr);
+    } else {
+        RevokeDragDrop(m_window.hwnd());
+    }
     Release();
 }
 

@@ -1,5 +1,6 @@
 // WinLove.exe entry point. See app/App.h for the command line.
 #include "app/App.h"
+#include "core/system/Privileges.h"
 
 #include <objbase.h>
 #include <ole2.h>
@@ -21,6 +22,24 @@ int WINAPI wWinMain(HINSTANCE /*instance*/, HINSTANCE /*previous*/, PWSTR /*comm
     std::vector<std::wstring> args(argv + 1, argv + argc);
     LocalFree(argv);
 
+    // Mount/unmount/servicing need admin: start elevated right away (one UAC prompt) instead of
+    // asking in-app later. Headless --render runs stay as they are (tests, AI sessions). If the
+    // user declines UAC we keep running unelevated; operations then show the s4 dialog.
+    const bool render = std::ranges::any_of(args, [](const std::wstring& a) { return a.starts_with(L"--render"); });
+    const bool noElevate = std::ranges::find(args, std::wstring(L"--no-elevate")) != args.end();
+    if (!render && !noElevate && !wl::core::isElevated()) {
+        std::wstring joined;
+        for (const auto& a : args) {
+            // A trailing backslash would escape the closing quote: double it.
+            const std::wstring safe = a.ends_with(L'\\') ? a + L'\\' : a;
+            joined += (joined.empty() ? L"\"" : L" \"") + safe + L"\"";
+        }
+        if (wl::core::relaunchElevated(joined)) {
+            OleUninitialize();
+            return 0;
+        }
+    }
+
     int exitCode = 1;
     if (auto options = wl::app::parseLaunchOptions(args)) {
         wl::app::App app(std::move(*options));
@@ -28,8 +47,7 @@ int WINAPI wWinMain(HINSTANCE /*instance*/, HINSTANCE /*previous*/, PWSTR /*comm
     } else {
         const std::wstring text = L"WinLove: " + wl::describe(options.error()) + L"\n";
         // Headless runs (--render) must never block on a dialog: tests and AI sessions drive them.
-        const bool headless =
-            std::ranges::any_of(args, [](const std::wstring& a) { return a.starts_with(L"--render"); });
+        const bool headless = render;
         if (AttachConsole(ATTACH_PARENT_PROCESS)) {
             DWORD written = 0;
             WriteConsoleW(GetStdHandle(STD_OUTPUT_HANDLE), text.c_str(), static_cast<DWORD>(text.size()), &written,

@@ -23,6 +23,9 @@ public:
         std::function<void(Str title, std::wstring detail)> succeeded;       // success toast
         std::function<void(Str title)> refused;                                // busy / not allowed toast
         std::function<void(std::wstring relaunchArguments)> needsAdmin;        // show s4, relaunch with these args
+        // A mount from a previous run is still attached: open `source`, then show it as mounted
+        // (`edition` is left empty; the shell fills it from the opened source).
+        std::function<void(std::filesystem::path source, MountedImage mounted)> restored;
     };
 
     ImageController(AppState& state, Events events);
@@ -41,7 +44,8 @@ public:
     void deleteIndex(int index);
     void cleanupMounts();
     void cancel();
-    // Elevated start: pick up a WinLove mount left from before (e.g. after the UAC relaunch).
+    // Elevated start: restore the WinLove mount left from a previous run (remounts it if DISM
+    // says "needs remount", discards it if invalid) and report it through Events::restored.
     void adoptExistingMount();
 
 private:

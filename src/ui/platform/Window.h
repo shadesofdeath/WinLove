@@ -11,8 +11,10 @@
 #include <windows.h>
 
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <mutex>
+#include <vector>
 
 namespace wl::ui {
 
@@ -77,6 +79,8 @@ public:
     void stopTimer(UINT id);
     // Re-apply DWM frame colors after a theme change.
     void setFrameColors(bool dark, COLORREF border);
+    // Classic WM_DROPFILES drops (used when elevated: UIPI blocks OLE drag & drop from Explorer).
+    void setFileDropHandler(std::function<void(std::vector<std::filesystem::path>, PointF)> handler);
 
     [[nodiscard]] HWND hwnd() const noexcept { return m_hwnd; }
     [[nodiscard]] float scale() const noexcept { return m_scale; }
@@ -96,6 +100,7 @@ private:
 
     HWND m_hwnd = nullptr;
     WindowCallbacks m_callbacks;
+    std::function<void(std::vector<std::filesystem::path>, PointF)> m_fileDrop;
     SizeF m_minimum{};
     SizeF m_clientSize{};
     UINT m_widthPx = 0;

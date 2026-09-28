@@ -19,6 +19,7 @@ struct MountedImage {
     std::filesystem::path imagePath; // the WIM that is mounted
     int index = 0;
     std::wstring edition;
+    bool readOnly = false;
 };
 
 // One engine operation at a time (TaskRunner is single-threaded anyway); drives the progress

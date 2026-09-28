@@ -118,6 +118,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             if (!options.page) {
                 return fail(ErrorCode::InvalidArgument, L"unknown page key", arg);
             }
+        } else if (a == L"--no-elevate") {
+            // handled in main.cpp (skip the startup UAC relaunch)
         } else if (a == L"--nav-collapsed") {
             options.navCollapsed = true;
         } else if (a == L"--maximized") {

@@ -6,6 +6,7 @@
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
 #include "core/image/dism/Dism.h"
+#include "core/image/dism/MountHealth.h"
 #include "core/image/wim/WimGapi.h"
 #include "core/ops/Applier.h"
 #include "core/ops/Planner.h"
@@ -234,27 +235,63 @@ int cmdMounts(bool asJson) {
     if (!d) {
         return reportError(d.error());
     }
-    auto mounts = (*d)->mounts();
-    if (!mounts) {
-        return reportError(mounts.error());
+    auto checks = wl::core::inspectMounts(**d);
+    if (!checks) {
+        return reportError(checks.error());
     }
     if (asJson) {
         json out = json::array();
-        for (const auto& m : *mounts) {
-            out.push_back({{"mountPath", narrow(m.mountPath.wstring())}, {"imagePath", narrow(m.imagePath.wstring())},
-                           {"index", m.index}, {"readOnly", m.readOnly}, {"healthy", m.healthy},
-                           {"status", narrow(m.status)}});
+        for (const auto& c : *checks) {
+            json hives = json::array();
+            for (const auto& h : c.loadedHives) {
+                hives.push_back(narrow(h));
+            }
+            out.push_back({{"mountPath", narrow(c.folder.wstring())},
+                           {"imagePath", narrow(c.record ? c.record->imagePath.wstring() : L"")},
+                           {"index", c.record ? c.record->index : 0},
+                           {"readOnly", c.record && c.record->readOnly},
+                           {"dismStatus", narrow(c.record ? wl::core::dismMountStatusName(c.record->status) : L"")},
+                           {"state", narrow(wl::core::mountStateName(c.state))},
+                           {"action", narrow(wl::core::mountActionName(c.action))},
+                           {"windowsImage", c.windowsImage},
+                           {"loadedHives", hives}});
         }
         printJson(out);
         return 0;
     }
-    if (mounts->empty()) {
+    if (checks->empty()) {
         print(L"  no mounted images\n");
     }
-    for (const auto& m : *mounts) {
-        print(std::format(L"  {}  <- {} [{}]  {}{}\n", m.mountPath.wstring(), m.imagePath.wstring(), m.index,
-                          m.status, m.readOnly ? L", read-only" : L""));
+    for (const auto& c : *checks) {
+        print(std::format(L"  {}  <- {} [{}]\n    state: {}  (dism: {}{})  action: {}\n", c.folder.wstring(),
+                          c.record ? c.record->imagePath.wstring() : L"-", c.record ? c.record->index : 0,
+                          wl::core::mountStateName(c.state),
+                          c.record ? wl::core::dismMountStatusName(c.record->status) : L"-",
+                          c.record && c.record->readOnly ? L", read-only" : L"", wl::core::mountActionName(c.action)));
+        for (const auto& h : c.loadedHives) {
+            print(L"    hive loaded: " + h + L"\n");
+        }
     }
+    return 0;
+}
+
+// Inspect one folder and carry out the recommended action (MountHealth.h).
+int cmdRepair(const std::wstring& dir) {
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    auto before = wl::core::inspectMount(**d, dir);
+    if (!before) {
+        return reportError(before.error());
+    }
+    print(std::format(L"  {}: {} -> {}\n", dir, wl::core::mountStateName(before->state),
+                      wl::core::mountActionName(before->action)));
+    auto after = wl::core::repairMount(**d, *before, core::TaskContext{g_cancel, {}});
+    if (!after) {
+        return reportError(after.error());
+    }
+    print(std::format(L"  now: {}\n", wl::core::mountStateName(after->state)));
     return 0;
 }
 
@@ -513,6 +550,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"cleanup") {
         return cmdCleanup();
+    }
+    if (command == L"repair" && args.size() == 2) {
+        return cmdRepair(args[1]);
     }
     if ((command == L"packages" || command == L"features" || command == L"capabilities") && args.size() == 2) {
         return cmdServicing(command, args[1], asJson);

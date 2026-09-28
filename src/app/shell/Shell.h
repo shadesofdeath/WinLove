@@ -68,6 +68,9 @@ public:
     // ---- sources --------------------------------------------------------------------------
     // `then` runs after a successful open (e.g. --mount=N after a UAC relaunch).
     void openSource(const std::filesystem::path& path, std::function<void()> then = {});
+    // A mount from a previous run (ImageController::adoptExistingMount): reopen its source and
+    // show it as mounted again.
+    void restoreMount(const std::filesystem::path& source, MountedImage mounted);
     void pickSourceFile();
     void pickSourceFolder();
     // s4: explains why admin is needed; "Yönetici olarak yeniden başlat" relaunches with `args`.
