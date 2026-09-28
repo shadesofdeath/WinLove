@@ -153,15 +153,27 @@ Result<std::vector<ImageInfo>> parseWimXml(std::u16string_view xml) {
         // <CREATIONTIME><HIGHPART>0x01DC…</HIGHPART><LOWPART>0x…</LOWPART></CREATIONTIME>
         const auto created = node.child("CREATIONTIME");
         info.creationTime = (parseSize(created.child("HIGHPART")) << 32) | (parseSize(created.child("LOWPART")) & 0xFFFFFFFFull);
+        const auto modified = node.child("LASTMODIFICATIONTIME");
+        info.modifiedTime = (parseSize(modified.child("HIGHPART")) << 32) | (parseSize(modified.child("LOWPART")) & 0xFFFFFFFFull);
+        info.hardlinkBytes = parseSize(node.child("HARDLINKBYTES"));
+        info.wimBoot = node.child("WIMBOOT").text().as_int() != 0;
+        info.flags = text(node, "FLAGS");
+        info.displayDescription = text(node, "DISPLAYDESCRIPTION");
         const auto windows = node.child("WINDOWS");
         info.architecture = architectureFrom(windows.child("ARCH").text().as_int(-1));
         info.editionId = text(windows, "EDITIONID");
         info.installationType = text(windows, "INSTALLATIONTYPE");
+        info.productType = text(windows, "PRODUCTTYPE");
+        info.productSuite = text(windows, "PRODUCTSUITE");
+        info.systemRoot = text(windows, "SYSTEMROOT");
+        info.imageState = text(windows.child("SERVICINGDATA"), "IMAGESTATE");
         const auto version = windows.child("VERSION");
         info.major = version.child("MAJOR").text().as_int();
         info.minor = version.child("MINOR").text().as_int();
         info.build = version.child("BUILD").text().as_int();
         info.spBuild = version.child("SPBUILD").text().as_int();
+        info.spLevel = version.child("SPLEVEL").text().as_int();
+        info.branch = text(version, "BRANCH");
         const auto languages = windows.child("LANGUAGES");
         for (const auto& language : languages.children("LANGUAGE")) {
             info.languages.push_back(utf8::toWide(language.text().as_string()));

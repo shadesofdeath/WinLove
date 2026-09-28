@@ -42,7 +42,11 @@ public:
     void exportIndex(int index, const std::filesystem::path& destination);
     void convertEsd(const std::filesystem::path& destination);
     void deleteIndex(int index);
+    // Repairs the WinLove mount folder whatever its state (MountHealth: remount / discard /
+    // clear leftovers, Explorer windows moved away first) plus DISM's own mount point cleanup.
     void cleanupMounts();
+    // Inspects the mount folder on the engine and publishes it as AppState::mountFolder.
+    void inspectMountFolder();
     void cancel();
     // Elevated start: restore the WinLove mount left from a previous run (remounts it if DISM
     // says "needs remount", discards it if invalid) and report it through Events::restored.

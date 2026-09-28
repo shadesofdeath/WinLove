@@ -2,12 +2,16 @@
 #include "base/Log.h"
 #include "core/image/UdfImage.h"
 #include "core/image/WimFile.h"
+#include "core/image/dism/DismErrors.h"
 #include "core/image/dism/MountHealth.h"
+#include "core/system/FileLocks.h"
 #include "core/tasks/TaskRunner.h"
 
 #include <doctest.h>
 
 #include <atomic>
+#include <cstdlib>
+#include <fstream>
 #include <cstring>
 #include <optional>
 #include <vector>
@@ -189,4 +193,51 @@ TEST_CASE("mount health: DISM status + our checks → state → action") {
 
 TEST_CASE("mount health: no hives are loaded from a folder that is not mounted") {
     CHECK(wl::core::hivesLoadedFrom(L"C:/WinLoveLab/no-such-mount").empty());
+}
+
+TEST_CASE("DISM/WIM error catalog: codes from wimgapi/WimProvider map to a remedy") {
+    using wl::core::Remedy;
+    CHECK(wl::core::explainError(static_cast<std::int32_t>(0xC1420117)).remedy == Remedy::CloseOpenFiles);
+    CHECK(wl::core::explainError(static_cast<std::int32_t>(0xC1420114)).remedy == Remedy::RepairFolder);
+    CHECK(wl::core::explainError(static_cast<std::int32_t>(0xC142013C)).remedy == Remedy::ConvertEsd);
+    CHECK(wl::core::explainError(static_cast<std::int32_t>(0xC1510114)).remedy == Remedy::Remount);
+    CHECK(wl::core::explainError(static_cast<std::int32_t>(0x80070005)).remedy == Remedy::CloseOpenFiles);
+    CHECK_FALSE(wl::core::explainError(0x12345).known);
+    // Log-only text from the system message tables (may be empty on some installs): must not throw.
+    CHECK_NOTHROW((void)wl::core::systemMessage(static_cast<std::int32_t>(0xC1420117)));
+}
+
+TEST_CASE("forceRemoveContents: clears leftovers, removes junctions without following them") {
+    namespace fs = std::filesystem;
+    const fs::path base = fs::temp_directory_path() / L"wl-tests" / L"locks";
+    const fs::path folder = base / L"mount";
+    const fs::path outside = base / L"outside";
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    fs::create_directories(folder / L"Windows" / L"System32", ec);
+    fs::create_directories(outside, ec);
+    std::ofstream(outside / L"keep.txt") << "keep";
+    const fs::path readOnly = folder / L"Windows" / L"System32" / L"ro.txt";
+    std::ofstream(readOnly) << "x";
+    SetFileAttributesW(readOnly.c_str(), FILE_ATTRIBUTE_READONLY);
+    // A junction inside the mount folder pointing outside it.
+    const std::wstring command = L"cmd /c mklink /J \"" + (folder / L"link").wstring() + L"\" \"" + outside.wstring() +
+                                 L"\" >nul";
+    REQUIRE(_wsystem(command.c_str()) == 0);
+
+    REQUIRE(wl::core::forceRemoveContents(folder));
+    CHECK(fs::exists(folder));
+    CHECK(fs::is_empty(folder));
+    CHECK(fs::exists(outside / L"keep.txt")); // the junction target is untouched
+    fs::remove_all(base, ec);
+}
+
+TEST_CASE("forceRemoveContents refuses folders near the drive root") {
+    CHECK_FALSE(wl::core::forceRemoveContents(L"C:\\"));
+    CHECK_FALSE(wl::core::forceRemoveContents(L"C:\\WinLove"));
+    CHECK_FALSE(wl::core::forceRemoveContents(L"relative\\path"));
+}
+
+TEST_CASE("no Explorer window shows a folder that does not exist") {
+    CHECK(wl::core::explorerWindowsIn(L"C:\\WinLoveLab\\no-such-folder\\x").empty());
 }

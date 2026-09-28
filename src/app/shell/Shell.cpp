@@ -7,6 +7,7 @@
 #include "app/pages/images/ImageInspector.h"
 #include "base/Log.h"
 #include "core/image/Source.h"
+#include "core/image/dism/DismErrors.h"
 #include "ui/platform/FileDialog.h"
 #include "ui/widget/Host.h"
 #include "ui/widgets/Dialog.h"
@@ -415,9 +416,18 @@ void Shell::onImageFailure(ImageController::Failure failure, const Error& error,
     const std::wstring code = std::format(L"0x{:08X}", static_cast<unsigned>(error.hresult));
     const bool mountFailure = failure == ImageController::Failure::Mount;
     const std::wstring title = mountFailure ? m_strings.format(Str::ImagesMountFailed, {{L"code", code}})
-                                            : m_strings.get(Str::ImagesFailedTitle);
+                                            : std::format(L"{} ({})", m_strings.get(Str::ImagesFailedTitle), code);
+    // What the code means (DismErrors catalog) decides the advice and whether "Onar" helps; the
+    // raw DISM/WIM text goes to the log.
+    const auto info = core::explainError(error.hresult);
+    log::error("app", std::format(L"{} — {} [{}] {}", code, info.label, core::remedyName(info.remedy),
+                                  core::systemMessage(error.hresult)));
+    std::wstring message = m_strings.get(ImagesPage::remedyText(info.remedy));
+    if (!info.known && !error.message.empty()) {
+        message = error.message;
+    }
     if (auto* page = imagesPage(); page && m_state.source()) {
-        page->showFailure(title, error.message, mountFailure);
+        page->showFailure(title, message, ImagesPage::remedyRepairs(info.remedy));
     }
     showToast(ui::InfoKind::Error, mountFailure ? m_strings.get(Str::ToastsMountFailed) : m_strings.get(Str::ImagesFailedTitle),
               m_strings.format(Str::ToastsMountFailedBody, {{L"code", code}}));

@@ -50,6 +50,11 @@ void AppState::setMounted(std::optional<MountedImage> mounted) {
     notify(Change::Mount);
 }
 
+void AppState::setMountFolder(std::optional<core::MountCheck> check) {
+    m_mountFolder = std::move(check);
+    notify(Change::MountFolder);
+}
+
 void AppState::beginOperation(EngineOperation operation) {
     m_operation = std::move(operation);
     notify(Change::Operation);

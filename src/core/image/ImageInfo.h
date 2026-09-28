@@ -26,6 +26,17 @@ struct ImageInfo {
     std::uint64_t fileCount = 0;
     std::uint64_t directoryCount = 0;
     std::uint64_t creationTime = 0; // FILETIME (100 ns since 1601, UTC); 0 = unknown
+    std::uint64_t modifiedTime = 0; // LASTMODIFICATIONTIME, same encoding
+    std::uint64_t hardlinkBytes = 0;
+    bool wimBoot = false;
+    int spLevel = 0;
+    std::wstring branch;           // "ge_release"
+    std::wstring productType;      // "WinNT" (client), "ServerNT", "LanmanNT"
+    std::wstring productSuite;     // "Terminal Server"
+    std::wstring systemRoot;       // "WINDOWS"
+    std::wstring imageState;       // SERVICINGDATA/IMAGESTATE, e.g. IMAGE_STATE_GENERALIZE_RESEAL_TO_OOBE
+    std::wstring flags;            // <FLAGS>, usually the edition id
+    std::wstring displayDescription;
 
     [[nodiscard]] std::wstring versionString() const; // "10.0.26200.6584"
 };

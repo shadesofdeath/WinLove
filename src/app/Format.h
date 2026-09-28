@@ -20,4 +20,9 @@ namespace wl::app {
 
 [[nodiscard]] const wchar_t* localeName(Language language) noexcept; // "tr-TR" / "en-US"
 
+// FILETIME (UTC) → local short date in the UI language: "07.03.2026" / "3/7/2026"; 0 → "—".
+[[nodiscard]] std::wstring formatDate(std::uint64_t filetime, Language language);
+// Thousands separators in the UI language: "145.176" (tr) / "145,176" (en).
+[[nodiscard]] std::wstring formatCount(std::uint64_t value, Language language);
+
 } // namespace wl::app

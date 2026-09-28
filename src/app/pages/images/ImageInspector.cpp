@@ -20,18 +20,30 @@ constexpr float kKeyWidth = 96.0f;
 constexpr float kRow = 24.0f;
 constexpr float kLine = 16.0f;
 
-std::wstring formatDate(std::uint64_t filetime, Language language) {
-    if (filetime == 0) {
-        return L"—";
+// SERVICINGDATA/IMAGESTATE → localized sysprep state; unknown values are shown as-is.
+std::wstring imageStateText(const std::wstring& state, const Localization& strings) {
+    struct Entry {
+        const wchar_t* value;
+        Str key;
+    };
+    static constexpr Entry kStates[] = {
+        {L"IMAGE_STATE_COMPLETE", Str::ImagesStateComplete},
+        {L"IMAGE_STATE_GENERALIZE_RESEAL_TO_OOBE", Str::ImagesStateGeneralizeOobe},
+        {L"IMAGE_STATE_SPECIALIZE_RESEAL_TO_OOBE", Str::ImagesStateSpecializeOobe},
+        {L"IMAGE_STATE_GENERALIZE_RESEAL_TO_AUDIT", Str::ImagesStateGeneralizeAudit},
+        {L"IMAGE_STATE_SPECIALIZE_RESEAL_TO_AUDIT", Str::ImagesStateSpecializeAudit},
+        {L"IMAGE_STATE_UNDEPLOYABLE", Str::ImagesStateUndeployable},
+    };
+    for (const auto& e : kStates) {
+        if (state == e.value) {
+            return strings.get(e.key);
+        }
     }
-    FILETIME utc{static_cast<DWORD>(filetime & 0xFFFFFFFF), static_cast<DWORD>(filetime >> 32)};
-    FILETIME local{};
-    SYSTEMTIME st{};
-    FileTimeToLocalFileTime(&utc, &local);
-    FileTimeToSystemTime(&local, &st);
-    wchar_t buffer[64]{};
-    GetDateFormatEx(localeName(language), DATE_SHORTDATE, &st, nullptr, buffer, 64, nullptr);
-    return buffer;
+    return state.empty() ? L"—" : state;
+}
+
+std::wstring orDash(const std::wstring& text) {
+    return text.empty() ? L"—" : text;
 }
 
 std::wstring upper(std::wstring text) {
@@ -116,19 +128,45 @@ void ImageInspector::paint(ui::Canvas& canvas) {
         canvas.drawText(m_strings.get(title), {x, y, width, kRow}, TypeStyle::Section, Color::TextSecondary);
         y += kRow;
     };
-    row(Str::ImagesEdition, image.editionId.empty() ? L"—" : image.editionId);
+    row(Str::ImagesEdition, orDash(image.editionId));
     row(Str::ImagesBuild, core::releaseSummary(image.build, image.spBuild, core::architectureName(image.architecture)));
+    row(Str::ImagesBranch, orDash(image.branch), true);
     row(Str::ImagesArch, core::architectureName(image.architecture));
-    row(Str::ImagesLang, image.defaultLanguage.empty()
-                             ? L"—"
-                             : std::format(L"{} ({})", image.defaultLanguage, m_strings.get(Str::ImagesDefaultLang)));
+    std::wstring languages = image.defaultLanguage.empty()
+                                 ? L"—"
+                                 : std::format(L"{} ({})", image.defaultLanguage, m_strings.get(Str::ImagesDefaultLang));
+    if (image.languages.size() > 1) {
+        languages += std::format(L" +{}", image.languages.size() - 1);
+    }
+    row(Str::ImagesLang, languages);
+    std::wstring installType = orDash(image.installationType);
+    if (!image.productType.empty()) {
+        installType += L" · " + image.productType;
+    }
+    row(Str::ImagesInstallType, installType);
+    row(Str::ImagesImageState, imageStateText(image.imageState, m_strings));
     row(Str::ImagesCreated, formatDate(image.creationTime, m_language));
+    row(Str::ImagesModified, formatDate(image.modifiedTime, m_language));
     row(Str::CommonSize, formatBytes(image.totalBytes, m_language), true);
+    row(Str::ImagesContents, m_strings.format(Str::ImagesFilesDirs, {{L"files", formatCount(image.fileCount, m_language)},
+                                                                     {L"dirs", formatCount(image.directoryCount, m_language)}}));
+    if (image.wimBoot) {
+        row(Str::CommonType, L"WIMBoot");
+    }
 
-    section(Str::ImagesCompression);
+    section(Str::ImagesWimFile);
+    const auto& header = m_source->install.header;
     const std::wstring container = m_source->installImage.ends_with(L".esd") ? L"ESD" : L"WIM";
-    row(Str::CommonType, std::format(L"{} ({})", upper(core::compressionName(m_source->install.header.compression)), container));
-    row(Str::ImagesSplit, m_strings.get(m_source->install.header.totalParts > 1 ? Str::CommonYes : Str::CommonNo));
+    std::wstring compression = std::format(L"{} ({})", upper(core::compressionName(header.compression)), container);
+    if (header.solid) {
+        compression += L" · solid";
+    }
+    row(Str::ImagesCompression, compression);
+    row(Str::ImagesFileSize, formatBytes(m_source->installImageSize, m_language), true);
+    row(Str::ImagesImageCount, std::to_wstring(m_source->install.images.size()));
+    row(Str::ImagesSplit, header.totalParts > 1 ? std::format(L"{} / {}", header.partNumber, header.totalParts)
+                                                : m_strings.get(Str::CommonNo));
+    row(Str::ImagesBootIndex, header.bootIndex ? std::to_wstring(header.bootIndex) : m_strings.get(Str::ImagesNone));
 
     section(Str::ImagesActionsTitle);
     canvas.drawText(m_strings.get(Str::ImagesActionsHint), {x, y - 4, width, kLine}, TypeStyle::Caption, Color::TextTertiary);

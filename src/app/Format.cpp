@@ -76,4 +76,27 @@ std::wstring formatRecentTime(std::chrono::system_clock::time_point when, Langua
     return formatDate(at, language, at.wYear == today.wYear ? L"d MMM" : L"d MMM yyyy");
 }
 
+std::wstring formatDate(std::uint64_t filetime, Language language) {
+    if (filetime == 0) {
+        return L"—";
+    }
+    FILETIME utc{static_cast<DWORD>(filetime & 0xFFFFFFFF), static_cast<DWORD>(filetime >> 32)};
+    FILETIME local{};
+    SYSTEMTIME st{};
+    FileTimeToLocalFileTime(&utc, &local);
+    FileTimeToSystemTime(&local, &st);
+    wchar_t buffer[64]{};
+    GetDateFormatEx(localeName(language), DATE_SHORTDATE, &st, nullptr, buffer, 64, nullptr);
+    return buffer;
+}
+
+std::wstring formatCount(std::uint64_t value, Language language) {
+    const wchar_t separator = language == Language::Turkish ? L'.' : L',';
+    std::wstring digits = std::to_wstring(value);
+    for (int i = static_cast<int>(digits.size()) - 3; i > 0; i -= 3) {
+        digits.insert(static_cast<std::size_t>(i), 1, separator);
+    }
+    return digits;
+}
+
 } // namespace wl::app
