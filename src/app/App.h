@@ -44,6 +44,7 @@ struct LaunchOptions {
     bool demoLogs = false;
     bool demoFeatures = false; // render: fake mount + screen 05 sample features
     bool demoComponents = false; // render: fake mount + sample provisioned apps (screen 04)
+    bool demoRegistry = false;   // render: fake mount + checked tweaks (08)
     bool demoServices = false;   // render: fake mount + sample services (09)
     bool demoDrivers = false;    // render: fake mount + sample driver INFs (07)
     bool demoUpdates = false;    // render: with a source path — fake mount + sample update packages (06)

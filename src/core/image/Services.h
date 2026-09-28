@@ -3,6 +3,7 @@
 // (ControlSet named by Select\Current, normally ControlSet001). Drivers (Type 1/2) are excluded.
 // Start types: 0 boot, 1 system, 2 auto (+ DelayedAutostart=1 → delayed), 3 manual, 4 disabled.
 #include "base/Result.h"
+#include "core/image/RegistryEdit.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -34,6 +35,9 @@ struct ServiceEntry {
 // Sets Start (and DelayedAutostart) of one service in the image.
 [[nodiscard]] Result<void> setServiceStart(const std::filesystem::path& mountDir, const std::wstring& name,
                                            StartType start);
+
+// The registry writes behind a start type (HKLM\SYSTEM\CurrentControlSet\Services\<name>).
+[[nodiscard]] std::vector<RegistryWrite> serviceStartWrites(const std::wstring& name, StartType start);
 
 // Services whose DependOnService lists `name` (case-insensitive), directly or transitively.
 [[nodiscard]] std::vector<std::wstring> dependentsOf(const std::vector<ServiceEntry>& services, std::wstring_view name);

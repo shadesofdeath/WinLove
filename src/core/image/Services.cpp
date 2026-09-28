@@ -7,6 +7,7 @@
 #include <shlwapi.h>
 
 #include <algorithm>
+#include <cstring>
 #include <format>
 #include <set>
 
@@ -151,15 +152,7 @@ Result<std::vector<ServiceEntry>> readServices(const std::filesystem::path& moun
     return services;
 }
 
-Result<void> setServiceStart(const std::filesystem::path& mountDir, const std::wstring& name, StartType start) {
-    auto hive = OfflineHive::load(hivePath(mountDir));
-    if (!hive) {
-        return std::unexpected(hive.error());
-    }
-    auto key = RegKey::open(hive->root(), controlSet(*hive) + L"\\" + name, true);
-    if (!key) {
-        return std::unexpected(key.error());
-    }
+std::vector<RegistryWrite> serviceStartWrites(const std::wstring& name, StartType start) {
     std::uint32_t value = 3;
     switch (start) {
     case StartType::Boot: value = 0; break;
@@ -169,15 +162,22 @@ Result<void> setServiceStart(const std::filesystem::path& mountDir, const std::w
     case StartType::Manual: value = 3; break;
     case StartType::Disabled: value = 4; break;
     }
-    if (auto r = key->setDword(L"Start", value); !r) {
-        return r;
-    }
-    if (start == StartType::AutoDelayed) {
-        if (auto r = key->setDword(L"DelayedAutostart", 1); !r) {
-            return r;
-        }
-    } else if (key->dword(L"DelayedAutostart")) {
-        if (auto r = key->setDword(L"DelayedAutostart", 0); !r) {
+    auto dword = [&](const wchar_t* valueName, std::uint32_t data) {
+        RegistryWrite w;
+        w.key = L"HKLM\\SYSTEM\\CurrentControlSet\\Services\\" + name;
+        w.name = valueName;
+        w.type = REG_DWORD;
+        w.data.resize(4);
+        std::memcpy(w.data.data(), &data, 4);
+        return w;
+    };
+    return {dword(L"Start", value), dword(L"DelayedAutostart", start == StartType::AutoDelayed ? 1u : 0u)};
+}
+
+Result<void> setServiceStart(const std::filesystem::path& mountDir, const std::wstring& name, StartType start) {
+    OfflineRegistry registry(mountDir);
+    for (const auto& write : serviceStartWrites(name, start)) {
+        if (auto r = registry.apply(write); !r) {
             return r;
         }
     }

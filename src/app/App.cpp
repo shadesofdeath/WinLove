@@ -128,6 +128,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             // handled in main.cpp (skip the startup UAC relaunch)
         } else if (startsWith(a, L"--demo-apply=")) {
             options.demoApply = std::wstring(value(L"--demo-apply="));
+        } else if (a == L"--demo-registry") {
+            options.demoRegistry = true;
         } else if (a == L"--demo-services") {
             options.demoServices = true;
         } else if (a == L"--demo-drivers") {
@@ -391,6 +393,21 @@ int App::renderOffscreen() {
             }
         }
         m_shell->showPage(m_options.page.value_or(PageId::Features));
+    }
+    if (m_options.demoRegistry) {
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,
+                                         L"Windows 11 Pro"});
+        auto& registry = m_shell->registry();
+        for (const auto& tweak : registry.catalog().tweaks()) {
+            if (tweak.recommended && tweak.category != "appearance") {
+                registry.toggle(tweak);
+            }
+        }
+        if (auto sample = core::parseRegText(L"Windows Registry Editor Version 5.00\n[HKEY_CURRENT_USER\\Software\\Contoso]\n"
+                                             L"\"Telemetry\"=dword:00000000\n\"Channel\"=\"stable\"\n")) {
+            registry.addImport(L"C:\\Tweaks\\contoso-defaults.reg", std::move(*sample));
+        }
+        m_shell->showPage(m_options.page.value_or(PageId::Registry));
     }
     if (m_options.demoServices) {
         const std::filesystem::path mountDir = L"C:\\WinLove\\mount";

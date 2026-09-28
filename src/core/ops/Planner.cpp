@@ -15,6 +15,7 @@ Phase phaseOf(OpKind kind) noexcept {
     case OpKind::AddDriver: return Phase::Drivers;
     case OpKind::AddPackage: return Phase::Updates;
     case OpKind::SetRegistryValue:
+    case OpKind::SetRegistryFirstLogon:
     case OpKind::SetServiceStart: return Phase::Settings;
     }
     return Phase::Settings;
@@ -33,7 +34,8 @@ double estimateSeconds(OpKind kind) noexcept {
     case OpKind::EnableFeature: return 20.0;
     case OpKind::AddDriver: return 6.0;
     case OpKind::AddPackage: return 60.0;
-    case OpKind::SetRegistryValue: return 0.3;
+    case OpKind::SetRegistryValue:
+    case OpKind::SetRegistryFirstLogon: return 0.3;
     case OpKind::SetServiceStart: return 1.0;
     }
     return 5.0;

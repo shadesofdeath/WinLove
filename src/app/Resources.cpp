@@ -46,6 +46,10 @@ std::string_view embeddedServiceCatalog() {
     return resourceBytes(IDR_CATALOG_SERVICES);
 }
 
+std::string_view embeddedTweakCatalog() {
+    return resourceBytes(IDR_CATALOG_TWEAKS);
+}
+
 HICON appIcon() {
     return LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_WINLOVE));
 }

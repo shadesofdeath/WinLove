@@ -3,6 +3,7 @@
 // and parsed by integration tests and tools.
 #include "base/Log.h"
 #include "base/Utf8.h"
+#include "core/image/RegistryEdit.h"
 #include "core/image/Services.h"
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
@@ -513,6 +514,30 @@ int cmdServices(const std::wstring& dir, const std::wstring& set, bool asJson) {
     return 0;
 }
 
+// P11: parse a .reg file (no admin) and optionally apply it to a mounted image's hives.
+int cmdReg(const std::wstring& file, const std::wstring& mountDir) {
+    auto writes = core::readRegFile(file);
+    if (!writes) {
+        return reportError(writes.error());
+    }
+    std::unique_ptr<core::OfflineRegistry> registry;
+    if (!mountDir.empty()) {
+        registry = std::make_unique<core::OfflineRegistry>(mountDir);
+    }
+    int failures = 0;
+    for (const auto& w : *writes) {
+        const auto mapped = core::mapOfflineKey(w.key);
+        std::wstring status = mapped ? L"" : L"  [unsupported]";
+        if (registry && mapped) {
+            auto r = registry->apply(w);
+            status = r ? L"  [ok]" : L"  [" + r.error().message + L"]";
+            failures += r ? 0 : 1;
+        }
+        print(core::registryTarget(w) + L" = " + core::formatRegValue(w) + status + L"\n");
+    }
+    return failures == 0 ? 0 : 1;
+}
+
 // P06: bootable ISO from a setup folder (IMAPI2FS, no admin).
 int cmdIso(const std::wstring& folder, const std::wstring& output, const std::wstring& label, const std::wstring& boot,
            bool sha, bool noPrompt) {
@@ -590,6 +615,7 @@ void printUsage() {
           L"  wlcli mounts | cleanup\n"
           L"  wlcli packages|features|capabilities <mountdir>\n"
           L"  wlcli iso <setup-folder> <out.iso> [--label=X] [--boot=both|uefi|bios] [--sha256] [--no-prompt]\n"
+          L"  wlcli reg <file.reg> [<mountdir>]   (parse; with a mount: write into the image's hives, P11)\n"
           L"  wlcli services <mountdir> [--set=Name=auto|autoDelayed|manual|disabled]   (P10)\n"
           L"  wlcli appx <mountdir>   (provisioned apps + size, as on P07)\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
@@ -704,6 +730,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"iso" && args.size() == 3) {
         return cmdIso(args[1], args[2], label, boot, sha, noPrompt);
+    }
+    if (command == L"reg" && (args.size() == 2 || args.size() == 3)) {
+        return cmdReg(args[1], args.size() == 3 ? args[2] : std::wstring());
     }
     if (command == L"services" && args.size() == 2) {
         return cmdServices(args[1], serviceSet, asJson);

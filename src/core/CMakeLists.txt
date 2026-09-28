@@ -2,6 +2,7 @@
 add_library(wl_core STATIC
     image/DriverInf.cpp
     image/OfflineHive.cpp
+    image/RegistryEdit.cpp
     image/Services.cpp
     image/ImageFormat.cpp
     image/Source.cpp

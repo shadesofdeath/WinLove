@@ -3,14 +3,16 @@
 > Her oturumun sonunda güncellenir. En üstte güncel durum; geçmiş en altta kısa satırlar.
 
 ## Güncel
-- **Faz:** 3 — sayfalar. P01–P04 ✅. P05 Uygula, P06 ISO, P08 Güncellemeler, P09 Sürücüler, P10 Servisler: 🟨 geliştirme bitti,
+- **Faz:** 3 — sayfalar. P01–P04 ✅. P05 Uygula, P06 ISO, P08 Güncellemeler, P09 Sürücüler, P10 Servisler, P11 Kayıt Defteri: 🟨 geliştirme bitti,
   kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v1 (yalnız AppX; CBS paket kaldırma kararı bekliyor).
 - **Çalışma şekli:** kullanıcı "her seferinde durma" dedi — sayfa bitince build + test + `-Dist` + yerel commit,
   sonra doğrudan bir sonraki sayfa. Kullanıcı `dist\WinLove.exe`'yi paralel test ediyor.
-- **Bir sonraki somut adım:** P11 Kayıt Defteri — `OfflineHive` üzerine hive ağacı (SYSTEM/SOFTWARE/DEFAULT/NTUSER), değer düzenleme = `SetRegistryValue`.
+- **Bir sonraki somut adım:** P12 Ayarlar / Tweaks (tasarım 10) — sekmeli ayar formu (dropdown/toggle/radio), aynı
+  RegistryWrite + firstLogon altyapısı; seçenek başına yazım listesi. Sonra P13 Katılımsız, P14 Kurulum Sonrası
+  (SetupComplete / ilk oturum betikleri — D-026 klasörünü genişletir).
 - **Yönetici gerektiren, terminalden doğrulanamayanlar:** P04 özellik okuma, P05 uygula, P07 AppX, P08 paket,
-  P09 sürücü ekleme, P10 servis okuma/yazma — gerçek imajda kullanıcı uygulama içinden test ediyor (terminal yönetici değil).
-- **Build:** `./build.ps1 -Dist` yeşil, 86 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+  P09 sürücü ekleme, P10 servis okuma/yazma, P11 kayıt defteri + ilk oturum dosyaları — gerçek imajda kullanıcı uygulama içinden test ediyor (terminal yönetici değil).
+- **Build:** `./build.ps1 -Dist` yeşil, 94 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi; güncellemelerde sürükle-sırala; imajdaki mevcut sürücüleri

@@ -10,6 +10,7 @@
 #include "core/image/Source.h"
 #include "core/image/dism/Appx.h"
 #include "core/image/dism/MountHealth.h"
+#include "core/image/RegistryEdit.h"
 #include "core/image/Services.h"
 #include "core/image/dism/OptionalFeatures.h"
 #include "core/iso/IsoBuilder.h"
@@ -46,7 +47,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry };
     using Listener = std::function<void(Change)>;
 
     explicit AppState(std::filesystem::path recentFile = RecentSources::defaultFile(),
@@ -112,6 +113,16 @@ public:
     };
     [[nodiscard]] const std::optional<ServiceList>& serviceList() const noexcept { return m_services; }
     void setServiceList(std::optional<ServiceList> list);
+
+    // P11: .reg files the user imported (kept across mounts; queued writes live in the ChangeSet).
+    struct RegImport {
+        std::filesystem::path file;
+        std::vector<core::RegistryWrite> writes; // those the image can take
+        std::size_t skipped = 0;                 // unsupported roots (HKLM\SAM, other users…)
+    };
+    [[nodiscard]] const std::vector<RegImport>& regImports() const noexcept { return m_regImports; }
+    void addRegImport(RegImport import);
+    void removeRegImport(std::size_t index);
 
     // P09: driver folders the user scanned (kept across pages and mounts) and their INFs.
     struct DriverScan {
@@ -198,6 +209,7 @@ private:
     std::optional<ApplyRun> m_apply;
     std::optional<AppxList> m_appx;
     std::optional<ServiceList> m_services;
+    std::vector<RegImport> m_regImports;
     DriverScan m_drivers;
     std::optional<IsoRun> m_iso;
     std::filesystem::path m_settingsFile;

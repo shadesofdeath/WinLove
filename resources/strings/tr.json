@@ -340,7 +340,17 @@
       "explorer": "Gezgin",
       "start": "Başlat ve Görev Çubuğu",
       "custom": "Özel .reg"
-    }
+    },
+    "noMountTitle": "Bağlı imaj yok",
+    "noMountBody": "Kayıt defteri ayarları için İmajlar sayfasından bir sürüm bağla.",
+    "customDesc": "İçe aktarılan .reg dosyaları",
+    "valuesN": "{n} değer",
+    "skippedN": "{n} atlandı (imajda yok)",
+    "noImports": ".reg dosyası yok — başlıktaki \".reg içe aktar…\" ya da sürükle-bırak",
+    "imported": "{n} kayıt defteri değeri kuyruğa eklendi",
+    "importFailed": ".reg dosyası okunamadı",
+    "filter": "Kayıt dosyaları",
+    "firstLogon": "İlk oturumda"
   },
   "services": {
     "title": "Servisler",

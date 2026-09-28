@@ -38,7 +38,8 @@ Category categoryOf(OpKind kind) {
     case OpKind::RemoveCapability: return kFeatures;
     case OpKind::AddPackage: return kUpdates;
     case OpKind::AddDriver: return kDrivers;
-    case OpKind::SetRegistryValue: return kRegistry;
+    case OpKind::SetRegistryValue:
+    case OpKind::SetRegistryFirstLogon: return kRegistry;
     case OpKind::SetServiceStart: return kServices;
     }
     return kTweaks;

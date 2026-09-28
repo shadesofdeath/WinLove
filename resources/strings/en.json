@@ -340,7 +340,17 @@
       "explorer": "Explorer",
       "start": "Start & Taskbar",
       "custom": "Custom .reg"
-    }
+    },
+    "noMountTitle": "No image mounted",
+    "noMountBody": "Mount an edition on the Images page to edit its registry.",
+    "customDesc": "Imported .reg files",
+    "valuesN": "{n} values",
+    "skippedN": "{n} skipped (not in the image)",
+    "noImports": "No .reg files — use \"Import .reg…\" above or drag and drop",
+    "imported": "{n} registry values queued",
+    "importFailed": "Could not read the .reg file",
+    "filter": "Registration files",
+    "firstLogon": "After setup"
   },
   "services": {
     "title": "Services",

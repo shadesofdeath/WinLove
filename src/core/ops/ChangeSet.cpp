@@ -13,7 +13,7 @@ namespace wl::core::ops {
 
 namespace {
 
-constexpr std::array<std::pair<OpKind, const char*>, 9> kKinds = {{
+constexpr std::array<std::pair<OpKind, const char*>, 10> kKinds = {{
     {OpKind::RemovePackage, "removePackage"},
     {OpKind::RemoveCapability, "removeCapability"},
     {OpKind::RemoveAppx, "removeAppx"},
@@ -23,6 +23,7 @@ constexpr std::array<std::pair<OpKind, const char*>, 9> kKinds = {{
     {OpKind::AddPackage, "addPackage"},
     {OpKind::SetRegistryValue, "setRegistryValue"},
     {OpKind::SetServiceStart, "setServiceStart"},
+    {OpKind::SetRegistryFirstLogon, "setRegistryFirstLogon"},
 }};
 
 constexpr std::array<const char*, 3> kRisks = {"low", "medium", "high"};

@@ -2,6 +2,7 @@
 
 #include "base/Log.h"
 #include "base/Utf8.h"
+#include "core/image/RegistryEdit.h"
 #include "core/image/Services.h"
 
 #include <algorithm>
@@ -11,7 +12,14 @@ namespace wl::core::ops {
 
 namespace {
 
-Result<void> runStep(const Operation& op, DismSession& session, const TaskContext& task, const ApplyOptions& options) {
+Result<void> runStep(const Operation& op, DismSession& session, const TaskContext& task, const ApplyOptions& options,
+                     std::unique_ptr<OfflineRegistry>& registry) {
+    auto reg = [&]() -> OfflineRegistry& {
+        if (!registry) {
+            registry = std::make_unique<OfflineRegistry>(session.mountPath());
+        }
+        return *registry;
+    };
     switch (op.kind) {
     case OpKind::DisableFeature: return session.disableFeature(op.target, task);
     case OpKind::EnableFeature: return session.enableFeature(op.target, task, options.featureSources);
@@ -25,9 +33,27 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
         if (!start) {
             return fail(ErrorCode::InvalidArgument, L"unknown service start type", op.value);
         }
-        return setServiceStart(session.mountPath(), op.target, *start);
+        for (const auto& write : serviceStartWrites(op.target, *start)) {
+            if (auto r = reg().apply(write); !r) {
+                return r;
+            }
+        }
+        return {};
     }
-    case OpKind::SetRegistryValue: break;
+    case OpKind::SetRegistryValue: {
+        auto write = registryWriteFrom(op.target, op.value);
+        if (!write) {
+            return std::unexpected(write.error());
+        }
+        return reg().apply(*write);
+    }
+    case OpKind::SetRegistryFirstLogon: {
+        auto write = registryWriteFrom(op.target, op.value);
+        if (!write) {
+            return std::unexpected(write.error());
+        }
+        return deferRegistryWrite(session.mountPath(), reg(), *write);
+    }
     }
     return fail(ErrorCode::Unsupported, L"operation kind not implemented yet", utf8::toWide(opKindKey(op.kind)));
 }
@@ -41,6 +67,7 @@ std::size_t ApplyReport::failures() const {
 ApplyReport apply(const ApplyPlan& plan, DismSession& session, const TaskContext& task, ErrorPolicy policy,
                   const ApplyCallbacks& callbacks, const ApplyOptions& options) {
     ApplyReport report;
+    std::unique_ptr<OfflineRegistry> registry; // hives stay loaded for the run, unloaded on return
     const std::size_t total = plan.steps.size();
     for (std::size_t i = 0; i < total; ++i) {
         const PlanStep& step = plan.steps[i];
@@ -59,7 +86,7 @@ ApplyReport apply(const ApplyPlan& plan, DismSession& session, const TaskContext
                                                        static_cast<double>(total),
                                                    stage);
                                    }};
-        StepResult result{step, runStep(step.operation, session, stepTask, options)};
+        StepResult result{step, runStep(step.operation, session, stepTask, options, registry)};
         if (!result.outcome) {
             log::error("apply", describe(result.outcome.error()));
         }
