@@ -1,0 +1,77 @@
+#include "ui/widgets/InfoBar.h"
+
+#include <algorithm>
+#include <cmath>
+
+namespace wl::ui {
+
+namespace {
+
+using tokens::Color;
+
+constexpr float kPaddingLeft = 16.0f;
+constexpr float kGap = 8.0f;
+
+struct Style {
+    Color background;
+    Color ink;
+    icons::Icon icon;
+};
+
+Style styleFor(InfoKind kind) {
+    switch (kind) {
+    case InfoKind::Success: return {Color::StatusSuccessSubtle, Color::StatusSuccess, icons::Icon::SuccessCircle};
+    case InfoKind::Warning: return {Color::StatusWarningSubtle, Color::StatusWarning, icons::Icon::WarningTriangle};
+    case InfoKind::Error: return {Color::StatusErrorSubtle, Color::StatusError, icons::Icon::ErrorOctagon};
+    case InfoKind::Info: break;
+    }
+    return {Color::StatusInfoSubtle, Color::StatusInfo, icons::Icon::InfoCircle};
+}
+
+} // namespace
+
+InfoBar::InfoBar(InfoKind kind, std::wstring title, std::wstring message, std::wstring closeTooltip)
+    : m_kind(kind), m_title(std::move(title)), m_message(std::move(message)) {
+    auto close = Button::iconOnly(icons::Icon::Close, std::move(closeTooltip));
+    m_close = close.get();
+    m_close->onInvoke = [this] {
+        if (onClose) {
+            onClose();
+        }
+    };
+    addChild(std::move(close));
+    setAccessible(AccessRole::Group, m_title);
+}
+
+void InfoBar::set(InfoKind kind, std::wstring title, std::wstring message) {
+    m_kind = kind;
+    m_title = std::move(title);
+    m_message = std::move(message);
+    invalidate();
+}
+
+void InfoBar::layout() {
+    const RectF b = bounds();
+    const float size = tokens::size::control;
+    m_close->setBounds({b.right() - 4 - size, b.y + std::round((b.height - size) / 2), size, size});
+}
+
+void InfoBar::paint(Canvas& canvas) {
+    const RectF b = bounds();
+    const Style style = styleFor(m_kind);
+    canvas.fillRect(b, style.background);
+    canvas.hairlineH(b.x, b.y, b.width, Color::LineSubtle);
+    canvas.hairlineH(b.x, b.bottom() - 1.0f / canvas.scale(), b.width, Color::LineSubtle);
+    float x = b.x + kPaddingLeft;
+    canvas.drawIcon(style.icon, {x, b.y + std::round((b.height - tokens::size::icon) / 2)}, style.ink);
+    x += tokens::size::icon + kGap;
+    const float right = m_close->bounds().x - kGap;
+    const float titleWidth = std::min(std::ceil(canvas.text().measure(m_title, tokens::TypeStyle::BodyStrong)) + 1,
+                                      std::max(right - x, 0.0f));
+    canvas.drawText(m_title, {x, b.y, titleWidth, b.height}, tokens::TypeStyle::BodyStrong, Color::TextPrimary);
+    x += titleWidth + 4;
+    canvas.drawText(m_message, {x, b.y, std::max(right - x, 0.0f), b.height}, tokens::TypeStyle::Body,
+                    Color::TextSecondary);
+}
+
+} // namespace wl::ui

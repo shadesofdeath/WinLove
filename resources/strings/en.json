@@ -102,7 +102,17 @@
     "recent": "Recent",
     "lastOpened": "Last opened",
     "today": "today",
-    "daysAgo": "{n} days ago"
+    "daysAgo": "{n} days ago",
+    "version": "Version",
+    "dropUnsupported": "Unsupported file",
+    "openFailed": "Could not open:",
+    "liveLater": "Live system editing arrives with Faz 4",
+    "adminYes": "Yes — running as administrator",
+    "fileMissing": "File not found",
+    "filterImages": "Windows images",
+    "filterAll": "All files",
+    "pickFolder": "Pick the setup folder (containing sources\\install.*)",
+    "loading": "Opening…"
   },
   "images": {
     "title": "Editions",

@@ -71,7 +71,7 @@
     "copied": "Kopyalandı",
     "category": "Kategori",
     "risk": "Risk",
-    "size": "Size",
+    "size": "Boyut",
     "name": "Ad",
     "type": "Tür",
     "status": "Durum",
@@ -102,7 +102,17 @@
     "recent": "Son kullanılanlar",
     "lastOpened": "Son açılış",
     "today": "bugün",
-    "daysAgo": "{n} gün önce"
+    "daysAgo": "{n} gün önce",
+    "version": "Sürüm",
+    "dropUnsupported": "Desteklenmeyen dosya",
+    "openFailed": "Açılamadı:",
+    "liveLater": "Canlı sistem düzenleme Faz 4 ile gelecek",
+    "adminYes": "Var — yönetici olarak çalışıyor",
+    "fileMissing": "Dosya bulunamadı",
+    "filterImages": "Windows imajları",
+    "filterAll": "Tüm dosyalar",
+    "pickFolder": "Kurulum klasörünü seç (sources\\install.* içeren)",
+    "loading": "Açılıyor…"
   },
   "images": {
     "title": "Sürümler",

@@ -2,6 +2,7 @@
 #include "app/App.h"
 
 #include <objbase.h>
+#include <ole2.h>
 #include <shellapi.h>
 #include <windows.h>
 
@@ -10,8 +11,8 @@
 #include <vector>
 
 int WINAPI wWinMain(HINSTANCE /*instance*/, HINSTANCE /*previous*/, PWSTR /*commandLine*/, int /*show*/) {
-    // STA: WIC, drag & drop and shell dialogs need it.
-    if (FAILED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE))) {
+    // OLE (STA): drag & drop needs OleInitialize, WIC and shell dialogs need COM.
+    if (FAILED(OleInitialize(nullptr))) {
         return 1;
     }
 
@@ -39,6 +40,6 @@ int WINAPI wWinMain(HINSTANCE /*instance*/, HINSTANCE /*previous*/, PWSTR /*comm
             MessageBoxW(nullptr, text.c_str(), L"WinLove", MB_OK | MB_ICONERROR);
         }
     }
-    CoUninitialize();
+    OleUninitialize();
     return exitCode;
 }

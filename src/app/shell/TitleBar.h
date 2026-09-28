@@ -65,7 +65,8 @@ public:
     CaptionButton& maximizeButton() { return *m_maximize; }
     CaptionButton& closeButton() { return *m_close; }
 
-    void setBreadcrumb(std::wstring text);
+    // statusbar-titlebar.md "Breadcrumb": image › edition › state; last item text.primary.
+    void setBreadcrumb(std::vector<std::wstring> parts);
     void setWindowActive(bool active);
     void setMaximized(bool maximized);
 
@@ -75,7 +76,7 @@ public:
 
 private:
     std::wstring m_appName;
-    std::wstring m_breadcrumb;
+    std::vector<std::wstring> m_breadcrumb;
     bool m_windowActive = true;
     PaletteTrigger* m_palette = nullptr;
     CaptionButton* m_minimize = nullptr;

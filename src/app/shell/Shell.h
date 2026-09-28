@@ -1,29 +1,44 @@
 #pragma once
 // Root widget of the main window (layout-system.md): TitleBar 32 on top, StatusBar 24 at the
 // bottom, NavRail 200/44 on the left, the current page in the rest. Owns page switching,
-// nav collapse animation and app-level shortcuts (interaction.md "Kısayollar").
+// nav collapse animation, app-level shortcuts (interaction.md "Kısayollar") and the
+// "open a source" flow (engine thread → UI thread → AppState → Images page).
 #include "app/Localization.h"
 #include "app/pages/PageInfo.h"
 #include "app/shell/NavRail.h"
 #include "app/shell/PageView.h"
 #include "app/shell/StatusBar.h"
 #include "app/shell/TitleBar.h"
+#include "app/state/AppState.h"
 #include "ui/anim/Tween.h"
 
+#include <windows.h>
+
+#include <filesystem>
 #include <functional>
+#include <memory>
+#include <vector>
 
 namespace wl::app {
 
+class SourcePage;
+
 class Shell : public ui::Widget {
 public:
-    struct WindowActions {
+    // Everything the shell needs from the window/app, as plain callbacks (keeps it testable and
+    // usable from the headless --render path).
+    struct Services {
         std::function<void()> minimize;
         std::function<void()> toggleMaximize;
         std::function<void()> close;
         std::function<void()> toggleTheme;
+        std::function<void(std::function<void()>)> postToUi; // run on the UI thread later
+        std::function<HWND()> ownerWindow;                   // for system dialogs (may be null)
+        std::function<bool()> relaunchElevated;              // true = new process started, exit this one
     };
 
-    Shell(const Localization& strings, WindowActions actions);
+    Shell(const Localization& strings, Language language, AppState& state, Services services);
+    ~Shell() override;
 
     TitleBar& titleBar() { return *m_titleBar; }
     NavRail& nav() { return *m_nav; }
@@ -35,17 +50,38 @@ public:
     // Shortcuts not consumed by the focused widget. Returns true if handled.
     bool handleShortcut(const ui::KeyEvent& key);
 
+    // ---- sources --------------------------------------------------------------------------
+    void openSource(const std::filesystem::path& path);
+    void pickSourceFile();
+    void pickSourceFolder();
+    void showAdminRequired();
+    // Window-wide drag & drop (interaction.md): returns true when the drop would be accepted.
+    bool dragEnter(const std::vector<std::filesystem::path>& files);
+    void dragLeave();
+    void drop(const std::vector<std::filesystem::path>& files);
+
     void layout() override;
     bool tick(double now) override;
 
 private:
+    void updateBreadcrumb();
+    [[nodiscard]] SourcePage* sourcePage() const;
+
     const Localization& m_strings;
-    WindowActions m_actions;
+    Language m_language;
+    AppState& m_state;
+    Services m_services;
+    std::size_t m_subscription = 0;
+    // Engine results arrive later on the UI thread; they check this before touching the shell
+    // (it is rebuilt on device loss and destroyed at exit).
+    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     TitleBar* m_titleBar = nullptr;
     NavRail* m_nav = nullptr;
     StatusBar* m_status = nullptr;
     PageView* m_pageView = nullptr;
+    ui::Widget* m_pageBody = nullptr;
     PageId m_page = PageId::Source;
+    bool m_opening = false;
     ui::Tween m_navExpansion{1.0f};
     float m_navTarget = 1.0f;
     bool m_userCollapsed = false; // the user's choice; narrow windows collapse on top of it

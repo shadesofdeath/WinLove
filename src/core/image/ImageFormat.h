@@ -13,6 +13,7 @@ enum class ImageFormat : std::uint8_t {
     Swm,
     Vhd,
     Vhdx,
+    Folder, // an extracted setup folder containing sources\install.*
 };
 
 // Classifies by file extension only (case-insensitive). Content sniffing is done by the backend

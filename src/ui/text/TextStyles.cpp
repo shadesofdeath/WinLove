@@ -3,7 +3,6 @@
 #include "base/Hresult.h"
 
 #include <algorithm>
-#include <cwctype>
 #include <string>
 
 namespace wl::ui {
@@ -73,10 +72,15 @@ Result<ComPtr<IDWriteTextLayout>> TextStyles::layout(std::wstring_view text, tok
                                                      float height, TextAlign align) const {
     const auto& s = spec(style);
     std::wstring shaped(text);
-    if (s.uppercase) {
-        // Section labels; Turkish-aware casing (i -> İ) comes with the locale-aware helper in Faz 1.7.
-        for (auto& c : shaped) {
-            c = static_cast<wchar_t>(std::towupper(c));
+    if (s.uppercase && !shaped.empty()) {
+        // Linguistic casing: "Son kullanılanlar" → "SON KULLANILANLAR" in Turkish, not "KULLANıLANLAR".
+        std::wstring upper(shaped.size() * 2, L'\0');
+        const int n = LCMapStringEx(m_locale.c_str(), LCMAP_UPPERCASE | LCMAP_LINGUISTIC_CASING, shaped.c_str(),
+                                    static_cast<int>(shaped.size()), upper.data(), static_cast<int>(upper.size()),
+                                    nullptr, nullptr, 0);
+        if (n > 0) {
+            upper.resize(static_cast<std::size_t>(n));
+            shaped = std::move(upper);
         }
     }
     ComPtr<IDWriteTextLayout> layout;
@@ -93,6 +97,28 @@ Result<ComPtr<IDWriteTextLayout>> TextStyles::layout(std::wstring_view text, tok
         }
     }
     return layout;
+}
+
+Result<ComPtr<IDWriteTextLayout>> TextStyles::wrappedLayout(std::wstring_view text, tokens::TypeStyle style, float width,
+                                                             TextAlign align) const {
+    auto result = layout(text, style, width, 100000.0f, align);
+    if (result) {
+        (*result)->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
+        (*result)->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
+        const DWRITE_TRIMMING none{DWRITE_TRIMMING_GRANULARITY_NONE, 0, 0};
+        (*result)->SetTrimming(&none, nullptr);
+    }
+    return result;
+}
+
+float TextStyles::measureWrapped(std::wstring_view text, tokens::TypeStyle style, float width) const {
+    auto l = wrappedLayout(text, style, width);
+    if (!l) {
+        return 0;
+    }
+    DWRITE_TEXT_METRICS metrics{};
+    (*l)->GetMetrics(&metrics);
+    return metrics.height;
 }
 
 float TextStyles::measure(std::wstring_view text, tokens::TypeStyle style) const {

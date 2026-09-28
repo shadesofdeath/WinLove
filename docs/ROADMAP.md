@@ -39,7 +39,7 @@ Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **
 
 | # | Sayfa | Tasarım | Spec | Durum | Notlar |
 |---|---|---|---|---|---|
-| P01 | Kaynak (karşılama, sürükle-bırak, son kullanılanlar, canlı sistem) | 01, s1, s4 | `pages/01-source.md` | ⬜ | |
+| P01 | Kaynak (karşılama, sürükle-bırak, son kullanılanlar, canlı sistem) | 01, s1, s4 | `pages/01-source.md` | 🟨 | Geliştirme bitti, kullanıcı testi bekliyor (spec §10) |
 | P02 | İmajlar (index listesi, mount/unmount, export, sil, ESD→WIM) + mount ilerlemesi | 02, 03, s2, s3 | `pages/02-images.md` | ⬜ | |
 | P03 | Loglar | 18 | `pages/03-logs.md` | ⬜ | Sonraki sayfaların hata ayıklamasını kolaylaştırır |
 | P04 | Özellikler | 05 | `pages/04-features.md` | ⬜ | İlk ChangeSet kullanan sayfa |

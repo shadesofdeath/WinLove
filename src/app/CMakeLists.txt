@@ -1,15 +1,21 @@
 # wl_app — shell, pages, app state, localization. Joins ui and core. Library so tests can link it.
 add_library(wl_app STATIC
     App.cpp
+    Format.cpp
     Localization.cpp
     Resources.cpp
     pages/GalleryPage.cpp
     pages/PageInfo.cpp
+    pages/SourcePage.cpp
+    pages/source/LiveCard.cpp
+    pages/source/RecentList.cpp
     shell/NavRail.cpp
     shell/PageView.cpp
     shell/Shell.cpp
     shell/StatusBar.cpp
-    shell/TitleBar.cpp)
+    shell/TitleBar.cpp
+    state/AppState.cpp
+    state/RecentSources.cpp)
 wl_configure_target(wl_app)
 target_link_libraries(wl_app PUBLIC wl_core wl_ui PRIVATE wl_json)
 

@@ -1,9 +1,12 @@
 #pragma once
-// Page frame (screens.md "Ortak iskelet"): 16px padding, title 16/22 semibold, 2px, description
-// caption text.secondary, then the page body. Header actions and toolbar arrive with the pages.
-#include "ui/widget/Widget.h"
+// Page frame (screens.md "Ortak iskelet"): 16px side padding; header = title 16/22 semibold,
+// 2px, description caption text.secondary; header action buttons right-aligned (y 49, 4 gap).
+// The body starts right under the description; each page adds its own top spacing (toolbar
+// pages 12, the Source page 20 — per the handoff screens).
+#include "ui/widgets/Button.h"
 
 #include <string>
+#include <vector>
 
 namespace wl::app {
 
@@ -23,6 +26,9 @@ public:
         return body;
     }
 
+    // Header buttons, added left to right; the group is right-aligned.
+    ui::Button& addAction(ui::ButtonKind kind, std::wstring label, std::optional<ui::icons::Icon> icon = std::nullopt);
+
     void layout() override;
     void paint(ui::Canvas& canvas) override;
 
@@ -32,6 +38,7 @@ private:
     std::wstring m_title;
     std::wstring m_description;
     ui::Widget* m_body = nullptr;
+    std::vector<ui::Button*> m_actions;
 };
 
 } // namespace wl::app

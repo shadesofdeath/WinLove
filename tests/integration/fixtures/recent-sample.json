@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "path": "C:/Users/shades/Downloads/Win11_25H2_Turkish_x64_v2.iso",
+      "format": "ISO",
+      "summary": "11 25H2 · 26200.8037",
+      "size": 8115634176,
+      "lastOpened": 1790609559
+    },
+    {
+      "path": "C:/WinLoveLab/iso",
+      "format": "Folder",
+      "summary": "11 25H2 · 26200.8037",
+      "size": 7217280579,
+      "lastOpened": 1790350959
+    },
+    {
+      "path": "D:/images/Win10_22H2_EN_x64.iso",
+      "format": "ISO",
+      "summary": "10 22H2 · 19045.5011",
+      "size": 6227702784,
+      "lastOpened": 1789227759
+    },
+    {
+      "path": "D:/images/ltsc2024_arm64.esd",
+      "format": "ESD",
+      "summary": "11 24H2 · 26100.1 · ARM64",
+      "size": 3446670131,
+      "lastOpened": 1788363759
+    }
+  ]
+}
