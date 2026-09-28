@@ -1,5 +1,5 @@
 # Unit tests (label: unit) — no admin, no images. Integration tests (label: integration) are added
-# in Faz 2.6 and need an elevated shell plus C:\WinLoveLab (docs/TESTING.md).
+# in Faz 2.6 and need an elevated shell plus build\lab (docs/TESTING.md).
 add_executable(wl_tests
     main.cpp
     support/TestGraphics.cpp

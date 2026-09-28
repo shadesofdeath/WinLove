@@ -6,6 +6,7 @@
 #include "app/pages/SourcePage.h"
 #include "app/pages/images/ImageInspector.h"
 #include "base/Log.h"
+#include "base/Path.h"
 #include "core/image/Source.h"
 #include "core/image/dism/DismErrors.h"
 #include "ui/platform/FileDialog.h"
@@ -74,6 +75,13 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     });
 
     m_subscription = m_state.subscribe([this](AppState::Change change) {
+        if (change == AppState::Change::MountFolder && !m_autoRestoreTried) {
+            const auto& folder = m_state.mountFolder();
+            if (folder && folder->state == core::MountState::Ok && folder->record && !m_state.mounted()) {
+                m_autoRestoreTried = true;
+                continueFolderMount();
+            }
+        }
         if (change != AppState::Change::Recent) {
             updateBreadcrumb();
             updateImagesChrome();
@@ -223,6 +231,7 @@ void Shell::showPage(PageId page) {
             }
             m_pageBody = &m_pageView->setBody<ImagesPage>(m_state, *m_images, m_strings, m_language,
                                                           [this] { showPage(PageId::Source); });
+            static_cast<ImagesPage*>(m_pageBody)->onContinueMount = [this] { continueFolderMount(); };
             m_inspector = &add<ImageInspector>(m_strings, m_language);
             m_inspector->onMount = [this] {
                 if (const auto index = m_state.selectedIndex()) {
@@ -320,7 +329,26 @@ void Shell::openSource(const std::filesystem::path& path, std::function<void()> 
         });
 }
 
+void Shell::continueFolderMount() {
+    const auto& folder = m_state.mountFolder();
+    if (!folder || !folder->record || m_state.mounted()) {
+        return;
+    }
+    const auto& m = *folder->record;
+    restoreMount(sourceForMountedImage(m.imagePath), MountedImage{m.mountPath, m.imagePath, m.index, {}, m.readOnly});
+}
+
 void Shell::restoreMount(const std::filesystem::path& source, MountedImage mounted) {
+    log::info("app", L"restore: opening " + source.wstring());
+    if (m_state.source() && _wcsicmp(m_state.source()->path.c_str(), nativePath(source).c_str()) == 0) {
+        // The right source is already open: just mark the mount.
+        m_state.select(mounted.index);
+        mounted.edition = m_state.selectedImage() ? m_state.selectedImage()->name : std::format(L"#{}", mounted.index);
+        const std::wstring edition = mounted.edition;
+        m_state.setMounted(std::move(mounted));
+        showToast(ui::InfoKind::Info, m_strings.format(Str::ImagesMountRestored, {{L"edition", edition}}), L"");
+        return;
+    }
     openSource(source, [this, mounted = std::move(mounted)]() mutable {
         mounted.edition = std::format(L"#{}", mounted.index);
         if (const auto& info = m_state.source()) {

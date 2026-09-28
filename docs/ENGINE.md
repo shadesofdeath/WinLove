@@ -43,7 +43,7 @@ namespace wl::image {
 
 ## 3. İşletim kuralları
 - DISM oturumu **tek motor thread'inde** açılır ve kullanılır. `DismInitialize` süreç başına bir kez.
-- Mount dizini kısa ve boşluksuz: `C:\WinLoveLab\mount\<n>` (geliştirme) / kullanıcı ayarı (üretim).
+- Mount dizini kısa ve boşluksuz: `build\lab\mount\<n>` (geliştirme) / kullanıcı ayarı (üretim).
 - Her mount `mounts.json`'a yazılır; açılışta `DismGetMountedImageInfo` ile karşılaştırılır, sahipsizler raporlanır.
 - İptal: DISM `CancelEvent` handle'ı `CancelToken`'a bağlanır.
 - İlerleme: DISM progress callback → `Progress` (UI'a throttle 30 Hz).
@@ -69,7 +69,7 @@ wlcli export <wim> <index> <dst> [--compress=max|fast|none|recovery]
 wlcli appx|drivers <dir>
 wlcli iso <dir> <out.iso>
 ```
-Örnek change set: `tests/integration/fixtures/sample-changeset.json`. Yönetici duman testi: `tools/dism_smoke.ps1` → `C:\WinLoveLab\out\dism-smoke.json`.
+Örnek change set: `tests/integration/fixtures/sample-changeset.json`. Yönetici duman testi: `tools/dism_smoke.ps1` → `build\lab\out\dism-smoke.json`.
 Her komut `--json` çıktı verebilir → integration testleri ve AI bunu ayrıştırır.
 
 ## 4b. Mount durumları (core/image/dism/MountHealth.h)

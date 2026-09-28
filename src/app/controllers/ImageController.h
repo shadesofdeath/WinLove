@@ -13,6 +13,9 @@
 
 namespace wl::app {
 
+// The source to open for a mounted WIM: the setup folder for ...\sources\install.wim, else the WIM.
+[[nodiscard]] std::filesystem::path sourceForMountedImage(const std::filesystem::path& imagePath);
+
 class ImageController {
 public:
     enum class Failure : std::uint8_t { Mount, Unmount, Export, Delete, Prepare, Cleanup };

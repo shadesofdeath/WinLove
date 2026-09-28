@@ -15,6 +15,13 @@
 
 namespace wl::app {
 
+std::filesystem::path sourceForMountedImage(const std::filesystem::path& imagePath) {
+    if (_wcsicmp(imagePath.parent_path().filename().c_str(), L"sources") == 0) {
+        return imagePath.parent_path().parent_path();
+    }
+    return imagePath;
+}
+
 ImageController::ImageController(AppState& state, Events events) : m_state(state), m_events(std::move(events)) {}
 
 ImageController::~ImageController() {
@@ -351,14 +358,28 @@ void ImageController::adoptExistingMount() {
     };
     auto post = m_events.postToUi;
     std::weak_ptr<bool> alive = m_alive;
-    const auto mountRoot = m_state.settings().mountDirectory();
+    // Current mount folder first, then the pre-2026-09-28 one (C:\WinLove\mount).
+    std::vector<std::filesystem::path> folders{m_state.settings().mountDirectory()};
+    if (_wcsicmp(AppSettings::legacyMountDirectory().c_str(), folders.front().c_str()) != 0) {
+        folders.push_back(AppSettings::legacyMountDirectory());
+    }
     m_state.engine().run<Found>(
-        [mountRoot](const core::TaskContext& task) -> Result<Found> {
+        [folders](const core::TaskContext& task) -> Result<Found> {
             auto dism = core::Dism::instance();
             if (!dism) {
                 return std::unexpected(dism.error());
             }
-            auto before = core::inspectMount(**dism, mountRoot);
+            Result<core::MountCheck> before = std::unexpected(Error{});
+            for (const auto& folder : folders) {
+                std::error_code ec;
+                if (folder != folders.front() && !std::filesystem::exists(folder, ec)) {
+                    continue; // no legacy folder: nothing to look at
+                }
+                before = core::inspectMount(**dism, folder);
+                if (!before || before->state != core::MountState::Free) {
+                    break;
+                }
+            }
             if (!before) {
                 return std::unexpected(before.error());
             }
@@ -389,13 +410,11 @@ void ImageController::adoptExistingMount() {
                     return;
                 }
                 const auto& m = *after.record;
-                // The source to show: the setup folder (...\sources\install.wim) or the WIM itself.
-                std::filesystem::path source = m.imagePath;
-                if (_wcsicmp(m.imagePath.parent_path().filename().c_str(), L"sources") == 0) {
-                    source = m.imagePath.parent_path().parent_path();
-                }
+                log::info("app", std::format(L"restoring mount {} <- {} [{}]", m.mountPath.wstring(),
+                                             m.imagePath.wstring(), m.index));
                 if (m_events.restored) {
-                    m_events.restored(source, MountedImage{m.mountPath, m.imagePath, m.index, {}, m.readOnly});
+                    m_events.restored(sourceForMountedImage(m.imagePath),
+                                      MountedImage{m.mountPath, m.imagePath, m.index, {}, m.readOnly});
                 }
             });
         },

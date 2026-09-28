@@ -197,7 +197,9 @@
     "folderNeedsRemount": "needs remount",
     "folderInvalid": "invalid",
     "folderImageMissing": "WIM file missing",
-    "folderOrphaned": "left over (stale files)"
+    "folderOrphaned": "left over (stale files)",
+    "folderFound": "Mounted image found: {edition} (index {index})",
+    "folderContinue": "Continue"
   },
   "components": {
     "title": "Components",

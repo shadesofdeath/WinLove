@@ -54,7 +54,7 @@ Mevcut: `source.*`, `dialogs.admin*`, `common.cancel|name|type|size`. Eklenecek:
 ## 9. Kabul kriterleri
 - [x] Test ISO'su açılır (komut satırı + birim testi: Shell→motor→UI akışı), 6 sürüm okunur, P02'ye geçilir, breadcrumb dosya adını gösterir — dosya diyaloğu ile: kullanıcı testi
 - [ ] Aynı ISO sürükle-bırakla açılır; .txt bırakınca hata durumu, hiçbir şey açılmaz — kurallar test edildi, gerçek OLE sürüklemesi kullanıcı testinde
-- [x] Çıkarılmış klasör (`C:\WinLoveLab\iso`) açılır (`wlcli info`); "Klasör…" diyaloğu kullanıcı testinde
+- [x] Çıkarılmış klasör (`build\lab\iso`) açılır (`wlcli info`); "Klasör…" diyaloğu kullanıcı testinde
 - [x] Son kullanılanlar kalıcı, en yeni üstte, en fazla 10, büyük/küçük harf farkı olmadan tekil, bozuk dosya boş sayılır, silinmiş dosya soluk + tooltip
 - [x] Koyu/açık/HC ve %100/%150/%200 render tasarımla uyumlu (bkz. §11)
 - [x] Klavye: Tab ile başlık → menü → Dosya aç/Klasör → DropZone → liste; ↑↓ Enter liste içinde; dialog'da odak kapanı (Host testleri)

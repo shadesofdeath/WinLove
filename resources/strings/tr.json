@@ -197,7 +197,9 @@
     "folderNeedsRemount": "yeniden bağlanmalı",
     "folderInvalid": "geçersiz",
     "folderImageMissing": "WIM dosyası kayıp",
-    "folderOrphaned": "yarım kalmış (artık dosyalar)"
+    "folderOrphaned": "yarım kalmış (artık dosyalar)",
+    "folderFound": "Bağlı imaj bulundu: {edition} (index {index})",
+    "folderContinue": "Devam et"
   },
   "components": {
     "title": "Bileşenler",

@@ -2,6 +2,7 @@
 
 #include "base/Log.h"
 #include "base/Path.h"
+#include "core/image/Source.h"
 #include "core/image/dism/DismErrors.h"
 #include "core/system/Privileges.h"
 
@@ -63,6 +64,15 @@ MountCheck check(const std::filesystem::path& folder, std::optional<MountInfo> r
     c.loadedHives = hivesLoadedFrom(folder);
     if (c.state != MountState::Free) {
         c.blockers = blockersOf(folder);
+    }
+    if (record && fileExists(record->imagePath)) {
+        if (auto info = openSource(record->imagePath)) {
+            for (const auto& image : info->install.images) {
+                if (image.index == record->index) {
+                    c.imageName = image.name;
+                }
+            }
+        }
     }
     c.record = std::move(record);
     return c;

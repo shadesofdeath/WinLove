@@ -32,7 +32,7 @@ Durum simgeleri: ⬜ başlamadı · 🟨 sürüyor · ✅ bitti (kullanıcı ona
 | 2.3 | **Kendi okuyucularımız:** `UdfImage` (ISO, bağlamasız), `WimFile` (başlık + XML), `openSource`; `wlcli info/ls/extract`. wimgapi.dll ile çapraz doğrulandı (D-018) | ✅ |
 | 2.4 | `core/image/dism`: kendi DISM bildirimleri + dinamik yükleme (D-017), mount/unmount/mounts/cleanup, session: packages/features/capabilities; `wlcli` komutları; `tools/dism_smoke.ps1` gerçek imajda geçti. `mounts.json` yerine DISM'in kendi bağlama listesi kullanılıyor | ✅ |
 | 2.5 | `core/ops`: Operation (değer tipi, D-019), ChangeSet (slot başına tek işlem, ters işlem iptali, undo/redo, JSON preset), Planner (faz sırası), Applier (DISM: feature aç/kapat, paket/capability kaldır; diğerleri `Unsupported`); `wlcli plan/apply` | ✅ |
-| 2.6 | `tools/lab_setup.ps1` (C:\WinLoveLab + install.wim çıkarımı), `tools/dism_smoke.ps1` (yönetici), ISO testleri birim testlerinde (ISO yoksa atlanır). Tek index'lik golden WIM henüz yok | ✅ |
+| 2.6 | `tools/lab_setup.ps1` (build\lab + install.wim çıkarımı), `tools/dism_smoke.ps1` (yönetici), ISO testleri birim testlerinde (ISO yoksa atlanır). Tek index'lik golden WIM henüz yok | ✅ |
 
 ## Faz 3 — Sayfalar (sırayla, her biri tam döngü: `WORKFLOW.md` §2)
 Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **uçtan uca** (seç → değiştir → uygula → ISO → VM'de kur) hattı kurmak; zor sayfalar (Bileşenler) sağlam hattın üstüne gelir.
@@ -40,8 +40,8 @@ Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **
 | # | Sayfa | Tasarım | Spec | Durum | Notlar |
 |---|---|---|---|---|---|
 | P01 | Kaynak (karşılama, sürükle-bırak, son kullanılanlar) | 01, s1, s4 | `pages/01-source.md` | ✅ | Kullanıcı onayladı; canlı sistem kaldırıldı (D-021) |
-| P02 | İmajlar (index listesi, mount/unmount, export, sil, ESD→WIM) + mount ilerlemesi | 02, 03, s2, s3 | `pages/02-images.md` | ⬜ | |
-| P03 | Loglar | 18 | `pages/03-logs.md` | ⬜ | Sonraki sayfaların hata ayıklamasını kolaylaştırır |
+| P02 | İmajlar (index listesi, mount/unmount, export, sil, ESD→WIM) + mount ilerlemesi | 02, 03, s2, s3 | `pages/02-images.md` | ✅ | Mount sağlığı + hata kataloğu (ENGINE.md) |
+| P03 | Loglar | 18 | `pages/03-logs.md` | 🟨 | Sonraki sayfaların hata ayıklamasını kolaylaştırır |
 | P04 | Özellikler | 05 | `pages/04-features.md` | ⬜ | İlk ChangeSet kullanan sayfa |
 | P05 | Uygula (özet, onay, çalışıyor, bitti) | 13, 13b, 14, 15 | `pages/05-apply.md` | ⬜ | Planner/Applier burada tamamlanır |
 | P06 | ISO Oluştur / USB | 16 | `pages/06-iso.md` | ⬜ | Bittiğinde: uçtan uca VM kurulum testi |

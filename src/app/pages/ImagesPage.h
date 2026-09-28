@@ -21,6 +21,9 @@ public:
     // `offerRepair`: show "Onar" (ImageController::cleanupMounts).
     void showFailure(const std::wstring& title, const std::wstring& message, bool offerRepair);
 
+    // "Devam et" on the mount-folder bar: restore the mount found there (Shell::continueFolderMount).
+    std::function<void()> onContinueMount;
+
     [[nodiscard]] static Str remedyText(core::Remedy remedy) noexcept;
     [[nodiscard]] static Str folderStateText(core::MountState state) noexcept;
     [[nodiscard]] static bool remedyRepairs(core::Remedy remedy) noexcept; // "Onar" helps

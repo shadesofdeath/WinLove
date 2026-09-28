@@ -1,5 +1,7 @@
 #include "app/App.h"
 
+#include "base/Log.h"
+
 #include "app/Format.h"
 #include "app/Resources.h"
 #include "base/Utf8.h"
@@ -311,6 +313,9 @@ int App::renderOffscreen() {
 // ---- windowed ------------------------------------------------------------------------------
 
 int App::runWindowed() {
+    // Session log file next to dism.log (P03 Loglar reads the same folder).
+    log::addSink(log::makeFileSink(log::defaultDirectory()));
+    log::info("app", L"WinLove started");
     ui::WindowCallbacks callbacks;
     callbacks.paint = [this] { paint(); };
     callbacks.resized = [this](ui::SizeF size, float scale) {

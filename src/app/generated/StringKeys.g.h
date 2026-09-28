@@ -201,6 +201,8 @@ enum class Str : std::uint16_t {
     ImagesFileSize,
     ImagesFilesDirs,
     ImagesFolderBlockers,
+    ImagesFolderContinue,
+    ImagesFolderFound,
     ImagesFolderFree,
     ImagesFolderImageMissing,
     ImagesFolderInvalid,
@@ -505,7 +507,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 495;
+inline constexpr std::size_t kStrCount = 497;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -701,6 +703,8 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "images.fileSize",
     "images.filesDirs",
     "images.folderBlockers",
+    "images.folderContinue",
+    "images.folderFound",
     "images.folderFree",
     "images.folderImageMissing",
     "images.folderInvalid",
