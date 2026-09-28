@@ -10,7 +10,6 @@ add_library(wl_core STATIC
     ops/Applier.cpp
     ops/ChangeSet.cpp
     ops/Planner.cpp
-    system/LiveSystem.cpp
     system/Privileges.cpp
     tasks/Task.cpp
     tasks/TaskRunner.cpp)

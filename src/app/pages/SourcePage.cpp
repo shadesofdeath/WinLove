@@ -1,7 +1,5 @@
 #include "app/pages/SourcePage.h"
 
-#include "core/system/Privileges.h"
-
 namespace wl::app {
 
 using ui::RectF;
@@ -12,7 +10,6 @@ namespace {
 // Offsets under the page description, from screen 01 (content top 88).
 constexpr float kTopGap = 20.0f;
 constexpr float kZoneHeight = 160.0f;
-constexpr float kLiveWidth = 304.0f;
 constexpr float kGap = 16.0f;
 constexpr float kSectionGap = 24.0f;
 constexpr float kSectionLine = 16.0f;
@@ -27,12 +24,6 @@ SourcePage::SourcePage(AppState& state, const Localization& strings, Language la
     m_drop->onInvoke = [this] {
         if (m_intents.pickFile) {
             m_intents.pickFile();
-        }
-    };
-    m_live = &add<LiveCard>(strings, language, core::readLiveSystem(), core::isElevated());
-    m_live->onEdit = [this] {
-        if (m_intents.editLive) {
-            m_intents.editLive();
         }
     };
     m_error = &add<ui::InfoBar>(ui::InfoKind::Error, strings.get(Str::SourceOpenFailed), L"", strings.get(Str::CommonClose));
@@ -86,8 +77,7 @@ void SourcePage::setDragState(ui::DropZone::DragState state) {
 void SourcePage::layout() {
     const RectF b = bounds();
     float y = b.y + kTopGap;
-    m_drop->setBounds({b.x, y, b.width - kLiveWidth - kGap, kZoneHeight});
-    m_live->setBounds({b.right() - kLiveWidth, y, kLiveWidth, kZoneHeight});
+    m_drop->setBounds({b.x, y, b.width, kZoneHeight}); // live-system card removed (D-021): full width
     y += kZoneHeight;
     if (m_error->visible()) {
         y += kGap;

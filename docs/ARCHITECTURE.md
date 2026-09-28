@@ -36,7 +36,7 @@
 - `CancelToken`, `Progress { double fraction; std::wstring stage; }` callback'leri.
 
 ### 2.2 İmaj modeli (`core/image`)
-- `Source`: kullanıcının açtığı şey (ISO / WIM / ESD / SWM / VHD / Live). ISO ise önce çıkartılır (veya `virtdisk` ile bağlanır) → `sources/install.wim|esd`.
+- `Source`: kullanıcının açtığı şey (ISO / WIM / ESD / SWM / çıkarılmış klasör; VHD sonra). ISO ise önce çıkartılır (veya `virtdisk` ile bağlanır) → `sources/install.wim|esd`.
 - `ImageInfo`: index, ad, sürüm, mimari, build, diller, boyut (wimgapi XML'inden).
 - `Session`: bir index'in mount edilmiş hali. RAII değil **açık yaşam döngüsü** (mount/commit/discard), çünkü crash sonrası `cleanup` gerekir. Aktif mount'lar `%LOCALAPPDATA%\WinLove\mounts.json`'a yazılır; açılışta sahipsiz mount'lar bulunur ve kullanıcıya sorulur.
 - `IImageBackend` arayüzü; ilk uygulamalar `DismApiBackend` (dismapi.dll) ve `WimgApiBackend` (wimgapi.dll). Ayrıntı: `docs/ENGINE.md`.

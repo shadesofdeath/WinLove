@@ -1,8 +1,7 @@
 #pragma once
-// P01 Kaynak (docs/pages/01-source.md): DropZone + live system card, error InfoBar, recent list.
-// The page does not open anything itself: it raises intents (open file / folder / path / live)
+// P01 Kaynak (docs/pages/01-source.md): DropZone, error InfoBar, recent list.
+// The page does not open anything itself: it raises intents (open file / path)
 // and the Shell runs them on the engine thread.
-#include "app/pages/source/LiveCard.h"
 #include "app/pages/source/RecentList.h"
 #include "app/state/AppState.h"
 #include "ui/widgets/DropZone.h"
@@ -17,7 +16,6 @@ public:
     struct Intents {
         std::function<void()> pickFile;
         std::function<void(const std::filesystem::path&)> openPath;
-        std::function<void()> editLive;
     };
 
     SourcePage(AppState& state, const Localization& strings, Language language, Intents intents);
@@ -38,7 +36,6 @@ private:
     Intents m_intents;
     std::size_t m_subscription = 0;
     ui::DropZone* m_drop = nullptr;
-    LiveCard* m_live = nullptr;
     ui::InfoBar* m_error = nullptr;
     RecentList* m_recent = nullptr;
 };
