@@ -128,7 +128,7 @@ TEST_CASE("Source flow: opening the ISO fills AppState and switches to Images" *
     host.layout({1440, 900});
 
     raw->openSource(isoPath());
-    state.engine().drain();          // engine thread finished openSource
+    state.reader().drain();          // reader thread finished openSource
     REQUIRE(posted.size() == 1);     // result handed to the "UI thread"
     posted.front()();                // run it as the message loop would
 
@@ -142,7 +142,7 @@ TEST_CASE("Source flow: opening the ISO fills AppState and switches to Images" *
     // A bad file reports on the Source page and does not change the current source.
     raw->showPage(PageId::Source);
     raw->openSource(L"C:\\does\\not\\exist.iso");
-    state.engine().drain();
+    state.reader().drain();
     REQUIRE(posted.size() == 2);
     posted.back()();
     CHECK(raw->currentPage() == PageId::Source);
