@@ -248,6 +248,14 @@ void Host::onPointer(const PointerEvent& event) {
         }
         break;
     }
+    case PointerAction::Cancel:
+        if (m_pressed) {
+            m_pressed->onPointerUp({-1, -1}); // let drags (scroll bar thumb) end
+        }
+        setPressed(nullptr);
+        setHovered(nullptr);
+        m_lastPointer = {-1, -1};
+        break;
     case PointerAction::Leave:
         if (!m_pressed) {
             setHovered(nullptr);
@@ -272,17 +280,28 @@ void Host::onPointer(const PointerEvent& event) {
             pressed->onPointerUp(event.position);
             if (hit == pressed) {
                 const double now = nowMs();
-                const bool isDouble = m_lastClickWidget == pressed && now - m_lastClickTime < GetDoubleClickTime();
+                // Double click: same widget, within the system time AND distance (two rows of one
+                // table clicked quickly are two clicks, not an activation).
+                const float slopX = static_cast<float>(GetSystemMetrics(SM_CXDOUBLECLK)) / 2;
+                const float slopY = static_cast<float>(GetSystemMetrics(SM_CYDOUBLECLK)) / 2;
+                const bool isDouble = m_lastClickWidget == pressed && now - m_lastClickTime < GetDoubleClickTime() &&
+                                      std::abs(event.position.x - m_lastClickPos.x) <= slopX &&
+                                      std::abs(event.position.y - m_lastClickPos.y) <= slopY;
                 m_lastClickWidget = pressed;
                 m_lastClickTime = now;
+                m_lastClickPos = event.position;
                 pressed->onClick();
-                if (isDouble) {
+                // onClick may have destroyed `pressed` (a dialog button closing its dialog, a page
+                // switch): forget() then cleared m_lastClickWidget, so it doubles as a liveness check.
+                if (isDouble && m_lastClickWidget == pressed) {
                     pressed->onDoubleClick();
                     m_lastClickWidget = nullptr;
                 }
             }
         }
-        setHovered(hit);
+        // `hit` may be gone too: hit-test the (possibly changed) tree again.
+        Widget* now = inputRoot()->hitTest(event.position);
+        setHovered(now && now->enabled() ? now : nullptr);
         break;
     }
     }

@@ -76,8 +76,13 @@ bool Button::tick(double now) {
 }
 
 void Button::onClick() {
-    if (onInvoke) {
-        onInvoke();
+    if (!enabled()) {
+        return;
+    }
+    // Run a copy: the handler may destroy this button (a dialog closing itself) and with it
+    // the std::function that is executing.
+    if (auto invoke = onInvoke) {
+        invoke();
     }
 }
 

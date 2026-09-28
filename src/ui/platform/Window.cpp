@@ -329,8 +329,16 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         pointer(PointerAction::Down, clientPoint(), HitZone::Client);
         return 0;
     case WM_LBUTTONUP:
-        ReleaseCapture();
+        // Up first: ReleaseCapture sends WM_CAPTURECHANGED, which cancels a press still pending.
         pointer(PointerAction::Up, clientPoint(), HitZone::Client);
+        ReleaseCapture();
+        return 0;
+    case WM_CAPTURECHANGED:
+        // Capture taken away mid-press (Alt+Tab, UAC, a dialog): drop the press instead of
+        // leaving a widget stuck in its pressed / dragging state.
+        if (reinterpret_cast<HWND>(lParam) != m_hwnd) {
+            pointer(PointerAction::Cancel, {-1, -1}, HitZone::Client);
+        }
         return 0;
 
     // ---- non-client pointer: our caption buttons -----------------------------------------
@@ -355,6 +363,15 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_NCLBUTTONUP:
         if (isCaptionButton(wParam)) {
             pointer(PointerAction::Up, screenPoint(), zoneFromHit(wParam));
+            return 0;
+        }
+        break;
+    case WM_SYSKEYDOWN:
+        // Alt+↓ / Alt+↑ open and close dropdowns; every other Alt combination (Alt+F4, Alt+Space)
+        // stays with Windows.
+        if ((wParam == VK_DOWN || wParam == VK_UP) && m_callbacks.keyDown) {
+            auto down = [](int key) { return (GetKeyState(key) & 0x8000) != 0; };
+            m_callbacks.keyDown({static_cast<UINT>(wParam), down(VK_CONTROL), down(VK_SHIFT), true});
             return 0;
         }
         break;

@@ -163,32 +163,47 @@ bool SearchBox::onKeyDown(const KeyEvent& key) {
         }
         return i;
     };
+    // One user-perceived step never splits a UTF-16 surrogate pair (emoji, rare CJK).
+    auto prev = [&](std::size_t i) {
+        if (i == 0) {
+            return i;
+        }
+        --i;
+        return i > 0 && IS_LOW_SURROGATE(m_text[i]) && IS_HIGH_SURROGATE(m_text[i - 1]) ? i - 1 : i;
+    };
+    auto next = [&](std::size_t i) {
+        if (i >= m_text.size()) {
+            return m_text.size();
+        }
+        ++i;
+        return i < m_text.size() && IS_LOW_SURROGATE(m_text[i]) && IS_HIGH_SURROGATE(m_text[i - 1]) ? i + 1 : i;
+    };
     switch (key.virtualKey) {
     case VK_LEFT:
         if (hasSelection() && !key.shift) {
             moveCaret(std::min(m_anchor, m_caret), false);
         } else {
-            moveCaret(key.ctrl ? wordLeft(m_caret) : (m_caret > 0 ? m_caret - 1 : 0), key.shift);
+            moveCaret(key.ctrl ? wordLeft(m_caret) : prev(m_caret), key.shift);
         }
         return true;
     case VK_RIGHT:
         if (hasSelection() && !key.shift) {
             moveCaret(std::max(m_anchor, m_caret), false);
         } else {
-            moveCaret(key.ctrl ? wordRight(m_caret) : m_caret + 1, key.shift);
+            moveCaret(key.ctrl ? wordRight(m_caret) : next(m_caret), key.shift);
         }
         return true;
     case VK_HOME: moveCaret(0, key.shift); return true;
     case VK_END: moveCaret(m_text.size(), key.shift); return true;
     case VK_BACK:
         if (!hasSelection() && m_caret > 0) {
-            m_anchor = key.ctrl ? wordLeft(m_caret) : m_caret - 1;
+            m_anchor = key.ctrl ? wordLeft(m_caret) : prev(m_caret);
         }
         replaceSelection({});
         return true;
     case VK_DELETE:
         if (!hasSelection() && m_caret < m_text.size()) {
-            m_anchor = key.ctrl ? wordRight(m_caret) : m_caret + 1;
+            m_anchor = key.ctrl ? wordRight(m_caret) : next(m_caret);
         }
         replaceSelection({});
         return true;
@@ -223,8 +238,10 @@ bool SearchBox::onKeyDown(const KeyEvent& key) {
             return true;
         case 'X':
             if (hasSelection()) {
-                setClipboardText(std::wstring_view(m_text).substr(from, to - from));
-                replaceSelection({});
+                // Only cut what actually reached the clipboard (another app may hold it open).
+                if (setClipboardText(std::wstring_view(m_text).substr(from, to - from))) {
+                    replaceSelection({});
+                }
             }
             return true;
         case 'V': {

@@ -23,8 +23,19 @@ namespace {
 
 using ui::tokens::Color;
 
-constexpr std::int32_t kDeviceRemoved = static_cast<std::int32_t>(0x887A0005); // DXGI_ERROR_DEVICE_REMOVED
-constexpr std::int32_t kDeviceReset = static_cast<std::int32_t>(0x887A0007);   // DXGI_ERROR_DEVICE_RESET
+// D2D reports a lost device from EndDraw as D2DERR_RECREATE_TARGET (before Present ever sees it);
+// hung / internal driver errors need the same recovery.
+bool deviceLost(std::int32_t hr) {
+    switch (static_cast<std::uint32_t>(hr)) {
+    case 0x887A0005: // DXGI_ERROR_DEVICE_REMOVED
+    case 0x887A0007: // DXGI_ERROR_DEVICE_RESET
+    case 0x887A0006: // DXGI_ERROR_DEVICE_HUNG
+    case 0x887A0020: // DXGI_ERROR_DRIVER_INTERNAL_ERROR
+    case 0x8899000C: // D2DERR_RECREATE_TARGET
+        return true;
+    default: return false;
+    }
+}
 
 // Headless runs (--render) must never block on a dialog: tests and AI sessions drive them.
 bool g_headless = false;
@@ -693,7 +704,7 @@ void App::paint() {
     auto presented = m_target->endDrawAndPresent();
     if (!presented) {
         const auto hr = presented.error().hresult;
-        if (hr == kDeviceRemoved || hr == kDeviceReset) {
+        if (deviceLost(hr)) {
             if (auto rebuilt = recreateGraphics(); !rebuilt) {
                 showError(rebuilt.error());
                 m_window.close();
