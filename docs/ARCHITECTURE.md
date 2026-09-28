@@ -44,15 +44,15 @@
 ### 2.3 Değişiklik modeli (`core/ops`) — projenin kalbi
 NTLite gibi: kullanıcı hiçbir şeyi anında değiştirmez; **ChangeSet**'e ekler, "Uygula" ile işlenir.
 ```
-Operation (soyut)
- ├─ id, kind (RemovePackage, DisableFeature, AddDriver, SetRegValue, SetService, ...)
- ├─ target (paket adı, özellik adı, ...)
- ├─ risk, estimatedSizeDelta
- ├─ validate(const ImageSnapshot&) -> Result<void>
- └─ apply(Session&, Progress&, CancelToken&) -> Result<void>
-ChangeSet: sıralı Operation listesi + undo/redo + JSON serileştirme (preset = ChangeSet dosyası)
-Planner:   ChangeSet → ApplyPlan (doğru sıralama: SSU→LCU, önce kaldırma sonra ekleme, registry en son; bağımlılık/çakışma kontrolü)
-Applier:   ApplyPlan'ı Session üzerinde çalıştırır, her adımı loglar, hata politikası (durdur / atla)
+Operation (değer tipi — D-019): { kind, target, value, risk, sizeDelta }
+  kind: RemovePackage | RemoveCapability | RemoveAppx | DisableFeature | EnableFeature
+        | AddDriver | AddPackage | SetRegistryValue | SetServiceStart
+ChangeSet (core/ops/ChangeSet): (kind, target) başına tek işlem; ters işlem (aç↔kapat) ikisini de siler;
+           undo/redo (200 adım); version() sayacı; JSON = preset dosyası ("winlove.changeset" v1)
+Planner:   ChangeSet → ApplyPlan: fazlar Remove → Features → Drivers → Updates → Settings, faz içinde
+           kullanıcı sırası; yüksek risk uyarıları. (SSU→LCU sıralaması P08 ile)
+Applier:   ApplyPlan'ı DismSession üzerinde adım adım çalıştırır, loglar, ilerleme = adım + adım içi;
+           ErrorPolicy Stop/Skip; iptal adımlar arasında (imaj bağlı kalır)
 ```
 Presetler, Uygula özeti, geri al/yinele, "kuyruktaki değişiklik sayısı" rozetleri hep ChangeSet'ten türetilir.
 

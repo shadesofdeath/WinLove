@@ -90,7 +90,8 @@ Result<Dism*> Dism::instance() {
                     load(m, "DismGetPackages", a.getPackages) && load(m, "DismGetFeatures", a.getFeatures) &&
                     load(m, "DismGetCapabilities", a.getCapabilities) &&
                     load(m, "DismDisableFeature", a.disableFeature) && load(m, "DismEnableFeature", a.enableFeature) &&
-                    load(m, "DismRemovePackage", a.removePackage);
+                    load(m, "DismRemovePackage", a.removePackage) &&
+                    load(m, "DismRemoveCapability", a.removeCapability);
     if (!ok) {
         return fail(ErrorCode::Unsupported, L"dismapi.dll is missing expected entry points", dllPath.wstring());
     }
@@ -262,6 +263,46 @@ Result<std::vector<CapabilityEntry>> DismSession::capabilities() {
     }
     m_dism.m_api->deleteStructure(list);
     return result;
+}
+
+Result<void> DismSession::disableFeature(const std::wstring& name, const TaskContext& task) {
+    ProgressBridge bridge{&task, name.c_str()};
+    const HRESULT hr = m_dism.m_api->disableFeature(m_session, name.c_str(), nullptr, FALSE, task.cancel.event(),
+                                                    &onProgress, &bridge);
+    if (FAILED(hr)) {
+        return std::unexpected(m_dism.error(hr, L"disable feature " + name));
+    }
+    return {};
+}
+
+Result<void> DismSession::enableFeature(const std::wstring& name, const TaskContext& task) {
+    ProgressBridge bridge{&task, name.c_str()};
+    // LimitAccess: never reach out to Windows Update from an offline image; EnableAll: parent features too.
+    const HRESULT hr = m_dism.m_api->enableFeature(m_session, name.c_str(), nullptr, dismapi::PackageNone, TRUE,
+                                                   nullptr, 0, TRUE, task.cancel.event(), &onProgress, &bridge);
+    if (FAILED(hr)) {
+        return std::unexpected(m_dism.error(hr, L"enable feature " + name));
+    }
+    return {};
+}
+
+Result<void> DismSession::removePackage(const std::wstring& name, const TaskContext& task) {
+    ProgressBridge bridge{&task, name.c_str()};
+    const HRESULT hr = m_dism.m_api->removePackage(m_session, name.c_str(), dismapi::PackageName, task.cancel.event(),
+                                                   &onProgress, &bridge);
+    if (FAILED(hr)) {
+        return std::unexpected(m_dism.error(hr, L"remove package " + name));
+    }
+    return {};
+}
+
+Result<void> DismSession::removeCapability(const std::wstring& name, const TaskContext& task) {
+    ProgressBridge bridge{&task, name.c_str()};
+    const HRESULT hr = m_dism.m_api->removeCapability(m_session, name.c_str(), task.cancel.event(), &onProgress, &bridge);
+    if (FAILED(hr)) {
+        return std::unexpected(m_dism.error(hr, L"remove capability " + name));
+    }
+    return {};
 }
 
 } // namespace wl::core

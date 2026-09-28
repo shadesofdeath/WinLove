@@ -6,6 +6,8 @@
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
 #include "core/image/dism/Dism.h"
+#include "core/ops/Applier.h"
+#include "core/ops/Planner.h"
 #include "core/system/Privileges.h"
 
 #include <json.hpp>
@@ -13,6 +15,8 @@
 #include <windows.h>
 
 #include <cstdio>
+#include <fstream>
+#include <sstream>
 #include <format>
 #include <string>
 #include <string_view>
@@ -299,6 +303,75 @@ int cmdServicing(const std::wstring& what, const std::wstring& dir, bool asJson)
     return 0;
 }
 
+Result<core::ops::ChangeSet> loadChangeSet(const std::wstring& path) {
+    std::ifstream file{std::filesystem::path(path), std::ios::binary};
+    if (!file) {
+        return fail(ErrorCode::NotFound, L"cannot read change set", path);
+    }
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    return core::ops::ChangeSet::fromJson(buffer.str());
+}
+
+const wchar_t* phaseName(core::ops::Phase phase) {
+    switch (phase) {
+    case core::ops::Phase::Remove: return L"remove";
+    case core::ops::Phase::Features: return L"features";
+    case core::ops::Phase::Drivers: return L"drivers";
+    case core::ops::Phase::Updates: return L"updates";
+    case core::ops::Phase::Settings: return L"settings";
+    }
+    return L"?";
+}
+
+int cmdPlan(const std::wstring& changeSetPath) {
+    auto set = loadChangeSet(changeSetPath);
+    if (!set) {
+        return reportError(set.error());
+    }
+    const auto p = core::ops::plan(*set);
+    for (std::size_t i = 0; i < p.steps.size(); ++i) {
+        const auto& op = p.steps[i].operation;
+        print(std::format(L"  {:>3}. [{:<8}] {:<18} {}{}\n", i + 1, phaseName(p.steps[i].phase),
+                          utf8::toWide(core::ops::opKindKey(op.kind)), op.target,
+                          op.value.empty() ? L"" : L" = " + op.value));
+    }
+    for (const auto& w : p.warnings) {
+        print(L"  warning: " + w + L"\n");
+    }
+    return 0;
+}
+
+int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bool skipErrors) {
+    auto set = loadChangeSet(changeSetPath);
+    if (!set) {
+        return reportError(set.error());
+    }
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    auto session = (*d)->openSession(mountDir);
+    if (!session) {
+        return reportError(session.error());
+    }
+    const auto p = core::ops::plan(*set);
+    core::ops::ApplyCallbacks callbacks;
+    callbacks.stepStarted = [&](std::size_t i, const core::ops::PlanStep& step) {
+        print(std::format(L"  [{}/{}] {} {}\n", i + 1, p.steps.size(), utf8::toWide(core::ops::opKindKey(step.operation.kind)),
+                          step.operation.target));
+    };
+    callbacks.stepFinished = [&](std::size_t, const core::ops::StepResult& r) {
+        print(r.outcome ? std::wstring(L"        ok\n") : L"        FAILED: " + describe(r.outcome.error()) + L"\n");
+    };
+    const auto report = core::ops::apply(p, **session, core::TaskContext{g_cancel, {}},
+                                         skipErrors ? core::ops::ErrorPolicy::Skip : core::ops::ErrorPolicy::Stop,
+                                         callbacks);
+    print(std::format(L"  {} of {} step(s) ran, {} failed{}\n", report.results.size(), p.steps.size(), report.failures(),
+                      report.completed ? L"" : L" — stopped"));
+    return report.completed && report.failures() == 0 ? 0 : 3;
+}
+
 void printUsage() {
     print(L"wlcli " WL_VERSION_STRING L" - WinLove image engine CLI\n"
           L"\n"
@@ -312,6 +385,9 @@ void printUsage() {
           L"  wlcli unmount <dir> --commit|--discard\n"
           L"  wlcli mounts | cleanup\n"
           L"  wlcli packages|features|capabilities <mountdir>\n"
+          L"  wlcli apply <changeset.json> <mountdir> [--skip-errors]\n"
+          L"\n  Change sets (no admin):\n"
+          L"  wlcli plan <changeset.json>              Show the ordered apply plan\n"
           L"  wlcli version | help\n"
           L"\n"
           L"Options: --json (machine-readable), --verbose (log to stdout)\n");
@@ -325,10 +401,13 @@ int wmain(int argc, wchar_t** argv) {
     bool asJson = false;
     bool readOnly = false;
     int commit = -1;
+    bool skipErrors = false;
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
             asJson = true;
+        } else if (a == L"--skip-errors") {
+            skipErrors = true;
         } else if (a == L"--readonly") {
             readOnly = true;
         } else if (a == L"--commit") {
@@ -364,6 +443,12 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"unmount" && args.size() == 2 && commit >= 0) {
         return cmdUnmount(args[1], commit == 1);
+    }
+    if (command == L"plan" && args.size() == 2) {
+        return cmdPlan(args[1]);
+    }
+    if (command == L"apply" && args.size() == 3) {
+        return cmdApply(args[1], args[2], skipErrors);
     }
     if (command == L"mounts") {
         return cmdMounts(asJson);

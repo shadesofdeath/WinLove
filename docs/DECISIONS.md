@@ -65,3 +65,7 @@ Karar: Kullandığımız alt küme `core/image/dism/DismApi.h`'de (ADK 10.1.2610
 
 ## D-018 — Kaynak okuma yerinde, DISM yalnızca servis için (2026-09-28)
 Karar: ISO/WIM/ESD'deki sürümleri listelemek kendi UDF + WIM okuyucumuzla yapılır (admin yok, bağlama yok, milisaniyeler). DISM (admin) yalnızca bağlama ve servis işlemleri (paket/özellik/sürücü) için. P01/P02 böylece yönetici olmadan açılır; admin isteği yalnızca "Bağla" anında gelir.
+
+## D-019 — Operation bir değer tipi, sanal sınıf değil (2026-09-28)
+Bağlam: Mimari taslak `Operation`'ı validate/apply metotlu soyut sınıf olarak çizmişti.
+Karar: `Operation` = {kind, target, value, risk, sizeDelta}. Uygulama `Applier` içinde `kind` üzerinden switch; doğrulama sayfaların/kataloğun işi. Gerekçe: preset JSON'u, undo anlık görüntüleri ve karşılaştırma (P15 diff) değer tipinde bedava; backend'ler tek yerde.
