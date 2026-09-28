@@ -10,6 +10,7 @@
 #include "core/image/Source.h"
 #include "core/image/dism/Appx.h"
 #include "core/image/dism/MountHealth.h"
+#include "core/image/Services.h"
 #include "core/image/dism/OptionalFeatures.h"
 #include "core/iso/IsoBuilder.h"
 #include "core/ops/ApplyJob.h"
@@ -45,7 +46,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services };
     using Listener = std::function<void(Change)>;
 
     explicit AppState(std::filesystem::path recentFile = RecentSources::defaultFile(),
@@ -100,6 +101,17 @@ public:
     };
     [[nodiscard]] const std::optional<AppxList>& appxList() const noexcept { return m_appx; }
     void setAppxList(std::optional<AppxList> list);
+
+    // P10 data: services of the mounted image's SYSTEM hive (ServiceController), read once per mount.
+    struct ServiceList {
+        enum class Status : std::uint8_t { Loading, Ready, Failed };
+        Status status = Status::Loading;
+        std::filesystem::path mountDir;
+        std::vector<core::ServiceEntry> items;
+        Error error;
+    };
+    [[nodiscard]] const std::optional<ServiceList>& serviceList() const noexcept { return m_services; }
+    void setServiceList(std::optional<ServiceList> list);
 
     // P09: driver folders the user scanned (kept across pages and mounts) and their INFs.
     struct DriverScan {
@@ -185,6 +197,7 @@ private:
     std::optional<OptionalFeatures> m_features;
     std::optional<ApplyRun> m_apply;
     std::optional<AppxList> m_appx;
+    std::optional<ServiceList> m_services;
     DriverScan m_drivers;
     std::optional<IsoRun> m_iso;
     std::filesystem::path m_settingsFile;

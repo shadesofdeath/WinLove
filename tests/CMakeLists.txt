@@ -1,4 +1,4 @@
-# Unit tests (label: unit) — no admin, no images. Integration tests (label: integration) are added
+# Unit tests (label: unit) â€” no admin, no images. Integration tests (label: integration) are added
 # in Faz 2.6 and need an elevated shell plus build\lab (docs/TESTING.md).
 add_executable(wl_tests
     main.cpp
@@ -17,6 +17,7 @@ add_executable(wl_tests
     app/ApplyTests.cpp
     app/ComponentTests.cpp
     app/FeatureTests.cpp
+    app/ServiceTests.cpp
     app/LocalizationTests.cpp
     app/SourceTests.cpp)
 wl_configure_target(wl_tests)

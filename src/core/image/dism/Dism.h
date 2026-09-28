@@ -131,6 +131,7 @@ public:
     [[nodiscard]] Result<void> addPackage(const std::filesystem::path& package, const TaskContext& task);
     // DismAddDriver: one .inf into the driver store of the image (unsigned only with forceUnsigned).
     [[nodiscard]] Result<void> addDriver(const std::filesystem::path& inf, bool forceUnsigned = false);
+    [[nodiscard]] const std::filesystem::path& mountPath() const noexcept { return m_path; }
 
 private:
     friend class Dism;

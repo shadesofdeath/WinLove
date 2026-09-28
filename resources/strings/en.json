@@ -352,8 +352,20 @@
       "auto": "Automatic",
       "autoDelayed": "Automatic (Delayed)",
       "manual": "Manual",
-      "disabled": "Disabled"
-    }
+      "disabled": "Disabled",
+      "boot": "Boot",
+      "system": "System"
+    },
+    "search": "Search services",
+    "startFilter": "Start",
+    "noMountTitle": "No image mounted",
+    "noMountBody": "Mount an edition on the Images page to edit services.",
+    "loadingTitle": "Reading services",
+    "loadingBody": "Loading the image's SYSTEM registry hive; names are resolved from the image's files.",
+    "failedTitle": "Could not read services",
+    "noResults": "No matching services",
+    "dependentsWarn": "{name} disabled: {n} services that depend on it cannot start",
+    "reset": "Reset to defaults"
   },
   "tweaks": {
     "title": "Settings / Tweaks",

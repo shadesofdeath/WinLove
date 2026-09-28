@@ -6,6 +6,7 @@
 #include "app/pages/ApplyPage.h"
 #include "app/pages/ComponentsPage.h"
 #include "app/pages/DriversPage.h"
+#include "app/pages/ServicesPage.h"
 #include "app/pages/components/ComponentInspector.h"
 #include "app/pages/FeaturesPage.h"
 #include "app/pages/apply/RiskConfirm.h"
@@ -96,6 +97,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         }
         m_components = std::make_unique<ComponentController>(m_state, std::move(*catalog), m_language, m_services.postToUi);
     }
+    m_serviceCtl = std::make_unique<ServiceController>(m_state, embeddedServiceCatalog(), m_services.postToUi);
     m_iso = std::make_unique<IsoController>(m_state, IsoController::Events{
         m_services.postToUi,
         [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::IsoFailed), e.message); },
@@ -197,6 +199,10 @@ ComponentsPage* Shell::componentsPage() const {
 
 UpdatesPage* Shell::updatesPage() const {
     return m_page == PageId::Updates ? dynamic_cast<UpdatesPage*>(m_pageBody) : nullptr;
+}
+
+ServicesPage* Shell::servicesPage() const {
+    return m_page == PageId::Services ? dynamic_cast<ServicesPage*>(m_pageBody) : nullptr;
 }
 
 DriversPage* Shell::driversPage() const {
@@ -448,6 +454,7 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::Components, static_cast<int>(m_components->queuedCount()));
     m_nav->setBadge(PageId::Updates, static_cast<int>(changes.count(core::ops::OpKind::AddPackage)));
     m_nav->setBadge(PageId::Drivers, static_cast<int>(changes.count(core::ops::OpKind::AddDriver)));
+    m_nav->setBadge(PageId::Services, static_cast<int>(changes.count(core::ops::OpKind::SetServiceStart)));
     if (m_actionReset) {
         m_actionReset->setEnabled(featureOps > 0);
     }
@@ -604,6 +611,16 @@ void Shell::showPage(PageId page) {
                 }
             };
             body.onSelectionChanged = [this] { updateComponentInspector(); };
+        } else if (page == PageId::Services) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ServicesReset)).onInvoke = [this] {
+                m_serviceCtl->resetChanges();
+            };
+            m_pageBody = &m_pageView->setBody<ServicesPage>(
+                m_state, *m_serviceCtl, m_strings, m_language,
+                ServicesPage::Intents{[this] { showPage(PageId::Images); },
+                                      [this](std::wstring title, std::wstring body) {
+                                          showToast(ui::InfoKind::Warning, std::move(title), std::move(body));
+                                      }});
         } else if (page == PageId::Drivers) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesScanFolder), ui::icons::Icon::OpenFolder)
                 .onInvoke = [this] { scanDriverFolder(); };
@@ -1074,6 +1091,10 @@ bool Shell::handleShortcut(const ui::KeyEvent& key) {
         }
         if (auto* drivers = driversPage()) {
             drivers->focusSearch();
+            return true;
+        }
+        if (auto* services = servicesPage()) {
+            services->focusSearch();
             return true;
         }
     }

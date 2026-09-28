@@ -2,6 +2,7 @@
 
 #include "base/Log.h"
 #include "base/Utf8.h"
+#include "core/image/Services.h"
 
 #include <algorithm>
 #include <format>
@@ -19,8 +20,14 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
     case OpKind::RemoveAppx: return session.removeAppx(op.target);
     case OpKind::AddPackage: return session.addPackage(op.target, task);
     case OpKind::AddDriver: return session.addDriver(op.target);
-    case OpKind::SetRegistryValue:
-    case OpKind::SetServiceStart: break;
+    case OpKind::SetServiceStart: {
+        const auto start = startTypeFromKey(op.value);
+        if (!start) {
+            return fail(ErrorCode::InvalidArgument, L"unknown service start type", op.value);
+        }
+        return setServiceStart(session.mountPath(), op.target, *start);
+    }
+    case OpKind::SetRegistryValue: break;
     }
     return fail(ErrorCode::Unsupported, L"operation kind not implemented yet", utf8::toWide(opKindKey(op.kind)));
 }

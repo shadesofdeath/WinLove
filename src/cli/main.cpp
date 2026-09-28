@@ -3,6 +3,7 @@
 // and parsed by integration tests and tools.
 #include "base/Log.h"
 #include "base/Utf8.h"
+#include "core/image/Services.h"
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
 #include "core/image/dism/Dism.h"
@@ -479,6 +480,39 @@ int cmdAppx(const std::wstring& dir, bool asJson) {
     return 0;
 }
 
+// P10 data: services of the image's SYSTEM hive; `set` = "Name=start" writes one start type.
+int cmdServices(const std::wstring& dir, const std::wstring& set, bool asJson) {
+    if (!set.empty()) {
+        const auto eq = set.find(L'=');
+        const auto start = eq == std::wstring::npos ? std::nullopt : core::startTypeFromKey(set.substr(eq + 1));
+        if (!start) {
+            print(L"--set=<Name>=auto|autoDelayed|manual|disabled\n");
+            return 1;
+        }
+        if (auto r = core::setServiceStart(dir, set.substr(0, eq), *start); !r) {
+            return reportError(r.error());
+        }
+    }
+    auto list = core::readServices(dir);
+    if (!list) {
+        return reportError(list.error());
+    }
+    json out = json::array();
+    for (const auto& s : *list) {
+        if (asJson) {
+            out.push_back({{"name", narrow(s.name)}, {"displayName", narrow(s.displayName)},
+                           {"start", narrow(core::startTypeKey(s.start))}, {"type", s.type},
+                           {"account", narrow(s.account)}, {"imagePath", narrow(s.imagePath)}});
+        } else {
+            print(std::format(L"  {:<12} {:<28} {}\n", core::startTypeKey(s.start), s.name, s.displayName));
+        }
+    }
+    if (asJson) {
+        printJson(out);
+    }
+    return 0;
+}
+
 // P06: bootable ISO from a setup folder (IMAPI2FS, no admin).
 int cmdIso(const std::wstring& folder, const std::wstring& output, const std::wstring& label, const std::wstring& boot,
            bool sha, bool noPrompt) {
@@ -556,6 +590,7 @@ void printUsage() {
           L"  wlcli mounts | cleanup\n"
           L"  wlcli packages|features|capabilities <mountdir>\n"
           L"  wlcli iso <setup-folder> <out.iso> [--label=X] [--boot=both|uefi|bios] [--sha256] [--no-prompt]\n"
+          L"  wlcli services <mountdir> [--set=Name=auto|autoDelayed|manual|disabled]   (P10)\n"
           L"  wlcli appx <mountdir>   (provisioned apps + size, as on P07)\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
           L"  wlcli apply <changeset.json> <mountdir> [--commit] [--source=<sources\\sxs>]\n"
@@ -580,6 +615,7 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring compress;
     std::wstring source;
     std::wstring label;
+    std::wstring serviceSet;
     std::wstring boot;
     bool sha = false;
     bool noPrompt = false;
@@ -589,6 +625,8 @@ int wmain(int argc, wchar_t** argv) {
             asJson = true;
         } else if (a.starts_with(L"--compress=")) {
             compress = std::wstring(a.substr(11));
+        } else if (a.starts_with(L"--set=")) {
+            serviceSet = std::wstring(a.substr(6));
         } else if (a.starts_with(L"--label=")) {
             label = std::wstring(a.substr(8));
         } else if (a.starts_with(L"--boot=")) {
@@ -666,6 +704,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"iso" && args.size() == 3) {
         return cmdIso(args[1], args[2], label, boot, sha, noPrompt);
+    }
+    if (command == L"services" && args.size() == 2) {
+        return cmdServices(args[1], serviceSet, asJson);
     }
     if (command == L"optional-features" && args.size() == 2) {
         return cmdOptionalFeatures(args[1], asJson);

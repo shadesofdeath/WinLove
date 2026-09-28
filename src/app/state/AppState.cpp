@@ -58,12 +58,14 @@ void AppState::setMounted(std::optional<MountedImage> mounted) {
         // Queue and feature list belong to the image that was mounted.
         m_features.reset();
         m_appx.reset();
+        m_services.reset();
         if (!m_changes.empty()) {
             m_changes.clear();
             notify(Change::Queue);
         }
         notify(Change::Features);
         notify(Change::Components);
+        notify(Change::Services);
     }
     notify(Change::Mount);
 }
@@ -125,6 +127,11 @@ void AppState::setIsoRun(std::optional<IsoRun> run) {
 void AppState::setApplyRun(std::optional<ApplyRun> run) {
     m_apply = std::move(run);
     notify(Change::Apply);
+}
+
+void AppState::setServiceList(std::optional<ServiceList> list) {
+    m_services = std::move(list);
+    notify(Change::Services);
 }
 
 void AppState::setOptionalFeatures(std::optional<OptionalFeatures> features) {
