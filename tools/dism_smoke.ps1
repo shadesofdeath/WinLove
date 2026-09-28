@@ -4,10 +4,10 @@
     powershell -ExecutionPolicy Bypass -File tools\dism_smoke.ps1
   Mounts one edition of the lab copy READ-ONLY, lists features/packages/capabilities, unmounts
   with DISCARD and checks that nothing stays mounted. Never touches the source ISO.
-  Output: console + C:\WinLoveLab\out\dism-smoke.json (AI sessions read this file).
+  Output: console + build\lab\out\dism-smoke.json (AI sessions read this file).
 #>
 param(
-    [string] $Lab = 'C:\WinLoveLab',
+    [string] $Lab = (Join-Path $PSScriptRoot '..\build\lab'),
     [int] $Index = 4,
     [string] $Cli = "$PSScriptRoot\..\build\x64-debug\bin\wlcli.exe"
 )

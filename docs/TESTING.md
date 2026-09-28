@@ -10,9 +10,13 @@
 | Uçtan uca | Oluşturulan ISO'nun VM'de kurulması (Hyper-V) | Evet | P06'dan itibaren her motor değişikliğinde |
 | Manuel | Sayfa spec'indeki "Kullanıcı test senaryosu" | Kullanıcı | Sayfa kapanışı |
 
-## Test laboratuvarı: `C:\WinLoveLab\`
+## Test laboratuvarı: `build\lab\`
+
+> 2026-09-28: Laboratuvar repo içindeki `build\lab\` altına taşındı (git'e girmez). Kullanıcının
+> diskinde, özellikle `C:\` kökünde test klasörü açılmaz; test yolları kullanıcının "Son
+> kullanılanlar" listesine yazılmaz (pencere testlerinde ayrı bir `recent` dosyası kullan).
 ```
-C:\WinLoveLab\
+build\lab\
 ├─ iso\         Win11_25H2_Turkish_x64_v2 çıkarılmış içerik (salt okunur referans)
 ├─ golden\      install.wim tek index export'ları (ör. pro.wim) — testler buradan KOPYA alır
 ├─ work\        test başına geçici kopyalar (testten sonra silinir)

@@ -71,6 +71,8 @@ public:
     // A mount from a previous run (ImageController::adoptExistingMount): reopen its source and
     // show it as mounted again.
     void restoreMount(const std::filesystem::path& source, MountedImage mounted);
+    // Restores AppState::mountFolder's healthy mount (Images page "Devam et", and automatically).
+    void continueFolderMount();
     void pickSourceFile();
     void pickSourceFolder();
     // s4: explains why admin is needed; "Yönetici olarak yeniden başlat" relaunches with `args`.
@@ -121,6 +123,7 @@ private:
     ui::Button* m_actionEsd = nullptr;
     PageId m_page = PageId::Source;
     bool m_opening = false;
+    bool m_autoRestoreTried = false; // one automatic restore per session; then the page offers it
     ui::Tween m_navExpansion{1.0f};
     float m_navTarget = 1.0f;
     bool m_userCollapsed = false; // the user's choice; narrow windows collapse on top of it

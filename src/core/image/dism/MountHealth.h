@@ -38,6 +38,7 @@ enum class MountAction : std::uint8_t {
 struct MountCheck {
     std::filesystem::path folder;
     std::optional<MountInfo> record;       // DISM's view; empty for Free / Orphaned
+    std::wstring imageName;                // edition name of record->index ("Windows 11 Pro"), if readable
     MountState state = MountState::Free;
     MountAction action = MountAction::None;
     bool windowsImage = false;             // Windows\System32\config\SOFTWARE present

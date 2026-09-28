@@ -6,7 +6,7 @@
   ./build.ps1                     # generate + layer check + Debug build
   ./build.ps1 -Config Release
   ./build.ps1 -Test               # + unit tests
-  ./build.ps1 -Test -Integration  # + integration tests (elevated shell, C:\WinLoveLab)
+  ./build.ps1 -Test -Integration  # + integration tests (elevated shell, build\lab)
   ./build.ps1 -Gen                # only run code generators
   ./build.ps1 -Clean              # delete the build directory of the chosen config first
   ./build.ps1 -Target wl_ui       # build a single CMake target (fast iteration)
@@ -85,6 +85,17 @@ try {
     }
     if ($Dist) {
         New-Item -ItemType Directory -Force dist | Out-Null
+        # The user usually has dist\WinLove.exe open: move a running copy aside instead of failing.
+        foreach ($exe in 'dist/WinLove.exe', 'dist/wlcli.exe') {
+            if (Test-Path $exe) {
+                try { [IO.File]::Open((Resolve-Path $exe), 'Open', 'ReadWrite', 'None').Close() }
+                catch {
+                    Remove-Item "$exe.old" -Force -ErrorAction SilentlyContinue
+                    Rename-Item $exe ((Split-Path $exe -Leaf) + '.old')
+                    Write-Host "note: $exe is running; renamed to .old (restart WinLove to use the new build)" -ForegroundColor Yellow
+                }
+            }
+        }
         Copy-Item "build/$Preset/bin/WinLove.exe", "build/$Preset/bin/wlcli.exe" dist/ -Force
         Write-Host "OK  dist\WinLove.exe (Release)" -ForegroundColor Green
     }

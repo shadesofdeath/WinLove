@@ -14,6 +14,10 @@ std::filesystem::path AppSettings::defaultFile() {
     return log::defaultDirectory().parent_path() / L"settings.json";
 }
 
+std::filesystem::path AppSettings::defaultWorkRoot() {
+    return log::defaultDirectory().parent_path(); // %LOCALAPPDATA%\WinLove
+}
+
 AppSettings AppSettings::load(const std::filesystem::path& file) {
     AppSettings settings;
     std::ifstream in(file, std::ios::binary);

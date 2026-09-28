@@ -106,6 +106,24 @@ void ImagesPage::updateFolderBar() {
         }
         return;
     }
+    if (folder->state == core::MountState::Ok && folder->record) {
+        // A healthy mount the app does not show (e.g. restore did not run): say what it is and
+        // offer to continue with it.
+        const auto& r = *folder->record;
+        m_folder->set(ui::InfoKind::Info,
+                      m_strings.format(Str::ImagesFolderFound,
+                                       {{L"edition", folder->imageName.empty() ? L"?" : folder->imageName},
+                                        {L"index", std::to_wstring(r.index)}}),
+                      r.imagePath.wstring());
+        m_folder->setAction(m_strings.get(Str::ImagesFolderContinue), [this] {
+            if (onContinueMount) {
+                onContinueMount();
+            }
+        });
+        m_folder->setVisible(true);
+        layout();
+        return;
+    }
     std::wstring body = m_strings.get(remedyText(folder->state == core::MountState::NeedsRemount
                                                      ? core::Remedy::Remount
                                                  : folder->state == core::MountState::Ok ? core::Remedy::UnmountFirst

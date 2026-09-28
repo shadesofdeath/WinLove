@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-  Prepares C:\WinLoveLab (docs/TESTING.md). Safe to re-run: existing files are kept.
+  Prepares build\lab (docs/TESTING.md). Safe to re-run: existing files are kept.
   No admin needed. The source ISO is only read, never modified.
 #>
 param(
     [string] $Iso = 'C:\Users\shades\Downloads\Win11_25H2_Turkish_x64_v2.iso',
-    [string] $Lab = 'C:\WinLoveLab',
+    [string] $Lab = (Join-Path $PSScriptRoot '..\build\lab'),
     [string] $Cli = "$PSScriptRoot\..\build\x64-debug\bin\wlcli.exe"
 )
 $ErrorActionPreference = 'Stop'

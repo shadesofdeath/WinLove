@@ -3,21 +3,18 @@
 > Her oturumun sonunda güncellenir. En üstte güncel durum; geçmiş en altta kısa satırlar.
 
 ## Güncel
-- **Faz:** 3 — sayfalar. **P01 Kaynak: geliştirme bitti, kullanıcı testi bekliyor** (spec §10, aşağıda).
-- **Aktif iş:** P01 kullanıcı onayı. Onay gelince P02 İmajlar.
-- **Bir sonraki somut adım (P02):** `docs/pages/02-images.md` spec'i (tasarım 02, 03, s2, s3). Gerekecekler: tablo (DataGrid-lite + checkbox), Inspector paneli, mount ilerleme şeridi (03), yönetici akışı (mount'ta UAC), status bar mount segmenti + CTA görünürlüğü, ESD→WIM/dışa aktar (wimgapi `WIMExportImage` → `wlcli export`), breadcrumb "iso › sürüm › durum".
-- **Build:** `./build.ps1 -Test` yeşil: 53 test / 1803 assertion.
-- **P01 kullanıcı testi** (`build\x64-debug\bin\WinLove.exe`, yönetici OLMADAN):
-  1. "Dosya aç…" → `Downloads\Win11_25H2_Turkish_x64_v2.iso` → İmajlar sayfası, başlıkta ISO adı.
-  2. Kaynak'a dön → listede ISO: "bugün HH:MM", ISO, "11 25H2 · 26200.8037", "7,56 GB".
-  3. Masaüstünden .txt sürükle → kırmızı "Desteklenmeyen dosya"; bırakınca hiçbir şey olmamalı.
-  4. ISO'yu Explorer'dan sürükle-bırak → açılmalı. "Klasör…" → `C:\WinLoveLab\iso` → açılmalı.
-  5. "Canlı sistemi düzenle" → yönetici dialogu; Esc/Vazgeç kapatır; "Yönetici olarak yeniden başlat" UAC ister.
-  6. Uygulamayı kapat/aç → son kullanılanlar duruyor.
+- **Faz:** 3 — sayfalar. **P01 ✅, P02 İmajlar ✅ (kullanıcı onayı 2026-09-28).** Aktif: **P03 Loglar**.
+- **Bir sonraki somut adım:** `docs/pages/03-logs.md` spec'i (tasarım 18). Uygulama artık oturum logunu
+  `%LOCALAPPDATA%\WinLove\logs\` altına yazıyor (dism.log yanında); Loglar sayfası bu klasörü okuyacak.
+- **Kullanıcının tekrar test edeceği:** P02 — imaj bağlıyken uygulamayı kapat/aç → geri yüklenmeli
+  (otomatik; olmazsa sayfada "Devam et").
+- **Build:** `./build.ps1 -Dist` yeşil. Kullanıcıya her zaman `dist\WinLove.exe` verilir (çalışıyorsa
+  betik eskisini `.old` yapar).
+- **Kurallar (bu oturumda öğrenildi):** kullanıcının diskinde klasör açma (lab = `build\lab`), kullanıcının
+  "Son kullanılanlar" listesine test yolu yazma, DISM'e giden yolları `nativePath` ile ver.
 - **Bilinen sorunlar / açık konular:**
-  - ScrollBar/ScrollView, Inspector, DataGrid yok → P02.
-  - Canlı sistem düzenleme Faz 4 (yöneticiyken buton devre dışı + tooltip).
-  - AppX, sürücü, güncelleme, registry, servis işlemleri Applier'da `Unsupported`.
+  - Tasarımdaki arama/filtre (İmajlar) ertelendi; ScrollView hâlâ yok (uzun listeler P04'te gerekecek).
+  - Restart Manager yalnız ilk iki seviye + hive dosyalarına bakar; konsolun çalışma klasörü tespit edilmez.
   - DComp/dirty-rect (D-011), UIA (Faz 4), F6.
 
 ## Son eklenenler (P01)
