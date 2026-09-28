@@ -49,6 +49,7 @@ WinLover/
 ./build.ps1 -Test -Integration # gerçek imaj testleri (yönetici PowerShell gerekir)
 ./build.ps1 -Gen               # yalnızca üreticiler (Tokens.g.h, Icons.g.h, StringKeys.g.h)
 ./build.ps1 -Target WinLove    # tek hedef (hızlı döngü)
+./build.ps1 -Dist              # Release + test + dist\WinLove.exe — KULLANICIYA DENETİLECEK SÜRÜM (her sayfa teslimi öncesi çalıştır)
 python tools/build_brand.py    # handoff'tan logo/ico yeniden üret (nadiren)
 build/x64-debug/bin/WinLove.exe --render=shot.png --page=images --theme=light --scale=1.5 --lang=en   # pencere açmadan PNG
    #   durum simülasyonu: --hover-at=x,y --press-at=x,y --tooltip-at=x,y --tab=N --nav-collapsed --maximized  (tam liste: src/app/App.h)

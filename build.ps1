@@ -10,6 +10,7 @@
   ./build.ps1 -Gen                # only run code generators
   ./build.ps1 -Clean              # delete the build directory of the chosen config first
   ./build.ps1 -Target wl_ui       # build a single CMake target (fast iteration)
+  ./build.ps1 -Dist               # Release build + tests, then copy WinLove.exe / wlcli.exe to dist\ (what the user runs)
 #>
 param(
     [ValidateSet('Debug', 'Release')] [string] $Config = 'Debug',
@@ -17,11 +18,13 @@ param(
     [switch] $Integration,
     [switch] $Gen,
     [switch] $Clean,
-    [string] $Target
+    [string] $Target,
+    [switch] $Dist
 )
 
 $ErrorActionPreference = 'Stop'
 $Root = $PSScriptRoot
+if ($Dist) { $Config = 'Release'; $Test = $true }
 $Preset = "x64-$($Config.ToLower())"
 
 function Invoke-Step([string] $Name, [scriptblock] $Block) {
@@ -67,6 +70,11 @@ try {
             [Security.Principal.WindowsBuiltInRole]::Administrator)
         if (-not $admin) { throw 'Integration tests need an elevated (Administrator) PowerShell.' }
         Invoke-Step 'integration tests' { ctest --preset $Preset -L integration }
+    }
+    if ($Dist) {
+        New-Item -ItemType Directory -Force dist | Out-Null
+        Copy-Item "build/$Preset/bin/WinLove.exe", "build/$Preset/bin/wlcli.exe" dist/ -Force
+        Write-Host "OK  dist\WinLove.exe (Release)" -ForegroundColor Green
     }
     Write-Host "OK  build/$Preset/bin" -ForegroundColor Green
 }
