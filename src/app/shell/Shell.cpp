@@ -3,10 +3,12 @@
 #include "app/Format.h"
 #include "app/pages/GalleryPage.h"
 #include "app/pages/ImagesPage.h"
+#include "app/pages/LogsPage.h"
 #include "app/pages/SourcePage.h"
 #include "app/pages/images/ImageInspector.h"
 #include "base/Log.h"
 #include "base/Path.h"
+#include "base/Utf8.h"
 #include "core/image/Source.h"
 #include "core/image/dism/DismErrors.h"
 #include "ui/platform/FileDialog.h"
@@ -16,6 +18,7 @@
 
 #include <cmath>
 #include <format>
+#include <fstream>
 #include <string>
 #include <utility>
 
@@ -105,6 +108,10 @@ ImagesPage* Shell::imagesPage() const {
     return m_page == PageId::Images ? static_cast<ImagesPage*>(m_pageBody) : nullptr;
 }
 
+LogsPage* Shell::logsPage() const {
+    return m_page == PageId::Logs ? dynamic_cast<LogsPage*>(m_pageBody) : nullptr;
+}
+
 bool Shell::inspectorVisible() const {
     // Screen 02 shows it for the selected edition; screen 03 hides it while the engine works.
     return m_inspector && m_page == PageId::Images && m_state.selectedImage() && !m_state.operation();
@@ -183,6 +190,9 @@ void Shell::updateImagesChrome() {
 }
 
 void Shell::showPage(PageId page) {
+    if (m_page == PageId::Logs && page != PageId::Logs && m_services.stopTimer) {
+        m_services.stopTimer(kLogTimer);
+    }
     m_page = page;
     const PageInfo& info = pageInfo(page);
     m_nav->setActive(page);
@@ -240,6 +250,18 @@ void Shell::showPage(PageId page) {
             };
             m_inspector->onUnmount = [this] { askUnmount(); };
             m_inspector->onDelete = [this] { askDeleteSelected(); };
+        } else if (page == PageId::Logs) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::LogsClear)).onInvoke = [this] {
+                if (auto* logs = logsPage()) {
+                    logs->clear();
+                }
+            };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::CommonExport), ui::icons::Icon::Export)
+                .onInvoke = [this] { exportLog(); };
+            m_pageBody = &m_pageView->setBody<LogsPage>(m_state, m_strings, m_language);
+            if (m_services.startTimer) {
+                m_services.startTimer(kLogTimer, 250);
+            }
         } else {
             // Placeholder until the page's roadmap step is done (docs/ROADMAP.md, Faz 3).
             const std::wstring step(info.roadmapStep.begin(), info.roadmapStep.end());
@@ -269,6 +291,12 @@ void Shell::showToast(ui::InfoKind kind, std::wstring title, std::wstring messag
 }
 
 void Shell::onTimer(UINT id) {
+    if (id == kLogTimer) {
+        if (auto* logs = logsPage()) {
+            logs->poll();
+        }
+        return;
+    }
     if (id != kToastTimer || m_toast->hoveredNow()) {
         return; // hovered: keep it; the timer fires again
     }
@@ -515,6 +543,27 @@ void Shell::exportSelected() {
     }
 }
 
+void Shell::exportLog() {
+    auto* logs = logsPage();
+    if (!logs) {
+        return;
+    }
+    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+    const auto target = ui::pickSaveFile(owner, m_strings.get(Str::LogsExportTitle),
+                                         {{m_strings.get(Str::LogsLogFiles), L"*.log;*.txt"}}, L"WinLove.log", L"log");
+    if (!target) {
+        return;
+    }
+    std::ofstream out(*target, std::ios::binary | std::ios::trunc);
+    const std::string utf8 = utf8::fromWide(logs->exportText());
+    out.write(utf8.data(), static_cast<std::streamsize>(utf8.size()));
+    if (out) {
+        showToast(ui::InfoKind::Success, m_strings.get(Str::LogsExported), target->wstring());
+    } else {
+        showToast(ui::InfoKind::Error, m_strings.get(Str::LogsExportFailed), target->wstring());
+    }
+}
+
 void Shell::convertEsd() {
     const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
     const auto target = ui::pickSaveFile(owner, m_strings.get(Str::ImagesEsdToWim), {{m_strings.get(Str::ImagesSaveWim), L"*.wim"}},
@@ -550,6 +599,12 @@ bool Shell::tick(double now) {
 }
 
 bool Shell::handleShortcut(const ui::KeyEvent& key) {
+    if (key.ctrl && !key.shift && !key.alt && key.virtualKey == 'F') {
+        if (auto* logs = logsPage()) {
+            logs->focusSearch();
+            return true;
+        }
+    }
     if (key.ctrl && !key.shift && !key.alt && key.virtualKey == 'B') {
         m_userCollapsed = !navCollapsed();
         setNavCollapsed(m_userCollapsed, /*animated=*/true);

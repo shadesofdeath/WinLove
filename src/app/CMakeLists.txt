@@ -7,6 +7,7 @@ add_library(wl_app STATIC
     Resources.cpp
     pages/GalleryPage.cpp
     pages/ImagesPage.cpp
+    pages/LogsPage.cpp
     pages/images/EditionTable.cpp
     pages/images/ImageInspector.cpp
     pages/images/OperationStrip.cpp

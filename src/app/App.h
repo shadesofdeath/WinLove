@@ -27,6 +27,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <vector>
 #include <span>
 #include <string>
 
@@ -40,9 +41,11 @@ struct LaunchOptions {
     ui::SizeF size{1440, 900};
     std::optional<PageId> page;
     bool navCollapsed = false;
+    bool demoLogs = false; // render: fill the log with the design's sample lines (screen 18)
     bool maximized = false;
     std::optional<ui::PointF> hoverAt;
     std::optional<ui::PointF> pressAt;
+    std::vector<ui::PointF> clickAt; // --click-at=x,y (repeatable): full click, e.g. open a dropdown
     std::optional<ui::PointF> tooltipAt;
     int tabPresses = 0;
     std::optional<std::filesystem::path> recentFile;

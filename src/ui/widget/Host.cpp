@@ -58,7 +58,7 @@ Widget* Host::inputRoot() const noexcept {
     return m_modals.empty() ? m_root.get() : m_modals.back().widget.get();
 }
 
-Widget& Host::pushModal(std::unique_ptr<Widget> modal, Widget* initialFocus) {
+Widget& Host::pushModal(std::unique_ptr<Widget> modal, Widget* initialFocus, bool scrim) {
     hideTooltip();
     setHovered(nullptr);
     setPressed(nullptr);
@@ -66,7 +66,7 @@ Widget& Host::pushModal(std::unique_ptr<Widget> modal, Widget* initialFocus) {
     modal->setHostRecursive(this);
     modal->setBounds({0, 0, m_size.width, m_size.height});
     Widget& ref = *modal;
-    m_modals.push_back({std::move(modal), previous});
+    m_modals.push_back({std::move(modal), previous, scrim});
     if (initialFocus) {
         setFocus(initialFocus, /*visible=*/true);
     } else {
@@ -142,11 +142,13 @@ void Host::paint(Canvas& canvas) {
 
     m_root->paintTree(canvas);
     for (auto& modal : m_modals) {
-        canvas.fillRect({0, 0, m_size.width, m_size.height}, tokens::Color::Scrim);
+        if (modal.scrim) {
+            canvas.fillRect({0, 0, m_size.width, m_size.height}, tokens::Color::Scrim);
+        }
         modal.widget->paintTree(canvas);
     }
 
-    if (m_focused && m_focusVisible && m_focused->visible()) {
+    if (m_focused && m_focusVisible && m_focused->visible() && m_focused->focusRect().width > 0) {
         const RectF r = m_focused->focusRect();
         const float offset = tokens::radius::focusOffset;
         canvas.strokeRoundRect({r.x - offset - 1, r.y - offset - 1, r.width + 2 * (offset + 1), r.height + 2 * (offset + 1)},
@@ -302,6 +304,27 @@ bool Host::onKeyDown(const KeyEvent& key) {
         }
     }
     return false;
+}
+
+void Host::onWheel(PointF p, float lines) {
+    if (!m_root) {
+        return;
+    }
+    hideTooltip();
+    for (Widget* w = inputRoot()->hitTest(p); w; w = w->parent()) {
+        if (w->enabled() && w->onWheel(p, lines)) {
+            return;
+        }
+    }
+}
+
+void Host::onChar(wchar_t ch) {
+    hideTooltip();
+    for (Widget* w = m_focused; w; w = w->parent()) {
+        if (w->onChar(ch)) {
+            return;
+        }
+    }
 }
 
 void Host::onTimer(UINT id) {

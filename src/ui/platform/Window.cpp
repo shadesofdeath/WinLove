@@ -393,6 +393,24 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
             return TRUE;
         }
         break;
+    case WM_MOUSEWHEEL:
+        if (m_callbacks.wheel) {
+            UINT linesPerNotch = 3;
+            SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &linesPerNotch, 0);
+            if (linesPerNotch == WHEEL_PAGESCROLL) {
+                linesPerNotch = 20;
+            }
+            const float notches = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) / WHEEL_DELTA;
+            m_callbacks.wheel(toClientDips({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)}),
+                              notches * static_cast<float>(linesPerNotch));
+        }
+        return 0;
+    case WM_CHAR:
+        // Control characters (Ctrl+A = 0x01, Backspace, Enter, Esc, Tab) arrive as WM_KEYDOWN.
+        if (m_callbacks.character && wParam >= 0x20 && wParam != 0x7F) {
+            m_callbacks.character(static_cast<wchar_t>(wParam));
+        }
+        return 0;
     case WM_DROPFILES: {
         const auto drop = reinterpret_cast<HDROP>(wParam);
         std::vector<std::filesystem::path> files;

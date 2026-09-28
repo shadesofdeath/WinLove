@@ -454,7 +454,16 @@
       "info": "INFO",
       "warn": "WARN",
       "error": "ERR"
-    }
+    },
+    "debugAndUp": "Debug and up",
+    "warnAndUp": "Warning and up",
+    "errorsOnly": "Errors only",
+    "autoScroll": "Auto-scroll",
+    "newLines": "↓ {n} new lines",
+    "exportTitle": "Export log",
+    "logFiles": "Log files",
+    "exported": "Log exported",
+    "exportFailed": "Could not write the log"
   },
   "settings": {
     "title": "App settings",

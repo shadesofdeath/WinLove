@@ -138,6 +138,22 @@ std::vector<Entry> RingBufferSink::snapshot() const {
     return ordered;
 }
 
+std::vector<Entry> RingBufferSink::since(std::uint64_t& version) const {
+    std::scoped_lock lock(m_mutex);
+    const std::uint64_t fresh = m_version > version ? m_version - version : 0;
+    version = m_version;
+    const std::size_t count = static_cast<std::size_t>(std::min<std::uint64_t>(fresh, m_entries.size()));
+    std::vector<Entry> result;
+    result.reserve(count);
+    // Oldest buffered entry sits at m_next once the buffer is full, else at 0.
+    const std::size_t size = m_entries.size();
+    const std::size_t start = size < m_capacity ? size - count : (m_next + size - count) % size;
+    for (std::size_t i = 0; i < count; ++i) {
+        result.push_back(m_entries[(start + i) % size]);
+    }
+    return result;
+}
+
 std::uint64_t RingBufferSink::version() const {
     std::scoped_lock lock(m_mutex);
     return m_version;

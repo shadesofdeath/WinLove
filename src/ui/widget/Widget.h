@@ -110,6 +110,10 @@ public:
     virtual void onDoubleClick() {}
     // Return true when handled; unhandled keys bubble to the parent.
     virtual bool onKeyDown(const KeyEvent& /*key*/) { return false; }
+    // Wheel over this widget (lines, + = up); unhandled bubbles to the parent.
+    virtual bool onWheel(PointF /*p*/, float /*lines*/) { return false; }
+    // Typed character for the focused widget (text boxes); unhandled bubbles to the parent.
+    virtual bool onChar(wchar_t /*ch*/) { return false; }
     virtual void onFocusChanged(bool /*focused*/) { invalidate(); }
 
     // ---- animation ---------------------------------------------------------------------------

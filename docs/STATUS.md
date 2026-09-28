@@ -3,9 +3,9 @@
 > Her oturumun sonunda güncellenir. En üstte güncel durum; geçmiş en altta kısa satırlar.
 
 ## Güncel
-- **Faz:** 3 — sayfalar. **P01 ✅, P02 İmajlar ✅ (kullanıcı onayı 2026-09-28).** Aktif: **P03 Loglar**.
-- **Bir sonraki somut adım:** `docs/pages/03-logs.md` spec'i (tasarım 18). Uygulama artık oturum logunu
-  `%LOCALAPPDATA%\WinLove\logs\` altına yazıyor (dism.log yanında); Loglar sayfası bu klasörü okuyacak.
+- **Faz:** 3 — sayfalar. **P01 ✅, P02 ✅, P03 Loglar: geliştirme bitti, kullanıcı testi bekliyor** (`docs/pages/03-logs.md` §6).
+- **Bir sonraki somut adım:** P03 onayı gelince P04 Özellikler (`docs/ROADMAP.md`). Yeni widget'lar (SearchBox,
+  Dropdown, Toggle, ScrollBar) orada da kullanılacak; uzun liste için LogConsole'daki sanal satır/scroll yaklaşımı.
 - **Kullanıcının tekrar test edeceği:** P02 — imaj bağlıyken uygulamayı kapat/aç → geri yüklenmeli
   (otomatik; olmazsa sayfada "Devam et").
 - **Build:** `./build.ps1 -Dist` yeşil. Kullanıcıya her zaman `dist\WinLove.exe` verilir (çalışıyorsa

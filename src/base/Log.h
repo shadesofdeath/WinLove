@@ -53,6 +53,9 @@ public:
     void write(const Entry& entry) override;
     [[nodiscard]] std::vector<Entry> snapshot() const;
     [[nodiscard]] std::uint64_t version() const;
+    // Entries written after `version` (oldest first); `version` is advanced to the current one.
+    // If more than `capacity` were written meanwhile, returns what is still buffered.
+    [[nodiscard]] std::vector<Entry> since(std::uint64_t& version) const;
 
 private:
     mutable std::mutex m_mutex;

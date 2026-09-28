@@ -5,6 +5,7 @@
 // results are posted back with ui::Window::post before reaching here).
 #include "app/state/AppSettings.h"
 #include "app/state/RecentSources.h"
+#include "base/Log.h"
 #include "core/image/Source.h"
 #include "core/image/dism/MountHealth.h"
 #include "core/tasks/TaskRunner.h"
@@ -43,6 +44,9 @@ public:
 
     explicit AppState(std::filesystem::path recentFile = RecentSources::defaultFile(),
                       std::filesystem::path settingsFile = AppSettings::defaultFile());
+    ~AppState();
+    AppState(const AppState&) = delete;
+    AppState& operator=(const AppState&) = delete;
 
     [[nodiscard]] core::TaskRunner& engine() noexcept { return m_engine; }
     [[nodiscard]] const AppSettings& settings() const noexcept { return m_settings; }
@@ -67,6 +71,12 @@ public:
     void updateOperation(double fraction);
     void endOperation();
 
+    // Process log ring buffer (installed as a sink for the lifetime of AppState); Loglar reads it.
+    [[nodiscard]] std::shared_ptr<log::RingBufferSink> logBuffer() const noexcept { return m_logBuffer; }
+    // "Temizle" on Loglar: the page shows only entries written after this buffer version.
+    [[nodiscard]] std::uint64_t logClearedVersion() const noexcept { return m_logCleared; }
+    void setLogClearedVersion(std::uint64_t version) noexcept { m_logCleared = version; }
+
     [[nodiscard]] RecentSources& recent() noexcept { return m_recent; }
     void forgetRecent(const std::filesystem::path& path);
 
@@ -83,6 +93,8 @@ private:
     std::optional<MountedImage> m_mounted;
     std::optional<EngineOperation> m_operation;
     std::optional<core::MountCheck> m_mountFolder;
+    std::shared_ptr<log::RingBufferSink> m_logBuffer = std::make_shared<log::RingBufferSink>();
+    std::uint64_t m_logCleared = 0;
     RecentSources m_recent;
     std::vector<std::pair<std::size_t, Listener>> m_listeners;
     std::size_t m_nextId = 1;
