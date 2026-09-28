@@ -1,6 +1,7 @@
 #include "core/image/dism/MountHealth.h"
 
 #include "base/Log.h"
+#include "core/image/dism/DismErrors.h"
 #include "core/system/Privileges.h"
 
 #include <windows.h>
@@ -59,6 +60,9 @@ MountCheck check(const std::filesystem::path& folder, std::optional<MountInfo> r
     c.action = recommendedAction(c.state);
     c.windowsImage = fileExists(folder / L"Windows" / L"System32" / L"config" / L"SOFTWARE");
     c.loadedHives = hivesLoadedFrom(folder);
+    if (c.state != MountState::Free) {
+        c.blockers = blockersOf(folder);
+    }
     c.record = std::move(record);
     return c;
 }
@@ -199,6 +203,9 @@ Result<void> unloadHivesUnder(const std::filesystem::path& folder) {
 Result<MountCheck> repairMount(Dism& dism, const MountCheck& check, const TaskContext& task) {
     log::info("dism", std::format(L"repair {}: {} → {}", check.folder.wstring(), mountStateName(check.state),
                                   mountActionName(check.action)));
+    if (check.action != MountAction::None) {
+        releaseExplorerWindows(check.folder);
+    }
     switch (check.action) {
     case MountAction::None: break;
     case MountAction::Remount:
@@ -218,22 +225,88 @@ Result<MountCheck> repairMount(Dism& dism, const MountCheck& check, const TaskCo
             return std::unexpected(r.error());
         }
         break;
-    case MountAction::ClearFolder: {
+    case MountAction::ClearFolder:
         if (auto r = dism.cleanupMountpoints(); !r) {
             return std::unexpected(r.error());
         }
-        std::error_code ec;
-        for (const auto& entry : std::filesystem::directory_iterator(check.folder, ec)) {
-            std::filesystem::remove_all(entry.path(), ec);
-            if (ec) {
-                return fail(ErrorCode::IoError, L"could not clear the mount folder", entry.path().wstring(),
-                            static_cast<std::int32_t>(HRESULT_FROM_WIN32(ec.value())));
-            }
-        }
         break;
     }
+    auto after = inspectMount(dism, check.folder);
+    // Discard/cleanup detach the image but can leave files (the partial-unmount case): with no
+    // DISM record left, what remains is plain leftovers and is safe to delete.
+    if (after && after->state == MountState::Orphaned && check.action != MountAction::None &&
+        check.action != MountAction::Remount) {
+        if (auto r = forceRemoveContents(check.folder); !r) {
+            return std::unexpected(r.error());
+        }
+        after = inspectMount(dism, check.folder);
     }
-    return inspectMount(dism, check.folder);
+    return after;
+}
+
+Result<UnmountOutcome> unmountSafely(Dism& dism, const std::filesystem::path& folder, bool commit,
+                                     const TaskContext& task) {
+    UnmountOutcome outcome;
+    if (auto r = unloadHivesUnder(folder); !r) {
+        return std::unexpected(r.error());
+    }
+    releaseExplorerWindows(folder);
+    Error last;
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        ++outcome.attempts;
+        auto r = dism.unmount(folder, commit, task);
+        if (r) {
+            break;
+        }
+        last = r.error();
+        if (last.code == ErrorCode::Cancelled || task.cancel.cancelled()) {
+            return std::unexpected(last);
+        }
+        const auto info = explainError(last.hresult);
+        log::warn("dism", std::format(L"unmount attempt {} failed: 0x{:08X} {}", outcome.attempts,
+                                      static_cast<std::uint32_t>(last.hresult), info.label));
+        outcome.recovered = true;
+        if (last.hresult == kPartialUnmount || last.hresult == kFileInUse) {
+            // Something still holds files: move Explorer away, give handles time to close, retry.
+            releaseExplorerWindows(folder);
+            Sleep(1500);
+            continue;
+        }
+        if (last.hresult == kCannotCommit || last.hresult == kNotMounted || last.hresult == kNotMountDir) {
+            // The image is already detached (earlier partial unmount): only leftovers remain.
+            break;
+        }
+        return std::unexpected(last); // any other error: report as is
+    }
+    // Whatever happened, the folder must end up Free. If the image is still attached, the retries
+    // did not help: report the last error together with who is blocking.
+    auto check = inspectMount(dism, folder);
+    if (!check) {
+        return std::unexpected(check.error());
+    }
+    if (check->state == MountState::Free) {
+        return outcome;
+    }
+    if (check->state == MountState::Ok || check->state == MountState::NeedsRemount) {
+        std::wstring who;
+        for (const auto& b : check->blockers) {
+            who += (who.empty() ? L"" : L", ") + b.name;
+        }
+        if (!who.empty()) {
+            last.context += L" — in use by: " + who;
+        }
+        return std::unexpected(last);
+    }
+    outcome.recovered = true;
+    auto repaired = repairMount(dism, *check, task);
+    if (!repaired) {
+        return std::unexpected(repaired.error());
+    }
+    if (repaired->state != MountState::Free) {
+        return fail(ErrorCode::DismFailure, L"mount folder could not be freed",
+                    std::format(L"{} ({})", folder.wstring(), mountStateName(repaired->state)), last.hresult);
+    }
+    return outcome;
 }
 
 } // namespace wl::core

@@ -17,6 +17,9 @@ namespace {
 constexpr float kRow = 24.0f;
 constexpr float kCheck = 28.0f;
 constexpr float kIconGap = 6.0f;
+constexpr float kEditionId = 150.0f;
+constexpr float kModified = 104.0f;
+constexpr float kMinName = 260.0f; // optional columns drop out below this name width
 constexpr float kArch = 80.0f;
 constexpr float kBuild = 120.0f;
 constexpr float kLang = 72.0f;
@@ -24,18 +27,28 @@ constexpr float kSize = 96.0f;
 constexpr float kStatus = 120.0f;
 constexpr float kCellPad = 8.0f;
 
+// Right-aligned fixed columns; "Sürüm ID" and "Değiştirilme" are shown only while the name
+// column keeps at least kMinName (narrow windows / open inspector drop them, modified first).
 struct Columns {
-    float name, arch, build, lang, size, status;
+    float name, nameEnd, editionId, arch, build, lang, modified, size, status;
+    bool showEditionId, showModified;
 };
 
 Columns columnsFor(RectF b) {
     Columns c{};
+    c.name = b.x + kCheck;
+    const float fixed = kArch + kBuild + kLang + kSize + kStatus;
+    const float room = b.right() - c.name - fixed;
+    c.showModified = room - kModified - kEditionId >= kMinName;
+    c.showEditionId = room - kEditionId >= kMinName;
     c.status = b.right() - kStatus;
     c.size = c.status - kSize;
-    c.lang = c.size - kLang;
+    c.modified = c.size - (c.showModified ? kModified : 0.0f);
+    c.lang = c.modified - kLang;
     c.build = c.lang - kBuild;
     c.arch = c.build - kArch;
-    c.name = b.x + kCheck;
+    c.editionId = c.arch - (c.showEditionId ? kEditionId : 0.0f);
+    c.nameEnd = c.editionId;
     return c;
 }
 } // namespace
@@ -161,10 +174,16 @@ void EditionTable::paint(ui::Canvas& canvas) {
     auto head = [&](std::wstring_view text, float x, float w, ui::TextAlign align = ui::TextAlign::Leading) {
         canvas.drawText(text, {x, b.y, w, kRow}, TypeStyle::Caption, Color::TextTertiary, align);
     };
-    head(m_strings.get(Str::ImagesIndex) + L" · " + m_strings.get(Str::CommonName), c.name, c.arch - c.name);
+    head(m_strings.get(Str::ImagesIndex) + L" · " + m_strings.get(Str::CommonName), c.name, c.nameEnd - c.name);
+    if (c.showEditionId) {
+        head(m_strings.get(Str::ImagesEditionId), c.editionId, kEditionId);
+    }
     head(m_strings.get(Str::ImagesArch), c.arch, kArch);
     head(m_strings.get(Str::ImagesBuild), c.build, kBuild);
     head(m_strings.get(Str::ImagesLang), c.lang, kLang);
+    if (c.showModified) {
+        head(m_strings.get(Str::ImagesModified), c.modified, kModified);
+    }
     head(m_strings.get(Str::CommonSize), c.size, kSize - kCellPad, ui::TextAlign::Trailing);
     head(m_strings.get(Str::CommonStatus), c.status, kStatus);
     canvas.hairlineH(b.x, b.y + kRow - px, b.width, Color::LineSubtle);
@@ -186,13 +205,22 @@ void EditionTable::paint(ui::Canvas& canvas) {
         const Color nameInk = m_dimOthers && !stateRow ? Color::TextSecondary : Color::TextPrimary;
         canvas.drawIcon(ui::icons::Icon::LayersEditions, {c.name, row.y + 4}, Color::TextSecondary);
         const float nameX = c.name + ui::tokens::size::icon + kIconGap;
-        canvas.drawText(std::format(L"{} · {}", image.index, image.name), {nameX, row.y, c.arch - nameX - kCellPad, kRow},
+        canvas.drawText(std::format(L"{} · {}", image.index, image.name), {nameX, row.y, c.nameEnd - nameX - kCellPad, kRow},
                         selected ? TypeStyle::BodyStrong : TypeStyle::Body, nameInk);
+        if (c.showEditionId) {
+            canvas.drawText(image.editionId.empty() ? L"—" : image.editionId,
+                            {c.editionId, row.y, kEditionId - kCellPad, kRow}, TypeStyle::Body, Color::TextSecondary);
+        }
         canvas.drawText(core::architectureName(image.architecture), {c.arch, row.y, kArch, kRow}, TypeStyle::Body,
                         Color::TextPrimary);
         canvas.drawText(std::format(L"{}.{}", image.build, image.spBuild), {c.build, row.y, kBuild, kRow}, TypeStyle::Mono,
                         Color::TextPrimary);
         canvas.drawText(image.defaultLanguage, {c.lang, row.y, kLang, kRow}, TypeStyle::Body, Color::TextPrimary);
+        if (c.showModified) {
+            // Last change to the image (servicing/commit); creation date is in the inspector.
+            canvas.drawText(formatDate(image.modifiedTime ? image.modifiedTime : image.creationTime, m_language),
+                            {c.modified, row.y, kModified - kCellPad, kRow}, TypeStyle::Mono, Color::TextSecondary);
+        }
         canvas.drawText(formatBytes(image.totalBytes, m_language), {c.size, row.y, kSize - kCellPad, kRow}, TypeStyle::Mono,
                         Color::TextPrimary, ui::TextAlign::Trailing);
 

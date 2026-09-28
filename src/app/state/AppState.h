@@ -6,6 +6,7 @@
 #include "app/state/AppSettings.h"
 #include "app/state/RecentSources.h"
 #include "core/image/Source.h"
+#include "core/image/dism/MountHealth.h"
 #include "core/tasks/TaskRunner.h"
 
 #include <functional>
@@ -37,7 +38,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder };
     using Listener = std::function<void(Change)>;
 
     explicit AppState(std::filesystem::path recentFile = RecentSources::defaultFile(),
@@ -56,6 +57,10 @@ public:
 
     [[nodiscard]] const std::optional<MountedImage>& mounted() const noexcept { return m_mounted; }
     void setMounted(std::optional<MountedImage> mounted);
+
+    // Last inspection of the WinLove mount folder (MountHealth.h); empty until first checked.
+    [[nodiscard]] const std::optional<core::MountCheck>& mountFolder() const noexcept { return m_mountFolder; }
+    void setMountFolder(std::optional<core::MountCheck> check);
 
     [[nodiscard]] const std::optional<EngineOperation>& operation() const noexcept { return m_operation; }
     void beginOperation(EngineOperation operation);
@@ -77,6 +82,7 @@ private:
     std::optional<int> m_selected;
     std::optional<MountedImage> m_mounted;
     std::optional<EngineOperation> m_operation;
+    std::optional<core::MountCheck> m_mountFolder;
     RecentSources m_recent;
     std::vector<std::pair<std::size_t, Listener>> m_listeners;
     std::size_t m_nextId = 1;

@@ -1,11 +1,13 @@
 #pragma once
-// P02 İmajlar (docs/pages/02-images.md): summary line, error InfoBar (with "Mount'ları temizle"),
-// operation strip while the engine works, editions table. With no source: EmptyState.
+// P02 İmajlar (docs/pages/02-images.md): summary line, error InfoBar (remedy text + "Onar"),
+// mount-folder InfoBar when the WinLove mount folder is not clean (MountHealth), operation strip
+// while the engine works, editions table. With no source: EmptyState.
 // The inspector column is owned by the Shell (it spans the full content height).
 #include "app/controllers/ImageController.h"
 #include "app/pages/images/EditionTable.h"
 #include "app/pages/images/OperationStrip.h"
 #include "ui/widgets/EmptyState.h"
+#include "core/image/dism/DismErrors.h"
 #include "ui/widgets/InfoBar.h"
 
 namespace wl::app {
@@ -16,12 +18,18 @@ public:
                std::function<void()> chooseSource);
     ~ImagesPage() override;
 
-    void showFailure(const std::wstring& title, const std::wstring& message, bool offerCleanup);
+    // `offerRepair`: show "Onar" (ImageController::cleanupMounts).
+    void showFailure(const std::wstring& title, const std::wstring& message, bool offerRepair);
+
+    [[nodiscard]] static Str remedyText(core::Remedy remedy) noexcept;
+    [[nodiscard]] static Str folderStateText(core::MountState state) noexcept;
+    [[nodiscard]] static bool remedyRepairs(core::Remedy remedy) noexcept; // "Onar" helps
     void layout() override;
     void paint(ui::Canvas& canvas) override;
 
 private:
     void refresh(AppState::Change change);
+    void updateFolderBar();
 
     AppState& m_state;
     ImageController& m_controller;
@@ -30,6 +38,7 @@ private:
     std::size_t m_subscription = 0;
     ui::EmptyState* m_empty = nullptr;
     ui::InfoBar* m_error = nullptr;
+    ui::InfoBar* m_folder = nullptr;
     OperationStrip* m_strip = nullptr;
     EditionTable* m_table = nullptr;
 };

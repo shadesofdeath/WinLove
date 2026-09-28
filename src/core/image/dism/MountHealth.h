@@ -5,6 +5,7 @@
 // no DISM record (next mount fails 0xC1420116), registry hives still loaded from the mount
 // (unmount fails 0xC1420117). Engine thread only; needs admin like Dism.
 #include "core/image/dism/Dism.h"
+#include "core/system/FileLocks.h"
 
 #include <optional>
 
@@ -41,6 +42,7 @@ struct MountCheck {
     MountAction action = MountAction::None;
     bool windowsImage = false;             // Windows\System32\config\SOFTWARE present
     std::vector<std::wstring> loadedHives; // e.g. \REGISTRY\MACHINE\WL_SOFTWARE, loaded from inside
+    std::vector<FolderBlocker> blockers;   // Explorer windows inside, processes holding files
 };
 
 // One folder (e.g. the WinLove mount folder).
@@ -53,7 +55,19 @@ struct MountCheck {
 // Unloads them (needs SeBackup/SeRestore, enabled here). Done before every unmount.
 [[nodiscard]] Result<void> unloadHivesUnder(const std::filesystem::path& folder);
 
-// Carries out check.action. Returns the state afterwards (re-inspected).
+// Carries out check.action. Returns the state afterwards (re-inspected). Moves Explorer windows
+// out of the folder first; leftovers are removed with forceRemoveContents.
 [[nodiscard]] Result<MountCheck> repairMount(Dism& dism, const MountCheck& check, const TaskContext& task);
+
+// Unmount that survives the usual traps: unloads hives and moves Explorer windows away first; on
+// "file in use" / partial unmount (0xC1420112 / 0xC1420117) releases again and retries; if the
+// image is detached but leftovers remain, cleans the folder. The WIM commit happens before the
+// detach step, so a partial unmount after commit keeps the changes.
+struct UnmountOutcome {
+    bool recovered = false; // needed retries or a folder repair
+    int attempts = 0;
+};
+[[nodiscard]] Result<UnmountOutcome> unmountSafely(Dism& dism, const std::filesystem::path& folder, bool commit,
+                                                   const TaskContext& task);
 
 } // namespace wl::core

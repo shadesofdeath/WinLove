@@ -138,6 +138,24 @@
     "preparingHint": "{path} · {pct}% · yaklaşık {eta} kaldı",
     "unmounting": "{edition} çözülüyor",
     "unmountingHint": "{path} · {pct}%",
+    "editionId": "Sürüm ID",
+    "modified": "Değiştirilme",
+    "branch": "Dal",
+    "installType": "Kurulum tipi",
+    "imageState": "Sysprep",
+    "contents": "İçerik",
+    "filesDirs": "{files} dosya · {dirs} klasör",
+    "wimFile": "WIM dosyası",
+    "fileSize": "Dosya boyutu",
+    "imageCount": "Index sayısı",
+    "bootIndex": "Önyükleme index'i",
+    "none": "Yok",
+    "stateComplete": "Tamamlanmış",
+    "stateGeneralizeOobe": "Genelleştirilmiş · OOBE",
+    "stateSpecializeOobe": "Özelleştirilmiş · OOBE",
+    "stateGeneralizeAudit": "Genelleştirilmiş · Audit",
+    "stateSpecializeAudit": "Özelleştirilmiş · Audit",
+    "stateUndeployable": "Dağıtılamaz",
     "mountRestored": "Önceki oturumdan bağlı imaj: {edition}",
     "mountDiscarded": "Önceki oturumdan kalan bozuk mount temizlendi",
     "exporting": "{edition} dışa aktarılıyor",
@@ -169,7 +187,17 @@
     "deleteDone": "Index silindi",
     "deleting": "{edition} siliniyor",
     "cleaning": "Mount'lar temizleniyor",
-    "workingHint": "{path} · {pct}%"
+    "workingHint": "{path} · {pct}%",
+    "unmountRecovered": "Çözüldü — açık pencereler taşınıp yeniden denendi",
+    "folderTitle": "Mount klasörü: {state}",
+    "folderRepair": "Onar",
+    "folderBlockers": "Kullanan: {list}",
+    "folderFree": "boş",
+    "folderOk": "bağlı",
+    "folderNeedsRemount": "yeniden bağlanmalı",
+    "folderInvalid": "geçersiz",
+    "folderImageMissing": "WIM dosyası kayıp",
+    "folderOrphaned": "yarım kalmış (artık dosyalar)"
   },
   "components": {
     "title": "Bileşenler",
@@ -527,5 +555,19 @@
   "shell": {
     "pendingTitle": "Bu sayfa henüz hazır değil",
     "pendingBody": "Yol haritasında {id} adımıyla gelecek."
+  },
+  "remedy": {
+    "closeOpenFiles": "Mount klasöründe açık dosya veya klasör var (ör. bir Explorer penceresi). Onar: pencereler taşınır, artıklar temizlenir.",
+    "repairFolder": "Mount klasörü tutarsız kalmış. Onar: artıklar temizlenir (kaydedilmemiş değişiklikler kaybolur).",
+    "remount": "İmaj yeniden bağlanmalı (genelde bilgisayar yeniden başlatıldıktan sonra). Onar: yeniden bağlanır.",
+    "unmountFirst": "Bu klasörde veya bu WIM'den zaten bağlı bir imaj var. Önce onu çöz.",
+    "convertEsd": "ESD sıkıştırması bağlanamaz. Önce ESD → WIM dönüştür.",
+    "checkPermissions": "WIM dosyasına yazma izni yok ya da uygulama yönetici değil.",
+    "disableScanners": "Antivirüs veya arama dizinleyici mount klasörüne erişiyor. Klasörü hariç tutup yeniden dene.",
+    "useLocalFixedDrive": "Mount klasörü yerel, sabit bir NTFS diskte olmalı ve sürücü kökü olmamalı.",
+    "waitForOther": "İmaj başka bir DISM işlemi tarafından kullanılıyor. Bitmesini bekleyip yeniden dene.",
+    "freeDiskSpace": "Diskte yeterli boş alan yok.",
+    "notSupported": "Bu işlem bu imaj için desteklenmiyor.",
+    "unknown": "Ayrıntılar logda."
   }
 }

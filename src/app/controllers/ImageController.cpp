@@ -3,6 +3,7 @@
 #include "base/Log.h"
 #include "core/image/UdfImage.h"
 #include "core/image/dism/Dism.h"
+#include "core/image/dism/DismErrors.h"
 #include "core/image/dism/MountHealth.h"
 #include "core/image/wim/WimGapi.h"
 #include "core/system/Privileges.h"
@@ -106,6 +107,7 @@ void ImageController::run(EngineOperation op, Work work, std::function<void()> o
                     }
                     m_failedIndex = index;
                     m_events.failed(failure, result.error(), index);
+                    inspectMountFolder(); // show what the failure left behind
                     return;
                 }
                 m_failedIndex.reset();
@@ -177,22 +179,25 @@ void ImageController::mount(int index) {
                 if (!dism) {
                     return std::unexpected(dism.error());
                 }
-                // The folder must be Free: leftovers from an interrupted run are cleared first,
-                // anything still mounted there is an error (unmount it first).
+                // The folder must be Free. Leftovers (partial unmount, invalid or orphaned mount)
+                // hold nothing worth keeping and are repaired; a live mount is refused.
+                core::releaseExplorerWindows(mountDir);
                 auto folder = core::inspectMount(**dism, mountDir);
                 if (!folder) {
                     return std::unexpected(folder.error());
                 }
-                if (folder->state == core::MountState::Orphaned) {
-                    auto cleared = core::repairMount(**dism, *folder, task);
-                    if (!cleared) {
-                        return std::unexpected(cleared.error());
+                if (folder->state == core::MountState::Orphaned || folder->state == core::MountState::Invalid ||
+                    folder->state == core::MountState::ImageMissing) {
+                    auto repaired = core::repairMount(**dism, *folder, task);
+                    if (!repaired) {
+                        return std::unexpected(repaired.error());
                     }
-                    folder = std::move(*cleared);
+                    folder = std::move(*repaired);
                 }
                 if (folder->state != core::MountState::Free) {
-                    return fail(ErrorCode::DismFailure, L"the mount folder is in use",
-                                std::format(L"{} ({})", mountDir.wstring(), core::mountStateName(folder->state)));
+                    return fail(ErrorCode::DismFailure, L"the mount folder already holds a mounted image",
+                                std::format(L"{} ({})", mountDir.wstring(), core::mountStateName(folder->state)),
+                                static_cast<std::int32_t>(0xC1420113));
                 }
                 return (*dism)->mount(wim, index, mountDir, /*readOnly=*/false, task);
             },
@@ -209,21 +214,25 @@ void ImageController::unmount(bool commit) {
     if (!mounted || busy()) {
         return;
     }
+    auto recovered = std::make_shared<bool>(false);
     run(EngineOperation{EngineOperation::Kind::Unmounting, mounted->edition, mounted->mountDir, mounted->index},
-        [dir = mounted->mountDir, commit](const core::TaskContext& task) -> Result<void> {
+        [dir = mounted->mountDir, commit, recovered](const core::TaskContext& task) -> Result<void> {
             auto dism = core::Dism::instance();
             if (!dism) {
                 return std::unexpected(dism.error());
             }
-            // Hives loaded from the image (later pages) make DISM fail with 0xC1420117.
-            if (auto r = core::unloadHivesUnder(dir); !r) {
-                return r;
+            // Hives, Explorer windows and partial unmounts are handled in unmountSafely.
+            auto outcome = core::unmountSafely(**dism, dir, commit, task);
+            if (!outcome) {
+                return std::unexpected(outcome.error());
             }
-            return (*dism)->unmount(dir, commit, task);
+            *recovered = outcome->recovered;
+            return {};
         },
-        [this] {
+        [this, recovered] {
             m_state.setMounted(std::nullopt);
-            m_events.succeeded(Str::ImagesUnmountedToast, L"");
+            m_events.succeeded(*recovered ? Str::ImagesUnmountRecovered : Str::ImagesUnmountedToast, L"");
+            inspectMountFolder();
         },
         Failure::Unmount);
 }
@@ -311,17 +320,28 @@ void ImageController::cleanupMounts() {
         return;
     }
     run(EngineOperation{EngineOperation::Kind::Cleaning, L"", m_state.settings().mountDirectory(), 0},
-        [](const core::TaskContext&) -> Result<void> {
+        [mountDir = m_state.settings().mountDirectory()](const core::TaskContext& task) -> Result<void> {
             auto dism = core::Dism::instance();
             if (!dism) {
                 return std::unexpected(dism.error());
+            }
+            auto check = core::inspectMount(**dism, mountDir);
+            if (!check) {
+                return std::unexpected(check.error());
+            }
+            // A healthy mount is left alone (unmount it instead); everything else is repaired.
+            if (check->state != core::MountState::Ok && check->state != core::MountState::Free) {
+                auto repaired = core::repairMount(**dism, *check, task);
+                if (!repaired) {
+                    return std::unexpected(repaired.error());
+                }
             }
             return (*dism)->cleanupMountpoints();
         },
         [this] {
             m_failedIndex.reset();
-            m_state.setMounted(std::nullopt);
             m_events.succeeded(Str::ImagesCleanupMounts, L"");
+            inspectMountFolder();
         },
         Failure::Cleanup);
 }
@@ -373,6 +393,7 @@ void ImageController::adoptExistingMount() {
                     return;
                 }
                 const auto& [before, after] = *result;
+                m_state.setMountFolder(after);
                 log::info("app", std::format(L"mount folder {}: {} → {}", before.folder.wstring(),
                                              core::mountStateName(before.state), core::mountStateName(after.state)));
                 if (before.action == core::MountAction::Discard) {
@@ -390,6 +411,31 @@ void ImageController::adoptExistingMount() {
                 if (m_events.restored) {
                     m_events.restored(source, MountedImage{m.mountPath, m.imagePath, m.index, {}, m.readOnly});
                 }
+            });
+        },
+        {});
+}
+
+void ImageController::inspectMountFolder() {
+    if (!core::isElevated()) {
+        return;
+    }
+    auto post = m_events.postToUi;
+    std::weak_ptr<bool> alive = m_alive;
+    m_state.engine().run<core::MountCheck>(
+        [mountDir = m_state.settings().mountDirectory()](const core::TaskContext&) -> Result<core::MountCheck> {
+            auto dism = core::Dism::instance();
+            if (!dism) {
+                return std::unexpected(dism.error());
+            }
+            return core::inspectMount(**dism, mountDir);
+        },
+        [this, post, alive](Result<core::MountCheck> result) {
+            post([this, alive, result = std::move(result)] {
+                if (const auto a = alive.lock(); !a || !*a || !result) {
+                    return;
+                }
+                m_state.setMountFolder(*result);
             });
         },
         {});

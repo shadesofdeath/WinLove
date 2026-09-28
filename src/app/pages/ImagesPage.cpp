@@ -31,6 +31,13 @@ ImagesPage::ImagesPage(AppState& state, ImageController& controller, const Local
         layout();
     };
 
+    m_folder = &add<ui::InfoBar>(ui::InfoKind::Warning, L"", L"", strings.get(Str::CommonClose));
+    m_folder->setVisible(false);
+    m_folder->onClose = [this] {
+        m_folder->setVisible(false);
+        layout();
+    };
+
     m_strip = &add<OperationStrip>(strings, state);
     m_strip->setVisible(false);
     m_strip->onCancel = [this] { m_controller.cancel(); };
@@ -51,10 +58,85 @@ ImagesPage::~ImagesPage() {
     m_state.unsubscribe(m_subscription);
 }
 
-void ImagesPage::showFailure(const std::wstring& title, const std::wstring& message, bool offerCleanup) {
+Str ImagesPage::remedyText(core::Remedy remedy) noexcept {
+    switch (remedy) {
+    case core::Remedy::CloseOpenFiles: return Str::RemedyCloseOpenFiles;
+    case core::Remedy::RepairFolder: return Str::RemedyRepairFolder;
+    case core::Remedy::Remount: return Str::RemedyRemount;
+    case core::Remedy::UnmountFirst: return Str::RemedyUnmountFirst;
+    case core::Remedy::ConvertEsd: return Str::RemedyConvertEsd;
+    case core::Remedy::CheckPermissions: return Str::RemedyCheckPermissions;
+    case core::Remedy::DisableScanners: return Str::RemedyDisableScanners;
+    case core::Remedy::UseLocalFixedDrive: return Str::RemedyUseLocalFixedDrive;
+    case core::Remedy::WaitForOther: return Str::RemedyWaitForOther;
+    case core::Remedy::FreeDiskSpace: return Str::RemedyFreeDiskSpace;
+    case core::Remedy::NotSupported: return Str::RemedyNotSupported;
+    case core::Remedy::None: break;
+    }
+    return Str::RemedyUnknown;
+}
+
+Str ImagesPage::folderStateText(core::MountState state) noexcept {
+    switch (state) {
+    case core::MountState::Free: return Str::ImagesFolderFree;
+    case core::MountState::Ok: return Str::ImagesFolderOk;
+    case core::MountState::NeedsRemount: return Str::ImagesFolderNeedsRemount;
+    case core::MountState::Invalid: return Str::ImagesFolderInvalid;
+    case core::MountState::ImageMissing: return Str::ImagesFolderImageMissing;
+    case core::MountState::Orphaned: return Str::ImagesFolderOrphaned;
+    }
+    return Str::ImagesFolderInvalid;
+}
+
+bool ImagesPage::remedyRepairs(core::Remedy remedy) noexcept {
+    return remedy == core::Remedy::CloseOpenFiles || remedy == core::Remedy::RepairFolder ||
+           remedy == core::Remedy::Remount;
+}
+
+void ImagesPage::updateFolderBar() {
+    const auto& folder = m_state.mountFolder();
+    // Free = nothing to say; Ok while the app shows it as mounted = normal. Anything else
+    // (leftovers, invalid, a mount the app does not know about) gets the bar.
+    const bool clean = !folder || folder->state == core::MountState::Free ||
+                       (folder->state == core::MountState::Ok && m_state.mounted().has_value());
+    if (clean || m_state.operation()) {
+        if (m_folder->visible()) {
+            m_folder->setVisible(false);
+            layout();
+        }
+        return;
+    }
+    std::wstring body = m_strings.get(remedyText(folder->state == core::MountState::NeedsRemount
+                                                     ? core::Remedy::Remount
+                                                 : folder->state == core::MountState::Ok ? core::Remedy::UnmountFirst
+                                                                                         : core::Remedy::RepairFolder));
+    if (!folder->blockers.empty()) {
+        std::wstring list;
+        for (const auto& b : folder->blockers) {
+            list += (list.empty() ? L"" : L", ") + b.name +
+                    (b.path.empty() ? std::wstring() : L" (" + b.path.wstring() + L")");
+        }
+        body += L" " + m_strings.format(Str::ImagesFolderBlockers, {{L"list", list}});
+    }
+    m_folder->set(ui::InfoKind::Warning,
+                  m_strings.format(Str::ImagesFolderTitle, {{L"state", m_strings.get(folderStateText(folder->state))}}),
+                  body);
+    if (folder->state != core::MountState::Ok) {
+        m_folder->setAction(m_strings.get(Str::ImagesFolderRepair), [this] {
+            m_folder->setVisible(false);
+            m_controller.cleanupMounts();
+        });
+    } else {
+        m_folder->setAction(L"", nullptr);
+    }
+    m_folder->setVisible(true);
+    layout();
+}
+
+void ImagesPage::showFailure(const std::wstring& title, const std::wstring& message, bool offerRepair) {
     m_error->set(ui::InfoKind::Error, title, message);
-    if (offerCleanup) {
-        m_error->setAction(m_strings.get(Str::ImagesCleanupMounts), [this] {
+    if (offerRepair) {
+        m_error->setAction(m_strings.get(Str::ImagesFolderRepair), [this] {
             m_error->setVisible(false);
             m_controller.cleanupMounts();
         });
@@ -73,6 +155,7 @@ void ImagesPage::refresh(AppState::Change change) {
         m_table->setImages(source ? source->install.images : std::vector<core::ImageInfo>{});
     }
     m_table->setSelected(m_state.selectedIndex());
+    updateFolderBar();
 
     const auto& op = m_state.operation();
     const bool wasRunning = m_strip->visible();
@@ -100,6 +183,10 @@ void ImagesPage::layout() {
     float y = b.y + kToolbarTop + kToolbar + kGap;
     if (m_error->visible()) {
         m_error->setBounds({b.x, y, b.width, kInfoBar});
+        y += kInfoBar + kGap;
+    }
+    if (m_folder->visible()) {
+        m_folder->setBounds({b.x, y, b.width, kInfoBar});
         y += kInfoBar + kGap;
     }
     if (m_strip->visible()) {

@@ -138,6 +138,24 @@
     "preparingHint": "{path} · {pct}% · about {eta} left",
     "unmounting": "Unmounting {edition}",
     "unmountingHint": "{path} · {pct}%",
+    "editionId": "Edition ID",
+    "modified": "Modified",
+    "branch": "Branch",
+    "installType": "Install type",
+    "imageState": "Sysprep",
+    "contents": "Contents",
+    "filesDirs": "{files} files · {dirs} folders",
+    "wimFile": "WIM file",
+    "fileSize": "File size",
+    "imageCount": "Images",
+    "bootIndex": "Boot index",
+    "none": "None",
+    "stateComplete": "Complete",
+    "stateGeneralizeOobe": "Generalized · OOBE",
+    "stateSpecializeOobe": "Specialized · OOBE",
+    "stateGeneralizeAudit": "Generalized · Audit",
+    "stateSpecializeAudit": "Specialized · Audit",
+    "stateUndeployable": "Undeployable",
     "mountRestored": "Still mounted from last session: {edition}",
     "mountDiscarded": "A broken mount from the last session was cleaned up",
     "exporting": "Exporting {edition}",
@@ -169,7 +187,17 @@
     "deleteDone": "Index deleted",
     "deleting": "Deleting {edition}",
     "cleaning": "Cleaning up mounts",
-    "workingHint": "{path} · {pct}%"
+    "workingHint": "{path} · {pct}%",
+    "unmountRecovered": "Unmounted — open windows were moved away and it was retried",
+    "folderTitle": "Mount folder: {state}",
+    "folderRepair": "Repair",
+    "folderBlockers": "In use by: {list}",
+    "folderFree": "empty",
+    "folderOk": "mounted",
+    "folderNeedsRemount": "needs remount",
+    "folderInvalid": "invalid",
+    "folderImageMissing": "WIM file missing",
+    "folderOrphaned": "left over (stale files)"
   },
   "components": {
     "title": "Components",
@@ -527,5 +555,19 @@
   "shell": {
     "pendingTitle": "This page is not built yet",
     "pendingBody": "Arrives with step {id} on the roadmap."
+  },
+  "remedy": {
+    "closeOpenFiles": "Files or folders are open in the mount folder (e.g. an Explorer window). Repair moves windows away and removes leftovers.",
+    "repairFolder": "The mount folder was left inconsistent. Repair removes the leftovers (unsaved changes are lost).",
+    "remount": "The image needs to be remounted (usually after a restart). Repair remounts it.",
+    "unmountFirst": "An image is already mounted in this folder or from this WIM. Unmount it first.",
+    "convertEsd": "ESD compression cannot be mounted. Convert ESD → WIM first.",
+    "checkPermissions": "No write access to the WIM, or the app is not elevated.",
+    "disableScanners": "Antivirus or the search indexer is touching the mount folder. Exclude it and retry.",
+    "useLocalFixedDrive": "The mount folder must be on a local fixed NTFS drive and not a drive root.",
+    "waitForOther": "Another DISM operation is using the image. Wait for it and retry.",
+    "freeDiskSpace": "Not enough free disk space.",
+    "notSupported": "This operation is not supported for this image.",
+    "unknown": "Details are in the log."
   }
 }
