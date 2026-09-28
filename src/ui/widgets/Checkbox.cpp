@@ -1,5 +1,9 @@
 #include "ui/widgets/Checkbox.h"
 
+#include "ui/widget/Host.h"
+
+#include <cmath>
+
 namespace wl::ui {
 
 void Checkbox::paintBox(Canvas& canvas, PointF at, CheckState state, bool hovered) {
@@ -23,6 +27,45 @@ void Checkbox::paintBox(Canvas& canvas, PointF at, CheckState state, bool hovere
         canvas.fillRect({at.x + 3, at.y + 5, 6, 2}, Color::AccentBase);
         break;
     }
+}
+
+CheckField::CheckField(std::wstring label, bool checked) : m_label(std::move(label)), m_checked(checked) {
+    setFocusable(true);
+    setAccessible(AccessRole::CheckBox, m_label);
+}
+
+void CheckField::setChecked(bool checked) {
+    m_checked = checked;
+    invalidate();
+}
+
+SizeF CheckField::measure(SizeF /*available*/) {
+    const float label = host() ? std::ceil(host()->text().measure(m_label, tokens::TypeStyle::Body)) : 0.0f;
+    return {Checkbox::kBox + 8 + label, tokens::size::control};
+}
+
+void CheckField::paint(Canvas& canvas) {
+    const RectF b = bounds();
+    Checkbox::paintBox(canvas, {b.x, b.y + (b.height - Checkbox::kBox) / 2}, m_checked ? CheckState::On : CheckState::Off,
+                       hovered());
+    const float x = b.x + Checkbox::kBox + 8;
+    canvas.drawText(m_label, {x, b.y, b.right() - x, b.height}, tokens::TypeStyle::Body, tokens::Color::TextPrimary);
+}
+
+void CheckField::onClick() {
+    m_checked = !m_checked;
+    invalidate();
+    if (onChange) {
+        onChange(m_checked);
+    }
+}
+
+bool CheckField::onKeyDown(const KeyEvent& key) {
+    if (key.virtualKey == VK_SPACE) {
+        onClick();
+        return true;
+    }
+    return false;
 }
 
 } // namespace wl::ui

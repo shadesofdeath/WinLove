@@ -23,12 +23,17 @@ struct ApplyReport {
     [[nodiscard]] std::size_t failures() const;
 };
 
+struct ApplyOptions {
+    std::vector<std::filesystem::path> featureSources; // DismEnableFeature SourcePaths (sources\sxs)
+};
+
 struct ApplyCallbacks {
     std::function<void(std::size_t index, const PlanStep& step)> stepStarted;
     std::function<void(std::size_t index, const StepResult& result)> stepFinished;
 };
 
 [[nodiscard]] ApplyReport apply(const ApplyPlan& plan, DismSession& session, const TaskContext& task,
-                                ErrorPolicy policy = ErrorPolicy::Stop, const ApplyCallbacks& callbacks = {});
+                                ErrorPolicy policy = ErrorPolicy::Stop, const ApplyCallbacks& callbacks = {},
+                                const ApplyOptions& options = {});
 
 } // namespace wl::core::ops

@@ -33,6 +33,16 @@ float PageView::headerHeight() const {
     return kPadding + kTitleLine + (m_description.empty() ? 0.0f : kDescGap + kDescLine);
 }
 
+void PageView::setHeader(std::wstring title, std::wstring description) {
+    if (title == m_title && description == m_description) {
+        return;
+    }
+    m_title = std::move(title);
+    m_description = std::move(description);
+    layout();
+    invalidate();
+}
+
 void PageView::layout() {
     const RectF b = bounds();
     float right = b.right() - kPadding;

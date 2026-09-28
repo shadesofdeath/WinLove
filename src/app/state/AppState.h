@@ -9,6 +9,7 @@
 #include "core/image/Source.h"
 #include "core/image/dism/MountHealth.h"
 #include "core/image/dism/OptionalFeatures.h"
+#include "core/ops/ApplyJob.h"
 #include "core/ops/ChangeSet.h"
 #include "core/tasks/TaskRunner.h"
 
@@ -41,7 +42,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply };
     using Listener = std::function<void(Change)>;
 
     explicit AppState(std::filesystem::path recentFile = RecentSources::defaultFile(),
@@ -85,6 +86,30 @@ public:
     [[nodiscard]] const std::optional<OptionalFeatures>& optionalFeatures() const noexcept { return m_features; }
     void setOptionalFeatures(std::optional<OptionalFeatures> features);
 
+    // P05: the running / last "Uygula" run (ApplyController). Lives until the next run.
+    struct ApplyRun {
+        enum class Stage : std::uint8_t { Running, Committing, Done };
+        Stage stage = Stage::Running;
+        core::ops::ChangeSet changes;          // what was applied (for "Presete kaydet")
+        core::ops::ApplyPlan plan;
+        std::vector<core::ops::PlanGroup> groups;
+        std::vector<int> stepState;            // per plan step: 0 pending, 1 running, 2 ok, 3 failed
+        int currentStep = -1;
+        double fraction = 0;
+        double startedMs = 0;
+        std::uint64_t logVersion = 0;          // log buffer version at start (live log begins here)
+        std::wstring edition;
+        std::uint64_t sizeBefore = 0;          // expanded bytes of the edition
+        std::uint64_t sizeAfter = 0;           // re-read from the WIM after commit (0 = unknown)
+        std::optional<core::ops::ApplyJobResult> result;
+        std::optional<Error> error;            // the run could not start (session refused, …)
+        core::CancelToken cancel;
+    };
+    [[nodiscard]] const std::optional<ApplyRun>& applyRun() const noexcept { return m_apply; }
+    [[nodiscard]] std::optional<ApplyRun>& applyRunMutable() noexcept { return m_apply; }
+    void setApplyRun(std::optional<ApplyRun> run);
+    void notifyApply() { notify(Change::Apply); }
+
     // Last inspection of the WinLove mount folder (MountHealth.h); empty until first checked.
     [[nodiscard]] const std::optional<core::MountCheck>& mountFolder() const noexcept { return m_mountFolder; }
     void setMountFolder(std::optional<core::MountCheck> check);
@@ -119,6 +144,7 @@ private:
     std::optional<core::MountCheck> m_mountFolder;
     core::ops::ChangeSet m_changes;
     std::optional<OptionalFeatures> m_features;
+    std::optional<ApplyRun> m_apply;
     std::shared_ptr<log::RingBufferSink> m_logBuffer = std::make_shared<log::RingBufferSink>();
     std::uint64_t m_logCleared = 0;
     RecentSources m_recent;

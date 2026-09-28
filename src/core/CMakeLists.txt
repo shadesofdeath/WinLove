@@ -11,6 +11,7 @@ add_library(wl_core STATIC
     image/dism/OptionalFeatures.cpp
     image/wim/WimGapi.cpp
     io/ByteSource.cpp
+    ops/ApplyJob.cpp
     ops/Applier.cpp
     ops/ChangeSet.cpp
     ops/Planner.cpp

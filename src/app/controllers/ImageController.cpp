@@ -29,7 +29,8 @@ ImageController::~ImageController() {
 }
 
 bool ImageController::busy() const {
-    return m_state.operation().has_value();
+    const auto& run = m_state.applyRun(); // an "Uygula" run owns the mounted image
+    return m_state.operation().has_value() || (run && run->stage != AppState::ApplyRun::Stage::Done);
 }
 
 bool ImageController::isEsdSource() const {

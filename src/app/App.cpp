@@ -122,6 +122,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             }
         } else if (a == L"--no-elevate") {
             // handled in main.cpp (skip the startup UAC relaunch)
+        } else if (startsWith(a, L"--demo-apply=")) {
+            options.demoApply = std::wstring(value(L"--demo-apply="));
         } else if (a == L"--demo-features") {
             options.demoFeatures = true;
         } else if (a == L"--demo-logs") {
@@ -304,7 +306,45 @@ int App::renderOffscreen() {
                                                                 std::move(items), {}});
         m_state->queue(FeatureController::operationFor(m_state->optionalFeatures()->items[4]));
         m_state->queue(FeatureController::operationFor(m_state->optionalFeatures()->items[7]));
-        m_shell->showPage(PageId::Features);
+        if (!m_options.demoApply.empty()) {
+            AppState::ApplyRun run;
+            run.changes = m_state->changes();
+            run.plan = core::ops::plan(run.changes);
+            run.groups = core::ops::groups(run.plan);
+            run.stepState.assign(run.plan.steps.size(), 2);
+            run.startedMs = ui::nowMs() - 95'000;
+            run.edition = L"Windows 11 Pro";
+            run.sizeBefore = 24'622'989'344ULL;
+            if (m_options.demoApply == L"running") {
+                run.stepState.back() = 1;
+                run.currentStep = static_cast<int>(run.stepState.size()) - 1;
+                run.fraction = 0.42;
+                log::info("apply", L"[1/2] removeCapability OpenSSH.Client~~~~0.0.1.0");
+                log::info("dism", L"remove capability OpenSSH.Client~~~~0.0.1.0 \u2026 ok");
+                log::info("apply", L"[2/2] enableFeature Microsoft-Windows-Subsystem-Linux");
+            } else {
+                run.stage = AppState::ApplyRun::Stage::Done;
+                run.fraction = 1.0;
+                run.sizeAfter = 24'180'112'000ULL;
+                core::ops::ApplyJobResult result;
+                result.report.completed = true;
+                for (const auto& step : run.plan.steps) {
+                    result.report.results.push_back({step, {}});
+                    result.stepTimes.push_back(std::chrono::milliseconds(14'000));
+                }
+                result.committed = true;
+                result.commitTime = std::chrono::milliseconds(81'000);
+                result.elapsed = std::chrono::milliseconds(112'000);
+                run.result = std::move(result);
+                m_state->setApplyRun(std::move(run));
+                m_state->setMounted(std::nullopt);
+                m_shell->showPage(PageId::Apply);
+            }
+            if (m_state->applyRun() == std::nullopt) {
+                m_state->setApplyRun(std::move(run));
+            }
+        }
+        m_shell->showPage(m_options.page.value_or(PageId::Features));
     }
     if (m_options.openPath) {
         // Headless: open synchronously so the frame shows the Images page with real data.

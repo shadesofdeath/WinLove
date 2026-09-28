@@ -8,6 +8,7 @@
 #include "core/image/dism/Dism.h"
 #include "core/image/dism/MountHealth.h"
 #include "core/image/dism/OptionalFeatures.h"
+#include "core/ops/ApplyJob.h"
 #include "core/image/wim/WimGapi.h"
 #include "core/ops/Applier.h"
 #include "core/ops/Planner.h"
@@ -412,7 +413,7 @@ int cmdPlan(const std::wstring& changeSetPath) {
     return 0;
 }
 
-int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bool skipErrors) {
+int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bool commit, const std::wstring& source) {
     auto set = loadChangeSet(changeSetPath);
     if (!set) {
         return reportError(set.error());
@@ -421,25 +422,33 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
     if (!d) {
         return reportError(d.error());
     }
-    auto session = (*d)->openSession(mountDir);
-    if (!session) {
-        return reportError(session.error());
-    }
+    // Same job as the app: errors are skipped and reported; --commit saves + unmounts at the end.
     const auto p = core::ops::plan(*set);
-    core::ops::ApplyCallbacks callbacks;
-    callbacks.stepStarted = [&](std::size_t i, const core::ops::PlanStep& step) {
+    core::ops::ApplyJobOptions options;
+    options.commitAndUnmount = commit;
+    if (!source.empty()) {
+        options.apply.featureSources.push_back(source);
+    }
+    core::ops::ApplyJobCallbacks callbacks;
+    callbacks.steps.stepStarted = [&](std::size_t i, const core::ops::PlanStep& step) {
         print(std::format(L"  [{}/{}] {} {}\n", i + 1, p.steps.size(), utf8::toWide(core::ops::opKindKey(step.operation.kind)),
                           step.operation.target));
     };
-    callbacks.stepFinished = [&](std::size_t, const core::ops::StepResult& r) {
+    callbacks.steps.stepFinished = [&](std::size_t, const core::ops::StepResult& r) {
         print(r.outcome ? std::wstring(L"        ok\n") : L"        FAILED: " + describe(r.outcome.error()) + L"\n");
     };
-    const auto report = core::ops::apply(p, **session, core::TaskContext{g_cancel, {}},
-                                         skipErrors ? core::ops::ErrorPolicy::Skip : core::ops::ErrorPolicy::Stop,
-                                         callbacks);
-    print(std::format(L"  {} of {} step(s) ran, {} failed{}\n", report.results.size(), p.steps.size(), report.failures(),
-                      report.completed ? L"" : L" — stopped"));
-    return report.completed && report.failures() == 0 ? 0 : 3;
+    callbacks.committing = [] { print(L"  saving and unmounting...\n"); };
+    auto job = core::ops::runApplyJob(**d, mountDir, p, options, core::TaskContext{g_cancel, {}}, callbacks);
+    if (!job) {
+        return reportError(job.error());
+    }
+    const auto& report = job->report;
+    const std::wstring commitText = job->committed ? std::wstring(L"ok")
+                                    : job->commitError ? describe(*job->commitError)
+                                                       : std::wstring(L"skipped");
+    print(std::format(L"  {} of {} step(s) ran, {} failed{}; commit: {} ({} ms)\n", report.results.size(), p.steps.size(),
+                      report.failures(), report.completed ? L"" : L" (stopped)", commitText, job->elapsed.count()));
+    return report.completed && report.failures() == 0 && !job->commitError ? 0 : 3;
 }
 
 int cmdExport(const std::wstring& source, const std::wstring& index, const std::wstring& destination,
@@ -496,7 +505,7 @@ void printUsage() {
           L"  wlcli mounts | cleanup\n"
           L"  wlcli packages|features|capabilities <mountdir>\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
-          L"  wlcli apply <changeset.json> <mountdir> [--skip-errors]\n"
+          L"  wlcli apply <changeset.json> <mountdir> [--commit] [--source=<sources\\sxs>]\n"
           L"\n  Change sets (no admin):\n"
           L"  wlcli plan <changeset.json>              Show the ordered apply plan\n"
           L"  wlcli extract-all <iso> <dir>             Copy the whole ISO into a folder (resumable)\n"
@@ -515,16 +524,18 @@ int wmain(int argc, wchar_t** argv) {
     bool asJson = false;
     bool readOnly = false;
     int commit = -1;
-    bool skipErrors = false;
     std::wstring compress;
+    std::wstring source;
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
             asJson = true;
         } else if (a.starts_with(L"--compress=")) {
             compress = std::wstring(a.substr(11));
+        } else if (a.starts_with(L"--source=")) {
+            source = std::wstring(a.substr(9));
         } else if (a == L"--skip-errors") {
-            skipErrors = true;
+            // accepted for old scripts: apply always skips failed steps and reports them
         } else if (a == L"--readonly") {
             readOnly = true;
         } else if (a == L"--commit") {
@@ -574,7 +585,7 @@ int wmain(int argc, wchar_t** argv) {
         return cmdPlan(args[1]);
     }
     if (command == L"apply" && args.size() == 3) {
-        return cmdApply(args[1], args[2], skipErrors);
+        return cmdApply(args[1], args[2], commit == 1, source);
     }
     if (command == L"mounts") {
         return cmdMounts(asJson);

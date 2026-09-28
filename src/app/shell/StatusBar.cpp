@@ -30,14 +30,23 @@ ApplyCta::ApplyCta(std::wstring label) : m_label(std::move(label)) {
 }
 
 std::wstring ApplyCta::text() const {
+    if (!m_override.empty()) {
+        return m_override;
+    }
     return m_queue > 0 ? m_label + L" · " + std::to_wstring(m_queue) : m_label;
+}
+
+void ApplyCta::setOverride(std::wstring label) {
+    m_override = std::move(label);
+    setQueue(m_queue);
 }
 
 void ApplyCta::setQueue(int count) {
     m_queue = count;
     // Stays focusable/hoverable-free while empty: nothing to apply.
-    setFocusable(count > 0);
-    setHitTestVisible(count > 0);
+    const bool active = count > 0 || !m_override.empty();
+    setFocusable(active);
+    setHitTestVisible(active);
     invalidate();
 }
 
@@ -60,7 +69,7 @@ bool ApplyCta::tick(double now) {
 }
 
 void ApplyCta::onClick() {
-    if (m_queue > 0 && onInvoke) {
+    if ((m_queue > 0 || !m_override.empty()) && onInvoke) {
         onInvoke();
     }
 }
@@ -77,7 +86,7 @@ void ApplyCta::paint(ui::Canvas& canvas) {
     const RectF b = bounds();
     const float radius = ui::tokens::radius::r2;
     Color ink = Color::TextOnAccent;
-    if (m_queue == 0) {
+    if (m_queue == 0 && m_override.empty()) {
         canvas.fillRoundRect(b, radius, Color::BgRaised);
         ink = Color::TextDisabled;
     } else if (pressed()) {

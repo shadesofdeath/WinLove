@@ -24,4 +24,18 @@ struct ApplyPlan {
 [[nodiscard]] Phase phaseOf(OpKind kind) noexcept;
 [[nodiscard]] ApplyPlan plan(const ChangeSet& changes);
 
+// Consecutive steps of one phase, as the Apply screens list them.
+struct PlanGroup {
+    Phase phase;
+    std::size_t first = 0; // index into plan.steps
+    std::size_t count = 0;
+    double estimateSeconds = 0;
+};
+[[nodiscard]] std::vector<PlanGroup> groups(const ApplyPlan& plan);
+
+// Rough per-operation duration on a mounted image (SSD); refined from real runs (ENGINE.md).
+[[nodiscard]] double estimateSeconds(OpKind kind) noexcept;
+// Commit + unmount of a Windows 11 install image (lab: ~90 s).
+inline constexpr double kCommitSeconds = 90.0;
+
 } // namespace wl::core::ops

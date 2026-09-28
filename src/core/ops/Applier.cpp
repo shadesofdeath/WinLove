@@ -10,10 +10,10 @@ namespace wl::core::ops {
 
 namespace {
 
-Result<void> runStep(const Operation& op, DismSession& session, const TaskContext& task) {
+Result<void> runStep(const Operation& op, DismSession& session, const TaskContext& task, const ApplyOptions& options) {
     switch (op.kind) {
     case OpKind::DisableFeature: return session.disableFeature(op.target, task);
-    case OpKind::EnableFeature: return session.enableFeature(op.target, task);
+    case OpKind::EnableFeature: return session.enableFeature(op.target, task, options.featureSources);
     case OpKind::RemovePackage: return session.removePackage(op.target, task);
     case OpKind::RemoveCapability: return session.removeCapability(op.target, task);
     case OpKind::RemoveAppx:
@@ -32,7 +32,7 @@ std::size_t ApplyReport::failures() const {
 }
 
 ApplyReport apply(const ApplyPlan& plan, DismSession& session, const TaskContext& task, ErrorPolicy policy,
-                  const ApplyCallbacks& callbacks) {
+                  const ApplyCallbacks& callbacks, const ApplyOptions& options) {
     ApplyReport report;
     const std::size_t total = plan.steps.size();
     for (std::size_t i = 0; i < total; ++i) {
@@ -52,7 +52,7 @@ ApplyReport apply(const ApplyPlan& plan, DismSession& session, const TaskContext
                                                        static_cast<double>(total),
                                                    stage);
                                    }};
-        StepResult result{step, runStep(step.operation, session, stepTask)};
+        StepResult result{step, runStep(step.operation, session, stepTask, options)};
         if (!result.outcome) {
             log::error("apply", describe(result.outcome.error()));
         }

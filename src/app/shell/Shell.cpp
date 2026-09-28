@@ -2,7 +2,9 @@
 
 #include "app/Format.h"
 #include "app/pages/GalleryPage.h"
+#include "app/pages/ApplyPage.h"
 #include "app/pages/FeaturesPage.h"
+#include "app/pages/apply/RiskConfirm.h"
 #include "app/pages/ImagesPage.h"
 #include "app/pages/LogsPage.h"
 #include "app/pages/SourcePage.h"
@@ -57,6 +59,13 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
                           [&](Str key) { return strings.get(key); });
     m_status = &add<StatusBar>(StatusBar::Labels{s(Str::StatusNoMount), s(Str::StatusMounted), s(Str::StatusImage),
                                                  s(Str::StatusApply)});
+    m_status->cta().onInvoke = [this] {
+        if (m_apply && m_apply->running()) {
+            m_apply->cancel();
+        } else {
+            showPage(PageId::Apply);
+        }
+    };
 
     m_titleBar->minimizeButton().onInvoke = [this] { m_services.minimize(); };
     m_titleBar->maximizeButton().onInvoke = [this] { m_services.toggleMaximize(); };
@@ -68,6 +77,16 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     };
 
     m_features = std::make_unique<FeatureController>(m_state, m_services.postToUi);
+    m_apply = std::make_unique<ApplyController>(m_state, ApplyController::Events{
+        m_services.postToUi,
+        [this](core::SourceInfo source) {
+            const auto index = m_state.selectedIndex();
+            m_state.setSource(std::move(source)); // new sizes after the commit
+            m_state.select(index);
+        },
+        [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::ApplyFailedTitle), e.message); },
+        {},
+    });
     m_images = std::make_unique<ImageController>(m_state, ImageController::Events{
         m_services.postToUi,
         [this](ImageController::Failure f, const Error& e, int index) { onImageFailure(f, e, index); },
@@ -89,6 +108,10 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         }
         if (change == AppState::Change::Queue) {
             updateQueue();
+        }
+        if (change == AppState::Change::Apply || change == AppState::Change::Queue ||
+            change == AppState::Change::Mount) {
+            updateApplyChrome();
         }
         if (change != AppState::Change::Recent) {
             updateBreadcrumb();
@@ -119,6 +142,110 @@ LogsPage* Shell::logsPage() const {
 
 FeaturesPage* Shell::featuresPage() const {
     return m_page == PageId::Features ? dynamic_cast<FeaturesPage*>(m_pageBody) : nullptr;
+}
+
+ApplyPage* Shell::applyPage() const {
+    return m_page == PageId::Apply ? dynamic_cast<ApplyPage*>(m_pageBody) : nullptr;
+}
+
+void Shell::updateApplyChrome() {
+    const bool running = m_apply->running();
+    m_status->cta().setOverride(running ? m_strings.get(Str::ApplyStop) : std::wstring());
+    if (m_page != PageId::Apply) {
+        return;
+    }
+    const int mode = static_cast<int>(ApplyPage::modeFor(m_state));
+    if (mode != m_applyMode) {
+        // Rebuild later: this may run inside a click on a header button of the page being replaced.
+        m_applyMode = mode;
+        m_services.postToUi([this, alive = std::weak_ptr<bool>(m_alive)] {
+            if (const auto a = alive.lock(); a && *a && m_page == PageId::Apply) {
+                showPage(PageId::Apply);
+            }
+        });
+    } else if (auto* page = applyPage()) {
+        const auto [title, description] = page->header();
+        m_pageView->setHeader(title, description);
+    }
+}
+
+void Shell::requestApply() {
+    if (!m_apply->canStart()) {
+        return;
+    }
+    if (!m_apply->highRisk().empty()) {
+        showApplyConfirm();
+        return;
+    }
+    m_apply->start();
+}
+
+void Shell::showApplyConfirm() {
+    if (!host() || !m_apply->canStart()) {
+        return;
+    }
+    std::vector<RiskConfirm::Item> items;
+    for (const auto& op : m_apply->highRisk()) {
+        items.push_back({ApplyPage::displayName(m_state, op),
+                         op.sizeDelta < 0 ? formatBytes(static_cast<std::uint64_t>(-op.sizeDelta), m_language)
+                                          : std::wstring()});
+    }
+    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::ApplyConfirmTitle), m_strings.get(Str::ApplyConfirmBody),
+                                               ui::icons::Icon::ErrorOctagon, ui::tokens::Color::StatusError);
+    ui::Dialog* raw = dialog.get();
+    const std::size_t count = items.size();
+    auto& content = raw->setContent<RiskConfirm>(RiskConfirm::heightFor(count), std::move(items),
+                                                 m_strings.get(Str::ApplyConfirmAck));
+    raw->onCancel = [this, raw] { host()->popModal(raw); };
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
+    ui::Button& go = raw->addButton(ui::ButtonKind::Danger, m_strings.get(Str::ApplyConfirmGo),
+                                    [this, raw] {
+                                        host()->popModal(raw);
+                                        m_apply->start();
+                                    },
+                                    /*primary=*/true);
+    go.setEnabled(false);
+    content.onAck = [&go](bool on) { go.setEnabled(on); };
+    pushDialog(std::move(dialog));
+}
+
+void Shell::savePreset(const core::ops::ChangeSet& changes) {
+    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+    const auto target = ui::pickSaveFile(owner, m_strings.get(Str::ApplyPresetTitle),
+                                         {{m_strings.get(Str::ApplyPresetFiles), L"*.wlpreset;*.json"}},
+                                         L"WinLove.wlpreset", L"wlpreset");
+    if (!target) {
+        return;
+    }
+    std::ofstream out(*target, std::ios::binary | std::ios::trunc);
+    const std::string json = changes.toJson();
+    out.write(json.data(), static_cast<std::streamsize>(json.size()));
+    showToast(out ? ui::InfoKind::Success : ui::InfoKind::Error,
+              m_strings.get(out ? Str::ApplyPresetSaved : Str::ApplySaveFailed), target->wstring());
+}
+
+void Shell::saveApplyLog() {
+    const auto& run = m_state.applyRun();
+    const auto buffer = m_state.logBuffer();
+    if (!run || !buffer) {
+        return;
+    }
+    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+    const auto target = ui::pickSaveFile(owner, m_strings.get(Str::ApplySaveLog),
+                                         {{m_strings.get(Str::LogsLogFiles), L"*.log;*.txt"}}, L"WinLove-apply.log", L"log");
+    if (!target) {
+        return;
+    }
+    std::uint64_t version = run->logVersion;
+    std::wstring text;
+    for (const auto& e : buffer->since(version)) {
+        text += log::formatLine(e) + L"\r\n";
+    }
+    std::ofstream out(*target, std::ios::binary | std::ios::trunc);
+    const std::string bytes = utf8::fromWide(text);
+    out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    showToast(out ? ui::InfoKind::Success : ui::InfoKind::Error,
+              m_strings.get(out ? Str::ApplyLogSaved : Str::ApplySaveFailed), target->wstring());
 }
 
 bool Shell::inspectorVisible() const {
@@ -153,6 +280,7 @@ void Shell::updateQueue() {
     m_status->cta().setQueue(static_cast<int>(changes.size()));
     const auto featureOps = static_cast<int>(m_features->queuedCount());
     m_nav->setBadge(PageId::Features, featureOps);
+    m_nav->setBadge(PageId::Apply, static_cast<int>(changes.size()));
     if (m_actionReset) {
         m_actionReset->setEnabled(featureOps > 0);
     }
@@ -172,7 +300,10 @@ void Shell::updateStatus() {
     } else {
         m_status->setMount(std::nullopt, L"");
     }
-    if (const auto& op = m_state.operation()) {
+    const auto& run = m_state.applyRun();
+    if (run && run->stage != AppState::ApplyRun::Stage::Done) {
+        m_status->setTask(m_strings.get(Str::StatusApplying), static_cast<float>(run->fraction));
+    } else if (const auto& op = m_state.operation()) {
         const Str label = op->kind == EngineOperation::Kind::Mounting ? Str::StatusMounting : Str::StatusScanning;
         m_status->setTask(m_strings.get(label), static_cast<float>(op->fraction));
     } else {
@@ -209,7 +340,7 @@ void Shell::updateImagesChrome() {
 }
 
 void Shell::showPage(PageId page) {
-    if (m_page == PageId::Logs && page != PageId::Logs && m_services.stopTimer) {
+    if ((m_page == PageId::Logs || m_page == PageId::Apply) && page != m_page && m_services.stopTimer) {
         m_services.stopTimer(kLogTimer);
     }
     m_page = page;
@@ -275,6 +406,43 @@ void Shell::showPage(PageId page) {
             m_actionReset->onInvoke = [this] { m_features->resetChanges(); };
             m_pageBody = &m_pageView->setBody<FeaturesPage>(m_state, *m_features, m_strings, m_language,
                                                             [this] { showPage(PageId::Images); });
+        } else if (page == PageId::Apply) {
+            const auto mode = ApplyPage::modeFor(m_state);
+            m_applyMode = static_cast<int>(mode);
+            if (mode == ApplyPage::Mode::Summary) {
+                m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ApplySaveAsPreset),
+                                      ui::icons::Icon::PresetBookmark)
+                    .onInvoke = [this] { savePreset(m_state.changes()); };
+                m_pageView->addAction(ui::ButtonKind::Primary,
+                                      m_strings.format(Str::ApplyApplyN, {{L"n", std::to_wstring(m_state.changes().size())}}),
+                                      ui::icons::Icon::ApplyPlay)
+                    .onInvoke = [this] { requestApply(); };
+            } else if (mode == ApplyPage::Mode::Running) {
+                m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ApplyStop), ui::icons::Icon::Stop)
+                    .onInvoke = [this] { m_apply->cancel(); };
+            } else if (mode == ApplyPage::Mode::Done) {
+                m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ApplySaveLog), ui::icons::Icon::Save)
+                    .onInvoke = [this] { saveApplyLog(); };
+                m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ApplySaveToPreset),
+                                      ui::icons::Icon::PresetBookmark)
+                    .onInvoke = [this] {
+                        if (const auto& run = m_state.applyRun()) {
+                            savePreset(run->changes);
+                        }
+                    };
+                m_pageView->addAction(ui::ButtonKind::Primary, m_strings.get(Str::NavIso), ui::icons::Icon::IsoBuild)
+                    .onInvoke = [this] { showPage(PageId::Iso); };
+            }
+            auto& body = m_pageView->setBody<ApplyPage>(
+                m_state, *m_apply, m_strings, m_language,
+                ApplyPage::Intents{[this] { showApplyConfirm(); }, [this] { showPage(PageId::Images); },
+                                   [this] { showPage(PageId::Features); }});
+            m_pageBody = &body;
+            const auto [applyTitle, applyDescription] = body.header();
+            m_pageView->setHeader(applyTitle, applyDescription);
+            if (mode == ApplyPage::Mode::Running && m_services.startTimer) {
+                m_services.startTimer(kLogTimer, 250);
+            }
         } else if (page == PageId::Logs) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::LogsClear)).onInvoke = [this] {
                 if (auto* logs = logsPage()) {
@@ -320,6 +488,11 @@ void Shell::onTimer(UINT id) {
     if (id == kLogTimer) {
         if (auto* logs = logsPage()) {
             logs->poll();
+        }
+        if (auto* apply = applyPage()) {
+            apply->poll();
+            const auto [title, description] = apply->header(); // live ETA
+            m_pageView->setHeader(title, description);
         }
         return;
     }

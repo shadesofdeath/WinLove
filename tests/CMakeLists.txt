@@ -12,6 +12,7 @@ add_executable(wl_tests
     ui/IconsTests.cpp
     ui/RenderTests.cpp
     ui/WidgetTests.cpp
+    app/ApplyTests.cpp
     app/FeatureTests.cpp
     app/LocalizationTests.cpp
     app/SourceTests.cpp)
