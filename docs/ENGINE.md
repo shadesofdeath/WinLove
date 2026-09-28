@@ -52,17 +52,24 @@ namespace wl::image {
 ## 4. wlcli (motor test aracı)
 UI'dan bağımsız; her motor yeteneği önce buraya komut olarak eklenir.
 ```
-wlcli info <iso|wim|esd>                 # sürümleri listele (admin gerekmez)
-wlcli extract <iso> <dir>                # ISO içeriğini çıkar
+# Var olanlar (admin gerekmez)
+wlcli info <iso|wim|esd|swm> [--json]         # sürümler: ISO'yu yerinde okur (UDF + WIM XML)
+wlcli ls <iso> [dir] [--json]                 # ISO içinde dizin listesi
+wlcli extract <iso> <path-in-iso> <dest>      # ISO'dan dosya çıkar (Ctrl+C iptal, .partial temizlenir)
+wlcli plan <changeset.json>                   # ApplyPlan'ı yazdır
+wlcli elevated
+# Var olanlar (admin)
+wlcli mount <wim> <index> <dir> [--readonly]
+wlcli unmount <dir> --commit|--discard
+wlcli mounts [--json] | cleanup
+wlcli packages|features|capabilities <dir> [--json]
+wlcli apply <changeset.json> <dir> [--skip-errors]
+# Planlanan
 wlcli export <wim> <index> <dst> [--compress=max|fast|none|recovery]
-wlcli mount <wim> <index> <dir>          # admin
-wlcli unmount <dir> --commit|--discard   # admin
-wlcli mounts | cleanup                   # admin
-wlcli packages|features|capabilities|appx|drivers <dir> [--json]
-wlcli plan <changeset.json> <dir>        # ApplyPlan'ı yazdır (çalıştırmadan)
-wlcli apply <changeset.json> <dir>       # admin
+wlcli appx|drivers <dir>
 wlcli iso <dir> <out.iso>
 ```
+Örnek change set: `tests/integration/fixtures/sample-changeset.json`. Yönetici duman testi: `tools/dism_smoke.ps1` → `C:\WinLoveLab\out\dism-smoke.json`.
 Her komut `--json` çıktı verebilir → integration testleri ve AI bunu ayrıştırır.
 
 ## 5. Saha notları (öğrendikçe EKLE — AI oturumları buraya yazar)

@@ -6,8 +6,11 @@ add_library(wl_core STATIC
     image/WimFile.cpp
     image/dism/Dism.cpp
     io/ByteSource.cpp
+    ops/Applier.cpp
+    ops/ChangeSet.cpp
+    ops/Planner.cpp
     system/Privileges.cpp
     tasks/Task.cpp
     tasks/TaskRunner.cpp)
 wl_configure_target(wl_core)
-target_link_libraries(wl_core PUBLIC wl_base PRIVATE wl_pugixml advapi32 shell32 ole32)
+target_link_libraries(wl_core PUBLIC wl_base PRIVATE wl_pugixml wl_json advapi32 shell32 ole32)

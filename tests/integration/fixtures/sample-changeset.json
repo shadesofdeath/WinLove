@@ -1,0 +1,10 @@
+{
+  "format": "winlove.changeset",
+  "version": 1,
+  "operations": [
+    { "kind": "setServiceStart", "target": "DiagTrack", "value": "disabled", "risk": "medium" },
+    { "kind": "disableFeature", "target": "Printing-XPSServices-Features", "risk": "low" },
+    { "kind": "removeCapability", "target": "App.StepsRecorder~~~~0.0.1.0", "risk": "low", "sizeDelta": -2097152 },
+    { "kind": "disableFeature", "target": "WorkFolders-Client", "risk": "low" }
+  ]
+}

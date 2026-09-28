@@ -3,34 +3,35 @@
 > Her oturumun sonunda güncellenir. En üstte güncel durum; geçmiş en altta kısa satırlar.
 
 ## Güncel
-- **Faz:** 1 (UI çatısı) ✅ → Faz 2 (motor temeli) başlıyor.
-- **Aktif iş:** Faz 2.1: `Log`, `TaskRunner`, `CancelToken`, `Progress`, UI dispatcher.
-- **Bir sonraki somut adım:** `src/core/base/Log` (dosya + bellek halka tamponu + stdout), ardından `core/tasks/TaskRunner` (tek motor thread'i) ve UI'a sonuç taşıyan dispatcher (`WM_APP`). Sonra 2.2 (yetki) → 2.3 (WIM okuma, `wlcli info`).
-- **Build:** `./build.ps1 -Test` yeşil: 32 test / 1652 assertion (widget davranışı + render + token + metin).
-- **Kullanıcı kontrolü (elle, tek seferlik):** `build\x64-debug\bin\WinLove.exe` →
-  1. Maximize butonunun üstünde beklet → Windows 11 Snap Layouts açılmalı.
-  2. Başlıktan sürükle / çift tıkla / kenarlardan boyutlandır. 1200'ün altına daraltınca menü 44'e inmeli.
-  3. Menüde gezin (tık, Tab ile menüye gir, ↑↓, Enter). Ctrl+B daralt/aç, Ctrl+1…9, Ctrl+Shift+T tema, Ctrl+Shift+G galeri.
-  4. Butonlarda hover/basma geçişleri (galeri), küçült/kapat tooltip'leri, daraltılmış menüde tooltip.
+- **Faz:** 2 (motor temeli) ✅ → Faz 3 başlıyor: **P01 Kaynak sayfası**.
+- **Aktif iş:** yok.
+- **Bir sonraki somut adım:** `docs/pages/01-source.md` spec'i (`_TEMPLATE.md`'den; tasarım 01, s1, s4). Sonra:
+  - motor: `openSource` + son kullanılanlar listesi (`%LOCALAPPDATA%\\WinLove\\recent.json`);
+  - widget'lar: DropZone, ScrollView/ScrollBar, basit tablo satırı, Dialog (s4 "yönetici gerekli");
+  - pencere: `IDropTarget`, dosya açma diyaloğu (`IFileOpenDialog`);
+  - sayfa: `app/pages/SourcePage`, kaynak açılınca `AppState`'e yazılır ve İmajlar'a (P02) geçilir.
+- **Build:** `./build.ps1 -Test` yeşil: 47 test / 1773 assertion (gerçek ISO testleri dahil; ISO yoksa atlanır).
+- **Yönetici testi:** `tools/dism_smoke.ps1` 2026-09-28'de geçti (mount 39 s, unmount 90 s, 0 bağlama kaldı).
+- **Kullanıcı kontrolü (elle):** Faz 1 listesi hâlâ geçerli (Snap Layouts, menü, kısayollar). Ek: yönetici terminalinde `build\x64-debug\bin\wlcli.exe mounts` → "no mounted images".
 - **Bilinen sorunlar / açık konular:**
-  - ScrollBar/ScrollView ve Inspector paneli henüz yok; ilk ihtiyaç duyan sayfayla (P01/P02) gelecek.
-  - DComp ve dirty-rect yok (D-011). Tüm kare çiziliyor, animasyon yokken 0 CPU.
-  - UI Automation sağlayıcısı yok (rol/ad bilgisi widget'larda tutuluyor; Faz 4).
-  - F6 ile bölgeler arası atlama ve Alt+Space özel yönlendirmesi yok.
-  - Section stilinde büyük harf Türkçe'ye duyarlı değil (i→İ).
-  - Claude Code terminali admin değil → mount/apply testleri kullanıcının yönetici terminalinde.
+  - ScrollBar/ScrollView, Inspector, Dialog, DropZone yok → P01/P02 ile.
+  - AppX (provisioned), sürücü, güncelleme, registry, servis işlemleri Applier'da `Unsupported` → ilgili sayfalarla.
+  - Tek index'lik "golden" WIM yok; testler 6 index'lik install.wim'i salt okunur bağlıyor.
+  - DComp/dirty-rect (D-011), UIA (Faz 4), F6, Türkçe büyük harf.
 
-## Faz 1 özeti
-- Pencere: özel başlık, Snap Layouts için HT* bölgeleri, DPI v2, DWM çerçeve renkleri, zamanlayıcı/imleç/ayar değişikliği.
-- Render: D3D11 (+WARP) / D2D, swapchain + offscreen PNG, Canvas (Ink renk karışımı, piksel hizalı 1px, gölge efekti, opaklık katmanı), SVG path → geometri, gömülü fontlar.
-- Widget sistemi: Widget/Host/Stack/Tween; widget'lar: Button, Label, Kbd, Splitter, EmptyState.
-- Kabuk: TitleBar, NavRail, StatusBar, PageView, sayfa kataloğu, galeri, kısayollar.
-- Doğrulama: `--render` + durum simülasyonu, `compare_design.py`, `capture_window.py`.
+## Faz 2 özeti
+- `base/Log` (dosya/halka/stdout), `core/tasks` (tek motor thread'i, iptal + Win32 event, ilerleme), `Window::post`.
+- **Kendi okuyucularımız:** `UdfImage` + `WimFile` → ISO'yu bağlamadan, yönetici olmadan sürüm listesi (72 ms); wimgapi.dll ile doğrulandı.
+- **DISM:** ADK'sız, `dismapi.dll` çalışma anında (D-017); mount/unmount/mounts/cleanup + packages/features/capabilities + feature aç/kapat, paket/capability kaldır.
+- **Değişiklik modeli:** ChangeSet (undo/redo, JSON preset), Planner, Applier.
+- `wlcli`: info, ls, extract, plan, mount, unmount, mounts, cleanup, packages, features, capabilities, apply.
+- Laboratuvar: `C:\\WinLoveLab` (install.wim kopyası), `tools/lab_setup.ps1`, `tools/dism_smoke.ps1`.
 
 ## Ortam doğrulaması (2026-09-28)
-VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Tools, dismapi.dll 10.0.26100, Python 3.14 (fonttools, pillow, playwright; tarayıcı: Playwright Chromium / Chrome), Git. CMake yalnızca VS içinde (PATH'te değil). C: ~330 GB boş. Ana ekran 144 DPI (%150). PowerShell betik politikası kısıtlı (`-ExecutionPolicy Bypass` gerekir).
+VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Tools (dismapi.h burada; build'de kullanılmıyor), dismapi.dll 10.0.26100, Python 3.14 (fonttools, pillow, playwright), Git. CMake yalnızca VS içinde. C: ~323 GB boş (lab ~7 GB). Ana ekran 144 DPI. PowerShell betik politikası kısıtlı (`-ExecutionPolicy Bypass`). UAC istemiyle yönetici betiği çalıştırılabiliyor (`Start-Process -Verb RunAs`).
 
 ## Geçmiş
+- 2026-09-28 — Faz 2 tamamlandı: log/görevler/yetki, UDF+WIM okuyucular, DISM backend (gerçek imajda test), ChangeSet/Planner/Applier.
 - 2026-09-28 — Faz 1 tamamlandı: widget sistemi, temel widget'lar, uygulama kabuğu, galeri, otomatik daralma.
 - 2026-09-28 — Faz 1.1–1.3 + 1.5: ilk pencere, özel başlık çubuğu, render altyapısı, görsel doğrulama araçları.
 - 2026-09-28 — Faz 0 tamamlandı (iskelet, build, üreticiler, fontlar, marka, testler).

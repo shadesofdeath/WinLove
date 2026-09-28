@@ -31,7 +31,7 @@ Durum simgeleri: ⬜ başlamadı · 🟨 sürüyor · ✅ bitti (kullanıcı ona
 | 2.2 | `core/system/Privileges`: isElevated, enablePrivilege, relaunchElevated (UAC runas) | ✅ |
 | 2.3 | **Kendi okuyucularımız:** `UdfImage` (ISO, bağlamasız), `WimFile` (başlık + XML), `openSource`; `wlcli info/ls/extract`. wimgapi.dll ile çapraz doğrulandı (D-018) | ✅ |
 | 2.4 | `core/image/dism`: kendi DISM bildirimleri + dinamik yükleme (D-017), mount/unmount/mounts/cleanup, session: packages/features/capabilities; `wlcli` komutları; `tools/dism_smoke.ps1` gerçek imajda geçti. `mounts.json` yerine DISM'in kendi bağlama listesi kullanılıyor | ✅ |
-| 2.5 | `ops`: Operation, ChangeSet (undo/redo, JSON), Planner iskeleti, Applier iskeleti | ⬜ |
+| 2.5 | `core/ops`: Operation (değer tipi, D-019), ChangeSet (slot başına tek işlem, ters işlem iptali, undo/redo, JSON preset), Planner (faz sırası), Applier (DISM: feature aç/kapat, paket/capability kaldır; diğerleri `Unsupported`); `wlcli plan/apply` | ✅ |
 | 2.6 | `tools/lab_setup.ps1` (C:\WinLoveLab + install.wim çıkarımı), `tools/dism_smoke.ps1` (yönetici), ISO testleri birim testlerinde (ISO yoksa atlanır). Tek index'lik golden WIM henüz yok | ✅ |
 
 ## Faz 3 — Sayfalar (sırayla, her biri tam döngü: `WORKFLOW.md` §2)

@@ -81,6 +81,12 @@ public:
     [[nodiscard]] Result<std::vector<FeatureEntry>> features();
     [[nodiscard]] Result<std::vector<CapabilityEntry>> capabilities();
 
+    // Servicing mutations — called by ops::Applier only (never directly from UI code).
+    [[nodiscard]] Result<void> disableFeature(const std::wstring& name, const TaskContext& task);
+    [[nodiscard]] Result<void> enableFeature(const std::wstring& name, const TaskContext& task);
+    [[nodiscard]] Result<void> removePackage(const std::wstring& name, const TaskContext& task);
+    [[nodiscard]] Result<void> removeCapability(const std::wstring& name, const TaskContext& task);
+
 private:
     friend class Dism;
     DismSession(Dism& dism, unsigned session, std::filesystem::path path)
