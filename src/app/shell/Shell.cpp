@@ -6,6 +6,7 @@
 #include "app/pages/FeaturesPage.h"
 #include "app/pages/apply/RiskConfirm.h"
 #include "app/pages/ImagesPage.h"
+#include "app/pages/IsoPage.h"
 #include "app/pages/LogsPage.h"
 #include "app/pages/SourcePage.h"
 #include "app/pages/images/ImageInspector.h"
@@ -18,6 +19,8 @@
 #include "ui/widget/Host.h"
 #include "ui/widgets/Dialog.h"
 #include "ui/widgets/EmptyState.h"
+
+#include <shellapi.h>
 
 #include <cmath>
 #include <format>
@@ -77,6 +80,22 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     };
 
     m_features = std::make_unique<FeatureController>(m_state, m_services.postToUi);
+    m_iso = std::make_unique<IsoController>(m_state, IsoController::Events{
+        m_services.postToUi,
+        [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::IsoFailed), e.message); },
+        [this](const core::IsoResult& result, const std::filesystem::path& output, bool openFolder) {
+            showToast(ui::InfoKind::Success, m_strings.get(Str::IsoDone),
+                      output.filename().wstring() + L" \u00b7 " + formatBytes(result.bytes, m_language));
+            if (openFolder) {
+                const std::wstring args = L"/select,\"" + output.wstring() + L"\"";
+                ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+            }
+            // A repack rewrote the setup folder: re-read sizes when it is the open source.
+            if (const auto& source = m_state.source(); source && source->format == core::ImageFormat::Folder) {
+                openSource(source->path);
+            }
+        },
+    });
     m_apply = std::make_unique<ApplyController>(m_state, ApplyController::Events{
         m_services.postToUi,
         [this](core::SourceInfo source) {
@@ -113,6 +132,10 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
             change == AppState::Change::Mount) {
             updateApplyChrome();
         }
+        if (change == AppState::Change::Iso || change == AppState::Change::Mount ||
+            change == AppState::Change::Operation || change == AppState::Change::Source) {
+            updateIsoChrome();
+        }
         if (change != AppState::Change::Recent) {
             updateBreadcrumb();
             updateImagesChrome();
@@ -146,6 +169,33 @@ FeaturesPage* Shell::featuresPage() const {
 
 ApplyPage* Shell::applyPage() const {
     return m_page == PageId::Apply ? dynamic_cast<ApplyPage*>(m_pageBody) : nullptr;
+}
+
+IsoPage* Shell::isoPage() const {
+    return m_page == PageId::Iso ? dynamic_cast<IsoPage*>(m_pageBody) : nullptr;
+}
+
+void Shell::updateIsoChrome() {
+    if (!m_actionIso) {
+        return;
+    }
+    const bool running = m_iso->running();
+    m_actionIso->setText(m_strings.get(running ? Str::IsoCancel : Str::IsoBuild));
+    const auto* page = isoPage();
+    m_actionIso->setEnabled(running || (!m_iso->blocker() && page && page->formValid()));
+    if (m_pageView) {
+        m_pageView->layout();
+    }
+}
+
+void Shell::startIso() {
+    auto* page = isoPage();
+    if (!page || m_iso->blocker() || !page->formValid()) {
+        return;
+    }
+    const auto request = page->request();
+    m_state.setIsoFolder(request.output.parent_path());
+    m_iso->start(request);
 }
 
 void Shell::updateApplyChrome() {
@@ -301,8 +351,11 @@ void Shell::updateStatus() {
         m_status->setMount(std::nullopt, L"");
     }
     const auto& run = m_state.applyRun();
+    const auto& iso = m_state.isoRun();
     if (run && run->stage != AppState::ApplyRun::Stage::Done) {
         m_status->setTask(m_strings.get(Str::StatusApplying), static_cast<float>(run->fraction));
+    } else if (iso && iso->running) {
+        m_status->setTask(m_strings.get(Str::StatusBuilding), static_cast<float>(iso->fraction));
     } else if (const auto& op = m_state.operation()) {
         const Str label = op->kind == EngineOperation::Kind::Mounting ? Str::StatusMounting : Str::StatusScanning;
         m_status->setTask(m_strings.get(label), static_cast<float>(op->fraction));
@@ -358,6 +411,7 @@ void Shell::showPage(PageId page) {
     }
     m_actionMount = m_actionExport = m_actionEsd = nullptr;
     m_actionReset = nullptr;
+    m_actionIso = nullptr;
 
     if (page == PageId::Gallery) {
         m_pageView = &add<PageView>(L"Widget gallery", L"Faz 1.8 — every widget in every state (dev only).");
@@ -443,6 +497,26 @@ void Shell::showPage(PageId page) {
             if (mode == ApplyPage::Mode::Running && m_services.startTimer) {
                 m_services.startTimer(kLogTimer, 250);
             }
+        } else if (page == PageId::Iso) {
+            m_actionIso = &m_pageView->addAction(ui::ButtonKind::Primary, m_strings.get(Str::IsoBuild), ui::icons::Icon::IsoBuild);
+            m_actionIso->onInvoke = [this] {
+                if (m_iso->running()) {
+                    m_iso->cancel();
+                } else {
+                    startIso();
+                }
+            };
+            m_pageBody = &m_pageView->setBody<IsoPage>(
+                m_state, *m_iso, m_strings, m_language,
+                IsoPage::Intents{[this]() -> std::optional<std::filesystem::path> {
+                                     const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+                                     return ui::pickFolder(owner, m_strings.get(Str::IsoFolder));
+                                 },
+                                 [](const std::filesystem::path& file) {
+                                     const std::wstring args = L"/select,\"" + file.wstring() + L"\"";
+                                     ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+                                 },
+                                 [this] { showPage(PageId::Source); }, m_services.postToUi});
         } else if (page == PageId::Logs) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::LogsClear)).onInvoke = [this] {
                 if (auto* logs = logsPage()) {
@@ -468,6 +542,7 @@ void Shell::showPage(PageId page) {
     }
     bringToFront(m_toast);
     updateQueue();
+    updateIsoChrome();
     updateBreadcrumb();
     updateImagesChrome();
     layout();

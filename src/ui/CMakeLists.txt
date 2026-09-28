@@ -31,6 +31,7 @@ add_library(wl_ui STATIC
     widgets/ScrollBar.cpp
     widgets/SearchBox.cpp
     widgets/Splitter.cpp
+    widgets/TabBar.cpp
     widgets/TableView.cpp
     widgets/Toast.cpp
     widgets/Toggle.cpp)

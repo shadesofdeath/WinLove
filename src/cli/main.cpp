@@ -8,6 +8,7 @@
 #include "core/image/dism/Dism.h"
 #include "core/image/dism/MountHealth.h"
 #include "core/image/dism/OptionalFeatures.h"
+#include "core/iso/IsoBuilder.h"
 #include "core/ops/ApplyJob.h"
 #include "core/image/wim/WimGapi.h"
 #include "core/ops/Applier.h"
@@ -451,6 +452,29 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
     return report.completed && report.failures() == 0 && !job->commitError ? 0 : 3;
 }
 
+// P06: bootable ISO from a setup folder (IMAPI2FS, no admin).
+int cmdIso(const std::wstring& folder, const std::wstring& output, const std::wstring& label, const std::wstring& boot,
+           bool sha, bool noPrompt) {
+    core::IsoOptions options;
+    options.sourceFolder = folder;
+    options.output = output;
+    options.volumeLabel = label;
+    options.boot = boot == L"uefi" ? core::BootMode::UefiOnly
+                   : boot == L"bios" ? core::BootMode::BiosOnly
+                                     : core::BootMode::UefiAndBios;
+    options.writeSha256 = sha;
+    options.noPrompt = noPrompt;
+    const auto task = progressTask(L"iso");
+    auto result = core::buildIso(options, task);
+    print(L"\n");
+    if (!result) {
+        return reportError(result.error());
+    }
+    print(std::format(L"  {} ({} bytes){}\n", output, result->bytes,
+                      result->sha256.empty() ? std::wstring() : L"\n  sha256 " + result->sha256));
+    return 0;
+}
+
 int cmdExport(const std::wstring& source, const std::wstring& index, const std::wstring& destination,
               const std::wstring& compression) {
     core::WimCompression c = core::WimCompression::Lzx;
@@ -504,6 +528,7 @@ void printUsage() {
           L"  wlcli unmount <dir> --commit|--discard\n"
           L"  wlcli mounts | cleanup\n"
           L"  wlcli packages|features|capabilities <mountdir>\n"
+          L"  wlcli iso <setup-folder> <out.iso> [--label=X] [--boot=both|uefi|bios] [--sha256] [--no-prompt]\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
           L"  wlcli apply <changeset.json> <mountdir> [--commit] [--source=<sources\\sxs>]\n"
           L"\n  Change sets (no admin):\n"
@@ -526,12 +551,24 @@ int wmain(int argc, wchar_t** argv) {
     int commit = -1;
     std::wstring compress;
     std::wstring source;
+    std::wstring label;
+    std::wstring boot;
+    bool sha = false;
+    bool noPrompt = false;
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
             asJson = true;
         } else if (a.starts_with(L"--compress=")) {
             compress = std::wstring(a.substr(11));
+        } else if (a.starts_with(L"--label=")) {
+            label = std::wstring(a.substr(8));
+        } else if (a.starts_with(L"--boot=")) {
+            boot = std::wstring(a.substr(7));
+        } else if (a == L"--sha256") {
+            sha = true;
+        } else if (a == L"--no-prompt") {
+            noPrompt = true;
         } else if (a.starts_with(L"--source=")) {
             source = std::wstring(a.substr(9));
         } else if (a == L"--skip-errors") {
@@ -595,6 +632,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"repair" && args.size() == 2) {
         return cmdRepair(args[1]);
+    }
+    if (command == L"iso" && args.size() == 3) {
+        return cmdIso(args[1], args[2], label, boot, sha, noPrompt);
     }
     if (command == L"optional-features" && args.size() == 2) {
         return cmdOptionalFeatures(args[1], asJson);

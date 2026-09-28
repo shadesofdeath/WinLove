@@ -14,6 +14,8 @@ namespace wl::ui {
 class SearchBox : public Widget {
 public:
     SearchBox(std::wstring placeholder, std::vector<std::wstring> hintKeys = {});
+    // Plain TextBox (textbox.md): no search icon, no clear button, no keycap hint.
+    void setPlain(bool plain) noexcept { m_plain = plain; }
 
     std::function<void(const std::wstring&)> onChange;
     std::function<void()> onSubmit; // Enter
@@ -52,6 +54,7 @@ private:
     float m_scroll = 0; // horizontal text scroll so the caret stays visible
     float m_width = 240.0f;
     bool m_dragging = false;
+    bool m_plain = false;
 };
 
 } // namespace wl::ui

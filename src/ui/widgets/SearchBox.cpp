@@ -44,8 +44,8 @@ SizeF SearchBox::measure(SizeF /*available*/) {
 
 RectF SearchBox::textRect() const {
     const RectF b = bounds();
-    const float left = b.x + kPadding + tokens::size::icon + kIconGap;
-    const float right = b.right() - kPadding - (m_text.empty() ? 0.0f : kClearSize + 4);
+    const float left = b.x + kPadding + (m_plain ? 0.0f : tokens::size::icon + kIconGap);
+    const float right = b.right() - kPadding - (m_text.empty() || m_plain ? 0.0f : kClearSize + 4);
     return {left, b.y, std::max(right - left, 0.0f), b.height};
 }
 
@@ -112,7 +112,7 @@ void SearchBox::moveCaret(std::size_t to, bool extend) {
 }
 
 void SearchBox::onPointerDown(PointF p) {
-    if (!m_text.empty() && clearRect().contains(p)) {
+    if (!m_plain && !m_text.empty() && clearRect().contains(p)) {
         setText({});
         if (onChange) {
             onChange(m_text);
@@ -244,8 +244,10 @@ void SearchBox::paint(Canvas& canvas) {
     const Color border = focused() ? Color::AccentBase : hovered() ? Color::TextTertiary : Color::LineStrong;
     canvas.fillRoundRect(b, tokens::radius::r2, Color::BgInput);
     canvas.strokeRoundRect(b, tokens::radius::r2, border);
-    canvas.drawIcon(icons::Icon::Search, {b.x + kPadding, b.y + (b.height - tokens::size::icon) / 2},
-                    Color::TextTertiary);
+    if (!m_plain) {
+        canvas.drawIcon(icons::Icon::Search, {b.x + kPadding, b.y + (b.height - tokens::size::icon) / 2},
+                        Color::TextTertiary);
+    }
 
     const RectF area = textRect();
     if (m_text.empty()) {
@@ -253,7 +255,7 @@ void SearchBox::paint(Canvas& canvas) {
         if (!m_hintKeys.empty() && !focused()) {
             Kbd::paintKeys(canvas, m_hintKeys, b.right() - kPadding, b.y + b.height / 2);
         }
-    } else {
+    } else if (!m_plain) {
         canvas.drawIcon(icons::Icon::Close, {clearRect().x, clearRect().y}, Color::TextTertiary);
     }
 

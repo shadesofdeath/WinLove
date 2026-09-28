@@ -4,6 +4,7 @@ add_library(wl_app STATIC
     controllers/ApplyController.cpp
     controllers/FeatureController.cpp
     controllers/ImageController.cpp
+    controllers/IsoController.cpp
     Format.cpp
     Localization.cpp
     Resources.cpp
@@ -13,6 +14,7 @@ add_library(wl_app STATIC
     pages/ApplyPage.cpp
     pages/FeaturesPage.cpp
     pages/ImagesPage.cpp
+    pages/IsoPage.cpp
     pages/LogsPage.cpp
     pages/images/EditionTable.cpp
     pages/images/ImageInspector.cpp
