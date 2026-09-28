@@ -49,6 +49,7 @@ const wchar_t* formatName(ImageFormat format) noexcept {
     case ImageFormat::Swm: return L"SWM";
     case ImageFormat::Vhd: return L"VHD";
     case ImageFormat::Vhdx: return L"VHDX";
+    case ImageFormat::Folder: return L"Folder";
     }
     return L"?";
 }

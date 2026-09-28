@@ -118,6 +118,15 @@ void Canvas::drawText(std::wstring_view text, RectF rect, tokens::TypeStyle styl
     m_context->DrawTextLayout({rect.x, rect.y}, layout->Get(), brush(ink), D2D1_DRAW_TEXT_OPTIONS_CLIP);
 }
 
+void Canvas::drawTextWrapped(std::wstring_view text, RectF rect, tokens::TypeStyle style, Ink ink, TextAlign align) {
+    auto layout = m_text.wrappedLayout(text, style, rect.width, align);
+    if (!layout) {
+        return;
+    }
+    (*layout)->SetMaxHeight(rect.height);
+    m_context->DrawTextLayout({rect.x, rect.y}, layout->Get(), brush(ink), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+}
+
 void Canvas::drawIcon(icons::Icon icon, PointF topLeft, Ink ink, IconVariant variant, float size) {
     const auto entry = m_icons.get(icon, variant);
     if (!entry.geometry) {

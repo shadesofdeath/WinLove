@@ -2,6 +2,8 @@
 add_library(wl_ui STATIC
     anim/Tween.cpp
     icons/IconCache.cpp
+    platform/DropTarget.cpp
+    platform/FileDialog.cpp
     platform/Window.cpp
     render/Canvas.cpp
     render/Graphics.cpp
@@ -16,11 +18,14 @@ add_library(wl_ui STATIC
     widget/Stack.cpp
     widget/Widget.cpp
     widgets/Button.cpp
+    widgets/Dialog.cpp
+    widgets/DropZone.cpp
     widgets/EmptyState.cpp
+    widgets/InfoBar.cpp
     widgets/Kbd.cpp
     widgets/Label.cpp
     widgets/Splitter.cpp)
 wl_configure_target(wl_ui)
 target_link_libraries(wl_ui
     PUBLIC wl_base d2d1 dwrite d3d11 dxgi windowscodecs dxguid
-    PRIVATE dwmapi)
+    PRIVATE dwmapi ole32 shell32)

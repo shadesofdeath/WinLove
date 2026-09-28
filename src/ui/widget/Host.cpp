@@ -29,6 +29,7 @@ bool isAncestor(const Widget* ancestor, const Widget* widget) {
 
 Host::~Host() {
     // Children unregister in their destructors; make that a no-op while tearing down.
+    m_modals.clear();
     m_root.reset();
 }
 
@@ -48,6 +49,49 @@ void Host::layout(SizeF size) {
     if (m_root) {
         m_root->setBounds({0, 0, size.width, size.height});
     }
+    for (auto& modal : m_modals) {
+        modal.widget->setBounds({0, 0, size.width, size.height});
+    }
+}
+
+Widget* Host::inputRoot() const noexcept {
+    return m_modals.empty() ? m_root.get() : m_modals.back().widget.get();
+}
+
+Widget& Host::pushModal(std::unique_ptr<Widget> modal, Widget* initialFocus) {
+    hideTooltip();
+    setHovered(nullptr);
+    setPressed(nullptr);
+    Widget* previous = m_focused;
+    modal->setHostRecursive(this);
+    modal->setBounds({0, 0, m_size.width, m_size.height});
+    Widget& ref = *modal;
+    m_modals.push_back({std::move(modal), previous});
+    if (initialFocus) {
+        setFocus(initialFocus, /*visible=*/true);
+    } else {
+        std::vector<Widget*> order;
+        collectFocusable(&ref, order);
+        setFocus(order.empty() ? nullptr : order.front(), /*visible=*/true);
+    }
+    requestFrame();
+    return ref;
+}
+
+void Host::popModal(Widget* modal) {
+    const auto it = std::ranges::find_if(m_modals, [modal](const Modal& m) { return m.widget.get() == modal; });
+    if (it == m_modals.end()) {
+        return;
+    }
+    Widget* previous = it->previousFocus;
+    // Move out first: the widget's destructor calls forget(), which must not see it in m_modals.
+    auto dying = std::move(it->widget);
+    m_modals.erase(it);
+    dying.reset();
+    if (previous && previous->canFocus()) {
+        setFocus(previous, m_focusVisible);
+    }
+    requestFrame();
 }
 
 void Host::requestFrame() {
@@ -73,6 +117,9 @@ void Host::forget(Widget* widget) {
     clearIfInside(m_pressed);
     clearIfInside(m_focused);
     clearIfInside(m_lastClickWidget);
+    for (auto& modal : m_modals) {
+        clearIfInside(modal.previousFocus);
+    }
     if (m_tooltipOwner && isAncestor(widget, m_tooltipOwner)) {
         hideTooltip();
     }
@@ -94,6 +141,10 @@ void Host::paint(Canvas& canvas) {
     }
 
     m_root->paintTree(canvas);
+    for (auto& modal : m_modals) {
+        canvas.fillRect({0, 0, m_size.width, m_size.height}, tokens::Color::Scrim);
+        modal.widget->paintTree(canvas);
+    }
 
     if (m_focused && m_focusVisible && m_focused->visible()) {
         const RectF r = m_focused->focusRect();
@@ -114,14 +165,19 @@ HitZone Host::windowZone(PointF p) const {
         return HitZone::Client;
     }
     const Widget* hit = m_root->hitTest(p);
-    return hit ? hit->windowZone() : HitZone::Client;
+    const HitZone zone = hit ? hit->windowZone() : HitZone::Client;
+    if (!m_modals.empty()) {
+        // Modal open: the title bar still drags, caption buttons are inert (the modal owns input).
+        return zone == HitZone::Caption ? HitZone::Caption : HitZone::Client;
+    }
+    return zone;
 }
 
 Cursor Host::cursorAt(PointF p) const {
     if (m_pressed) {
         return m_pressed->cursor(); // keep e.g. the resize cursor while dragging
     }
-    const Widget* hit = m_root ? m_root->hitTest(p) : nullptr;
+    const Widget* hit = inputRoot() ? inputRoot()->hitTest(p) : nullptr;
     return hit && hit->enabled() ? hit->cursor() : Cursor::Arrow;
 }
 
@@ -167,7 +223,7 @@ void Host::onPointer(const PointerEvent& event) {
     if (!m_root) {
         return;
     }
-    Widget* hit = event.action == PointerAction::Leave ? nullptr : m_root->hitTest(event.position);
+    Widget* hit = event.action == PointerAction::Leave ? nullptr : inputRoot()->hitTest(event.position);
     if (hit && !hit->enabled()) {
         hit = nullptr;
     }
@@ -336,7 +392,7 @@ void Host::focusNext(bool reverse) {
         return;
     }
     std::vector<Widget*> order;
-    collectFocusable(m_root.get(), order);
+    collectFocusable(inputRoot(), order);
     if (order.empty()) {
         return;
     }

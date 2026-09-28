@@ -3,6 +3,7 @@
 #include "ui/widget/Host.h"
 #include "ui/widgets/Kbd.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace wl::app {
@@ -172,8 +173,8 @@ TitleBar::TitleBar(const Labels& labels) : m_appName(labels.appName) {
     m_close->setAccessible(ui::AccessRole::Button, labels.close);
 }
 
-void TitleBar::setBreadcrumb(std::wstring text) {
-    m_breadcrumb = std::move(text);
+void TitleBar::setBreadcrumb(std::vector<std::wstring> parts) {
+    m_breadcrumb = std::move(parts);
     invalidate();
 }
 
@@ -212,14 +213,28 @@ void TitleBar::paint(ui::Canvas& canvas) {
     const float nameWidth = std::ceil(canvas.text().measure(m_appName, TypeStyle::BodyStrong));
     canvas.drawText(m_appName, {nameX, b.y, nameWidth + 1, b.height}, TypeStyle::BodyStrong, ink);
 
-    // Breadcrumb after a 1×12 separator (line.strong).
+    // Breadcrumb after a 1×12 separator (line.strong): items text.secondary, last text.primary,
+    // "›" separators text.tertiary with 6px gaps; long items end in an ellipsis (max 180).
     if (!m_breadcrumb.empty()) {
+        constexpr float kCrumbGap = 6.0f;
+        constexpr float kCrumbMax = 180.0f;
         const float sepX = nameX + nameWidth + kSeparatorGap;
         canvas.hairlineV(sepX, b.y + (b.height - 12) / 2, 12, Color::LineStrong);
-        const float crumbX = sepX + kSeparatorGap;
+        float x = sepX + kSeparatorGap;
         const float maxRight = m_palette->bounds().x - kSeparatorGap;
-        canvas.drawText(m_breadcrumb, {crumbX, b.y, std::max(maxRight - crumbX, 0.0f), b.height}, TypeStyle::Body,
-                        m_windowActive ? Color::TextPrimary : Color::TextTertiary);
+        for (std::size_t i = 0; i < m_breadcrumb.size() && x < maxRight; ++i) {
+            const bool last = i + 1 == m_breadcrumb.size();
+            if (i > 0) {
+                const float arrow = std::ceil(canvas.text().measure(L"\u203A", TypeStyle::Body));
+                canvas.drawText(L"\u203A", {x, b.y, arrow + 1, b.height}, TypeStyle::Body, Color::TextTertiary);
+                x += arrow + kCrumbGap;
+            }
+            const float width = std::min({std::ceil(canvas.text().measure(m_breadcrumb[i], TypeStyle::Body)) + 1,
+                                          kCrumbMax, std::max(maxRight - x, 0.0f)});
+            const Color crumbInk = !m_windowActive ? Color::TextTertiary : last ? Color::TextPrimary : Color::TextSecondary;
+            canvas.drawText(m_breadcrumb[i], {x, b.y, width, b.height}, TypeStyle::Body, crumbInk);
+            x += width + kCrumbGap;
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 // Application object: owns graphics, the main window, the widget host and the shell. Two modes:
-//  - windowed (normal run)
+//  - windowed (normal run): `WinLove.exe [source-path]` — a path (ISO/WIM/ESD/SWM/folder) opens
+//    right away (file associations, "Open with", drag onto the exe)
 //  - offscreen: WinLove.exe --render=<file.png> [options] draws one frame without a window,
 //    for visual checks against WinLove-UI-Handoff/04_screens. Options:
 //      --theme=dark|light|hc  --lang=tr|en  --scale=1.5  --size=1440x900
@@ -8,9 +9,14 @@
 //      --nav-collapsed        --maximized (restore glyph)
 //      --hover-at=x,y         --press-at=x,y   --tooltip-at=x,y   (DIPs; simulate the pointer)
 //      --tab=N                (press Tab N times: keyboard focus ring)
+//      --recent-file=<json>   (recent-sources file to show; default %LOCALAPPDATA%\WinLove\recent.json)
+//      --dialog=admin         (open the administrator dialog, s4)
+//      --drag=valid|invalid   (Source page drop zone drag state)
 #include "app/Localization.h"
 #include "app/pages/PageInfo.h"
 #include "app/shell/Shell.h"
+#include "app/state/AppState.h"
+#include "ui/platform/DropTarget.h"
 #include "ui/platform/Window.h"
 #include "ui/render/Graphics.h"
 #include "ui/render/SwapChainTarget.h"
@@ -36,6 +42,10 @@ struct LaunchOptions {
     std::optional<ui::PointF> pressAt;
     std::optional<ui::PointF> tooltipAt;
     int tabPresses = 0;
+    std::optional<std::filesystem::path> recentFile;
+    bool adminDialog = false;
+    std::optional<bool> dragValid;
+    std::optional<std::filesystem::path> openPath; // positional argument
 };
 
 [[nodiscard]] Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args);
@@ -59,6 +69,9 @@ private:
     std::unique_ptr<ui::Graphics> m_graphics;
     std::optional<Localization> m_strings;
     ui::Window m_window;
+    // After m_window: destroyed first, so the engine thread's last posts still find the window.
+    std::unique_ptr<AppState> m_state;
+    ui::DropTarget* m_dropTarget = nullptr;
     std::unique_ptr<ui::SwapChainTarget> m_target;
     std::unique_ptr<ui::Host> m_host;
     Shell* m_shell = nullptr;

@@ -49,6 +49,9 @@ public:
 
     void drawText(std::wstring_view text, RectF rect, tokens::TypeStyle style, Ink ink,
                   TextAlign align = TextAlign::Leading);
+    // Word-wrapped, top-aligned; lines beyond rect.height are clipped.
+    void drawTextWrapped(std::wstring_view text, RectF rect, tokens::TypeStyle style, Ink ink,
+                         TextAlign align = TextAlign::Leading);
     void drawIcon(icons::Icon icon, PointF topLeft, Ink ink, IconVariant variant = IconVariant::Regular16,
                   float size = 0 /* 0 = the variant's grid size */);
 

@@ -4,11 +4,13 @@ add_library(wl_core STATIC
     image/Source.cpp
     image/UdfImage.cpp
     image/WimFile.cpp
+    image/WindowsRelease.cpp
     image/dism/Dism.cpp
     io/ByteSource.cpp
     ops/Applier.cpp
     ops/ChangeSet.cpp
     ops/Planner.cpp
+    system/LiveSystem.cpp
     system/Privileges.cpp
     tasks/Task.cpp
     tasks/TaskRunner.cpp)

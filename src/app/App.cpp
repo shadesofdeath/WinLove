@@ -1,7 +1,9 @@
 #include "app/App.h"
 
+#include "app/Format.h"
 #include "app/Resources.h"
 #include "base/Utf8.h"
+#include "core/system/Privileges.h"
 #include "ui/anim/Tween.h"
 #include "ui/render/Canvas.h"
 #include "ui/render/OffscreenTarget.h"
@@ -126,8 +128,16 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             ok = point(L"--press-at=", options.pressAt);
         } else if (startsWith(a, L"--tooltip-at=")) {
             ok = point(L"--tooltip-at=", options.tooltipAt);
+        } else if (startsWith(a, L"--recent-file=")) {
+            options.recentFile = std::filesystem::path(value(L"--recent-file="));
+        } else if (a == L"--dialog=admin") {
+            options.adminDialog = true;
+        } else if (startsWith(a, L"--drag=")) {
+            options.dragValid = value(L"--drag=") == L"valid";
         } else if (startsWith(a, L"--tab=")) {
             options.tabPresses = static_cast<int>(std::wcstol(std::wstring(value(L"--tab=")).c_str(), nullptr, 10));
+        } else if (!a.starts_with(L"--") && !options.openPath) {
+            options.openPath = std::filesystem::path(a);
         } else {
             return fail(ErrorCode::InvalidArgument, L"unknown argument", arg);
         }
@@ -164,21 +174,41 @@ Result<void> App::initialize() {
         return std::unexpected(strings.error());
     }
     m_strings = std::move(*strings);
+    m_state = std::make_unique<AppState>(m_options.recentFile.value_or(RecentSources::defaultFile()));
     return {};
 }
 
 void App::buildUi(ui::HostServices services) {
     services.text = m_graphics->text.get();
+    m_graphics->text->setLocale(localeName(m_options.language));
     m_host = std::make_unique<ui::Host>(std::move(services));
-    auto shell = std::make_unique<Shell>(*m_strings, Shell::WindowActions{
-        [this] { m_window.minimize(); },
-        [this] { m_window.toggleMaximize(); },
-        [this] { m_window.close(); },
-        [this] {
-            m_options.theme = m_options.theme == ui::ThemeKind::Dark ? ui::ThemeKind::Light : ui::ThemeKind::Dark;
-            applyTheme();
-        },
-    });
+    Shell::Services shellServices;
+    shellServices.minimize = [this] { m_window.minimize(); };
+    shellServices.toggleMaximize = [this] { m_window.toggleMaximize(); };
+    shellServices.close = [this] { m_window.close(); };
+    shellServices.toggleTheme = [this] {
+        m_options.theme = m_options.theme == ui::ThemeKind::Dark ? ui::ThemeKind::Light : ui::ThemeKind::Dark;
+        applyTheme();
+    };
+    shellServices.postToUi = [this](std::function<void()> fn) {
+        if (m_options.renderTo) {
+            fn(); // headless: no message loop
+        } else {
+            m_window.post(std::move(fn));
+        }
+    };
+    shellServices.ownerWindow = [this] { return m_window.hwnd(); };
+    shellServices.relaunchElevated = [this] {
+        const std::wstring page(pageInfo(m_shell ? m_shell->currentPage() : PageId::Source).key.begin(),
+                                pageInfo(m_shell ? m_shell->currentPage() : PageId::Source).key.end());
+        auto relaunched = core::relaunchElevated(L"--page=" + page);
+        if (!relaunched && relaunched.error().code != ErrorCode::Cancelled) {
+            showError(relaunched.error());
+        }
+        return relaunched.has_value();
+    };
+    const Language language = m_options.language;
+    auto shell = std::make_unique<Shell>(*m_strings, language, *m_state, std::move(shellServices));
     m_shell = shell.get();
     m_host->setRoot(std::move(shell));
     if (m_options.page) {
@@ -217,6 +247,12 @@ int App::renderOffscreen() {
     if (m_options.pressAt) {
         pointerAt(*m_options.pressAt);
         m_host->onPointer({ui::PointerAction::Down, *m_options.pressAt, m_host->windowZone(*m_options.pressAt)});
+    }
+    if (m_options.dragValid) {
+        m_shell->dragEnter({*m_options.dragValid ? std::filesystem::path(L"x.iso") : std::filesystem::path(L"x.txt")});
+    }
+    if (m_options.adminDialog) {
+        m_shell->showAdminRequired();
     }
 
     ui::Canvas canvas((*target)->beginDraw(), m_options.theme, m_options.scale, *m_graphics->text, *m_graphics->icons);
@@ -308,8 +344,30 @@ int App::runWindowed() {
     }
     m_target = std::move(*target);
     m_host->layout(m_window.clientSize());
+    m_dropTarget = ui::DropTarget::registerOn(m_window, ui::DropCallbacks{
+        [this](const std::vector<std::filesystem::path>& files, ui::PointF) { return m_shell && m_shell->dragEnter(files); },
+        nullptr,
+        [this] {
+            if (m_shell) {
+                m_shell->dragLeave();
+            }
+        },
+        [this](const std::vector<std::filesystem::path>& files, ui::PointF) {
+            if (m_shell) {
+                m_shell->drop(files);
+            }
+        },
+    });
     m_window.show();
-    return ui::Window::runMessageLoop();
+    if (m_options.openPath) {
+        m_shell->openSource(*m_options.openPath);
+    }
+    const int exitCode = ui::Window::runMessageLoop();
+    if (m_dropTarget) {
+        m_dropTarget->revoke();
+        m_dropTarget = nullptr;
+    }
+    return exitCode;
 }
 
 void App::applyTheme() {

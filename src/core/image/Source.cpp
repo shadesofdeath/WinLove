@@ -16,7 +16,8 @@ constexpr const wchar_t* kInstallCandidates[] = {L"sources/install.wim", L"sourc
 Result<SourceInfo> openSource(const std::filesystem::path& path) {
     SourceInfo info;
     info.path = path;
-    info.format = formatFromPath(path.wstring());
+    std::error_code ec;
+    info.format = std::filesystem::is_directory(path, ec) ? ImageFormat::Folder : formatFromPath(path.wstring());
 
     switch (info.format) {
     case ImageFormat::Iso: {
@@ -64,6 +65,37 @@ Result<SourceInfo> openSource(const std::filesystem::path& path) {
             return std::unexpected(wim.error());
         }
         info.install = std::move(*wim);
+        break;
+    }
+    case ImageFormat::Folder: {
+        // Extracted setup media: <folder>\sources\install.wim|esd|swm
+        std::optional<std::filesystem::path> found;
+        for (const auto* candidate : kInstallCandidates) {
+            const auto file = path / candidate;
+            if (std::filesystem::is_regular_file(file, ec)) {
+                info.installImage = candidate;
+                found = file;
+                break;
+            }
+        }
+        if (!found) {
+            return fail(ErrorCode::NotFound, L"folder has no sources\\install.wim|esd|swm", path.wstring());
+        }
+        auto file = DiskFile::open(*found);
+        if (!file) {
+            return std::unexpected(file.error());
+        }
+        info.installImageSize = (*file)->size();
+        auto wim = readWim(**file);
+        if (!wim) {
+            return std::unexpected(wim.error());
+        }
+        info.install = std::move(*wim);
+        if (auto boot = DiskFile::open(path / L"sources/boot.wim")) {
+            if (auto bootWim = readWim(**boot)) {
+                info.boot = std::move(*bootWim);
+            }
+        }
         break;
     }
     case ImageFormat::Vhd:

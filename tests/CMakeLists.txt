@@ -12,7 +12,8 @@ add_executable(wl_tests
     ui/IconsTests.cpp
     ui/RenderTests.cpp
     ui/WidgetTests.cpp
-    app/LocalizationTests.cpp)
+    app/LocalizationTests.cpp
+    app/SourceTests.cpp)
 wl_configure_target(wl_tests)
 target_include_directories(wl_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(wl_tests PRIVATE WL_SOURCE_DIR=L"${PROJECT_SOURCE_DIR}")

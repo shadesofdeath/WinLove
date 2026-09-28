@@ -8,6 +8,8 @@
 #include "core/image/dism/Dism.h"
 #include "core/ops/Applier.h"
 #include "core/ops/Planner.h"
+#include "core/image/WindowsRelease.h"
+#include "core/system/LiveSystem.h"
 #include "core/system/Privileges.h"
 
 #include <json.hpp>
@@ -127,9 +129,10 @@ int cmdInfo(const std::wstring& path, bool asJson) {
     print(std::format(L"  {}  {}  compression {}{}  {} image(s)\n\n", source->installImage, gib(source->installImageSize),
                       core::compressionName(h.compression), h.solid ? L" (solid)" : L"", h.imageCount));
     for (const auto& image : source->install.images) {
-        print(std::format(L"  {:>2}  {:<42} {:<6} {:<16} {:<6} {}\n", image.index, image.name,
-                          core::architectureName(image.architecture), image.versionString(), image.defaultLanguage,
-                          gib(image.totalBytes)));
+        print(std::format(L"  {:>2}  {:<42} {:<6} {:<26} {:<6} {}\n", image.index, image.name,
+                          core::architectureName(image.architecture),
+                          core::releaseSummary(image.build, image.spBuild, core::architectureName(image.architecture)),
+                          image.defaultLanguage, gib(image.totalBytes)));
     }
     return 0;
 }
@@ -372,6 +375,22 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
     return report.completed && report.failures() == 0 ? 0 : 3;
 }
 
+int cmdLive(bool asJson) {
+    const auto live = core::readLiveSystem();
+    if (asJson) {
+        printJson({{"productName", narrow(live.productName)}, {"displayVersion", narrow(live.displayVersion)},
+                   {"build", live.build}, {"ubr", live.ubr},
+                   {"architecture", narrow(core::architectureName(live.architecture))},
+                   {"systemDrive", narrow(live.systemDrive)}, {"driveFree", live.driveFree},
+                   {"driveTotal", live.driveTotal}, {"elevated", core::isElevated()}});
+        return 0;
+    }
+    print(std::format(L"  {} {} · {}.{} · {}\n  {} {} free / {}\n  elevated: {}\n", live.productName,
+                      live.displayVersion, live.build, live.ubr, core::architectureName(live.architecture),
+                      live.systemDrive, gib(live.driveFree), gib(live.driveTotal), core::isElevated() ? L"yes" : L"no"));
+    return 0;
+}
+
 void printUsage() {
     print(L"wlcli " WL_VERSION_STRING L" - WinLove image engine CLI\n"
           L"\n"
@@ -380,6 +399,7 @@ void printUsage() {
           L"  wlcli ls <iso> [dir] [--json]             List a directory inside an ISO\n"
           L"  wlcli extract <iso> <path-in-iso> <dest>  Copy a file out of an ISO (Ctrl+C cancels)\n"
           L"  wlcli elevated                            Print whether this process is elevated\n"
+          L"  wlcli live [--json]                       The running Windows (Source page card)\n"
           L"\n  Needs an elevated shell (DISM):\n"
           L"  wlcli mount <wim> <index> <dir> [--readonly]\n"
           L"  wlcli unmount <dir> --commit|--discard\n"
@@ -458,6 +478,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if ((command == L"packages" || command == L"features" || command == L"capabilities") && args.size() == 2) {
         return cmdServicing(command, args[1], asJson);
+    }
+    if (command == L"live") {
+        return cmdLive(asJson);
     }
     if (command == L"elevated") {
         print(core::isElevated() ? L"yes\n" : L"no\n");

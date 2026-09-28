@@ -78,6 +78,8 @@ Bileşen adları, açıklamaları, risk seviyeleri, bağımlılıklar, "kaldır�
 | `widget/Stack` | Yatay/dikey yerleşim: `Sizing::fixed/autoSize/fill`, `CrossAlign`, gap, `Insets` |
 | `anim/Tween` | cubic-bezier easing (motion token'ları), Windows "animasyonları göster" kapalıysa anında; `--render` için `forceInstantMotion` |
 | `widgets/*` | Şu an: Button, Label, Kbd, Splitter, EmptyState. Checkbox, Toggle, TextBox, ComboBox, Menu, TreeView (sanal), DataGrid (sanal), InfoBar, Toast, Dialog, Progress, Spinner, LogView, ScrollBar… ihtiyaç duyan ilk sayfayla birlikte yazılır ve galeriye eklenir |
+| `platform/DropTarget`, `platform/FileDialog` | OLE sürükle-bırak (pencere geneli; `OleInitialize` gerekir), sistem dosya/klasör seçicileri |
+| Host modal katmanı | `Host::pushModal/popModal`: scrim, girdi ve odak kapanı, kapanınca odak geri döner; modal açıkken başlık sürüklenir ama caption butonları pasif |
 | `a11y` | UI Automation provider'ları (widget başına rol/ad/durum) |
 
 Render akışı: input → state değişir → `invalidate(rect)` → sonraki `WM_PAINT`/vsync'te yalnızca kirli bölge çizilir → `Present1` dirty rect ile. Animasyon varken kare saati çalışır, yokken uyur (boşta %0 CPU).
@@ -86,7 +88,9 @@ Render akışı: input → state değişir → `invalidate(rect)` → sonraki `W
 
 ## 4. app
 
-- `AppState`: aktif `Source`, seçili index, `Session` durumu, `ChangeSet`, arka plan görevleri. Basit gözlemci (`Signal<>`) ile sayfalara duyurur.
+- `state/AppState`: motor thread'i (`TaskRunner`), açık kaynak (`SourceInfo`), son kullanılanlar (`state/RecentSources`, `%LOCALAPPDATA%\WinLove\recent.json`). `subscribe()` ile sayfalara `Change::Source/Recent` duyurur. Mount/Session/ChangeSet P02/P04 ile eklenecek.
+- Asenkron akış kalıbı (`Shell::openSource`): UI thread'inde `engine().run(work, done)`; `done` motor thread'inde yalnızca `postToUi`'ye devreder (UI nesnesine dokunmaz); UI tarafında `weak_ptr` canlılık kontrolü, sonra `AppState` güncellenir.
+- `Format`: arayüz diline göre sayı/tarih ("6,72 GB", "bugün 14:02", "3 gün önce", "12 Eyl").
 - `Page` arayüzü: `id()`, `title()`, `buildView()`, `onEnter()/onLeave()`, `inspectorContent()`, `commands()` (komut paleti için), `pendingCount()` (nav rozeti).
 - `App` (`app/App.cpp`): Graphics + Window + SwapChainTarget'ı kurar; pencere modu veya `--render` modu. Komut satırı `app/App.h` başında.
 - `Shell` (`app/shell`): kök widget. TitleBar 32 (PaletteTrigger + CaptionButton widget'ları, breadcrumb = sayfa başlığı), NavRail 200/44 (gruplar `pages/PageInfo`'dan, daralma animasyonu, <1200'de otomatik daralma), PageView (başlık + açıklama + gövde), StatusBar 24 (mount segmenti, imaj bağlıyken görünen "Uygula · n" CTA). Uygulama kısayolları `Shell::handleShortcut` (odaktaki widget tüketmezse).
