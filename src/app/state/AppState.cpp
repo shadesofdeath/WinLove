@@ -57,11 +57,13 @@ void AppState::setMounted(std::optional<MountedImage> mounted) {
     if (!sameImage) {
         // Queue and feature list belong to the image that was mounted.
         m_features.reset();
+        m_appx.reset();
         if (!m_changes.empty()) {
             m_changes.clear();
             notify(Change::Queue);
         }
         notify(Change::Features);
+        notify(Change::Components);
     }
     notify(Change::Mount);
 }
@@ -90,6 +92,11 @@ void AppState::unqueueIf(const std::function<bool(const core::ops::Operation&)>&
     if (any) {
         notify(Change::Queue);
     }
+}
+
+void AppState::setAppxList(std::optional<AppxList> list) {
+    m_appx = std::move(list);
+    notify(Change::Components);
 }
 
 void AppState::setIsoFolder(std::filesystem::path folder) {

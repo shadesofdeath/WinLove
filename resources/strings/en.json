@@ -234,7 +234,16 @@
     "reading": "Reading components",
     "defenderCompat": "Cannot be re-added via Windows Update. Not recommended unless a third-party antivirus is planned.",
     "matchesOf": "{m} / {n} matches",
-    "escClears": "Esc clears"
+    "escClears": "Esc clears",
+    "onlySelected": "Only selected",
+    "category": "Category",
+    "itemsN": "{n} items",
+    "results": "{n} results",
+    "readingBody": "DISM is reading the image's provisioned apps and their sizes.",
+    "failedTitle": "Could not read components",
+    "presetLoaded": "{n} changes added to the queue",
+    "presetFailed": "Could not read the preset",
+    "presetNeedsMount": "Mount an edition before loading a preset"
   },
   "features": {
     "title": "Windows Features",

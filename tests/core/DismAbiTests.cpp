@@ -46,6 +46,13 @@ WL_SAME_OFFSET(d::FeatureInfo, restartRequired, DismFeatureInfo, RestartRequired
 WL_SAME_OFFSET(d::FeatureInfo, customProperty, DismFeatureInfo, CustomProperty);
 WL_SAME_OFFSET(d::FeatureInfo, customPropertyCount, DismFeatureInfo, CustomPropertyCount);
 
+WL_SAME_LAYOUT(d::AppxPackage, DismAppxPackage);
+WL_SAME_OFFSET(d::AppxPackage, displayName, DismAppxPackage, DisplayName);
+WL_SAME_OFFSET(d::AppxPackage, majorVersion, DismAppxPackage, MajorVersion);
+WL_SAME_OFFSET(d::AppxPackage, architecture, DismAppxPackage, Architecture);
+WL_SAME_OFFSET(d::AppxPackage, installLocation, DismAppxPackage, InstallLocation);
+WL_SAME_OFFSET(d::AppxPackage, region, DismAppxPackage, Region);
+
 WL_SAME_LAYOUT(d::CapabilityDetail, DismCapabilityInfo);
 WL_SAME_OFFSET(d::CapabilityDetail, state, DismCapabilityInfo, State);
 WL_SAME_OFFSET(d::CapabilityDetail, displayName, DismCapabilityInfo, DisplayName);

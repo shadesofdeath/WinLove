@@ -75,6 +75,19 @@ struct FeatureInfo {
     CustomProperty* customProperty;
     UINT customPropertyCount;
 };
+struct AppxPackage {
+    PCWSTR packageName;
+    PCWSTR displayName;
+    PCWSTR publisherId;
+    UINT majorVersion;
+    UINT minorVersion;
+    UINT build;
+    UINT revisionNumber;
+    UINT architecture;
+    PCWSTR resourceId;
+    PCWSTR installLocation;
+    PCWSTR region;
+};
 struct CapabilityDetail {
     PCWSTR name;
     PackageFeatureState state;
@@ -106,6 +119,8 @@ struct Api {
     HRESULT(WINAPI* getCapabilities)(Session, Capability**, UINT*) = nullptr;
     HRESULT(WINAPI* getFeatureInfo)(Session, PCWSTR feature, PCWSTR identifier, PackageIdentifier, FeatureInfo**) = nullptr;
     HRESULT(WINAPI* getCapabilityInfo)(Session, PCWSTR name, CapabilityDetail**) = nullptr;
+    HRESULT(WINAPI* getProvisionedAppx)(Session, AppxPackage**, UINT*) = nullptr;
+    HRESULT(WINAPI* removeProvisionedAppx)(Session, PCWSTR packageName) = nullptr;
     HRESULT(WINAPI* disableFeature)(Session, PCWSTR feature, PCWSTR package, BOOL removePayload, HANDLE cancel,
                                     ProgressCallback, PVOID) = nullptr;
     HRESULT(WINAPI* enableFeature)(Session, PCWSTR feature, PCWSTR identifier, PackageIdentifier, BOOL limitAccess,

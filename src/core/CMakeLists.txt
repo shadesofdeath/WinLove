@@ -5,6 +5,7 @@ add_library(wl_core STATIC
     image/UdfImage.cpp
     image/WimFile.cpp
     image/WindowsRelease.cpp
+    image/dism/Appx.cpp
     image/dism/Dism.cpp
     image/dism/DismErrors.cpp
     image/dism/MountHealth.cpp

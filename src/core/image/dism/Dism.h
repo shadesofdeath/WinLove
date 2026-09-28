@@ -68,6 +68,16 @@ struct CapabilityDetail {
     std::uint32_t installSize = 0;  // bytes
 };
 
+// A provisioned AppX package (installed for every new user of the image).
+struct AppxEntry {
+    std::wstring packageName;  // "Microsoft.BingWeather_4.53.51922.0_neutral_~_8wekyb3d8bbwe"
+    std::wstring displayName;  // "Microsoft.BingWeather" (the package identity name, not a UI string)
+    std::wstring publisherId;  // "8wekyb3d8bbwe"
+    std::wstring version;
+    std::uint32_t architecture = 0; // 0 x86, 5 ARM, 9 x64, 11 neutral, 12 ARM64
+    std::wstring installLocation;
+};
+
 class DismSession;
 
 class Dism {
@@ -105,6 +115,7 @@ public:
     // Per-item details (one DISM call each: ~10–50 ms). Display names come from the image.
     [[nodiscard]] Result<FeatureDetail> featureInfo(const std::wstring& name);
     [[nodiscard]] Result<CapabilityDetail> capabilityInfo(const std::wstring& name);
+    [[nodiscard]] Result<std::vector<AppxEntry>> appxPackages();
 
     // Servicing mutations — called by ops::Applier only (never directly from UI code).
     [[nodiscard]] Result<void> disableFeature(const std::wstring& name, const TaskContext& task);
@@ -114,6 +125,8 @@ public:
                                              const std::vector<std::filesystem::path>& sources = {});
     [[nodiscard]] Result<void> removePackage(const std::wstring& name, const TaskContext& task);
     [[nodiscard]] Result<void> removeCapability(const std::wstring& name, const TaskContext& task);
+    // DismRemoveProvisionedAppxPackage: new users no longer get the app (no progress / cancel in the API).
+    [[nodiscard]] Result<void> removeAppx(const std::wstring& packageName);
 
 private:
     friend class Dism;

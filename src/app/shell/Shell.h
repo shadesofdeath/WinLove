@@ -6,6 +6,7 @@
 // ImageController), dialogs and the toast.
 #include "app/Localization.h"
 #include "app/controllers/ApplyController.h"
+#include "app/controllers/ComponentController.h"
 #include "app/controllers/FeatureController.h"
 #include "app/controllers/IsoController.h"
 #include "app/controllers/ImageController.h"
@@ -38,6 +39,7 @@ class LogsPage;
 class FeaturesPage;
 class ApplyPage;
 class IsoPage;
+class ComponentsPage;
 
 class Shell : public ui::Widget {
 public:
@@ -65,6 +67,7 @@ public:
     ImageController& images() { return *m_images; }
     FeatureController& features() { return *m_features; }
     ApplyController& apply() { return *m_apply; }
+    ComponentController& components() { return *m_components; }
     // "Uygula": straight to the run, or through the 13b confirmation when something is irreversible.
     void requestApply();
     [[nodiscard]] PageId currentPage() const noexcept { return m_page; }
@@ -115,6 +118,9 @@ private:
     [[nodiscard]] FeaturesPage* featuresPage() const;
     [[nodiscard]] ApplyPage* applyPage() const;
     [[nodiscard]] IsoPage* isoPage() const;
+    [[nodiscard]] ComponentsPage* componentsPage() const;
+    void updateComponentInspector();
+    void loadPreset();
     void updateIsoChrome();
     void startIso();
     void updateApplyChrome();                         // CTA label, Apply page mode/header
@@ -133,6 +139,9 @@ private:
     std::unique_ptr<FeatureController> m_features;
     std::unique_ptr<ApplyController> m_apply;
     std::unique_ptr<IsoController> m_iso;
+    std::unique_ptr<ComponentController> m_components;
+    ui::Widget* m_sideInspector = nullptr; // pages other than Images (Components)
+    ui::Button* m_actionExpand = nullptr;  // Components: "Tümünü genişlet / daralt"
     ui::Button* m_actionIso = nullptr; // ISO page: "ISO Oluştur" / "İptal"
     int m_applyMode = -1; // ApplyPage::Mode the Apply page was built for
     ui::Button* m_actionReset = nullptr; // Özellikler: "Değişiklikleri sıfırla"

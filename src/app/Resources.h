@@ -14,6 +14,8 @@ namespace wl::app {
 [[nodiscard]] std::vector<ui::FontBytes> embeddedFonts();
 
 [[nodiscard]] Result<Localization> embeddedStrings(Language language);
+// resources/catalog/appx.json as embedded bytes (empty when missing).
+[[nodiscard]] std::string_view embeddedAppxCatalog();
 
 [[nodiscard]] HICON appIcon();
 
