@@ -50,31 +50,31 @@ ui::icons::Icon classIcon(const std::wstring& cls) {
 }
 } // namespace
 
-std::wstring DriversPage::className(const std::wstring& cls, Language language) {
-    static const std::map<std::wstring, std::pair<const wchar_t*, const wchar_t*>> kNames{
-        {L"net", {L"Ağ", L"Network"}},
-        {L"scsiadapter", {L"Depolama", L"Storage"}},
-        {L"hdc", {L"Disk denetleyicisi", L"Disk controller"}},
-        {L"display", {L"Ekran", L"Display"}},
-        {L"system", {L"Yonga seti", L"Chipset"}},
-        {L"media", {L"Ses ve video", L"Sound and video"}},
-        {L"usb", {L"USB", L"USB"}},
-        {L"bluetooth", {L"Bluetooth", L"Bluetooth"}},
-        {L"hidclass", {L"Giriş aygıtları", L"Input devices"}},
-        {L"camera", {L"Kamera", L"Camera"}},
-        {L"printer", {L"Yazıcı", L"Printer"}},
-        {L"extension", {L"Uzantı", L"Extension"}},
-        {L"softwarecomponent", {L"Yazılım bileşeni", L"Software component"}},
-        {L"firmware", {L"Donanım yazılımı", L"Firmware"}},
+std::wstring DriversPage::className(const std::wstring& cls, const Localization& strings) {
+    static const std::map<std::wstring, Str> kNames{
+        {L"net", Str::DriversClsNet},
+        {L"scsiadapter", Str::DriversClsScsiadapter},
+        {L"hdc", Str::DriversClsHdc},
+        {L"display", Str::DriversClsDisplay},
+        {L"system", Str::DriversClsSystem},
+        {L"media", Str::DriversClsMedia},
+        {L"usb", Str::DriversClsUsb},
+        {L"bluetooth", Str::DriversClsBluetooth},
+        {L"hidclass", Str::DriversClsHidclass},
+        {L"camera", Str::DriversClsCamera},
+        {L"printer", Str::DriversClsPrinter},
+        {L"extension", Str::DriversClsExtension},
+        {L"softwarecomponent", Str::DriversClsSoftwarecomponent},
+        {L"firmware", Str::DriversClsFirmware},
     };
     if (cls.empty()) {
-        return language == Language::Turkish ? L"Sınıfsız" : L"No class";
+        return strings.get(Str::DriversClsNone);
     }
     const auto it = kNames.find(lowered(cls));
     if (it == kNames.end()) {
         return cls;
     }
-    return std::wstring(language == Language::Turkish ? it->second.first : it->second.second) + L" (" + cls + L")";
+    return strings.get(it->second) + L" (" + cls + L")";
 }
 
 DriversPage::DriversPage(AppState& state, const Localization& strings, Language language, Intents intents)
@@ -230,7 +230,7 @@ void DriversPage::refresh() {
     for (const auto& inf : m_state.driverScan().infs) {
         if (std::ranges::find(seen, inf.className) == seen.end()) {
             seen.push_back(inf.className);
-            classes.push_back(className(inf.className, m_language));
+            classes.push_back(className(inf.className, m_strings));
         }
     }
     m_class->setItems(std::move(classes), 0);
@@ -313,7 +313,7 @@ void DriversPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect,
         x += ui::Checkbox::kBox + 8;
         canvas.drawIcon(isGroup ? classIcon(group.cls) : ui::icons::Icon::InfFile, {x, rect.y + 4}, Color::TextSecondary);
         x += ui::tokens::size::icon + 6;
-        canvas.drawText(isGroup ? className(group.cls, m_language) : inf->path.filename().wstring(),
+        canvas.drawText(isGroup ? className(group.cls, m_strings) : inf->path.filename().wstring(),
                         {x, rect.y, rect.right() - x, rect.height}, isGroup || cell.selected ? TypeStyle::BodyStrong : TypeStyle::Body,
                         Color::TextPrimary);
         break;

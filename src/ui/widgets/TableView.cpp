@@ -60,6 +60,11 @@ void TableView::setRowCount(int count) {
     invalidate();
 }
 
+void TableView::clearSelection() {
+    m_selected = -1;
+    invalidate();
+}
+
 void TableView::setSelected(int row, bool reveal) {
     row = m_count > 0 ? std::clamp(row, 0, m_count - 1) : -1;
     if (row != m_selected) {

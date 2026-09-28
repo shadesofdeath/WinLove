@@ -34,10 +34,13 @@ Intel = "Intel Corporation"
     CHECK_FALSE(inf.supports(L"x86"));
 }
 
-TEST_CASE("parseInfText: undecorated models support every architecture; missing fields stay empty") {
+TEST_CASE("parseInfText: undecorated models are x86-only; no Manufacturer section = any; missing fields empty") {
     const auto inf = core::parseInfText(L"[Version]\nClass=System\n[Manufacturer]\n%M%=Models\n");
     CHECK(inf.className == L"System");
     CHECK(inf.provider.empty());
-    CHECK(inf.architectures.empty());
     CHECK(inf.supports(L"x86"));
+    CHECK_FALSE(inf.supports(L"x64")); // 64-bit Windows needs an NTamd64 decoration
+    const auto noModels = core::parseInfText(L"[Version]\nClass=Extension\n");
+    CHECK(noModels.architectures.empty());
+    CHECK(noModels.supports(L"x64"));
 }

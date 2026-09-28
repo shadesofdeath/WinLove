@@ -321,7 +321,24 @@
     "emptyBody": "Scan a folder with INF files (e.g. a vendor driver pack). Subfolders are included.",
     "scanning": "Scanning drivers",
     "scanned": "{n} INF found",
-    "noneFound": "No .inf found in the folder"
+    "noneFound": "No .inf found in the folder",
+    "cls": {
+      "net": "Network",
+      "scsiadapter": "Storage",
+      "hdc": "Disk controller",
+      "display": "Display",
+      "system": "Chipset",
+      "media": "Sound and video",
+      "usb": "USB",
+      "bluetooth": "Bluetooth",
+      "hidclass": "Input devices",
+      "camera": "Camera",
+      "printer": "Printer",
+      "extension": "Extension",
+      "softwarecomponent": "Software component",
+      "firmware": "Firmware",
+      "none": "No class"
+    }
   },
   "registry": {
     "title": "Registry",

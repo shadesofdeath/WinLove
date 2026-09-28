@@ -25,7 +25,7 @@ public:
 
     void focusSearch();
     // Friendly class name ("Ağ (Net)") for the common setup classes, else the class itself.
-    [[nodiscard]] static std::wstring className(const std::wstring& cls, Language language);
+    [[nodiscard]] static std::wstring className(const std::wstring& cls, const Localization& strings);
 
     void layout() override;
     void paint(ui::Canvas& canvas) override;

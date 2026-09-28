@@ -321,7 +321,24 @@
     "emptyBody": "INF dosyaları olan bir klasörü tara (ör. üreticinin sürücü paketi). Alt klasörler de taranır.",
     "scanning": "Sürücüler taranıyor",
     "scanned": "{n} INF bulundu",
-    "noneFound": "Klasörde .inf bulunamadı"
+    "noneFound": "Klasörde .inf bulunamadı",
+    "cls": {
+      "net": "Ağ",
+      "scsiadapter": "Depolama",
+      "hdc": "Disk denetleyicisi",
+      "display": "Ekran",
+      "system": "Yonga seti",
+      "media": "Ses ve video",
+      "usb": "USB",
+      "bluetooth": "Bluetooth",
+      "hidclass": "Giriş aygıtları",
+      "camera": "Kamera",
+      "printer": "Yazıcı",
+      "extension": "Uzantı",
+      "softwarecomponent": "Yazılım bileşeni",
+      "firmware": "Donanım yazılımı",
+      "none": "Sınıfsız"
+    }
   },
   "registry": {
     "title": "Kayıt Defteri",
