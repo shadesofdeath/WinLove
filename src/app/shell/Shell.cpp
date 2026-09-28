@@ -110,8 +110,7 @@ void Shell::showPage(PageId page) {
             m_pageBody = &m_pageView->setBody<SourcePage>(
                 m_state, m_strings, m_language,
                 SourcePage::Intents{[this] { pickSourceFile(); },
-                                    [this](const std::filesystem::path& p) { openSource(p); },
-                                    [this] { showAdminRequired(); }});
+                                    [this](const std::filesystem::path& p) { openSource(p); }});
         } else {
             // Placeholder until the page's roadmap step is done (docs/ROADMAP.md, Faz 3).
             const std::wstring step(info.roadmapStep.begin(), info.roadmapStep.end());

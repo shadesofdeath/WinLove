@@ -9,7 +9,6 @@
 #include "core/ops/Applier.h"
 #include "core/ops/Planner.h"
 #include "core/image/WindowsRelease.h"
-#include "core/system/LiveSystem.h"
 #include "core/system/Privileges.h"
 
 #include <json.hpp>
@@ -375,22 +374,6 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
     return report.completed && report.failures() == 0 ? 0 : 3;
 }
 
-int cmdLive(bool asJson) {
-    const auto live = core::readLiveSystem();
-    if (asJson) {
-        printJson({{"productName", narrow(live.productName)}, {"displayVersion", narrow(live.displayVersion)},
-                   {"build", live.build}, {"ubr", live.ubr},
-                   {"architecture", narrow(core::architectureName(live.architecture))},
-                   {"systemDrive", narrow(live.systemDrive)}, {"driveFree", live.driveFree},
-                   {"driveTotal", live.driveTotal}, {"elevated", core::isElevated()}});
-        return 0;
-    }
-    print(std::format(L"  {} {} · {}.{} · {}\n  {} {} free / {}\n  elevated: {}\n", live.productName,
-                      live.displayVersion, live.build, live.ubr, core::architectureName(live.architecture),
-                      live.systemDrive, gib(live.driveFree), gib(live.driveTotal), core::isElevated() ? L"yes" : L"no"));
-    return 0;
-}
-
 void printUsage() {
     print(L"wlcli " WL_VERSION_STRING L" - WinLove image engine CLI\n"
           L"\n"
@@ -478,9 +461,6 @@ int wmain(int argc, wchar_t** argv) {
     }
     if ((command == L"packages" || command == L"features" || command == L"capabilities") && args.size() == 2) {
         return cmdServicing(command, args[1], asJson);
-    }
-    if (command == L"live") {
-        return cmdLive(asJson);
     }
     if (command == L"elevated") {
         print(core::isElevated() ? L"yes\n" : L"no\n");

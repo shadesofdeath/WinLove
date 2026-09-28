@@ -5,7 +5,7 @@
 > Gerekirse: `docs/ARCHITECTURE.md`, `docs/ENGINE.md`, `docs/WORKFLOW.md`, `docs/CONVENTIONS.md`, `docs/TESTING.md`, `docs/DECISIONS.md`.
 
 ## Proje nedir
-WinLove, NTLite seviyesinde bir **Windows imaj özelleştirme aracı**dır (ISO/WIM/ESD/VHD → bileşen kaldırma, özellikler, güncellemeler, sürücüler, kayıt defteri, servisler, katılımsız kurulum, ISO oluşturma).
+WinLove, NTLite seviyesinde bir **Windows imaj özelleştirme aracı**dır (yalnızca çevrimdışı imajlar; çalışan sistemi düzenleme kapsam dışı, D-021) (ISO/WIM/ESD/VHD → bileşen kaldırma, özellikler, güncellemeler, sürücüler, kayıt defteri, servisler, katılımsız kurulum, ISO oluşturma).
 - Dil: **C++23** (`/std:c++latest`), MSVC (VS 2026), CMake + Ninja, statik CRT. Yalnızca Windows 10/11 x64 hedef (ARM64 imajları *işlenebilir*, uygulama x64 çalışır).
 - Arayüz: **Direct2D + DirectWrite + DirectComposition** ile tamamen custom-draw. Win32 common control, WinUI, WPF, Qt, Electron **yok**.
 - Motor: kendi `wl::image` katmanımız → arkada `dismapi.dll`, `wimgapi.dll`, offline registry ve gerekirse kendi native uygulamalarımız. (`docs/ENGINE.md`)

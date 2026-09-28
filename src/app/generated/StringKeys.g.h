@@ -340,12 +340,8 @@ enum class Str : std::uint16_t {
     SettingsWorkDir,
     ShellPendingBody,
     ShellPendingTitle,
-    SourceAdmin,
-    SourceAdminRequired,
-    SourceAdminYes,
     SourceDaysAgo,
     SourceDesc,
-    SourceDrive,
     SourceDropHint,
     SourceDropTitle,
     SourceDropUnsupported,
@@ -353,9 +349,6 @@ enum class Str : std::uint16_t {
     SourceFilterAll,
     SourceFilterImages,
     SourceLastOpened,
-    SourceLive,
-    SourceLiveEdit,
-    SourceLiveLater,
     SourceLoading,
     SourceOpenFailed,
     SourceOpenFile,
@@ -434,7 +427,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 424;
+inline constexpr std::size_t kStrCount = 417;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -769,12 +762,8 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "settings.workDir",
     "shell.pendingBody",
     "shell.pendingTitle",
-    "source.admin",
-    "source.adminRequired",
-    "source.adminYes",
     "source.daysAgo",
     "source.desc",
-    "source.drive",
     "source.dropHint",
     "source.dropTitle",
     "source.dropUnsupported",
@@ -782,9 +771,6 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "source.filterAll",
     "source.filterImages",
     "source.lastOpened",
-    "source.live",
-    "source.liveEdit",
-    "source.liveLater",
     "source.loading",
     "source.openFailed",
     "source.openFile",

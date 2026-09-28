@@ -7,7 +7,6 @@ add_library(wl_app STATIC
     pages/GalleryPage.cpp
     pages/PageInfo.cpp
     pages/SourcePage.cpp
-    pages/source/LiveCard.cpp
     pages/source/RecentList.cpp
     shell/NavRail.cpp
     shell/PageView.cpp
