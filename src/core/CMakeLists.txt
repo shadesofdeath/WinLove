@@ -4,6 +4,7 @@ add_library(wl_core STATIC
     image/Source.cpp
     image/UdfImage.cpp
     image/WimFile.cpp
+    image/dism/Dism.cpp
     io/ByteSource.cpp
     system/Privileges.cpp
     tasks/Task.cpp

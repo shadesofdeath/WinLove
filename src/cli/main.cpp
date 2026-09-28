@@ -5,6 +5,7 @@
 #include "base/Utf8.h"
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
+#include "core/image/dism/Dism.h"
 #include "core/system/Privileges.h"
 
 #include <json.hpp>
@@ -178,6 +179,126 @@ int cmdExtract(const std::wstring& iso, const std::wstring& inner, const std::ws
     return 0;
 }
 
+core::TaskContext progressTask(const wchar_t* label) {
+    auto last = std::make_shared<int>(-1);
+    return core::TaskContext{g_cancel, [label, last](double fraction, std::wstring_view) {
+                                 const int percent = static_cast<int>(fraction * 100);
+                                 if (percent != *last) {
+                                     *last = percent;
+                                     print(std::format(L"\r  {} {:>3}%", label, percent));
+                                 }
+                             }};
+}
+
+Result<core::Dism*> dism() {
+    return core::Dism::instance();
+}
+
+int cmdMount(const std::wstring& wim, const std::wstring& index, const std::wstring& dir, bool readOnly) {
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    const auto task = progressTask(L"mount");
+    if (auto r = (*d)->mount(wim, std::stoi(index), dir, readOnly, task); !r) {
+        print(L"\n");
+        return reportError(r.error());
+    }
+    print(std::format(L"\n  mounted index {} at {}\n", index, dir));
+    return 0;
+}
+
+int cmdUnmount(const std::wstring& dir, bool commit) {
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    const auto task = progressTask(commit ? L"commit" : L"discard");
+    if (auto r = (*d)->unmount(dir, commit, task); !r) {
+        print(L"\n");
+        return reportError(r.error());
+    }
+    print(std::format(L"\n  unmounted {} ({})\n", dir, commit ? L"committed" : L"discarded"));
+    return 0;
+}
+
+int cmdMounts(bool asJson) {
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    auto mounts = (*d)->mounts();
+    if (!mounts) {
+        return reportError(mounts.error());
+    }
+    if (asJson) {
+        json out = json::array();
+        for (const auto& m : *mounts) {
+            out.push_back({{"mountPath", narrow(m.mountPath.wstring())}, {"imagePath", narrow(m.imagePath.wstring())},
+                           {"index", m.index}, {"readOnly", m.readOnly}, {"healthy", m.healthy},
+                           {"status", narrow(m.status)}});
+        }
+        printJson(out);
+        return 0;
+    }
+    if (mounts->empty()) {
+        print(L"  no mounted images\n");
+    }
+    for (const auto& m : *mounts) {
+        print(std::format(L"  {}  <- {} [{}]  {}{}\n", m.mountPath.wstring(), m.imagePath.wstring(), m.index,
+                          m.status, m.readOnly ? L", read-only" : L""));
+    }
+    return 0;
+}
+
+int cmdCleanup() {
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    if (auto r = (*d)->cleanupMountpoints(); !r) {
+        return reportError(r.error());
+    }
+    print(L"  mount points cleaned up\n");
+    return 0;
+}
+
+int cmdServicing(const std::wstring& what, const std::wstring& dir, bool asJson) {
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    auto session = (*d)->openSession(dir);
+    if (!session) {
+        return reportError(session.error());
+    }
+    json out = json::array();
+    auto emit = [&](const std::wstring& name, core::ServicingState state) {
+        if (asJson) {
+            out.push_back({{"name", narrow(name)}, {"state", narrow(core::servicingStateName(state))}});
+        } else {
+            print(std::format(L"  {:<18} {}\n", core::servicingStateName(state), name));
+        }
+    };
+    if (what == L"packages") {
+        auto list = (*session)->packages();
+        if (!list) return reportError(list.error());
+        for (const auto& p : *list) emit(p.name, p.state);
+    } else if (what == L"features") {
+        auto list = (*session)->features();
+        if (!list) return reportError(list.error());
+        for (const auto& f : *list) emit(f.name, f.state);
+    } else {
+        auto list = (*session)->capabilities();
+        if (!list) return reportError(list.error());
+        for (const auto& c : *list) emit(c.name, c.state);
+    }
+    if (asJson) {
+        printJson(out);
+    }
+    return 0;
+}
+
 void printUsage() {
     print(L"wlcli " WL_VERSION_STRING L" - WinLove image engine CLI\n"
           L"\n"
@@ -186,6 +307,11 @@ void printUsage() {
           L"  wlcli ls <iso> [dir] [--json]             List a directory inside an ISO\n"
           L"  wlcli extract <iso> <path-in-iso> <dest>  Copy a file out of an ISO (Ctrl+C cancels)\n"
           L"  wlcli elevated                            Print whether this process is elevated\n"
+          L"\n  Needs an elevated shell (DISM):\n"
+          L"  wlcli mount <wim> <index> <dir> [--readonly]\n"
+          L"  wlcli unmount <dir> --commit|--discard\n"
+          L"  wlcli mounts | cleanup\n"
+          L"  wlcli packages|features|capabilities <mountdir>\n"
           L"  wlcli version | help\n"
           L"\n"
           L"Options: --json (machine-readable), --verbose (log to stdout)\n");
@@ -197,10 +323,18 @@ int wmain(int argc, wchar_t** argv) {
     SetConsoleCtrlHandler(onConsoleCtrl, TRUE);
     std::vector<std::wstring> args;
     bool asJson = false;
+    bool readOnly = false;
+    int commit = -1;
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
             asJson = true;
+        } else if (a == L"--readonly") {
+            readOnly = true;
+        } else if (a == L"--commit") {
+            commit = 1;
+        } else if (a == L"--discard") {
+            commit = 0;
         } else if (a == L"--verbose") {
             log::addSink(log::makeStdoutSink());
         } else {
@@ -224,6 +358,21 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"extract" && args.size() == 4) {
         return cmdExtract(args[1], args[2], args[3]);
+    }
+    if (command == L"mount" && args.size() == 4) {
+        return cmdMount(args[1], args[2], args[3], readOnly);
+    }
+    if (command == L"unmount" && args.size() == 2 && commit >= 0) {
+        return cmdUnmount(args[1], commit == 1);
+    }
+    if (command == L"mounts") {
+        return cmdMounts(asJson);
+    }
+    if (command == L"cleanup") {
+        return cmdCleanup();
+    }
+    if ((command == L"packages" || command == L"features" || command == L"capabilities") && args.size() == 2) {
+        return cmdServicing(command, args[1], asJson);
     }
     if (command == L"elevated") {
         print(core::isElevated() ? L"yes\n" : L"no\n");
