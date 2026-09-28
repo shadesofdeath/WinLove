@@ -10,7 +10,9 @@
 
 #include <windows.h>
 
+#include <deque>
 #include <functional>
+#include <mutex>
 
 namespace wl::ui {
 
@@ -69,6 +71,8 @@ public:
     void minimize();
     void toggleMaximize();
     void close();
+    // Thread-safe: run `fn` on the UI thread (engine results, progress). Dropped after destroy.
+    void post(std::function<void()> fn);
     void setTimer(UINT id, UINT ms);
     void stopTimer(UINT id);
     // Re-apply DWM frame colors after a theme change.
@@ -98,6 +102,8 @@ private:
     UINT m_heightPx = 0;
     float m_scale = 1.0f;
     HBRUSH m_background = nullptr;
+    std::mutex m_postMutex;
+    std::deque<std::function<void()>> m_posted;
     bool m_wasMaximized = false;
 };
 

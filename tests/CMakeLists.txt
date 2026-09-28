@@ -4,7 +4,9 @@ add_executable(wl_tests
     main.cpp
     support/TestGraphics.cpp
     base/ResultTests.cpp
+    core/EngineTests.cpp
     core/ImageFormatTests.cpp
+    core/IsoTests.cpp
     ui/TokensTests.cpp
     ui/IconsTests.cpp
     ui/RenderTests.cpp
@@ -13,7 +15,7 @@ add_executable(wl_tests
 wl_configure_target(wl_tests)
 target_include_directories(wl_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(wl_tests PRIVATE WL_SOURCE_DIR=L"${PROJECT_SOURCE_DIR}")
-target_link_libraries(wl_tests PRIVATE wl_app wl_doctest ole32)
+target_link_libraries(wl_tests PRIVATE wl_app wl_doctest wl_json ole32)
 
 add_test(NAME unit COMMAND wl_tests)
 set_tests_properties(unit PROPERTIES LABELS unit)

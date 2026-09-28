@@ -1,0 +1,19 @@
+{
+  "iso": "C:/Users/shades/Downloads/Win11_25H2_Turkish_x64_v2.iso",
+  "volumeLabel": "CCCOMA_X64FRE_TR-TR_DV9",
+  "installImage": "sources/install.wim",
+  "installImageSize": 7217280579,
+  "compression": "lzx",
+  "build": 26200,
+  "version": "10.0.26200.8037",
+  "language": "tr-TR",
+  "editions": [
+    "Windows 11 Home",
+    "Windows 11 Home Single Language",
+    "Windows 11 Education",
+    "Windows 11 Pro",
+    "Windows 11 Pro Education",
+    "Windows 11 Pro for Workstations"
+  ],
+  "bootImages": 2
+}
