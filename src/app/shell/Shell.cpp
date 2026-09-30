@@ -27,6 +27,7 @@
 #include "app/ApplyReport.h"
 #include "app/pages/postsetup/AppsDialog.h"
 #include "app/pages/updates/UpdateCatalogDialog.h"
+#include "app/pages/FilesPage.h"
 #include "app/pages/HostsPage.h"
 #include "app/pages/TasksPage.h"
 #include "app/pages/postsetup/StepDialog.h"
@@ -139,6 +140,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_serviceCtl = std::make_unique<ServiceController>(m_state, embeddedServiceCatalog(), m_services.postToUi);
     m_tasks = std::make_unique<TaskController>(m_state, embeddedTaskCatalog());
     m_hosts = std::make_unique<HostsController>(m_state, embeddedHostsCatalog());
+    m_files = std::make_unique<FilesController>(m_state);
     m_unattend = std::make_unique<UnattendController>(m_state);
     m_postSetup = std::make_unique<PostSetupController>(m_state);
     m_presets = std::make_unique<PresetController>(m_state, m_imageSettings->catalog(), m_strings, m_language,
@@ -699,6 +701,63 @@ void Shell::importHostsFile() {
               file->filename().wstring());
 }
 
+FilesPage* Shell::filesPage() const {
+    return m_page == PageId::Files ? dynamic_cast<FilesPage*>(m_pageBody) : nullptr;
+}
+
+void Shell::addFilesTo(std::vector<std::filesystem::path> sources) {
+    if (!host() || sources.empty()) {
+        return;
+    }
+    if (!m_state.mounted()) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::FilesNoMountTitle), m_strings.get(Str::FilesNoMountBody));
+        return;
+    }
+    std::wstring what = sources.size() == 1 ? sources.front().filename().wstring()
+                                            : m_strings.format(Str::FilesItemsN, {{L"n", std::to_wstring(sources.size())}});
+    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::FilesWhereTitle),
+                                               m_strings.format(Str::FilesWhereBody, {{L"what", what}}),
+                                               ui::icons::Icon::Folder, ui::tokens::Color::TextSecondary, 560.0f);
+    ui::Dialog* raw = dialog.get();
+    auto& form = raw->setContent<ui::FormView>(ui::FormView::kRow * 2, 96.0f);
+    std::vector<std::wstring> places;
+    for (const auto& place : FilesController::places()) {
+        places.push_back(FilesController::displayPath(place.folder) + L"  \u00b7  " + m_strings.get(place.label));
+    }
+    auto& preset = form.addRow<ui::Dropdown>(m_strings.get(Str::FilesPlace), std::wstring(), 420.0f, std::wstring(),
+                                             std::move(places), 0);
+    auto& path = form.addRow<ui::SearchBox>(m_strings.get(Str::FilesTarget), std::wstring(), 420.0f, std::wstring());
+    path.setPlain(true);
+    path.setText(FilesController::displayPath(FilesController::places().front().folder));
+    preset.onChange = [&path](int index) {
+        const auto& all = FilesController::places();
+        if (index >= 0 && index < static_cast<int>(all.size())) {
+            path.setText(FilesController::displayPath(all[static_cast<std::size_t>(index)].folder));
+        }
+    };
+    auto sourcesPtr = std::make_shared<std::vector<std::filesystem::path>>(std::move(sources));
+    auto add = [this, raw, &path, sourcesPtr] {
+        const std::wstring folder = FilesController::imageFolderFrom(path.text());
+        if (folder == L"?") {
+            showToast(ui::InfoKind::Warning, m_strings.get(Str::FilesNotSystemDrive), path.text());
+            return;
+        }
+        const auto [n, errors] = m_files->add(*sourcesPtr, folder);
+        host()->popModal(raw); // `path` is gone from here on
+        if (!errors.empty()) {
+            showToast(ui::InfoKind::Warning, m_strings.get(Str::FilesSomeRefused), errors.front().message + L" — " + errors.front().context);
+        } else {
+            showToast(ui::InfoKind::Success, m_strings.format(Str::FilesAdded, {{L"n", std::to_wstring(n)}}),
+                      FilesController::displayPath(folder));
+        }
+    };
+    path.onSubmit = add;
+    raw->onCancel = [this, raw] { host()->popModal(raw); };
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
+    raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::CommonAdd), add, /*primary=*/true);
+    host()->pushModal(std::move(dialog), &path);
+}
+
 void Shell::newPreset() {
     if (!host()) {
         return;
@@ -960,6 +1019,7 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::PostSetup, static_cast<int>(m_postSetup->stepCount()));
     m_nav->setBadge(PageId::Tasks, m_tasks->changedCount());
     m_nav->setBadge(PageId::Hosts, m_hosts->changedCount());
+    m_nav->setBadge(PageId::Files, m_files->count());
     if (m_actionReset) {
         m_actionReset->setEnabled(featureOps > 0);
     }
@@ -1324,6 +1384,25 @@ void Shell::showPage(PageId page) {
                           L"");
             };
             m_pageBody = &m_pageView->setBody<TasksPage>(m_state, *m_tasks, m_strings, m_language,
+                                                         [this] { showPage(PageId::Images); });
+        } else if (page == PageId::Files) {
+            auto pickFiles = [this] {
+                const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+                auto files = ui::pickFiles(owner, m_strings.get(Str::FilesAddFiles), {{m_strings.get(Str::FilesAllFiles), L"*.*"}});
+                if (!files.empty()) {
+                    addFilesTo(std::move(files));
+                }
+            };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::FilesAddFolder), ui::icons::Icon::Folder).onInvoke =
+                [this] {
+                    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+                    if (const auto folder = ui::pickFolder(owner, m_strings.get(Str::FilesAddFolder))) {
+                        addFilesTo({*folder});
+                    }
+                };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::FilesAddFiles), ui::icons::Icon::Add).onInvoke =
+                pickFiles;
+            m_pageBody = &m_pageView->setBody<FilesPage>(m_state, *m_files, m_strings, m_language, pickFiles,
                                                          [this] { showPage(PageId::Images); });
         } else if (page == PageId::Hosts) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::HostsImport), ui::icons::Icon::Import).onInvoke =
@@ -1700,6 +1779,10 @@ bool Shell::dragEnter(const std::vector<std::filesystem::path>& files) {
     if (registryPage() && m_state.mounted()) {
         return std::ranges::any_of(files, [](const auto& f) { return _wcsicmp(f.extension().c_str(), L".reg") == 0; });
     }
+    if (auto* page = filesPage(); page && m_state.mounted()) {
+        page->setDragState(ui::DropZone::DragState::Valid); // any file or folder can go into the image
+        return true;
+    }
     if (auto* updates = updatesPage(); updates && m_state.mounted()) {
         const bool any = std::ranges::any_of(files, [](const auto& f) { return core::isUpdateFile(f); });
         updates->setDragState(any ? ui::DropZone::DragState::Valid : ui::DropZone::DragState::Invalid);
@@ -1713,6 +1796,9 @@ bool Shell::dragEnter(const std::vector<std::filesystem::path>& files) {
 }
 
 void Shell::dragLeave() {
+    if (auto* files = filesPage()) {
+        files->setDragState(ui::DropZone::DragState::None);
+    }
     if (auto* updates = updatesPage()) {
         updates->setDragState(ui::DropZone::DragState::None);
     }
@@ -1732,6 +1818,11 @@ void Shell::drop(const std::vector<std::filesystem::path>& files) {
     if (auto* updates = updatesPage(); updates && m_state.mounted()) {
         updates->setDragState(ui::DropZone::DragState::None);
         addUpdates(files);
+        return;
+    }
+    if (auto* page = filesPage(); page && m_state.mounted()) {
+        page->setDragState(ui::DropZone::DragState::None);
+        addFilesTo(files);
         return;
     }
     // Several files may be dropped; the first source-type one opens (others are ignored for now).

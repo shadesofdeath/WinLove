@@ -179,6 +179,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoRegistry = true;
         } else if (a == L"--demo-tasks") {
             options.demoTasks = true;
+        } else if (a == L"--demo-files" || startsWith(a, L"--demo-files=")) {
+            options.demoFiles = a == L"--demo-files" ? std::wstring() : std::wstring(value(L"--demo-files="));
         } else if (a == L"--demo-hosts") {
             options.demoHosts = true;
         } else if (a == L"--demo-services") {
@@ -708,6 +710,18 @@ int App::renderOffscreen() {
         library.push_back(std::move(blank));
         m_shell->presets().adopt(std::move(library));
         m_shell->showPage(m_options.page.value_or(PageId::Presets));
+    }
+    if (m_options.demoFiles) {
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,
+                                         L"Windows 11 Pro"});
+        // Real paths of this repository so sizes and icons are real.
+        const auto repo = std::filesystem::current_path();
+        (void)m_shell->filesForDemo().add({repo / L"tools", repo / L"README.md", repo / L"resources" / L"brand"}, L"Tools");
+        (void)m_shell->filesForDemo().add({repo / L"resources" / L"fonts"}, L"Windows\\Web\\Wallpaper\\WinLove");
+        m_shell->showPage(PageId::Files);
+        if (*m_options.demoFiles == L"where") {
+            m_shell->addFilesTo({repo / L"docs"});
+        }
     }
     if (m_options.demoTasks || m_options.demoHosts) {
         m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,

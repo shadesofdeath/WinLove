@@ -24,7 +24,8 @@
     "collapse": "Daralt",
     "expand": "Genişlet",
     "tasks": "Görevler",
-    "hosts": "Hosts"
+    "hosts": "Hosts",
+    "files": "Dosyalar"
   },
   "title": {
     "cmdk": "Komut, sayfa veya bileşen ara",
@@ -1057,5 +1058,33 @@
     "importedNone": "Dosyada yeni girdi yok",
     "filter": "Hosts dosyaları",
     "applyRecommended": "Önerilenleri seç"
+  },
+  "files": {
+    "title": "Dosyalar",
+    "desc": "Bu bilgisayardaki dosya ve klasörler imajda seçilen yere kopyalanır; kurulan Windows'ta orada olur.",
+    "drop": "Dosya veya klasörleri buraya bırak",
+    "source": "Kaynak",
+    "target": "İmajdaki yer",
+    "place": "Hazır yer",
+    "empty": "Henüz dosya yok — bırak ya da başlıktaki düğmeleri kullan",
+    "summary": "{n} öğe · imaja {size} eklenir",
+    "noMountTitle": "Bağlı imaj yok",
+    "noMountBody": "Dosya eklemek için İmajlar sayfasından bir sürüm bağla.",
+    "addFiles": "Dosya ekle…",
+    "addFolder": "Klasör ekle…",
+    "allFiles": "Tüm dosyalar",
+    "itemsN": "{n} öğe",
+    "whereTitle": "İmajda nereye?",
+    "whereBody": "{what} kurulan Windows'ta bu klasörde olacak (adı korunur).",
+    "added": "{n} öğe kuyruğa eklendi",
+    "someRefused": "Bazı öğeler eklenemedi",
+    "notSystemDrive": "Yalnız C: sürücüsündeki bir yer seçilebilir",
+    "placeTools": "araçlar klasörü",
+    "placePublicDesktop": "herkesin masaüstü",
+    "placeDefaultDesktop": "yeni kullanıcıların masaüstü",
+    "placeProgramFiles": "programlar",
+    "placePublicDocuments": "ortak belgeler",
+    "placeWallpaper": "duvar kağıtları",
+    "placeRoot": "sistem sürücüsünün kökü"
   }
 }

@@ -15,6 +15,7 @@
 #include "app/controllers/PostSetupController.h"
 #include "app/controllers/ImageController.h"
 #include "app/controllers/ImageSettingsController.h"
+#include "app/controllers/FilesController.h"
 #include "app/controllers/HostsController.h"
 #include "app/controllers/ImageValuesController.h"
 #include "app/controllers/TaskController.h"
@@ -91,11 +92,14 @@ public:
     ComponentController& components() { return *m_components; }
     ServiceController& services() { return *m_serviceCtl; }
     IsoPage* isoPageForDemo() const { return isoPage(); } // render: --demo-usb
+    // D-051: "Dosya ekle…" / "Klasör ekle…" / a drop on the Dosyalar page → "Nereye?" → queue.
+    void addFilesTo(std::vector<std::filesystem::path> sources);
     void startIsoForDemo() { startIso(); }
     // D-046: the catalog's offers as a check list (also the render demo).
     void showUpdateOffers(const core::CatalogTarget& target, std::vector<core::CatalogOffer> offers);
     RegistryController& registry() { return *m_registry; }
     TaskController& tasks() { return *m_tasks; }
+    FilesController& filesForDemo() { return *m_files; }
     HostsController& hosts() { return *m_hosts; }
     ImageSettingsController& imageSettings() { return *m_imageSettings; }
     UnattendController& unattend() { return *m_unattend; }
@@ -198,6 +202,8 @@ private:
     void confirmUsbWrite(IsoController::Request request); // D-047: "USB belleği sil ve yaz?"
     void addTaskDialog();    // D-048: "Görev ekle…"
     void importHostsFile();  // D-049: "Hosts dosyası içe aktar…"
+
+    [[nodiscard]] class FilesPage* filesPage() const;
     void updateApplyChrome();                         // CTA label, Apply page mode/header
     void savePreset(const core::ops::ChangeSet& changes);
     void saveApplyLog();
@@ -228,6 +234,7 @@ private:
     std::unique_ptr<UpdateCatalogController> m_updateCatalog;
     std::unique_ptr<TaskController> m_tasks;   // D-048
     std::unique_ptr<HostsController> m_hosts;  // D-049
+    std::unique_ptr<FilesController> m_files;  // D-051
     std::unique_ptr<ComponentController> m_components;
     std::unique_ptr<ServiceController> m_serviceCtl;
     std::unique_ptr<RegistryController> m_registry;

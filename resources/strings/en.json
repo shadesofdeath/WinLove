@@ -24,7 +24,8 @@
     "collapse": "Collapse",
     "expand": "Expand",
     "tasks": "Tasks",
-    "hosts": "Hosts"
+    "hosts": "Hosts",
+    "files": "Files"
   },
   "title": {
     "cmdk": "Search commands, pages or components",
@@ -1057,5 +1058,33 @@
     "importedNone": "No new entries in the file",
     "filter": "Hosts files",
     "applyRecommended": "Select recommended"
+  },
+  "files": {
+    "title": "Files",
+    "desc": "Files and folders of this PC are copied to the chosen place in the image; the installed Windows has them there.",
+    "drop": "Drop files or folders here",
+    "source": "Source",
+    "target": "Place in the image",
+    "place": "Common place",
+    "empty": "No files yet — drop some or use the buttons above",
+    "summary": "{n} item(s) · {size} added to the image",
+    "noMountTitle": "No image mounted",
+    "noMountBody": "Mount an edition on the Images page to add files.",
+    "addFiles": "Add files…",
+    "addFolder": "Add folder…",
+    "allFiles": "All files",
+    "itemsN": "{n} items",
+    "whereTitle": "Where in the image?",
+    "whereBody": "{what} will be in this folder of the installed Windows (its name is kept).",
+    "added": "{n} item(s) queued",
+    "someRefused": "Some items could not be added",
+    "notSystemDrive": "Only a place on drive C: can be chosen",
+    "placeTools": "a tools folder",
+    "placePublicDesktop": "everyone's desktop",
+    "placeDefaultDesktop": "new users' desktop",
+    "placeProgramFiles": "programs",
+    "placePublicDocuments": "public documents",
+    "placeWallpaper": "wallpapers",
+    "placeRoot": "the root of the system drive"
   }
 }
