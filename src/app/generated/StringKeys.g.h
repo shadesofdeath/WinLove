@@ -541,6 +541,7 @@ enum class Str : std::uint16_t {
     PresetsValueDisable,
     PresetsValueEnable,
     PresetsValueRemove,
+    PresetsValueRun,
     PresetsValueSet,
     PresetsValueSkip,
     RegistryCatAppearance,
@@ -775,7 +776,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 765;
+inline constexpr std::size_t kStrCount = 766;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -1311,6 +1312,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "presets.valueDisable",
     "presets.valueEnable",
     "presets.valueRemove",
+    "presets.valueRun",
     "presets.valueSet",
     "presets.valueSkip",
     "registry.cat.appearance",

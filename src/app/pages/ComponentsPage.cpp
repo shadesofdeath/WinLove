@@ -1,6 +1,7 @@
 #include "app/pages/ComponentsPage.h"
 
 #include "app/Format.h"
+#include "app/pages/components/ComponentInspector.h"
 #include "ui/widget/Host.h"
 #include "ui/widgets/Checkbox.h"
 
@@ -345,7 +346,7 @@ void ComponentsPage::updateRiskBar() {
         }
         return;
     }
-    std::wstring body = risky->entry ? risky->entry->notes(m_language) : std::wstring();
+    std::wstring body = risky->notes;
     if (count > 1) {
         body += (body.empty() ? L"" : L" ") + m_strings.format(Str::ApplyHighRiskN, {{L"n", std::to_wstring(count)}});
     }
@@ -407,7 +408,7 @@ void ComponentsPage::paintCell(ui::Canvas& canvas, int row, int column, RectF re
                                                                               : ui::CheckState::Off,
                                cell.hoveredCell);
         x += ui::Checkbox::kBox + 8;
-        canvas.drawIcon(isGroup ? ui::icons::Icon::Folder : ui::icons::Icon::AppxPackage, {x, rect.y + 4},
+        canvas.drawIcon(isGroup ? ui::icons::Icon::Folder : ComponentInspector::iconOf(item->kind), {x, rect.y + 4},
                         Color::TextSecondary);
         x += ui::tokens::size::icon + 6;
         const std::wstring& name = isGroup ? group.name : item->name;

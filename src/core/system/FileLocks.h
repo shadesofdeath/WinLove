@@ -37,5 +37,9 @@ int releaseExplorerWindows(const std::filesystem::path& folder);
 // control, then retries. Never follows reparse points (junctions/symlinks are removed as links).
 // Refuses drive roots. Needs admin for the ownership step.
 [[nodiscard]] Result<void> forceRemoveContents(const std::filesystem::path& folder);
+// Removes one file or one folder with everything in it — the same way (ownership on access
+// denied, links removed as links). Something already gone is a success. The caller decides
+// what may be removed (SystemComponents::resolveImagePath).
+[[nodiscard]] Result<void> forceRemoveEntry(const std::filesystem::path& entry);
 
 } // namespace wl::core

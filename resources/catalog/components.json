@@ -1,0 +1,61 @@
+{
+  "format": "winlove.catalog.components",
+  "version": 1,
+  "comment": "System components outside the provisioned-app list (docs/pages/07-components.md, D-031). packages: CBS package families (unlocked in the offline registry, then DismRemovePackage; best effort when the component also has paths). paths: relative to the image root, removed whole. registry: offline writes; {key, delete:true} removes a key, value \"-\" removes a value. Paths and names checked against Windows 11 25H2 (26200.8037).",
+  "groups": [
+    { "id": "components", "tr": "Sistem Bileşenleri", "en": "System Components" },
+    { "id": "cleanup", "tr": "Temizlik", "en": "Cleanup" }
+  ],
+  "components": [
+    { "id": "edge", "group": "components", "tr": "Microsoft Edge", "en": "Microsoft Edge", "risk": "medium",
+      "notes_tr": "İmajda tarayıcı kalmaz: Kurulum Sonrası'na bir tarayıcı ekle. Widgets, yardım bağlantıları ve arama sonuçları Edge ister. Windows Update Edge'i geri getirebilir. Dosyalar WebView2 ve EdgeCore ile ortaktır: ISO ancak üçü birlikte kaldırılınca küçülür.",
+      "notes_en": "The image is left without a browser: add one in Post-Setup. Widgets, help links and search results ask for Edge. Windows Update may bring Edge back. The files are shared with WebView2 and EdgeCore: the ISO only shrinks when all three go.",
+      "paths": [ "Program Files (x86)\\Microsoft\\Edge" ],
+      "registry": [
+        { "key": "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{56EB18F8-B008-4CBD-B6D2-8C97FE7E9062}", "delete": true },
+        { "key": "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\ClientState\\{56EB18F8-B008-4CBD-B6D2-8C97FE7E9062}", "delete": true },
+        { "key": "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Microsoft Edge", "delete": true },
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\Active Setup\\Installed Components\\{9459C573-B17A-45AE-9F64-1857B5D58CEE}", "delete": true }
+      ] },
+
+    { "id": "edge-webview", "group": "components", "tr": "Edge WebView2 Çalışma Zamanı", "en": "Edge WebView2 Runtime", "risk": "high",
+      "notes_tr": "Widgets, Teams, yeni Outlook, Copilot ve WebView2 kullanan üçüncü taraf uygulamalar çalışmaz (çoğu çalışma zamanını kendisi yeniden kurar). System32'deki WebView platformu ayrı bir özelliktir: Özellikler sayfasında.",
+      "notes_en": "Widgets, Teams, the new Outlook, Copilot and third-party apps built on WebView2 stop working (most reinstall the runtime themselves). The WebView platform in System32 is a separate capability: see Features.",
+      "paths": [ "Program Files (x86)\\Microsoft\\EdgeWebView" ],
+      "registry": [
+        { "key": "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}", "delete": true },
+        { "key": "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\ClientState\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}", "delete": true },
+        { "key": "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Microsoft EdgeWebView", "delete": true }
+      ] },
+
+    { "id": "edge-update", "group": "components", "tr": "Edge Güncelleyici ve ortak dosyalar (EdgeUpdate, EdgeCore)", "en": "Edge Update and shared files (EdgeUpdate, EdgeCore)", "risk": "high",
+      "notes_tr": "Yalnızca Edge ve WebView2'yi de kaldırıyorsan seç: kalan ürün güncelleme alamaz ve EdgeCore'daki ortak dosyaları arayabilir. Güncelleme servisleri (edgeupdate, edgeupdatem) de silinir.",
+      "notes_en": "Pick it only together with Edge and WebView2: whatever stays gets no updates and may look for the shared files in EdgeCore. The update services (edgeupdate, edgeupdatem) are deleted too.",
+      "paths": [ "Program Files (x86)\\Microsoft\\EdgeUpdate", "Program Files (x86)\\Microsoft\\EdgeCore" ],
+      "registry": [
+        { "key": "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate", "delete": true },
+        { "key": "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Microsoft Edge Update", "delete": true },
+        { "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\edgeupdate", "delete": true },
+        { "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\edgeupdatem", "delete": true }
+      ] },
+
+    { "id": "onedrive", "group": "components", "tr": "OneDrive kurulumu", "en": "OneDrive setup", "risk": "low",
+      "notes_tr": "Yeni kullanıcılara OneDrive kurulmaz; isteyen sonradan kendisi kurar. Paket DISM ile kaldırılamazsa yalnız kurulum dosyası ve başlangıç kaydı silinir (logda uyarı).",
+      "notes_en": "New users no longer get OneDrive; it can still be installed by hand. When DISM refuses the package, only the setup file and its startup entry are removed (a warning in the log).",
+      "packages": [ "Microsoft-Windows-OneDrive-Setup-Package", "Microsoft-Windows-OneDrive-Setup-WOW64-Package" ],
+      "paths": [ "Windows\\System32\\OneDriveSetup.exe" ],
+      "registry": [
+        { "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "name": "OneDriveSetup", "value": "-" }
+      ] },
+
+    { "id": "winre", "group": "components", "tr": "Windows Kurtarma Ortamı (WinRE)", "en": "Windows Recovery Environment (WinRE)", "risk": "high",
+      "notes_tr": "Kurulan sistemde kurtarma ortamı olmaz: \"Bu bilgisayarı sıfırla\", başlangıç onarımı ve gelişmiş başlangıç çalışmaz; BitLocker kurtarma ekranı ve WinRE güncellemeleri hata verir.",
+      "notes_en": "The installed system has no recovery environment: \"Reset this PC\", startup repair and advanced startup do not work; the BitLocker recovery screen and WinRE updates fail.",
+      "paths": [ "Windows\\System32\\Recovery\\Winre.wim" ] },
+
+    { "id": "component-store", "group": "cleanup", "kind": "cleanup", "resetBase": true,
+      "tr": "Bileşen deposu temizliği (ResetBase)", "en": "Component store cleanup (ResetBase)", "risk": "medium",
+      "notes_tr": "WinSxS'teki yerini almış bileşen sürümlerini kalıcı olarak siler; imajdaki güncellemeler artık kaldırılamaz. Uzun sürer (5–20 dk). Diğer adımlardan önce çalışır: imajda bekleyen işlem varsa DISM reddeder (0x800F0806).",
+      "notes_en": "Deletes the superseded component versions in WinSxS for good; the updates in the image can no longer be uninstalled. Takes a while (5–20 min). Runs before the other steps: DISM refuses it when the image has pending operations (0x800F0806)." }
+  ]
+}

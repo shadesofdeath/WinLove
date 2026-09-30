@@ -657,6 +657,7 @@
     "on": "On",
     "off": "Off",
     "valueRemove": "remove",
+    "valueRun": "run",
     "valueEnable": "enable",
     "valueDisable": "disable",
     "valueAdd": "add",

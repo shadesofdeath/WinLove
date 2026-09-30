@@ -3,6 +3,8 @@
 // and parsed by integration tests and tools.
 #include "base/Log.h"
 #include "base/Utf8.h"
+#include "core/image/SystemComponents.h"
+#include "core/image/dism/StoreCleanup.h"
 #include "core/image/RegistryEdit.h"
 #include "core/image/Services.h"
 #include "core/image/Source.h"
@@ -26,6 +28,7 @@
 #include <windows.h>
 
 #include <cstdio>
+#include <cwctype>
 #include <fstream>
 #include <sstream>
 #include <format>
@@ -491,6 +494,113 @@ int cmdAppx(const std::wstring& dir, bool asJson) {
     return 0;
 }
 
+// P07 system components: the CBS packages as the image's SOFTWARE hive lists them (hidden ones
+// included, which DismGetPackages leaves out). `filter`: part of the identity.
+int cmdCbs(const std::wstring& dir, const std::wstring& filter, bool asJson) {
+    auto list = core::readCbsPackages(std::filesystem::path(dir));
+    if (!list) {
+        return reportError(list.error());
+    }
+    auto lower = [](std::wstring text) {
+        for (auto& c : text) {
+            c = static_cast<wchar_t>(std::towlower(c));
+        }
+        return text;
+    };
+    const std::wstring needle = lower(filter);
+    json out = json::array();
+    std::size_t shown = 0;
+    for (const auto& p : *list) {
+        if (!needle.empty() && lower(p.identity).find(needle) == std::wstring::npos) {
+            continue;
+        }
+        ++shown;
+        if (asJson) {
+            out.push_back({{"identity", narrow(p.identity)}, {"visibility", p.visibility}, {"state", p.state}});
+        } else {
+            print(std::format(L"  {}  0x{:02X}  {}\n", p.visibility == 1 ? L"visible" : L"hidden ", p.state, p.identity));
+        }
+    }
+    if (asJson) {
+        printJson(out);
+    } else {
+        print(std::format(L"{} of {} package(s)\n", shown, list->size()));
+    }
+    return 0;
+}
+
+// One component recipe (the value of a removeComponent operation: title, packages, paths,
+// registry) against a mounted image: what is there, or — with --remove — take it out.
+int cmdComponent(const std::wstring& dir, const std::wstring& recipeFile, bool remove) {
+    std::ifstream file{std::filesystem::path(recipeFile), std::ios::binary};
+    if (!file) {
+        return reportError(Error{ErrorCode::NotFound, L"cannot open the recipe", recipeFile});
+    }
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    auto recipe = core::componentRecipeFromJson(buffer.str());
+    if (!recipe) {
+        return reportError(recipe.error());
+    }
+    if (auto valid = core::validateComponentRecipe(*recipe); !valid) {
+        return reportError(valid.error());
+    }
+    const auto presence = core::probeComponent(dir, *recipe);
+    print(std::format(L"{}: {} · {} bytes in {} path(s)\n", recipe->title, presence.present ? L"present" : L"not found",
+                      presence.size, recipe->paths.size()));
+    if (!recipe->packages.empty()) {
+        auto all = core::readCbsPackages(std::filesystem::path(dir));
+        if (!all) {
+            return reportError(all.error());
+        }
+        for (const auto& p : core::cbsRemovalOrder(recipe->packages, *all)) {
+            print(std::format(L"  package  {}  0x{:02X}  {}\n", p.visibility == 1 ? L"visible" : L"hidden ", p.state, p.identity));
+        }
+    }
+    if (!remove) {
+        return 0;
+    }
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    auto session = (*d)->openSession(dir);
+    if (!session) {
+        return reportError(session.error());
+    }
+    const core::TaskContext task{g_cancel, [](double fraction, std::wstring_view) {
+                                     print(std::format(L"\r  {:5.1f}%", fraction * 100));
+                                 }};
+    const auto removed = core::removeComponent(**session, *recipe, task);
+    print(L"\n");
+    if (!removed) {
+        return reportError(removed.error());
+    }
+    print(L"removed (image not committed: wlcli unmount <dir> --commit)\n");
+    return 0;
+}
+
+int cmdStoreCleanup(const std::wstring& dir, bool resetBase) {
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    auto session = (*d)->openSession(dir);
+    if (!session) {
+        return reportError(session.error());
+    }
+    const core::TaskContext task{g_cancel, [](double fraction, std::wstring_view) {
+                                     print(std::format(L"\r  {:5.1f}%", fraction * 100));
+                                 }};
+    const auto cleaned = core::cleanupComponentStore(**session, resetBase, task);
+    print(L"\n");
+    if (!cleaned) {
+        return reportError(cleaned.error());
+    }
+    print(L"component store cleaned (image not committed)\n");
+    return 0;
+}
+
 // P10 data: services of the image's SYSTEM hive; `set` = "Name=start" writes one start type.
 int cmdServices(const std::wstring& dir, const std::wstring& set, bool asJson) {
     if (!set.empty()) {
@@ -677,6 +787,9 @@ void printUsage() {
           L"                                      hives, P11; --first-logon: also re-import after setup)\n"
           L"  wlcli services <mountdir> [--set=Name=auto|autoDelayed|manual|disabled]   (P10)\n"
           L"  wlcli appx <mountdir>   (provisioned apps + size, as on P07)\n"
+          L"  wlcli cbs <mountdir> [text]   (CBS packages from the image's registry, hidden ones too)\n"
+          L"  wlcli component <mountdir> <recipe.json> [--remove]   (P07 system component: probe / remove)\n"
+          L"  wlcli store-cleanup <mountdir> [--resetbase]   (dism /Cleanup-Image /StartComponentCleanup)\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
           L"  wlcli apply <changeset.json> <mountdir> [--commit] [--source=<sources\\sxs>]\n"
           L"\n  Change sets (no admin):\n"
@@ -705,6 +818,8 @@ int wmain(int argc, wchar_t** argv) {
     bool sha = false;
     bool noPrompt = false;
     bool firstLogon = false;
+    bool remove = false;
+    bool resetBase = false;
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
@@ -723,6 +838,10 @@ int wmain(int argc, wchar_t** argv) {
             noPrompt = true;
         } else if (a == L"--first-logon") {
             firstLogon = true;
+        } else if (a == L"--remove") {
+            remove = true;
+        } else if (a == L"--resetbase") {
+            resetBase = true;
         } else if (a.starts_with(L"--source=")) {
             source = std::wstring(a.substr(9));
         } else if (a == L"--skip-errors") {
@@ -786,6 +905,15 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"repair" && args.size() == 2) {
         return cmdRepair(args[1]);
+    }
+    if (command == L"cbs" && (args.size() == 2 || args.size() == 3)) {
+        return cmdCbs(args[1], args.size() == 3 ? args[2] : std::wstring(), asJson);
+    }
+    if (command == L"component" && args.size() == 3) {
+        return cmdComponent(args[1], args[2], remove);
+    }
+    if (command == L"store-cleanup" && args.size() == 2) {
+        return cmdStoreCleanup(args[1], resetBase);
     }
     if (command == L"appx" && args.size() == 2) {
         return cmdAppx(args[1], asJson);

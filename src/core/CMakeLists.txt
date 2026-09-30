@@ -6,6 +6,7 @@ add_library(wl_core STATIC
     image/Services.cpp
     image/ImageFormat.cpp
     image/Source.cpp
+    image/SystemComponents.cpp
     image/UdfImage.cpp
     image/UpdatePackage.cpp
     image/WimFile.cpp
@@ -15,6 +16,7 @@ add_library(wl_core STATIC
     image/dism/DismErrors.cpp
     image/dism/MountHealth.cpp
     image/dism/OptionalFeatures.cpp
+    image/dism/StoreCleanup.cpp
     image/wim/WimGapi.cpp
     io/ByteSource.cpp
     iso/IsoBuilder.cpp

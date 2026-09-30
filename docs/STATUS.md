@@ -5,15 +5,23 @@
 ## Güncel
 - **Faz:** 3 — sayfalar. P01–P04 ✅. P05 Uygula, P06 ISO, P08 Güncellemeler, P09 Sürücüler, P10 Servisler, P11 Kayıt Defteri,
   P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler, P16 Uygulama Ayarları, P17 Hakkında, P18 Komut Paleti:
-  🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v1 (yalnız AppX; CBS paket
-  kaldırma kararı bekliyor).
+  🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v2 (AppX + sistem bileşenleri + depo
+  temizliği, D-031), test bekliyor.
 - **Çalışma şekli:** kullanıcı "her seferinde durma" dedi — sayfa bitince build + test + `-Dist` + yerel commit,
   sonra doğrudan bir sonraki sayfa. Kullanıcı `dist\WinLove.exe`'yi paralel test ediyor.
 - **Faz 3'ün bütün sayfaları yazıldı** (P01–P04 onaylı, P05–P18 kullanıcı testi bekliyor). Kural 1 gereği Faz 4'e
   geçmeden önce bu sayfaların kullanıcı onayı gerekir.
-- **Bir sonraki somut adım:** kullanıcı testinden gelen düzeltmeler (sayfa sayfa, `docs/pages/NN-*.md` §Kabul
-  listeleri üzerinden). Kullanıcıdan bağımsız yapılabilecekler: P07 CBS paket kaldırma kararı, P06 USB sekmesi,
-  "işlem sonrası mount'u çöz" (P16 §4), Faz 4 hazırlığı (UIA, DComp / dirty-rect D-011).
+- **Bir sonraki somut adım:** kullanıcı VM'de kendi imajını deniyor (`docs/TESTING.md` → "VM kabul testi").
+  Önce yönetici PowerShell'de `tools\lab_components.ps1` (2–4 dk, VM'siz): yeni sistem bileşeni motorunun gerçek
+  imajdaki ilk denemesi; sonucu `build\lab\out\components-test.log`. Sonra testten gelen düzeltmeler.
+- **P07 v2 — sistem bileşenleri ve depo temizliği (2026-09-30, D-031):** `core/image/SystemComponents` (tarif: CBS
+  paket aileleri + yollar + kayıt yazımları; gizli paket `Visibility` / `Owners` ile açılıp `DismRemovePackage`;
+  junction'dan geçen yol reddi), `core/image/dism/StoreCleanup` (`dism.exe /StartComponentCleanup /ResetBase`, planın
+  ilk adımı), `resources/catalog/components.json` (Edge, WebView2, Edge Güncelleyici + EdgeCore, OneDrive kurulumu,
+  WinRE, depo temizliği), Bileşenler sayfasında "Sistem Bileşenleri" + "Temizlik" grupları, `wlcli cbs | component |
+  store-cleanup`. Test imajı yönetici gerektirmeden incelendi (7-Zip + hive okuyucu): **Defender 25H2'de ayrı paket
+  değil → kaldırma sunulmuyor**; FoD'lar zaten Özellikler'de. **Gerçek imajda hiç çalıştırılmadı** (terminal yönetici
+  değil): mantık unit testli, kaldırmanın kendisi `lab_components.ps1` + VM testini bekliyor.
 - **P18 Komut Paleti (2026-09-30):** `shell/PaletteIndex` (sayfalar, P12 ayarları, okunan bileşen / özellik / servis
   listeleri, o an çalışabilen komutlar; Türkçe-duyarlı katlama, puanlı eşleşme) + `shell/CommandPalette` (modal;
   `ui::SearchBox` "bare" + soluk tamamlama). Enter → sayfa + `reveal` (satır seçilir / kontrol odaklanır). Yeni
@@ -57,12 +65,15 @@
   (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
   ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
   (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
-- **Build:** `./build.ps1 -Dist` yeşil, 147 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Build:** `./build.ps1 -Dist` yeşil, 158 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
-- **Açık konular / sonraya:** P06 USB sekmesi; güncellemelerde sürükle-sırala; imajdaki mevcut sürücüleri
-  listeleme/kaldırma; `C:\WinLove` eski klasörü (kullanıcı unmount sonrası silebilir); DComp/dirty-rect (D-011),
-  UIA (Faz 4).
+- **Açık konular / sonraya:** P06 USB sekmesi (bilerek yazılmadı: denenemeyen disk biçimlendirme kodu; ISO'yu
+  Rufus / Ventoy yazar); güncellemelerde sürükle-sırala; imajdaki mevcut sürücüleri listeleme/kaldırma; "işlem
+  sonrası mount'u çöz" (P16 §4); servis katalog notlarının ekranda gösterimi; `C:\WinLove` eski klasörü (kullanıcı
+  unmount sonrası silebilir); Faz 4: DComp/dirty-rect (D-011), UIA, imzalama.
+- **Lab:** `build\lab\iso\sources\install.wim` (test ISO'sundan kopya, 6,7 GB) duruyor; `build\lab\probe` +
+  `build\lab\venv` imaj incelemesinin artıkları (silinebilir).
 
 ## Son eklenenler (P01)
 - Motor: klasör kaynağı, `WindowsRelease` (sürüm adları), `LiveSystem`; `wlcli live`, `wlcli info <klasör>`.
@@ -82,6 +93,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — P16 Uygulama Ayarları geliştirildi (test bekliyor).
 - 2026-09-30 — P17 Hakkında geliştirildi (test bekliyor).
 - 2026-09-30 — P18 Komut Paleti geliştirildi (test bekliyor). Faz 3 sayfalarının tamamı yazıldı.
+- 2026-09-30 — P07 v2: sistem bileşenleri (Edge, WebView2, OneDrive, WinRE) ve bileşen deposu temizliği (D-031).
 - 2026-09-28 — Baştan sona inceleme (4 alan, paralel): ~35 hata düzeltildi. Öne çıkanlar: junction üzerinden ana
   makine ACL'si değişebilmesi (FileLocks), commit edilmeyen unmount'un başarılı raporlanması, DISM oturum yenileme,
   UDF çıkarmada yol dışına yazma + sınır dışı okuma, tıklamada yok edilen widget (use-after-free), Enter ile devre

@@ -2,6 +2,9 @@
 // controller (grouping, tri-state group check, queue operations).
 #include "app/catalog/AppxCatalog.h"
 #include "app/controllers/ComponentController.h"
+#include "app/pages/ApplyPage.h"
+#include "base/Utf8.h"
+#include "core/image/dism/StoreCleanup.h"
 
 #include <doctest.h>
 
@@ -90,4 +93,121 @@ TEST_CASE("ComponentController groups apps, checks groups tri-state and queues R
     CHECK(state.changes().find(OpKind::RemoveAppx, system.items.front().packageName)->risk == core::ops::Risk::High);
     controller.resetChanges();
     CHECK(state.changes().empty());
+}
+
+namespace {
+ComponentCatalog shippedComponents() {
+    auto catalog = ComponentCatalog::parse(readFile(std::filesystem::path(WL_SOURCE_DIR) / L"resources/catalog/components.json"));
+    REQUIRE(catalog);
+    return std::move(*catalog);
+}
+} // namespace
+
+TEST_CASE("components catalog: the shipped file parses, every recipe is one the engine accepts") {
+    const auto catalog = shippedComponents();
+    REQUIRE(catalog.groups().size() == 2);
+    CHECK(catalog.components().size() == 6); // nothing skipped
+    for (const auto& entry : catalog.components()) {
+        CAPTURE(entry.id);
+        CHECK_FALSE(entry.notes.tr.empty());
+        CHECK_FALSE(entry.notes.en.empty());
+        if (entry.kind == ComponentCatalogEntry::Kind::Remove) {
+            CHECK(core::validateComponentRecipe(entry.recipe));
+            CHECK_FALSE(entry.recipe.paths.empty());
+            // The recipe survives the trip through a queue operation / preset file.
+            auto recipe = entry.recipe;
+            recipe.title = entry.name.tr;
+            CHECK(*core::componentRecipeFromJson(core::componentRecipeToJson(recipe)) == recipe);
+        }
+    }
+    const auto* onedrive = catalog.find("onedrive");
+    REQUIRE(onedrive);
+    CHECK(onedrive->recipe.packages.size() == 2);
+    CHECK(onedrive->recipe.registry.front().kind == core::RegistryWrite::Kind::DeleteValue);
+    CHECK(onedrive->recipe.registry.front().key == L"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+    const auto* update = catalog.find("edge-update");
+    REQUIRE(update);
+    CHECK(update->recipe.registry.front().kind == core::RegistryWrite::Kind::DeleteKey);
+    CHECK(catalog.find("component-store")->kind == ComponentCatalogEntry::Kind::Cleanup);
+    CHECK_FALSE(catalog.find("defender")); // not a removable package on Windows 11 24H2+ (D-031)
+
+    // Bad entries are dropped one by one, the rest of the file still loads.
+    const auto partial = ComponentCatalog::parse(R"({"format":"winlove.catalog.components",
+        "groups":[{"id":"g","tr":"G","en":"G"}],
+        "components":[
+          {"id":"ok","group":"g","tr":"Tamam","en":"Fine","paths":["Program Files\\X"]},
+          {"id":"root","group":"g","tr":"Kök","en":"Root","paths":["Windows"]},
+          {"id":"nopath","group":"g","tr":"Yolsuz","en":"No path","packages":["Some-Package"]},
+          {"id":"ok","group":"g","tr":"Yine","en":"Again","paths":["Program Files\\Y"]},
+          {"id":"lost","group":"nowhere","tr":"A","en":"B","paths":["Program Files\\Z"]},
+          {"id":"sam","group":"g","tr":"A","en":"B","paths":["Program Files\\Z"],"registry":[{"key":"HKLM\\SAM\\x","delete":true}]}]})");
+    REQUIRE(partial);
+    REQUIRE(partial->components().size() == 1);
+    CHECK(partial->components().front().id == "ok");
+    CHECK_FALSE(ComponentCatalog::parse(R"({"format":"winlove.catalog.appx"})"));
+}
+
+TEST_CASE("ComponentController: system components the image has, the cleanup, and their queue operations") {
+    AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
+    ComponentController controller(state, shippedCatalog(), Language::Turkish, [](std::function<void()> fn) { fn(); },
+                                   shippedComponents());
+    state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});
+    // Known before the app list arrives: the controller has nothing to read itself.
+    state.setSystemComponents(AppState::SystemComponents{
+        L"C:\\m", {{"edge", {true, 800}}, {"onedrive", {true, 90}}, {"winre", {false, 0}}}});
+    state.setAppxList(AppState::AppxList{AppState::AppxList::Status::Ready, L"C:\\m", {makeApp(L"Microsoft.GamingApp", 400)}, {}});
+
+    const auto groups = controller.groups();
+    REQUIRE(groups.size() == 3); // Sistem Bileşenleri, Temizlik, then the apps (xbox)
+    const auto& system = groups[0];
+    CHECK(system.name == L"Sistem Bileşenleri");
+    REQUIRE(system.items.size() == 2); // what is present, in catalog order
+    CHECK(system.items[0].name == L"Microsoft Edge");
+    CHECK(system.items[0].kind == ComponentController::Item::Kind::System);
+    CHECK(system.items[0].size == 800);
+    CHECK(system.size == 890);
+    CHECK(system.items[1].contents.size() == 3); // two packages and the setup file
+    CHECK_FALSE(system.items[1].notes.empty());
+    const auto& cleanup = groups[1].items.front();
+    CHECK(cleanup.kind == ComponentController::Item::Kind::Cleanup);
+    CHECK(cleanup.size == 0);
+    // Group indexes never collide with the AppX catalog's.
+    CHECK(groups[2].name == L"Xbox ve Oyun");
+    CHECK(system.catalogIndex != groups[2].catalogIndex);
+    CHECK(groups[1].catalogIndex != system.catalogIndex);
+
+    controller.toggle(system.items[1]);
+    const auto* op = state.changes().find(OpKind::RemoveComponent, L"onedrive");
+    REQUIRE(op);
+    CHECK(op->risk == core::ops::Risk::Low);
+    CHECK(op->sizeDelta == -90);
+    const auto recipe = core::componentRecipeFromJson(utf8::fromWide(op->value));
+    REQUIRE(recipe);
+    CHECK(recipe->title == L"OneDrive kurulumu");
+    CHECK(recipe->packages.size() == 2);
+    CHECK(recipe->paths == std::vector<std::wstring>{L"Windows\\System32\\OneDriveSetup.exe"});
+    CHECK(ApplyPage::displayName(state, *op) == L"OneDrive kurulumu");
+    CHECK(controller.queued(system.items[1]));
+    CHECK_FALSE(controller.queued(system.items[0]));
+    CHECK(controller.check(system) == ComponentController::Check::Partial);
+
+    controller.toggle(cleanup);
+    const auto* clean = state.changes().find(OpKind::CleanupImage, L"component-store");
+    REQUIRE(clean);
+    CHECK(core::storeCleanupFromJson(utf8::fromWide(clean->value))->resetBase);
+    CHECK(ApplyPage::displayName(state, *clean) == cleanup.name);
+    CHECK(controller.queuedCount() == 2);
+    CHECK(controller.queuedBytes() == 90);
+
+    controller.toggle(system.items[1]); // again: out of the queue
+    CHECK_FALSE(state.changes().find(OpKind::RemoveComponent, L"onedrive"));
+    controller.toggleGroup(system);
+    CHECK(controller.check(system) == ComponentController::Check::On);
+    controller.resetChanges();
+    CHECK(state.changes().empty());
+
+    // Another image: what was known about the old one is gone with it.
+    state.setMounted(MountedImage{L"C:\\m2", L"C:\\w\\install.wim", 2, L"Home"});
+    CHECK_FALSE(state.systemComponents());
+    CHECK(controller.groups().empty());
 }

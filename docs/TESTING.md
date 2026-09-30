@@ -42,3 +42,50 @@ build\lab\
 
 ## Test verisi sabitleri
 Integration testleri beklenen değerleri (index sayısı, sürüm adları, build no) `tests/integration/fixtures/win11_25h2_tr.json`'dan okur. ISO değişirse yalnızca bu dosya güncellenir.
+
+## Motor denemeleri (yönetici PowerShell, VM'siz, kaydetmeden)
+| Betik | Ne yapar | Çıktı |
+|---|---|---|
+| `tools\lab_setup.ps1` | `build\lab` klasörlerini kurar, install.wim'i ISO'dan kopyalar (yönetici gerekmez) | — |
+| `tools\dism_smoke.ps1` | Salt okunur mount, özellik / paket / capability listeleri, discard | `build\lab\out\dism-smoke.json` |
+| `tools\lab_components.ps1 [-Cleanup]` | Kopya imajda OneDrive (gizli CBS paketi) ve Edge'i `wlcli component --remove` ile kaldırır, doğrular, discard. `-Cleanup`: depo temizliği de (5–20 dk) | `build\lab\out\components-test.log` |
+
+Hepsi `wlcli` üzerinden çalışır: bir adım başarısızsa aynı komut elle yinelenebilir (`--verbose` motor logunu da basar).
+
+## VM kabul testi (tek kurulumda en riskli her şey)
+Hazırlık: `dist\WinLove.exe` (yönetici) → test ISO'sunu aç → Pro'yu bağla.
+
+**İmajı hazırla** (her satır bir sayfa; hepsi aynı kuyruğa girer):
+1. Bileşenler: birkaç uygulama + **OneDrive kurulumu** + **Microsoft Edge** (+ istersen WinRE) + **Bileşen deposu temizliği**.
+2. Özellikler: bir özelliği kapat, bir FoD'u (ör. Adım Kaydedici) kaldır.
+3. Servisler: DiagTrack → Devre dışı.
+4. Ayarlar / Tweaks: "Önerilenleri uygula".
+5. Kayıt Defteri: bir "İlk oturumda" tweak'i + küçük bir `.reg` içe aktar (HKLM ve HKCU değeri olsun).
+6. Kurulum Sonrası: bir winget adımı (ör. `Mozilla.Firefox` — Edge kaldırıldıysa tarayıcı), bir komut
+   (`cmd /c echo ok > C:\winlove-postsetup.txt`), bir dosya kopyalama.
+7. Katılımsız Kurulum: dil / klavye / saat dilimi, yerel hesap, "Microsoft hesabını atla", gizlilik sorularını atla;
+   "ISO'ya ekle" açık. Disk düzenini ilk denemede **Sor** bırak.
+8. Uygula → log'u kaydet (Tamamlandı ekranı) → ISO Oluştur (LZX yeniden paketle, SHA-256).
+
+**Uygula ekranında bak:** ilk adım depo temizliği mi; `[cbs] … package(s) unlocked` / `removed …OneDrive…` satırları;
+hata / uyarı sayaçları; kazanç.
+
+**VM (Hyper-V / VMware, UEFI + TPM'siz deneme için LabConfig atlamaları açık):**
+| Kontrol | Beklenen | Olmazsa bakılacak yer |
+|---|---|---|
+| ISO açılıyor (UEFI; mümkünse bir de BIOS) | Kurulum başlar | P06, `boot` seçeneği |
+| Kurulum soruları | Dil / klavye / hesap / gizlilik sorulmaz | `X:\Windows\Panther\setupact.log`, `autounattend.xml` kökte mi |
+| İlk masaüstü | Yerel hesap açık, internet hesabı istenmedi | BypassNRO |
+| `C:\Windows\Setup\Scripts\SetupComplete.cmd` çalıştı mı | `C:\ProgramData\WinLove\postsetup-machine.log` var (kurulum sonrası adımı varsa); HKLM değerleri yerinde | OEM anahtarıyla etkinleştirilmiş sürümlerde Windows bu betiği atlar |
+| HKLM tweak'leri | `reg query` ile değerler yerinde | `C:\Windows\Setup\Scripts\WinLove\setupcomplete.reg` |
+| HKCU tweak'leri (ilk oturum) | Değerler yerinde; ikinci bir kullanıcı açınca onda da | Default profil `RunOnce`, `firstlogon-user.reg` |
+| Kurulum sonrası adımlar | `C:\winlove-postsetup.txt` var; winget uygulaması kuruldu (ağ gerekir) | `C:\ProgramData\WinLove\postsetup-user.log`; "WinLove Post-Setup" görevi (çalışınca kendini siler) |
+| Kaldırılan uygulamalar | Başlat'ta yok | — |
+| OneDrive | Kurulmadı, `System32\OneDriveSetup.exe` yok | — |
+| Edge | `Program Files (x86)\Microsoft\Edge` yok; Ayarlar → Uygulamalar'da görünmüyor | Windows Update sonrası geri geldi mi (not et) |
+| Servis | `sc qc DiagTrack` → DISABLED | — |
+| Sistem sağlığı | `sfc /scannow` ve `dism /online /cleanup-image /scanhealth` temiz; Windows Update bir toplu güncelleme kurabiliyor | Paket sökülen bileşenler (OneDrive) güncellemeyi bozuyorsa D-031'e not |
+| WinRE kaldırıldıysa | `reagentc /info` → Disabled | — |
+
+Sorun çıkarsa `C:\Windows\Panther\*.log`, `C:\Windows\Logs\CBS\CBS.log`, `C:\ProgramData\WinLove\*.log`,
+`C:\Windows\Setup\Scripts\WinLove\` ve WinLove'un kaydettiği uygulama logunu sakla.

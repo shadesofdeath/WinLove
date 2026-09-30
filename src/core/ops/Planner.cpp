@@ -9,6 +9,8 @@ Phase phaseOf(OpKind kind) noexcept {
     switch (kind) {
     case OpKind::RemovePackage:
     case OpKind::RemoveCapability:
+    case OpKind::RemoveComponent:
+    case OpKind::CleanupImage:
     case OpKind::RemoveAppx: return Phase::Remove;
     case OpKind::DisableFeature:
     case OpKind::EnableFeature: return Phase::Features;
@@ -39,6 +41,8 @@ double estimateSeconds(OpKind kind) noexcept {
     case OpKind::SetRegistryFirstLogon: return 0.3;
     case OpKind::SetServiceStart: return 1.0;
     case OpKind::SetPostSetup: return 5.0; // scripts; copy payloads add their own time
+    case OpKind::RemoveComponent: return 25.0; // hive edit + package removal + a few thousand files
+    case OpKind::CleanupImage: return 600.0;   // StartComponentCleanup /ResetBase on an updated image
     }
     return 5.0;
 }
@@ -64,6 +68,9 @@ ApplyPlan plan(const ChangeSet& changes) {
     // stable: keeps the user's order inside each phase; updates go SSU → LCU → .NET → other
     // (op.value holds the kind from UpdatePackage.h).
     const auto updateRank = [](const Operation& op) {
+        if (op.kind == OpKind::CleanupImage) {
+            return -1; // first of its (first) phase: needs an image without pending operations
+        }
         if (op.kind != OpKind::AddPackage) {
             return 0;
         }

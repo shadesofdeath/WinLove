@@ -58,6 +58,7 @@ void AppState::setMounted(std::optional<MountedImage> mounted) {
         // Queue and feature list belong to the image that was mounted.
         m_features.reset();
         m_appx.reset();
+        m_system.reset();
         m_services.reset();
         if (!m_changes.empty()) {
             m_changes.clear();
@@ -141,6 +142,11 @@ void AppState::addDriverScan(const std::filesystem::path& folder, std::vector<co
 
 void AppState::setAppxList(std::optional<AppxList> list) {
     m_appx = std::move(list);
+    notify(Change::Components);
+}
+
+void AppState::setSystemComponents(std::optional<SystemComponents> components) {
+    m_system = std::move(components);
     notify(Change::Components);
 }
 

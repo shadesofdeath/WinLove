@@ -2,6 +2,7 @@
 add_library(wl_app STATIC
     App.cpp
     catalog/AppxCatalog.cpp
+    catalog/ComponentCatalog.cpp
     catalog/ImageSettingsCatalog.cpp
     catalog/TweakCatalog.cpp
     controllers/ApplyController.cpp
@@ -77,6 +78,7 @@ set(WL_EMBEDDED_RESOURCES
     ${PROJECT_SOURCE_DIR}/resources/catalog/services.json
     ${PROJECT_SOURCE_DIR}/resources/catalog/tweaks.json
     ${PROJECT_SOURCE_DIR}/resources/catalog/settings.json
+    ${PROJECT_SOURCE_DIR}/resources/catalog/components.json
     ${PROJECT_SOURCE_DIR}/resources/strings/tr.json
     ${PROJECT_SOURCE_DIR}/resources/strings/en.json)
 set_source_files_properties(WinLove.rc PROPERTIES OBJECT_DEPENDS "${WL_EMBEDDED_RESOURCES}")
