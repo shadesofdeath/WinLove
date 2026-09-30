@@ -447,7 +447,8 @@ int cmdPlan(const std::wstring& changeSetPath) {
     return 0;
 }
 
-int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bool commit, const std::wstring& source) {
+int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bool commit, const std::wstring& source,
+             const std::wstring& also, const std::wstring& wim) {
     auto set = loadChangeSet(changeSetPath);
     if (!set) {
         return reportError(set.error());
@@ -482,7 +483,37 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
                                                        : std::wstring(L"skipped");
     print(std::format(L"  {} of {} step(s) ran, {} failed{}; commit: {} ({} ms)\n", report.results.size(), p.steps.size(),
                       report.failures(), report.completed ? L"" : L" (stopped)", commitText, job->elapsed.count()));
-    return report.completed && report.failures() == 0 && !job->commitError ? 0 : 3;
+    int result = report.completed && report.failures() == 0 && !job->commitError ? 0 : 3;
+    // D-055: the same plan on further editions of `wim` (--also=2,3 --wim=<file>), after a commit.
+    if (!also.empty() && job->committed && !wim.empty()) {
+        std::wstring_view rest = also;
+        while (!rest.empty()) {
+            const auto comma = rest.find(L',');
+            const int index = parseIndex(std::wstring(rest.substr(0, comma)));
+            rest = comma == std::wstring_view::npos ? std::wstring_view{} : rest.substr(comma + 1);
+            if (index <= 0) {
+                continue;
+            }
+            print(std::format(L"\n  edition {} of {}\n", index, wim));
+            auto other = core::ops::applyToEdition(**d, wim, index, mountDir, p, options, core::TaskContext{g_cancel, {}}, callbacks);
+            if (!other) {
+                reportError(other.error());
+                result = 3;
+                continue;
+            }
+            print(std::format(L"  edition {}: {} failed; commit: {}\n", index, other->report.failures(),
+                              other->committed ? L"ok" : L"no"));
+            if (!other->committed || other->report.failures() > 0) {
+                result = 3;
+            }
+        }
+        if (auto rewritten = core::optimizeWim(wim, core::TaskContext{g_cancel, {}}); !rewritten) {
+            reportError(rewritten.error());
+        } else {
+            print(L"  WIM rewritten without the commits' leftovers\n");
+        }
+    }
+    return result;
 }
 
 // P07 data: provisioned apps with on-disk size.
@@ -1172,7 +1203,15 @@ int cmdIntl(const std::wstring& mountDir, const std::wstring& set, bool asJson) 
         return reportError(session.error());
     }
     if (!set.empty()) {
-        auto settings = core::intlFromJson(narrow(set));
+        // "@file.json": the JSON from a file (PowerShell 5.1 mangles quotes in native arguments).
+        std::string json = narrow(set);
+        if (set.starts_with(L"@")) {
+            std::ifstream in(std::filesystem::path(set.substr(1)), std::ios::binary);
+            std::stringstream buffer;
+            buffer << in.rdbuf();
+            json = buffer.str();
+        }
+        auto settings = core::intlFromJson(json);
         if (!settings) {
             return reportError(settings.error());
         }
@@ -1422,6 +1461,7 @@ void printUsage() {
           L"                                      (Setup's image: LabConfig + drivers; mounts, commits)\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
           L"  wlcli apply <changeset.json> <mountdir> [--commit] [--source=<sources\\sxs>]\n"
+          L"                                      [--also=2,3 --wim=<file>]   (then the same on further editions)\n"
           L"\n  Change sets (no admin):\n"
           L"  wlcli plan <changeset.json>              Show the ordered apply plan\n"
           L"  wlcli extract-all <iso> <dir>             Copy the whole ISO into a folder (resumable)\n"
@@ -1463,6 +1503,8 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring onlyKb;
     bool allowVirtual = false;
     std::wstring removeName;
+    std::wstring alsoEditions;
+    std::wstring wimPath;
     bool yes = false;
     bool listAll = false;
     bool gpt = false;
@@ -1489,6 +1531,10 @@ int wmain(int argc, wchar_t** argv) {
             downloadDir = std::wstring(a.substr(11));
         } else if (a.starts_with(L"--kb=")) {
             onlyKb = std::wstring(a.substr(5));
+        } else if (a.starts_with(L"--also=")) {
+            alsoEditions = std::wstring(a.substr(7));
+        } else if (a.starts_with(L"--wim=")) {
+            wimPath = std::wstring(a.substr(6));
         } else if (a.starts_with(L"--remove=")) {
             removeName = std::wstring(a.substr(9));
         } else if (a == L"--allow-virtual") {
@@ -1579,7 +1625,7 @@ int wmain(int argc, wchar_t** argv) {
         return cmdPlan(args[1]);
     }
     if (command == L"apply" && args.size() == 3) {
-        return cmdApply(args[1], args[2], commit == 1, source);
+        return cmdApply(args[1], args[2], commit == 1, source, alsoEditions, wimPath);
     }
     if (command == L"mounts") {
         return cmdMounts(asJson);
