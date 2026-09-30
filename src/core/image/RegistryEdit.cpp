@@ -629,6 +629,12 @@ void DeferredRegistry::close() {
 }
 
 Result<void> ensureSetupCompleteImport(const std::filesystem::path& setupComplete) {
+    return ensureSetupCompleteLine(setupComplete, utf8::fromWide(kSetupCompleteImportLine),
+                                   "WinLove: settings Windows resets during OOBE");
+}
+
+Result<void> ensureSetupCompleteLine(const std::filesystem::path& setupComplete, std::string_view wanted,
+                                     std::string_view comment) {
     std::string existing;
     std::error_code ec;
     if (std::filesystem::exists(setupComplete, ec)) {
@@ -637,12 +643,12 @@ Result<void> ensureSetupCompleteImport(const std::filesystem::path& setupComplet
         buffer << in.rdbuf();
         existing = buffer.str();
     }
-    const std::string line = utf8::fromWide(kSetupCompleteImportLine);
+    const std::string line(wanted);
     if (existing.find(line) != std::string::npos) {
         return {};
     }
     // Insert near the top: an existing script may end with exit / shutdown / del %0.
-    const std::string block = "rem WinLove: settings Windows resets during OOBE\r\n" + line + "\r\n";
+    const std::string block = "rem " + std::string(comment) + "\r\n" + line + "\r\n";
     std::string text;
     if (existing.empty()) {
         text = "@echo off\r\n" + block;

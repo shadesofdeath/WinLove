@@ -88,7 +88,11 @@ struct OfflineKey {
 enum class DeferredScope : std::uint8_t { Machine, User };
 [[nodiscard]] DeferredScope deferredScope(const RegistryWrite& write);
 [[nodiscard]] std::filesystem::path deferredRegFile(const std::filesystem::path& mountDir, DeferredScope scope);
-// Makes sure SetupComplete.cmd (created if missing, appended otherwise) imports setupcomplete.reg.
+// Makes sure SetupComplete.cmd (created if missing) contains `line`, once, right after "@echo off":
+// an existing script may end with exit / shutdown / del %0. `comment` goes into a rem line above it.
+[[nodiscard]] Result<void> ensureSetupCompleteLine(const std::filesystem::path& setupComplete, std::string_view line,
+                                                   std::string_view comment);
+// The line that imports setupcomplete.reg.
 [[nodiscard]] Result<void> ensureSetupCompleteImport(const std::filesystem::path& setupComplete);
 extern const wchar_t* const kSetupCompleteImportLine;
 

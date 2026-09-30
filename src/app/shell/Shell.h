@@ -12,6 +12,7 @@
 #include "app/controllers/UnattendController.h"
 #include "app/controllers/FeatureController.h"
 #include "app/controllers/IsoController.h"
+#include "app/controllers/PostSetupController.h"
 #include "app/controllers/ImageController.h"
 #include "app/controllers/ImageSettingsController.h"
 #include "app/controllers/PreloadController.h"
@@ -82,6 +83,7 @@ public:
     RegistryController& registry() { return *m_registry; }
     ImageSettingsController& imageSettings() { return *m_imageSettings; }
     UnattendController& unattend() { return *m_unattend; }
+    PostSetupController& postSetup() { return *m_postSetup; }
     // "Uygula": straight to the run, or through the 13b confirmation when something is irreversible.
     void requestApply();
     [[nodiscard]] PageId currentPage() const noexcept { return m_page; }
@@ -142,6 +144,8 @@ private:
     [[nodiscard]] RegistryPage* registryPage() const;
     void importRegFiles(const std::vector<std::filesystem::path>& files);
     void importAnswerFile();
+    // P14: the add dialog for `type`, or the edit dialog of step `index`.
+    void editPostSetupStep(core::PostSetupStep::Type type, std::optional<std::size_t> index);
     void saveAnswerFile();
     void scanDriverFolder();
     void updateIsoChrome();
@@ -172,6 +176,7 @@ private:
     std::unique_ptr<RegistryController> m_registry;
     std::unique_ptr<ImageSettingsController> m_imageSettings; // P12 form
     std::unique_ptr<UnattendController> m_unattend; // P13 answer file
+    std::unique_ptr<PostSetupController> m_postSetup; // P14 steps
     std::unique_ptr<PreloadController> m_preload; // reads the page lists right after a mount
     ui::Widget* m_sideInspector = nullptr; // pages other than Images (Components)
     ui::Button* m_actionExpand = nullptr;  // Components: "Tümünü genişlet / daralt"

@@ -222,8 +222,9 @@ bool SearchBox::onKeyDown(const KeyEvent& key) {
         }
         return true;
     case VK_RETURN:
-        if (onSubmit) {
-            onSubmit();
+        // A copy: the handler may close the dialog this box lives in (and destroy the box).
+        if (const auto submit = onSubmit) {
+            submit();
         }
         return true;
     default: break;

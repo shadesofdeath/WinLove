@@ -14,6 +14,8 @@
 #include "app/pages/ImagesPage.h"
 #include "app/pages/IsoPage.h"
 #include "app/pages/LogsPage.h"
+#include "app/pages/PostSetupPage.h"
+#include "app/pages/postsetup/StepDialog.h"
 #include "app/pages/SourcePage.h"
 #include "app/pages/TweaksPage.h"
 #include "app/pages/UnattendedPage.h"
@@ -116,6 +118,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     }
     m_serviceCtl = std::make_unique<ServiceController>(m_state, embeddedServiceCatalog(), m_services.postToUi);
     m_unattend = std::make_unique<UnattendController>(m_state);
+    m_postSetup = std::make_unique<PostSetupController>(m_state);
     m_preload = std::make_unique<PreloadController>(m_state, m_services.postToUi);
     m_preload->onCancelled = [this] { showToast(ui::InfoKind::Warning, m_strings.get(Str::ImagesCancelledToast), L""); };
     m_iso =std::make_unique<IsoController>(m_state, IsoController::Events{
@@ -270,6 +273,48 @@ void Shell::importRegFiles(const std::vector<std::filesystem::path>& files) {
                 }
             });
         });
+}
+
+void Shell::editPostSetupStep(core::PostSetupStep::Type type, std::optional<std::size_t> index) {
+    if (!host()) {
+        return;
+    }
+    if (!m_state.mounted()) {
+        // The queue belongs to a mounted image (the next mount would silently clear it).
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::PostsetupNoMountTitle), m_strings.get(Str::PostsetupNoMountBody));
+        return;
+    }
+    core::PostSetupStep step;
+    step.type = type;
+    if (index) {
+        step = m_postSetup->plan().steps[*index];
+    }
+    auto raw = std::make_shared<ui::Dialog*>(nullptr);
+    StepDialogActions actions;
+    actions.pickFile = [this]() -> std::optional<std::filesystem::path> {
+        const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+        return ui::pickFile(owner, m_strings.get(Str::PostsetupPickTitle), {{m_strings.get(Str::SourceFilterAll), L"*.*"}});
+    };
+    actions.pickFolder = [this]() -> std::optional<std::filesystem::path> {
+        const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+        return ui::pickFolder(owner, m_strings.get(Str::PostsetupPickTitle));
+    };
+    actions.close = [this, raw] {
+        if (*raw) {
+            ui::Dialog* dialog = std::exchange(*raw, nullptr);
+            host()->popModal(dialog);
+        }
+    };
+    actions.accept = [this, index](core::PostSetupStep done) {
+        if (index) {
+            m_postSetup->replace(*index, std::move(done));
+        } else {
+            m_postSetup->add(std::move(done));
+        }
+    };
+    StepDialog built = makeStepDialog(m_strings, std::move(step), index.has_value(), std::move(actions));
+    *raw = built.dialog.get();
+    host()->pushModal(std::move(built.dialog), built.initialFocus);
 }
 
 void Shell::importAnswerFile() {
@@ -561,6 +606,7 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::Services, static_cast<int>(changes.count(core::ops::OpKind::SetServiceStart)));
     m_nav->setBadge(PageId::Registry, m_registry->checkedCount());
     m_nav->setBadge(PageId::Tweaks, m_imageSettings->changedCount());
+    m_nav->setBadge(PageId::PostSetup, static_cast<int>(m_postSetup->stepCount()));
     if (m_actionReset) {
         m_actionReset->setEnabled(featureOps > 0);
     }
@@ -730,6 +776,22 @@ void Shell::showPage(PageId page) {
             m_pageBody = &m_pageView->setBody<RegistryPage>(
                 m_state, *m_registry, m_strings, m_language,
                 RegistryPage::Intents{pick, [this] { showPage(PageId::Images); }});
+        } else if (page == PageId::PostSetup) {
+            using Type = core::PostSetupStep::Type;
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupAddCommand), ui::icons::Icon::LogTerminal)
+                .onInvoke = [this] { editPostSetupStep(Type::Command, std::nullopt); };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupAddFile), ui::icons::Icon::File)
+                .onInvoke = [this] { editPostSetupStep(Type::Copy, std::nullopt); };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupAddApp), ui::icons::Icon::AppxPackage)
+                .onInvoke = [this] { editPostSetupStep(Type::Winget, std::nullopt); };
+            m_pageBody = &m_pageView->setBody<PostSetupPage>(
+                m_state, *m_postSetup, m_strings, m_language,
+                PostSetupPage::Intents{[this](std::size_t index) {
+                                           if (index < m_postSetup->plan().steps.size()) {
+                                               editPostSetupStep(m_postSetup->plan().steps[index].type, index);
+                                           }
+                                       },
+                                       [this] { showPage(PageId::Images); }});
         } else if (page == PageId::Unattended) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UnattendedImportXml), ui::icons::Icon::Import)
                 .onInvoke = [this] { importAnswerFile(); };

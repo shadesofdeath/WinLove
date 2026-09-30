@@ -4,6 +4,7 @@
 #include "base/Utf8.h"
 #include "core/image/RegistryEdit.h"
 #include "core/image/Services.h"
+#include "core/postsetup/PostSetup.h"
 
 #include <algorithm>
 #include <format>
@@ -56,6 +57,13 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
             deferred = std::make_unique<DeferredRegistry>(session.mountPath());
         }
         return deferRegistryWrite(reg(), *deferred, *write);
+    }
+    case OpKind::SetPostSetup: {
+        auto plan = postSetupFromJson(utf8::fromWide(op.value));
+        if (!plan) {
+            return std::unexpected(plan.error());
+        }
+        return applyPostSetup(session.mountPath(), *plan, task);
     }
     }
     return fail(ErrorCode::Unsupported, L"operation kind not implemented yet", utf8::toWide(opKindKey(op.kind)));
