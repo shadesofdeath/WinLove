@@ -19,6 +19,7 @@ public:
     std::function<void()> onUnmount;
     std::function<void()> onDelete;
     std::function<void()> onRename;
+    std::function<void()> onUpgrade; // the second button of a mounted edition: "Sürümü yükselt…"
 
     struct State {
         const core::SourceInfo* source = nullptr;
@@ -31,6 +32,9 @@ public:
         std::wstring mountTooltip;              // why a disabled button is disabled
         std::wstring deleteTooltip;
         std::wstring renameTooltip;
+        bool canUpgrade = false;                // mounted here and idle
+        std::wstring upgradeTooltip;
+        std::wstring upgradeQueued;             // "Kuyrukta: Windows 11 Pro sürümüne yükseltme"; empty: none
     };
     void set(State state);
 
@@ -47,6 +51,7 @@ private:
     ui::Button* m_delete = nullptr;
     ui::Button* m_rename = nullptr;
     int m_marked = 1;
+    std::wstring m_upgradeQueued;
 };
 
 } // namespace wl::app

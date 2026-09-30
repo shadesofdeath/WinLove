@@ -405,6 +405,7 @@ Result<core::ops::ChangeSet> loadChangeSet(const std::wstring& path) {
 
 const wchar_t* phaseName(core::ops::Phase phase) {
     switch (phase) {
+    case core::ops::Phase::Edition: return L"edition";
     case core::ops::Phase::Remove: return L"remove";
     case core::ops::Phase::Features: return L"features";
     case core::ops::Phase::Drivers: return L"drivers";

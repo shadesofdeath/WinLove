@@ -1,5 +1,7 @@
 #include "app/controllers/PresetController.h"
 
+#include "core/image/dism/Edition.h"
+
 #include "app/controllers/ImageSettingsController.h"
 #include "base/Log.h"
 #include "base/Utf8.h"
@@ -208,6 +210,9 @@ std::vector<PresetController::Item> PresetController::items(const Preset& preset
                               s(op.kind == OpKind::CleanupImage ? Str::PresetsValueRun : Str::PresetsValueRemove), {}});
             break;
         }
+        case OpKind::SetEdition:
+            result.push_back({kComponents, L"edition", core::editionDisplayName(op.value, 26100), s(Str::PresetsValueUpgrade), {}});
+            break;
         case OpKind::DisableFeature:
         case OpKind::EnableFeature:
         case OpKind::RemoveCapability:

@@ -1,5 +1,7 @@
 #include "app/controllers/ApplyController.h"
 
+#include "core/image/dism/Edition.h"
+
 #include "base/Log.h"
 #include "core/image/dism/Dism.h"
 #include "core/system/Privileges.h"
@@ -72,6 +74,17 @@ void ApplyController::start() {
     // Payload for NetFx3 / removed features: the setup media's sources\sxs next to the WIM.
     core::ops::ApplyJobOptions options;
     options.optimizeWim = mounted.imagePath; // no "[DELETED]" leftovers of the commit in the file
+    if (const auto* edition = run.changes.find(core::ops::OpKind::SetEdition, L"edition")) {
+        // The commit records the new edition id; the name the edition is listed under is ours to set.
+        if (const auto& source = m_state.source()) {
+            for (const auto& image : source->install.images) {
+                if (image.index == mounted.index) {
+                    options.editionTexts = core::ops::ApplyJobOptions::EditionTexts{
+                        mounted.imagePath, mounted.index, core::textAfterEditionChange(image, edition->value)};
+                }
+            }
+        }
+    }
     std::error_code ec;
     const auto sxs = mounted.imagePath.parent_path() / L"sxs";
     if (std::filesystem::is_directory(sxs, ec)) {

@@ -4,6 +4,7 @@
 #include "core/image/dism/DismExe.h"
 #include "core/image/dism/Edition.h"
 #include "core/image/wim/WimGapi.h"
+#include "core/ops/Planner.h"
 
 #include <doctest.h>
 
@@ -60,4 +61,54 @@ TEST_CASE("edition text: a name is required; the file must exist") {
     const auto noFile = setImageText(missing, 1, ImageText{L"Windows 11 Pro", L"", std::nullopt});
     REQUIRE_FALSE(noFile.has_value());
     CHECK(noFile.error().code != ErrorCode::InvalidArgument);
+}
+
+TEST_CASE("editions: after a change the image is named for its new edition, unless the user named it") {
+    ImageInfo image;
+    image.build = 26200;
+    image.editionId = L"Core";
+    image.name = image.description = image.displayName = image.displayDescription = L"Windows 11 Home";
+    ImageText text = textAfterEditionChange(image, L"Professional");
+    CHECK(text.name == L"Windows 11 Pro");
+    CHECK(text.description == L"Windows 11 Pro");
+    CHECK(text.flags == std::wstring(L"Professional"));
+
+    // A name of the user's own stays; the description, still Microsoft's, follows the edition.
+    image.displayName = L"Ev bilgisayar\u0131";
+    text = textAfterEditionChange(image, L"Professional");
+    CHECK(text.name == L"Ev bilgisayar\u0131");
+    CHECK(text.description == L"Windows 11 Pro");
+    CHECK(text.flags == std::wstring(L"Professional"));
+
+    // An older image without display texts: the plain name counts.
+    ImageInfo plain;
+    plain.build = 19045;
+    plain.editionId = L"Core";
+    plain.name = L"Windows 10 Home";
+    text = textAfterEditionChange(plain, L"Education");
+    CHECK(text.name == L"Windows 10 Education");
+    CHECK(text.description == L"Windows 10 Education");
+}
+
+TEST_CASE("editions: the change is one queue slot, saved in presets, and the first step of a plan") {
+    using namespace wl::core::ops;
+    ChangeSet changes;
+    changes.add(Operation{OpKind::RemoveAppx, L"Microsoft.BingNews_1_x64__8wekyb3d8bbwe"});
+    changes.add(Operation{OpKind::SetEdition, L"edition", L"Professional", Risk::Medium});
+    changes.add(Operation{OpKind::SetRegistryValue, L"HKLM\\SOFTWARE\\X::Y", L"dword:1"});
+    changes.add(Operation{OpKind::SetEdition, L"edition", L"Education", Risk::Medium}); // replaces: one edition
+    CHECK(changes.count(OpKind::SetEdition) == 1);
+    REQUIRE(changes.find(OpKind::SetEdition, L"edition") != nullptr);
+    CHECK(changes.find(OpKind::SetEdition, L"edition")->value == L"Education");
+
+    const auto back = ChangeSet::fromJson(changes.toJson());
+    REQUIRE(back.has_value());
+    REQUIRE(back->find(OpKind::SetEdition, L"edition") != nullptr);
+    CHECK(back->find(OpKind::SetEdition, L"edition")->value == L"Education");
+
+    const ApplyPlan p = plan(changes);
+    REQUIRE(p.steps.size() == 3);
+    CHECK(p.steps[0].phase == Phase::Edition);
+    CHECK(p.steps[0].operation.kind == OpKind::SetEdition);
+    CHECK(p.steps[1].phase == Phase::Remove);
 }

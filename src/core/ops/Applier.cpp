@@ -5,6 +5,7 @@
 #include "core/image/RegistryEdit.h"
 #include "core/image/Services.h"
 #include "core/image/SystemComponents.h"
+#include "core/image/dism/Edition.h"
 #include "core/image/dism/StoreCleanup.h"
 #include "core/postsetup/PostSetup.h"
 
@@ -94,6 +95,19 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
         }
         registry.reset(); // the recipe loads the hives itself, with the DISM session closed
         return removeComponent(session, *recipe, task);
+    }
+    case OpKind::SetEdition: {
+        registry.reset(); // dism.exe loads the image's hives
+        auto changed = setEdition(session, op.value, task);
+        if (!changed) {
+            // DISM refuses the edition an image already has ("cannot upgrade to the edition
+            // specified"): a preset applied to an image it was applied to. That is what was asked.
+            if (const auto now = readEditions(session); now && now->current == op.value) {
+                log::info("apply", L"the image already is this edition: " + op.value);
+                return {};
+            }
+        }
+        return changed;
     }
     case OpKind::CleanupImage: {
         auto cleanup = storeCleanupFromJson(utf8::fromWide(op.value));

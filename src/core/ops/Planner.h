@@ -1,5 +1,7 @@
 #pragma once
-// ChangeSet → ordered ApplyPlan (ARCHITECTURE §2.3). Order: removals first (packages,
+// ChangeSet → ordered ApplyPlan (ARCHITECTURE §2.3). Order: the edition change before anything
+// else (DISM changes the edition of an image with nothing pending, and what follows then works on
+// the edition that will be installed), then removals (packages,
 // capabilities, AppX, system components), then features, drivers, updates, and registry/services
 // last (they may target files the earlier steps add or remove). Within a phase the user's order
 // is kept. The component store cleanup has a phase of its own right after the updates: that is
@@ -12,7 +14,7 @@
 
 namespace wl::core::ops {
 
-enum class Phase : std::uint8_t { Remove, Features, Drivers, Updates, Cleanup, Settings };
+enum class Phase : std::uint8_t { Edition, Remove, Features, Drivers, Updates, Cleanup, Settings };
 
 struct PlanStep {
     Phase phase;

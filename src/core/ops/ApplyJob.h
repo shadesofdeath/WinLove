@@ -3,6 +3,7 @@
 // run the plan (errors are skipped and reported, never silently), close the session, then
 // commit + unmount (MountHealth::unmountSafely). Progress: the plan's steps and the commit share
 // one 0…1 scale, weighted by their time estimates.
+#include "core/image/wim/WimGapi.h"
 #include "core/ops/Applier.h"
 
 #include <chrono>
@@ -14,6 +15,14 @@ struct ApplyJobOptions {
     bool commitAndUnmount = true; // false: leave the image mounted (changes stay in the mount)
     // After a commit: rewrite this WIM without what the commit orphaned (optimizeWim). Empty: no.
     std::filesystem::path optimizeWim;
+    // After a commit in which the edition change succeeded: the texts of that edition in the WIM
+    // (Edition.h textAfterEditionChange). The commit itself only records the new edition id.
+    struct EditionTexts {
+        std::filesystem::path wim;
+        int index = 0;
+        ImageText text;
+    };
+    std::optional<EditionTexts> editionTexts;
 };
 
 struct ApplyJobCallbacks {
@@ -26,6 +35,7 @@ struct ApplyJobResult {
     bool committed = false;
     std::optional<Error> commitError; // steps ran but saving failed: the image is still mounted
     bool optimized = false;           // the WIM was rewritten without the commit's leftovers
+    bool editionRenamed = false;      // the WIM names the new edition (ApplyJobOptions::editionTexts)
     std::chrono::milliseconds elapsed{0};
     std::vector<std::chrono::milliseconds> stepTimes; // per plan step
     std::chrono::milliseconds commitTime{0};

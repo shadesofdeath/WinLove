@@ -1,5 +1,7 @@
 #include "app/pages/ApplyPage.h"
 
+#include "core/image/dism/Edition.h"
+
 #include "app/Format.h"
 #include "base/Utf8.h"
 #include "ui/anim/Tween.h"
@@ -43,6 +45,7 @@ Category categoryOf(OpKind kind) {
     case OpKind::SetRegistryValue:
     case OpKind::SetRegistryFirstLogon: return kRegistry;
     case OpKind::SetServiceStart: return kServices;
+    case OpKind::SetEdition:
     case OpKind::SetPostSetup: return kTweaks;
     }
     return kTweaks;
@@ -83,6 +86,14 @@ std::wstring ApplyPage::displayName(const AppState& state, const core::ops::Oper
         // The operation carries the name it was queued under.
         const std::wstring title = core::componentTitle(op.value);
         return title.empty() ? op.target : title;
+    }
+    if (op.kind == OpKind::SetEdition) {
+        // "Windows 11 Pro", for the build of the image it is queued on.
+        int build = 26100;
+        if (const auto& source = state.source(); source && !source->install.images.empty()) {
+            build = source->install.images.front().build;
+        }
+        return core::editionDisplayName(op.value, build);
     }
     if (op.kind == OpKind::RemoveAppx) {
         // The catalog name it was queued under; from a bare changeset file, the package identity
@@ -167,6 +178,7 @@ std::wstring ApplyPage::groupName(const Row& row) const {
         return m_strings.get(Str::ApplyOpsCommitUnmount);
     }
     switch (row.group->phase) {
+    case Phase::Edition: return m_strings.get(Str::ApplyOpsEdition);
     case Phase::Remove: return m_strings.get(Str::ApplyOpsComponents);
     case Phase::Features: return m_strings.get(Str::ApplyOpsFeatures);
     case Phase::Drivers: return m_strings.get(Str::ApplyOpsDrivers);
@@ -182,6 +194,7 @@ ui::icons::Icon ApplyPage::groupIcon(const Row& row) {
         return ui::icons::Icon::ImageWim;
     }
     switch (row.group->phase) {
+    case Phase::Edition: return ui::icons::Icon::LayersEditions;
     case Phase::Remove: return ui::icons::Icon::ComponentsRemove;
     case Phase::Features: return ui::icons::Icon::PuzzleFeatures;
     case Phase::Drivers: return ui::icons::Icon::DriverChip;
