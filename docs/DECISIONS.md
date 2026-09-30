@@ -241,6 +241,93 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-055 — Kuyruğu WIM'in birden çok sürümüne uygulama (2026-10-01)
+Bağlam: Kullanıcı (ikinci özellik turu, 15. madde) aynı kuyruğun / presetin bir WIM'deki birkaç sürüme uygulanmasını istedi.
+Karar:
+- **Sırayla, aynı klasörde:** Uygula özetinde "Diğer sürümlere de uygula" satırı — bağlı WIM'in diğer sürümleri
+  onay kutusu olarak. Önce bağlı sürüm her zamanki gibi uygulanır ve commit edilir; **yalnız o kaydedildiyse** her
+  seçili sürüm aynı bağlama klasörüne okuma-yazma bağlanır, aynı plan çalışır, commit + unmount. `optimizeWim`
+  (commit artıklarını silen yeniden yazma) bir kez, en sonda. Paralel bağlama yok: disk ve DISM oturumu tek.
+- **Sürüm değişikliği (`SetEdition`) diğer sürümlere gitmez** (`planForOtherEdition`): o, kuyruğa alındığı sürüme
+  aittir. Diğer her işlem "atla ve raporla" ile çalışır; bir sürümde olmayan uygulama `0x80070002` → başarı (saha notu).
+- **Hata:** diğer sürümün commit'i başarısızsa o sürüm discard edilir (klasör sonraki için boşalır), sonuç satırında
+  "kaydedilmedi". İptal kalan sürümleri atlar. Çalışırken "Sürüm k / n · ad", bitince bilgi bandında sürüm başına sonuç.
+- **CLI:** `wlcli apply <cs> <mount> --commit --also=2,3 --wim=<dosya>`.
+Kanıt: birim testi (`planForOtherEdition`), render (`--demo-editions`). **Görülmeyen:** gerçek iki sürümlük WIM'de
+çalıştırma → `tools\lab_features.ps1` (yönetici) bunu yapıyor.
+
+## D-054 — Varsayılan uygulama ilişkilendirmeleri (2026-10-01)
+Karar: Uygulamalar sayfasının ikinci sekmesi. Liste kullanıcının seçimi + içe aktarılan XML (`dism /Export-DefaultAppAssociations`
+biçimi) + "Bu bilgisayardakini al" (`dism /Online /Export-…`, yönetici) + hazır tarayıcı düğmeleri (Chrome / Firefox / Brave / Edge:
+http, https, .htm, .html, .pdf'nin ProgId'leri). Kuyrukta tek `SetDefaultApps` işlemi (değer = XML); Uygula XML'i
+`%TEMP%\WinLove`'a yazar ve `dism /Image /Import-DefaultAppAssociations` çalıştırır. Yalnız yeni kullanıcılar için
+geçerli (Windows'un kuralı); ProgId'nin sahibi uygulama kurulu değilse Windows ilk açılışta sorar — sayfada yazıyor.
+Kanıt: XML ayrıştırma / yazma birim testli. **Görülmeyen:** gerçek imaja içe aktarma (lab betiği) ve kurulumda etkisi.
+
+## D-053 — Dil paketleri ve bölge ayarları (2026-10-01)
+Karar:
+- **Yeni sayfa "Diller"** (Güncellemeler'in altında). Üstte imajın dilleri ve beş ayar (`dism /Get-Intl`): arayüz dili,
+  sistem yereli, kullanıcı yereli, klavye, saat dilimi. Değişiklik tek `SetIntl` işlemi (JSON) → `dism /Set-UILang
+  /Set-SysLocale /Set-UserLocale /Set-InputLocale /Set-TimeZone`. Seçenek listeleri bu bilgisayardan (yerel adları
+  `EnumSystemLocalesEx`, klavye düzenleri `Keyboard Layouts`, saat dilimleri `Time Zones`), arama destekli açılır menü.
+- **Dil paketleri:** "Klasör tara" Microsoft'un *Languages and Optional Features* medyasını dolaşır; dosya adından
+  tür (Client-Language-Pack, LanguageFeatures-Basic/Fonts/Handwriting/OCR/Speech/TextToSpeech, LXP), dil, mimari
+  (`classifyLanguageFile`). İmajın mimarisine uymayanlar gösterilmez. Kuyruğa `AddPackage` + değer `language`
+  (Planner'da güncellemelerden önce: SSU 0, dil 1, LCU 2 — Microsoft'un sırası: dil paketi LCU'dan önce).
+- Güncellemeler sayfası `language` değerli paketleri göstermez (iki sayfa aynı işlemi saymasın).
+Kanıt: sınıflandırma ve JSON / argüman birim testli, render. **Görülmeyen:** gerçek `/Get-Intl` / `/Set-*` (lab betiği
+saat dilimi + klavyeyi değiştirip geri okuyor) ve gerçek dil paketi eklemesi (medya yok: `-LanguageFolder`).
+
+## D-052 — İmajdaki sürücüler: listele, kaldır; bu bilgisayarın sürücülerini al (2026-10-01)
+Karar: Sürücüler sayfasına ikinci sekme "İmajdaki sürücüler": `DismGetDrivers(AllDrivers = FALSE)` → yalnız üçüncü
+taraf (oemN.inf) sürücüler; sınıf, sağlayıcı, sürüm, tarih, imzalı mı, önyükleme için kritik mi. Kaldırma `RemoveDriver`
+işlemi (`DismRemoveDriver`); önyükleme için kritik olan yüksek risk. `0x80070002` (zaten yok) başarı. Kutudan çıkan
+sürücüler listelenmez: kaldırılmaları desteklenmiyor. "Bu bilgisayarın sürücüleri" `pnputil /export-driver * <klasör>`
+(yönetici) → çalışma kökünde `host-drivers`, ardından mevcut klasör ekleme akışı.
+Kanıt: `DriverPackage` düzeni ADK başlığıyla derleme anında karşılaştırıldı (bulunan hata: alan `PCWSTR ProviderName`);
+birim / render. **Görülmeyen:** gerçek imajda liste / ekle / kaldır (lab betiği).
+
+## D-051 — Dosyalar sayfası: bilgisayardan imaja dosya ve klasör (2026-10-01)
+Karar: "Kurulum Sonrası"nın altında yeni sayfa. Sürükle-bırak veya seç → "İmajda nereye?" dialogu (hazır yerler:
+kök, `Windows\Setup\Scripts`, Default kullanıcının masaüstü / Belgeler, Public masaüstü, `Windows\Fonts`, özel yol).
+Her öğe tek `CopyTree` işlemi (hedef = imaj içi göreli yol, değer = kaynak). Uygula'da kopyalanır (klasör: içeriği
+birleştirilir, dosyalar değiştirilir), bayt ilerlemesi, iptal edilebilir. **Yasak hedefler** (`validateTreeTarget`):
+`Windows\System32\config`, `WinSxS`, `servicing`, `Program Files\WindowsApps`, `Windows\System32\drivers`, `Boot`,
+`System Volume Information`, `$Recycle.Bin` ve bunların üstleri; `Windows` / `System32` altı "yüksek risk". Kaynak
+Uygula anında okunur (kuyrukta yalnız yol) — sayfa bunu söyler.
+Kanıt: birim testleri (hedef denetimi, kopya, boyut), render. Gerçek imajda: lab betiği.
+
+## D-050 — Uygulama yükleme (.appx / .msix, bundle): çevrimdışı provision (2026-10-01)
+Karar: Yeni sayfa "Uygulamalar" (Bileşenler'in altında). Paket seçilince manifest AppxPackaging COM API'siyle okunur
+(ad, yayıncı, sürüm, mimariler, framework mü); dosya adı yanıltıcı olabilir (winget `.msixbundle`'ı `.msix` diye
+kaydediyor) → okuyucu diğer türü de dener. **Bağımlılıklar** aynı klasörde kimlik + mimari uyumuna göre bulunur
+(`planAppxInstall`), lisans `*License*.xml`; bulunamayan bağımlılık uyarı. Kuyrukta tek `AddAppx` (değer = JSON);
+Uygula: `dism /Image /Add-ProvisionedAppxPackage /PackagePath /DependencyPackagePath… /LicensePath | /SkipLicense
+/Region:all`. Planner'da yeni faz **Apps** (güncellemelerden sonra, temizlikten önce).
+Kanıt: gerçek Windows Terminal paketi (winget, `build\lab\appx`) — manifest, bundle yedeği, VCLibs / UI.Xaml
+bağımlılığı bulundu (`wlcli appx-info`, yönetici gerekmez). **Görülmeyen:** provision (lab betiği).
+
+## D-049 — Hosts ve DNS (2026-10-01)
+Karar:
+- **Hosts:** yeni sayfa (Ayarlar / Tweaks'in altında). Hazır listeler (`resources/catalog/hosts.json`: telemetri,
+  reklam, Copilot) + dosyadan / metinden özel girdiler. Her liste imajın `drivers\etc\hosts` dosyasında işaretli bir
+  bölüm: `# >>> WinLove: <id>` … `# <<< WinLove: <id>`; bölümün dışına dokunulmaz, boş bölüm silinir. Kuyrukta liste
+  başına `SetHosts`; imajda olan bölümler "imajda" görünür (D-045 gibi).
+- **DNS:** ağ bağdaştırıcısı GUID'i imajda bilinmediği için arayüz başına değer yazılamaz → ilke değerleri
+  (`HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient`: `NameServer`, `DoHPolicy`). Ayarlar › Ağ'a üç ayar:
+  hazır sunucular (Cloudflare, Google, Quad9, AdGuard), özel liste, DoH. `SetDns` işlem türü ayrılmıştı; kullanılmıyor.
+Kanıt: bölüm ayrıştırma / yazma birim testli (satır sonu, BOM, çift bölüm), render. **Görülmeyen:** kurulan sistemde etkisi.
+
+## D-048 — Zamanlanmış görevleri kapatma: kurulumdan sonra, schtasks ile (2026-10-01)
+Bağlam: Çevrimdışı imajın `Windows\System32\Tasks` klasörü neredeyse boş (görevler kurulumda kaydediliyor); görev
+XML'ini veya `TaskCache`'i elle değiştirmek karma denetimini bozar.
+Karar: Yeni sayfa "Görevler" (Servisler'in altında): katalog (`resources/catalog/tasks.json`, 38 görev: telemetri,
+bakım, özellikler, güncelleme; "önerilen" işaretli) + özel görev yolu. Kuyrukta görev başına `SetTaskState`; Uygula
+`Windows\Setup\Scripts\WinLove\tasks.cmd` betiğini yazar (`schtasks /Change /TN "…" /Disable`, çıktı
+`%ProgramData%\WinLove\tasks.log`) ve `SetupComplete.cmd`'ye `call` satırı ekler (`core/postsetup/SetupScripts`,
+Kurulum Sonrası ile ortak). İmajdaki betik okunarak "imajda" gösterilir.
+Kanıt: betik üretimi / okuma birim testli, render. **Görülmeyen:** kurulumda gerçekten kapandıkları (VM).
+
 ## D-047 — USB'ye yazma: diskpart + bootsect + kopya, FAT32 ve .swm bölme; yalnız USB / SD diskleri (2026-09-30)
 Bağlam: Kullanıcı "USB'ye yazma"yı istedi; P06'nın USB sekmesi yer tutucuydu.
 Karar:

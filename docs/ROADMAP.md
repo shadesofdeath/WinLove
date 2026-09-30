@@ -47,7 +47,7 @@ Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **
 | P06 | ISO Oluştur / USB | 16 | `pages/06-iso.md` | 🟨 test | USB sekmesi D-047: `tools\lab_usb.ps1` (yönetici) bekliyor; bittiğinde uçtan uca VM kurulum testi |
 | P07 | Bileşenler (AppX + sistem bileşenleri + depo temizliği, katalog, arama) | 04, 04b | `pages/07-components.md` | 🟨 test | D-031: tarifle kaldırma; Defender kaldırma yok (25H2'de paket değil) |
 | P08 | Güncellemeler | 06 | `pages/08-updates.md` | 🟨 test | |
-| P09 | Sürücüler | 07 | `pages/09-drivers.md` | 🟨 test | |
+| P09 | Sürücüler | 07 | `pages/09-drivers.md` | 🟨 test | İmajdaki sürücüler sekmesi (D-052) |
 | P10 | Servisler | 09 | `pages/10-services.md` | 🟨 test | OfflineRegistry burada gelir |
 | P11 | Kayıt Defteri | 08 | `pages/11-registry.md` | 🟨 test | |
 | P12 | Ayarlar / Tweaks | 10 | `pages/12-tweaks.md` | 🟨 test | Durum kuyruktan türetilir; P11 ile aynı işlemler |
@@ -57,6 +57,8 @@ Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **
 | P16 | Uygulama Ayarları | 19 | `pages/16-app-settings.md` | 🟨 test | Vurgu rengi / yoğunluk / mount'u çözme ertelendi (spec §4) |
 | P17 | Hakkında | 20 | `pages/17-about.md` | 🟨 test | Lisans satırı / güncelleme denetimi yok (spec §4) |
 | P18 | Komut Paleti (Ctrl+K) | 21 | `pages/18-command-palette.md` | 🟨 test | `PaletteIndex`: sayfalar, P12 ayarları, okunan listeler, komutlar |
+
+> **Ek sayfalar (2026-10-01, kullanıcı isteği; tasarım paketinde karşılıkları yok, mevcut sayfaların dilinde):** Uygulamalar (D-050, D-054), Diller (D-053), Görevler (D-048), Hosts (D-049), Dosyalar (D-051); Uygula'da diğer sürümler (D-055). Hepsi 🟨 test — motor kanıtı `tools\lab_features.ps1` (yönetici) bekliyor. Spec: `pages/19-extras.md`.
 
 ## Faz 4 — Sağlamlaştırma ve yayın
 Performans profili, erişilebilirlik (Narrator) turu, installer/portable paket, imzalama, sürüm notları.
