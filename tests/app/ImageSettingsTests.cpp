@@ -408,6 +408,38 @@ TEST_CASE("form: a wallpaper is a JPEG of this PC copied into the image, with th
     CHECK(f.state.changes().empty());
 }
 
+TEST_CASE("form: right-click menu entries are verbs and handler keys in the image's classes") {
+    Fixture f;
+    const auto& catalog = f.controller.catalog();
+    const auto& owner = setting(catalog, "context-take-ownership");
+    f.controller.select(owner, option(owner, "tr"));
+    // Files and folders: label, shield, command — elevated by the "runas" verb, no language-bound names.
+    const auto* command = f.state.changes().find(OpKind::SetRegistryValue, L"HKLM\\SOFTWARE\\Classes\\Directory\\shell\\runas\\command::");
+    REQUIRE(command);
+    const auto written = core::registryWriteFrom(command->target, command->value);
+    REQUIRE(written);
+    const std::wstring text(reinterpret_cast<const wchar_t*>(written->data.data()), written->data.size() / 2 - 1);
+    CHECK(text.find(L"takeown /f \"%1\" /r") != std::wstring::npos);
+    CHECK(text.find(L"*S-1-5-32-544:F") != std::wstring::npos); // Administrators by SID: "Yöneticiler" on a Turkish Windows
+    CHECK(f.state.changes().size() == 10);
+    f.controller.select(owner, option(owner, "en"));
+    CHECK(f.state.changes().size() == 10); // the English label replaces the Turkish one
+    CHECK(f.controller.current(owner) == option(owner, "en"));
+
+    // Copy / Move To: two empty handler keys, created.
+    const auto& copyMove = setting(catalog, "context-copy-move");
+    f.controller.select(copyMove, option(copyMove, "on"));
+    CHECK(f.controller.current(copyMove) == option(copyMove, "on"));
+    // "Share" off: the handler key goes.
+    const auto& share = setting(catalog, "context-share");
+    f.controller.select(share, option(share, "off"));
+    CHECK(f.controller.current(share) == option(share, "off"));
+    const auto back = core::ops::ChangeSet::fromJson(f.state.changes().toJson());
+    REQUIRE(back);
+    CHECK(ImageSettingsController::optionIn(*back, copyMove) == option(copyMove, "on"));
+    CHECK(ImageSettingsController::optionIn(*back, share) == option(share, "off"));
+}
+
 TEST_CASE("settings catalog: a file outside the default profile and ProgramData is a malformed setting") {
     const auto catalog = ImageSettingsCatalog::parse(R"({
       "format": "winlove.catalog.settings",

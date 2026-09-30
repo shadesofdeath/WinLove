@@ -57,6 +57,12 @@ etkisizdir. Kullanıcı sonradan kendi sabitlemelerini yapabilir (düzen kilitle
 bilgisayardaki bir JPEG, `CopyFile` işlemiyle imajdaki sabit yola + onu gösteren değerler). Boş değer = Windows
 varsayılanı. Dosya kutusuna JPEG olmayan / olmayan bir yol yazılırsa hiçbir şey kuyruğa girmez, ipucu kırmızı.
 
+### D-043 ile eklenenler
+Gezgin › **Sağ tık menüsü ve simgeler**: "Sahipliği al" (Yok / Türkçe / İngilizce), "Klasöre kopyala / taşı", "Paylaş".
+Sistem › **Bildirimler**: uygulama bildirimleri, kilit ekranında bildirimler, bildirim sesleri, güvenlik ve bakım.
+Performans › **Oyun**: Xbox Game Bar, Oyun modu, donanım hızlandırmalı GPU zamanlaması (varsayılan / açık / kapalı),
+pencereli oyun iyileştirmeleri.
+
 ## 4. Sınırlar
 - İmajdaki mevcut değer okunmuyor: form Windows varsayılanını gösterir (P11 ile aynı sınır). "Varsayılan" seçeneği
   değeri değiştirmez, varsayılana *geri yazmaz*.

@@ -241,6 +241,16 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-043 — Sağ tık menüsü, bildirimler, oyun ayarları (2026-09-30)
+Bağlam: Kullanıcı eksik alanlardan üçünü seçmemi istedi.
+Karar: Hepsi ayar kataloğunda, kayıt defteriyle. "Sahipliği al" `HKLM\SOFTWARE\Classes\{*,Directory}\shell\runas` fiili (Windows
+kendisi yükseltir); `icacls` grubu ada göre değil SID ile (`*S-1-5-32-544`: Türkçe Windows'ta "Yöneticiler");
+`takeown /d` kullanılmadı (yanıt harfi dile bağlı). Menü etiketi imajın diline göre seçilir (Türkçe / İngilizce
+seçenek): katalog imajın dilini bilmiyor. "Paylaş" `ModernSharing` işleyici anahtarı silinerek, "Klasöre kopyala /
+taşı" iki kabuk uzantısı anahtarı oluşturularak. Bildirimler ve oyun ayarları HKCU olduğu için ilk oturumda da.
+Kısayol oku kaldırma eklenmedi: güvenilir bir boş simge kaynağı yok.
+Kanıt durumu: birim testli; kurulan Windows'ta görülmedi.
+
 ## D-042 — Vurgu renkleri, "Uygulama ayarları" sol menüde; ayar kataloğu büyüdü (2026-09-30)
 Bağlam: Kullanıcı "uygulamaya tema özelliği, açık tema, farklı temalar" istedi. Koyu / Açık / Yüksek kontrast / Sistem
 temaları zaten vardı ama ayar sayfası sol menüde olmadığı için bulunamıyordu. Tasarım (ekran 19) beş vurgu rengi
