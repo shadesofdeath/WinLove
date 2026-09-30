@@ -5,6 +5,7 @@
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
 #include "core/image/dism/Dism.h"
+#include "core/system/Privileges.h"
 
 #include <atomic>
 #include <cmath>
@@ -120,13 +121,26 @@ void IsoController::start(Request request) {
     const core::BootPatch boot = request.bootBypass ? bootPatch(m_state) : core::BootPatch{};
     const std::filesystem::path bootFolder = m_state.settings().workRoot / L"boot"; // the copy and its mount folder
     const BootPatcher patcher = m_patcher ? m_patcher : BootPatcher{patchWithDism};
+    const UsbWriter usbWriter = m_usbWriter ? m_usbWriter : UsbWriter{core::writeUsb};
+    if (request.usb && !m_usbWriter && !core::isElevated()) {
+        // Relaunch through UAC: the source opens again on this page; the disk is picked again.
+        if (m_events.needsAdmin) {
+            m_events.needsAdmin(std::format(L"{} --page=iso", core::quoteArgument(source.path.wstring())));
+        }
+        return;
+    }
     Run run;
     run.running = true;
-    run.output = request.output;
+    run.usb = request.usb.has_value();
+    run.output = request.usb ? std::filesystem::path(request.usb->name) : request.output;
     run.startedMs = 0;
     const core::CancelToken cancel = run.cancel;
     m_state.setIsoRun(std::move(run));
-    log::info("iso", L"ISO build started: " + request.output.wstring());
+    if (request.usb) {
+        log::info("iso", std::format(L"USB stick started: disk {} ({})", request.usb->disk, request.usb->name));
+    } else {
+        log::info("iso", L"ISO build started: " + request.output.wstring());
+    }
     // Whether Setup will find an answer file is the first thing to know when it asks its questions anyway.
     if (answerFile.empty()) {
         const bool unused = !(m_state.unattend().options == core::UnattendOptions{});
@@ -160,9 +174,10 @@ void IsoController::start(Request request) {
         });
     };
 
+    auto usbRoot = std::make_shared<std::wstring>(); // the stick's drive, set by the job
     m_state.engine().run<core::IsoResult>(
-        [source, workFolder, request, cancel, report, answerFile, boot, bootFolder,
-         patcher](const core::TaskContext&) -> Result<core::IsoResult> {
+        [source, workFolder, request, cancel, report, answerFile, boot, bootFolder, patcher, usbWriter,
+         usbRoot](const core::TaskContext&) -> Result<core::IsoResult> {
             // Weights: extract 0.30 (ISO sources), repack 0.30 (if asked), boot image 0.15 (if
             // asked), build the rest.
             const bool extract = source.format == core::ImageFormat::Iso;
@@ -230,13 +245,30 @@ void IsoController::start(Request request) {
                                              boot.labConfigValues().size()));
                 options.replacedFiles.push_back({L"sources\\boot.wim", patched.file});
             }
+            if (request.usb) {
+                core::UsbOptions usb;
+                usb.disk = request.usb->disk;
+                usb.identity = request.usb->identity;
+                usb.scheme = request.usb->scheme;
+                usb.label = request.label;
+                usb.sourceFolder = folder;
+                usb.rootFiles = options.rootFiles;
+                usb.replacedFiles = options.replacedFiles;
+                const core::TaskContext t{cancel, [&](double f, std::wstring_view) { report(we + wr + wp + f * wb, 5); }};
+                auto written = usbWriter(usb, t);
+                if (!written) {
+                    return std::unexpected(written.error());
+                }
+                *usbRoot = written->root;
+                return core::IsoResult{written->bytes, {}};
+            }
             const core::TaskContext t{cancel, [&](double f, std::wstring_view stage) {
                                           report(we + wr + wp + f * wb, stage == L"sha256" ? 3 : 2);
                                       }};
             return core::buildIso(options, t);
         },
-        [this, post, alive, request](Result<core::IsoResult> result) {
-            post([this, alive, request, result = std::move(result)] {
+        [this, post, alive, request, usbRoot](Result<core::IsoResult> result) {
+            post([this, alive, request, usbRoot, result = std::move(result)] {
                 if (const auto a = alive.lock(); !a || !*a) {
                     return;
                 }
@@ -256,9 +288,12 @@ void IsoController::start(Request request) {
                 }
                 run->fraction = 1.0;
                 run->result = *result;
+                if (request.usb && !usbRoot->empty()) {
+                    run->output = *usbRoot;
+                }
                 m_state.notifyIso();
                 if (m_events.finished) {
-                    m_events.finished(*result, request.output, request.openFolder);
+                    m_events.finished(*result, request.usb ? run->output : request.output, request.openFolder);
                 }
             });
         },

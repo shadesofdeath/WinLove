@@ -37,6 +37,7 @@ using SetImageInformationFn = BOOL(WINAPI*)(HANDLE, PVOID, DWORD);
 using CallbackFn = DWORD(CALLBACK*)(DWORD, WPARAM, LPARAM, PVOID);
 using RegisterCallbackFn = DWORD(WINAPI*)(HANDLE, FARPROC, PVOID);
 using UnregisterCallbackFn = BOOL(WINAPI*)(HANDLE, FARPROC);
+using SplitFileFn = BOOL(WINAPI*)(HANDLE, PCWSTR, PLARGE_INTEGER, DWORD);
 
 struct Api {
     CreateFileFn createFile = nullptr;
@@ -49,6 +50,7 @@ struct Api {
     SetImageInformationFn setImageInformation = nullptr;
     RegisterCallbackFn registerCallback = nullptr;
     UnregisterCallbackFn unregisterCallback = nullptr;
+    SplitFileFn splitFile = nullptr;
 };
 
 template <class F>
@@ -74,7 +76,8 @@ Result<const Api*> api() {
                         load(m, "WIMGetImageInformation", instance.getImageInformation) &&
                         load(m, "WIMSetImageInformation", instance.setImageInformation) &&
                         load(m, "WIMRegisterMessageCallback", instance.registerCallback) &&
-                        load(m, "WIMUnregisterMessageCallback", instance.unregisterCallback);
+                        load(m, "WIMUnregisterMessageCallback", instance.unregisterCallback) &&
+                        load(m, "WIMSplitFile", instance.splitFile);
         if (!ok) {
             return fail(ErrorCode::Unsupported, L"wimgapi.dll is missing expected entry points", path.wstring());
         }
@@ -400,6 +403,52 @@ std::optional<int> indexAfterRemoval(int index, std::span<const int> removed) {
         return std::nullopt;
     }
     return index - static_cast<int>(std::ranges::lower_bound(gone, index) - gone.begin());
+}
+
+Result<int> splitWim(const std::filesystem::path& sourceInput, const std::filesystem::path& firstPartInput,
+                     std::uint64_t partSize, const TaskContext& task) {
+    const std::filesystem::path source = nativePath(sourceInput);
+    const std::filesystem::path firstPart = nativePath(firstPartInput);
+    auto a = api();
+    if (!a) {
+        return std::unexpected(a.error());
+    }
+    const Api* w = *a;
+    log::info("wim", std::format(L"split {} -> {} (parts of {} MB)", source.wstring(), firstPart.wstring(), partSize >> 20));
+    WimHandle src{w, w->createFile(source.c_str(), GENERIC_READ, kOpenExisting, 0, 0, nullptr)};
+    if (!src.h) {
+        return std::unexpected(lastError(L"open " + source.wstring()));
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(firstPart.parent_path(), ec);
+    w->setTemporaryPath(src.h, firstPart.parent_path().c_str());
+    CallbackState state{&task};
+    w->registerCallback(src.h, reinterpret_cast<FARPROC>(&onMessage), &state);
+    LARGE_INTEGER size{};
+    size.QuadPart = static_cast<LONGLONG>(partSize);
+    const BOOL ok = w->splitFile(src.h, firstPart.c_str(), &size, 0);
+    const DWORD splitError = GetLastError();
+    w->unregisterCallback(src.h, reinterpret_cast<FARPROC>(&onMessage));
+    if (!ok) {
+        if (task.cancel.cancelled()) {
+            return fail(ErrorCode::Cancelled, L"split cancelled", firstPart.wstring());
+        }
+        return fail(ErrorCode::WimFailure, L"split failed", firstPart.wstring(),
+                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(splitError)));
+    }
+    // install.swm, install2.swm, … next to the first part.
+    int parts = 0;
+    const std::wstring stem = firstPart.stem().wstring();
+    for (int n = 1;; ++n) {
+        const auto part = firstPart.parent_path() / (n == 1 ? firstPart.filename().wstring()
+                                                           : stem + std::to_wstring(n) + firstPart.extension().wstring());
+        if (!std::filesystem::exists(part, ec)) {
+            break;
+        }
+        parts = n;
+    }
+    task.report(1.0, L"split");
+    return parts;
 }
 
 } // namespace wl::core

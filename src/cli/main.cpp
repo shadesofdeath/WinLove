@@ -8,6 +8,7 @@
 #include "core/image/RegistryEdit.h"
 #include "core/image/RegistryRead.h"
 #include "core/updates/UpdateCatalog.h"
+#include "core/usb/UsbMedia.h"
 #include "core/image/Services.h"
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
@@ -1029,6 +1030,82 @@ int cmdCatalog(const std::wstring& buildText, const std::wstring& arch, const st
     return failures == 0 ? 0 : 1;
 }
 
+// D-047: USB disks a setup stick can go to (no admin).
+int cmdUsbList(bool allowVirtual, bool all, bool asJson) {
+    const auto disks = all ? core::listAllDisks() : core::listUsbDisks(allowVirtual);
+    if (asJson) {
+        json out = json::array();
+        for (const auto& d : disks) {
+            json letters = json::array();
+            for (const auto& l : d.letters) {
+                letters.push_back(narrow(l));
+            }
+            out.push_back({{"disk", d.number},
+                           {"name", narrow(d.name())},
+                           {"serial", narrow(d.serial)},
+                           {"size", d.size},
+                           {"bus", d.busType},
+                           {"removable", d.removableMedia},
+                           {"letters", letters},
+                           {"system", d.system},
+                           {"identity", narrow(d.identity())}});
+        }
+        printJson(out);
+        return 0;
+    }
+    if (disks.empty()) {
+        print(L"  no USB disk\n");
+    }
+    for (const auto& d : disks) {
+        std::wstring letters;
+        for (const auto& l : d.letters) {
+            letters += l + L" ";
+        }
+        print(std::format(L"  disk {:<3} {:<32} {:>8} MB  bus {:<2} {}{}\n", d.number, d.name(), d.size >> 20, d.busType,
+                          letters, d.system ? L" [system: never written]" : L""));
+    }
+    return 0;
+}
+
+// D-047: writes a bootable setup stick. Erases the disk: --yes is required.
+int cmdUsbWrite(const std::wstring& diskText, const std::wstring& folder, const std::wstring& label, bool gpt,
+                const std::wstring& unattend, bool allowVirtual, bool yes) {
+    const int number = parseIndex(diskText) > 0 || diskText == L"0" ? _wtoi(diskText.c_str()) : -1;
+    const auto disks = core::listUsbDisks(allowVirtual);
+    const auto disk = std::ranges::find(disks, number, &core::UsbDisk::number);
+    if (disk == disks.end()) {
+        print(L"error: no such USB disk (see wlcli usb-list)\n");
+        return 1;
+    }
+    if (!yes) {
+        print(std::format(L"  this erases disk {} ({}, {} MB). Add --yes to go on.\n", disk->number, disk->name(),
+                          disk->size >> 20));
+        return 1;
+    }
+    core::UsbOptions options;
+    options.disk = disk->number;
+    options.identity = disk->identity();
+    options.scheme = gpt ? core::UsbScheme::GptUefi : core::UsbScheme::MbrBiosUefi;
+    options.label = label.empty() ? L"WINLOVE" : label;
+    options.sourceFolder = folder;
+    options.allowVirtual = allowVirtual;
+    if (!unattend.empty()) {
+        std::ifstream in(std::filesystem::path(unattend), std::ios::binary);
+        std::stringstream buffer;
+        buffer << in.rdbuf();
+        options.rootFiles.push_back({L"autounattend.xml", buffer.str()});
+    }
+    const auto task = progressTask(L"usb");
+    auto result = core::writeUsb(options, task);
+    print(L"\n");
+    if (!result) {
+        return reportError(result.error());
+    }
+    print(std::format(L"  {} ready ({} MB{})\n", result->root, result->bytes >> 20,
+                      result->swmParts ? std::format(L", install.wim in {} .swm parts", result->swmParts) : std::wstring()));
+    return 0;
+}
+
 // P06: bootable ISO from a setup folder (IMAPI2FS, no admin).
 int cmdIso(const std::wstring& folder, const std::wstring& output, const std::wstring& label, const std::wstring& boot,
            bool sha, bool noPrompt) {
@@ -1120,6 +1197,9 @@ void printUsage() {
           L"  wlcli postsetup <plan.json> <mountdir>   (write post-setup scripts and payloads into the image, P14)\n"
           L"  wlcli reg <file.reg> [<mountdir>] [--first-logon]   (parse; with a mount: write into the image's\n"
           L"                                      hives, P11; --first-logon: also re-import after setup)\n"
+          L"  wlcli usb-list [--all] [--json]      USB disks a setup stick can go to (never the system disk)\n"
+          L"  wlcli usb-write <disk> <setup folder> --yes [--gpt] [--label=] [--unattend=<xml>]   (admin; ERASES the\n"
+          L"                                      disk: FAT32, BIOS + UEFI (--gpt: UEFI only), install.wim > 4 GB -> .swm)\n"
           L"  wlcli catalog <build>[.<revision>] [--arch=x64|arm64] [--download=<folder>] [--preview] [--kb=KB…] [--json]\n"
           L"                                      (newest cumulative + .NET updates from the Microsoft Update\n"
           L"                                      Catalog; --download: fetch the recommended ones, SHA-256 checked)\n"
@@ -1175,6 +1255,11 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring downloadDir;
     bool preview = false;
     std::wstring onlyKb;
+    bool allowVirtual = false;
+    bool yes = false;
+    bool listAll = false;
+    bool gpt = false;
+    std::wstring unattendFile;
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
@@ -1197,6 +1282,16 @@ int wmain(int argc, wchar_t** argv) {
             downloadDir = std::wstring(a.substr(11));
         } else if (a.starts_with(L"--kb=")) {
             onlyKb = std::wstring(a.substr(5));
+        } else if (a == L"--allow-virtual") {
+            allowVirtual = true;
+        } else if (a == L"--all") {
+            listAll = true;
+        } else if (a == L"--yes") {
+            yes = true;
+        } else if (a == L"--gpt") {
+            gpt = true;
+        } else if (a.starts_with(L"--unattend=")) {
+            unattendFile = std::wstring(a.substr(11));
         } else if (a == L"--preview") {
             preview = true;
         } else if (a.starts_with(L"--label=")) {
@@ -1318,6 +1413,12 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"reg" && (args.size() == 2 || args.size() == 3)) {
         return cmdReg(args[1], args.size() == 3 ? args[2] : std::wstring(), firstLogon);
+    }
+    if (command == L"usb-list") {
+        return cmdUsbList(allowVirtual, listAll, asJson);
+    }
+    if (command == L"usb-write" && args.size() == 3) {
+        return cmdUsbWrite(args[1], args[2], label, gpt, unattendFile, allowVirtual, yes);
     }
     if (command == L"catalog" && args.size() == 2) {
         return cmdCatalog(args[1], arch, downloadDir, preview, onlyKb, asJson);

@@ -241,6 +241,34 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-047 — USB'ye yazma: diskpart + bootsect + kopya, FAT32 ve .swm bölme; yalnız USB / SD diskleri (2026-09-30)
+Bağlam: Kullanıcı "USB'ye yazma"yı istedi; P06'nın USB sekmesi yer tutucuydu.
+Karar:
+- **Yöntem Microsoft'un belgelediği yol:** `diskpart` (clean, `convert mbr` + `active` → BIOS + UEFI, ya da
+  `convert gpt` → yalnız UEFI; tek birincil bölüm; `format fs=fat32 quick`; `assign`), ardından medyanın kendi
+  `boot\bootsect.exe /nt60 X: /force /mbr` (BIOS önyükleme kodu), sonra dosyalar. Kendi bölümleyici / FAT32
+  biçimlendiricimiz yazılmadı: yanlış bir sektör başka bir diski bozar; Windows'un araçları sınanmış. Betik
+  `%TEMP%`e yazılır, çıktısı (OEM kod sayfası) loga gider, bitince silinir. Ortak süreç çalıştırıcı
+  `core/system/Process` (dism.exe de buna geçti).
+- **FAT32 sınırları:** 4 GB'tan büyük install.wim → `WIMSplitFile` ile `install.swm`, `install2.swm` … (3800 MB;
+  Setup kendisi okur). 4 GB'tan büyük install.esd bölünemez → hata, "ISO sekmesinde WIM'e çevir". Windows'un
+  FAT32 biçimlendiricisi 32 GB'ta durur → büyük bellekte 32 000 MB'lık bölüm (kalan boş). exFAT / NTFS + UEFI:NTFS
+  kullanılmadı: UEFI ürün yazılımları FAT32'yi garanti okur.
+- **Güvenlik:** liste yalnız USB / SD / MMC veri yolundaki diskler (IOCTL_STORAGE_QUERY_PROPERTY; yönetici
+  gerekmez); Windows, sistem, önyükleme ve sayfa dosyası birimlerinin diski hiç listelenmez. Yazmadan hemen önce
+  disk yeniden okunur; veri yolu + satıcı + model + seri + boyut seçilenle aynı değilse durur (takılıp çıkarılma).
+  Önce plan (4 GB denetimi, yer) — disk silinmeden hata verilir. Arayüzde her zaman görünen uyarı bandı ve diski
+  adıyla, boyutuyla, harfiyle söyleyen onay dialogu; "Sil ve yaz" Enter'la seçilmez. VHD(X) yalnız `wlcli
+  --allow-virtual` ile (lab testi), uygulamada asla.
+- **Aynı hat:** USB, ISO'nun işlem hattını kullanır (ISO kaynağı önce çalışma klasörüne açılır, isteğe bağlı yeniden
+  paketleme, boot.wim kopyasına gereksinim atlamaları, kökte autounattend.xml); son adım `buildIso` yerine
+  `writeUsb`. Yönetici değilse UAC ile yeniden başlatılır (`--page=iso`), disk yeniden seçilir.
+Kanıt: disk listeleme bu makinede (NVMe sistem diski "system" olarak tanındı, listeye girmedi); saf parçalar birim
+testli (etiket, bölüm boyutu, diskpart betiği, 4 GB planı seyrek dosyayla); hat testi (sahte yazıcıyla: kök dosya,
+yamalı boot.wim, kök sürücü sonucu); render (USB sekmesi, onay). **Görülmeyen — önce bu:** gerçek yazma.
+`tools\lab_usb.ps1` (yönetici) bir VHDX'e yazıp bölüm stili, etkin bölüm, FAT32, BOOTMGR önyükleme kodu, .swm
+parçaları (DISM okuyor mu) denetler. Sonra gerçek bellekle VM / bilgisayar önyüklemesi.
+
 ## D-046 — Güncelleme indirme: Microsoft Update Catalog'dan en yeni LCU / .NET, doğrulamalı indirme (2026-09-30)
 Bağlam: Kullanıcı "güncelleme indirme"yi istedi. P08 yalnız elle getirilen .msu / .cab dosyalarını alıyordu.
 Karar:

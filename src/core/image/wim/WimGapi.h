@@ -43,6 +43,12 @@ struct ImageText {
 };
 [[nodiscard]] Result<void> setImageText(const std::filesystem::path& wim, int index, const ImageText& text);
 
+// Splits `source` into parts of at most `partSize` bytes — install.swm, install2.swm, … — what
+// Setup reads from a FAT32 stick when install.wim is larger than 4 GB (D-047). `firstPart` names
+// the first part; the rest go next to it. Returns the number of parts.
+[[nodiscard]] Result<int> splitWim(const std::filesystem::path& source, const std::filesystem::path& firstPart,
+                                   std::uint64_t partSize, const TaskContext& task);
+
 // The index an edition has once the editions `removed` are gone; empty when it is one of them.
 [[nodiscard]] std::optional<int> indexAfterRemoval(int index, std::span<const int> removed);
 

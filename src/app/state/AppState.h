@@ -222,7 +222,8 @@ public:
     struct IsoRun {
         bool running = false;
         double fraction = 0;
-        int stage = 0; // 0 extract, 1 repack, 2 write, 3 sha256, 4 boot image
+        int stage = 0; // 0 extract, 1 repack, 2 write, 3 sha256, 4 boot image, 5 USB stick
+        bool usb = false; // D-047: writing a setup stick; `output` is its root when done
         double startedMs = 0;
         std::filesystem::path output;
         std::optional<core::IsoResult> result;

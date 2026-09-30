@@ -7,6 +7,7 @@
 #include "app/state/AppState.h"
 #include "core/image/BootImage.h"
 #include "core/iso/IsoBuilder.h"
+#include "core/usb/UsbMedia.h"
 
 #include <functional>
 #include <memory>
@@ -25,6 +26,15 @@ public:
         bool sha256 = true;
         bool openFolder = true;
         bool bootBypass = true; // the answers' requirement bypasses also go into boot.wim
+        // D-047: a setup stick instead of an ISO file (same pipeline, the last step writes the
+        // disk: output / sha256 / noPrompt do not apply).
+        struct UsbTarget {
+            int disk = -1;
+            std::wstring identity; // core::UsbDisk::identity() as picked
+            std::wstring name;     // for the log and the result
+            core::UsbScheme scheme = core::UsbScheme::MbrBiosUefi;
+        };
+        std::optional<UsbTarget> usb;
     };
     // Why a build cannot start now (nullopt = it can).
     // UnattendInvalid: "ISO'ya ekle" is on and the answer file has a value Setup would reject.
@@ -34,6 +44,7 @@ public:
         std::function<void(std::function<void()>)> postToUi;
         std::function<void(const Error&)> failed;
         std::function<void(const core::IsoResult&, const std::filesystem::path&, bool openFolder)> finished;
+        std::function<void(std::wstring relaunchArgs)> needsAdmin; // USB: diskpart needs an elevated process
     };
 
     IsoController(AppState& state, Events events);
@@ -55,11 +66,15 @@ public:
         const std::filesystem::path& bootWim, const std::filesystem::path& mountDir, const core::BootPatch&,
         const core::TaskContext&)>;
     void setBootPatcher(BootPatcher patcher) { m_patcher = std::move(patcher); }
+    // Writes the stick (default core::writeUsb; tests put their own in).
+    using UsbWriter = std::function<Result<core::UsbResult>(const core::UsbOptions&, const core::TaskContext&)>;
+    void setUsbWriter(UsbWriter writer) { m_usbWriter = std::move(writer); }
 
 private:
     AppState& m_state;
     Events m_events;
     BootPatcher m_patcher;
+    UsbWriter m_usbWriter;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
 
