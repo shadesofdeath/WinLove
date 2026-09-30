@@ -1,7 +1,7 @@
 {
   "format": "winlove.catalog.components",
   "version": 1,
-  "comment": "System components outside the provisioned-app list (docs/pages/07-components.md, D-031). packages: CBS package families (unlocked in the offline registry, then DismRemovePackage; best effort when the component also has paths). paths: relative to the image root, removed whole. registry: offline writes; {key, delete:true} removes a key, value \"-\" removes a value. Paths and names checked against Windows 11 25H2 (26200.8037).",
+  "comment": "System components outside the provisioned-app list (docs/pages/07-components.md, D-031). packages: CBS package families (unlocked in the offline registry, then DismRemovePackage; best effort when the component also has paths). paths: relative to the image root, removed whole. registry: offline writes; {key, delete:true} removes a key, value \"-\" removes a value, \"[+]\" creates the key. always: offered whether or not a path is present (a preventive change: on some Windows versions there is nothing on disk to find). Paths and names checked against Windows 11 25H2 (26200.8037) and Windows 10 22H2 (19045.6456).",
   "groups": [
     { "id": "components", "tr": "Sistem Bileşenleri", "en": "System Components" },
     { "id": "cleanup", "tr": "Temizlik", "en": "Cleanup" }
@@ -40,12 +40,25 @@
       ] },
 
     { "id": "onedrive", "group": "components", "tr": "OneDrive kurulumu", "en": "OneDrive setup", "risk": "low",
-      "notes_tr": "Yeni kullanıcılara OneDrive kurulmaz; isteyen sonradan kendisi kurar. Paket DISM ile kaldırılamazsa yalnız kurulum dosyası ve başlangıç kaydı silinir (logda uyarı).",
-      "notes_en": "New users no longer get OneDrive; it can still be installed by hand. When DISM refuses the package, only the setup file and its startup entry are removed (a warning in the log).",
+      "notes_tr": "Yeni kullanıcılara ilk oturumda OneDrive kurulmaz; isteyen sonradan kendisi kurar. Kurulum dosyası (Windows 11'de System32, Windows 10'da SysWOW64), ilk oturumdaki başlangıç kaydı ve Windows 10'un Başlat menüsü kısayolu silinir. Paket DISM ile kaldırılamazsa yalnız bunlar silinir (logda uyarı).",
+      "notes_en": "New users no longer get OneDrive at first sign-in; it can still be installed by hand. The setup file (System32 on Windows 11, SysWOW64 on Windows 10), its first-logon startup entry and Windows 10's Start menu shortcut are removed. When DISM refuses the package, only these are removed (a warning in the log).",
       "packages": [ "Microsoft-Windows-OneDrive-Setup-Package", "Microsoft-Windows-OneDrive-Setup-WOW64-Package" ],
-      "paths": [ "Windows\\System32\\OneDriveSetup.exe" ],
+      "paths": [ "Windows\\System32\\OneDriveSetup.exe", "Windows\\SysWOW64\\OneDriveSetup.exe",
+                 "Users\\Default\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\OneDrive.lnk" ],
       "registry": [
         { "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "name": "OneDriveSetup", "value": "-" }
+      ] },
+
+    { "id": "outlook-install", "group": "components", "always": true, "risk": "low",
+      "tr": "Yeni Outlook'un kendiliğinden kurulması", "en": "Automatic install of the new Outlook",
+      "notes_tr": "Windows, internet varken ilk kurulumda (OOBE) yeni Outlook'u kendiliğinden indirip kurar; bu seçenek onu durdurur: güncelleme zamanlayıcısındaki Outlook görevi ve kaydı silinir, uygulama \"istenmiyor\" olarak işaretlenir. İmajda Outlook (yeni) uygulaması varsa onu Ofis ve Verimlilik grubundan ayrıca kaldır. İsteyen Outlook'u sonradan Store'dan kurabilir.",
+      "notes_en": "With internet, Windows downloads and installs the new Outlook by itself during first setup (OOBE); this stops it: the Outlook task and registration of the update scheduler are removed and the app is marked as not wanted. If the image has the Outlook (new) app, remove that too in the Office group. Outlook can still be installed from the Store later.",
+      "paths": [ "ProgramData\\USOPrivate\\ExpeditedAppRegistrations\\MS_Outlook" ],
+      "registry": [
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\Orchestrator\\UScheduler_Oobe\\OutlookUpdate", "delete": true },
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\Orchestrator\\UScheduler_Oobe", "name": "BlockedOobeUpdaters", "value": "\"[\\\"MS_Outlook\\\"]\"" },
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\Orchestrator\\UScheduler\\OutlookUpdate", "name": "workCompleted", "value": "dword:00000001" },
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Appx\\AppxAllUserStore\\Deprovisioned\\Microsoft.OutlookForWindows_8wekyb3d8bbwe", "name": "", "value": "[+]" }
       ] },
 
     { "id": "winre", "group": "components", "tr": "Windows Kurtarma Ortamı (WinRE)", "en": "Windows Recovery Environment (WinRE)", "risk": "high",

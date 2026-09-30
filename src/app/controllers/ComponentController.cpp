@@ -169,7 +169,8 @@ std::vector<ComponentController::Group> ComponentController::groups() const {
                           [](const Item& a, const Item& b) { return _wcsicmp(a.name.c_str(), b.name.c_str()) < 0; });
     }
 
-    // System components this image has, in catalog order; the cleanup is always on offer.
+    // System components this image has, in catalog order; the cleanup and the entries marked
+    // "always" are on offer whatever the image has.
     const auto& system = m_state.systemComponents();
     const bool probed = system && system->mountDir == list->mountDir;
     for (const auto& entry : m_systemCatalog.components()) {
@@ -193,14 +194,20 @@ std::vector<ComponentController::Group> ComponentController::groups() const {
                 continue;
             }
             const auto found = system->items.find(entry.id);
-            if (found == system->items.end() || !found->second.present) {
+            const bool present = found != system->items.end() && found->second.present;
+            if (!present && !entry.always) {
                 continue;
             }
             item.kind = Item::Kind::System;
-            item.size = found->second.size;
+            item.size = present ? found->second.size : 0;
             item.identity = entry.recipe.paths.front();
             item.contents = entry.recipe.packages;
             item.contents.insert(item.contents.end(), entry.recipe.paths.begin(), entry.recipe.paths.end());
+            if (entry.always) { // mostly registry: what it changes is what there is to show
+                for (const auto& write : entry.recipe.registry) {
+                    item.contents.push_back(write.name.empty() ? write.key : write.key + L" : " + write.name);
+                }
+            }
         }
         auto& group = groups[appGroups + static_cast<std::size_t>(g - m_systemCatalog.groups().begin())];
         group.size += item.size;

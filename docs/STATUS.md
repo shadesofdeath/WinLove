@@ -23,6 +23,12 @@
 - **Kaynak sayfası (2026-09-30, kullanıcı isteği):** son kullanılanlardan kaldırma (satır sonunda ×, `Del`, sağ tık
   menüsü) + çalışma kopyasını silme dialogu; UI çatısına sağ tık yönlendirmesi eklendi (`Widget::onContextMenu`).
   Dialogun kendisi render'da görülmedi (diskte çalışma kopyası yoktu); liste girdisini kaldırma ve menü görüldü.
+- **OneDrive ve yeni Outlook OOBE'de kurulmasın (2026-09-30, kullanıcı VM testi, Windows 10, D-039):** kullanıcı
+  Windows 10'da her şeyin çalıştığını, ama internet varken OneDrive ve Outlook'un yine kurulduğunu bildirdi. Neden:
+  OneDrive bileşeni Windows 10'da listelenmiyordu (dosya `SysWOW64`'te); Outlook bir güncelleme kaydıyla iniyor.
+  Düzeltme: `onedrive` tarifi Windows 10 yollarını da içeriyor; yeni, her imajda sunulan bileşen "Yeni Outlook'un
+  kendiliğinden kurulması". **Kanıt:** yalnız katalog + unit test + render; gerçek imajda çalıştırılmadı, OOBE'deki
+  etkisi görülmedi. **Bir sonraki somut adım:** kullanıcı Bileşenler'de ikisini seçip Uygula → ISO → internetli VM.
 - **Üç yeni iş (2026-09-30, kullanıcı isteği, D-037 / D-038):**
   (1) **Yanıt dosyası kalıcı** — `answers.dat` (DPAPI), her değişiklikte yazılır, açılışta geri gelir; unit testli. **Bitti.**
   (2) **DISM'in reddettiği uygulamaları kendi kodumuzla kaldırma** — motor kullanıcının yönetici çalıştırmasında
@@ -174,6 +180,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — Yanıt dosyası doldurulunca ISO'ya kendiliğinden giriyor; işlemci / disk denetimi atlama; imajda olmayan AppX başarı (D-034).
 - 2026-09-30 — İmajlar: çoklu seçim, yeniden adlandırma, WIM doğrulama (kendi LZX çözücümüz), sürüm yükseltme (D-035).
 - 2026-09-30 — Yanıt dosyası: `UserData` her zaman `ProductKey` ile (genel anahtar / yer tutucu) (D-036).
+- 2026-09-30 — OneDrive (Windows 10 yolları) ve yeni Outlook'un OOBE kurulumunu engelleyen bileşenler (D-039).
 - 2026-09-30 — boot.wim yaması gerçek imajda kanıtlandı; ISO sayfasına "atlamaları boot.wim'e de yaz" (D-038).
 - 2026-09-30 — Yerel uygulama kaldırma gerçek imajda kanıtlandı, Applier'a bağlandı, katalog kilidi kalktı (D-038).
 - 2026-09-30 — Yanıt dosyası kalıcı (D-037); yerel uygulama kaldırma ve boot.wim yaması: motor, kanıt bekliyor (D-038).
