@@ -38,10 +38,11 @@ void FormView::appendRow(std::wstring label, std::wstring hint, float width, Wid
     invalidate();
 }
 
-void FormView::setHint(const Widget& control, std::wstring hint) {
+void FormView::setHint(const Widget& control, std::wstring hint, tokens::Color color) {
     const auto row = std::ranges::find(m_rows, &control, &Row::control);
-    if (row != m_rows.end() && row->hint != hint) {
+    if (row != m_rows.end() && (row->hint != hint || row->hintColor != color)) {
         row->hint = std::move(hint);
+        row->hintColor = color;
         invalidate();
     }
 }
@@ -140,7 +141,7 @@ void FormView::paint(Canvas& canvas) {
         canvas.drawText(row.label, {b.x, y, m_labelWidth - 8, kRow}, TypeStyle::Body, Color::TextSecondary);
         if (!row.hint.empty()) {
             const float hx = row.control->bounds().right() + kHintGap;
-            canvas.drawText(row.hint, {hx, y, std::max(b.right() - hx, 0.0f), kRow}, TypeStyle::Caption, Color::TextTertiary);
+            canvas.drawText(row.hint, {hx, y, std::max(b.right() - hx, 0.0f), kRow}, TypeStyle::Caption, row.hintColor);
         }
         y += kRow;
     }

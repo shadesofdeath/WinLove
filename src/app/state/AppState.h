@@ -17,6 +17,7 @@
 #include "core/ops/ApplyJob.h"
 #include "core/ops/ChangeSet.h"
 #include "core/tasks/TaskRunner.h"
+#include "core/unattend/Unattend.h"
 
 #include <functional>
 #include <optional>
@@ -49,7 +50,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend };
     using Listener = std::function<void(Change)>;
 
     explicit AppState(std::filesystem::path recentFile = RecentSources::defaultFile(),
@@ -139,6 +140,15 @@ public:
     [[nodiscard]] const DriverScan& driverScan() const noexcept { return m_drivers; }
     void addDriverScan(const std::filesystem::path& folder, std::vector<core::DriverInf> infs);
 
+    // P13: the answer file being edited (kept across pages and sources); written to the root of
+    // the next ISO when `includeInIso` is on.
+    struct Unattend {
+        core::UnattendOptions options;
+        bool includeInIso = false;
+    };
+    [[nodiscard]] const Unattend& unattend() const noexcept { return m_unattend; }
+    void setUnattend(Unattend unattend);
+
     // P05: the running / last "Uygula" run (ApplyController). Lives until the next run.
     struct ApplyRun {
         enum class Stage : std::uint8_t { Running, Committing, Done };
@@ -219,6 +229,7 @@ private:
     std::optional<ServiceList> m_services;
     std::vector<RegImport> m_regImports;
     DriverScan m_drivers;
+    Unattend m_unattend;
     std::optional<IsoRun> m_iso;
     std::filesystem::path m_settingsFile;
     std::shared_ptr<log::RingBufferSink> m_logBuffer = std::make_shared<log::RingBufferSink>();

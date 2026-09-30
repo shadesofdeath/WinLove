@@ -16,6 +16,7 @@
 #include "app/pages/LogsPage.h"
 #include "app/pages/SourcePage.h"
 #include "app/pages/TweaksPage.h"
+#include "app/pages/UnattendedPage.h"
 #include "app/pages/UpdatesPage.h"
 #include "app/pages/images/ImageInspector.h"
 #include "base/Log.h"
@@ -114,6 +115,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         m_imageSettings = std::make_unique<ImageSettingsController>(m_state, std::move(*settings));
     }
     m_serviceCtl = std::make_unique<ServiceController>(m_state, embeddedServiceCatalog(), m_services.postToUi);
+    m_unattend = std::make_unique<UnattendController>(m_state);
     m_preload = std::make_unique<PreloadController>(m_state, m_services.postToUi);
     m_preload->onCancelled = [this] { showToast(ui::InfoKind::Warning, m_strings.get(Str::ImagesCancelledToast), L""); };
     m_iso =std::make_unique<IsoController>(m_state, IsoController::Events{
@@ -268,6 +270,34 @@ void Shell::importRegFiles(const std::vector<std::filesystem::path>& files) {
                 }
             });
         });
+}
+
+void Shell::importAnswerFile() {
+    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+    const auto file = ui::pickFile(owner, m_strings.get(Str::UnattendedImportXml),
+                                   {{m_strings.get(Str::UnattendedXmlFiles), L"*.xml"}});
+    if (!file) {
+        return;
+    }
+    if (auto r = m_unattend->import(*file); !r) {
+        log::error("app", describe(r.error()));
+        showToast(ui::InfoKind::Error, m_strings.get(Str::UnattendedImportFailed),
+                  r.error().message + (r.error().context.empty() ? L"" : L" — " + r.error().context));
+        return;
+    }
+    showToast(ui::InfoKind::Success, m_strings.get(Str::UnattendedImported), file->filename().wstring());
+}
+
+void Shell::saveAnswerFile() {
+    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+    const auto target = ui::pickSaveFile(owner, m_strings.get(Str::UnattendedSaveXml),
+                                         {{m_strings.get(Str::UnattendedXmlFiles), L"*.xml"}}, L"autounattend.xml", L"xml");
+    if (!target) {
+        return;
+    }
+    const auto saved = m_unattend->save(*target);
+    showToast(saved ? ui::InfoKind::Success : ui::InfoKind::Error,
+              m_strings.get(saved ? Str::UnattendedSaved : Str::UnattendedSaveFailed), target->wstring());
 }
 
 ServicesPage* Shell::servicesPage() const {
@@ -700,6 +730,12 @@ void Shell::showPage(PageId page) {
             m_pageBody = &m_pageView->setBody<RegistryPage>(
                 m_state, *m_registry, m_strings, m_language,
                 RegistryPage::Intents{pick, [this] { showPage(PageId::Images); }});
+        } else if (page == PageId::Unattended) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UnattendedImportXml), ui::icons::Icon::Import)
+                .onInvoke = [this] { importAnswerFile(); };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UnattendedSaveXml), ui::icons::Icon::Save)
+                .onInvoke = [this] { saveAnswerFile(); };
+            m_pageBody = &m_pageView->setBody<UnattendedPage>(m_state, *m_unattend, m_strings);
         } else if (page == PageId::Tweaks) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TweaksApplyRecommended)).onInvoke = [this] {
                 if (!m_state.mounted()) {

@@ -13,6 +13,7 @@ add_library(wl_app STATIC
     controllers/ImageSettingsController.cpp
     controllers/IsoController.cpp
     controllers/PreloadController.cpp
+    controllers/UnattendController.cpp
     Format.cpp
     Localization.cpp
     Resources.cpp
@@ -35,6 +36,7 @@ add_library(wl_app STATIC
     pages/PageInfo.cpp
     pages/SourcePage.cpp
     pages/TweaksPage.cpp
+    pages/UnattendedPage.cpp
     pages/UpdatesPage.cpp
     pages/source/RecentList.cpp
     shell/NavRail.cpp

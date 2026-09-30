@@ -31,7 +31,8 @@ public:
         appendRow(std::move(label), std::move(hint), width, &control);
         return control;
     }
-    void setHint(const Widget& control, std::wstring hint);
+    // `color`: text.tertiary for explanations, a status color for a problem with the value.
+    void setHint(const Widget& control, std::wstring hint, tokens::Color color = tokens::Color::TextTertiary);
 
     // Sections as scroll targets (step indicators).
     [[nodiscard]] int sectionCount() const noexcept;
@@ -63,6 +64,7 @@ private:
         std::wstring hint;
         Widget* control = nullptr;
         float width = 0;
+        tokens::Color hintColor = tokens::Color::TextTertiary;
     };
 
     void appendRow(std::wstring label, std::wstring hint, float width, Widget* control);

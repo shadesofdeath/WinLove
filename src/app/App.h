@@ -47,6 +47,7 @@ struct LaunchOptions {
     bool demoRegistry = false;   // render: fake mount + checked tweaks (08)
     bool demoServices = false;   // render: fake mount + sample services (09)
     bool demoTweaks = false;     // render: fake mount + the selections of screen 10
+    bool demoUnattended = false; // render: the answers of screen 11
     bool demoDrivers = false;    // render: fake mount + sample driver INFs (07)
     bool demoUpdates = false;    // render: with a source path — fake mount + sample update packages (06)
     std::wstring demoApply;    // render (with --demo-features): "running" | "done" — fake Uygula run // render: fill the log with the design's sample lines (screen 18)

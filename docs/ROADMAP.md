@@ -51,7 +51,7 @@ Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **
 | P10 | Servisler | 09 | `pages/10-services.md` | 🟨 test | OfflineRegistry burada gelir |
 | P11 | Kayıt Defteri | 08 | `pages/11-registry.md` | 🟨 test | |
 | P12 | Ayarlar / Tweaks | 10 | `pages/12-tweaks.md` | 🟨 test | Durum kuyruktan türetilir; P11 ile aynı işlemler |
-| P13 | Katılımsız Kurulum | 11 | `pages/13-unattended.md` | ⬜ | |
+| P13 | Katılımsız Kurulum | 11 | `pages/13-unattended.md` | 🟨 test | ISO köküne bellekten eklenir (D-028); VM kurulum testi gerek |
 | P14 | Kurulum Sonrası | 12 | `pages/14-post-setup.md` | ⬜ | |
 | P15 | Presetler (kaydet/yükle/karşılaştır) | 17 | `pages/15-presets.md` | ⬜ | |
 | P16 | Uygulama Ayarları | 19 | `pages/16-app-settings.md` | ⬜ | |
