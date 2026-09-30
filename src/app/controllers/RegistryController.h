@@ -2,7 +2,9 @@
 // P11 logic (docs/pages/11-registry.md): catalog tweaks and imported .reg files ↔ SetRegistryValue
 // operations (target "<key>::<name>", value in .reg syntax). A tweak is "checked" when every one
 // of its writes is queued with its value; toggling queues or removes all of them. Imported .reg
-// files are queued whole on import and can be toggled or removed like a tweak.
+// files are queued whole on import and can be toggled or removed like a tweak. Their values are
+// always SetRegistryFirstLogon (written offline and re-imported after setup, D-026): nobody knows
+// which values of an arbitrary file Windows resets during OOBE / first logon.
 #include "app/catalog/TweakCatalog.h"
 #include "app/state/AppState.h"
 
@@ -23,6 +25,10 @@ public:
     [[nodiscard]] static core::ops::OpKind kindOf(const Tweak& tweak) {
         return tweak.firstLogon ? core::ops::OpKind::SetRegistryFirstLogon : core::ops::OpKind::SetRegistryValue;
     }
+
+    static constexpr core::ops::OpKind kImportKind = core::ops::OpKind::SetRegistryFirstLogon;
+    // Can the image take this write: offline hive, or (no hive) at least the post-setup import.
+    [[nodiscard]] static bool importable(const core::RegistryWrite& write);
 
     // Checked / total tweaks of a category ("custom" = imported .reg files).
     [[nodiscard]] std::pair<int, int> selection(std::string_view category) const;

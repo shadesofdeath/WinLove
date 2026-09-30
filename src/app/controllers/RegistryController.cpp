@@ -1,6 +1,8 @@
 #include "app/controllers/RegistryController.h"
 
 #include <algorithm>
+#include <cwctype>
+#include <set>
 
 namespace wl::app {
 
@@ -59,7 +61,7 @@ std::pair<int, int> RegistryController::selection(std::string_view category) con
     if (category == "custom") {
         for (const auto& import : m_state.regImports()) {
             ++total;
-            on += checked(import.writes) ? 1 : 0;
+            on += checked(import.writes, kImportKind) ? 1 : 0;
         }
         return {on, total};
     }
@@ -80,33 +82,52 @@ int RegistryController::checkedCount() const {
     return n + selection("custom").first;
 }
 
+bool RegistryController::importable(const RegistryWrite& write) {
+    return core::mapOfflineKey(write.key).has_value() || core::isPostSetupOnlyKey(write.key);
+}
+
 void RegistryController::addImport(const std::filesystem::path& file, std::vector<RegistryWrite> writes) {
     // Writes the image cannot take (HKLM\SAM, other users' SIDs…) are dropped from the queue here;
     // the page shows how many were skipped.
+    // An import applies entries in order and the last one of a slot wins: keep only that one, at
+    // its place ("x"=1, [-key], "x"=2 must end with x=2 after the delete).
     std::vector<RegistryWrite> usable;
+    std::set<std::wstring> seen;
     std::size_t skipped = 0;
-    for (auto& w : writes) {
-        if (core::mapOfflineKey(w.key)) {
-            usable.push_back(std::move(w));
-        } else {
+    for (auto it = writes.rbegin(); it != writes.rend(); ++it) {
+        if (!importable(*it)) {
             ++skipped;
+            continue;
+        }
+        std::wstring slot = core::registryTarget(*it);
+        std::ranges::transform(slot, slot.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+        if (seen.insert(std::move(slot)).second) {
+            usable.push_back(std::move(*it));
         }
     }
-    setChecked(usable, true, core::ops::Risk::Medium);
+    std::ranges::reverse(usable);
+    // Slots an earlier import or preset already queued move to this file's position in the queue.
+    std::vector<std::pair<OpKind, std::wstring>> slots;
+    for (const auto& w : usable) {
+        slots.emplace_back(kImportKind, core::registryTarget(w));
+    }
+    m_state.unqueueMany(slots);
+    setChecked(usable, true, core::ops::Risk::Medium, kImportKind);
     m_state.addRegImport(AppState::RegImport{file, std::move(usable), skipped});
 }
 
 void RegistryController::toggleImport(std::size_t index) {
     const auto& imports = m_state.regImports();
     if (index < imports.size()) {
-        setChecked(imports[index].writes, !checked(imports[index].writes), core::ops::Risk::Medium);
+        setChecked(imports[index].writes, !checked(imports[index].writes, kImportKind), core::ops::Risk::Medium,
+                   kImportKind);
     }
 }
 
 void RegistryController::removeImport(std::size_t index) {
     const auto& imports = m_state.regImports();
     if (index < imports.size()) {
-        setChecked(imports[index].writes, false, core::ops::Risk::Medium);
+        setChecked(imports[index].writes, false, core::ops::Risk::Medium, kImportKind);
         m_state.removeRegImport(index);
     }
 }

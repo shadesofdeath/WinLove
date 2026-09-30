@@ -275,6 +275,9 @@ void RegistryPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
         if (import.skipped > 0) {
             sub += L" · " + m_strings.format(Str::RegistrySkippedN, {{L"n", std::to_wstring(import.skipped)}});
         }
+        // Every value of a .reg file is also re-imported after setup (D-026).
+        sub += L" · " + m_strings.get(Str::RegistryReapplied);
+        kind = RegistryController::kImportKind;
     } else {
         const auto& tweak = m_controller.catalog().tweaks()[index];
         writes = &tweak.writes;

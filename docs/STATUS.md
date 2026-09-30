@@ -15,11 +15,13 @@
 - **Ön okuma (D-027, 2026-09-30):** mount / geri yükleme biter bitmez `PreloadController` Özellikler → Bileşenler →
   Servisler listelerini sırayla okur; İmajlar şeridinde ve durum çubuğunda ikinci ilerleme. Unit testli, render'da
   doğrulandı (`--operation=read`); gerçek imajda kullanıcı testi bekliyor (yönetici gerekir).
-- **Açık soru (kullanıcı, 2026-09-30):** ilk oturumda sıfırlanan kayıt değerleri için SetupComplete dışı yollar
-  (D-026'nın devamı). Öneri verildi: nedene göre çöz — politika ikizi / OOBE gizlilik sayfasını kapatma, imaj içi
-  `Windows\Panther\unattend.xml` (specialize `RunSynchronous` + `FirstLogonCommands`, OEM anahtarında da çalışır),
-  kullanıcı başına RunOnce yerine Active Setup. Karar bekliyor; P13 Katılımsız ile birlikte ele alınmalı.
-- **Build:** `./build.ps1 -Dist` yeşil, 102 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **İlk oturumda sıfırlanan kayıt değerleri (karar, 2026-09-30):** NTLite ile aynı yol kalır — SetupComplete.cmd +
+  ilk oturum RunOnce (D-026 eki); unattend / Active Setup alternatifleri seçilmedi. İçe aktarılan .reg dosyalarının
+  **her değeri** artık çevrimdışı yazım + kurulum sonrası yeniden içe aktarım. .reg düzeltmeleri: değersiz `[anahtar]`
+  (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
+  ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
+  (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
+- **Build:** `./build.ps1 -Dist` yeşil, 106 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi; güncellemelerde sürükle-sırala; imajdaki mevcut sürücüleri
@@ -36,6 +38,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 
 ## Geçmiş
 - 2026-09-30 — Ön okuma: mount sonrası ikinci ilerleme ile sayfa listeleri önceden okunuyor (D-027).
+- 2026-09-30 — İçe aktarılan .reg dosyaları kurulum sonrası da uygulanıyor; .reg ayrıştırma / kuyruk düzeltmeleri.
 - 2026-09-28 — Baştan sona inceleme (4 alan, paralel): ~35 hata düzeltildi. Öne çıkanlar: junction üzerinden ana
   makine ACL'si değişebilmesi (FileLocks), commit edilmeyen unmount'un başarılı raporlanması, DISM oturum yenileme,
   UDF çıkarmada yol dışına yazma + sınır dışı okuma, tıklamada yok edilen widget (use-after-free), Enter ile devre

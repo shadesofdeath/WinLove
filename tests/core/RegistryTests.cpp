@@ -14,7 +14,8 @@ using namespace wl::core;
 TEST_CASE("normalizeRegistryKey accepts long and short roots") {
     CHECK(normalizeRegistryKey(L"HKEY_LOCAL_MACHINE\\SOFTWARE\\X\\") == L"HKLM\\SOFTWARE\\X");
     CHECK(normalizeRegistryKey(L"hkcu\\Software") == L"HKCU\\Software");
-    CHECK(normalizeRegistryKey(L"HKEY_CURRENT_CONFIG\\X").empty());
+    CHECK(normalizeRegistryKey(L"HKEY_CURRENT_CONFIG\\X") == L"HKCC\\X");
+    CHECK(normalizeRegistryKey(L"HKEY_DYN_DATA\\X").empty());
     CHECK(normalizeRegistryKey(L"HKLMX\\Y").empty()); // whole segment only
     CHECK(isUserKey(L"HKEY_CURRENT_USER\\Control Panel"));
     CHECK_FALSE(isUserKey(L"HKLM\\SOFTWARE"));
@@ -31,8 +32,16 @@ TEST_CASE("mapOfflineKey routes to the image's hive files") {
     CHECK(mapOfflineKey(L"HKCU\\Software\\Classes\\CLSID\\{x}")->path == L"CLSID\\{x}");
     CHECK(mapOfflineKey(L"HKCU\\Software\\Microsoft")->hive == OfflineHiveFile::DefaultUser);
     CHECK(mapOfflineKey(L"HKU\\.DEFAULT\\Control Panel")->hive == OfflineHiveFile::DotDefault);
+    CHECK(mapOfflineKey(L"HKU\\S-1-5-18\\Control Panel")->hive == OfflineHiveFile::DotDefault); // LocalSystem
     CHECK_FALSE(mapOfflineKey(L"HKLM\\SAM\\SAM"));
     CHECK_FALSE(mapOfflineKey(L"HKU\\S-1-5-21-1\\Software"));
+    // No hive in the image, but the post-setup import can still write them.
+    CHECK_FALSE(mapOfflineKey(L"HKCC\\Software\\Fonts"));
+    CHECK(isPostSetupOnlyKey(L"HKEY_CURRENT_CONFIG\\Software\\Fonts"));
+    CHECK(isPostSetupOnlyKey(L"HKU\\S-1-5-19\\Software\\X"));
+    CHECK_FALSE(isPostSetupOnlyKey(L"HKU\\S-1-5-21-1\\Software"));
+    CHECK_FALSE(isPostSetupOnlyKey(L"HKLM\\SAM\\SAM"));
+    CHECK_FALSE(isPostSetupOnlyKey(L"HKLM\\SOFTWARE\\X"));
     CHECK(hiveFilePath(L"C:\\m", OfflineHiveFile::DefaultUser) == std::filesystem::path(L"C:\\m\\Users\\Default\\NTUSER.DAT"));
 }
 
@@ -83,9 +92,14 @@ TEST_CASE("operation target/value round-trip") {
     const auto back = registryWriteFrom(registryTarget(*w), formatRegValue(*w));
     REQUIRE(back);
     CHECK(*back == *w);
-    auto del = registryWriteFrom(L"HKLM\\SOFTWARE\\X::", L"[-]");
+    auto del = registryWriteFrom(L"HKLM\\SOFTWARE\\X::", L"[-]"); // the form older presets hold
     REQUIRE(del);
     CHECK(del->kind == RegistryWrite::Kind::DeleteKey);
+    // A slot of its own: "[-key]" followed by the key's default value keeps both operations.
+    CHECK(registryTarget(*del) == L"HKLM\\SOFTWARE\\X\\\\::");
+    const auto delBack = registryWriteFrom(registryTarget(*del), formatRegValue(*del));
+    REQUIRE(delBack);
+    CHECK(*delBack == *del);
     CHECK_FALSE(registryWriteFrom(L"HKLM\\SOFTWARE\\X", L"\"a\""));
 }
 
@@ -109,7 +123,31 @@ TEST_CASE("formatRegText writes long roots and parses back to the same writes") 
     CHECK(*back == *writes);
 }
 
-TEST_CASE("deferred .reg file replaces a slot; SetupComplete.cmd gets the import line once") {
+TEST_CASE("a key without values is created: parse, target, .reg text round trip") {
+    auto writes = parseRegText(L"Windows Registry Editor Version 5.00\n"
+                               L"[HKEY_CLASSES_ROOT\\AllFilesystemObjects\\shellex\\ContextMenuHandlers\\{C2FBB630}]\n\n"
+                               L"[HKCU\\Software\\A]\n@=\"d\"\n[HKCU\\Software\\A]\n[HKCU\\Software\\B]\n");
+    REQUIRE(writes);
+    REQUIRE(writes->size() == 4);
+    const auto& w = *writes;
+    CHECK(w[0].kind == RegistryWrite::Kind::CreateKey);
+    CHECK(w[0].key == L"HKCR\\AllFilesystemObjects\\shellex\\ContextMenuHandlers\\{C2FBB630}");
+    CHECK(w[1].kind == RegistryWrite::Kind::Set);
+    CHECK(w[2].kind == RegistryWrite::Kind::CreateKey);
+    CHECK(w[3].key == L"HKCU\\Software\\B");
+    // Not the same ChangeSet slot as the key's default value.
+    CHECK(registryTarget(w[1]) == L"HKCU\\Software\\A::");
+    CHECK(registryTarget(w[2]) == L"HKCU\\Software\\A\\::");
+    CHECK(formatRegValue(w[2]) == L"[+]");
+    const auto back = registryWriteFrom(registryTarget(w[2]), formatRegValue(w[2]));
+    REQUIRE(back);
+    CHECK(*back == w[2]);
+    auto again = parseRegText(formatRegText(w));
+    REQUIRE(again);
+    CHECK(*again == w);
+}
+
+TEST_CASE("deferred .reg files: appended per write, compacted on close; hooks once per run") {
     const auto dir = std::filesystem::temp_directory_path() / L"wl-tests" / L"deferred";
     std::filesystem::remove_all(dir);
     const auto file = deferredRegFile(dir, DeferredScope::User);
@@ -117,19 +155,67 @@ TEST_CASE("deferred .reg file replaces a slot; SetupComplete.cmd gets the import
     auto a = parseRegValue(L"HKCU\\Software\\T", L"v", L"dword:00000001");
     auto b = parseRegValue(L"HKCU\\Software\\T", L"v", L"dword:00000000");
     auto c = parseRegValue(L"HKCU\\Software\\T", L"w", L"\"s\"");
+    auto made = parseRegValue(L"HKCU\\Software\\T", L"", L"[+]");
+    auto def = parseRegValue(L"HKCU\\Software\\T", L"", L"\"default\"");
+    auto machine = parseRegValue(L"HKLM\\SOFTWARE\\T", L"m", L"dword:00000001");
+    auto config = parseRegValue(L"HKEY_CURRENT_CONFIG\\Software\\Fonts", L"LogPixels", L"dword:00000060");
     REQUIRE(a);
     REQUIRE(b);
     REQUIRE(c);
+    REQUIRE(made);
+    REQUIRE(def);
+    REQUIRE(machine);
+    REQUIRE(config);
     CHECK(deferredScope(*a) == DeferredScope::User);
-    REQUIRE(updateDeferredRegFile(file, *a));
-    REQUIRE(updateDeferredRegFile(file, *c));
-    REQUIRE(updateDeferredRegFile(file, *b)); // same slot as a → replaced
+    CHECK(deferredScope(*config) == DeferredScope::Machine);
+    const auto cmd = dir / L"Windows" / L"Setup" / L"Scripts" / L"SetupComplete.cmd";
+    {
+        DeferredRegistry deferred(dir);
+        REQUIRE(deferred.record(*a));
+        CHECK(deferred.takeUserHook());       // the caller adds the RunOnce value now…
+        REQUIRE(deferred.record(*c));
+        CHECK_FALSE(deferred.takeUserHook()); // …and only once per run
+        REQUIRE(deferred.record(*made));
+        REQUIRE(deferred.record(*def));       // same empty name as the created key: both stay
+        REQUIRE(deferred.record(*b));         // same slot as a
+        // Before close: every write is on disk already; importing in order gives the same values.
+        auto appended = readRegFile(file);
+        REQUIRE(appended);
+        REQUIRE(appended->size() == 5);
+        CHECK(appended->front() == *a);
+        CHECK(appended->back() == *b);
+
+        CHECK_FALSE(std::filesystem::exists(cmd));
+        REQUIRE(deferred.record(*machine));
+        REQUIRE(deferred.record(*config));
+        CHECK(std::filesystem::exists(cmd));
+    }
     auto read = readRegFile(file);
     REQUIRE(read);
-    REQUIRE(read->size() == 2);
+    REQUIRE(read->size() == 4); // a was superseded by b
     CHECK((*read)[0] == *c);
-    CHECK((*read)[1] == *b);
+    CHECK((*read)[1] == *made);
+    CHECK((*read)[2] == *def);
+    CHECK((*read)[3] == *b);
+    auto machineRead = readRegFile(deferredRegFile(dir, DeferredScope::Machine));
+    REQUIRE(machineRead);
+    REQUIRE(machineRead->size() == 2);
+    CHECK((*machineRead)[1] == *config);
+    {
+        // A later run on the same image continues the files.
+        DeferredRegistry deferred(dir);
+        REQUIRE(deferred.record(*a));
+    }
+    read = readRegFile(file);
+    REQUIRE(read);
+    REQUIRE(read->size() == 4);
+    CHECK(read->back() == *a);
+}
 
+TEST_CASE("SetupComplete.cmd gets the import line once, before the user's own commands") {
+    const auto dir = std::filesystem::temp_directory_path() / L"wl-tests" / L"setupcomplete";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
     const auto cmd = dir / L"SetupComplete.cmd";
     {
         std::ofstream out(cmd, std::ios::binary);

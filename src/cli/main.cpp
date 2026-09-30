@@ -523,22 +523,29 @@ int cmdServices(const std::wstring& dir, const std::wstring& set, bool asJson) {
 }
 
 // P11: parse a .reg file (no admin) and optionally apply it to a mounted image's hives.
-int cmdReg(const std::wstring& file, const std::wstring& mountDir) {
+// --first-logon: what the app does with an imported .reg file — also record every value for the
+// post-setup import (SetupComplete.cmd / default-user RunOnce, D-026).
+int cmdReg(const std::wstring& file, const std::wstring& mountDir, bool firstLogon) {
     auto writes = core::readRegFile(file);
     if (!writes) {
         return reportError(writes.error());
     }
     std::unique_ptr<core::OfflineRegistry> registry;
+    std::unique_ptr<core::DeferredRegistry> deferred;
     if (!mountDir.empty()) {
         registry = std::make_unique<core::OfflineRegistry>(mountDir);
+        if (firstLogon) {
+            deferred = std::make_unique<core::DeferredRegistry>(mountDir);
+        }
     }
     int failures = 0;
     for (const auto& w : *writes) {
         const auto mapped = core::mapOfflineKey(w.key);
-        std::wstring status = mapped ? L"" : L"  [unsupported]";
-        if (registry && mapped) {
-            auto r = registry->apply(w);
-            status = r ? L"  [ok]" : L"  [" + r.error().message + L"]";
+        const bool later = !mapped && core::isPostSetupOnlyKey(w.key);
+        std::wstring status = mapped ? L"" : later ? L"  [after setup only]" : L"  [unsupported]";
+        if (registry && (mapped || (later && deferred))) {
+            auto r = deferred ? core::deferRegistryWrite(*registry, *deferred, w) : registry->apply(w);
+            status = r ? (deferred ? L"  [ok + after setup]" : L"  [ok]") : L"  [" + r.error().message + L"]";
             failures += r ? 0 : 1;
         }
         print(core::registryTarget(w) + L" = " + core::formatRegValue(w) + status + L"\n");
@@ -622,7 +629,8 @@ void printUsage() {
           L"  wlcli mounts | cleanup\n"
           L"  wlcli packages|features|capabilities <mountdir>\n"
           L"  wlcli iso <setup-folder> <out.iso> [--label=X] [--boot=both|uefi|bios] [--sha256] [--no-prompt]\n"
-          L"  wlcli reg <file.reg> [<mountdir>]   (parse; with a mount: write into the image's hives, P11)\n"
+          L"  wlcli reg <file.reg> [<mountdir>] [--first-logon]   (parse; with a mount: write into the image's\n"
+          L"                                      hives, P11; --first-logon: also re-import after setup)\n"
           L"  wlcli services <mountdir> [--set=Name=auto|autoDelayed|manual|disabled]   (P10)\n"
           L"  wlcli appx <mountdir>   (provisioned apps + size, as on P07)\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
@@ -652,6 +660,7 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring boot;
     bool sha = false;
     bool noPrompt = false;
+    bool firstLogon = false;
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
@@ -668,6 +677,8 @@ int wmain(int argc, wchar_t** argv) {
             sha = true;
         } else if (a == L"--no-prompt") {
             noPrompt = true;
+        } else if (a == L"--first-logon") {
+            firstLogon = true;
         } else if (a.starts_with(L"--source=")) {
             source = std::wstring(a.substr(9));
         } else if (a == L"--skip-errors") {
@@ -739,7 +750,7 @@ int wmain(int argc, wchar_t** argv) {
         return cmdIso(args[1], args[2], label, boot, sha, noPrompt);
     }
     if (command == L"reg" && (args.size() == 2 || args.size() == 3)) {
-        return cmdReg(args[1], args.size() == 3 ? args[2] : std::wstring());
+        return cmdReg(args[1], args.size() == 3 ? args[2] : std::wstring(), firstLogon);
     }
     if (command == L"services" && args.size() == 2) {
         return cmdServices(args[1], serviceSet, asJson);
