@@ -1,4 +1,5 @@
 // D-048 / D-049 / D-051: the logic behind the Görevler, Hosts and Dosyalar pages.
+#include "app/controllers/AppsController.h"
 #include "app/controllers/FilesController.h"
 #include "app/controllers/HostsController.h"
 #include "app/controllers/ImageDriverController.h"
@@ -170,4 +171,43 @@ TEST_CASE("drivers page: removing a driver of the image") {
     drivers.toggle(net);
     CHECK(f.state.changes().empty());
     CHECK(drivers.hostFolder().filename() == L"host-drivers");
+}
+
+TEST_CASE("apps page: default associations merge, the browser pick, removing rows; app operations") {
+    Fixture f;
+    AppsController apps(f.state, AppsController::Events{});
+    CHECK(apps.browser() == -1);
+    apps.setBrowser(0); // Chrome
+    CHECK(apps.browser() == 0);
+    CHECK(apps.associations().size() == 4);
+    apps.mergeAssociations({{L".pdf", L"SumatraPDF", L"SumatraPDF"}, {L"HTTP", L"MSEdgeHTM", L"Microsoft Edge"}});
+    CHECK(apps.associations().size() == 5); // http replaced (identifiers without case), .pdf added
+    CHECK(apps.browser() == 3);             // Edge now owns http
+    apps.setBrowser(1);                     // Firefox: pages and links have their own ProgIds
+    bool htmlIsPage = false;
+    for (const auto& a : apps.associations()) {
+        if (a.identifier == L".html") {
+            htmlIsPage = a.progId == L"FirefoxHTML-308046B0AF4A39CB";
+        }
+    }
+    CHECK(htmlIsPage);
+    apps.setBrowser(-1);
+    CHECK(apps.associations().size() == 1);
+    apps.removeAssociation(L".PDF");
+    CHECK(apps.associations().empty());
+    CHECK(f.state.changes().empty()); // no associations: nothing queued
+
+    core::AppxInstall framework;
+    framework.package = LR"(C:\x\Microsoft.UI.Xaml.msix)";
+    framework.framework = true;
+    CHECK(AppsController::operationFor(framework).risk == core::ops::Risk::Low);
+    core::AppxInstall app;
+    app.package = LR"(C:\x\App.msix)";
+    const auto op = AppsController::operationFor(app);
+    CHECK(op.kind == OpKind::AddAppx);
+    CHECK(op.risk == core::ops::Risk::Medium);
+    f.state.queue(op);
+    REQUIRE(apps.queuedApps().size() == 1);
+    CHECK(apps.queuedApps().front().package == app.package);
+    CHECK(apps.imageArchitecture() == L"x64");
 }
