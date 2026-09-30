@@ -8,6 +8,7 @@
 #include "app/pages/DriversPage.h"
 #include "app/pages/ServicesPage.h"
 #include "app/pages/RegistryPage.h"
+#include "app/pages/SettingsPage.h"
 #include "app/pages/components/ComponentInspector.h"
 #include "app/pages/FeaturesPage.h"
 #include "app/pages/apply/RiskConfirm.h"
@@ -123,7 +124,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_unattend = std::make_unique<UnattendController>(m_state);
     m_postSetup = std::make_unique<PostSetupController>(m_state);
     m_presets = std::make_unique<PresetController>(m_state, m_imageSettings->catalog(), m_strings, m_language,
-                                                   PresetController::defaultFolder(m_state.settings()));
+                                                   PresetController::defaultFolder());
     m_preload = std::make_unique<PreloadController>(m_state, m_services.postToUi);
     m_preload->onCancelled = [this] { showToast(ui::InfoKind::Warning, m_strings.get(Str::ImagesCancelledToast), L""); };
     m_iso =std::make_unique<IsoController>(m_state, IsoController::Events{
@@ -174,6 +175,9 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         }
         if (change == AppState::Change::Queue) {
             updateQueue();
+        }
+        if (change == AppState::Change::Settings && m_services.settingsChanged) {
+            m_services.settingsChanged(); // theme, motion, language: the App applies them
         }
         if (change == AppState::Change::Apply || change == AppState::Change::Queue ||
             change == AppState::Change::Mount) {
@@ -847,6 +851,21 @@ void Shell::showPage(PageId page) {
             m_pageBody = &m_pageView->setBody<RegistryPage>(
                 m_state, *m_registry, m_strings, m_language,
                 RegistryPage::Intents{pick, [this] { showPage(PageId::Images); }});
+        } else if (page == PageId::Settings) {
+            auto& body = m_pageView->setBody<SettingsPage>(
+                m_state, m_strings,
+                SettingsPage::Intents{[this]() -> std::optional<std::filesystem::path> {
+                                          const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+                                          return ui::pickFolder(owner, m_strings.get(Str::SettingsWorkDir));
+                                      },
+                                      [this] { return m_images->busy() || m_apply->running() || m_iso->running(); }});
+            m_pageBody = &body;
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::CommonReset)).onInvoke = [this, &body] {
+                const bool locked = body.foldersLocked();
+                body.resetToDefaults();
+                showToast(ui::InfoKind::Success, m_strings.get(Str::SettingsResetDone),
+                          locked ? m_strings.get(Str::SettingsLockedHint) : std::wstring());
+            };
         } else if (page == PageId::Presets) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::CommonImport), ui::icons::Icon::Import)
                 .onInvoke = [this] { importPreset(); };

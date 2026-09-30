@@ -1,16 +1,29 @@
 #pragma once
-// User settings persisted in %LOCALAPPDATA%\WinLove\settings.json (edited on P16).
-// For now: the work root — where ISOs are copied before mounting and where images are mounted.
-// Default: %LOCALAPPDATA%\WinLove (next to logs and settings; nothing in the root of C:).
+// User settings persisted in %LOCALAPPDATA%\WinLove\settings.json (edited on P16):
+// appearance (theme, reduced motion), interface language, and the work environment — where ISOs
+// are copied before mounting and where images are mounted.
+// Default work root: %LOCALAPPDATA%\WinLove (next to logs and settings; nothing in the root of C:).
+#include "app/Localization.h"
+
+#include <cstdint>
 #include <filesystem>
 
 namespace wl::app {
 
-struct AppSettings {
-    std::filesystem::path workRoot = defaultWorkRoot();
-    std::filesystem::path isoFolder; // last "ISO Oluştur" output folder (empty: Desktop)
+enum class ThemeChoice : std::uint8_t { Dark, Light, HighContrast, System };
 
-    [[nodiscard]] std::filesystem::path mountDirectory() const { return workRoot / L"mount"; }
+struct AppSettings {
+    ThemeChoice theme = ThemeChoice::Dark;
+    bool reduceMotion = false; // true: always; false: follow the Windows "show animations" setting
+    Language language = Language::Turkish;
+    std::filesystem::path workRoot = defaultWorkRoot();
+    std::filesystem::path mountFolder; // empty: <workRoot>\mount
+    std::filesystem::path isoFolder;   // last "ISO Oluştur" output folder (empty: Desktop)
+
+    [[nodiscard]] bool operator==(const AppSettings&) const = default;
+    [[nodiscard]] std::filesystem::path mountDirectory() const {
+        return mountFolder.empty() ? workRoot / L"mount" : mountFolder;
+    }
     // Extracted setup media for a source, e.g. ...\WinLove\work\Win11_25H2_Turkish_x64_v2
     [[nodiscard]] std::filesystem::path workDirectoryFor(const std::filesystem::path& source) const {
         return workRoot / L"work" / source.stem();

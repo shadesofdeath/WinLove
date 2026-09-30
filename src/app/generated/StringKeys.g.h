@@ -597,6 +597,7 @@ enum class Str : std::uint16_t {
     SettingsAccent,
     SettingsAccentCustom,
     SettingsAppearance,
+    SettingsBrowse,
     SettingsDensity,
     SettingsDensityComfortable,
     SettingsDensityCompact,
@@ -604,9 +605,16 @@ enum class Str : std::uint16_t {
     SettingsDismPath,
     SettingsEnvironment,
     SettingsFollowSystem,
+    SettingsLangEn,
+    SettingsLangTr,
     SettingsLanguage,
+    SettingsLockedHint,
+    SettingsMountDefault,
     SettingsMountDir,
+    SettingsPathInvalid,
+    SettingsPressEnter,
     SettingsReduceMotion,
+    SettingsResetDone,
     SettingsTheme,
     SettingsThemeDark,
     SettingsThemeHc,
@@ -755,7 +763,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 745;
+inline constexpr std::size_t kStrCount = 753;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -1347,6 +1355,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "settings.accent",
     "settings.accentCustom",
     "settings.appearance",
+    "settings.browse",
     "settings.density",
     "settings.densityComfortable",
     "settings.densityCompact",
@@ -1354,9 +1363,16 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "settings.dismPath",
     "settings.environment",
     "settings.followSystem",
+    "settings.langEn",
+    "settings.langTr",
     "settings.language",
+    "settings.lockedHint",
+    "settings.mountDefault",
     "settings.mountDir",
+    "settings.pathInvalid",
+    "settings.pressEnter",
     "settings.reduceMotion",
+    "settings.resetDone",
     "settings.theme",
     "settings.themeDark",
     "settings.themeHc",

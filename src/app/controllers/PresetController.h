@@ -1,6 +1,6 @@
 #pragma once
 // P15 logic (docs/pages/15-presets.md): the preset library — *.wlpreset files in
-// <workRoot>\presets — and what the page shows about a preset: its changes as named items
+// %LOCALAPPDATA%\WinLove\presets — and what the page shows about a preset: its changes as named items
 // (a registry write that is a known setting reads "Reklam kimliği: Kapalı", not the key) and
 // the difference between two presets.
 #include "app/Localization.h"
@@ -42,9 +42,9 @@ public:
     PresetController(AppState& state, const ImageSettingsCatalog& settings, const Localization& strings,
                      Language language, std::filesystem::path folder);
 
-    [[nodiscard]] static std::filesystem::path defaultFolder(const AppSettings& settings) {
-        return settings.workRoot / L"presets";
-    }
+    // Next to settings.json (%LOCALAPPDATA%\WinLove\presets), whatever the work folder is: moving
+    // the work folder to another disk must not hide the library.
+    [[nodiscard]] static std::filesystem::path defaultFolder() { return AppSettings::defaultWorkRoot() / L"presets"; }
 
     // Reads the library again (sorted by name). Unreadable files are skipped and logged.
     void reload();

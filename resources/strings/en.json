@@ -726,7 +726,15 @@
     "workDir": "Working folder",
     "dismPath": "DISM path",
     "mountDir": "Mount folder",
-    "unmountAfter": "Unmount after applying"
+    "unmountAfter": "Unmount after applying",
+    "langTr": "Türkçe",
+    "langEn": "English",
+    "browse": "Choose folder…",
+    "mountDefault": "Empty: \\mount in the working folder",
+    "lockedHint": "Cannot change while an image is mounted or a job is running",
+    "pathInvalid": "A full path is needed (e.g. D:\\WinLove)",
+    "pressEnter": "Press Enter to apply",
+    "resetDone": "Settings are back to the defaults"
   },
   "about": {
     "title": "About",

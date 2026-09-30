@@ -15,6 +15,8 @@
 //      --mount=N              (windowed: after opening the source, mount edition N — UAC relaunch)
 //      --select=N             (select edition N on the Images page)
 //      --operation=mount|prepare|read --progress=0.38   (render: show the operation strip)
+//      --demo-<page>          (render: sample state for a page; see LaunchOptions)
+//      --switch-lang=tr|en    (render: rebuild the UI in another language, as the settings page does)
 #include "app/Localization.h"
 #include "app/pages/PageInfo.h"
 #include "app/shell/Shell.h"
@@ -36,6 +38,8 @@ namespace wl::app {
 struct LaunchOptions {
     ui::ThemeKind theme = ui::ThemeKind::Dark;
     Language language = Language::Turkish;
+    bool themeGiven = false;    // --theme= / --lang= on the command line win over settings.json
+    bool languageGiven = false;
     std::optional<std::filesystem::path> renderTo;
     float scale = 1.0f;
     ui::SizeF size{1440, 900};
@@ -50,6 +54,7 @@ struct LaunchOptions {
     bool demoUnattended = false; // render: the answers of screen 11
     bool demoPostSetup = false;  // render: fake mount + the steps of screen 12
     bool demoPresets = false;    // render: an in-memory library like screen 17
+    std::optional<Language> switchLanguage; // render: rebuild the UI in this language after the demo setup (P16)
     bool demoDrivers = false;    // render: fake mount + sample driver INFs (07)
     bool demoUpdates = false;    // render: with a source path — fake mount + sample update packages (06)
     std::wstring demoApply;    // render (with --demo-features): "running" | "done" — fake Uygula run // render: fill the log with the design's sample lines (screen 18)
@@ -85,6 +90,10 @@ private:
     [[nodiscard]] int renderOffscreen();
     void paint();
     void applyTheme();
+    // P16: settings.json changed (or Windows' own theme did): theme, motion, language.
+    void applySettings();
+    void rebuildUi(); // a new language: strings and every widget again; AppState stays
+    [[nodiscard]] ui::HostServices windowHostServices();
     [[nodiscard]] Result<void> recreateGraphics();
 
     LaunchOptions m_options;

@@ -11,6 +11,8 @@ namespace wl::ui {
 // Windows "Show animations" setting off => every duration becomes 0 (motion.md "Reduce motion").
 [[nodiscard]] bool reducedMotion() noexcept;
 void refreshReducedMotion() noexcept; // call on WM_SETTINGCHANGE
+// The app's own "Hareketi azalt": true = always reduced; false = follow the Windows setting.
+void setReducedMotionForced(bool forced) noexcept;
 // Still-frame rendering (--render): every tween jumps to its target immediately.
 void forceInstantMotion(bool instant) noexcept;
 
