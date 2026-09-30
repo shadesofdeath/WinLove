@@ -2,7 +2,8 @@
 // P08: what an update package is, from its Microsoft file name — the catalog naming is stable:
 //   windows11.0-kb5043080-x64_<hash>.msu        servicing stack / cumulative
 //   windows11.0-kb5044030-x64-ndp481_<hash>.msu .NET Framework
-// Kind: SSU when the name says "ssu" or the KB is a known SSU pattern, .NET for "ndp", LCU for
+// Kind: Language for Microsoft-Windows-Client-Language-Pack / -LanguageFeatures- cabs,
+// SSU when the name says "ssu" or the KB is a known SSU pattern, .NET for "ndp", LCU for
 // other windows1x.0 cumulative packages, Other for anything else (.cab language packs, …).
 // DISM itself decides applicability at apply time; this is for ordering and early warnings.
 #include <cstdint>
@@ -12,7 +13,9 @@
 
 namespace wl::core {
 
-enum class UpdateKind : std::uint8_t { Ssu, Lcu, DotNet, Other };
+// Language: a language pack or a language feature (LanguagePacks.h, D-053) — after the servicing
+// stack, before the cumulative update (Microsoft's order: the LCU updates what the pack adds).
+enum class UpdateKind : std::uint8_t { Ssu, Lcu, DotNet, Other, Language };
 
 struct UpdateInfo {
     std::filesystem::path path;

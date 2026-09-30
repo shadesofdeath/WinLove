@@ -46,7 +46,9 @@ UpdateInfo analyzeUpdate(const std::filesystem::path& file) {
             break;
         }
     }
-    if (name.find(L"ssu") != std::wstring::npos) {
+    if (name.find(L"client-language-pack") != std::wstring::npos || name.find(L"languagefeatures-") != std::wstring::npos) {
+        info.kind = UpdateKind::Language;
+    } else if (name.find(L"ssu") != std::wstring::npos) {
         info.kind = UpdateKind::Ssu;
     } else if (name.find(L"ndp") != std::wstring::npos || name.find(L"dotnet") != std::wstring::npos) {
         info.kind = UpdateKind::DotNet;
@@ -62,6 +64,7 @@ const wchar_t* updateKindKey(UpdateKind kind) noexcept {
     case UpdateKind::Lcu: return L"lcu";
     case UpdateKind::DotNet: return L"dotnet";
     case UpdateKind::Other: return L"other";
+    case UpdateKind::Language: return L"language";
     }
     return L"other";
 }
@@ -75,6 +78,9 @@ UpdateKind updateKindFromKey(std::wstring_view key) noexcept {
     }
     if (key == L"dotnet") {
         return UpdateKind::DotNet;
+    }
+    if (key == L"language") {
+        return UpdateKind::Language;
     }
     return UpdateKind::Other;
 }

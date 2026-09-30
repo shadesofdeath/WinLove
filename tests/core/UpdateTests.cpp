@@ -24,7 +24,7 @@ TEST_CASE("analyzeUpdate reads Microsoft catalog file names") {
     CHECK(old.targetWindows == 10);
     CHECK(old.architecture == L"arm64");
     const auto langPack = core::analyzeUpdate(LR"(C:\u\Microsoft-Windows-Client-Language-Pack_x64_tr-tr.cab)");
-    CHECK(langPack.kind == UpdateKind::Other);
+    CHECK(langPack.kind == UpdateKind::Language);
     CHECK(langPack.targetWindows == 0);
 
     CHECK(core::isUpdateFile(LR"(x.MSU)"));

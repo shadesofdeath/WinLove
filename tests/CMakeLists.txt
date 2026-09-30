@@ -21,6 +21,7 @@ add_executable(wl_tests
     core/UpdateTests.cpp
     core/UpdateCatalogTests.cpp
     core/UsbMediaTests.cpp
+    core/ImageExtrasTests.cpp
     core/WimEditTests.cpp
     core/WimVerifyTests.cpp
     ui/TokensTests.cpp

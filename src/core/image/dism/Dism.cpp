@@ -103,7 +103,8 @@ Result<Dism*> Dism::instance() {
                                a.removeProvisionedAppx) &&
                     load(m, "DismDisableFeature", a.disableFeature) && load(m, "DismEnableFeature", a.enableFeature) &&
                     load(m, "DismRemovePackage", a.removePackage) &&
-                    load(m, "DismRemoveCapability", a.removeCapability);
+                    load(m, "DismRemoveCapability", a.removeCapability) && load(m, "DismGetDrivers", a.getDrivers) &&
+                    load(m, "DismRemoveDriver", a.removeDriver);
     if (!ok) {
         return fail(ErrorCode::Unsupported, L"dismapi.dll is missing expected entry points", dllPath.wstring());
     }
@@ -393,6 +394,46 @@ Result<void> DismSession::addPackage(const std::filesystem::path& package, const
                                                 &bridge);
     if (FAILED(hr)) {
         return std::unexpected(m_dism.error(hr, L"add package " + path));
+    }
+    noteReload(hr);
+    return {};
+}
+
+Result<std::vector<DriverEntry>> DismSession::drivers() {
+    dismapi::DriverPackage* list = nullptr;
+    UINT count = 0;
+    // AllDrivers = FALSE: the third-party (oemN.inf) drivers only, what can be removed.
+    const HRESULT hr = m_dism.m_api->getDrivers(m_session, FALSE, &list, &count);
+    if (FAILED(hr)) {
+        return std::unexpected(m_dism.error(hr, L"get drivers " + m_path.wstring()));
+    }
+    std::vector<DriverEntry> result;
+    result.reserve(count);
+    auto text = [](PCWSTR s) { return s ? std::wstring(s) : std::wstring(); };
+    for (UINT i = 0; i < count; ++i) {
+        const auto& d = list[i];
+        DriverEntry e;
+        e.publishedName = text(d.publishedName);
+        e.originalFileName = text(d.originalFileName);
+        e.inBox = d.inBox != FALSE;
+        e.className = text(d.className);
+        e.classDescription = text(d.classDescription);
+        e.bootCritical = d.bootCritical != FALSE;
+        e.signed_ = d.driverSignature == dismapi::SignatureSigned;
+        e.version = std::format(L"{}.{}.{}.{}", d.majorVersion, d.minorVersion, d.build, d.revision);
+        e.date = d.date.wYear ? std::format(L"{:04}-{:02}-{:02}", d.date.wYear, d.date.wMonth, d.date.wDay) : std::wstring();
+        e.catalogFile = text(d.catalogFile);
+        e.provider = text(d.providerName);
+        result.push_back(std::move(e));
+    }
+    m_dism.m_api->deleteStructure(list);
+    return result;
+}
+
+Result<void> DismSession::removeDriver(const std::wstring& publishedName) {
+    const HRESULT hr = m_dism.m_api->removeDriver(m_session, publishedName.c_str());
+    if (FAILED(hr)) {
+        return std::unexpected(m_dism.error(hr, L"remove driver " + publishedName));
     }
     noteReload(hr);
     return {};

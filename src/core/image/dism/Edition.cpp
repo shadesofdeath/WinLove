@@ -9,49 +9,12 @@
 
 namespace wl::core {
 
-namespace {
-
-// Every "<label> : <value>" line of a piece of dism.exe output.
-std::vector<std::wstring> valuesOf(std::string_view output, std::string_view label) {
-    std::vector<std::wstring> values;
-    for (std::size_t at = 0; at < output.size();) {
-        const std::size_t end = std::min(output.find_first_of("\r\n", at), output.size());
-        std::string_view line = output.substr(at, end - at);
-        at = end + 1;
-        const auto first = line.find_first_not_of(" \t");
-        if (first == std::string_view::npos || !line.substr(first).starts_with(label)) {
-            continue;
-        }
-        line.remove_prefix(first + label.size());
-        const auto colon = line.find(':');
-        if (colon == std::string_view::npos || line.substr(0, colon).find_first_not_of(" \t") != std::string_view::npos) {
-            continue;
-        }
-        line.remove_prefix(colon + 1);
-        const auto start = line.find_first_not_of(" \t");
-        const auto stop = line.find_last_not_of(" \t");
-        if (start != std::string_view::npos) {
-            values.emplace_back(line.begin() + static_cast<std::ptrdiff_t>(start),
-                                line.begin() + static_cast<std::ptrdiff_t>(stop) + 1);
-        }
-    }
-    return values;
-}
-
-Error dismFailure(const DismExeRun& run, std::wstring message) {
-    return Error{ErrorCode::DismFailure, std::move(message),
-                 run.message.empty() ? std::format(L"dism.exe exit code 0x{:08X}", run.exitCode) : run.message,
-                 static_cast<std::int32_t>(run.exitCode)};
-}
-
-} // namespace
-
 ImageEditions parseEditions(std::string_view currentOutput, std::string_view targetsOutput) {
     ImageEditions editions;
-    if (auto current = valuesOf(currentOutput, "Current Edition"); !current.empty()) {
+    if (auto current = dismExeValues(currentOutput, "Current Edition"); !current.empty()) {
         editions.current = std::move(current.front());
     }
-    editions.targets = valuesOf(targetsOutput, "Target Edition");
+    editions.targets = dismExeValues(targetsOutput, "Target Edition");
     return editions;
 }
 
@@ -118,14 +81,14 @@ Result<ImageEditions> readEditions(DismSession& session) {
         return std::unexpected(current.error());
     }
     if (current->exitCode != 0) {
-        return std::unexpected(dismFailure(*current, L"could not read the edition of the image"));
+        return std::unexpected(dismExeFailure(*current, L"could not read the edition of the image"));
     }
     const auto targets = runDismExe(session, L"/Get-TargetEditions");
     if (!targets) {
         return std::unexpected(targets.error());
     }
     if (targets->exitCode != 0) {
-        return std::unexpected(dismFailure(*targets, L"could not read the editions the image can be changed to"));
+        return std::unexpected(dismExeFailure(*targets, L"could not read the editions the image can be changed to"));
     }
     ImageEditions editions = parseEditions(current->output, targets->output);
     if (editions.current.empty()) {
@@ -148,7 +111,7 @@ Result<void> setEdition(DismSession& session, std::wstring_view editionId, const
         return std::unexpected(run.error());
     }
     if (run->exitCode != 0) {
-        return std::unexpected(dismFailure(*run, L"the edition could not be changed"));
+        return std::unexpected(dismExeFailure(*run, L"the edition could not be changed"));
     }
     task.report(1.0, L"Set-Edition");
     return {};

@@ -78,6 +78,21 @@ struct AppxEntry {
     std::wstring installLocation;
 };
 
+// A driver package in the image's driver store (DismGetDrivers).
+struct DriverEntry {
+    std::wstring publishedName;    // "oem3.inf" — what DismRemoveDriver takes
+    std::wstring originalFileName; // "rt640x64.inf"
+    bool inBox = false;
+    std::wstring className;        // "Net"
+    std::wstring classDescription; // "Ağ bağdaştırıcıları" (from the image)
+    bool bootCritical = false;
+    bool signed_ = false;
+    std::wstring version;          // "10.0.26100.1"
+    std::wstring date;             // "2024-05-12"
+    std::wstring catalogFile;
+    std::wstring provider;         // "Realtek"
+};
+
 class DismSession;
 
 class Dism {
@@ -131,6 +146,10 @@ public:
     [[nodiscard]] Result<void> addPackage(const std::filesystem::path& package, const TaskContext& task);
     // DismAddDriver: one .inf into the driver store of the image (unsigned only with forceUnsigned).
     [[nodiscard]] Result<void> addDriver(const std::filesystem::path& inf, bool forceUnsigned = false);
+    // DismGetDrivers(AllDrivers = FALSE): the third-party drivers (D-052).
+    [[nodiscard]] Result<std::vector<DriverEntry>> drivers();
+    // DismRemoveDriver: one oemN.inf out of the image's driver store.
+    [[nodiscard]] Result<void> removeDriver(const std::wstring& publishedName);
     [[nodiscard]] const std::filesystem::path& mountPath() const noexcept { return m_path; }
     // True after a mutation returned DISMAPI_S_RELOAD_IMAGE_SESSION_REQUIRED; reload() before the next one.
     [[nodiscard]] bool reloadRequired() const noexcept { return m_reloadRequired; }

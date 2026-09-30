@@ -6,6 +6,10 @@ add_library(wl_core STATIC
     image/RegistryEdit.cpp
     image/RegistryRead.cpp
     image/Services.cpp
+    image/ScheduledTasks.cpp
+    image/HostsFile.cpp
+    image/AppxInstall.cpp
+    image/LanguagePacks.cpp
     image/ImageFiles.cpp
     image/ImageFormat.cpp
     image/Source.cpp
@@ -19,6 +23,8 @@ add_library(wl_core STATIC
     image/dism/DismErrors.cpp
     image/dism/DismExe.cpp
     image/dism/Edition.cpp
+    image/dism/Intl.cpp
+    image/dism/DefaultApps.cpp
     image/dism/MountHealth.cpp
     image/dism/OptionalFeatures.cpp
     image/dism/StoreCleanup.cpp
@@ -33,13 +39,15 @@ add_library(wl_core STATIC
     ops/ChangeSet.cpp
     ops/Planner.cpp
     postsetup/PostSetup.cpp
+    postsetup/SetupScripts.cpp
     system/FileLocks.cpp
     system/Privileges.cpp
     system/Process.cpp
+    system/HostExport.cpp
     tasks/Task.cpp
     tasks/TaskRunner.cpp
     unattend/Unattend.cpp
     usb/UsbMedia.cpp
     updates/UpdateCatalog.cpp)
 wl_configure_target(wl_core)
-target_link_libraries(wl_core PUBLIC wl_base PRIVATE wl_pugixml wl_json advapi32 shell32 ole32 oleaut32 shlwapi rstrtmgr bcrypt winhttp)
+target_link_libraries(wl_core PUBLIC wl_base PRIVATE wl_pugixml wl_json advapi32 shell32 ole32 oleaut32 shlwapi rstrtmgr bcrypt winhttp ws2_32)

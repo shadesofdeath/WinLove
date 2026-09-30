@@ -14,7 +14,8 @@
 
 namespace wl::core::ops {
 
-enum class Phase : std::uint8_t { Edition, Remove, Features, Drivers, Updates, Cleanup, Settings };
+// Apps: provisioned .appx / .msix (D-050) — after the updates, whose servicing stack may be needed.
+enum class Phase : std::uint8_t { Edition, Remove, Features, Drivers, Updates, Apps, Cleanup, Settings };
 
 struct PlanStep {
     Phase phase;

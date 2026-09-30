@@ -60,6 +60,17 @@ WL_SAME_OFFSET(d::CapabilityDetail, description, DismCapabilityInfo, Description
 WL_SAME_OFFSET(d::CapabilityDetail, downloadSize, DismCapabilityInfo, DownloadSize);
 WL_SAME_OFFSET(d::CapabilityDetail, installSize, DismCapabilityInfo, InstallSize);
 
+WL_SAME_LAYOUT(d::DriverPackage, DismDriverPackage);
+WL_SAME_OFFSET(d::DriverPackage, originalFileName, DismDriverPackage, OriginalFileName);
+WL_SAME_OFFSET(d::DriverPackage, inBox, DismDriverPackage, InBox);
+WL_SAME_OFFSET(d::DriverPackage, catalogFile, DismDriverPackage, CatalogFile);
+WL_SAME_OFFSET(d::DriverPackage, classDescription, DismDriverPackage, ClassDescription);
+WL_SAME_OFFSET(d::DriverPackage, bootCritical, DismDriverPackage, BootCritical);
+WL_SAME_OFFSET(d::DriverPackage, driverSignature, DismDriverPackage, DriverSignature);
+WL_SAME_OFFSET(d::DriverPackage, date, DismDriverPackage, Date);
+WL_SAME_OFFSET(d::DriverPackage, majorVersion, DismDriverPackage, MajorVersion);
+WL_SAME_OFFSET(d::DriverPackage, revision, DismDriverPackage, Revision);
+
 // Enum values and flags (compared as integers: the enum types differ by design).
 constexpr bool eq(auto ours, auto theirs) {
     return static_cast<long long>(ours) == static_cast<long long>(theirs);
@@ -75,6 +86,8 @@ static_assert(eq(d::RestartNo, DismRestartNo) && eq(d::RestartRequired, DismRest
 static_assert(eq(d::kMountReadWrite, DISM_MOUNT_READWRITE) && eq(d::kMountReadOnly, DISM_MOUNT_READONLY) &&
               eq(d::kCommitImage, DISM_COMMIT_IMAGE) && eq(d::kDiscardImage, DISM_DISCARD_IMAGE));
 static_assert(eq(d::LogErrorsWarningsInfo, DismLogErrorsWarningsInfo));
+static_assert(eq(d::SignatureUnknown, DismDriverSignatureUnknown) && eq(d::SignatureUnsigned, DismDriverSignatureUnsigned) &&
+              eq(d::SignatureSigned, DismDriverSignatureSigned));
 
 TEST_CASE("DISM declarations match the ADK dismapi.h (checked at compile time)") {
     CHECK(sizeof(d::FeatureInfo) == sizeof(DismFeatureInfo));

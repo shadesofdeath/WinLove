@@ -43,13 +43,21 @@ Category categoryOf(OpKind kind) {
     case OpKind::DisableFeature:
     case OpKind::RemoveCapability: return kFeatures;
     case OpKind::AddPackage: return kUpdates;
-    case OpKind::AddDriver: return kDrivers;
+    case OpKind::AddDriver:
+    case OpKind::RemoveDriver: return kDrivers;
+    case OpKind::AddAppx: return kComponents;
     case OpKind::SetRegistryValue:
     case OpKind::SetRegistryFirstLogon: return kRegistry;
     case OpKind::SetServiceStart: return kServices;
     case OpKind::SetEdition:
     case OpKind::WriteFile:
     case OpKind::CopyFile:
+    case OpKind::SetTaskState:
+    case OpKind::SetHosts:
+    case OpKind::SetDns:
+    case OpKind::CopyTree:
+    case OpKind::SetDefaultApps:
+    case OpKind::SetIntl:
     case OpKind::SetPostSetup: return kTweaks;
     }
     return kTweaks;
@@ -183,6 +191,7 @@ ui::icons::Icon ApplyPage::groupIcon(const Row& row) {
     case Phase::Features: return ui::icons::Icon::PuzzleFeatures;
     case Phase::Drivers: return ui::icons::Icon::DriverChip;
     case Phase::Updates: return ui::icons::Icon::UpdateDownload;
+    case Phase::Apps: return ui::icons::Icon::AppxPackage;
     case Phase::Cleanup: return ui::icons::Icon::SizeSaved;
     case Phase::Settings: return ui::icons::Icon::Registry;
     }

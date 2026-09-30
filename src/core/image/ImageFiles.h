@@ -9,6 +9,7 @@
 // the rules of a component path (relative, no "." / "..", no drive or stream syntax) and never
 // through a link.
 #include "base/Result.h"
+#include "core/tasks/Task.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -38,5 +39,21 @@ inline constexpr std::size_t kImageFileLimit = 1u << 20; // 1 MiB: these are con
 inline constexpr std::uint64_t kImageCopyLimit = 64ull << 20;
 [[nodiscard]] Result<void> copyImageFile(const std::filesystem::path& mountDir, std::wstring_view relative,
                                          const std::filesystem::path& source);
+
+// ---- D-051: files and folders of this PC anywhere in the image (the "Dosyalar" page) --------
+// A CopyTree operation: target = where the item ends up in the image, from its root
+// ("Tools\Sysinternals", "Users\Public\Desktop\readme.txt"), value = the file or folder here.
+// Allowed anywhere a component path is (relative, no "." / "..", no drive or stream syntax,
+// never through a link), except what Windows must own alone: the registry hives (config), the
+// component store (WinSxS, servicing), WindowsApps, Boot, System Volume Information,
+// $Recycle.Bin. Under Windows\ it is allowed but risky (treeTargetRisky).
+[[nodiscard]] Result<void> validateTreeTarget(std::wstring_view relative);
+[[nodiscard]] bool treeTargetRisky(std::wstring_view relative);
+// Bytes under `source` (a file: its size).
+[[nodiscard]] std::uint64_t treeSize(const std::filesystem::path& source);
+// Copies `source` to <mountDir>\<relative> (a folder: its whole content, merged into what is
+// there, files replaced). Progress by bytes; cancellable between files.
+[[nodiscard]] Result<std::uint64_t> copyImageTree(const std::filesystem::path& mountDir, std::wstring_view relative,
+                                                  const std::filesystem::path& source, const TaskContext& task);
 
 } // namespace wl::core
