@@ -111,4 +111,45 @@ Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& moun
     return result;
 }
 
+ApplyPlan planForOtherEdition(const ApplyPlan& plan) {
+    ApplyPlan other;
+    other.warnings = plan.warnings;
+    for (const auto& step : plan.steps) {
+        if (step.operation.kind != OpKind::SetEdition) {
+            other.steps.push_back(step);
+        }
+    }
+    return other;
+}
+
+Result<ApplyJobResult> applyToEdition(Dism& dism, const std::filesystem::path& wim, int index,
+                                      const std::filesystem::path& mountDir, const ApplyPlan& plan,
+                                      const ApplyJobOptions& options, const TaskContext& task,
+                                      const ApplyJobCallbacks& callbacks) {
+    log::info("apply", std::format(L"next edition: {} [{}]", wim.wstring(), index));
+    // Mount ~15 %, the rest is the job (its own steps + commit).
+    constexpr double kMountShare = 0.15;
+    const TaskContext mountTask{task.cancel, [&](double f, std::wstring_view stage) { task.report(f * kMountShare, stage); }};
+    if (auto mounted = dism.mount(wim, index, mountDir, /*readOnly=*/false, mountTask); !mounted) {
+        return std::unexpected(mounted.error());
+    }
+    ApplyJobOptions own = options;
+    own.commitAndUnmount = true;
+    own.optimizeWim.clear();  // once, after the last edition
+    own.editionTexts.reset(); // no edition change on these
+    const TaskContext jobTask{task.cancel, [&](double f, std::wstring_view stage) {
+                                  task.report(kMountShare + f * (1.0 - kMountShare), stage);
+                              }};
+    auto job = runApplyJob(dism, mountDir, planForOtherEdition(plan), own, jobTask, callbacks);
+    // Whatever happened, the folder must be free for the next edition.
+    const bool stillMounted = !job || !job->committed;
+    if (stillMounted) {
+        log::warn("apply", std::format(L"edition [{}] not saved: its changes are discarded", index));
+        if (auto discarded = unmountSafely(dism, mountDir, /*commit=*/false, TaskContext{}); !discarded) {
+            log::error("apply", L"could not discard the edition: " + describe(discarded.error()));
+        }
+    }
+    return job;
+}
+
 } // namespace wl::core::ops

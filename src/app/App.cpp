@@ -189,6 +189,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoApps = a == L"--demo-apps" ? std::wstring() : std::wstring(value(L"--demo-apps="));
         } else if (a == L"--demo-languages") {
             options.demoLanguages = true;
+        } else if (a == L"--demo-editions") {
+            options.demoEditions = true;
         } else if (a == L"--demo-hosts") {
             options.demoHosts = true;
         } else if (a == L"--demo-services") {
@@ -959,6 +961,15 @@ int App::renderOffscreen() {
             };
             m_shell->showUpdateOffers(core::catalogTarget(26200, 8037, L"x64"), std::move(offers));
         }
+    }
+    if (m_options.demoEditions && m_state->source() && m_state->source()->install.images.size() > 2) {
+        const auto& images = m_state->source()->install.images;
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim",
+                                         images[3 % images.size()].index, images[3 % images.size()].name});
+        m_shell->tasks().applyRecommended();
+        m_shell->applyForDemo().setExtraEdition(images[0].index, true);
+        m_shell->applyForDemo().setExtraEdition(images[2].index, true);
+        m_shell->showPage(PageId::Apply);
     }
     if (m_options.demoUsbGiven && m_state->source()) {
         m_shell->showPage(PageId::Iso);

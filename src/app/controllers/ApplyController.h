@@ -30,9 +30,19 @@ public:
     void start();
     void cancel();
 
+    // D-055: other editions of the mounted WIM the queue also goes to (their indexes).
+    struct Edition {
+        int index = 0;
+        std::wstring name;
+    };
+    [[nodiscard]] std::vector<Edition> otherEditions() const; // of the source, the mounted one left out
+    [[nodiscard]] const std::vector<int>& extraEditions() const noexcept { return m_extra; }
+    void setExtraEdition(int index, bool on);
+
 private:
     AppState& m_state;
     Events m_events;
+    std::vector<int> m_extra;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
 

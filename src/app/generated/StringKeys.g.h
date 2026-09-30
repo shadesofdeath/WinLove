@@ -35,6 +35,10 @@ enum class Str : std::uint16_t {
     ApplyDoneDesc,
     ApplyDoneTitle,
     ApplyDuration,
+    ApplyEditionFailed,
+    ApplyEditionOf,
+    ApplyEditionOk,
+    ApplyEditionSkipped,
     ApplyEmptyBody,
     ApplyEmptyDesc,
     ApplyEmptyTitle,
@@ -69,6 +73,8 @@ enum class Str : std::uint16_t {
     ApplyOpsUnattended,
     ApplyOpsUpdates,
     ApplyOrder,
+    ApplyOtherEditions,
+    ApplyOtherEditionsDone,
     ApplyPresetFiles,
     ApplyPresetSaved,
     ApplyPresetTitle,
@@ -1112,7 +1118,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1102;
+inline constexpr std::size_t kStrCount = 1108;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -1142,6 +1148,10 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "apply.doneDesc",
     "apply.doneTitle",
     "apply.duration",
+    "apply.editionFailed",
+    "apply.editionOf",
+    "apply.editionOk",
+    "apply.editionSkipped",
     "apply.emptyBody",
     "apply.emptyDesc",
     "apply.emptyTitle",
@@ -1176,6 +1186,8 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "apply.ops.unattended",
     "apply.ops.updates",
     "apply.order",
+    "apply.otherEditions",
+    "apply.otherEditionsDone",
     "apply.presetFiles",
     "apply.presetSaved",
     "apply.presetTitle",

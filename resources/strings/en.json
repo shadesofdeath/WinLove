@@ -727,7 +727,13 @@
     "presetFiles": "WinLove preset",
     "presetSaved": "Preset saved",
     "logSaved": "Log saved",
-    "saveFailed": "Could not write the file"
+    "saveFailed": "Could not write the file",
+    "otherEditions": "Also apply to other editions",
+    "otherEditionsDone": "Other editions:",
+    "editionOf": "Edition {k} / {n} · {name}",
+    "editionOk": "done",
+    "editionSkipped": "{n} steps skipped",
+    "editionFailed": "not saved"
   },
   "iso": {
     "title": "Build ISO / Write USB",

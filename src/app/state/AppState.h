@@ -241,6 +241,16 @@ public:
         std::optional<core::ops::ApplyJobResult> result;
         std::optional<Error> error;            // the run could not start (session refused, …)
         core::CancelToken cancel;
+        // D-055: further editions the same queue goes to, after the mounted one.
+        struct ExtraEdition {
+            int index = 0;
+            std::wstring name;
+            enum class State : std::uint8_t { Pending, Running, Done, Failed } state = State::Pending;
+            std::size_t failures = 0; // skipped steps
+            std::wstring error;       // could not mount / save
+        };
+        std::vector<ExtraEdition> extras;
+        int extraCurrent = -1; // index into extras while one runs
     };
     [[nodiscard]] const std::optional<ApplyRun>& applyRun() const noexcept { return m_apply; }
     [[nodiscard]] std::optional<ApplyRun>& applyRunMutable() noexcept { return m_apply; }

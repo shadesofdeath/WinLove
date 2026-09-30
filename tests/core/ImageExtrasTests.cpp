@@ -9,6 +9,7 @@
 #include "core/image/UpdatePackage.h"
 #include "core/image/dism/DefaultApps.h"
 #include "core/image/dism/Intl.h"
+#include "core/ops/ApplyJob.h"
 #include "core/ops/Planner.h"
 #include "core/postsetup/SetupScripts.h"
 
@@ -226,6 +227,19 @@ TEST_CASE("language files: Microsoft's names") {
     CHECK(plan.steps[0].operation.value == L"ssu");
     CHECK(plan.steps[1].operation.value == L"language");
     CHECK(plan.steps[2].operation.value == L"lcu");
+}
+
+TEST_CASE("other editions: the same plan without the edition change") {
+    ops::ChangeSet changes;
+    changes.add({ops::OpKind::SetEdition, L"edition", L"Professional"});
+    changes.add({ops::OpKind::SetTaskState, L"\\Microsoft\\Windows\\Autochk\\Proxy", L"disabled"});
+    changes.add({ops::OpKind::RemoveAppx, L"Microsoft.BingNews_1_neutral__8wekyb3d8bbwe"});
+    const auto plan = ops::plan(changes);
+    REQUIRE(plan.steps.size() == 3);
+    const auto other = ops::planForOtherEdition(plan);
+    REQUIRE(other.steps.size() == 2);
+    CHECK(other.steps[0].operation.kind == ops::OpKind::RemoveAppx);
+    CHECK(other.steps[1].operation.kind == ops::OpKind::SetTaskState);
 }
 
 TEST_CASE("apps: dism.exe arguments and the queued details") {

@@ -105,6 +105,7 @@ public:
     void showUpdateOffers(const core::CatalogTarget& target, std::vector<core::CatalogOffer> offers);
     RegistryController& registry() { return *m_registry; }
     TaskController& tasks() { return *m_tasks; }
+    ApplyController& applyForDemo() { return *m_apply; }
     FilesController& filesForDemo() { return *m_files; }
     AppsController& appsForDemo() { return *m_apps; }
     LanguageController& languagesForDemo() { return *m_languages; }
