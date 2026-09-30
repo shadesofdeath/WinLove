@@ -24,8 +24,8 @@ Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& moun
 
     // Weights: each step's estimate, then the commit.
     double stepsWeight = 0;
-    for (const auto& s : plan.steps) {
-        stepsWeight += estimateSeconds(s.operation.kind);
+    for (std::size_t i = 0; i < plan.steps.size(); ++i) {
+        stepsWeight += estimateSeconds(plan, i);
     }
     const double commitWeight = options.commitAndUnmount ? kCommitSeconds : 0.0;
     const double total = std::max(stepsWeight + commitWeight, 1.0);

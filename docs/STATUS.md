@@ -12,17 +12,19 @@
 - **Faz 3'ün bütün sayfaları yazıldı** (P01–P04 onaylı, P05–P18 kullanıcı testi bekliyor). Kural 1 gereği Faz 4'e
   geçmeden önce bu sayfaların kullanıcı onayı gerekir.
 - **Bir sonraki somut adım:** kullanıcı VM'de kendi imajını deniyor (`docs/TESTING.md` → "VM kabul testi").
-  İstenirse önce `tools\lab_components.ps1 -Cleanup` (yönetici; depo temizliğinin gerçek imajdaki ilk denemesi,
-  5–20 dk; log `build\lab\out\components-test.log`, UTF-8). Sonra testten gelen düzeltmeler.
+  `tools\lab_components.ps1 -Cleanup` iki kez geçti (log `build\lab\out\components-test.log`). Sonra testten
+  gelen düzeltmeler.
 - **P07 v2 — sistem bileşenleri ve depo temizliği (2026-09-30, D-031):** `core/image/SystemComponents` (tarif: CBS
   paket aileleri + yollar + kayıt yazımları; gizli paket `Visibility` / `Owners` ile açılıp `DismRemovePackage`;
-  junction'dan geçen yol reddi), `core/image/dism/StoreCleanup` (`dism.exe /StartComponentCleanup /ResetBase`, planın
-  ilk adımı), `resources/catalog/components.json` (Edge, WebView2, Edge Güncelleyici + EdgeCore, OneDrive kurulumu,
+  junction'dan geçen yol reddi), `core/image/dism/StoreCleanup` (`dism.exe /StartComponentCleanup /ResetBase`, kendi
+  aşaması: güncellemelerden sonra), `resources/catalog/components.json` (Edge, WebView2, Edge Güncelleyici + EdgeCore, OneDrive kurulumu,
   WinRE, depo temizliği), Bileşenler sayfasında "Sistem Bileşenleri" + "Temizlik" grupları, `wlcli cbs | component |
   store-cleanup`. Test imajı yönetici gerektirmeden incelendi (7-Zip + hive okuyucu): **Defender 25H2'de ayrı paket
   değil → kaldırma sunulmuyor**; FoD'lar zaten Özellikler'de. **Gerçek imajda denendi (kullanıcı, yönetici,
   `lab_components.ps1`, discard):** OneDrive'ın 5 gizli paketi DISM ile kaldırıldı, Edge klasörü silindi, imaj
-  servislenebilir kaldı. **Denenmeyen:** depo temizliği (`-Cleanup`), commit + VM kurulumu. Yan düzeltmeler:
+  servislenebilir kaldı. Depo temizliği de çalıştı (13 sn: dokunulmamış imajda temizlenecek şey yok → temizlik
+  planın başından güncellemelerin sonrasına taşındı). **Denenmeyen:** güncelleme eklenmiş imajda temizlik, commit +
+  VM kurulumu. Yan düzeltmeler:
   Uygula listeleri / onay dialogu uygulamaları paket tam adıyla değil katalog adıyla gösteriyor; korumalı kayıt
   anahtarı silme tanıtıcı üzerinden (`deleteKeyByHandle`).
 - **P18 Komut Paleti (2026-09-30):** `shell/PaletteIndex` (sayfalar, P12 ayarları, okunan bileşen / özellik / servis

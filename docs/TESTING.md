@@ -67,7 +67,7 @@ Hazırlık: `dist\WinLove.exe` (yönetici) → test ISO'sunu aç → Pro'yu bağ
    "ISO'ya ekle" açık. Disk düzenini ilk denemede **Sor** bırak.
 8. Uygula → log'u kaydet (Tamamlandı ekranı) → ISO Oluştur (LZX yeniden paketle, SHA-256).
 
-**Uygula ekranında bak:** ilk adım depo temizliği mi; `[cbs] … package(s) unlocked` / `removed …OneDrive…` satırları;
+**Uygula ekranında bak:** depo temizliği güncellemelerden sonra mı; `[cbs] … package(s) unlocked` / `removed …OneDrive…` satırları;
 hata / uyarı sayaçları; kazanç.
 
 **VM (Hyper-V / VMware, UEFI + TPM'siz deneme için LabConfig atlamaları açık):**

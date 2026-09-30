@@ -55,7 +55,7 @@
 
     { "id": "component-store", "group": "cleanup", "kind": "cleanup", "resetBase": true,
       "tr": "Bileşen deposu temizliği (ResetBase)", "en": "Component store cleanup (ResetBase)", "risk": "medium",
-      "notes_tr": "WinSxS'teki yerini almış bileşen sürümlerini kalıcı olarak siler; imajdaki güncellemeler artık kaldırılamaz. Uzun sürer (5–20 dk). Diğer adımlardan önce çalışır: imajda bekleyen işlem varsa DISM reddeder (0x800F0806).",
-      "notes_en": "Deletes the superseded component versions in WinSxS for good; the updates in the image can no longer be uninstalled. Takes a while (5–20 min). Runs before the other steps: DISM refuses it when the image has pending operations (0x800F0806)." }
+      "notes_tr": "WinSxS'teki yerini almış bileşen sürümlerini kalıcı olarak siler; imajdaki güncellemeler artık kaldırılamaz. Güncellemelerden sonra çalışır: asıl kazanç bu çalıştırmada güncelleme eklendiyse olur (5–20 dk); Microsoft'un dokunulmamış imajında temizlenecek bir şey yoktur (saniyeler). Aynı çalıştırmada bir özellik açıldıysa (ör. .NET 3.5) DISM reddedebilir (0x800F0806): adım başarısız görünür, imaj etkilenmez.",
+      "notes_en": "Deletes the superseded component versions in WinSxS for good; the updates in the image can no longer be uninstalled. Runs after the updates: the real gain comes when this run adds updates (5–20 min); untouched Microsoft media has nothing to clean (seconds). If the same run enables a feature (e.g. .NET 3.5) DISM may refuse it (0x800F0806): the step shows as failed, the image is not affected." }
   ]
 }

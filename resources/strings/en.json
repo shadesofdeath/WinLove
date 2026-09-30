@@ -556,6 +556,7 @@
       "unattended": "Place autounattend.xml and SetupComplete",
       "commit": "Commit and clean up image (ResetBase)",
       "commitUnmount": "Save and unmount the image",
+      "cleanup": "Clean up the component store",
       "settings": "Registry and services"
     },
     "emptyTitle": "Queue is empty",

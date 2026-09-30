@@ -4,7 +4,7 @@
 // uninstalled). The DISM API has no call for it, so this runs Windows' own
 //   dism.exe /Image:<mount> /Cleanup-Image /StartComponentCleanup [/ResetBase]
 // with our session closed meanwhile. Fails with 0x800F0806 when the image has pending servicing
-// operations — which is why the Planner puts it before every other step.
+// operations. The Planner runs it right after the updates (Planner.h).
 #include "core/image/dism/Dism.h"
 
 #include <optional>

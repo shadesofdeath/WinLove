@@ -55,6 +55,7 @@ enum class Str : std::uint16_t {
     ApplyOff,
     ApplyOn,
     ApplyOperation,
+    ApplyOpsCleanup,
     ApplyOpsCommit,
     ApplyOpsCommitUnmount,
     ApplyOpsComponents,
@@ -776,7 +777,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 766;
+inline constexpr std::size_t kStrCount = 767;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -826,6 +827,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "apply.off",
     "apply.on",
     "apply.operation",
+    "apply.ops.cleanup",
     "apply.ops.commit",
     "apply.ops.commitUnmount",
     "apply.ops.components",

@@ -25,7 +25,10 @@ Bağlı imajdan kaldırılacak bileşenleri seçmek; seçimler kuyruğa girer (P
   (`Visibility = 1`, `Owners` silinir), sonra DISM ile kaldırılır; DISM reddederse dosya ve kayıtlar yine silinir,
   logda uyarı kalır (WinSxS kopyası durur).
 - **Temizlik → Bileşen deposu temizliği (ResetBase)**: `dism.exe /Cleanup-Image /StartComponentCleanup /ResetBase`.
-  Kuyrukta nerede olursa olsun **ilk** adım olarak çalışır; 5–20 dk sürer, başladıktan sonra durdurulamaz.
+  Güncellemelerden hemen sonra, kayıt defteri / servis yazımlarından önce çalışır (kendi aşaması). Asıl kazanç bu
+  çalıştırmada güncelleme eklendiyse olur (5–20 dk); Microsoft'un dokunulmamış imajında temizlenecek bir şey yoktur
+  (lab: 13 sn). Aynı çalıştırmada bir özellik açıldıysa (ör. .NET 3.5) DISM reddedebilir (0x800F0806): adım
+  başarısız görünür, imaj etkilenmez. Başladıktan sonra durdurulamaz.
 - **Yok (bilerek):**
   - **Defender kaldırma.** 24H2+ imajlarda Defender ayrı bir paket değil; DISM ile sökülemez. Kapatmak için:
     Servisler (WinDefend, Sense…) ve Ayarlar / Tweaks.
@@ -54,7 +57,8 @@ Bağlı imajdan kaldırılacak bileşenleri seçmek; seçimler kuyruğa girer (P
   `wlcli store-cleanup <mount> [--resetbase]`. Tarif örnekleri: `tests/integration/fixtures/recipe-*.json`.
 - Gerçek imajda deneme (yönetici, VM'siz, kaydetmeden): `tools\lab_components.ps1` [`-Cleanup`].
   2026-09-30'da 25H2 Pro kopyasında geçti: OneDrive'ın 5 gizli paketi DISM ile kaldırıldı, Edge klasörü silindi,
-  imaj sonrasında servislenebilir. Depo temizliği ve commit + VM kurulumu henüz denenmedi.
+  imaj sonrasında servislenebilir; `-Cleanup` ile depo temizliği de çalıştı (13 sn, dokunulmamış imajda temizlenecek
+  bir şey yok). Güncelleme eklenmiş imajda temizlik ve commit + VM kurulumu henüz denenmedi.
 
 ## 5. Ekran
 - Başlık: Preset yükle, Tümünü daralt / genişlet.
@@ -73,7 +77,7 @@ Bağlı imajdan kaldırılacak bileşenleri seçmek; seçimler kuyruğa girer (P
 - [ ] Yüksek riskli seçimde uyarı; Uygula'da onay dialogunda adıyla listelenir.
 - [ ] Uygula → log'da `[cbs] … package(s) unlocked`, `removed Microsoft-Windows-OneDrive-Setup-Package…`; imajda
       `OneDriveSetup.exe` ve Edge klasörü yok.
-- [ ] Temizlik seçiliyse ilk adım olarak çalışır, ilerleme yüzdesi akar; bitince install.wim (yeniden paketlemeyle,
-      P06) küçülür.
+- [ ] Temizlik seçiliyse "Bileşen deposunu temizle" aşaması güncellemelerden sonra çalışır; bir toplu güncelleme
+      (LCU) eklenen çalıştırmada install.wim (yeniden paketlemeyle, P06) temizliksiz hâline göre küçülür.
 - [ ] **VM:** kurulan sistemde Edge yok / OneDrive kurulmuyor / (WinRE kaldırıldıysa) `reagentc /info` devre dışı;
       Windows Update çalışıyor.
