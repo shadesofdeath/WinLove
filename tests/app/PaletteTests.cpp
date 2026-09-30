@@ -176,7 +176,8 @@ TEST_CASE("palette: pages are always found; the image's own things only once it 
 
     f.mount();
     found = f.index.search(L"xbox");
-    CHECK(found.results.empty()); // mounted, lists not read yet
+    // Mounted, lists not read yet: no app — only the form's own "Xbox Game Bar" setting.
+    CHECK(std::ranges::all_of(found.results, [](const PaletteItem& i) { return i.kind == Kind::Setting; }));
     // The settings form needs no list.
     const auto& first = f.settings.catalog().settings().front();
     found = f.index.search(first.label.tr);

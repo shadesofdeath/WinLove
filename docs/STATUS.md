@@ -23,6 +23,12 @@
 - **Kaynak sayfası (2026-09-30, kullanıcı isteği):** son kullanılanlardan kaldırma (satır sonunda ×, `Del`, sağ tık
   menüsü) + çalışma kopyasını silme dialogu; UI çatısına sağ tık yönlendirmesi eklendi (`Widget::onContextMenu`).
   Dialogun kendisi render'da görülmedi (diskte çalışma kopyası yoktu); liste girdisini kaldırma ve menü görüldü.
+- **Üç eksik alan (2026-09-30, kullanıcı: "eksiklerden 3 tane seç", D-043):** (1) **Sağ tık menüsü** — "Sahipliği al"
+  (Türkçe / İngilizce etiket; `runas` fiili, Yöneticiler SID ile), "Klasöre kopyala / taşı", "Paylaş"ı kaldır;
+  (2) **Bildirimler** (Sistem sekmesi) — uygulama bildirimleri, kilit ekranında, sesler, güvenlik ve bakım;
+  (3) **Oyun** (Performans sekmesi) — Xbox Game Bar, Oyun modu, donanım hızlandırmalı GPU zamanlaması, pencereli oyun
+  iyileştirmeleri. 114 ayar. Birim testli + render; VM'de görülmedi. Kısayol oku kaldırma bilinçli olarak eklenmedi
+  (boş simge kaynağı Windows sürümüne göre siyah kare verebiliyor; ikili .ico taşıma yolu yok).
 - **Tema / vurgu rengi (2026-09-30, kullanıcı isteği, D-042):** Uygulama ayarları artık sol menüde; temalar (Koyu,
   Açık, Yüksek kontrast, Sistem) zaten vardı. Eklenen: ekran 19'daki beş **vurgu rengi** (Bakır, Deniz, Nar, Gök,
   Zeytin) — kaydedilir, anında uygulanır. Render'da doğrulandı (koyu + Deniz, açık + Nar); kontrast testli.
@@ -169,7 +175,7 @@
   (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
   ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
   (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
-- **Build:** `./build.ps1 -Dist` yeşil, 211 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Build:** `./build.ps1 -Dist` yeşil, 212 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi (bilerek yazılmadı: denenemeyen disk biçimlendirme kodu; ISO'yu
@@ -203,6 +209,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — Yanıt dosyası doldurulunca ISO'ya kendiliğinden giriyor; işlemci / disk denetimi atlama; imajda olmayan AppX başarı (D-034).
 - 2026-09-30 — İmajlar: çoklu seçim, yeniden adlandırma, WIM doğrulama (kendi LZX çözücümüz), sürüm yükseltme (D-035).
 - 2026-09-30 — Yanıt dosyası: `UserData` her zaman `ProductKey` ile (genel anahtar / yer tutucu) (D-036).
+- 2026-09-30 — Sağ tık menüsü, bildirimler, oyun ayarları (D-043).
 - 2026-09-30 — Vurgu renkleri, ayarlar sol menüde; +38 ayar ve Sistem sekmesi (D-042).
 - 2026-09-30 — Görev çubuğu, Copilot / Recall / Edge / BitLocker / Windows Update ayarları, masaüstü, duvar kağıdı, kilit ekranı, OEM; hazır uygulamalar; Uygula raporu (D-041).
 - 2026-09-30 — Başlat menüsü temizliği: boş sabitlenenler / kutucuklar (`WriteFile`), reklam uygulamaları, widget (D-040).
