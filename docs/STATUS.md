@@ -42,8 +42,9 @@
   klasörü değişmez, kutu kapatılınca geri alınacak bir şey kalmaz. Unit test (yamalayıcı yerine sahte) + iki render.
   **Görülmeyen:** uygulamanın içinden gerçek bir ISO üretimi (DISM'li yol yalnız `wlcli` ile denendi); o ISO'nun
   TPM'siz VM'de kurulumu; boot.wim'e **sürücü** ekleme (betik `-Driver` olmadan çalıştı → arayüzü yazılmadı).
-  **Bir sonraki somut adım:** kullanıcı uygulamada atlamalı bir ISO üretir, TPM'siz VM'de dener. Sürücü için:
-  `tools\lab_boot.ps1 -Driver <inf>` geçerse Sürücüler sayfasına "kurulum ortamına da ekle".
+  **Bir sonraki somut adım:** kullanıcı uygulamada atlamalı bir ISO üretir, TPM'siz VM'de dener.
+  **boot.wim'e sürücü ekleme ertelendi (kullanıcı kararı, 2026-09-30: elinde INF yok):** motor ve `wlcli boot-patch
+  --driver=` duruyor ama kanıtsız; arayüzü yok. Ele alınırsa önce `tools\lab_boot.ps1 -Driver <inf>` geçmeli.
 - **İmajlar — kısayollar (2026-09-30, kullanıcı isteği):** bağlama klasörünü aç (`Ctrl+E`, her sayfadan; inspector'da
   klasör düğmesi; sağ tık), komut istemini bağlama klasöründe aç, dosya konumunu aç (`Ctrl+Shift+E`), bilgileri
   kopyala (`Ctrl+C`), kaynağı yenile (`F5`). **Kullanıcının isteğiyle denenmeden teslim edildi:** yalnız derlendi,
