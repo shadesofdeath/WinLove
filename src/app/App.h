@@ -59,7 +59,8 @@ struct LaunchOptions {
     bool demoServices = false;   // render: fake mount + sample services (09)
     bool demoTasks = false;      // render: fake mount, two tasks off in the image, the recommended queued (D-048)
     std::optional<std::wstring> demoFiles; // render: fake mount + queued files ("where": the destination dialog) (D-051)
-    bool demoHosts = false;      // render: fake mount, telemetry list in the image, ads queued, imported entries (D-049)
+    bool demoHosts = false;
+    bool demoImageDrivers = false; // render: fake mount + the image's third-party drivers, one queued for removal (D-052)      // render: fake mount, telemetry list in the image, ads queued, imported entries (D-049)
     bool demoTweaks = false;     // render: fake mount + the selections of screen 10
     bool demoImageValues = false; // render (with --demo-tweaks / --demo-registry): the image already has a few (D-045)
     bool demoUnattended = false; // render: the answers of screen 11

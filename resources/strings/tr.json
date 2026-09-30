@@ -409,7 +409,26 @@
       "softwarecomponent": "Yazılım bileşeni",
       "firmware": "Donanım yazılımı",
       "none": "Sınıfsız"
-    }
+    },
+    "tabAdd": "Eklenecek sürücüler",
+    "tabImage": "İmajdaki sürücüler",
+    "driver": "Sürücü",
+    "version": "Sürüm",
+    "date": "Tarih",
+    "willRemove": "kaldırılacak",
+    "bootCritical": "önyükleme için kritik",
+    "imageLoading": "İmajın sürücüleri okunuyor",
+    "imageLoadingBody": "DISM sürücü deposunu listeliyor…",
+    "imageFailed": "Sürücüler okunamadı",
+    "imageNone": "İmajda üçüncü parti sürücü yok",
+    "imageNoneBody": "Yalnız Windows'un kendi (inbox) sürücüleri var; onlar buradan kaldırılmaz.",
+    "imageSummary": "{n} üçüncü parti sürücü · {r} kaldırılacak",
+    "imageHint": "İşaretlenen sürücü imajın sürücü deposundan kaldırılır. Önyükleme için kritik olanlar (depolama, yonga seti) kurulumu bozabilir.",
+    "fromHost": "Bu bilgisayardan al",
+    "hostExporting": "Bu bilgisayarın sürücüleri dışa aktarılıyor…",
+    "hostExported": "{n} sürücü paketi alındı — Eklenecek sekmesinde seç",
+    "hostFailed": "Bu bilgisayarın sürücüleri alınamadı",
+    "providerName": "Sağlayıcı"
   },
   "registry": {
     "title": "Kayıt Defteri",

@@ -28,6 +28,13 @@ Button& EmptyState::setAction(std::wstring label) {
     return *m_action;
 }
 
+void EmptyState::clearAction() {
+    if (m_action) {
+        m_action->setVisible(false);
+        m_action->onInvoke = nullptr;
+    }
+}
+
 void EmptyState::setContent(icons::Icon icon, std::wstring title, std::wstring body) {
     m_icon = icon;
     m_title = std::move(title);

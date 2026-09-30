@@ -2,11 +2,15 @@
 // P09 Sürücüler (docs/pages/09-drivers.md, screen 07): INF packages from scanned folders as a
 // class → INF tri-state tree (Ad · Sağlayıcı · Sürüm · Boyut). Checked INFs are queued as AddDriver.
 // Toolbar: search ("/"), Sınıf, Mimari (defaults to the mounted edition's architecture).
+// Second tab "İmajdaki sürücüler" (D-052): the image's third-party drivers — Sürücü (checkbox =
+// remove) · Sınıf · Sağlayıcı · Sürüm · Tarih; a boot-critical one says so.
 #include "app/Localization.h"
+#include "app/controllers/ImageDriverController.h"
 #include "app/state/AppState.h"
 #include "ui/widgets/Dropdown.h"
 #include "ui/widgets/EmptyState.h"
 #include "ui/widgets/SearchBox.h"
+#include "ui/widgets/TabBar.h"
 #include "ui/widgets/TableView.h"
 
 #include <functional>
@@ -20,10 +24,12 @@ public:
         std::function<void()> scanFolder;
         std::function<void()> goImages;
     };
-    DriversPage(AppState& state, const Localization& strings, Language language, Intents intents);
+    DriversPage(AppState& state, ImageDriverController& images, const Localization& strings, Language language,
+                Intents intents);
     ~DriversPage() override;
 
     void focusSearch();
+    void showImageTab(); // render demo: the second tab without reading DISM
     // Friendly class name ("Ağ (Net)") for the common setup classes, else the class itself.
     [[nodiscard]] static std::wstring className(const std::wstring& cls, const Localization& strings);
 
@@ -48,8 +54,11 @@ private:
     void toggle(int inf);
     void toggleGroup(const Group& group);
     void paintCell(ui::Canvas& canvas, int row, int column, ui::RectF rect, ui::TableView::CellState cell);
+    void paintImageCell(ui::Canvas& canvas, int row, int column, ui::RectF rect, ui::TableView::CellState cell);
+    [[nodiscard]] bool imageTab() const { return m_tabs->selected() == 1; }
 
     AppState& m_state;
+    ImageDriverController& m_images;
     const Localization& m_strings;
     Language m_language;
     Intents m_intents;
@@ -65,6 +74,8 @@ private:
     ui::Dropdown* m_arch = nullptr;
     ui::TableView* m_table = nullptr;
     ui::EmptyState* m_empty = nullptr;
+    ui::TabBar* m_tabs = nullptr;
+    ui::TableView* m_imageTable = nullptr;
 };
 
 } // namespace wl::app

@@ -9,6 +9,7 @@
 #include "core/image/DriverInf.h"
 #include "core/image/Source.h"
 #include "core/image/dism/Appx.h"
+#include "core/image/dism/Dism.h"
 #include "core/image/dism/MountHealth.h"
 #include "core/image/RegistryEdit.h"
 #include "core/image/Services.h"
@@ -180,6 +181,18 @@ public:
     void addRegImport(RegImport import);
     void removeRegImport(std::size_t index);
 
+    // D-052: the third-party drivers of the mounted image (ImageDriverController), read once per
+    // mount when the Sürücüler page's second tab is first shown. Change::Drivers.
+    struct ImageDrivers {
+        enum class Status : std::uint8_t { Loading, Ready, Failed };
+        Status status = Status::Loading;
+        std::filesystem::path mountDir;
+        std::vector<core::DriverEntry> items;
+        Error error;
+    };
+    [[nodiscard]] const std::optional<ImageDrivers>& imageDrivers() const noexcept { return m_imageDrivers; }
+    void setImageDrivers(std::optional<ImageDrivers> drivers);
+
     // P09: driver folders the user scanned (kept across pages and mounts) and their INFs.
     struct DriverScan {
         std::vector<std::filesystem::path> folders;
@@ -294,6 +307,7 @@ private:
     std::optional<SystemComponents> m_system;
     std::optional<ServiceList> m_services;
     std::optional<ImageValues> m_imageValues;
+    std::optional<ImageDrivers> m_imageDrivers;
     std::vector<RegImport> m_regImports;
     DriverScan m_drivers;
     Unattend m_unattend;
