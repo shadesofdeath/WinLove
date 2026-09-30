@@ -5,6 +5,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <array>
 #include <cwctype>
 #include <format>
@@ -147,6 +148,120 @@ Result<void> copyImageFile(const std::filesystem::path& mountDir, std::wstring_v
     SetFileAttributesW(target->c_str(), FILE_ATTRIBUTE_NORMAL); // a read-only source stays replaceable in the image
     log::info("file", std::format(L"copied {} -> {} ({} bytes)", source.wstring(), target->wstring(), size));
     return {};
+}
+
+// ---- D-051 ----------------------------------------------------------------------------------
+
+namespace {
+
+// What only Windows may put there (lower case, backslashes, no trailing slash).
+constexpr std::array<std::wstring_view, 8> kForbidden = {
+    L"windows\\system32\\config", L"windows\\winsxs",       L"windows\\servicing", L"program files\\windowsapps",
+    L"boot",                      L"system volume information", L"$recycle.bin",  L"windows\\system32\\drivers",
+};
+
+bool under(std::wstring_view path, std::wstring_view folder) {
+    return path == folder || (path.size() > folder.size() && path.starts_with(folder) && path[folder.size()] == L'\\');
+}
+
+} // namespace
+
+Result<void> validateTreeTarget(std::wstring_view relative) {
+    ComponentRecipe asRecipe;
+    asRecipe.paths.emplace_back(relative);
+    if (auto ok = validateComponentRecipe(asRecipe); !ok) {
+        return ok;
+    }
+    std::wstring path = normalized(relative);
+    while (!path.empty() && path.back() == L'\\') {
+        path.pop_back();
+    }
+    if (path.empty()) {
+        return fail(ErrorCode::InvalidArgument, L"a place in the image is needed, not its root", std::wstring(relative));
+    }
+    for (const auto folder : kForbidden) {
+        if (under(path, folder) || under(folder, path)) {
+            return fail(ErrorCode::InvalidArgument, L"only Windows may write there", std::wstring(relative));
+        }
+    }
+    return {};
+}
+
+bool treeTargetRisky(std::wstring_view relative) {
+    const std::wstring path = normalized(relative);
+    return under(path, L"windows") || under(path, L"program files") || under(path, L"program files (x86)");
+}
+
+std::uint64_t treeSize(const std::filesystem::path& source) {
+    std::error_code ec;
+    if (std::filesystem::is_regular_file(source, ec)) {
+        return std::filesystem::file_size(source, ec);
+    }
+    std::uint64_t total = 0;
+    for (auto it = std::filesystem::recursive_directory_iterator(source, ec); !ec && it != std::filesystem::end(it);
+         it.increment(ec)) {
+        if (it->is_regular_file(ec)) {
+            total += it->file_size(ec);
+        }
+    }
+    return total;
+}
+
+Result<std::uint64_t> copyImageTree(const std::filesystem::path& mountDir, std::wstring_view relative,
+                                    const std::filesystem::path& source, const TaskContext& task) {
+    if (auto ok = validateTreeTarget(relative); !ok) {
+        return std::unexpected(ok.error());
+    }
+    std::error_code ec;
+    const bool file = std::filesystem::is_regular_file(source, ec);
+    if (!file && !std::filesystem::is_directory(source, ec)) {
+        return fail(ErrorCode::NotFound, L"the file or folder to copy is not there", source.wstring());
+    }
+    auto target = resolveImagePath(mountDir, relative); // refuses a link on the way
+    if (!target) {
+        return std::unexpected(target.error());
+    }
+    const std::uint64_t total = std::max<std::uint64_t>(treeSize(source), 1);
+    std::uint64_t done = 0;
+    auto copyOne = [&](const std::filesystem::path& from, const std::filesystem::path& to) -> Result<void> {
+        if (auto r = task.cancel.check(to.wstring()); !r) {
+            return r;
+        }
+        std::filesystem::create_directories(to.parent_path(), ec);
+        if (const DWORD a = GetFileAttributesW(to.c_str()); a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_READONLY)) {
+            SetFileAttributesW(to.c_str(), a & ~FILE_ATTRIBUTE_READONLY);
+        }
+        std::filesystem::copy_file(from, to, std::filesystem::copy_options::overwrite_existing, ec);
+        if (ec) {
+            return fail(ErrorCode::IoError, L"cannot copy into the image", to.wstring(), ec.value());
+        }
+        done += std::filesystem::file_size(from, ec);
+        task.report(static_cast<double>(done) / static_cast<double>(total), L"copy");
+        return {};
+    };
+    if (file) {
+        if (auto r = copyOne(source, *target); !r) {
+            return std::unexpected(r.error());
+        }
+    } else {
+        std::filesystem::create_directories(*target, ec);
+        for (auto it = std::filesystem::recursive_directory_iterator(source, ec); !ec && it != std::filesystem::end(it);
+             it.increment(ec)) {
+            // A link inside the source is copied as what it points at only when it is a plain file.
+            if (!it->is_regular_file(ec)) {
+                continue;
+            }
+            const auto rel = std::filesystem::relative(it->path(), source, ec);
+            if (auto r = copyOne(it->path(), *target / rel); !r) {
+                return std::unexpected(r.error());
+            }
+        }
+        if (ec) {
+            return fail(ErrorCode::IoError, L"could not read the folder to copy", source.wstring(), ec.value());
+        }
+    }
+    log::info("file", std::format(L"copied {} -> {} ({} bytes)", source.wstring(), target->wstring(), done));
+    return done;
 }
 
 } // namespace wl::core

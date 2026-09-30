@@ -11,7 +11,9 @@ Phase phaseOf(OpKind kind) noexcept {
     case OpKind::RemovePackage:
     case OpKind::RemoveCapability:
     case OpKind::RemoveComponent:
+    case OpKind::RemoveDriver:
     case OpKind::RemoveAppx: return Phase::Remove;
+    case OpKind::AddAppx: return Phase::Apps;
     case OpKind::CleanupImage: return Phase::Cleanup;
     case OpKind::DisableFeature:
     case OpKind::EnableFeature: return Phase::Features;
@@ -22,6 +24,12 @@ Phase phaseOf(OpKind kind) noexcept {
     case OpKind::SetPostSetup:
     case OpKind::WriteFile:
     case OpKind::CopyFile:
+    case OpKind::SetTaskState:
+    case OpKind::SetHosts:
+    case OpKind::SetDns:
+    case OpKind::CopyTree:
+    case OpKind::SetDefaultApps:
+    case OpKind::SetIntl:
     case OpKind::SetServiceStart: return Phase::Settings;
     }
     return Phase::Settings;
@@ -49,6 +57,14 @@ double estimateSeconds(OpKind kind) noexcept {
     case OpKind::RemoveComponent: return 25.0; // hive edit + package removal + a few thousand files
     case OpKind::CleanupImage: return 30.0;    // StartComponentCleanup /ResetBase with nothing new to clean
     case OpKind::SetEdition: return 35.0;      // lab: Home → Pro 28 s
+    case OpKind::SetTaskState:
+    case OpKind::SetHosts:
+    case OpKind::SetDns: return 0.3;
+    case OpKind::CopyTree: return 5.0;         // plus the copy itself
+    case OpKind::RemoveDriver: return 4.0;
+    case OpKind::AddAppx: return 30.0;
+    case OpKind::SetDefaultApps: return 10.0;  // dism.exe
+    case OpKind::SetIntl: return 15.0;         // dism.exe
     }
     return 5.0;
 }
@@ -80,13 +96,13 @@ ApplyPlan plan(const ChangeSet& changes) {
     for (const auto& op : changes.operations()) {
         result.steps.push_back({phaseOf(op.kind), op});
     }
-    // stable: keeps the user's order inside each phase; updates go SSU → LCU → .NET → other
+    // stable: keeps the user's order inside each phase; updates go SSU → language packs → LCU → .NET → other
     // (op.value holds the kind from UpdatePackage.h).
     const auto updateRank = [](const Operation& op) {
         if (op.kind != OpKind::AddPackage) {
             return 0;
         }
-        return op.value == L"ssu" ? 0 : op.value == L"lcu" ? 1 : op.value == L"dotnet" ? 2 : 3;
+        return op.value == L"ssu" ? 0 : op.value == L"language" ? 1 : op.value == L"lcu" ? 2 : op.value == L"dotnet" ? 3 : 4;
     };
     std::ranges::stable_sort(result.steps, [&](const PlanStep& a, const PlanStep& b) {
         if (a.phase != b.phase) {

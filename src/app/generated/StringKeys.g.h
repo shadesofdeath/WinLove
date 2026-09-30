@@ -55,6 +55,7 @@ enum class Str : std::uint16_t {
     ApplyOff,
     ApplyOn,
     ApplyOperation,
+    ApplyOpsApps,
     ApplyOpsCleanup,
     ApplyOpsCommit,
     ApplyOpsCommitUnmount,
@@ -917,6 +918,7 @@ enum class Str : std::uint16_t {
     UpdatesIncompatible,
     UpdatesKb,
     UpdatesKindDotnet,
+    UpdatesKindLanguage,
     UpdatesKindLcu,
     UpdatesKindOther,
     UpdatesKindSsu,
@@ -939,7 +941,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 929;
+inline constexpr std::size_t kStrCount = 931;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -989,6 +991,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "apply.off",
     "apply.on",
     "apply.operation",
+    "apply.ops.apps",
     "apply.ops.cleanup",
     "apply.ops.commit",
     "apply.ops.commitUnmount",
@@ -1851,6 +1854,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "updates.incompatible",
     "updates.kb",
     "updates.kindDotnet",
+    "updates.kindLanguage",
     "updates.kindLcu",
     "updates.kindOther",
     "updates.kindSsu",

@@ -372,7 +372,8 @@
     "downloaded": "{n} update(s) downloaded and queued",
     "downloadedNoMount": "{n} update(s) downloaded (no image mounted: not queued)",
     "downloadFailed": "Download failed",
-    "downloadStopped": "Download stopped — it resumes where it left off"
+    "downloadStopped": "Download stopped — it resumes where it left off",
+    "kindLanguage": "Language pack"
   },
   "drivers": {
     "title": "Drivers",
@@ -673,7 +674,8 @@
       "commitUnmount": "Save and unmount the image",
       "cleanup": "Clean up the component store",
       "settings": "Registry and services",
-      "edition": "Upgrade the edition"
+      "edition": "Upgrade the edition",
+      "apps": "Add apps"
     },
     "emptyTitle": "Queue is empty",
     "emptyDesc": "Nothing to apply.",

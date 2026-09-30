@@ -9,6 +9,7 @@
 #include <cctype>
 #include <charconv>
 #include <format>
+#include <vector>
 
 namespace wl::core {
 
@@ -96,6 +97,39 @@ Result<DismExeRun> runDismExe(DismSession& session, std::wstring_view arguments,
         return std::unexpected(reopened.error());
     }
     return run;
+}
+
+// Every "<label> : <value>" line of a piece of dism.exe output.
+std::vector<std::wstring> dismExeValues(std::string_view output, std::string_view label) {
+    std::vector<std::wstring> values;
+    for (std::size_t at = 0; at < output.size();) {
+        const std::size_t end = std::min(output.find_first_of("\r\n", at), output.size());
+        std::string_view line = output.substr(at, end - at);
+        at = end + 1;
+        const auto first = line.find_first_not_of(" \t");
+        if (first == std::string_view::npos || !line.substr(first).starts_with(label)) {
+            continue;
+        }
+        line.remove_prefix(first + label.size());
+        const auto colon = line.find(':');
+        if (colon == std::string_view::npos || line.substr(0, colon).find_first_not_of(" \t") != std::string_view::npos) {
+            continue;
+        }
+        line.remove_prefix(colon + 1);
+        const auto start = line.find_first_not_of(" \t");
+        const auto stop = line.find_last_not_of(" \t");
+        if (start != std::string_view::npos) {
+            values.emplace_back(line.begin() + static_cast<std::ptrdiff_t>(start),
+                                line.begin() + static_cast<std::ptrdiff_t>(stop) + 1);
+        }
+    }
+    return values;
+}
+
+Error dismExeFailure(const DismExeRun& run, std::wstring message) {
+    return Error{ErrorCode::DismFailure, std::move(message),
+                 run.message.empty() ? std::format(L"dism.exe exit code 0x{:08X}", run.exitCode) : run.message,
+                 static_cast<std::int32_t>(run.exitCode)};
 }
 
 } // namespace wl::core

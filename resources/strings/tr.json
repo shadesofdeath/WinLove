@@ -372,7 +372,8 @@
     "downloaded": "{n} güncelleme indirildi ve kuyruğa eklendi",
     "downloadedNoMount": "{n} güncelleme indirildi (imaj bağlı değil: kuyruğa eklenmedi)",
     "downloadFailed": "İndirme başarısız",
-    "downloadStopped": "İndirme durduruldu — yeniden başlatınca kaldığı yerden devam eder"
+    "downloadStopped": "İndirme durduruldu — yeniden başlatınca kaldığı yerden devam eder",
+    "kindLanguage": "Dil paketi"
   },
   "drivers": {
     "title": "Sürücüler",
@@ -673,7 +674,8 @@
       "commitUnmount": "İmajı kaydet ve çöz",
       "cleanup": "Bileşen deposunu temizle",
       "settings": "Kayıt defteri ve servisler",
-      "edition": "Sürümü yükselt"
+      "edition": "Sürümü yükselt",
+      "apps": "Uygulamaları ekle"
     },
     "emptyTitle": "Kuyruk boş",
     "emptyDesc": "Uygulanacak değişiklik yok.",

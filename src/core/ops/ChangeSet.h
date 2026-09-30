@@ -35,6 +35,15 @@ enum class OpKind : std::uint8_t {
     SetEdition,            // edition upgrade: target "edition" (one slot), value = the edition id ("Professional")
     WriteFile,             // a text file in the image: target = its path from the image root, value = the text
     CopyFile,              // a file of this PC into the image: target = path in the image, value = the source
+    // 2026-10-01 (D-048 … D-054):
+    SetTaskState,          // scheduled task after setup: target = "\Microsoft\…\Name", value = "disabled" | "enabled"
+    SetHosts,              // hosts entries: target "hosts" (one slot), value = the WinLove block (lines)
+    SetDns,                // DNS servers / DoH after setup: target "dns" (one slot), value = JSON
+    CopyTree,              // a file or folder of this PC into the image: target = folder in the image, value = source
+    RemoveDriver,          // a third-party driver of the image: target = published name (oem3.inf), value = original name
+    AddAppx,               // provision an .appx / .msix (bundle): target = package file, value = JSON (dependencies, license)
+    SetDefaultApps,        // default app associations: target "associations" (one slot), value = the XML
+    SetIntl,               // UI language, locales, keyboard, time zone: target "intl" (one slot), value = JSON
 };
 
 enum class Risk : std::uint8_t { Low, Medium, High };

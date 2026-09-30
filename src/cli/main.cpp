@@ -9,6 +9,11 @@
 #include "core/image/RegistryRead.h"
 #include "core/updates/UpdateCatalog.h"
 #include "core/usb/UsbMedia.h"
+#include "core/image/AppxInstall.h"
+#include "core/image/LanguagePacks.h"
+#include "core/image/dism/DefaultApps.h"
+#include "core/image/dism/Intl.h"
+#include "core/system/HostExport.h"
 #include "core/image/Services.h"
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
@@ -417,6 +422,7 @@ const wchar_t* phaseName(core::ops::Phase phase) {
     case core::ops::Phase::Features: return L"features";
     case core::ops::Phase::Drivers: return L"drivers";
     case core::ops::Phase::Updates: return L"updates";
+    case core::ops::Phase::Apps: return L"apps";
     case core::ops::Phase::Cleanup: return L"cleanup";
     case core::ops::Phase::Settings: return L"settings";
     }
@@ -1106,6 +1112,198 @@ int cmdUsbWrite(const std::wstring& diskText, const std::wstring& folder, const 
     return 0;
 }
 
+// D-052: third-party drivers of a mounted image; --remove=oemN.inf takes one out (admin).
+int cmdDrivers(const std::wstring& mountDir, const std::wstring& remove, bool asJson) {
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    auto session = (*d)->openSession(mountDir);
+    if (!session) {
+        return reportError(session.error());
+    }
+    if (!remove.empty()) {
+        if (auto r = (*session)->removeDriver(remove); !r) {
+            return reportError(r.error());
+        }
+        print(L"  removed " + remove + L"\n");
+    }
+    auto list = (*session)->drivers();
+    if (!list) {
+        return reportError(list.error());
+    }
+    if (asJson) {
+        json out = json::array();
+        for (const auto& e : *list) {
+            out.push_back({{"publishedName", narrow(e.publishedName)}, {"originalFileName", narrow(e.originalFileName)},
+                           {"className", narrow(e.className)}, {"provider", narrow(e.provider)},
+                           {"version", narrow(e.version)}, {"date", narrow(e.date)}, {"bootCritical", e.bootCritical},
+                           {"signed", e.signed_}});
+        }
+        printJson(out);
+        return 0;
+    }
+    for (const auto& e : *list) {
+        print(std::format(L"  {:<10} {:<28} {:<14} {:<24} {} {}{}\n", e.publishedName, e.originalFileName, e.className,
+                          e.provider, e.version, e.date, e.bootCritical ? L"  [boot critical]" : L""));
+    }
+    print(std::format(L"\n  {} third-party driver(s)\n", list->size()));
+    return 0;
+}
+
+// D-052: this PC's drivers into a folder (pnputil, admin).
+int cmdExportHostDrivers(const std::wstring& folder) {
+    auto n = core::exportHostDrivers(folder, core::TaskContext{});
+    if (!n) {
+        return reportError(n.error());
+    }
+    print(std::format(L"  {} driver package(s) in {}\n", *n, folder));
+    return 0;
+}
+
+// D-053: international settings of a mounted image; --set=<json> changes them (admin).
+int cmdIntl(const std::wstring& mountDir, const std::wstring& set, bool asJson) {
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    auto session = (*d)->openSession(mountDir);
+    if (!session) {
+        return reportError(session.error());
+    }
+    if (!set.empty()) {
+        auto settings = core::intlFromJson(narrow(set));
+        if (!settings) {
+            return reportError(settings.error());
+        }
+        if (auto r = core::setIntl(**session, *settings, core::TaskContext{}); !r) {
+            return reportError(r.error());
+        }
+        print(L"  set: " + core::intlArguments(*settings) + L"\n");
+    }
+    auto intl = core::readIntl(**session);
+    if (!intl) {
+        return reportError(intl.error());
+    }
+    if (asJson) {
+        json langs = json::array();
+        for (const auto& l : intl->languages) {
+            langs.push_back(narrow(l));
+        }
+        printJson({{"ui", narrow(intl->current.uiLanguage)}, {"system", narrow(intl->current.systemLocale)},
+                   {"user", narrow(intl->current.userLocale)}, {"input", narrow(intl->current.inputLocale)},
+                   {"timezone", narrow(intl->current.timeZone)}, {"languages", langs}});
+        return 0;
+    }
+    print(std::format(L"  UI language   {}\n  system locale {}\n  user locale   {}\n  keyboard      {}\n  time zone     {}\n",
+                      intl->current.uiLanguage, intl->current.systemLocale, intl->current.userLocale,
+                      intl->current.inputLocale, intl->current.timeZone));
+    for (const auto& l : intl->languages) {
+        print(L"  installed     " + l + L"\n");
+    }
+    return 0;
+}
+
+// D-054: default app associations into a mounted image (admin).
+int cmdAssociations(const std::wstring& mountDir, const std::wstring& file) {
+    std::ifstream in(std::filesystem::path(file), std::ios::binary);
+    std::stringstream buffer;
+    buffer << in.rdbuf();
+    auto list = core::parseAssociations(buffer.str());
+    if (!list) {
+        return reportError(list.error());
+    }
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    auto session = (*d)->openSession(mountDir);
+    if (!session) {
+        return reportError(session.error());
+    }
+    wchar_t temp[MAX_PATH];
+    GetTempPathW(MAX_PATH, temp);
+    if (auto r = core::importAssociations(**session, buffer.str(), std::filesystem::path(temp) / L"WinLove", core::TaskContext{}); !r) {
+        return reportError(r.error());
+    }
+    print(std::format(L"  {} association(s) imported\n", list->size()));
+    return 0;
+}
+
+// D-054: this PC's default app associations (admin) → a file.
+int cmdExportHostAssociations(const std::wstring& file) {
+    wchar_t temp[MAX_PATH];
+    GetTempPathW(MAX_PATH, temp);
+    auto xml = core::exportHostAssociations(std::filesystem::path(temp) / L"WinLove");
+    if (!xml) {
+        return reportError(xml.error());
+    }
+    std::ofstream(std::filesystem::path(file), std::ios::binary) << *xml;
+    auto list = core::parseAssociations(*xml);
+    print(std::format(L"  {} association(s) -> {}\n", list ? list->size() : 0, file));
+    return 0;
+}
+
+// D-050: what an app package is and what it needs (no admin); with a mount: provision it (admin).
+int cmdAppx(const std::wstring& file, const std::wstring& mountDir, const std::wstring& arch) {
+    auto info = core::readAppxPackage(file);
+    if (!info) {
+        return reportError(info.error());
+    }
+    std::wstring archs;
+    for (const auto& a : info->architectures) {
+        archs += a + L" ";
+    }
+    print(std::format(L"  {}  {}\n  {}  {}\n  {}{}{}\n", info->name, info->version,
+                      info->displayName.empty() ? L"(no display name)" : info->displayName,
+                      info->publisherDisplay.empty() ? info->publisher : info->publisherDisplay, archs,
+                      info->bundle ? L"bundle " : L"", info->framework ? L"framework" : L""));
+    for (const auto& dep : info->dependencies) {
+        print(L"    needs " + dep.name + L" >= " + dep.minVersion + L"\n");
+    }
+    auto install = core::planAppxInstall(file, arch.empty() ? L"x64" : arch);
+    if (!install) {
+        return reportError(install.error());
+    }
+    for (const auto& dep : install->dependencies) {
+        print(L"    found " + dep.wstring() + L"\n");
+    }
+    for (const auto& m : install->missing) {
+        print(L"    MISSING " + m + L"\n");
+    }
+    print(L"    licence " + (install->license.empty() ? std::wstring(L"none (/SkipLicense)") : install->license.wstring()) + L"\n");
+    print(L"    dism.exe " + core::appxArguments(*install) + L"\n");
+    if (mountDir.empty()) {
+        return 0;
+    }
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    auto session = (*d)->openSession(mountDir);
+    if (!session) {
+        return reportError(session.error());
+    }
+    if (auto r = core::provisionAppx(**session, *install, core::TaskContext{}); !r) {
+        return reportError(r.error());
+    }
+    print(L"  provisioned\n");
+    return 0;
+}
+
+// D-053: language packs and features under a folder (no admin).
+int cmdLanguages(const std::wstring& folder) {
+    static constexpr const wchar_t* kKinds[] = {L"language pack", L"basic", L"handwriting", L"ocr",
+                                                L"speech", L"text-to-speech", L"fonts", L"other"};
+    const auto files = core::scanLanguageFiles(folder);
+    for (const auto& f : files) {
+        print(std::format(L"  {:<8} {:<6} {:<15} {:>6} MB  {}\n", f.language.empty() ? L"-" : f.language, f.architecture,
+                          kKinds[static_cast<int>(f.kind)], f.size >> 20, f.path.filename().wstring()));
+    }
+    print(std::format(L"\n  {} language file(s)\n", files.size()));
+    return 0;
+}
+
 // P06: bootable ISO from a setup folder (IMAPI2FS, no admin).
 int cmdIso(const std::wstring& folder, const std::wstring& output, const std::wstring& label, const std::wstring& boot,
            bool sha, bool noPrompt) {
@@ -1197,6 +1395,14 @@ void printUsage() {
           L"  wlcli postsetup <plan.json> <mountdir>   (write post-setup scripts and payloads into the image, P14)\n"
           L"  wlcli reg <file.reg> [<mountdir>] [--first-logon]   (parse; with a mount: write into the image's\n"
           L"                                      hives, P11; --first-logon: also re-import after setup)\n"
+          L"  wlcli drivers <mountdir> [--remove=oemN.inf] [--json]   (third-party drivers of the image; admin)\n"
+          L"  wlcli export-host-drivers <folder>    (this PC's drivers, pnputil /export-driver; admin)\n"
+          L"  wlcli intl <mountdir> [--set=<json>] [--json]   (UI language, locales, keyboard, time zone; admin)\n"
+          L"  wlcli associations <mountdir> <file.xml>   (default app associations into the image; admin)\n"
+          L"  wlcli export-host-associations <file.xml>  (this PC's default app associations; admin)\n"
+          L"  wlcli appx-info <package> [--arch=x64]      (manifest, dependencies found next to it; no admin)\n"
+          L"  wlcli appx-add <mountdir> <package> [--arch=x64]   (provision an .appx / .msix (bundle); admin)\n"
+          L"  wlcli languages <folder>                   (language packs and features under a folder)\n"
           L"  wlcli usb-list [--all] [--json]      USB disks a setup stick can go to (never the system disk)\n"
           L"  wlcli usb-write <disk> <setup folder> --yes [--gpt] [--label=] [--unattend=<xml>]   (admin; ERASES the\n"
           L"                                      disk: FAT32, BIOS + UEFI (--gpt: UEFI only), install.wim > 4 GB -> .swm)\n"
@@ -1256,6 +1462,7 @@ int wmain(int argc, wchar_t** argv) {
     bool preview = false;
     std::wstring onlyKb;
     bool allowVirtual = false;
+    std::wstring removeName;
     bool yes = false;
     bool listAll = false;
     bool gpt = false;
@@ -1282,6 +1489,8 @@ int wmain(int argc, wchar_t** argv) {
             downloadDir = std::wstring(a.substr(11));
         } else if (a.starts_with(L"--kb=")) {
             onlyKb = std::wstring(a.substr(5));
+        } else if (a.starts_with(L"--remove=")) {
+            removeName = std::wstring(a.substr(9));
         } else if (a == L"--allow-virtual") {
             allowVirtual = true;
         } else if (a == L"--all") {
@@ -1413,6 +1622,30 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"reg" && (args.size() == 2 || args.size() == 3)) {
         return cmdReg(args[1], args.size() == 3 ? args[2] : std::wstring(), firstLogon);
+    }
+    if (command == L"drivers" && args.size() == 2) {
+        return cmdDrivers(args[1], removeName, asJson);
+    }
+    if (command == L"export-host-drivers" && args.size() == 2) {
+        return cmdExportHostDrivers(args[1]);
+    }
+    if (command == L"intl" && args.size() == 2) {
+        return cmdIntl(args[1], serviceSet, asJson);
+    }
+    if (command == L"associations" && args.size() == 3) {
+        return cmdAssociations(args[1], args[2]);
+    }
+    if (command == L"export-host-associations" && args.size() == 2) {
+        return cmdExportHostAssociations(args[1]);
+    }
+    if (command == L"appx-info" && args.size() == 2) {
+        return cmdAppx(args[1], L"", arch);
+    }
+    if (command == L"appx-add" && args.size() == 3) {
+        return cmdAppx(args[2], args[1], arch);
+    }
+    if (command == L"languages" && args.size() == 2) {
+        return cmdLanguages(args[1]);
     }
     if (command == L"usb-list") {
         return cmdUsbList(allowVirtual, listAll, asJson);

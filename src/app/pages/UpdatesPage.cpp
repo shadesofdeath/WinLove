@@ -239,7 +239,8 @@ void UpdatesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect)
         break;
     }
     case kKind: {
-        static constexpr Str kKinds[] = {Str::UpdatesKindSsu, Str::UpdatesKindLcu, Str::UpdatesKindDotnet, Str::UpdatesKindOther};
+        static constexpr Str kKinds[] = {Str::UpdatesKindSsu, Str::UpdatesKindLcu, Str::UpdatesKindDotnet, Str::UpdatesKindOther,
+                                         Str::UpdatesKindLanguage};
         canvas.drawText(m_strings.get(kKinds[static_cast<int>(info.kind)]), rect, TypeStyle::Body, Color::TextPrimary);
         break;
     }

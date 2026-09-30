@@ -10,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace wl::core {
 
@@ -31,6 +32,11 @@ struct DismExeRun {
 // Runs dism.exe on the image of `session` (suspended meanwhile, reopened afterwards) and logs what
 // it says. `onPercent` gets its progress bar. An error only when it could not run, or the session
 // could not be reopened; a failed command is an `exitCode`.
+// Every "<label> : <value>" of /English output ("Current Edition : Core", "System locale : tr-TR").
+[[nodiscard]] std::vector<std::wstring> dismExeValues(std::string_view output, std::string_view label);
+// A failed run as an Error: DISM's own message, or the exit code.
+[[nodiscard]] Error dismExeFailure(const DismExeRun& run, std::wstring message);
+
 [[nodiscard]] Result<DismExeRun> runDismExe(DismSession& session, std::wstring_view arguments,
                                             const std::function<void(double)>& onPercent = {});
 

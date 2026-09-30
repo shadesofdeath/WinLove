@@ -9,7 +9,14 @@
 #include "core/image/dism/Appx.h"
 #include "core/image/dism/Edition.h"
 #include "core/image/dism/StoreCleanup.h"
+#include "core/image/AppxInstall.h"
+#include "core/image/HostsFile.h"
+#include "core/image/ScheduledTasks.h"
+#include "core/image/dism/DefaultApps.h"
+#include "core/image/dism/Intl.h"
 #include "core/postsetup/PostSetup.h"
+
+#include <windows.h>
 
 #include <algorithm>
 #include <format>
@@ -119,6 +126,50 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
             }
         }
         return changed;
+    }
+    case OpKind::SetTaskState: return setTaskDisabled(session.mountPath(), op.target, op.value != L"enabled");
+    case OpKind::SetHosts: return applyHostsSection(session.mountPath(), op.target, op.value);
+    case OpKind::SetDns:
+        // DNS is a set of registry values of the settings catalog (D-049); the kind is kept
+        // for presets written by hand, which have nothing more to say.
+        return fail(ErrorCode::Unsupported, L"DNS is set through the settings (registry) now", op.target);
+    case OpKind::CopyTree: {
+        auto copied = copyImageTree(session.mountPath(), op.target, op.value, task);
+        if (!copied) {
+            return std::unexpected(copied.error());
+        }
+        return {};
+    }
+    case OpKind::RemoveDriver: {
+        auto removed = session.removeDriver(op.target);
+        // Not in the driver store (a preset applied twice, another edition): gone is what was asked.
+        if (!removed && removed.error().hresult == static_cast<std::int32_t>(0x80070002)) {
+            log::info("apply", L"driver not in the image (already removed): " + op.target);
+            return {};
+        }
+        return removed;
+    }
+    case OpKind::AddAppx: {
+        auto install = appxInstallFromJson(op.target, utf8::fromWide(op.value));
+        if (!install) {
+            return std::unexpected(install.error());
+        }
+        registry.reset(); // dism.exe loads the image's hives
+        return provisionAppx(session, *install, task);
+    }
+    case OpKind::SetDefaultApps: {
+        registry.reset();
+        wchar_t temp[MAX_PATH];
+        GetTempPathW(MAX_PATH, temp);
+        return importAssociations(session, utf8::fromWide(op.value), std::filesystem::path(temp) / L"WinLove", task);
+    }
+    case OpKind::SetIntl: {
+        auto intl = intlFromJson(utf8::fromWide(op.value));
+        if (!intl) {
+            return std::unexpected(intl.error());
+        }
+        registry.reset();
+        return setIntl(session, *intl, task);
     }
     case OpKind::CleanupImage: {
         auto cleanup = storeCleanupFromJson(utf8::fromWide(op.value));

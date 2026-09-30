@@ -88,6 +88,24 @@ struct AppxPackage {
     PCWSTR installLocation;
     PCWSTR region;
 };
+enum DriverSignature : int { SignatureUnknown = 0, SignatureUnsigned, SignatureSigned };
+struct DriverPackage {
+    PCWSTR publishedName;    // "oem3.inf"
+    PCWSTR originalFileName; // "rt640x64.inf"
+    BOOL inBox;
+    PCWSTR catalogFile;
+    PCWSTR className;
+    PCWSTR classGuid;
+    PCWSTR classDescription;
+    BOOL bootCritical;
+    DriverSignature driverSignature;
+    PCWSTR providerName;     // "Realtek"
+    SYSTEMTIME date;
+    UINT majorVersion;
+    UINT minorVersion;
+    UINT build;
+    UINT revision;
+};
 struct CapabilityDetail {
     PCWSTR name;
     PackageFeatureState state;
@@ -132,6 +150,8 @@ struct Api {
                                 ProgressCallback, PVOID) = nullptr;
     HRESULT(WINAPI* addDriver)(Session, PCWSTR driverPath, BOOL forceUnsigned) = nullptr;
     HRESULT(WINAPI* removeCapability)(Session, PCWSTR name, HANDLE cancel, ProgressCallback, PVOID) = nullptr;
+    HRESULT(WINAPI* getDrivers)(Session, BOOL allDrivers, DriverPackage**, UINT*) = nullptr;
+    HRESULT(WINAPI* removeDriver)(Session, PCWSTR driverPath) = nullptr;
 };
 
 } // namespace wl::core::dismapi
