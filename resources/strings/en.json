@@ -401,7 +401,11 @@
   "tweaks": {
     "title": "Settings / Tweaks",
     "desc": "Privacy, performance, appearance and Explorer settings. Converted into registry and service changes.",
-    "applyRecommended": "Apply recommended"
+    "applyRecommended": "Apply recommended",
+    "noMountTitle": "No image mounted",
+    "noMountBody": "Mount an edition on the Images page to change its settings.",
+    "recommendedApplied": "{n} settings set to the recommended value",
+    "recommendedNone": "Every recommended setting is already selected"
   },
   "unattended": {
     "title": "Unattended Setup",

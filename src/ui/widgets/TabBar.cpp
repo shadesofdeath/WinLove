@@ -56,13 +56,16 @@ void TabBar::paint(Canvas& canvas) {
     for (std::size_t i = 0; i < rects.size(); ++i) {
         const bool selected = static_cast<int>(i) == m_selected;
         const RectF r = rects[i];
-        if (!selected && static_cast<int>(i) == m_hover) {
+        if (selected) {
+            // Screens 10 / 16: the selected tab sits on bg.raised, underline inset 8px.
+            canvas.fillRoundRect({r.x, r.y, r.width, r.height - 1}, tokens::radius::r3, Color::BgRaised);
+        } else if (static_cast<int>(i) == m_hover) {
             canvas.fillRoundRect({r.x, r.y + 1, r.width, r.height - 4}, tokens::radius::r2, Color::BgRaised);
         }
         canvas.drawText(m_tabs[i], {r.x, r.y, r.width, r.height - 2}, selected ? TypeStyle::BodyStrong : TypeStyle::Body,
                         selected ? Color::TextPrimary : Color::TextSecondary, TextAlign::Center);
         if (selected) {
-            canvas.fillRect({r.x + 4, r.bottom() - 2, r.width - 8, 2}, Color::AccentBase);
+            canvas.fillRect({r.x + 8, r.bottom() - 3, r.width - 16, 2}, Color::AccentBase);
         }
     }
 }

@@ -143,6 +143,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoRegistry = true;
         } else if (a == L"--demo-services") {
             options.demoServices = true;
+        } else if (a == L"--demo-tweaks") {
+            options.demoTweaks = true;
         } else if (a == L"--demo-drivers") {
             options.demoDrivers = true;
         } else if (a == L"--demo-updates") {
@@ -419,6 +421,27 @@ int App::renderOffscreen() {
             registry.addImport(L"C:\\Tweaks\\contoso-defaults.reg", std::move(*sample));
         }
         m_shell->showPage(m_options.page.value_or(PageId::Registry));
+    }
+    if (m_options.demoTweaks) {
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,
+                                         L"Windows 11 Pro"});
+        // The selections of screen 10.
+        auto& controller = m_shell->imageSettings();
+        const std::pair<std::string_view, std::string_view> picks[] = {
+            {"telemetry", "security"}, {"advertising-id", "off"}, {"diag-viewer", "off"},
+            {"inking", "off"},         {"web-search", "off"},     {"location", "off"}};
+        for (const auto& setting : controller.catalog().settings()) {
+            for (const auto& [id, option] : picks) {
+                if (setting.id != id) {
+                    continue;
+                }
+                const auto it = std::ranges::find(setting.options, option, &ImageSettingOption::id);
+                if (it != setting.options.end()) {
+                    controller.select(setting, static_cast<int>(it - setting.options.begin()));
+                }
+            }
+        }
+        m_shell->showPage(m_options.page.value_or(PageId::Tweaks));
     }
     if (m_options.demoServices) {
         const std::filesystem::path mountDir = L"C:\\WinLove\\mount";

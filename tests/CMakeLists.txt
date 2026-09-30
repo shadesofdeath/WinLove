@@ -18,6 +18,7 @@ add_executable(wl_tests
     app/ApplyTests.cpp
     app/ComponentTests.cpp
     app/FeatureTests.cpp
+    app/ImageSettingsTests.cpp
     app/PreloadTests.cpp
     app/RegistryImportTests.cpp
     app/ServiceTests.cpp

@@ -401,7 +401,11 @@
   "tweaks": {
     "title": "Ayarlar / Tweaks",
     "desc": "Gizlilik, performans, görünüm ve gezgin ayarları. Kayıt defteri ve servis değişikliklerine dönüştürülür.",
-    "applyRecommended": "Önerilenleri uygula"
+    "applyRecommended": "Önerilenleri uygula",
+    "noMountTitle": "Bağlı imaj yok",
+    "noMountBody": "Ayarları değiştirmek için İmajlar sayfasından bir sürüm bağla.",
+    "recommendedApplied": "{n} ayar önerilen değere alındı",
+    "recommendedNone": "Önerilen ayarların hepsi zaten seçili"
   },
   "unattended": {
     "title": "Katılımsız Kurulum",

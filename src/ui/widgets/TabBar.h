@@ -1,6 +1,6 @@
 #pragma once
 // TabBar (screen 16) and RadioGroup (checkbox.md "RadioButton").
-// TabBar: 24px tabs, 12px text; selected = bodyStrong text.primary + 2px accent underline;
+// TabBar: 24px tabs, 12px text; selected = bg.raised + bodyStrong text.primary + 2px accent underline;
 // others text.secondary; 1px line.subtle under the whole bar. ←/→ move, click selects.
 // RadioGroup: horizontal, 12px circle (1px line.strong; selected 1px accent + 6px accent dot),
 // label 8px right, options 16px apart. ←/→ move the selection.
