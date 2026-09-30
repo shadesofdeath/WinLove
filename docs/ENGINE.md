@@ -24,7 +24,7 @@ namespace wl::image {
   Result<SourceInfo>             openSource(const Path& isoOrWim, Progress&, CancelToken&);
   Result<std::vector<ImageInfo>> listImages(const Path& wim);
   Result<void>                   exportImage(const Path& src, int index, const Path& dst, Compression, Progress&, CancelToken&);
-  Result<void>                   deleteImage(const Path& wim, int index);
+  Result<void>                   removeImages(const Path& wim, span<const int> indexes, Progress&, CancelToken&); // kalanlarla yeniden yazar (D-033)
 
   Result<Session>                mount(const Path& wim, int index, const Path& mountDir, Progress&, CancelToken&);
   Result<void>                   unmount(Session&, Commit commitOrDiscard, Progress&, CancelToken&);
@@ -119,3 +119,4 @@ Uygulama davranışı:
 - [2026-09-30] [WIM artıkları] Commit yalnız ekler: değişen dosyaların eski hâlleri (hive'lar) dosyada başvurusuz kalır, 7-Zip bunları `[DELETED]\<n>` diye listeler (kullanıcının imajında 8 akış, 45 MB). `optimizeWim` (her imajı aynı sıkıştırmayla yeni dosyaya export + yer değiştirme) gerçek commit edilmiş 6,8 GB / 6 sürümlük WIM kopyasında 17 sn sürdü, `[DELETED]` kalmadı, sürümler aynı. Uygula artık commit'ten sonra bunu yapar. Not: tek sürüm değiştirilince ISO pek küçülmez — silinen dosyalar diğer sürümlerde hâlâ başvurulu; küçültmek için diğer sürümler silinmeli (İmajlar sayfası).
 - [2026-09-30] [korumalı anahtar silme] ACL'si kapalı bir anahtar `REG_OPTION_BACKUP_RESTORE` ile açılabilir ama `RegDeleteKey(ad)` anahtarı adıyla yeniden açar ve ACL'ye takılır → açık tanıtıcı üzerinden `NtDeleteKey` (`SystemComponents.cpp`).
 - [2026-09-28] [Unmount] Commit ile ilk denemede 0xC142011D/0xC1420004 gelirse (öncesinde kısmi unmount yoksa) hiçbir şey kaydedilmemiştir; onarım discard eder ama sonuç hata olarak raporlanır ("commit edilemedi").
+- [2026-09-30] [sürüm silme] `WIMDeleteImage` yalnız index girdisini siler; akışlar dosyada kalır, dosya küçülmez. → `removeImages` (D-033): kalan sürümler sırayla yeni dosyaya export edilir, bitince eski dosyanın yerine geçer (iptal / hata: özgün dosya olduğu gibi kalır). Lab WIM'inde (25H2 TR, 6 sürüm, 6,72 GB) ölçüldü: tek sürüm (Home SL) silme 20 sn, −44 MB; Pro dışındaki beş sürüm 8 sn, 6,72 → 6,48 GB (sürümler dosyaların çoğunu paylaşır: kazanç sürüm başına 40–200 MB). Kalan sürümün XML düğümü `INDEX` ve `LASTMODIFICATIONTIME` dışında bayt bayt aynı (NAME, FLAGS, DISPLAYNAME dahil); 7-Zip `t` 145.174 dosyada hatasız. Kalanlar 1..n yeniden numaralanır → seçim ve yanıt dosyasındaki `/IMAGE/INDEX` buna göre kaydırılır (`indexAfterRemoval`). Yönetici gerekmez; `WIMCaptureImage` ise yönetici ister (1314) → küçük test WIM'i üretilemiyor, gerçek deneme `tools\lab_editions.ps1`.

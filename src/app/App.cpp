@@ -203,9 +203,11 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
                                 : name == L"right" ? VK_RIGHT
                                 : name == L"enter" ? VK_RETURN
                                 : name == L"esc"   ? VK_ESCAPE
+                                : name == L"del"   ? VK_DELETE
+                                : name == L"tab"   ? VK_TAB
                                                    : 0;
                 if (vk == 0) {
-                    return fail(ErrorCode::InvalidArgument, L"--keys takes up,down,left,right,enter,esc", arg);
+                    return fail(ErrorCode::InvalidArgument, L"--keys takes up,down,left,right,enter,esc,del,tab", arg);
                 }
                 options.keys.push_back(vk);
             }

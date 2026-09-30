@@ -23,6 +23,13 @@
 - **Kaynak sayfası (2026-09-30, kullanıcı isteği):** son kullanılanlardan kaldırma (satır sonunda ×, `Del`, sağ tık
   menüsü) + çalışma kopyasını silme dialogu; UI çatısına sağ tık yönlendirmesi eklendi (`Widget::onContextMenu`).
   Dialogun kendisi render'da görülmedi (diskte çalışma kopyası yoktu); liste girdisini kaldırma ve menü görüldü.
+- **Sürüm silme (2026-09-30, kullanıcı isteği, D-033):** özellik P02'de vardı ("Index'i sil…") ama ISO açıkken
+  kapalıydı, dosyayı küçültmüyordu ve tek tek siliyordu. Şimdi: `core::removeImages` (kalan sürümleri yeni dosyaya
+  export + yer değiştirme; iptal edilebilir), ISO kaynakta da çalışır (önce çalışma klasörüne kopya), satıra sağ tık
+  menüsü + "Yalnız bu sürümü tut…" + `Del`, kapalı düğmenin nedeni tooltip'te, yanıt dosyasındaki sürüm index'i
+  kaydırılır. **Motor gerçek imaj kopyasında doğrulandı** (`tools\lab_editions.ps1`, yönetici gerekmez): 6 → 1 sürüm
+  8 sn, 6,72 → 6,48 GB, 7-Zip akış testi hatasız. Menü ve dialoglar render'da görüldü; sağ tık → onay → silme zinciri
+  unit testte. **Uygulama içinden gerçek silme (ilerleme şeridi, ISO kopyalama adımı) kullanıcı testi bekliyor.**
 - **P07 v2 — sistem bileşenleri ve depo temizliği (2026-09-30, D-031):** `core/image/SystemComponents` (tarif: CBS
   paket aileleri + yollar + kayıt yazımları; gizli paket `Visibility` / `Owners` ile açılıp `DismRemovePackage`;
   junction'dan geçen yol reddi), `core/image/dism/StoreCleanup` (`dism.exe /StartComponentCleanup /ResetBase`, kendi
@@ -79,15 +86,15 @@
   (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
   ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
   (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
-- **Build:** `./build.ps1 -Dist` yeşil, 163 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Build:** `./build.ps1 -Dist` yeşil, 170 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi (bilerek yazılmadı: denenemeyen disk biçimlendirme kodu; ISO'yu
   Rufus / Ventoy yazar); güncellemelerde sürükle-sırala; imajdaki mevcut sürücüleri listeleme/kaldırma; "işlem
   sonrası mount'u çöz" (P16 §4); servis katalog notlarının ekranda gösterimi; `C:\WinLove` eski klasörü (kullanıcı
   unmount sonrası silebilir); Faz 4: DComp/dirty-rect (D-011), UIA, imzalama.
-- **Lab:** `build\lab\iso\sources\install.wim` (test ISO'sundan kopya, 6,7 GB) duruyor — `lab_components.ps1` ve
-  `dism_smoke.ps1` bunu kullanır. İmaj incelemesinin geçici dosyaları silindi (yöntem: ENGINE saha notu "CBS / 25H2").
+- **Lab:** `build\lab\iso\sources\install.wim` (test ISO'sundan kopya, 6,7 GB) duruyor — `lab_components.ps1`,
+  `lab_editions.ps1` (kopyası üzerinde) ve `dism_smoke.ps1` bunu kullanır. İmaj incelemesinin geçici dosyaları silindi (yöntem: ENGINE saha notu "CBS / 25H2").
 
 ## Son eklenenler (P01)
 - Motor: klasör kaynağı, `WindowsRelease` (sürüm adları), `LiveSystem`; `wlcli live`, `wlcli info <klasör>`.
@@ -109,6 +116,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — P18 Komut Paleti geliştirildi (test bekliyor). Faz 3 sayfalarının tamamı yazıldı.
 - 2026-09-30 — P07 v2: sistem bileşenleri (Edge, WebView2, OneDrive, WinRE) ve bileşen deposu temizliği (D-031).
 - 2026-09-30 — Kullanıcının ilk gerçek Uygula'sı (143 / 148); ondan çıkan düzeltmeler (D-032, kilitli uygulamalar, optimizeWim).
+- 2026-09-30 — Sürüm silme: WIM kalanlarla yeniden yazılıyor, ISO kaynakta da çalışıyor, "yalnız bu sürümü tut" (D-033).
 - 2026-09-28 — Baştan sona inceleme (4 alan, paralel): ~35 hata düzeltildi. Öne çıkanlar: junction üzerinden ana
   makine ACL'si değişebilmesi (FileLocks), commit edilmeyen unmount'un başarılı raporlanması, DISM oturum yenileme,
   UDF çıkarmada yol dışına yazma + sınır dışı okuma, tıklamada yok edilen widget (use-after-free), Enter ile devre

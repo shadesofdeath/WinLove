@@ -6,6 +6,8 @@
 #include "core/tasks/Task.h"
 
 #include <filesystem>
+#include <optional>
+#include <span>
 
 namespace wl::core {
 
@@ -22,7 +24,15 @@ namespace wl::core {
 // are returned untouched).
 [[nodiscard]] Result<void> optimizeWim(const std::filesystem::path& wim, const TaskContext& task);
 
-// Removes edition `index` from a writable WIM (not an ESD, not a file inside an ISO).
-[[nodiscard]] Result<void> deleteImage(const std::filesystem::path& wim, int index);
+// Removes the editions `indexes` from a WIM on disk and gives their space back: the editions that
+// stay are exported, in order, into a new file that replaces the old one once it is complete, so a
+// cancel or a failure leaves the original as it was. What stays is renumbered 1..n
+// (indexAfterRemoval). A bootable WIM (boot.wim) loses the entries in place instead and keeps its
+// size: an export would drop its boot index. Not for ESD / split images; one edition must stay.
+[[nodiscard]] Result<void> removeImages(const std::filesystem::path& wim, std::span<const int> indexes,
+                                        const TaskContext& task);
+
+// The index an edition has once the editions `removed` are gone; empty when it is one of them.
+[[nodiscard]] std::optional<int> indexAfterRemoval(int index, std::span<const int> removed);
 
 } // namespace wl::core

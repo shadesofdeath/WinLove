@@ -15,12 +15,14 @@ add_executable(wl_tests
     core/PostSetupTests.cpp
     core/UnattendTests.cpp
     core/UpdateTests.cpp
+    core/WimEditTests.cpp
     ui/TokensTests.cpp
     ui/IconsTests.cpp
     ui/RenderTests.cpp
     ui/WidgetTests.cpp
     app/ApplyTests.cpp
     app/ComponentTests.cpp
+    app/EditionTests.cpp
     app/FeatureTests.cpp
     app/ImageSettingsTests.cpp
     app/PostSetupControllerTests.cpp

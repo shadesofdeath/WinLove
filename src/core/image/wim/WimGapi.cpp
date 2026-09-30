@@ -6,8 +6,11 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <format>
+#include <functional>
 #include <mutex>
+#include <vector>
 
 namespace wl::core {
 
@@ -172,8 +175,10 @@ Result<void> exportImage(const std::filesystem::path& sourceInput, int index, co
     return {};
 }
 
-Result<void> deleteImage(const std::filesystem::path& wimInput, int index) {
-    const std::filesystem::path wim = nativePath(wimInput);
+namespace {
+
+// Removes the entry of edition `index` in place: the streams stay in the file.
+Result<void> deleteImage(const std::filesystem::path& wim, int index) {
     auto a = api();
     if (!a) {
         return std::unexpected(a.error());
@@ -191,34 +196,34 @@ Result<void> deleteImage(const std::filesystem::path& wimInput, int index) {
     return {};
 }
 
-Result<void> optimizeWim(const std::filesystem::path& wimInput, const TaskContext& task) {
-    const std::filesystem::path wim = nativePath(wimInput);
-    WimFile info;
-    {
-        auto file = DiskFile::open(wim);
-        if (!file) {
-            return std::unexpected(file.error());
-        }
-        auto read = readWim(**file);
-        if (!read) {
-            return std::unexpected(read.error());
-        }
-        info = std::move(*read);
-    } // the handle is closed before the file is replaced
-    const auto& header = info.header;
-    if (header.compression == WimCompression::Lzms || header.compression == WimCompression::Unknown || header.solid ||
-        header.totalParts > 1 || header.bootIndex != 0 || info.images.empty()) {
-        return {}; // an export would change what the file is
+// Header + XML of `wim`; the file is closed again on return (it may be replaced afterwards).
+Result<WimFile> readInfo(const std::filesystem::path& wim) {
+    auto file = DiskFile::open(wim);
+    if (!file) {
+        return std::unexpected(file.error());
     }
+    return readWim(**file);
+}
+
+// A plain WIM: one part, no LZMS / solid resources (an ESD).
+bool plainWim(const WimHeader& header) {
+    return header.compression != WimCompression::Lzms && header.compression != WimCompression::Unknown && !header.solid &&
+           header.totalParts <= 1;
+}
+
+// Exports the editions `keep` of `wim`, in that order, into a new file and puts it in the place of
+// `wim`. `stage` names the progress.
+Result<void> rewriteWith(const std::filesystem::path& wim, WimCompression compression, std::span<const int> keep,
+                         const TaskContext& task, std::wstring_view stage) {
     const std::filesystem::path fresh = wim.wstring() + L".new";
     std::error_code ec;
     std::filesystem::remove(fresh, ec);
-    const double count = static_cast<double>(info.images.size());
-    for (std::size_t i = 0; i < info.images.size(); ++i) {
+    const double count = static_cast<double>(keep.size());
+    for (std::size_t i = 0; i < keep.size(); ++i) {
         const TaskContext one{task.cancel, [&](double fraction, std::wstring_view) {
-                                  task.report((static_cast<double>(i) + fraction) / count, L"optimize");
+                                  task.report((static_cast<double>(i) + fraction) / count, stage);
                               }};
-        if (auto exported = exportImage(wim, info.images[i].index, fresh, header.compression, one); !exported) {
+        if (auto exported = exportImage(wim, keep[i], fresh, compression, one); !exported) {
             std::filesystem::remove(fresh, ec);
             return std::unexpected(exported.error());
         }
@@ -241,8 +246,84 @@ Result<void> optimizeWim(const std::filesystem::path& wimInput, const TaskContex
                     static_cast<std::int32_t>(HRESULT_FROM_WIN32(code)));
     }
     std::filesystem::remove(old, ec);
-    task.report(1.0, L"optimize");
+    task.report(1.0, stage);
     return {};
+}
+
+} // namespace
+
+Result<void> optimizeWim(const std::filesystem::path& wimInput, const TaskContext& task) {
+    const std::filesystem::path wim = nativePath(wimInput);
+    auto info = readInfo(wim);
+    if (!info) {
+        return std::unexpected(info.error());
+    }
+    if (!plainWim(info->header) || info->header.bootIndex != 0 || info->images.empty()) {
+        return {}; // an export would change what the file is
+    }
+    std::vector<int> keep;
+    for (const auto& image : info->images) {
+        keep.push_back(image.index);
+    }
+    return rewriteWith(wim, info->header.compression, keep, task, L"optimize");
+}
+
+Result<void> removeImages(const std::filesystem::path& wimInput, std::span<const int> indexes, const TaskContext& task) {
+    const std::filesystem::path wim = nativePath(wimInput);
+    auto info = readInfo(wim);
+    if (!info) {
+        return std::unexpected(info.error());
+    }
+    for (const int index : indexes) {
+        if (std::ranges::find(info->images, index, &ImageInfo::index) == info->images.end()) {
+            return fail(ErrorCode::InvalidArgument, L"no such edition in the image", std::format(L"{} [{}]", wim.wstring(), index));
+        }
+    }
+    std::vector<int> keep;
+    for (const auto& image : info->images) {
+        if (std::ranges::find(indexes, image.index) == indexes.end()) {
+            keep.push_back(image.index);
+        }
+    }
+    if (keep.empty()) {
+        return fail(ErrorCode::InvalidArgument, L"an image must keep at least one edition", wim.wstring());
+    }
+    if (keep.size() == info->images.size()) {
+        return {};
+    }
+    if (!plainWim(info->header)) {
+        return fail(ErrorCode::Unsupported, L"editions can only be removed from a plain WIM (not an ESD or a split image)",
+                    wim.wstring());
+    }
+    log::info("wim", std::format(L"remove {} of {} editions from {}", info->images.size() - keep.size(),
+                                 info->images.size(), wim.wstring()));
+    if (info->header.bootIndex != 0) {
+        // Highest first: removing an entry renumbers the ones after it.
+        std::vector<int> doomed(indexes.begin(), indexes.end());
+        std::ranges::sort(doomed, std::greater{});
+        doomed.erase(std::ranges::unique(doomed).begin(), doomed.end());
+        for (const int index : doomed) {
+            if (task.cancel.cancelled()) {
+                return fail(ErrorCode::Cancelled, L"remove cancelled", wim.wstring());
+            }
+            if (auto removed = deleteImage(wim, index); !removed) {
+                return removed;
+            }
+        }
+        task.report(1.0, L"remove");
+        return {};
+    }
+    return rewriteWith(wim, info->header.compression, keep, task, L"remove");
+}
+
+std::optional<int> indexAfterRemoval(int index, std::span<const int> removed) {
+    std::vector<int> gone(removed.begin(), removed.end());
+    std::ranges::sort(gone);
+    gone.erase(std::ranges::unique(gone).begin(), gone.end());
+    if (std::ranges::binary_search(gone, index)) {
+        return std::nullopt;
+    }
+    return index - static_cast<int>(std::ranges::lower_bound(gone, index) - gone.begin());
 }
 
 } // namespace wl::core

@@ -1,6 +1,8 @@
 #include "app/pages/ImagesPage.h"
 
 #include "app/Format.h"
+#include "ui/widget/Host.h"
+#include "ui/widgets/Dropdown.h"
 
 #include <format>
 
@@ -49,6 +51,12 @@ ImagesPage::ImagesPage(AppState& state, ImageController& controller, const Local
             m_controller.mount(index);
         }
     };
+    m_table->onDelete = [this](int) {
+        if (onDelete) {
+            onDelete();
+        }
+    };
+    m_table->onMenu = [this](int, ui::PointF at) { return showRowMenu(at); };
 
     m_subscription = m_state.subscribe([this](AppState::Change change) { refresh(change); });
     refresh(AppState::Change::Source);
@@ -163,6 +171,42 @@ void ImagesPage::showFailure(const std::wstring& title, const std::wstring& mess
     }
     m_error->setVisible(true);
     layout();
+}
+
+bool ImagesPage::showRowMenu(ui::PointF at) {
+    const auto index = m_state.selectedIndex();
+    if (!host() || !index || m_controller.busy()) {
+        return false;
+    }
+    // Only what can run now: the menu has no disabled items. Copies of the handlers, as picking
+    // one may rebuild the page.
+    std::vector<std::wstring> labels;
+    std::vector<std::function<void()>> actions;
+    auto item = [&](Str label, std::function<void()> action) {
+        labels.push_back(m_strings.get(label));
+        actions.push_back(std::move(action));
+    };
+    if (m_controller.canMount()) {
+        item(Str::ImagesMount, [&controller = m_controller, index = *index] { controller.mount(index); });
+    }
+    item(Str::ImagesExport, onExport);
+    if (m_controller.canDelete()) {
+        item(Str::ImagesDeleteIndex, onDelete);
+        if (m_state.source()->install.images.size() > 2) {
+            item(Str::ImagesKeepOnly, onKeepOnly);
+        }
+    }
+    auto popup = std::make_unique<ui::MenuPopup>(
+        RectF{at.x, at.y, 0, 0}, std::move(labels), -1,
+        [actions = std::move(actions)](int picked) {
+            if (picked >= 0 && picked < static_cast<int>(actions.size()) && actions[static_cast<std::size_t>(picked)]) {
+                actions[static_cast<std::size_t>(picked)]();
+            }
+        },
+        [] {});
+    ui::Widget* raw = popup.get();
+    host()->pushModal(std::move(popup), raw, /*scrim=*/false);
+    return true;
 }
 
 void ImagesPage::refresh(AppState::Change change) {
