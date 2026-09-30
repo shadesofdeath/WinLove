@@ -60,6 +60,7 @@ struct LaunchOptions {
     bool demoTasks = false;      // render: fake mount, two tasks off in the image, the recommended queued (D-048)
     std::optional<std::wstring> demoFiles; // render: fake mount + queued files ("where": the destination dialog) (D-051)
     bool demoHosts = false;
+    bool demoLanguages = false; // render: fake mount, the image's languages, two packs and a display language queued (D-053)
     std::optional<std::wstring> demoApps; // render: fake mount + the lab's Terminal package ("defaults": second tab) (D-050)
     bool demoImageDrivers = false; // render: fake mount + the image's third-party drivers, one queued for removal (D-052)      // render: fake mount, telemetry list in the image, ads queued, imported entries (D-049)
     bool demoTweaks = false;     // render: fake mount + the selections of screen 10

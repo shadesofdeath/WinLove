@@ -187,6 +187,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoImageDrivers = true;
         } else if (a == L"--demo-apps" || startsWith(a, L"--demo-apps=")) {
             options.demoApps = a == L"--demo-apps" ? std::wstring() : std::wstring(value(L"--demo-apps="));
+        } else if (a == L"--demo-languages") {
+            options.demoLanguages = true;
         } else if (a == L"--demo-hosts") {
             options.demoHosts = true;
         } else if (a == L"--demo-services") {
@@ -761,6 +763,30 @@ int App::renderOffscreen() {
                 page->showDefaultsTab();
             }
         }
+    }
+    if (m_options.demoLanguages) {
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,
+                                         L"Windows 11 Pro"});
+        core::ImageIntl intl;
+        intl.current = {L"tr-TR", L"tr-TR", L"tr-TR", L"041f:0000041f", L"Turkey Standard Time"};
+        intl.languages = {L"tr-TR"};
+        m_state->setImageIntl(AppState::ImageIntl{AppState::ImageIntl::Status::Ready, m_state->mounted()->mountDir, intl, {}});
+        auto& languages = m_shell->languagesForDemo();
+        std::vector<core::LanguagePackFile> packs;
+        for (const wchar_t* name : {L"D:\\LanguagesAndOptionalFeatures\\Microsoft-Windows-Client-Language-Pack_x64_en-us.cab",
+                                    L"D:\\LanguagesAndOptionalFeatures\\Microsoft-Windows-LanguageFeatures-Basic-en-us-Package~31bf3856ad364e35~amd64~~.cab",
+                                    L"D:\\LanguagesAndOptionalFeatures\\Microsoft-Windows-LanguageFeatures-Speech-en-us-Package~31bf3856ad364e35~amd64~~.cab"}) {
+            auto f = core::classifyLanguageFile(name);
+            f.size = 48ull << 20;
+            packs.push_back(f);
+        }
+        languages.queuePacks(packs);
+        core::IntlSettings settings;
+        settings.uiLanguage = L"en-US";
+        settings.inputLocale = L"041f:0000041f";
+        settings.timeZone = L"GMT Standard Time";
+        languages.setSettings(settings);
+        m_shell->showPage(PageId::Languages);
     }
     if (m_options.demoImageDrivers) {
         m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,

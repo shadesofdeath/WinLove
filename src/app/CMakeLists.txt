@@ -23,6 +23,7 @@ add_library(wl_app STATIC
     controllers/FilesController.cpp
     controllers/ImageDriverController.cpp
     controllers/AppsController.cpp
+    controllers/LanguageController.cpp
     controllers/UpdateCatalogController.cpp
     ApplyReport.cpp
     Format.cpp
@@ -64,6 +65,7 @@ add_library(wl_app STATIC
     pages/HostsPage.cpp
     pages/FilesPage.cpp
     pages/AppsPage.cpp
+    pages/LanguagesPage.cpp
     pages/source/RecentList.cpp
     shell/CommandPalette.cpp
     shell/NavRail.cpp

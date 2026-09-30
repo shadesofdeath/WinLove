@@ -68,6 +68,9 @@ LanguagePackFile classifyLanguageFile(const std::filesystem::path& file) {
     f.path = file;
     std::error_code ec;
     f.size = std::filesystem::file_size(file, ec);
+    if (ec) {
+        f.size = 0; // file_size gives -1 on failure
+    }
     if (lower(file.extension().wstring()) != L".cab") {
         return f;
     }

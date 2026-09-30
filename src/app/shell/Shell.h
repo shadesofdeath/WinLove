@@ -19,6 +19,7 @@
 #include "app/controllers/FilesController.h"
 #include "app/controllers/HostsController.h"
 #include "app/controllers/ImageDriverController.h"
+#include "app/controllers/LanguageController.h"
 #include "app/controllers/ImageValuesController.h"
 #include "app/controllers/TaskController.h"
 #include "app/controllers/PreloadController.h"
@@ -106,6 +107,7 @@ public:
     TaskController& tasks() { return *m_tasks; }
     FilesController& filesForDemo() { return *m_files; }
     AppsController& appsForDemo() { return *m_apps; }
+    LanguageController& languagesForDemo() { return *m_languages; }
     AppsPage* appsPageForDemo() const { return appsPage(); }
     HostsController& hosts() { return *m_hosts; }
     ImageSettingsController& imageSettings() { return *m_imageSettings; }
@@ -213,6 +215,7 @@ private:
     [[nodiscard]] class FilesPage* filesPage() const;
     [[nodiscard]] class AppsPage* appsPage() const;
     void pickAppPackages();
+    void scanLanguageFolder(); // D-053: folder → the files that fit → check list → queue
     void updateApplyChrome();                         // CTA label, Apply page mode/header
     void savePreset(const core::ops::ChangeSet& changes);
     void saveApplyLog();
@@ -246,6 +249,7 @@ private:
     std::unique_ptr<FilesController> m_files;  // D-051
     std::unique_ptr<ImageDriverController> m_imageDriverCtl; // D-052
     std::unique_ptr<AppsController> m_apps; // D-050 / D-054
+    std::unique_ptr<LanguageController> m_languages; // D-053
     std::unique_ptr<ComponentController> m_components;
     std::unique_ptr<ServiceController> m_serviceCtl;
     std::unique_ptr<RegistryController> m_registry;

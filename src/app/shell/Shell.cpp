@@ -28,6 +28,7 @@
 #include "app/pages/postsetup/AppsDialog.h"
 #include "app/pages/updates/UpdateCatalogDialog.h"
 #include "app/pages/AppsPage.h"
+#include "app/pages/LanguagesPage.h"
 #include "app/pages/FilesPage.h"
 #include "core/system/Privileges.h"
 #include "app/pages/HostsPage.h"
@@ -143,6 +144,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_tasks = std::make_unique<TaskController>(m_state, embeddedTaskCatalog());
     m_hosts = std::make_unique<HostsController>(m_state, embeddedHostsCatalog());
     m_files = std::make_unique<FilesController>(m_state);
+    m_languages = std::make_unique<LanguageController>(m_state, m_services.postToUi);
     m_apps = std::make_unique<AppsController>(m_state, AppsController::Events{
         m_services.postToUi,
         [this](int added, std::vector<Error> errors) {
@@ -724,6 +726,67 @@ void Shell::importHostsFile() {
               file->filename().wstring());
 }
 
+void Shell::scanLanguageFolder() {
+    if (!m_state.mounted()) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::LanguagesNoMountTitle), m_strings.get(Str::LanguagesNoMountBody));
+        return;
+    }
+    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+    const auto folder = ui::pickFolder(owner, m_strings.get(Str::LanguagesScan));
+    if (!folder) {
+        return;
+    }
+    auto found = std::make_shared<std::vector<core::LanguagePackFile>>();
+    m_state.reader().run<bool>(
+        [path = *folder, found](const core::TaskContext&) -> Result<bool> {
+            *found = core::scanLanguageFiles(path);
+            return true;
+        },
+        [this, post = m_services.postToUi, alive = std::weak_ptr<bool>(m_alive), found, path = *folder](Result<bool>) {
+            post([this, alive, found, path] {
+                if (const auto a = alive.lock(); !a || !*a || !host()) {
+                    return;
+                }
+                auto files = std::make_shared<std::vector<core::LanguagePackFile>>(m_languages->fitting(*found));
+                if (files->empty()) {
+                    showToast(ui::InfoKind::Warning, m_strings.get(Str::LanguagesScanNone), path.wstring());
+                    return;
+                }
+                auto page = LanguagesPage::kindLabel; // kind names as the page shows them
+                std::vector<CatalogRow> rows;
+                for (const auto& f : *files) {
+                    rows.push_back({f.language.empty() ? std::wstring(L"—")
+                                                       : LanguageController::localeName(f.language) + L"  \u00b7  " + f.language,
+                                    page(m_strings, f.kind), f.path.filename().wstring()});
+                }
+                auto raw = std::make_shared<ui::Dialog*>(nullptr);
+                AppsDialogActions actions;
+                actions.present = [this, files](std::size_t i) { return m_languages->queued((*files)[i]); };
+                actions.close = [this, raw] {
+                    if (*raw) {
+                        ui::Dialog* dialog = std::exchange(*raw, nullptr);
+                        host()->popModal(dialog);
+                    }
+                };
+                actions.accept = [this, files](std::vector<std::size_t> picked) {
+                    std::vector<core::LanguagePackFile> chosen;
+                    for (const auto i : picked) {
+                        chosen.push_back((*files)[i]);
+                    }
+                    m_languages->queuePacks(chosen);
+                    showToast(ui::InfoKind::Success, m_strings.format(Str::LanguagesAdded, {{L"n", std::to_wstring(chosen.size())}}), L"");
+                };
+                CatalogDialogSpec spec{m_strings.get(Str::LanguagesPickTitle),
+                                       m_strings.format(Str::LanguagesPickBody, {{L"arch", m_languages->imageArchitecture()}}),
+                                       m_strings.get(Str::LanguagesPickFile), Str::LanguagesPickAdd, std::move(rows),
+                                       m_strings.get(Str::LanguagesPickName)};
+                AppsDialog built = makeCatalogDialog(m_strings, std::move(spec), std::move(actions));
+                *raw = built.dialog.get();
+                host()->pushModal(std::move(built.dialog), built.initialFocus);
+            });
+        });
+}
+
 AppsPage* Shell::appsPage() const {
     return m_page == PageId::Apps ? dynamic_cast<AppsPage*>(m_pageBody) : nullptr;
 }
@@ -1051,7 +1114,10 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::Features, featureOps);
     m_nav->setBadge(PageId::Apply, static_cast<int>(changes.size()));
     m_nav->setBadge(PageId::Components, static_cast<int>(m_components->queuedCount()));
-    m_nav->setBadge(PageId::Updates, static_cast<int>(changes.count(core::ops::OpKind::AddPackage)));
+    // Updates: packages that are not language packs (those count on Diller).
+    m_nav->setBadge(PageId::Updates, static_cast<int>(std::ranges::count_if(changes.operations(), [](const core::ops::Operation& op) {
+                        return op.kind == core::ops::OpKind::AddPackage && op.value != L"language";
+                    })));
     m_nav->setBadge(PageId::Drivers, static_cast<int>(changes.count(core::ops::OpKind::AddDriver) +
                                                       changes.count(core::ops::OpKind::RemoveDriver)));
     m_nav->setBadge(PageId::Services, static_cast<int>(changes.count(core::ops::OpKind::SetServiceStart)));
@@ -1061,6 +1127,7 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::Tasks, m_tasks->changedCount());
     m_nav->setBadge(PageId::Hosts, m_hosts->changedCount());
     m_nav->setBadge(PageId::Files, m_files->count());
+    m_nav->setBadge(PageId::Languages, m_languages->changedCount());
     m_nav->setBadge(PageId::Apps, m_apps->appCount() + static_cast<int>(changes.count(core::ops::OpKind::SetDefaultApps)));
     if (m_actionReset) {
         m_actionReset->setEnabled(featureOps > 0);
@@ -1427,6 +1494,11 @@ void Shell::showPage(PageId page) {
             };
             m_pageBody = &m_pageView->setBody<TasksPage>(m_state, *m_tasks, m_strings, m_language,
                                                          [this] { showPage(PageId::Images); });
+        } else if (page == PageId::Languages) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::LanguagesScan), ui::icons::Icon::OpenFolder).onInvoke =
+                [this] { scanLanguageFolder(); };
+            m_pageBody = &m_pageView->setBody<LanguagesPage>(m_state, *m_languages, m_strings, m_language,
+                                                             [this] { showPage(PageId::Images); });
         } else if (page == PageId::Apps) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::AppsFromHost), ui::icons::Icon::Import).onInvoke =
                 [this] {

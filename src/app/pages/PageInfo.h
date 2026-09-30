@@ -18,6 +18,7 @@ enum class PageId : std::uint8_t {
     Apps, // D-050 / D-054
     Features,
     Updates,
+    Languages, // D-053
     Drivers,
     Registry,
     Services,
