@@ -241,6 +241,21 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-042 — Vurgu renkleri, "Uygulama ayarları" sol menüde; ayar kataloğu büyüdü (2026-09-30)
+Bağlam: Kullanıcı "uygulamaya tema özelliği, açık tema, farklı temalar" istedi. Koyu / Açık / Yüksek kontrast / Sistem
+temaları zaten vardı ama ayar sayfası sol menüde olmadığı için bulunamıyordu. Tasarım (ekran 19) beş vurgu rengi
+karesi gösteriyor ama yalnız bakırın token seti var (16-app-settings.md §4 bu yüzden eklememişti).
+Karar (kural 3'ten bilinçli sapma):
+- `ui::Accent` (Bakır · Deniz · Nar · Gök · Zeytin). Bakır = handoff tokenları, dokunulmadı. Diğer dördünün koyu tema
+  tabanı tasarımdaki kare rengi; hover (+%12 beyaz), pressed (−%9), subtle (sayfa üstüne %16), yazı rengi ve açık tema
+  değerleri (taban, sayfada ve beyaz yazı altında AA olana dek koyulaştırıldı) **türetildi** ve `Palette.cpp`'de
+  sabit. `TokensTests` her set için token sözleşmesini (onAccent ≥ 4.5, sayfada ≥ 4.4, panelde / subtle'da ≥ 3)
+  denetler. Yüksek kontrastta vurgu değişmez. Tasarım bir token seti verirse bu tablo onunla değiştirilmeli.
+- "Uygulama ayarları" sol menünün son grubunda (prototipte yalnız paletteydi: sapma).
+- Aynı gün ayar kataloğuna 38 ayar ve "Sistem" sekmesi daha eklendi (gizlilik, ipuçları, arama, depolama, oturum
+  açma, Gezgin gezinti bölmesi, Başlat / görev çubuğu düzeni, güncelleme, UAC / SmartScreen, Num Lock, fare, AutoPlay);
+  her yazımın çevrimdışı bir hive'a düştüğü test ediliyor. Kurulan Windows'taki etkileri görülmedi.
+
 ## D-041 — Görev çubuğu, Copilot / Edge / BitLocker / Windows Update ayarları, hazır uygulamalar, rapor, kişiselleştirme (2026-09-30)
 Bağlam: Kullanıcı önerilen listeden 1, 2, 3, 4, 5, 7, 8'i seçti.
 Karar:

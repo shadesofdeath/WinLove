@@ -130,6 +130,18 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             else if (v == L"hc") options.theme = ui::ThemeKind::HighContrast;
             else return fail(ErrorCode::InvalidArgument, L"--theme must be dark|light|hc", arg);
             options.themeGiven = true;
+        } else if (startsWith(a, L"--accent=")) {
+            const auto v = value(L"--accent=");
+            static constexpr const wchar_t* kNames[] = {L"copper", L"sea", L"pomegranate", L"sky", L"olive"};
+            for (int i = 0; i < ui::kAccentCount; ++i) {
+                if (v == kNames[i]) {
+                    options.accent = static_cast<ui::Accent>(i);
+                }
+            }
+            if (!options.accent) {
+                return fail(ErrorCode::InvalidArgument, L"--accent must be copper|sea|pomegranate|sky|olive", arg);
+            }
+            ui::setAccent(*options.accent);
         } else if (startsWith(a, L"--lang=")) {
             const auto v = value(L"--lang=");
             if (v == L"tr") options.language = Language::Turkish;
@@ -312,6 +324,9 @@ Result<void> App::initialize() {
             m_options.language = settings.language;
         }
         ui::setReducedMotionForced(settings.reduceMotion);
+        if (!m_options.accent) {
+            ui::setAccent(settings.accent);
+        }
     }
     auto strings = embeddedStrings(m_options.language);
     if (!strings) {
@@ -994,6 +1009,10 @@ void App::applySettings() {
     }
     const AppSettings& settings = m_state->settings();
     ui::setReducedMotionForced(settings.reduceMotion);
+    if (settings.accent != ui::accent()) {
+        ui::setAccent(settings.accent);
+        applyTheme(); // every accent brush is resolved at paint time: a repaint is enough
+    }
     if (const ui::ThemeKind theme = resolveTheme(settings.theme); theme != m_options.theme) {
         m_options.theme = theme;
         applyTheme();

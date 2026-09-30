@@ -66,6 +66,12 @@ AppSettings AppSettings::load(const std::filesystem::path& file) {
                      : theme == "hc"     ? ThemeChoice::HighContrast
                      : theme == "system" ? ThemeChoice::System
                                          : ThemeChoice::Dark;
+    const std::string accent = text("accent");
+    settings.accent = accent == "sea"           ? ui::Accent::Sea
+                      : accent == "pomegranate" ? ui::Accent::Pomegranate
+                      : accent == "sky"         ? ui::Accent::Sky
+                      : accent == "olive"       ? ui::Accent::Olive
+                                                : ui::Accent::Copper;
     settings.language = text("language") == "en" ? Language::English : Language::Turkish;
     if (const auto it = doc.find("reduceMotion"); it != doc.end() && it->is_boolean()) {
         settings.reduceMotion = it->get<bool>();
@@ -78,8 +84,10 @@ void AppSettings::save(const std::filesystem::path& file) const {
     std::filesystem::create_directories(file.parent_path(), ec);
     std::ofstream out(file, std::ios::binary | std::ios::trunc);
     static constexpr const char* kThemes[] = {"dark", "light", "hc", "system"};
+    static constexpr const char* kAccents[] = {"copper", "sea", "pomegranate", "sky", "olive"};
     out << nlohmann::json{{"version", 1},
                           {"theme", kThemes[static_cast<std::size_t>(theme)]},
+                          {"accent", kAccents[static_cast<std::size_t>(accent)]},
                           {"reduceMotion", reduceMotion},
                           {"language", language == Language::English ? "en" : "tr"},
                           {"workRoot", utf8::fromWide(workRoot.wstring())},

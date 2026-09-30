@@ -71,6 +71,96 @@ private:
     ui::Button* m_browse = nullptr;
 };
 
+// Screen 19: the accent swatches — 20×12, 2px radius, 12px apart, the selected one ringed with
+// 1px text.primary 2px out; its name after them. Click or ←/→ picks one.
+class AccentSwatches : public ui::Widget {
+public:
+    static constexpr float kW = 20.0f;
+    static constexpr float kH = 12.0f;
+    static constexpr float kGap = 12.0f;
+
+    explicit AccentSwatches(std::vector<std::wstring> names) : m_names(std::move(names)) {
+        setFocusable(true);
+        setAccessible(ui::AccessRole::Group, L"");
+    }
+    std::function<void(ui::Accent)> onChange;
+    void setSelected(ui::Accent accent) {
+        m_selected = accent;
+        invalidate();
+    }
+
+    [[nodiscard]] ui::SizeF measure(ui::SizeF) override {
+        return {ui::kAccentCount * (kW + kGap) + 120.0f, ui::tokens::size::control};
+    }
+    void paint(ui::Canvas& canvas) override {
+        const ui::RectF b = bounds();
+        const float y = b.y + (b.height - kH) / 2;
+        for (int i = 0; i < ui::kAccentCount; ++i) {
+            const ui::RectF swatch{b.x + 2 + i * (kW + kGap), y, kW, kH};
+            canvas.fillRoundRect(swatch, ui::tokens::radius::r2, ui::accentSwatch(static_cast<ui::Accent>(i)));
+            if (static_cast<int>(m_selected) == i) {
+                canvas.strokeRoundRect(swatch.inset(-2, -2), ui::tokens::radius::r2 + 2, ui::tokens::Color::TextPrimary);
+            } else if (m_hover == i) {
+                canvas.strokeRoundRect(swatch.inset(-2, -2), ui::tokens::radius::r2 + 2, ui::tokens::Color::LineStrong);
+            }
+        }
+        const float x = b.x + 2 + ui::kAccentCount * (kW + kGap);
+        canvas.drawText(m_names[static_cast<std::size_t>(m_selected)], {x, b.y, std::max(b.right() - x, 0.0f), b.height},
+                        ui::tokens::TypeStyle::Body, ui::tokens::Color::TextSecondary);
+    }
+    [[nodiscard]] ui::RectF focusRect() const override {
+        const ui::RectF b = bounds();
+        return {b.x - 2, b.y + (b.height - kH) / 2 - 4, ui::kAccentCount * (kW + kGap), kH + 8};
+    }
+    void onPointerMove(ui::PointF p) override {
+        const int hover = at(p);
+        if (hover != m_hover) {
+            m_hover = hover;
+            setTooltip(hover >= 0 ? m_names[static_cast<std::size_t>(hover)] : std::wstring());
+            invalidate();
+        }
+    }
+    void onHoverChanged(bool hovered) override {
+        if (!hovered) {
+            m_hover = -1;
+        }
+        invalidate();
+    }
+    void onPointerDown(ui::PointF p) override { m_down = at(p); }
+    void onClick() override { pick(m_down); }
+    bool onKeyDown(const ui::KeyEvent& key) override {
+        if (key.virtualKey == VK_LEFT || key.virtualKey == VK_RIGHT) {
+            const int next = static_cast<int>(m_selected) + (key.virtualKey == VK_LEFT ? -1 : 1);
+            pick(std::clamp(next, 0, ui::kAccentCount - 1));
+            return true;
+        }
+        return false;
+    }
+
+private:
+    [[nodiscard]] int at(ui::PointF p) const {
+        const ui::RectF b = bounds();
+        const float x = p.x - b.x - 2;
+        const int i = static_cast<int>(x / (kW + kGap));
+        return x >= 0 && i < ui::kAccentCount && x - i * (kW + kGap) <= kW ? i : -1;
+    }
+    void pick(int index) {
+        if (index < 0 || index >= ui::kAccentCount || index == static_cast<int>(m_selected)) {
+            return;
+        }
+        m_selected = static_cast<ui::Accent>(index);
+        invalidate();
+        if (onChange) {
+            onChange(m_selected);
+        }
+    }
+
+    std::vector<std::wstring> m_names;
+    ui::Accent m_selected = ui::Accent::Copper;
+    int m_hover = -1;
+    int m_down = -1;
+};
+
 SettingsPage::SettingsPage(AppState& state, const Localization& strings, Intents intents)
     : m_state(state), m_strings(strings), m_intents(std::move(intents)) {
     auto s = [&](Str key) { return strings.get(key); };
@@ -86,6 +176,12 @@ SettingsPage::SettingsPage(AppState& state, const Localization& strings, Intents
     m_theme->onChange = [this](int index) {
         edit([index](AppSettings& a) { a.theme = static_cast<ThemeChoice>(std::clamp(index, 0, 3)); });
     };
+    m_accent = &m_form->addRow<AccentSwatches>(
+        s(Str::SettingsAccent), std::wstring(), 0.0f,
+        std::vector<std::wstring>{s(Str::SettingsAccentCopper), s(Str::SettingsAccentSea), s(Str::SettingsAccentPomegranate),
+                                  s(Str::SettingsAccentSky), s(Str::SettingsAccentOlive)});
+    m_accent->setAccessible(ui::AccessRole::Group, s(Str::SettingsAccent));
+    m_accent->onChange = [this](ui::Accent accent) { edit([accent](AppSettings& a) { a.accent = accent; }); };
     m_motion = &m_form->addRow<ui::Toggle>(s(Str::SettingsReduceMotion), std::wstring(), ui::tokens::size::toggleW,
                                            std::wstring(), false);
     m_motion->setAccessible(ui::AccessRole::CheckBox, s(Str::SettingsReduceMotion));
@@ -181,6 +277,7 @@ void SettingsPage::sync() {
     const AppSettings& settings = m_state.settings();
     auto s = [&](Str key) { return m_strings.get(key); };
     m_theme->setSelected(static_cast<int>(settings.theme));
+    m_accent->setSelected(settings.accent);
     if (m_motion->isOn() != settings.reduceMotion) {
         m_motion->setOn(settings.reduceMotion);
     }

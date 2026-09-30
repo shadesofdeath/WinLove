@@ -27,6 +27,7 @@ void write(const std::filesystem::path& file, const char* text) {
 TEST_CASE("settings: every field survives save / load") {
     AppSettings settings;
     settings.theme = ThemeChoice::System;
+    settings.accent = ui::Accent::Pomegranate;
     settings.reduceMotion = true;
     settings.language = Language::English;
     settings.workRoot = L"D:\\WinLove \u00e7al\u0131\u015fma";

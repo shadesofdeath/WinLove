@@ -4,6 +4,7 @@
 // are copied before mounting and where images are mounted.
 // Default work root: %LOCALAPPDATA%\WinLove (next to logs and settings; nothing in the root of C:).
 #include "app/Localization.h"
+#include "ui/theme/Palette.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -14,6 +15,7 @@ enum class ThemeChoice : std::uint8_t { Dark, Light, HighContrast, System };
 
 struct AppSettings {
     ThemeChoice theme = ThemeChoice::Dark;
+    ui::Accent accent = ui::Accent::Copper;
     bool reduceMotion = false; // true: always; false: follow the Windows "show animations" setting
     Language language = Language::Turkish;
     std::filesystem::path workRoot = defaultWorkRoot();

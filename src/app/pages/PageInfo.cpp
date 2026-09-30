@@ -25,7 +25,7 @@ constexpr std::array<PageInfo, static_cast<std::size_t>(PageId::Count)> kPages =
     {PageId::Iso, "iso", Str::NavIso, Str::IsoTitle, Str::IsoDesc, Icon::IsoBuild, 4, "P06"},
     {PageId::Presets, "presets", Str::NavPresets, Str::PresetsTitle, Str::PresetsDesc, Icon::PresetBookmark, 5, "P15"},
     {PageId::Logs, "logs", Str::NavLogs, Str::LogsTitle, Str::LogsDesc, Icon::LogTerminal, 5, "P03"},
-    {PageId::Settings, "settings", Str::NavSettings, Str::SettingsTitle, Str::SettingsDesc, Icon::Settings, -1, "P16"},
+    {PageId::Settings, "settings", Str::NavSettings, Str::SettingsTitle, Str::SettingsDesc, Icon::Settings, 5, "P16"},
     {PageId::About, "about", Str::NavAbout, Str::AboutTitle, std::nullopt, Icon::AboutInfo, -1, "P17"},
     {PageId::Gallery, "gallery", Str::AppName, Str::AppName, std::nullopt, Icon::DensityCompact, -1, "1.8"},
 }};

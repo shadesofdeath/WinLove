@@ -11,6 +11,9 @@ WinLove'un görünümünü, dilini ve çalışma klasörlerini ayarlamak. Her de
 - **GÖRÜNÜM**
   - Tema: Koyu · Açık · Yüksek kontrast · Sistem. "Sistem": Windows yüksek kontrasttaysa HC, değilse uygulama
     açık / koyu modu; Windows ayarı değişince canlı izlenir. `Ctrl+Shift+T` de ayarı değiştirir.
+  - Vurgu rengi (D-042): ekran 19'daki beş kare — Bakır (varsayılan) · Deniz · Nar · Gök · Zeytin; 20×12, seçili
+    olanda 1 px text.primary halka, yanında adı; tıkla ya da ←/→. Anında uygulanır, ayar dosyasına `accent` yazılır.
+    Yüksek kontrast teması kendi vurgusunu korur. `--accent=` render için.
   - Hareketi azalt: açık = her zaman; kapalı = "Sistem ayarını izle" (Windows "animasyonları göster").
 - **DİL** — Arayüz dili: Türkçe · English. Seçince arayüz o dilde yeniden kurulur (durum — bağlı imaj, kuyruk,
   yanıtlar — korunur). Bir iş sürerken değiştirilemez.
@@ -21,7 +24,7 @@ WinLove'un görünümünü, dilini ve çalışma klasörlerini ayarlamak. Her de
   - DISM yolu: motorun yüklediği `dismapi.dll` ve sürümü (salt okunur — D-017: DISM sistemden yüklenir).
 
 ## 3. Model
-- `AppSettings`: `theme`, `reduceMotion`, `language`, `workRoot`, `mountFolder`, `isoFolder`. Eksik / bozuk alanlar
+- `AppSettings`: `theme`, `accent`, `reduceMotion`, `language`, `workRoot`, `mountFolder`, `isoFolder`. Eksik / bozuk alanlar
   alan alan varsayılana düşer (eski sürüm dosyaları okunur).
 - `AppState::setSettings` → kaydet + `Change::Settings` → Shell → `App::applySettings`: tema (pencere çerçevesi
   dahil), hareket, dil (yeniden kurma `post` ile: değişiklik yok edilecek bir kontrolün içinden gelir).
@@ -29,13 +32,15 @@ WinLove'un görünümünü, dilini ve çalışma klasörlerini ayarlamak. Her de
 - Preset kitaplığı çalışma klasörüyle taşınmaz: hep `%LOCALAPPDATA%\WinLove\presets`.
 
 ## 4. Bu sürümde olmayanlar (tasarım 19'da var)
-- **Vurgu rengi**: tokenlar yalnız bakır vurguyu tanımlıyor (hover / pressed / subtle, tema başına). Diğer dört renk
-  ekranda yalnız örnek karesi olarak var; renkleri kodda türetmek CLAUDE.md kural 3'e aykırı → tasarımdan token seti
-  gerekiyor.
+- ~~Vurgu rengi~~ — eklendi (D-042, kullanıcı isteği): diğer dört rengin hover / pressed / subtle / açık tema
+  değerleri tasarımda yoktu, türetildi (sapma kaydı D-042'de). "özel…" renk seçici yok.
 - **Yoğunluk** (Comfortable 28 px): kontrol / satır ölçüleri derleme zamanı sabiti; çalışma zamanı yoğunluğu tüm
   widget'lara dokunan ayrı bir iş.
 - **İşlem sonrası mount'u çöz**: motor destekliyor (`ApplyJobOptions::commitAndUnmount`), ama Uygula sayfasının
   özet / bitiş ekranları "kaydedildi ve çözüldü" varsayıyor; P05 kullanıcı testinden sonra eklenmeli.
+
+Sayfa artık sol menüde de var (son grupta "Uygulama ayarları"); önceden yalnız `Ctrl+,` ve komut paletiyle
+açılıyordu ve kullanıcı tema ayarını bulamadı (D-042).
 
 ## 5. Kabul
 - [ ] Tema değiştir → pencere hemen değişir; uygulama yeniden açılınca aynı tema. "Sistem" Windows'u izler.

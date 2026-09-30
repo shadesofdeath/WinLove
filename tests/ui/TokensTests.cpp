@@ -45,3 +45,29 @@ TEST_CASE("bestContrast picks the readable glyph color") {
         CHECK(contrastRatio(color(theme, glyph), color(theme, tokens::Color::StatusError)) >= 3.0);
     }
 }
+
+TEST_CASE("every accent color meets the contrast rules of the tokens, in dark and light") {
+    for (int i = 0; i < kAccentCount; ++i) {
+        setAccent(static_cast<Accent>(i));
+        CAPTURE(i);
+        for (const ThemeKind theme : {ThemeKind::Dark, ThemeKind::Light}) {
+            CAPTURE(static_cast<int>(theme));
+            const Rgba accentBase = color(theme, tokens::Color::AccentBase);
+            // Text on an accent button, the accent as text / icon on the page and on panels.
+            CHECK(contrastRatio(color(theme, tokens::Color::TextOnAccent), accentBase) >= 4.5);
+            CHECK(contrastRatio(accentBase, color(theme, tokens::Color::BgBase)) >= 4.4);
+            CHECK(contrastRatio(accentBase, color(theme, tokens::Color::BgPanel)) >= 3.0);
+            CHECK(contrastRatio(accentBase, color(theme, tokens::Color::AccentSubtle)) >= 3.0);
+        }
+        // High contrast keeps its own accent whatever is picked.
+        CHECK(colorArgb(ThemeKind::HighContrast, tokens::Color::AccentBase) == tokens::kHighContrast[static_cast<std::size_t>(tokens::Color::AccentBase)]);
+    }
+    setAccent(Accent::Copper);
+    // Copper is the handoff's token set, untouched.
+    CHECK(colorArgb(ThemeKind::Dark, tokens::Color::AccentBase) == tokens::kDark[static_cast<std::size_t>(tokens::Color::AccentBase)]);
+    CHECK(colorArgb(ThemeKind::Light, tokens::Color::AccentSubtle) == tokens::kLight[static_cast<std::size_t>(tokens::Color::AccentSubtle)]);
+    setAccent(Accent::Sky);
+    CHECK(colorArgb(ThemeKind::Dark, tokens::Color::AccentBase) == 0xFF7FA7D9u); // the screen 19 swatch
+    CHECK(colorArgb(ThemeKind::Dark, tokens::Color::BgBase) == tokens::kDark[static_cast<std::size_t>(tokens::Color::BgBase)]);
+    setAccent(Accent::Copper);
+}
