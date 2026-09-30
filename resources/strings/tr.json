@@ -746,7 +746,10 @@
     "thirdParty": "Üçüncü taraf",
     "checkUpdates": "Güncellemeleri denetle",
     "licenses": "Lisanslar",
-    "openLogFolder": "Log klasörünü aç"
+    "openLogFolder": "Log klasörünü aç",
+    "fontsValue": "IBM Plex Sans, JetBrains Mono (OFL 1.1)",
+    "thirdPartyValue": "nlohmann/json (MIT), pugixml (MIT)",
+    "licensesBody": "WinLove.exe içinde gelen bileşenler:\n\nIBM Plex Sans — SIL Open Font License 1.1\nJetBrains Mono — SIL Open Font License 1.1\nnlohmann/json — MIT License\npugixml — MIT License\n\nDISM ve IMAPI2FS Windows'un kendi bileşenleridir; WinLove onları dağıtmaz, sistemden yükler."
   },
   "palette": {
     "placeholder": "Komut, sayfa veya bileşen ara",

@@ -54,6 +54,7 @@ class RegistryPage;
 class UnattendedPage;
 class PresetsPage;
 class SettingsPage;
+class AboutPage;
 
 class Shell : public ui::Widget {
 public:
