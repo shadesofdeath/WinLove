@@ -62,7 +62,6 @@ void ComponentInspector::set(std::optional<ComponentController::Item> item, std:
     m_queued = queued;
     m_toggle->setText(m_strings.get(queued ? Str::ComponentsRemoveFromQueue : Str::ComponentsAddToQueue));
     m_toggle->setVisible(m_item.has_value());
-    m_toggle->setEnabled(m_item && (queued || !m_item->locked));
     layout();
     invalidate();
 }
@@ -110,15 +109,10 @@ void ComponentInspector::paint(ui::Canvas& canvas) {
     row(Str::ComponentsCategory, m_group);
     row(Str::CommonSize, item.size ? formatBytes(item.size, m_language) : std::wstring(L"—"), TypeStyle::Mono);
     row(Str::RiskColumn, m_strings.get(riskText(item.risk)), TypeStyle::Caption, riskInk(item.risk));
-    row(Str::CommonStatus, m_strings.get(m_queued        ? Str::ComponentsQueued
-                                         : item.locked ? Str::ComponentsLocked
-                                                       : Str::ComponentsStays));
+    row(Str::CommonStatus, m_strings.get(m_queued ? Str::ComponentsQueued : Str::ComponentsStays));
     row(Str::ComponentsReversible, m_strings.get(Str::CommonNo));
 
-    // A locked app: why it cannot be picked comes before what removing it would have meant.
-    const std::wstring notes = item.locked ? m_strings.get(Str::ComponentsLockedNote) +
-                                                 (item.notes.empty() ? std::wstring() : L" " + item.notes)
-                                           : item.notes;
+    const std::wstring& notes = item.notes;
     if (!notes.empty()) {
         section(m_strings.get(Str::ComponentsCompat));
         const float h = std::ceil(canvas.text().measureWrapped(notes, TypeStyle::Caption, width - 20));

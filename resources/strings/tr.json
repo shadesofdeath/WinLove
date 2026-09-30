@@ -269,8 +269,6 @@
     "queued": "Kuyrukta",
     "partlyQueued": "Kısmen kuyrukta",
     "stays": "İmajda kalır",
-    "locked": "Kaldırılamaz",
-    "lockedNote": "Windows bu sürümde bu uygulamanın imajdan kaldırılmasına izin vermiyor (DISM 0x80073CFA).",
     "reversible": "Geri alınabilir",
     "removeFromQueue": "Kuyruktan çıkar",
     "addToQueue": "Kuyruğa ekle",

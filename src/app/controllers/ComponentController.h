@@ -30,7 +30,6 @@ public:
         std::wstring identity;                   // technical line under the name
         std::wstring notes;                      // catalog note in the UI language (may be empty)
         std::vector<std::wstring> contents;      // what is removed (package full name; packages + paths)
-        bool locked = false;                     // Windows refuses to remove it from this image: not selectable
     };
     struct Group {
         int catalogIndex = 0; // unique per group: AppX catalog groups first, then the system groups

@@ -269,8 +269,6 @@
     "queued": "Queued",
     "partlyQueued": "Partly queued",
     "stays": "Stays in image",
-    "locked": "Cannot be removed",
-    "lockedNote": "This Windows version does not let the app be removed from the image (DISM 0x80073CFA).",
     "reversible": "Reversible",
     "removeFromQueue": "Remove from queue",
     "addToQueue": "Add to queue",

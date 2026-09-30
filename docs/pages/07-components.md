@@ -11,9 +11,11 @@ Bağlı imajdan kaldırılacak bileşenleri seçmek; seçimler kuyruğa girer (P
 - **Önceden yüklü (provisioned) AppX uygulamaları** — `DismGetProvisionedAppxPackages` /
   `DismRemoveProvisionedAppxPackage` (desteklenen, güvenilir yol). Boyut: `Program Files\WindowsApps\<Ad>_*`
   klasörleri, yedekleme semantiğiyle okunur (ACL yöneticiye kapalı; sahiplik değiştirilmez).
-- **Windows'un kaldırtmadığı uygulamalar**: `Microsoft.SecHealthUI` ve `Microsoft.DesktopAppInstaller` 24H2+
-  imajlarda DISM tarafından reddediliyor (0x80073CFA, gerçek çalıştırmada görüldü) → katalogda `lockedSince: 26100`;
-  listede kilit simgesi + "Kaldırılamaz", kutusu pasif, grup seçimi bunları atlar.
+- **DISM'in kaldırtmadığı uygulamalar**: `Microsoft.SecHealthUI` ve `Microsoft.DesktopAppInstaller` 24H2+
+  imajlarda (ikincisi Windows 10 22H2'de de) DISM tarafından reddediliyor (0x80073CFA). Uygula bu kodu alınca
+  uygulamayı WinLove'un kendi kaldırmasıyla çıkarır (D-038: DISM'in diğer uygulamalarda yaptığı dosya + kayıt
+  değişikliklerinin aynısı; 25H2 imajında `tools\lab_appx.ps1` ile kanıtlandı). Listede diğerleri gibi seçilirler
+  (risk Yüksek). Eski kilit (simge, "Kaldırılamaz", pasif kutu) kaldırıldı.
 - **Sistem bileşenleri** (`resources/catalog/components.json`, yalnız imajda bulunanlar listelenir):
 
   | Bileşen | Ne silinir | Risk |

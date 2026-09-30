@@ -162,8 +162,6 @@ enum class Str : std::uint16_t {
     ComponentsItemsN,
     ComponentsLoadPreset,
     ComponentsLoadingChildren,
-    ComponentsLocked,
-    ComponentsLockedNote,
     ComponentsMatchesOf,
     ComponentsOnlySelected,
     ComponentsPackages,
@@ -852,7 +850,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 842;
+inline constexpr std::size_t kStrCount = 840;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -1009,8 +1007,6 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "components.itemsN",
     "components.loadPreset",
     "components.loadingChildren",
-    "components.locked",
-    "components.lockedNote",
     "components.matchesOf",
     "components.onlySelected",
     "components.packages",
