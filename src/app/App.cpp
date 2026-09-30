@@ -249,6 +249,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
                 }
                 options.selectMarked.push_back(index);
             }
+        } else if (startsWith(a, L"--demo-upgrade=")) {
+            options.demoUpgrade = std::wstring(value(L"--demo-upgrade="));
         } else if (startsWith(a, L"--verified=")) {
             options.verified = std::wstring(value(L"--verified="));
         } else if (startsWith(a, L"--operation=")) {
@@ -740,6 +742,20 @@ int App::renderOffscreen() {
         }
         m_state->beginOperation(op);
         m_state->updateOperation(m_options.fakeProgress);
+    }
+    if (m_options.demoUpgrade && m_state->source() && m_state->selectedImage()) {
+        const core::ImageInfo image = *m_state->selectedImage();
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", image.index, image.name});
+        m_shell->images().rememberEditions(core::ImageEditions{
+            L"Core", {L"CoreSingleLanguage", L"Professional", L"Education", L"ProfessionalEducation", L"ProfessionalWorkstation",
+                      L"Enterprise"}});
+        if (*m_options.demoUpgrade == L"queued") {
+            m_state->queue(core::ops::Operation{core::ops::OpKind::SetEdition, L"edition", L"Professional", core::ops::Risk::Medium});
+        }
+        m_host->layout(m_options.size);
+        if (*m_options.demoUpgrade == L"dialog") {
+            m_shell->askUpgradeEdition();
+        }
     }
     if (m_options.verified && m_state->source()) {
         core::WimVerifyReport report;

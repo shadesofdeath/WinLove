@@ -331,3 +331,47 @@ TEST_CASE("editions: the marked ones are deleted together; \"keep only\" keeps t
     CHECK_FALSE(host.hasModal());
     CHECK_FALSE(state.operation().has_value());
 }
+
+TEST_CASE("edition upgrade: the dialog puts the chosen edition into the queue, as the first thing Uygula does") {
+    std::ifstream file(std::filesystem::path(WL_SOURCE_DIR) / L"resources/strings/tr.json", std::ios::binary);
+    std::stringstream text;
+    text << file.rdbuf();
+    const Localization strings = Localization::fromJson(text.str()).value();
+
+    AppState state{scratch(L"recent-upgrade.json"), scratch(L"settings-upgrade.json")};
+    Shell::Services services;
+    services.minimize = services.toggleMaximize = services.close = services.toggleTheme = [] {};
+    services.postToUi = [](std::function<void()> fn) { fn(); };
+    ui::Host host(ui::HostServices{[] {}, nullptr, nullptr, test::graphics().text.get()});
+    auto shell = std::make_unique<Shell>(strings, Language::Turkish, state, services);
+    Shell* raw = shell.get();
+    host.setRoot(std::move(shell));
+    state.setSource(source(core::ImageFormat::Wim, L"install.wim", 3));
+    raw->showPage(PageId::Images);
+    host.layout({1440, 900});
+
+    // Nothing mounted: nothing to upgrade, nothing asked.
+    raw->askUpgradeEdition();
+    CHECK_FALSE(host.hasModal());
+
+    state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Edition 1"});
+    raw->images().rememberEditions(core::ImageEditions{L"Core", {L"CoreSingleLanguage", L"Professional", L"Education"}});
+    raw->askUpgradeEdition();
+    host.layout({1440, 900});
+    REQUIRE(host.hasModal());
+    CHECK(state.changes().empty()); // the dialog alone changes nothing
+
+    host.onKeyDown(ui::KeyEvent{VK_RETURN, false, false, false}); // "Kuyruğa ekle": Pro is preselected
+    CHECK_FALSE(host.hasModal());
+    const auto* queued = state.changes().find(core::ops::OpKind::SetEdition, L"edition");
+    REQUIRE(queued != nullptr);
+    CHECK(queued->value == L"Professional");
+    CHECK(core::ops::plan(state.changes()).steps.front().phase == core::ops::Phase::Edition);
+
+    // An image that is already at the top has nowhere to go.
+    state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 2, L"Edition 2"});
+    raw->images().rememberEditions(core::ImageEditions{L"ProfessionalWorkstation", {}});
+    raw->askUpgradeEdition();
+    host.layout({1440, 900});
+    CHECK_FALSE(host.hasModal());
+}

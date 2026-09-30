@@ -5,7 +5,9 @@
 //   dism.exe /Image:<mount> /Get-CurrentEdition | /Get-TargetEditions | /Set-Edition:<id>
 // A change is one-way (there is no going back to a lower edition) and belongs at the start of a
 // run, before anything leaves pending operations in the image.
+#include "core/image/ImageInfo.h"
 #include "core/image/dism/Dism.h"
+#include "core/image/wim/WimGapi.h"
 
 #include <string>
 #include <string_view>
@@ -27,6 +29,12 @@ struct ImageEditions {
 // "Professional" + build 26200 → "Windows 11 Pro": the name an image gets after the change.
 // Ids without a known name give "Windows 11 <id>".
 [[nodiscard]] std::wstring editionDisplayName(std::wstring_view editionId, int build);
+
+// What the WIM should say about an edition once its image has become `newEditionId`. The commit
+// records the new edition id by itself but leaves the texts: an image that was "Windows 11 Home"
+// would go on being listed as Home. A name (description) still at Microsoft's default for the old
+// edition becomes the new edition's; one the user gave stays. FLAGS always follow the edition.
+[[nodiscard]] ImageText textAfterEditionChange(const ImageInfo& image, std::wstring_view newEditionId);
 
 [[nodiscard]] Result<ImageEditions> readEditions(DismSession& session);
 // Not cancellable once dism.exe runs.

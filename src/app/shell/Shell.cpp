@@ -1,6 +1,8 @@
 #include "app/shell/Shell.h"
 
+#include "app/pages/images/EditionDialog.h"
 #include "app/pages/images/RenameDialog.h"
+#include "core/image/dism/Edition.h"
 
 #include "app/Format.h"
 #include "app/pages/GalleryPage.h"
@@ -769,6 +771,12 @@ void Shell::updateImagesChrome() {
         inspector.mountTooltip = m_images->isEsdSource() ? m_strings.get(Str::ImagesEsdNoMount) : std::wstring{};
         inspector.deleteTooltip = deleteRefusal ? m_strings.get(*deleteRefusal) : std::wstring{};
         inspector.renameTooltip = editRefusal ? m_strings.get(*editRefusal) : std::wstring{};
+        inspector.canUpgrade = mountedHere && !busy;
+        inspector.upgradeTooltip = m_strings.get(Str::ImagesUpgradeHint);
+        if (const auto* queued = m_state.changes().find(core::ops::OpKind::SetEdition, L"edition"); queued && image) {
+            inspector.upgradeQueued = m_strings.format(
+                Str::ImagesUpgradeQueued, {{L"edition", core::editionDisplayName(queued->value, image->build)}});
+        }
         m_inspector->set(std::move(inspector));
         m_inspector->setVisible(inspectorVisible());
     }
@@ -849,6 +857,7 @@ void Shell::showPage(PageId page) {
             images.onDelete = [this] { askDeleteSelected(); };
             images.onKeepOnly = [this] { askDeleteSelected(/*keepOnly=*/true); };
             images.onRename = [this] { askRenameSelected(); };
+            images.onUpgrade = [this] { askUpgradeEdition(); };
             m_inspector = &add<ImageInspector>(m_strings, m_language);
             m_inspector->onMount = [this] {
                 if (const auto index = m_state.selectedIndex()) {
@@ -858,6 +867,7 @@ void Shell::showPage(PageId page) {
             m_inspector->onUnmount = [this] { askUnmount(); };
             m_inspector->onDelete = [this] { askDeleteSelected(); };
             m_inspector->onRename = [this] { askRenameSelected(); };
+            m_inspector->onUpgrade = [this] { askUpgradeEdition(); };
         } else if (page == PageId::Components) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsLoadPreset),
                                   ui::icons::Icon::PresetBookmark)
@@ -1584,6 +1594,64 @@ void Shell::askRenameSelected() {
                                           std::move(note), std::move(actions));
     *raw = built.dialog.get();
     host()->pushModal(std::move(built.dialog), built.initialFocus);
+}
+
+void Shell::askUpgradeEdition() {
+    const auto mounted = m_state.mounted();
+    if (!host() || !mounted) {
+        return;
+    }
+    m_images->readEditions([this](const core::ImageEditions& editions) {
+        const auto now = m_state.mounted();
+        if (!host() || !now) {
+            return;
+        }
+        if (editions.targets.empty()) {
+            showToast(ui::InfoKind::Warning, m_strings.get(Str::ImagesUpgradeNone), L"");
+            return;
+        }
+        int build = 26100;
+        std::wstring name = now->edition;
+        if (const auto& source = m_state.source()) {
+            for (const auto& image : source->install.images) {
+                if (image.index == now->index) {
+                    build = image.build;
+                    name = image.name;
+                }
+            }
+        }
+        std::vector<EditionChoice> choices;
+        for (const auto& id : editions.targets) {
+            choices.push_back({id, core::editionDisplayName(id, build)});
+        }
+        const auto* queued = m_state.changes().find(core::ops::OpKind::SetEdition, L"edition");
+        auto raw = std::make_shared<ui::Dialog*>(nullptr);
+        EditionDialogActions actions;
+        actions.close = [this, raw] {
+            if (*raw) {
+                ui::Dialog* dialog = std::exchange(*raw, nullptr);
+                host()->popModal(dialog);
+            }
+        };
+        actions.accept = [this, build](std::wstring id) {
+            // Medium, not High: the Apply summary words its high-risk warning for removals, and
+            // the dialog this comes from has just said that the change is one-way.
+            core::ops::Operation op{core::ops::OpKind::SetEdition, L"edition", id, core::ops::Risk::Medium};
+            m_state.queue(std::move(op));
+            showToast(ui::InfoKind::Success,
+                      m_strings.format(Str::ImagesUpgradeQueuedToast, {{L"edition", core::editionDisplayName(id, build)}}), L"");
+        };
+        actions.remove = [this] {
+            m_state.unqueue(core::ops::OpKind::SetEdition, L"edition");
+            showToast(ui::InfoKind::Success, m_strings.get(Str::ImagesUpgradeRemovedToast), L"");
+        };
+        EditionDialog built = makeEditionDialog(
+            m_strings,
+            m_strings.format(Str::DialogsUpgradeBody, {{L"name", name}}),
+            std::move(choices), queued ? queued->value : std::wstring(), std::move(actions));
+        *raw = built.dialog.get();
+        host()->pushModal(std::move(built.dialog), built.initialFocus);
+    });
 }
 
 void Shell::onImageVerified(const core::WimVerifyReport& report, const std::wstring& file) {

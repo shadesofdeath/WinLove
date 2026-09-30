@@ -40,7 +40,8 @@ struct MountedImage {
 struct EngineOperation {
     // Reading: the mounted image's lists are read for the pages (PreloadController, D-027).
     // Verifying: every stream of the install image is read and checked (nothing is written).
-    enum class Kind : std::uint8_t { Preparing, Mounting, Unmounting, Exporting, Deleting, Cleaning, Reading, Renaming, Verifying };
+    // Editions: the editions the mounted image can become are read (dism.exe, a few seconds).
+    enum class Kind : std::uint8_t { Preparing, Mounting, Unmounting, Exporting, Deleting, Cleaning, Reading, Renaming, Verifying, Editions };
     Kind kind;
     std::wstring edition;      // "Windows 11 Pro"
     std::filesystem::path path; // mount dir, work dir or export target (shown in the strip)

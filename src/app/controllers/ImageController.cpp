@@ -360,6 +360,52 @@ void ImageController::renameEdition(int index, std::wstring name, std::wstring d
     });
 }
 
+void ImageController::readEditions(std::function<void(const core::ImageEditions&)> done) {
+    const auto mounted = m_state.mounted();
+    if (!mounted) {
+        m_events.refused(Str::ApplyNoMountTitle);
+        return;
+    }
+    if (m_editions && m_editions->mountDir == mounted->mountDir && m_editions->imagePath == mounted->imagePath &&
+        m_editions->index == mounted->index) {
+        done(m_editions->editions);
+        return;
+    }
+    if (busy()) {
+        m_events.refused(Str::ImagesBusy);
+        return;
+    }
+    auto read = std::make_shared<std::optional<core::ImageEditions>>();
+    run(EngineOperation{EngineOperation::Kind::Editions, mounted->edition, mounted->mountDir, mounted->index},
+        [mountDir = mounted->mountDir, read](const core::TaskContext&) -> Result<void> {
+            auto dism = core::Dism::instance();
+            if (!dism) {
+                return std::unexpected(dism.error());
+            }
+            auto session = (*dism)->openSession(mountDir);
+            if (!session) {
+                return std::unexpected(session.error());
+            }
+            auto editions = core::readEditions(**session);
+            if (!editions) {
+                return std::unexpected(editions.error());
+            }
+            *read = std::move(*editions);
+            return {};
+        },
+        [this, read, mounted = *mounted, done = std::move(done)] {
+            m_editions = KnownEditions{mounted.mountDir, mounted.imagePath, mounted.index, **read};
+            done(**read);
+        },
+        Failure::Editions);
+}
+
+void ImageController::rememberEditions(core::ImageEditions editions) {
+    if (const auto& mounted = m_state.mounted()) {
+        m_editions = KnownEditions{mounted->mountDir, mounted->imagePath, mounted->index, std::move(editions)};
+    }
+}
+
 void ImageController::verify() {
     if (const auto refusal = verifyRefusal()) {
         m_events.refused(*refusal);

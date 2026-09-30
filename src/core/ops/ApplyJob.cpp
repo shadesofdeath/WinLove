@@ -76,6 +76,18 @@ Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& moun
             result.commitError = r.error();
         } else {
             result.committed = true;
+            const bool editionChanged = std::ranges::any_of(result.report.results, [](const StepResult& r) {
+                return r.step.operation.kind == OpKind::SetEdition && r.outcome.has_value();
+            });
+            if (options.editionTexts && editionChanged) {
+                // Never fatal: the image is the new edition either way, only listed under its old name.
+                const auto& texts = *options.editionTexts;
+                if (auto renamed = setImageText(texts.wim, texts.index, texts.text); !renamed) {
+                    log::warn("apply", L"edition changed, but the image keeps its old name: " + describe(renamed.error()));
+                } else {
+                    result.editionRenamed = true;
+                }
+            }
             if (!options.optimizeWim.empty()) {
                 // Not cancellable and never fatal: the image is saved either way.
                 const TaskContext optimizeTask{CancelToken{}, [&](double fraction, std::wstring_view stage) {

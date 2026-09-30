@@ -210,6 +210,9 @@ bool ImagesPage::showRowMenu(ui::PointF at) {
             item(Str::ImagesMount, [&controller = m_controller, index = *index] { controller.mount(index); });
         }
         item(Str::ImagesExport, onExport);
+        if (const auto& mounted = m_state.mounted(); mounted && mounted->index == *index) {
+            item(Str::ImagesUpgrade, onUpgrade);
+        }
         if (!m_controller.editRefusal()) {
             item(Str::ImagesRename, onRename);
         }

@@ -248,7 +248,12 @@ Karar:
   chunk tabloları + LZX çözücü (`core/image/wim/Lzx`, ~300 satır, yalnız çözme) + BCrypt SHA-1; XPRESS için
   `RtlDecompressBufferEx`. 8 iş parçacığı, akış başına bağımsız. Yazma tarafı wimgapi'de kalır. ESD (LZMS) kapsam
   dışı. Doğruluğun kanıtı imajın kendisi: 94.409 akışın hepsi kayıtlı SHA-1'iyle çıkıyor.
-- **Sürüm yükseltme** (`dism.exe /Set-Edition`, DISM API'sinde karşılığı yok): motor (`core/image/dism/Edition`,
-  ortak `DismExe` çalıştırıcısı), `wlcli edition` ve `tools\lab_edition.ps1` yazıldı; **UI yazılmadı** — mount
-  yönetici ister, kural 6 gerçek imaj kanıtı olmadan UI'a izin vermez. Betik geçince: kuyruk işlemi (en başta
-  çalışan yeni bir faz), commit sonrası ad / FLAGS güncellemesi, İmajlar'da "Sürümü yükselt…".
+- **Sürüm yükseltme** (`dism.exe /Set-Edition`, DISM API'sinde karşılığı yok; ortak `DismExe` çalıştırıcısı): önce
+  yalnız motor + `wlcli edition` + `tools\lab_edition.ps1` yazıldı (kural 6); kullanıcı betiği yönetici olarak
+  çalıştırdı, 14 denetimin hepsi geçti, **sonra** UI yazıldı. Kuyruk işlemi (`OpKind::SetEdition`, tek slot, yeni
+  `Phase::Edition` — her şeyden önce: DISM bekleyen işlemi olmayan imajda sürüm değiştirir ve sonraki adımlar
+  kurulacak sürümün üstünde çalışır). Commit sürüm kimliğini XML'e kendisi yazar ama adı bırakır ("Windows 11 Home"
+  kalır) → `ApplyJob` commit'ten sonra ad / açıklama / FLAGS'i yazar (`textAfterEditionChange`: Microsoft'un
+  varsayılan adı yeni sürümünkiyle değişir, kullanıcının verdiği ad kalır). Risk "orta": özet sayfasının yüksek risk
+  uyarısı kaldırma için yazılmış; tek yönlü olduğunu dialog söylüyor. İmaj zaten o sürümdeyse adım başarı sayılır.
+  Hedef sürümler mount sonrası ön okumaya eklenmedi (her mount'a ~8 sn), istenince okunur ve mount başına saklanır.

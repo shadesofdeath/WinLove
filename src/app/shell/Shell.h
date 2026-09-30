@@ -130,6 +130,8 @@ public:
     // Confirms, then deletes the selected edition — or, with `keepOnly`, every other one.
     void askDeleteSelected(bool keepOnly = false);
     void askRenameSelected();
+    // The mounted edition: reads what it can become, then offers the choice for the queue.
+    void askUpgradeEdition();
     void onImageVerified(const core::WimVerifyReport& report, const std::wstring& file);
     void exportSelected();
     void convertEsd();

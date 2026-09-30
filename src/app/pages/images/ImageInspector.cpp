@@ -63,8 +63,9 @@ ImageInspector::ImageInspector(const Localization& strings, Language language) :
     };
     m_delete = &add<ui::Button>(ui::ButtonKind::Subtle, strings.get(Str::ImagesDeleteIndex));
     m_delete->onInvoke = [this] {
-        if (onDelete) {
-            onDelete();
+        // A mounted edition cannot be deleted; what it can be is upgraded.
+        if (const auto& action = m_mountedHere ? onUpgrade : onDelete) {
+            action();
         }
     };
     auto rename = ui::Button::iconOnly(ui::icons::Icon::Edit, strings.get(Str::ImagesRename));
@@ -86,11 +87,18 @@ void ImageInspector::set(State state) {
     m_primary->setText(m_strings.get(state.mountedHere ? Str::ImagesUnmount : Str::ImagesMount));
     m_primary->setEnabled(state.mountedHere || state.canMount);
     m_primary->setTooltip(std::move(state.mountTooltip));
-    m_delete->setText(state.marked > 1
-                          ? m_strings.format(Str::ImagesDeleteMany, {{L"n", std::to_wstring(state.marked)}})
-                          : m_strings.get(Str::ImagesDeleteIndex));
-    m_delete->setEnabled(state.canDelete);
-    m_delete->setTooltip(std::move(state.deleteTooltip));
+    m_upgradeQueued = std::move(state.upgradeQueued);
+    if (state.mountedHere) {
+        m_delete->setText(m_strings.get(Str::ImagesUpgrade));
+        m_delete->setEnabled(state.canUpgrade);
+        m_delete->setTooltip(std::move(state.upgradeTooltip));
+    } else {
+        m_delete->setText(state.marked > 1
+                              ? m_strings.format(Str::ImagesDeleteMany, {{L"n", std::to_wstring(state.marked)}})
+                              : m_strings.get(Str::ImagesDeleteIndex));
+        m_delete->setEnabled(state.canDelete);
+        m_delete->setTooltip(std::move(state.deleteTooltip));
+    }
     m_rename->setEnabled(state.canRename);
     // Enabled: what the pencil does; disabled: why not.
     m_rename->setTooltip(state.canRename ? m_strings.get(Str::ImagesRename) : std::move(state.renameTooltip));
@@ -185,9 +193,11 @@ void ImageInspector::paint(ui::Canvas& canvas) {
     row(Str::ImagesBootIndex, header.bootIndex ? std::to_wstring(header.bootIndex) : m_strings.get(Str::ImagesNone));
 
     section(Str::ImagesActionsTitle);
-    canvas.drawText(m_marked > 1 ? m_strings.format(Str::ImagesSelectedHint, {{L"n", std::to_wstring(m_marked)}})
-                                 : m_strings.get(Str::ImagesActionsHint),
-                    {x, y - 4, width, kLine}, TypeStyle::Caption, Color::TextTertiary);
+    const bool queued = m_mountedHere && !m_upgradeQueued.empty();
+    canvas.drawText(queued         ? m_upgradeQueued
+                    : m_marked > 1 ? m_strings.format(Str::ImagesSelectedHint, {{L"n", std::to_wstring(m_marked)}})
+                                   : m_strings.get(Str::ImagesActionsHint),
+                    {x, y - 4, width, kLine}, TypeStyle::Caption, queued ? Color::AccentBase : Color::TextTertiary);
 }
 
 } // namespace wl::app

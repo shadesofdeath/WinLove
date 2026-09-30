@@ -45,6 +45,12 @@ bütünlüğü doğrula; birden çok sürümü birlikte seçip dışa aktar / si
 - **Yeniden adlandır (D-035):** dialog (Ad, Açıklama) → `core::setImageText`: WIM XML'inde NAME + DISPLAYNAME ve
   DESCRIPTION + DISPLAYDESCRIPTION (Setup'ın sürüm listesi DISPLAYNAME'i gösterir). Anında biter, dosyada başka
   hiçbir şey değişmez. Bağlı imaj varken ve ESD / bölünmüş imajda kapalı; ISO kaynakta önce çalışma klasörüne kopya.
+- **Sürümü yükselt (D-035):** yalnız **bağlı** sürümde (inspector'ın ikinci düğmesi ve sağ tık). Önce imajın
+  çevrilebileceği sürümler okunur (`core::readEditions`: iki `dism.exe` çağrısı, ~8 sn; mount başına bir kez), sonra
+  dialog: hedef sürüm (Pro önseçili) → **Kuyruğa ekle**. İmaja o an dokunulmaz: `SetEdition` kuyruk işlemidir,
+  Uygula'da **ilk adım** olarak çalışır (`dism /Set-Edition`), commit'ten sonra WIM'deki ad / açıklama / FLAGS yeni
+  sürüme göre yazılır (kullanıcının kendi verdiği ad korunur). Tek yönlüdür. Kuyruktayken inspector "Kuyrukta:
+  Windows 11 Pro sürümüne yükseltme" der; dialog yeniden açılınca "Kuyruktan çıkar" sunar.
 - **Doğrula (D-035):** `core::verifyWim` imajdaki her akışı okur, açar (kendi LZX çözücümüz; XPRESS ntdll) ve
   lookup table'daki SHA-1 ile karşılaştırır. Hiçbir şey yazılmaz; ISO'nun içindeki install.wim yerinde okunur;
   bağlı imaj varken de çalışır; iptal edilebilir. Sonuç sayfada kalıcı InfoBar: "install.wim sağlam — 94.409 akış
@@ -65,8 +71,6 @@ D-017 (DISM ADK'sız), D-018 (kaynak yerinde okunur), D-022 (açılışta yönet
 varsayılanı `%LOCALAPPDATA%\WinLove` (eski `C:\WinLove\mount` açılışta hâlâ kontrol edilir).
 D-033 (sürüm silme), D-035 (çoklu seçim, yeniden adlandırma, doğrulama).
 Ertelenen: tasarımdaki arama kutusu ve mimari filtresi, birleştirme (merge).
-**Hazırlanan, UI'ı yazılmayan:** sürüm yükseltme (Home → Pro, `dism /Set-Edition`). Motor + `wlcli edition` +
-`tools\lab_edition.ps1` hazır; kural 6 gereği UI, betik yönetici olarak gerçek imajda geçince yazılacak.
 
 ## 6. Kabul (kullanıcı testi — 2026-09-28 geçti)
 - [x] ISO aç → 6 sürüm; seçim + inspector.
@@ -84,4 +88,6 @@ Ertelenen: tasarımdaki arama kutusu ve mimari filtresi, birleştirme (merge).
       "Seçili N sürümü sil…" ve "Yalnız seçili N sürümü tut…"; Dışa aktar → seçilenler tek WIM'de.
 - [ ] Yeniden adlandır: kalem ya da `F2` → ad + açıklama → tabloda yeni ad; ISO üretilince Setup'ın sürüm listesinde
       yeni ad görünür.
+- [ ] Sürümü yükselt: Home'u bağla → "Sürümü yükselt…" → Windows 11 Pro → Uygula → tabloda ad "Windows 11 Pro",
+      Sürüm ID "Professional"; ISO + VM: Pro kurulur.
 - [ ] Doğrula: ISO açıkken (kopyalamadan) ve çalışma klasöründe → ilerleme şeridi → yeşil "sağlam" çubuğu.

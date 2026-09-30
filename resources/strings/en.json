@@ -232,7 +232,14 @@
     "deleteMany": "Delete the {n} selected editions…",
     "keepSelected": "Keep only the {n} selected editions…",
     "keepOne": "The image must keep at least one edition",
-    "selectedHint": "{n} editions selected: export or delete them."
+    "selectedHint": "{n} editions selected: export or delete them.",
+    "upgrade": "Upgrade edition…",
+    "upgradeHint": "Turns the mounted image into a higher edition (e.g. Home → Pro); runs with Apply",
+    "upgradeQueued": "Queued: upgrade to {edition}",
+    "upgradeNone": "This edition cannot be turned into a higher one",
+    "upgradeQueuedToast": "{edition} added to the queue",
+    "upgradeRemovedToast": "Edition upgrade removed from the queue",
+    "readingEditions": "{edition}: reading the editions it can become"
   },
   "components": {
     "title": "Components",
@@ -602,7 +609,8 @@
       "commit": "Commit and clean up image (ResetBase)",
       "commitUnmount": "Save and unmount the image",
       "cleanup": "Clean up the component store",
-      "settings": "Registry and services"
+      "settings": "Registry and services",
+      "edition": "Upgrade the edition"
     },
     "emptyTitle": "Queue is empty",
     "emptyDesc": "Nothing to apply.",
@@ -726,7 +734,8 @@
     "item": "Item",
     "added": "added",
     "removed": "removed",
-    "changed": "changed"
+    "changed": "changed",
+    "valueUpgrade": "upgrade"
   },
   "logs": {
     "title": "Logs",
@@ -844,7 +853,12 @@
     "keepManyBody": "The {k} selected editions will stay; the other {n} will be permanently deleted from the image. The image file is rewritten.",
     "renameTitle": "Rename the edition",
     "renameDescription": "Description",
-    "renameHint": "Windows Setup's edition list and DISM show this name."
+    "renameHint": "Windows Setup's edition list and DISM show this name.",
+    "upgradeTitle": "Upgrade the edition",
+    "upgradeBody": "The mounted image ({name}) becomes the edition you pick in the first step of Apply, and its name follows. There is no way back: an image cannot go down to a lower edition.",
+    "upgradeTarget": "Target edition",
+    "upgradeQueue": "Add to the queue",
+    "upgradeRemove": "Remove from the queue"
   },
   "toasts": {
     "imageAdded": "Image added",

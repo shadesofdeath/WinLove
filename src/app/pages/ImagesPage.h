@@ -28,6 +28,7 @@ public:
     std::function<void()> onDelete;
     std::function<void()> onKeepOnly;
     std::function<void()> onRename;
+    std::function<void()> onUpgrade; // the mounted edition: "Sürümü yükselt…"
     // A result that stays on the page until closed (e.g. what "Doğrula" found).
     void showNotice(ui::InfoKind kind, const std::wstring& title, const std::wstring& message);
 

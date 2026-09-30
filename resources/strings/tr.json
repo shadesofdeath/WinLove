@@ -232,7 +232,14 @@
     "deleteMany": "Seçili {n} sürümü sil…",
     "keepSelected": "Yalnız seçili {n} sürümü tut…",
     "keepOne": "İmajda en az bir sürüm kalmalı",
-    "selectedHint": "{n} sürüm seçili: dışa aktar veya sil."
+    "selectedHint": "{n} sürüm seçili: dışa aktar veya sil.",
+    "upgrade": "Sürümü yükselt…",
+    "upgradeHint": "Bağlı imajı daha üst bir sürüme çevirir (ör. Home → Pro); Uygula'da çalışır",
+    "upgradeQueued": "Kuyrukta: {edition} sürümüne yükseltme",
+    "upgradeNone": "Bu sürüm daha üst bir sürüme çevrilemiyor",
+    "upgradeQueuedToast": "{edition} kuyruğa eklendi",
+    "upgradeRemovedToast": "Sürüm yükseltme kuyruktan çıkarıldı",
+    "readingEditions": "{edition}: çevrilebileceği sürümler okunuyor"
   },
   "components": {
     "title": "Bileşenler",
@@ -602,7 +609,8 @@
       "commit": "İmajı kaydet ve temizle (ResetBase)",
       "commitUnmount": "İmajı kaydet ve çöz",
       "cleanup": "Bileşen deposunu temizle",
-      "settings": "Kayıt defteri ve servisler"
+      "settings": "Kayıt defteri ve servisler",
+      "edition": "Sürümü yükselt"
     },
     "emptyTitle": "Kuyruk boş",
     "emptyDesc": "Uygulanacak değişiklik yok.",
@@ -726,7 +734,8 @@
     "item": "Öğe",
     "added": "eklendi",
     "removed": "kaldırıldı",
-    "changed": "değişti"
+    "changed": "değişti",
+    "valueUpgrade": "yükselt"
   },
   "logs": {
     "title": "Loglar",
@@ -844,7 +853,12 @@
     "keepManyBody": "Seçili {k} sürüm kalacak; diğer {n} sürüm imajdan kalıcı olarak silinecek. İmaj dosyası yeniden yazılır.",
     "renameTitle": "Sürümü yeniden adlandır",
     "renameDescription": "Açıklama",
-    "renameHint": "Windows Kurulumu'nun sürüm listesinde ve DISM'de bu ad görünür."
+    "renameHint": "Windows Kurulumu'nun sürüm listesinde ve DISM'de bu ad görünür.",
+    "upgradeTitle": "Sürümü yükselt",
+    "upgradeBody": "Bağlı imaj ({name}) seçtiğin sürüme Uygula'nın ilk adımında çevrilir; adı da buna göre güncellenir. Geri dönüşü yoktur: imaj daha alt bir sürüme indirilemez.",
+    "upgradeTarget": "Hedef sürüm",
+    "upgradeQueue": "Kuyruğa ekle",
+    "upgradeRemove": "Kuyruktan çıkar"
   },
   "toasts": {
     "imageAdded": "İmaj eklendi",

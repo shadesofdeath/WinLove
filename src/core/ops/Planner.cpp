@@ -7,6 +7,7 @@ namespace wl::core::ops {
 
 Phase phaseOf(OpKind kind) noexcept {
     switch (kind) {
+    case OpKind::SetEdition: return Phase::Edition;
     case OpKind::RemovePackage:
     case OpKind::RemoveCapability:
     case OpKind::RemoveComponent:
@@ -43,6 +44,7 @@ double estimateSeconds(OpKind kind) noexcept {
     case OpKind::SetPostSetup: return 5.0; // scripts; copy payloads add their own time
     case OpKind::RemoveComponent: return 25.0; // hive edit + package removal + a few thousand files
     case OpKind::CleanupImage: return 30.0;    // StartComponentCleanup /ResetBase with nothing new to clean
+    case OpKind::SetEdition: return 35.0;      // lab: Home → Pro 28 s
     }
     return 5.0;
 }

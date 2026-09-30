@@ -99,6 +99,19 @@ std::wstring editionDisplayName(std::wstring_view editionId, int build) {
     return std::format(L"{} {}", windows, editionId);
 }
 
+ImageText textAfterEditionChange(const ImageInfo& image, std::wstring_view newEditionId) {
+    const std::wstring before = editionDisplayName(image.editionId, image.build);
+    const std::wstring after = editionDisplayName(newEditionId, image.build);
+    // What Setup shows is the display name; images without one have only the name.
+    const std::wstring& name = image.displayName.empty() ? image.name : image.displayName;
+    const std::wstring& description = image.displayDescription.empty() ? image.description : image.displayDescription;
+    ImageText text;
+    text.name = name == before || name.empty() ? after : name;
+    text.description = description == before || description.empty() ? after : description;
+    text.flags = std::wstring(newEditionId);
+    return text;
+}
+
 Result<ImageEditions> readEditions(DismSession& session) {
     const auto current = runDismExe(session, L"/Get-CurrentEdition");
     if (!current) {

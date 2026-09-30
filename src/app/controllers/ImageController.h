@@ -7,6 +7,7 @@
 #include "app/generated/StringKeys.g.h"
 #include "app/state/AppState.h"
 #include "base/Result.h"
+#include "core/image/dism/Edition.h"
 #include "core/image/wim/WimVerify.h"
 
 #include <functional>
@@ -22,7 +23,7 @@ namespace wl::app {
 
 class ImageController {
 public:
-    enum class Failure : std::uint8_t { Mount, Unmount, Export, Delete, Prepare, Cleanup, Rename, Verify };
+    enum class Failure : std::uint8_t { Mount, Unmount, Export, Delete, Prepare, Cleanup, Rename, Verify, Editions };
 
     struct Events {
         std::function<void(std::function<void()>)> postToUi;
@@ -61,6 +62,12 @@ public:
     // Name and description of an edition, as DISM and Setup's edition list show them
     // (core::setImageText). An ISO is copied to the work folder first.
     void renameEdition(int index, std::wstring name, std::wstring description);
+    // The edition of the mounted image and what it can be upgraded to (core::readEditions: two
+    // dism.exe runs, several seconds — read once per mount, then answered at once). `done` runs on
+    // the UI thread; a failure goes through Events::failed instead.
+    void readEditions(std::function<void(const core::ImageEditions&)> done);
+    // Takes `editions` as what readEditions found for the image mounted now (tests, render demos).
+    void rememberEditions(core::ImageEditions editions);
     // Reads every stream of the install image and checks its SHA-1 (core::verifyWim); nothing is
     // written, an ISO is read in place. The result arrives through Events::verified.
     void verify();
@@ -91,6 +98,14 @@ private:
     AppState& m_state;
     Events m_events;
     std::optional<int> m_failedIndex;
+    // readEditions' answer for the image mounted then (the queue does not change it; Uygula unmounts).
+    struct KnownEditions {
+        std::filesystem::path mountDir;
+        std::filesystem::path imagePath;
+        int index = 0;
+        core::ImageEditions editions;
+    };
+    std::optional<KnownEditions> m_editions;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
 
