@@ -115,7 +115,7 @@ try {
     if ($news) {
         $out = Run @('appx-remove', $mount, $news, '--verbose')
         Check 'DISM removes an ordinary app' ($script:lastExit -eq 0 -and ($out -match 'removed by DISM'))
-        Check 'after DISM nothing the recipe names is left' ($out -match 'after: files gone, staged none')
+        Check 'after DISM nothing the recipe names is left' ([bool]($out -match 'after: files gone, staged none'))
         Check 'DISM marks it deprovisioned' (InSoftware "$store\Deprovisioned\$(FamilyOf $news)")
     } else { Say 'SKIP  no Microsoft.BingNews in this image' }
 
@@ -126,7 +126,7 @@ try {
         Check 'the app is staged before' (InSoftware "$store\Staged\$family")
         $out = Run @('appx-remove', $mount, $weather, '--native', '--verbose')
         Check 'native removal of an ordinary app' ($script:lastExit -eq 0 -and ($out -match 'removed natively'))
-        Check 'its files and staged packages are gone' ($out -match 'after: files gone, staged none')
+        Check 'its files and staged packages are gone' ([bool]($out -match 'after: files gone, staged none'))
         Check 'Applications key is gone' (-not (InSoftware "$store\Applications\$weather"))
         Check 'Staged key is gone' (-not (InSoftware "$store\Staged\$family"))
         Check 'Deprovisioned key is there' (InSoftware "$store\Deprovisioned\$family")
