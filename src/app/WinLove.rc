@@ -15,6 +15,7 @@ IDR_STRINGS_EN RCDATA "../../resources/strings/en.json"
 IDR_CATALOG_APPX RCDATA "../../resources/catalog/appx.json"
 IDR_CATALOG_SERVICES RCDATA "../../resources/catalog/services.json"
 IDR_CATALOG_TWEAKS RCDATA "../../resources/catalog/tweaks.json"
+IDR_CATALOG_SETTINGS RCDATA "../../resources/catalog/settings.json"
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION 0,1,0,0

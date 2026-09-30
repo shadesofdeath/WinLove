@@ -622,6 +622,10 @@ enum class Str : std::uint16_t {
     TooltipsTheme,
     TweaksApplyRecommended,
     TweaksDesc,
+    TweaksNoMountBody,
+    TweaksNoMountTitle,
+    TweaksRecommendedApplied,
+    TweaksRecommendedNone,
     TweaksTitle,
     UnattendedAutoLogon,
     UnattendedAutoLogonHint,
@@ -674,7 +678,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 664;
+inline constexpr std::size_t kStrCount = 668;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -1291,6 +1295,10 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "tooltips.theme",
     "tweaks.applyRecommended",
     "tweaks.desc",
+    "tweaks.noMountBody",
+    "tweaks.noMountTitle",
+    "tweaks.recommendedApplied",
+    "tweaks.recommendedNone",
     "tweaks.title",
     "unattended.autoLogon",
     "unattended.autoLogonHint",

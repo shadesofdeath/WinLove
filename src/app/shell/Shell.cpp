@@ -15,6 +15,7 @@
 #include "app/pages/IsoPage.h"
 #include "app/pages/LogsPage.h"
 #include "app/pages/SourcePage.h"
+#include "app/pages/TweaksPage.h"
 #include "app/pages/UpdatesPage.h"
 #include "app/pages/images/ImageInspector.h"
 #include "base/Log.h"
@@ -104,6 +105,13 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
             tweaks = TweakCatalog::parse(R"({"format":"winlove.catalog.tweaks","categories":[],"tweaks":[]})");
         }
         m_registry = std::make_unique<RegistryController>(m_state, std::move(*tweaks));
+    }
+    {
+        auto settings = ImageSettingsCatalog::parse(embeddedSettingsCatalog());
+        if (!settings) {
+            settings = ImageSettingsCatalog::parse(R"({"format":"winlove.catalog.settings"})");
+        }
+        m_imageSettings = std::make_unique<ImageSettingsController>(m_state, std::move(*settings));
     }
     m_serviceCtl = std::make_unique<ServiceController>(m_state, embeddedServiceCatalog(), m_services.postToUi);
     m_preload = std::make_unique<PreloadController>(m_state, m_services.postToUi);
@@ -522,6 +530,7 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::Drivers, static_cast<int>(changes.count(core::ops::OpKind::AddDriver)));
     m_nav->setBadge(PageId::Services, static_cast<int>(changes.count(core::ops::OpKind::SetServiceStart)));
     m_nav->setBadge(PageId::Registry, m_registry->checkedCount());
+    m_nav->setBadge(PageId::Tweaks, m_imageSettings->changedCount());
     if (m_actionReset) {
         m_actionReset->setEnabled(featureOps > 0);
     }
@@ -691,6 +700,21 @@ void Shell::showPage(PageId page) {
             m_pageBody = &m_pageView->setBody<RegistryPage>(
                 m_state, *m_registry, m_strings, m_language,
                 RegistryPage::Intents{pick, [this] { showPage(PageId::Images); }});
+        } else if (page == PageId::Tweaks) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TweaksApplyRecommended)).onInvoke = [this] {
+                if (!m_state.mounted()) {
+                    showToast(ui::InfoKind::Warning, m_strings.get(Str::TweaksNoMountTitle),
+                              m_strings.get(Str::TweaksNoMountBody));
+                    return;
+                }
+                const int changed = m_imageSettings->applyRecommended();
+                showToast(ui::InfoKind::Success,
+                          changed > 0 ? m_strings.format(Str::TweaksRecommendedApplied, {{L"n", std::to_wstring(changed)}})
+                                      : m_strings.get(Str::TweaksRecommendedNone),
+                          L"");
+            };
+            m_pageBody = &m_pageView->setBody<TweaksPage>(m_state, *m_imageSettings, m_strings, m_language,
+                                                          [this] { showPage(PageId::Images); });
         } else if (page == PageId::Services) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ServicesReset)).onInvoke = [this] {
                 m_serviceCtl->resetChanges();

@@ -3,13 +3,18 @@
 > Her oturumun sonunda güncellenir. En üstte güncel durum; geçmiş en altta kısa satırlar.
 
 ## Güncel
-- **Faz:** 3 — sayfalar. P01–P04 ✅. P05 Uygula, P06 ISO, P08 Güncellemeler, P09 Sürücüler, P10 Servisler, P11 Kayıt Defteri: 🟨 geliştirme bitti,
-  kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v1 (yalnız AppX; CBS paket kaldırma kararı bekliyor).
+- **Faz:** 3 — sayfalar. P01–P04 ✅. P05 Uygula, P06 ISO, P08 Güncellemeler, P09 Sürücüler, P10 Servisler, P11 Kayıt Defteri,
+  P12 Ayarlar / Tweaks: 🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v1 (yalnız AppX; CBS paket
+  kaldırma kararı bekliyor).
 - **Çalışma şekli:** kullanıcı "her seferinde durma" dedi — sayfa bitince build + test + `-Dist` + yerel commit,
   sonra doğrudan bir sonraki sayfa. Kullanıcı `dist\WinLove.exe`'yi paralel test ediyor.
-- **Bir sonraki somut adım:** P12 Ayarlar / Tweaks (tasarım 10) — sekmeli ayar formu (dropdown/toggle/radio), aynı
-  RegistryWrite + firstLogon altyapısı; seçenek başına yazım listesi. Sonra P13 Katılımsız, P14 Kurulum Sonrası
+- **Bir sonraki somut adım:** P13 Katılımsız Kurulum (tasarım 11) — adım göstergesi + form / canlı autounattend.xml
+  önizlemesi (pugixml vendored). Spec yok: önce `docs/pages/13-unattended.md`. Sonra P14 Kurulum Sonrası
   (SetupComplete / ilk oturum betikleri — D-026 klasörünü genişletir).
+- **P12 Ayarlar / Tweaks (2026-09-30):** `resources/catalog/settings.json` (5 sekme, 13 bölüm, 39 ayar; toggle /
+  dropdown / radio), `ImageSettingsController` — seçili seçenek **kuyruktan türetilir** (ayrı durum yok), bu yüzden
+  P11 tweak'leri, Servisler ve presetlerle kendiliğinden tutarlı. Form kaydırılabilir. Sınır: imajdaki mevcut değer
+  okunmuyor (form Windows varsayılanını gösterir). Kayıt değerleri bilgiye dayalı, gerçek kurulumda doğrulanmadı.
 - **Yönetici gerektiren, terminalden doğrulanamayanlar:** P04 özellik okuma, P05 uygula, P07 AppX, P08 paket,
   P09 sürücü ekleme, P10 servis okuma/yazma, P11 kayıt defteri + ilk oturum dosyaları — gerçek imajda kullanıcı uygulama içinden test ediyor (terminal yönetici değil).
 - **Ön okuma (D-027, 2026-09-30):** mount / geri yükleme biter bitmez `PreloadController` Özellikler → Bileşenler →
@@ -21,7 +26,7 @@
   (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
   ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
   (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
-- **Build:** `./build.ps1 -Dist` yeşil, 106 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Build:** `./build.ps1 -Dist` yeşil, 113 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi; güncellemelerde sürükle-sırala; imajdaki mevcut sürücüleri
@@ -39,6 +44,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 ## Geçmiş
 - 2026-09-30 — Ön okuma: mount sonrası ikinci ilerleme ile sayfa listeleri önceden okunuyor (D-027).
 - 2026-09-30 — İçe aktarılan .reg dosyaları kurulum sonrası da uygulanıyor; .reg ayrıştırma / kuyruk düzeltmeleri.
+- 2026-09-30 — P12 Ayarlar / Tweaks geliştirildi (test bekliyor).
 - 2026-09-28 — Baştan sona inceleme (4 alan, paralel): ~35 hata düzeltildi. Öne çıkanlar: junction üzerinden ana
   makine ACL'si değişebilmesi (FileLocks), commit edilmeyen unmount'un başarılı raporlanması, DISM oturum yenileme,
   UDF çıkarmada yol dışına yazma + sınır dışı okuma, tıklamada yok edilen widget (use-after-free), Enter ile devre

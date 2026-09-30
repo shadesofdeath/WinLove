@@ -2,6 +2,7 @@
 add_library(wl_app STATIC
     App.cpp
     catalog/AppxCatalog.cpp
+    catalog/ImageSettingsCatalog.cpp
     catalog/TweakCatalog.cpp
     controllers/ApplyController.cpp
     controllers/ComponentController.cpp
@@ -9,6 +10,7 @@ add_library(wl_app STATIC
     controllers/ServiceController.cpp
     controllers/RegistryController.cpp
     controllers/ImageController.cpp
+    controllers/ImageSettingsController.cpp
     controllers/IsoController.cpp
     controllers/PreloadController.cpp
     Format.cpp
@@ -32,6 +34,7 @@ add_library(wl_app STATIC
     pages/images/OperationStrip.cpp
     pages/PageInfo.cpp
     pages/SourcePage.cpp
+    pages/TweaksPage.cpp
     pages/UpdatesPage.cpp
     pages/source/RecentList.cpp
     shell/NavRail.cpp
@@ -58,6 +61,9 @@ set(WL_EMBEDDED_RESOURCES
     ${PROJECT_SOURCE_DIR}/resources/fonts/IBMPlexSans-SemiBold.ttf
     ${PROJECT_SOURCE_DIR}/resources/fonts/JetBrainsMono-Regular.ttf
     ${PROJECT_SOURCE_DIR}/resources/catalog/appx.json
+    ${PROJECT_SOURCE_DIR}/resources/catalog/services.json
+    ${PROJECT_SOURCE_DIR}/resources/catalog/tweaks.json
+    ${PROJECT_SOURCE_DIR}/resources/catalog/settings.json
     ${PROJECT_SOURCE_DIR}/resources/strings/tr.json
     ${PROJECT_SOURCE_DIR}/resources/strings/en.json)
 set_source_files_properties(WinLove.rc PROPERTIES OBJECT_DEPENDS "${WL_EMBEDDED_RESOURCES}")

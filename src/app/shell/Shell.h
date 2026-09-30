@@ -12,6 +12,7 @@
 #include "app/controllers/FeatureController.h"
 #include "app/controllers/IsoController.h"
 #include "app/controllers/ImageController.h"
+#include "app/controllers/ImageSettingsController.h"
 #include "app/controllers/PreloadController.h"
 #include "app/pages/PageInfo.h"
 #include "app/shell/NavRail.h"
@@ -77,6 +78,7 @@ public:
     ComponentController& components() { return *m_components; }
     ServiceController& services() { return *m_serviceCtl; }
     RegistryController& registry() { return *m_registry; }
+    ImageSettingsController& imageSettings() { return *m_imageSettings; }
     // "Uygula": straight to the run, or through the 13b confirmation when something is irreversible.
     void requestApply();
     [[nodiscard]] PageId currentPage() const noexcept { return m_page; }
@@ -163,6 +165,7 @@ private:
     std::unique_ptr<ComponentController> m_components;
     std::unique_ptr<ServiceController> m_serviceCtl;
     std::unique_ptr<RegistryController> m_registry;
+    std::unique_ptr<ImageSettingsController> m_imageSettings; // P12 form
     std::unique_ptr<PreloadController> m_preload; // reads the page lists right after a mount
     ui::Widget* m_sideInspector = nullptr; // pages other than Images (Components)
     ui::Button* m_actionExpand = nullptr;  // Components: "Tümünü genişlet / daralt"
