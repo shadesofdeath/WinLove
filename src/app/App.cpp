@@ -4,6 +4,7 @@
 
 #include "core/image/DriverInf.h"
 
+#include "app/pages/AppsPage.h"
 #include "app/pages/DriversPage.h"
 #include "app/pages/IsoPage.h"
 #include "app/pages/UpdatesPage.h"
@@ -184,6 +185,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoFiles = a == L"--demo-files" ? std::wstring() : std::wstring(value(L"--demo-files="));
         } else if (a == L"--demo-image-drivers") {
             options.demoImageDrivers = true;
+        } else if (a == L"--demo-apps" || startsWith(a, L"--demo-apps=")) {
+            options.demoApps = a == L"--demo-apps" ? std::wstring() : std::wstring(value(L"--demo-apps="));
         } else if (a == L"--demo-hosts") {
             options.demoHosts = true;
         } else if (a == L"--demo-services") {
@@ -724,6 +727,39 @@ int App::renderOffscreen() {
         m_shell->showPage(PageId::Files);
         if (*m_options.demoFiles == L"where") {
             m_shell->addFilesTo({repo / L"docs"});
+        }
+    }
+    if (m_options.demoApps) {
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,
+                                         L"Windows 11 Pro"});
+        // The package winget downloaded into the lab (build\lab\appx), read as the page would.
+        const auto lab = std::filesystem::current_path() / L"build" / L"lab" / L"appx";
+        std::error_code ec;
+        for (auto it = std::filesystem::directory_iterator(lab, ec); !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+            if (core::isAppxFile(it->path())) {
+                if (auto install = core::planAppxInstall(it->path(), L"x64")) {
+                    m_state->queue(AppsController::operationFor(*install));
+                }
+            }
+        }
+        core::AppxInstall missing;
+        missing.package = L"C:\\Apps\\Contoso.Notes_2.4.0.0_x64.msix";
+        missing.name = L"Contoso.Notes";
+        missing.displayName = L"Contoso Notes";
+        missing.publisher = L"Contoso Ltd.";
+        missing.version = L"2.4.0.0";
+        missing.architectures = {L"x64"};
+        missing.missing = {L"Microsoft.VCLibs.140.00.UWPDesktop"};
+        m_state->queue(AppsController::operationFor(missing));
+        auto& apps = m_shell->appsForDemo();
+        apps.setBrowser(1);
+        apps.mergeAssociations({{L".pdf", L"SumatraPDF", L"SumatraPDF"}, {L".mp4", L"VLC.mp4", L"VLC media player"},
+                                {L"mailto", L"Thunderbird.Url.mailto", L"Thunderbird"}});
+        m_shell->showPage(PageId::Apps);
+        if (*m_options.demoApps == L"defaults") {
+            if (auto* page = m_shell->appsPageForDemo()) {
+                page->showDefaultsTab();
+            }
         }
     }
     if (m_options.demoImageDrivers) {

@@ -15,6 +15,7 @@
 #include "app/controllers/PostSetupController.h"
 #include "app/controllers/ImageController.h"
 #include "app/controllers/ImageSettingsController.h"
+#include "app/controllers/AppsController.h"
 #include "app/controllers/FilesController.h"
 #include "app/controllers/HostsController.h"
 #include "app/controllers/ImageDriverController.h"
@@ -56,6 +57,8 @@ class IsoPage;
 class ComponentsPage;
 class UpdatesPage;
 class DriversPage;
+class AppsPage;
+class FilesPage;
 class ServicesPage;
 class RegistryPage;
 class UnattendedPage;
@@ -102,6 +105,8 @@ public:
     RegistryController& registry() { return *m_registry; }
     TaskController& tasks() { return *m_tasks; }
     FilesController& filesForDemo() { return *m_files; }
+    AppsController& appsForDemo() { return *m_apps; }
+    AppsPage* appsPageForDemo() const { return appsPage(); }
     HostsController& hosts() { return *m_hosts; }
     ImageSettingsController& imageSettings() { return *m_imageSettings; }
     UnattendController& unattend() { return *m_unattend; }
@@ -206,6 +211,8 @@ private:
     void importHostsFile();  // D-049: "Hosts dosyası içe aktar…"
 
     [[nodiscard]] class FilesPage* filesPage() const;
+    [[nodiscard]] class AppsPage* appsPage() const;
+    void pickAppPackages();
     void updateApplyChrome();                         // CTA label, Apply page mode/header
     void savePreset(const core::ops::ChangeSet& changes);
     void saveApplyLog();
@@ -238,6 +245,7 @@ private:
     std::unique_ptr<HostsController> m_hosts;  // D-049
     std::unique_ptr<FilesController> m_files;  // D-051
     std::unique_ptr<ImageDriverController> m_imageDriverCtl; // D-052
+    std::unique_ptr<AppsController> m_apps; // D-050 / D-054
     std::unique_ptr<ComponentController> m_components;
     std::unique_ptr<ServiceController> m_serviceCtl;
     std::unique_ptr<RegistryController> m_registry;

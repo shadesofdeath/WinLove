@@ -45,6 +45,13 @@ struct AppxInstall {
     std::vector<std::filesystem::path> dependencies;
     std::filesystem::path license; // empty: /SkipLicense
     std::vector<std::wstring> missing; // dependency names nothing next to it provides (shown, not fatal)
+    // What the queue shows without opening the package again.
+    std::wstring name;        // identity
+    std::wstring displayName;
+    std::wstring publisher;   // display name when the manifest has one
+    std::wstring version;
+    std::vector<std::wstring> architectures;
+    bool framework = false;
 
     [[nodiscard]] bool operator==(const AppxInstall&) const = default;
 };

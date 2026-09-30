@@ -15,6 +15,7 @@ enum class PageId : std::uint8_t {
     Source,
     Images,
     Components,
+    Apps, // D-050 / D-054
     Features,
     Updates,
     Drivers,

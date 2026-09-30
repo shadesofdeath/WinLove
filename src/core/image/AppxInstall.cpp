@@ -287,6 +287,12 @@ Result<AppxInstall> planAppxInstall(const std::filesystem::path& package, std::w
     }
     AppxInstall install;
     install.package = package;
+    install.name = info->name;
+    install.displayName = info->displayName;
+    install.publisher = info->publisherDisplay.empty() ? info->publisher : info->publisherDisplay;
+    install.version = info->version;
+    install.architectures = info->architectures;
+    install.framework = info->framework;
     const std::wstring arch = lower(imageArchitecture.empty() ? L"x64" : imageArchitecture);
     // Candidates: packages next to it and in a "Dependencies" folder (both levels).
     std::vector<std::filesystem::path> candidates;
@@ -347,6 +353,15 @@ std::string appxInstallToJson(const AppxInstall& install) {
     for (const auto& m : install.missing) {
         j["missing"].push_back(utf8::fromWide(m));
     }
+    j["name"] = utf8::fromWide(install.name);
+    j["displayName"] = utf8::fromWide(install.displayName);
+    j["publisher"] = utf8::fromWide(install.publisher);
+    j["version"] = utf8::fromWide(install.version);
+    j["architectures"] = nlohmann::json::array();
+    for (const auto& a : install.architectures) {
+        j["architectures"].push_back(utf8::fromWide(a));
+    }
+    j["framework"] = install.framework;
     return j.dump();
 }
 
@@ -368,6 +383,16 @@ Result<AppxInstall> appxInstallFromJson(const std::filesystem::path& package, st
             install.missing.push_back(utf8::toWide(m.get<std::string>()));
         }
     }
+    install.name = utf8::toWide(j.value("name", std::string{}));
+    install.displayName = utf8::toWide(j.value("displayName", std::string{}));
+    install.publisher = utf8::toWide(j.value("publisher", std::string{}));
+    install.version = utf8::toWide(j.value("version", std::string{}));
+    for (const auto& a : j.value("architectures", nlohmann::json::array())) {
+        if (a.is_string()) {
+            install.architectures.push_back(utf8::toWide(a.get<std::string>()));
+        }
+    }
+    install.framework = j.value("framework", false);
     return install;
 }
 
