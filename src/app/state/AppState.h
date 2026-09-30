@@ -157,6 +157,9 @@ public:
         std::set<std::wstring> held;
         std::map<std::wstring, std::wstring> texts; // registry target → string value (text settings)
         Error error;
+        // D-048 / D-049: tasks the image's tasks.cmd switches off, and its hosts sections (id → entries).
+        std::vector<std::wstring> disabledTasks;
+        std::map<std::wstring, std::wstring> hostsSections;
     };
     [[nodiscard]] const std::optional<ImageValues>& imageValues() const noexcept { return m_imageValues; }
     void setImageValues(std::optional<ImageValues> values);

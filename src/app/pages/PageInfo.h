@@ -20,7 +20,9 @@ enum class PageId : std::uint8_t {
     Drivers,
     Registry,
     Services,
+    Tasks, // D-048
     Tweaks,
+    Hosts, // D-049
     Unattended,
     PostSetup,
     Apply,

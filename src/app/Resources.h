@@ -24,6 +24,9 @@ namespace wl::app {
 [[nodiscard]] std::string_view embeddedSettingsCatalog();
 // resources/catalog/components.json (P07 system components and cleanup).
 [[nodiscard]] std::string_view embeddedComponentsCatalog();
+// resources/catalog/tasks.json (scheduled tasks, D-048) and hosts.json (block lists, D-049).
+[[nodiscard]] std::string_view embeddedTaskCatalog();
+[[nodiscard]] std::string_view embeddedHostsCatalog();
 
 [[nodiscard]] HICON appIcon();
 

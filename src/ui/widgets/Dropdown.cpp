@@ -1,9 +1,11 @@
 #include "ui/widgets/Dropdown.h"
 
+#include "ui/anim/Tween.h"
 #include "ui/widget/Host.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cwctype>
 
 namespace wl::ui {
 
@@ -138,7 +140,13 @@ void MenuPopup::layout() {
         }
     }
     width = std::ceil(std::min(width, kMenuMaxWidth));
-    const float height = 2 * kMenuPadding + kItem * static_cast<float>(m_items.size());
+    // As many items as fit above or below the field (whichever has more room), at least 4.
+    const float below = window.bottom() - 4 - (m_anchor.bottom() + kMenuOffset);
+    const float above = m_anchor.y - kMenuOffset - (window.y + 4);
+    const int fit = std::max(4, static_cast<int>((std::max(below, above) - 2 * kMenuPadding) / kItem));
+    m_visible = std::min(static_cast<int>(m_items.size()), fit);
+    reveal(std::max(m_hover, 0));
+    const float height = 2 * kMenuPadding + kItem * static_cast<float>(m_visible);
     float x = std::min(m_anchor.x, window.right() - width - 4);
     float y = m_anchor.bottom() + kMenuOffset;
     if (y + height > window.bottom() - 4) {
@@ -155,8 +163,9 @@ int MenuPopup::itemAt(PointF p) const {
     if (!m_panel.contains(p)) {
         return -1;
     }
-    const int index = static_cast<int>((p.y - m_panel.y - kMenuPadding) / kItem);
-    return index >= 0 && index < static_cast<int>(m_items.size()) ? index : -1;
+    const int row = static_cast<int>((p.y - m_panel.y - kMenuPadding) / kItem);
+    const int index = m_first + row;
+    return row >= 0 && row < m_visible && index < static_cast<int>(m_items.size()) ? index : -1;
 }
 
 void MenuPopup::onPointerMove(PointF p) {
@@ -174,6 +183,51 @@ void MenuPopup::onPointerDown(PointF p) {
     } else if (!m_panel.contains(p)) {
         close();
     }
+}
+
+void MenuPopup::reveal(int index) {
+    const int count = static_cast<int>(m_items.size());
+    if (m_visible <= 0) {
+        return;
+    }
+    if (index < m_first) {
+        m_first = index;
+    } else if (index >= m_first + m_visible) {
+        m_first = index - m_visible + 1;
+    }
+    m_first = std::clamp(m_first, 0, std::max(count - m_visible, 0));
+}
+
+bool MenuPopup::onWheel(PointF /*p*/, float lines) {
+    const int count = static_cast<int>(m_items.size());
+    m_first = std::clamp(m_first - static_cast<int>(std::round(lines * 3)), 0, std::max(count - m_visible, 0));
+    invalidate();
+    return true;
+}
+
+bool MenuPopup::onChar(wchar_t ch) {
+    if (ch < 0x20) {
+        return true;
+    }
+    const double now = nowMs();
+    if (now - m_typedAt > 900) {
+        m_typed.clear();
+    }
+    m_typedAt = now;
+    m_typed.push_back(static_cast<wchar_t>(std::towlower(ch)));
+    const int count = static_cast<int>(m_items.size());
+    for (int i = 0; i < count; ++i) {
+        const auto& item = m_items[static_cast<std::size_t>(i)];
+        if (item.size() >= m_typed.size() &&
+            std::equal(m_typed.begin(), m_typed.end(), item.begin(),
+                       [](wchar_t a, wchar_t b) { return a == static_cast<wchar_t>(std::towlower(b)); })) {
+            m_hover = i;
+            reveal(i);
+            invalidate();
+            break;
+        }
+    }
+    return true;
 }
 
 bool MenuPopup::onContextMenu(PointF /*p*/) {
@@ -210,10 +264,12 @@ bool MenuPopup::onKeyDown(const KeyEvent& key) {
     switch (key.virtualKey) {
     case VK_ESCAPE:
     case VK_TAB: close(); return true;
-    case VK_DOWN: m_hover = std::min(m_hover + 1, count - 1); invalidate(); return true;
-    case VK_UP: m_hover = std::max(m_hover - 1, 0); invalidate(); return true;
-    case VK_HOME: m_hover = 0; invalidate(); return true;
-    case VK_END: m_hover = count - 1; invalidate(); return true;
+    case VK_DOWN: m_hover = std::min(m_hover + 1, count - 1); reveal(m_hover); invalidate(); return true;
+    case VK_UP: m_hover = std::max(m_hover - 1, 0); reveal(m_hover); invalidate(); return true;
+    case VK_NEXT: m_hover = std::min(m_hover + std::max(m_visible - 1, 1), count - 1); reveal(m_hover); invalidate(); return true;
+    case VK_PRIOR: m_hover = std::max(m_hover - std::max(m_visible - 1, 1), 0); reveal(m_hover); invalidate(); return true;
+    case VK_HOME: m_hover = 0; reveal(m_hover); invalidate(); return true;
+    case VK_END: m_hover = count - 1; reveal(m_hover); invalidate(); return true;
     case VK_RETURN:
     case VK_SPACE:
         if (m_hover >= 0) {
@@ -228,9 +284,11 @@ void MenuPopup::paint(Canvas& canvas) {
     canvas.dropShadow(m_panel, tokens::radius::r3, tokens::elevation::menu);
     canvas.fillRoundRect(m_panel, tokens::radius::r3, Color::BgOverlay);
     canvas.strokeRoundRect(m_panel, tokens::radius::r3, Color::LineStrong);
-    for (int i = 0; i < static_cast<int>(m_items.size()); ++i) {
-        const RectF row{m_panel.x + kMenuPadding, m_panel.y + kMenuPadding + kItem * static_cast<float>(i),
-                        m_panel.width - 2 * kMenuPadding, kItem};
+    const int count = static_cast<int>(m_items.size());
+    const bool scrolls = m_visible < count;
+    for (int i = m_first; i < std::min(m_first + m_visible, count); ++i) {
+        const RectF row{m_panel.x + kMenuPadding, m_panel.y + kMenuPadding + kItem * static_cast<float>(i - m_first),
+                        m_panel.width - 2 * kMenuPadding - (scrolls ? 4.0f : 0.0f), kItem};
         if (i == m_hover) {
             canvas.fillRoundRect(row, 3.0f, Color::BgRaised);
         }
@@ -240,6 +298,13 @@ void MenuPopup::paint(Canvas& canvas) {
         const float textX = row.x + 4 + tokens::size::icon + 8;
         canvas.drawText(m_items[static_cast<std::size_t>(i)], {textX, row.y, row.right() - textX - 4, kItem},
                         TypeStyle::Body, Color::TextPrimary);
+    }
+    if (scrolls) {
+        const float track = m_panel.height - 2 * kMenuPadding;
+        const float thumb = std::max(track * static_cast<float>(m_visible) / static_cast<float>(count), 16.0f);
+        const float y = m_panel.y + kMenuPadding +
+                        (track - thumb) * static_cast<float>(m_first) / static_cast<float>(std::max(count - m_visible, 1));
+        canvas.fillRoundRect({m_panel.right() - kMenuPadding - 2, y, 2, thumb}, 1.0f, Color::LineStrong);
     }
 }
 

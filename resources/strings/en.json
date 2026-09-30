@@ -22,7 +22,9 @@
     "settings": "App settings",
     "about": "About",
     "collapse": "Collapse",
-    "expand": "Expand"
+    "expand": "Expand",
+    "tasks": "Tasks",
+    "hosts": "Hosts"
   },
   "title": {
     "cmdk": "Search commands, pages or components",
@@ -1009,5 +1011,51 @@
     "freeDiskSpace": "Not enough free disk space.",
     "notSupported": "This operation is not supported for this image.",
     "unknown": "Details are in the log."
+  },
+  "tasks": {
+    "title": "Scheduled Tasks",
+    "desc": "Ticked tasks are switched off after setup (SetupComplete, schtasks). A task the edition lacks is only logged.",
+    "search": "Search tasks",
+    "task": "Task",
+    "custom": "Custom",
+    "recommended": "recommended",
+    "stateOn": "on",
+    "stateOff": "off",
+    "willDisable": "will be switched off",
+    "willEnable": "will be switched on",
+    "inImage": "off in the image",
+    "summary": "{n} / {total} tasks off",
+    "detailHint": "A task switched off does not run after setup; Windows Update may switch some on again.",
+    "noMountTitle": "No image mounted",
+    "noMountBody": "Mount an edition on the Images page to pick tasks.",
+    "applyRecommended": "Switch off recommended",
+    "recommendedDone": "{n} recommended tasks will be switched off",
+    "recommendedNone": "Every recommended task is off already",
+    "add": "Add task…",
+    "addTitle": "Add a task",
+    "addBody": "Type the full path as in Task Scheduler (e.g. \\Microsoft\\Windows\\Autochk\\Proxy). It is switched off after setup.",
+    "addPath": "Path",
+    "addInvalid": "That is not a task path"
+  },
+  "hosts": {
+    "title": "Hosts",
+    "desc": "Block lists for the image's hosts file. Each list is a section of its own; other lines of the file are left alone.",
+    "list": "List",
+    "entries": "Entries",
+    "custom": "Imported entries",
+    "stateOff": "none",
+    "willWrite": "will be written",
+    "willRemove": "will be removed",
+    "inImage": "in the image",
+    "summary": "{n} host names are blocked after Uygula (0.0.0.0)",
+    "customHint": "Entries imported from a hosts file. Del removes them; ticking the empty row opens an import.",
+    "hint": "Select a list: what it blocks is described here.",
+    "noMountTitle": "No image mounted",
+    "noMountBody": "Mount an edition on the Images page to edit its hosts file.",
+    "import": "Import hosts file…",
+    "imported": "{n} new entries added",
+    "importedNone": "No new entries in the file",
+    "filter": "Hosts files",
+    "applyRecommended": "Select recommended"
   }
 }

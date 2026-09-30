@@ -58,6 +58,14 @@ std::string_view embeddedComponentsCatalog() {
     return resourceBytes(IDR_CATALOG_COMPONENTS);
 }
 
+std::string_view embeddedTaskCatalog() {
+    return resourceBytes(IDR_CATALOG_TASKS);
+}
+
+std::string_view embeddedHostsCatalog() {
+    return resourceBytes(IDR_CATALOG_HOSTS);
+}
+
 HICON appIcon() {
     return LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_WINLOVE));
 }

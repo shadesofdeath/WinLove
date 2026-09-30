@@ -40,6 +40,8 @@ private:
 
 // The popup list; covers the window (Host::pushModal without scrim), closes on outside click.
 // `selected` -1: a context menu (no check mark); `anchor` then is the clicked point.
+// A list taller than the window scrolls (wheel, arrows, Page Up / Down; a 2px bar shows where
+// it is); typing jumps to the first item that starts with what was typed (time zones, locales).
 class MenuPopup : public Widget {
 public:
     MenuPopup(RectF anchor, std::vector<std::wstring> items, int selected, std::function<void(int)> picked,
@@ -54,17 +56,24 @@ public:
     void onPointerDown(PointF p) override;
     bool onKeyDown(const KeyEvent& key) override;
     bool onContextMenu(PointF p) override; // a right click anywhere closes it
+    bool onWheel(PointF p, float lines) override;
+    bool onChar(wchar_t ch) override;
 
 private:
     [[nodiscard]] int itemAt(PointF p) const;
     void close();
     void pick(int index);
+    void reveal(int index); // scrolls so that `index` is in view
 
     RectF m_anchor;
     RectF m_panel{};
     std::vector<std::wstring> m_items;
     int m_selected;
     int m_hover;
+    int m_first = 0;   // first visible item
+    int m_visible = 0; // items that fit
+    std::wstring m_typed;
+    double m_typedAt = 0;
     std::function<void(int)> m_picked;
     std::function<void()> m_closed;
 };

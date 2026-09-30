@@ -177,6 +177,10 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoApply = std::wstring(value(L"--demo-apply="));
         } else if (a == L"--demo-registry") {
             options.demoRegistry = true;
+        } else if (a == L"--demo-tasks") {
+            options.demoTasks = true;
+        } else if (a == L"--demo-hosts") {
+            options.demoHosts = true;
         } else if (a == L"--demo-services") {
             options.demoServices = true;
         } else if (a == L"--demo-tweaks") {
@@ -704,6 +708,34 @@ int App::renderOffscreen() {
         library.push_back(std::move(blank));
         m_shell->presets().adopt(std::move(library));
         m_shell->showPage(m_options.page.value_or(PageId::Presets));
+    }
+    if (m_options.demoTasks || m_options.demoHosts) {
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,
+                                         L"Windows 11 Pro"});
+        AppState::ImageValues values{AppState::ImageValues::Status::Ready, m_state->mounted()->mountDir, {}, {}, {}};
+        values.disabledTasks = {L"\\Microsoft\\Windows\\Autochk\\Proxy",
+                                L"\\Microsoft\\Windows\\Customer Experience Improvement Program\\Consolidator"};
+        for (const auto& t : values.disabledTasks) {
+            values.held.insert(AppState::imageValueKey(core::ops::OpKind::SetTaskState, t, L"disabled"));
+        }
+        auto& hosts = m_shell->hosts();
+        if (!hosts.lists().empty()) {
+            values.hostsSections[hosts.lists().front().id] = hosts.lists().front().text();
+            values.held.insert(AppState::imageValueKey(core::ops::OpKind::SetHosts, hosts.lists().front().id,
+                                                       hosts.lists().front().text()));
+        }
+        m_state->setImageValues(std::move(values));
+        if (m_options.demoTasks) {
+            m_shell->tasks().applyRecommended();
+            m_shell->tasks().addCustom(L"\\Microsoft\\Office\\OfficeTelemetryAgentLogOn");
+            m_shell->showPage(m_options.page.value_or(PageId::Tasks));
+        } else {
+            if (hosts.lists().size() > 1) {
+                hosts.toggle(hosts.lists()[1]);
+            }
+            hosts.importText(L"0.0.0.0 tracker.example.com\n0.0.0.0 ads.example.net\n127.0.0.1 localhost\n");
+            m_shell->showPage(m_options.page.value_or(PageId::Hosts));
+        }
     }
     if (m_options.demoServices) {
         const std::filesystem::path mountDir = L"C:\\WinLove\\mount";
