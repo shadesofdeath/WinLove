@@ -109,7 +109,15 @@
     "filterImages": "Windows images",
     "filterAll": "All files",
     "pickFolder": "Pick the setup folder (containing sources\\install.*)",
-    "loading": "Opening…"
+    "loading": "Opening…",
+    "remove": "Remove from list",
+    "showInFolder": "Show in folder",
+    "removeTitle": "Remove source",
+    "removeBody": "{name} will be removed from the list. This folder is the work copy WinLove extracted from the ISO ({path}); delete it from the disk too, along with the modified image in it? The original ISO is not touched.",
+    "removeKeep": "Remove from list only",
+    "removeDelete": "Delete the copy too",
+    "copyDeleted": "Work copy deleted",
+    "deleteFailed": "Could not delete the work copy"
   },
   "images": {
     "title": "Editions",

@@ -83,3 +83,17 @@ TEST_CASE("settings: AppState saves a change and tells its listeners once") {
     state.setSettings(next);                // nothing changed: no write, no notification
     CHECK(notified == 1);
 }
+
+TEST_CASE("settings: only folders under the work folder count as WinLove's own copies") {
+    AppSettings settings;
+    settings.workRoot = L"D:\\Data\\WinLove";
+    CHECK(settings.isWorkCopy(L"D:\\Data\\WinLove\\work\\Win11_25H2"));
+    CHECK(settings.isWorkCopy(L"d:\\data\\winlove\\WORK\\Win11_25H2\\sources"));
+    CHECK(settings.isWorkCopy(L"C:\\WinLove\\work\\Win11_25H2_Turkish_x64_v2")); // builds before 2026-09-28
+    CHECK_FALSE(settings.isWorkCopy(L"D:\\Data\\WinLove\\work"));                 // the work folder itself
+    CHECK_FALSE(settings.isWorkCopy(L"D:\\Data\\WinLove\\workshop\\x"));
+    CHECK_FALSE(settings.isWorkCopy(L"D:\\Data\\WinLove\\mount"));
+    CHECK_FALSE(settings.isWorkCopy(L"C:\\Users\\me\\Downloads\\Win11.iso"));
+    CHECK_FALSE(settings.isWorkCopy(L"D:\\Data\\WinLove\\work\\..\\..\\Documents"));
+    CHECK_FALSE(settings.isWorkCopy(L"work\\Win11"));
+}

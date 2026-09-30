@@ -333,6 +333,11 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         pointer(PointerAction::Up, clientPoint(), HitZone::Client);
         ReleaseCapture();
         return 0;
+    case WM_RBUTTONUP:
+        if (m_callbacks.contextMenu) {
+            m_callbacks.contextMenu(clientPoint());
+        }
+        return 0;
     case WM_CAPTURECHANGED:
         // Capture taken away mid-press (Alt+Tab, UAC, a dialog): drop the press instead of
         // leaving a widget stuck in its pressed / dragging state.

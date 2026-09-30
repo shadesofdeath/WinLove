@@ -796,7 +796,12 @@ void Shell::showPage(PageId page) {
             m_pageBody = &m_pageView->setBody<SourcePage>(
                 m_state, m_strings, m_language,
                 SourcePage::Intents{[this] { pickSourceFile(); },
-                                    [this](const std::filesystem::path& p) { openSource(p); }});
+                                    [this](const std::filesystem::path& p) { openSource(p); },
+                                    [this](const std::filesystem::path& p) { removeSource(p); },
+                                    [](const std::filesystem::path& p) {
+                                        const std::wstring args = L"/select,\"" + p.wstring() + L"\"";
+                                        ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+                                    }});
         } else if (page == PageId::Images) {
             if (m_state.source()) {
                 m_actionEsd = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesEsdToWim));
@@ -1244,6 +1249,62 @@ void Shell::pickSourceFile() {
     if (file) {
         openSource(*file);
     }
+}
+
+void Shell::removeSource(const std::filesystem::path& path) {
+    auto same = [](const std::filesystem::path& a, const std::filesystem::path& b) {
+        return _wcsicmp(a.lexically_normal().c_str(), b.lexically_normal().c_str()) == 0;
+    };
+    auto inside = [](const std::filesystem::path& file, const std::filesystem::path& folder) {
+        const std::wstring f = file.lexically_normal().wstring();
+        const std::wstring d = folder.lexically_normal().wstring();
+        return f.size() > d.size() && _wcsnicmp(f.c_str(), d.c_str(), d.size()) == 0 &&
+               (f[d.size()] == L'\\' || f[d.size()] == L'/');
+    };
+    const bool open = m_state.source() && same(m_state.source()->path, path);
+    const bool mountedFromIt = m_state.mounted() && (open || inside(m_state.mounted()->imagePath, path));
+    if (mountedFromIt || (open && (m_images->busy() || m_state.operation()))) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::ImagesUnmountFirst), L"");
+        return;
+    }
+    auto forget = [this, path, open] {
+        if (open) {
+            m_state.clearSource();
+        }
+        m_state.forgetRecent(path);
+    };
+    std::error_code ec;
+    const bool copy = m_state.settings().isWorkCopy(path) && std::filesystem::is_directory(path, ec) &&
+                      !std::filesystem::is_symlink(path, ec);
+    if (!copy || !host()) {
+        forget(); // the user's own file or folder: only the list entry goes
+        return;
+    }
+    auto dialog = std::make_unique<ui::Dialog>(
+        m_strings.get(Str::SourceRemoveTitle),
+        m_strings.format(Str::SourceRemoveBody, {{L"name", path.filename().wstring()}, {L"path", path.wstring()}}),
+        ui::icons::Icon::Delete, ui::tokens::Color::TextSecondary);
+    ui::Dialog* raw = dialog.get();
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::SourceRemoveKeep), [this, raw, forget] {
+        host()->popModal(raw);
+        forget();
+    });
+    raw->addButton(ui::ButtonKind::Danger, m_strings.get(Str::SourceRemoveDelete), [this, raw, forget, path] {
+        host()->popModal(raw);
+        forget();
+        std::error_code failed;
+        std::filesystem::remove_all(path, failed);
+        if (failed) {
+            log::error("app", L"could not delete the work copy " + path.wstring() + L": " +
+                                  utf8::toWide(failed.message()));
+            showToast(ui::InfoKind::Error, m_strings.get(Str::SourceDeleteFailed), path.wstring());
+        } else {
+            log::info("app", L"work copy deleted: " + path.wstring());
+            showToast(ui::InfoKind::Success, m_strings.get(Str::SourceCopyDeleted), path.filename().wstring());
+        }
+    });
+    pushDialog(std::move(dialog));
 }
 
 void Shell::pickSourceFolder() {

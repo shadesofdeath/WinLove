@@ -29,6 +29,11 @@ struct AppSettings {
         return workRoot / L"work" / source.stem();
     }
 
+    // True for a folder WinLove itself extracted setup media into: something under <workRoot>\work
+    // (or under the work folder of builds before 2026-09-28, C:\WinLove\work). Only such a folder
+    // may be deleted by the app; anything else is the user's own.
+    [[nodiscard]] bool isWorkCopy(const std::filesystem::path& folder) const;
+
     [[nodiscard]] static std::filesystem::path defaultFile();
     [[nodiscard]] static std::filesystem::path defaultWorkRoot();
     // Mount folder of builds before 2026-09-28 (C:\WinLove\mount): still checked at startup so

@@ -112,6 +112,9 @@ public:
     virtual bool onKeyDown(const KeyEvent& /*key*/) { return false; }
     // Wheel over this widget (lines, + = up); unhandled bubbles to the parent.
     virtual bool onWheel(PointF /*p*/, float /*lines*/) { return false; }
+    // Right click at `p` (or the Menu key / Shift+F10 with `p` inside the focus rectangle):
+    // open a context menu and return true; unhandled bubbles to the parent.
+    virtual bool onContextMenu(PointF /*p*/) { return false; }
     // Typed character for the focused widget (text boxes); unhandled bubbles to the parent.
     virtual bool onChar(wchar_t /*ch*/) { return false; }
     virtual void onFocusChanged(bool /*focused*/) { invalidate(); }

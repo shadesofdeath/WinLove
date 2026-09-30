@@ -313,12 +313,35 @@ bool Host::onKeyDown(const KeyEvent& key) {
         focusNext(key.shift);
         return true;
     }
+    // The Menu key / Shift+F10: the focused widget's context menu, at its focus rectangle.
+    if (m_focused && (key.virtualKey == VK_APPS || (key.virtualKey == VK_F10 && key.shift && !key.ctrl && !key.alt))) {
+        const RectF r = m_focused->focusRect().width > 0 ? m_focused->focusRect() : m_focused->bounds();
+        const PointF at{r.x + std::min(r.width / 2, 24.0f), r.y + r.height / 2};
+        for (Widget* w = m_focused; w; w = w->parent()) {
+            if (w->onContextMenu(at)) {
+                return true;
+            }
+        }
+    }
     for (Widget* w = m_focused; w; w = w->parent()) {
         if (w->onKeyDown(key)) {
             if ((key.virtualKey == VK_SPACE || key.virtualKey == VK_RETURN) && !m_focusVisible) {
                 m_focusVisible = true;
                 requestFrame();
             }
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Host::onContextMenu(PointF p) {
+    if (!m_root) {
+        return false;
+    }
+    hideTooltip();
+    for (Widget* w = inputRoot()->hitTest(p); w; w = w->parent()) {
+        if (w->enabled() && w->onContextMenu(p)) {
             return true;
         }
     }

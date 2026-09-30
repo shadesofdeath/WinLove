@@ -46,6 +46,11 @@ Açma sonrası: `AppState.source` dolar, başlıkta breadcrumb = dosya adı, P02
 - [x] `Dialog` + Host modal katmanı (scrim, odak kapanı, Esc/Enter, scrim tıklaması)
 - [x] Çok satırlı metin (Canvas `drawTextWrapped`, `TextStyles::measureWrapped`)
 - [x] Sayfaya özel: RecentList (satır seçimi, çift tık, ↑↓ Home End Enter)
+- [x] Listeden kaldırma (2026-09-30, kullanıcı isteği): üzerine gelinen / seçili satırın sonunda ×, `Del`, ve sağ tık
+      menüsü (Aç · Klasörde göster · Listeden kaldır; Menü tuşu / Shift+F10 da açar). Kullanıcının kendi dosyası ya da
+      klasörü yalnız listeden çıkar. WinLove'un ISO'dan çıkardığı çalışma kopyasıysa (`AppSettings::isWorkCopy`:
+      `<çalışma klasörü>\work\…` ya da eski `C:\WinLove\work\…`) dialog sorar: Vazgeç · Yalnız listeden kaldır ·
+      Kopyayı da sil. O kaynaktan bir imaj bağlıyken ya da iş sürerken kaldırılmaz ("Önce bağlı imajı çöz").
 - [x] Platform: `DropTarget` (OLE), `FileDialog` (IFileOpenDialog)
 
 ## 8. String anahtarları

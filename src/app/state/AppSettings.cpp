@@ -18,6 +18,22 @@ std::filesystem::path AppSettings::defaultWorkRoot() {
     return log::defaultDirectory().parent_path(); // %LOCALAPPDATA%\WinLove
 }
 
+bool AppSettings::isWorkCopy(const std::filesystem::path& folder) const {
+    const std::wstring path = folder.lexically_normal().wstring();
+    if (!folder.is_absolute() || path.find(L"..") != std::wstring::npos) {
+        return false;
+    }
+    for (const auto& root : {workRoot / L"work", legacyMountDirectory().parent_path() / L"work"}) {
+        const std::wstring base = root.lexically_normal().wstring();
+        // Strictly inside: the work folder itself is not a copy of anything.
+        if (path.size() > base.size() + 1 && _wcsnicmp(path.c_str(), base.c_str(), base.size()) == 0 &&
+            (path[base.size()] == L'\\' || path[base.size()] == L'/')) {
+            return true;
+        }
+    }
+    return false;
+}
+
 AppSettings AppSettings::load(const std::filesystem::path& file) {
     AppSettings settings;
     std::ifstream in(file, std::ios::binary);

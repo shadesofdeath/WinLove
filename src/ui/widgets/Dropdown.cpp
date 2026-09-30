@@ -176,6 +176,11 @@ void MenuPopup::onPointerDown(PointF p) {
     }
 }
 
+bool MenuPopup::onContextMenu(PointF /*p*/) {
+    close();
+    return true;
+}
+
 void MenuPopup::close() {
     auto closed = m_closed;
     if (Host* h = host()) {

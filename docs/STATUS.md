@@ -20,6 +20,9 @@
   artık seçilemiyor; paketiyle giden özelliği kapatmak başarı sayılıyor; commit sonrası WIM `[DELETED]` artıkları
   olmadan yeniden yazılıyor (`optimizeWim`, gerçek imaj kopyasında doğrulandı). Ayrıntı: ENGINE saha notları.
   **Hâlâ görülmeyen:** ISO + VM kurulumu.
+- **Kaynak sayfası (2026-09-30, kullanıcı isteği):** son kullanılanlardan kaldırma (satır sonunda ×, `Del`, sağ tık
+  menüsü) + çalışma kopyasını silme dialogu; UI çatısına sağ tık yönlendirmesi eklendi (`Widget::onContextMenu`).
+  Dialogun kendisi render'da görülmedi (diskte çalışma kopyası yoktu); liste girdisini kaldırma ve menü görüldü.
 - **P07 v2 — sistem bileşenleri ve depo temizliği (2026-09-30, D-031):** `core/image/SystemComponents` (tarif: CBS
   paket aileleri + yollar + kayıt yazımları; gizli paket `Visibility` / `Owners` ile açılıp `DismRemovePackage`;
   junction'dan geçen yol reddi), `core/image/dism/StoreCleanup` (`dism.exe /StartComponentCleanup /ResetBase`, kendi
@@ -76,7 +79,7 @@
   (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
   ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
   (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
-- **Build:** `./build.ps1 -Dist` yeşil, 162 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Build:** `./build.ps1 -Dist` yeşil, 163 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi (bilerek yazılmadı: denenemeyen disk biçimlendirme kodu; ISO'yu

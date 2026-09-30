@@ -115,6 +115,9 @@ public:
     void continueFolderMount();
     void pickSourceFile();
     void pickSourceFolder();
+    // Source page: takes an entry out of the recent list; for a work copy WinLove extracted
+    // itself, offers to delete the folder too. The user's own files are never deleted.
+    void removeSource(const std::filesystem::path& path);
     // s4: explains why admin is needed; "Yönetici olarak yeniden başlat" relaunches with `args`.
     void showAdminRequired(std::wstring relaunchArgs = L"--page=source");
     // Window-wide drag & drop (interaction.md): returns true when the drop would be accepted.

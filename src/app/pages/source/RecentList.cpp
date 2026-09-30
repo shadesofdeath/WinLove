@@ -1,9 +1,12 @@
 #include "app/pages/source/RecentList.h"
 
 #include "app/Format.h"
+#include "ui/widget/Host.h"
+#include "ui/widgets/Dropdown.h"
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace wl::app {
 
@@ -20,6 +23,7 @@ constexpr float kSizeGap = 8.0f;
 constexpr float kLastWidth = 140.0f;
 constexpr float kIconX = 2.0f;
 constexpr float kTextX = 22.0f;
+constexpr float kRemoveInset = 4.0f; // the x button: 16px icon, this far from the row's right end
 
 ui::icons::Icon iconFor(const std::wstring& format) {
     if (format == L"ISO") return ui::icons::Icon::DiscIso;
@@ -72,6 +76,21 @@ int RecentList::rowAt(ui::PointF p) const {
     return index >= 0 && index < static_cast<int>(m_entries.size()) && b.contains(p) ? index : -1;
 }
 
+RectF RecentList::removeRect(int index) const {
+    const RectF row = rowRect(index);
+    return {row.right() - kRemoveInset - ui::tokens::size::icon, row.y + (kRow - ui::tokens::size::icon) / 2,
+            ui::tokens::size::icon, ui::tokens::size::icon};
+}
+
+void RecentList::remove(int index) {
+    if (index >= 0 && index < static_cast<int>(m_entries.size()) && onRemove) {
+        // A copy: the handler changes the list, and with it m_entries.
+        const std::filesystem::path path = m_entries[static_cast<std::size_t>(index)].path;
+        const auto handler = onRemove;
+        handler(path);
+    }
+}
+
 void RecentList::select(int index) {
     if (index >= 0 && index < static_cast<int>(m_entries.size()) && index != m_selected) {
         m_selected = index;
@@ -87,11 +106,15 @@ void RecentList::openSelected() {
 
 void RecentList::onPointerMove(ui::PointF p) {
     const int row = rowAt(p);
-    if (row != m_hoverRow) {
+    const bool overRemove = row >= 0 && removeRect(row).contains(p);
+    if (row != m_hoverRow || overRemove != m_hoverRemove) {
         m_hoverRow = row;
-        // Missing files explain themselves on hover.
+        m_hoverRemove = overRemove;
+        // The x says what it does; missing files explain themselves on hover.
         const bool missing = row >= 0 && !m_exists[static_cast<std::size_t>(row)];
-        setTooltip(missing ? m_strings.get(Str::SourceFileMissing) : std::wstring{});
+        setTooltip(overRemove ? m_strings.get(Str::SourceRemove)
+                   : missing  ? m_strings.get(Str::SourceFileMissing)
+                              : std::wstring{});
         invalidate();
     }
 }
@@ -99,16 +122,27 @@ void RecentList::onPointerMove(ui::PointF p) {
 void RecentList::onHoverChanged(bool hovered) {
     if (!hovered) {
         m_hoverRow = -1;
+        m_hoverRemove = false;
     }
     invalidate();
 }
 
 void RecentList::onPointerDown(ui::PointF p) {
-    select(rowAt(p));
+    const int row = rowAt(p);
+    m_downRemove = row >= 0 && removeRect(row).contains(p) ? row : -1;
+    select(row);
+}
+
+void RecentList::onClick() {
+    if (const int row = std::exchange(m_downRemove, -1); row >= 0) {
+        remove(row);
+    }
 }
 
 void RecentList::onDoubleClick() {
-    openSelected();
+    if (m_downRemove < 0) {
+        openSelected();
+    }
 }
 
 bool RecentList::onKeyDown(const ui::KeyEvent& key) {
@@ -122,8 +156,37 @@ bool RecentList::onKeyDown(const ui::KeyEvent& key) {
     case VK_HOME: select(0); return true;
     case VK_END: select(count - 1); return true;
     case VK_RETURN: openSelected(); return true;
+    case VK_DELETE: remove(m_selected); return true;
     default: return false;
     }
+}
+
+bool RecentList::onContextMenu(ui::PointF p) {
+    const int row = rowAt(p);
+    if (row < 0 || !host()) {
+        return false;
+    }
+    select(row);
+    const std::filesystem::path path = m_entries[static_cast<std::size_t>(row)].path;
+    // Copies of the handlers: picking an item may change the list under this widget.
+    const auto open = onOpen;
+    const auto show = onShowInFolder;
+    const auto removeEntry = onRemove;
+    auto popup = std::make_unique<ui::MenuPopup>(
+        RectF{p.x, p.y, 0, 0},
+        std::vector<std::wstring>{m_strings.get(Str::CommonOpen), m_strings.get(Str::SourceShowInFolder),
+                                  m_strings.get(Str::SourceRemove)},
+        -1,
+        [path, open, show, removeEntry](int index) {
+            const auto& handler = index == 0 ? open : index == 1 ? show : removeEntry;
+            if (handler) {
+                handler(path);
+            }
+        },
+        [] {});
+    ui::Widget* raw = popup.get();
+    host()->pushModal(std::move(popup), raw, /*scrim=*/false);
+    return true;
 }
 
 RectF RecentList::focusRect() const {
@@ -166,6 +229,11 @@ void RecentList::paint(ui::Canvas& canvas) {
                         ink, ui::TextAlign::Trailing);
         canvas.drawText(formatRecentTime(e.lastOpened, m_language, m_strings), {c.last, row.y, kLastWidth, kRow},
                         TypeStyle::Mono, ink);
+        if (i == m_hoverRow || (i == m_selected && focused())) {
+            const RectF x = removeRect(i);
+            canvas.drawIcon(ui::icons::Icon::Close, {x.x, x.y},
+                            i == m_hoverRow && m_hoverRemove ? Color::TextPrimary : Color::TextTertiary);
+        }
     }
 }
 

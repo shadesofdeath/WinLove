@@ -39,6 +39,7 @@ private:
 };
 
 // The popup list; covers the window (Host::pushModal without scrim), closes on outside click.
+// `selected` -1: a context menu (no check mark); `anchor` then is the clicked point.
 class MenuPopup : public Widget {
 public:
     MenuPopup(RectF anchor, std::vector<std::wstring> items, int selected, std::function<void(int)> picked,
@@ -52,6 +53,7 @@ public:
     void onPointerMove(PointF p) override;
     void onPointerDown(PointF p) override;
     bool onKeyDown(const KeyEvent& key) override;
+    bool onContextMenu(PointF p) override; // a right click anywhere closes it
 
 private:
     [[nodiscard]] int itemAt(PointF p) const;
