@@ -65,7 +65,15 @@ TEST_CASE("settings catalog: every shipped entry is valid and placed in a known 
     // Nothing was skipped as malformed.
     const auto raw = nlohmann::json::parse(shippedJson(L"settings.json"));
     CHECK(catalog.settings().size() == raw["settings"].size());
-    CHECK(catalog.tabs().size() == 6);
+    CHECK(catalog.tabs().size() == 7);
+    // Every tab has something in it.
+    for (const auto& tab : catalog.tabs()) {
+        CAPTURE(tab.id);
+        CHECK(std::ranges::any_of(catalog.settings(), [&](const ImageSetting& s) {
+            const auto section = std::ranges::find(catalog.sections(), s.section, &ImageSettingSection::id);
+            return section != catalog.sections().end() && section->tab == tab.id;
+        }));
+    }
 
     std::set<std::string> ids;
     for (const auto& s : catalog.settings()) {
@@ -87,6 +95,13 @@ TEST_CASE("settings catalog: every shipped entry is valid and placed in a known 
             }
         }
         CHECK(s.recommended != s.defaultOption); // recommending "leave it" is no recommendation
+        // Every value lands in a hive an offline image has (the Applier would refuse it otherwise).
+        for (const auto& o : s.options) {
+            for (const auto& w : o.writes) {
+                CAPTURE(w.key);
+                CHECK(core::mapOfflineKey(w.key).has_value());
+            }
+        }
     }
 }
 
