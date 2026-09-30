@@ -192,6 +192,11 @@ void AppState::setSettings(AppSettings settings) {
     notify(Change::Settings);
 }
 
+void AppState::setUpdateFetch(std::optional<UpdateFetch> fetch) {
+    m_updateFetch = std::move(fetch);
+    notify(Change::UpdateFetch);
+}
+
 void AppState::setIsoRun(std::optional<IsoRun> run) {
     m_iso = std::move(run);
     notify(Change::Iso);

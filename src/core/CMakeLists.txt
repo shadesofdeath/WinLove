@@ -27,6 +27,7 @@ add_library(wl_core STATIC
     image/wim/WimVerify.cpp
     io/ByteSource.cpp
     iso/IsoBuilder.cpp
+    net/Http.cpp
     ops/ApplyJob.cpp
     ops/Applier.cpp
     ops/ChangeSet.cpp
@@ -36,6 +37,7 @@ add_library(wl_core STATIC
     system/Privileges.cpp
     tasks/Task.cpp
     tasks/TaskRunner.cpp
-    unattend/Unattend.cpp)
+    unattend/Unattend.cpp
+    updates/UpdateCatalog.cpp)
 wl_configure_target(wl_core)
-target_link_libraries(wl_core PUBLIC wl_base PRIVATE wl_pugixml wl_json advapi32 shell32 ole32 oleaut32 shlwapi rstrtmgr bcrypt)
+target_link_libraries(wl_core PUBLIC wl_base PRIVATE wl_pugixml wl_json advapi32 shell32 ole32 oleaut32 shlwapi rstrtmgr bcrypt winhttp)

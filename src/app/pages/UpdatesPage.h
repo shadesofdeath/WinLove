@@ -20,6 +20,7 @@ public:
     struct Intents {
         std::function<void()> addPackages;
         std::function<void()> goImages;
+        std::function<void()> stopFetch; // D-046: stop the catalog search / download
     };
     UpdatesPage(AppState& state, const Localization& strings, Language language, Intents intents);
     ~UpdatesPage() override;
@@ -45,7 +46,9 @@ private:
     std::size_t m_subscription = 0;
     std::vector<core::ops::Operation> m_rows; // queued AddPackage, apply order
     std::map<std::wstring, core::UpdateInfo> m_info;
+    class FetchStrip;
     ui::DropZone* m_drop = nullptr;
+    FetchStrip* m_fetch = nullptr; // in the drop zone's place while the catalog is searched / downloaded
     ui::TableView* m_table = nullptr;
     ui::EmptyState* m_empty = nullptr;
 };

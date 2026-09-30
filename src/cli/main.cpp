@@ -7,6 +7,7 @@
 #include "core/image/dism/StoreCleanup.h"
 #include "core/image/RegistryEdit.h"
 #include "core/image/RegistryRead.h"
+#include "core/updates/UpdateCatalog.h"
 #include "core/image/Services.h"
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
@@ -213,6 +214,9 @@ int cmdExtract(const std::wstring& iso, const std::wstring& inner, const std::ws
 core::TaskContext progressTask(const wchar_t* label) {
     auto last = std::make_shared<int>(-1);
     return core::TaskContext{g_cancel, [label, last](double fraction, std::wstring_view) {
+                                 if (fraction < 0) {
+                                     return; // indeterminate (verifying, …)
+                                 }
                                  const int percent = static_cast<int>(fraction * 100);
                                  if (percent != *last) {
                                      *last = percent;
@@ -961,6 +965,70 @@ int cmdRegCheck(const std::wstring& file, const std::wstring& mountDir, bool asJ
     return errors == 0 ? 0 : 1;
 }
 
+// D-046: the Microsoft Update Catalog for an image build (no admin, network).
+int cmdCatalog(const std::wstring& buildText, const std::wstring& arch, const std::wstring& downloadDir, bool preview,
+               const std::wstring& onlyKb, bool asJson) {
+    int build = 0;
+    int revision = 0;
+    if (swscanf_s(buildText.c_str(), L"%d.%d", &build, &revision) < 1 || build < 10000) {
+        print(L"error: build must look like 26200 or 26200.8037\n");
+        return 1;
+    }
+    const auto target = core::catalogTarget(build, revision, arch.empty() ? L"x64" : arch);
+    auto offers = core::findCatalogUpdates(target, g_cancel);
+    if (!offers) {
+        return reportError(offers.error());
+    }
+    auto kindName = [](core::CatalogKind k) { return k == core::CatalogKind::DotNet ? L".NET" : L"LCU"; };
+    if (asJson) {
+        json out = json::array();
+        for (const auto& o : *offers) {
+            out.push_back({{"id", narrow(o.entry.id)},
+                           {"title", narrow(o.entry.title)},
+                           {"kb", narrow(o.entry.kb)},
+                           {"kind", narrow(kindName(o.entry.kind))},
+                           {"preview", o.entry.preview},
+                           {"date", std::format("{:04}-{:02}-{:02}", o.entry.year, o.entry.month, o.entry.day)},
+                           {"size", o.entry.size},
+                           {"build", std::format("{}.{}", o.entry.build, o.entry.revision)},
+                           {"recommended", o.recommended},
+                           {"olderThanImage", o.olderThanImage}});
+        }
+        printJson(out);
+    } else {
+        print(std::format(L"  Windows {} {} {} ({}.{})\n\n", target.windows, target.release, target.architecture,
+                          target.build, target.revision));
+        for (const auto& o : *offers) {
+            print(std::format(L"  {:<5} {:<10} {:04}-{:02}-{:02} {:>8} MB  {}{}{}\n", kindName(o.entry.kind), o.entry.kb,
+                              o.entry.year, o.entry.month, o.entry.day, o.entry.size >> 20, o.entry.title,
+                              o.recommended ? L"" : L"  [preview]", o.olderThanImage ? L"  [image is newer]" : L""));
+        }
+    }
+    if (downloadDir.empty()) {
+        return 0;
+    }
+    int failures = 0;
+    for (const auto& o : *offers) {
+        if (!onlyKb.empty() ? _wcsicmp(onlyKb.c_str(), o.entry.kb.c_str()) != 0
+                            : (!o.recommended && !preview) || o.olderThanImage) {
+            continue;
+        }
+        const auto task = progressTask(o.entry.kb.c_str());
+        auto got = core::downloadCatalogUpdate(o.entry, downloadDir, task);
+        print(L"\n");
+        if (!got) {
+            reportError(got.error());
+            ++failures;
+            continue;
+        }
+        print(std::format(L"  {} ({} bytes downloaded)\n", got->main.wstring(), got->bytes));
+        for (const auto& p : got->prerequisites) {
+            print(L"    + " + p.wstring() + L"\n");
+        }
+    }
+    return failures == 0 ? 0 : 1;
+}
+
 // P06: bootable ISO from a setup folder (IMAPI2FS, no admin).
 int cmdIso(const std::wstring& folder, const std::wstring& output, const std::wstring& label, const std::wstring& boot,
            bool sha, bool noPrompt) {
@@ -1052,6 +1120,9 @@ void printUsage() {
           L"  wlcli postsetup <plan.json> <mountdir>   (write post-setup scripts and payloads into the image, P14)\n"
           L"  wlcli reg <file.reg> [<mountdir>] [--first-logon]   (parse; with a mount: write into the image's\n"
           L"                                      hives, P11; --first-logon: also re-import after setup)\n"
+          L"  wlcli catalog <build>[.<revision>] [--arch=x64|arm64] [--download=<folder>] [--preview] [--kb=KB…] [--json]\n"
+          L"                                      (newest cumulative + .NET updates from the Microsoft Update\n"
+          L"                                      Catalog; --download: fetch the recommended ones, SHA-256 checked)\n"
           L"  wlcli reg-check <file.reg> <mountdir> [--json]   (which writes the image already has; read only,\n"
           L"                                      offreg.dll — also works on hive files copied into a folder)\n"
           L"  wlcli services <mountdir> [--set=Name=auto|autoDelayed|manual|disabled]   (P10)\n"
@@ -1100,6 +1171,10 @@ int wmain(int argc, wchar_t** argv) {
     bool firstLogon = false;
     bool remove = false;
     bool resetBase = false;
+    std::wstring arch;
+    std::wstring downloadDir;
+    bool preview = false;
+    std::wstring onlyKb;
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
@@ -1116,6 +1191,14 @@ int wmain(int argc, wchar_t** argv) {
             flags = std::wstring(a.substr(8));
         } else if (a.starts_with(L"--set=")) {
             serviceSet = std::wstring(a.substr(6));
+        } else if (a.starts_with(L"--arch=")) {
+            arch = std::wstring(a.substr(7));
+        } else if (a.starts_with(L"--download=")) {
+            downloadDir = std::wstring(a.substr(11));
+        } else if (a.starts_with(L"--kb=")) {
+            onlyKb = std::wstring(a.substr(5));
+        } else if (a == L"--preview") {
+            preview = true;
         } else if (a.starts_with(L"--label=")) {
             label = std::wstring(a.substr(8));
         } else if (a.starts_with(L"--boot=")) {
@@ -1235,6 +1318,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"reg" && (args.size() == 2 || args.size() == 3)) {
         return cmdReg(args[1], args.size() == 3 ? args[2] : std::wstring(), firstLogon);
+    }
+    if (command == L"catalog" && args.size() == 2) {
+        return cmdCatalog(args[1], arch, downloadDir, preview, onlyKb, asJson);
     }
     if (command == L"reg-check" && args.size() == 3) {
         return cmdRegCheck(args[1], args[2], asJson);

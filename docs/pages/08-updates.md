@@ -19,7 +19,18 @@
   denetlenemedi). Delete seçili paketi kuyruktan çıkarır.
 - Nav rozeti: kuyruktaki paket sayısı.
 
+## 3b. Güncellemeleri bul (D-046)
+- Başlıkta "Güncellemeleri bul" (imaj bağlı olmalı): bağlı sürümün derlemesi / mimarisi için Microsoft Update
+  Catalog aranır (`core/updates/UpdateCatalog`, `wlcli catalog <build.rev> [--arch=] [--download=] [--kb=]`).
+- Dialog: en yeni LCU ve .NET işaretli, onlardan yeni önizleme işaretsiz, imajın zaten sahip olduğu (aynı derleme,
+  revizyon büyük değil) seçilemez; düğme "{n} güncellemeyi indir · {boyut}".
+- İndirme `<çalışma kökü>\updates\` (kaldığı yerden devam, SHA-256 denetimi, doğru dosya varsa yeniden inmez);
+  şerit bırakma alanının yerinde (KB, bayt, %, Durdur). Bitince ana paketler kuyruğa; 24H2+ checkpoint aynı klasörde
+  kalır, kuyruğa girmez.
+
 ## 4. Sınırlar
+- Katalogdan yalnız toplu (LCU) ve .NET güncellemeleri sunulur; dinamik güncellemeler (Safe OS → WinRE, Setup →
+  kurulum medyası) ve dil paketleri yok. Katalog sayfa düzeni değişirse arama boş döner (birim testler biçimi sabitler).
 - Uyumluluk dosya adından; MSU içindeki metadata (applicability XML) okunmuyor — DISM son sözü söyler.
 - Elle sıralama (sürükle) yok; sıra her zaman servis sırası.
 - 24H2+ checkpoint güncellemeleri: DISM'in ilgili tüm MSU'ları aynı klasörde görmesi gerekir; klasör taraması bunu

@@ -55,7 +55,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch };
     using Listener = std::function<void(Change)>;
 
     // `answersFile`: where the answer file being edited is kept between runs (AnswerStore.h).
@@ -234,6 +234,21 @@ public:
     void setIsoRun(std::optional<IsoRun> run);
     void notifyIso() { notify(Change::Iso); }
 
+    // D-046: "Güncellemeleri bul" — the running / last catalog search and download
+    // (UpdateCatalogController). Change::UpdateFetch.
+    struct UpdateFetch {
+        enum class Stage : std::uint8_t { Searching, Downloading, Verifying };
+        Stage stage = Stage::Searching;
+        std::wstring kb;           // the update being downloaded
+        std::uint64_t doneBytes = 0; // over every update picked
+        std::uint64_t totalBytes = 0;
+        core::CancelToken cancel;
+    };
+    [[nodiscard]] const std::optional<UpdateFetch>& updateFetch() const noexcept { return m_updateFetch; }
+    [[nodiscard]] std::optional<UpdateFetch>& updateFetchMutable() noexcept { return m_updateFetch; }
+    void setUpdateFetch(std::optional<UpdateFetch> fetch);
+    void notifyUpdateFetch() { notify(Change::UpdateFetch); }
+
     // Last inspection of the WinLove mount folder (MountHealth.h); empty until first checked.
     [[nodiscard]] const std::optional<core::MountCheck>& mountFolder() const noexcept { return m_mountFolder; }
     void setMountFolder(std::optional<core::MountCheck> check);
@@ -279,6 +294,7 @@ private:
     DriverScan m_drivers;
     Unattend m_unattend;
     std::optional<IsoRun> m_iso;
+    std::optional<UpdateFetch> m_updateFetch;
     std::filesystem::path m_settingsFile;
     std::filesystem::path m_answersFile;
     std::shared_ptr<log::RingBufferSink> m_logBuffer = std::make_shared<log::RingBufferSink>();

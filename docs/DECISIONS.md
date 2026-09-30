@@ -241,6 +241,36 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-046 — Güncelleme indirme: Microsoft Update Catalog'dan en yeni LCU / .NET, doğrulamalı indirme (2026-09-30)
+Bağlam: Kullanıcı "güncelleme indirme"yi istedi. P08 yalnız elle getirilen .msu / .cab dosyalarını alıyordu.
+Karar:
+- **Kaynak: Microsoft Update Catalog** (`www.catalog.update.microsoft.com`) — NTLite'ın ve topluluk araçlarının
+  kullandığı yol; Windows Update API'si çalışan sistemi tarar, imajı değil. `Search.aspx?q=` HTML tablosu elle
+  ayrıştırılır (regex yok, satır id'si GUID olmayan satır atlanır), `DownloadDialog.aspx` (POST `updateIDs`)
+  dosyaları URL + **SHA-256** ile verir. Ayrıştırma saf fonksiyonlar, kaydedilmiş sayfa parçalarıyla birim testli.
+- **Hedef imajdan:** derleme → "Windows 11, version 25H2" / "Windows 10 Version 22H2", mimari (x64 / arm64).
+  İki arama (toplu + .NET); başlıktan tür (LCU / önizleme / .NET / dinamik), KB, "(26200.9457)" derlemesi.
+  Teklif: en yeni yayımlanmış LCU ve .NET (işaretli), onlardan yeni önizleme (işaretsiz). Hotpatch, Server,
+  dinamik güncellemeler (Safe OS / Setup — WinRE ve kurulum medyası içindir) sunulmaz. Aynı derlemede revizyonu
+  imajınkinden büyük olmayan LCU "imaj daha yeni" (seçilemez). Windows 10'da aynı gün çıkan üç .NET paketinden
+  başlığı en çok çerçeve sayan (birleşik paket) seçilir; uygulanabilirliğe DISM karar verir.
+- **İndirme:** WinHTTP (`core/net/Http`, sistem proxy'si, TLS 1.2/1.3), `<work>\updates\`, önce `.part`, kesilirse
+  Range ile kaldığı yerden; bitince SHA-256 denetimi (uymazsa dosya silinir). Aynı dosya doğru özetle oradaysa
+  indirilmez. Yalnız Microsoft sunucuları (`*.microsoft.com` https; `*.windowsupdate.com` http de olabilir — özet
+  zorunlu). Dosya adı web sayfasından geldiği için klasör / sürücü / akış içeremez.
+- **24H2+ checkpoint:** LCU'nun indirme listesi dayandığı checkpoint MSU'yu (KB5043080) da içerir; ikisi aynı
+  klasöre iner, **yalnız LCU kuyruğa girer** — DISM checkpoint'i aynı klasörde kendisi bulur (P08 spec'teki not).
+  İmajda zaten olan checkpoint'i ayrıca kuyruklamak "uygulanamaz" diye atlanan bir adım üretirdi.
+- **Arayüz:** Güncellemeler başlığında "Güncellemeleri bul" (imaj bağlı olmalı) → dialog (Güncelleme · KB · Tarih ·
+  Boyut · Not; düğme sayıyı ve toplam boyutu söyler) → indirme şeridi bırakma alanının yerinde (KB, bayt, %,
+  Durdur) → bitince paketler kuyruğa, bildirim klasörü gösterir. Ağ işi kendi iş parçacığında
+  (`UpdateCatalogController`): 5 GB'lık indirme DISM'i ve kaynak okumayı bekletmez. Durdurmak hata değildir;
+  `.part` kalır.
+Kanıt: `wlcli catalog 26200.8037 | 19045.3803 | 26100.1 --arch=arm64` gerçek katalogda doğru teklifleri verdi;
+.NET CU (92 MB) indirildi, SHA-256 tuttu (27 sn); ikinci çalıştırma indirmedi; 50 MB'lık `.part` Range ile
+tamamlandı ve özet tuttu. Birim testleri (ayrıştırma, seçim, güvenilir sunucu, controller). Render (dialog,
+şerit). **Görülmeyen:** 5 GB'lık LCU'nun indirilip Uygula'da imaja eklenmesi (checkpoint'li klasörle).
+
 ## D-045 — İmajdaki mevcut değerleri okuma: Kayıt Defteri ve Ayarlar / Tweaks imajı gösterir (2026-09-30)
 Bağlam: Kullanıcı "imajdaki mevcut değeri okuma"yı istedi. P11 / P12 yalnız kuyruğa bakıyordu: bir kez uygulanmış
 (ya da başka bir araçla yapılmış) imaj yeniden bağlanınca her şey "Windows varsayılanı" görünüyordu.

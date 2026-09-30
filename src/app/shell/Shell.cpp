@@ -26,6 +26,7 @@
 #include "app/pages/PresetsPage.h"
 #include "app/ApplyReport.h"
 #include "app/pages/postsetup/AppsDialog.h"
+#include "app/pages/updates/UpdateCatalogDialog.h"
 #include "app/pages/postsetup/StepDialog.h"
 #include "app/pages/SourcePage.h"
 #include "app/pages/TweaksPage.h"
@@ -162,6 +163,32 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
                 openSource(source->path);
             }
         },
+    });
+    m_updateCatalog = std::make_unique<UpdateCatalogController>(m_state, UpdateCatalogController::Events{
+        m_services.postToUi,
+        [this](const core::CatalogTarget& target, std::vector<core::CatalogOffer> offers) {
+            showUpdateOffers(target, std::move(offers));
+        },
+        [this](const Error& e, bool download) {
+            showToast(ui::InfoKind::Error, m_strings.get(download ? Str::UpdatesDownloadFailed : Str::UpdatesCatalogFailed),
+                      e.message);
+        },
+        [this](std::vector<core::DownloadedUpdate> downloaded) {
+            std::vector<std::filesystem::path> packages;
+            for (const auto& d : downloaded) {
+                packages.push_back(d.main); // prerequisites (24H2 checkpoint) stay next to it for DISM
+            }
+            const std::wstring n = std::to_wstring(packages.size());
+            if (!m_state.mounted()) {
+                showToast(ui::InfoKind::Warning, m_strings.format(Str::UpdatesDownloadedNoMount, {{L"n", n}}),
+                          m_updateCatalog->folder().wstring());
+                return;
+            }
+            UpdatesPage::queuePackages(m_state, packages);
+            showToast(ui::InfoKind::Success, m_strings.format(Str::UpdatesDownloaded, {{L"n", n}}),
+                      m_updateCatalog->folder().wstring());
+        },
+        [this] { showToast(ui::InfoKind::Warning, m_strings.get(Str::UpdatesDownloadStopped), L""); },
     });
     m_apply = std::make_unique<ApplyController>(m_state, ApplyController::Events{
         m_services.postToUi,
@@ -491,6 +518,47 @@ void Shell::addUpdates(const std::vector<std::filesystem::path>& files) {
     if (added > 0) {
         showToast(ui::InfoKind::Success, m_strings.format(Str::UpdatesAdded, {{L"n", std::to_wstring(added)}}), L"");
     }
+}
+
+void Shell::findUpdates() {
+    if (!m_state.mounted()) {
+        // The queue belongs to a mounted image, and the image says which updates fit.
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::UpdatesNoMountTitle), m_strings.get(Str::UpdatesNoMountBody));
+        return;
+    }
+    if (m_updateCatalog->busy()) {
+        return;
+    }
+    const auto target = UpdateCatalogController::targetFor(m_state);
+    if (!target || target->release.empty()) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::UpdatesNoTarget),
+                  target ? std::format(L"{}.{}", target->build, target->revision) : std::wstring());
+        return;
+    }
+    m_updateCatalog->search();
+}
+
+void Shell::showUpdateOffers(const core::CatalogTarget& target, std::vector<core::CatalogOffer> offers) {
+    if (offers.empty()) {
+        showToast(ui::InfoKind::Info, m_strings.get(Str::UpdatesCatalogNone),
+                  std::format(L"Windows {} {} {}", target.windows, target.release, target.architecture));
+        return;
+    }
+    if (!host()) {
+        return;
+    }
+    auto raw = std::make_shared<ui::Dialog*>(nullptr);
+    UpdateCatalogActions actions;
+    actions.close = [this, raw] {
+        if (*raw) {
+            ui::Dialog* dialog = std::exchange(*raw, nullptr);
+            host()->popModal(dialog);
+        }
+    };
+    actions.download = [this](std::vector<core::CatalogEntry> entries) { m_updateCatalog->download(std::move(entries)); };
+    UpdateCatalogDialog built = makeUpdateCatalogDialog(m_strings, m_language, target, std::move(offers), std::move(actions));
+    *raw = built.dialog.get();
+    host()->pushModal(std::move(built.dialog), built.initialFocus);
 }
 
 void Shell::updateComponentInspector() {
@@ -1154,6 +1222,8 @@ void Shell::showPage(PageId page) {
                 m_state, m_strings, m_language,
                 DriversPage::Intents{[this] { scanDriverFolder(); }, [this] { showPage(PageId::Images); }});
         } else if (page == PageId::Updates) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesFind), ui::icons::Icon::Download)
+                .onInvoke = [this] { findUpdates(); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesScanFolder), ui::icons::Icon::OpenFolder)
                 .onInvoke = [this] {
                     const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
@@ -1174,7 +1244,8 @@ void Shell::showPage(PageId page) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesAddPackage), ui::icons::Icon::Add)
                 .onInvoke = pick;
             m_pageBody = &m_pageView->setBody<UpdatesPage>(m_state, m_strings, m_language,
-                                                           UpdatesPage::Intents{pick, [this] { showPage(PageId::Images); }});
+                                                           UpdatesPage::Intents{pick, [this] { showPage(PageId::Images); },
+                                                                                [this] { m_updateCatalog->cancel(); }});
         } else if (page == PageId::Features) {
             m_actionReset = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::FeaturesResetChanges));
             m_actionReset->onInvoke = [this] { m_features->resetChanges(); };
