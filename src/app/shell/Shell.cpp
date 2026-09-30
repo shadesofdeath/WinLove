@@ -374,7 +374,38 @@ void Shell::pickPostSetupApps() {
         const std::size_t added = m_postSetup->addApps(picked);
         showToast(ui::InfoKind::Success, m_strings.format(Str::PostsetupCatalogAdded, {{L"n", std::to_wstring(added)}}), L"");
     };
-    AppsDialog built = makeAppsDialog(m_strings, std::move(body), std::move(actions));
+    CatalogDialogSpec spec{m_strings.get(Str::PostsetupCatalog), std::move(body), m_strings.get(Str::PostsetupWingetId),
+                           Str::PostsetupCatalogAdd, appRows(m_strings)};
+    AppsDialog built = makeCatalogDialog(m_strings, std::move(spec), std::move(actions));
+    *raw = built.dialog.get();
+    host()->pushModal(std::move(built.dialog), built.initialFocus);
+}
+
+void Shell::pickPostSetupCommands() {
+    if (!host()) {
+        return;
+    }
+    if (!m_state.mounted()) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::PostsetupNoMountTitle), m_strings.get(Str::PostsetupNoMountBody));
+        return;
+    }
+    auto raw = std::make_shared<ui::Dialog*>(nullptr);
+    AppsDialogActions actions;
+    actions.present = [this](std::size_t index) { return m_postSetup->hasCommand(index); };
+    actions.close = [this, raw] {
+        if (*raw) {
+            ui::Dialog* dialog = std::exchange(*raw, nullptr);
+            host()->popModal(dialog);
+        }
+    };
+    actions.accept = [this](std::vector<std::size_t> picked) {
+        const std::size_t added = m_postSetup->addCommands(picked, m_language);
+        showToast(ui::InfoKind::Success, m_strings.format(Str::PostsetupCommandsAdded, {{L"n", std::to_wstring(added)}}), L"");
+    };
+    CatalogDialogSpec spec{m_strings.get(Str::PostsetupCommands), m_strings.get(Str::PostsetupCommandsBody),
+                           m_strings.get(Str::PostsetupCommand), Str::PostsetupCommandsAdd, commandRows(m_strings, m_language),
+                           m_strings.get(Str::PostsetupName)};
+    AppsDialog built = makeCatalogDialog(m_strings, std::move(spec), std::move(actions));
     *raw = built.dialog.get();
     host()->pushModal(std::move(built.dialog), built.initialFocus);
 }
@@ -1068,6 +1099,8 @@ void Shell::showPage(PageId page) {
                 .onInvoke = [this] { editPostSetupStep(Type::Winget, std::nullopt); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupCatalog), ui::icons::Icon::AppxPackage)
                 .onInvoke = [this] { pickPostSetupApps(); };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupCommands), ui::icons::Icon::LogTerminal)
+                .onInvoke = [this] { pickPostSetupCommands(); };
             m_pageBody = &m_pageView->setBody<PostSetupPage>(
                 m_state, *m_postSetup, m_strings, m_language,
                 PostSetupPage::Intents{[this](std::size_t index) {

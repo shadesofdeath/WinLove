@@ -440,6 +440,25 @@ TEST_CASE("form: right-click menu entries are verbs and handler keys in the imag
     CHECK(ImageSettingsController::optionIn(*back, share) == option(share, "off"));
 }
 
+TEST_CASE("form: the classic Photo Viewer is the TIFF handler of the image, cloned for the other formats") {
+    Fixture f;
+    const auto& viewer = setting(f.controller.catalog(), "photo-viewer");
+    f.controller.select(viewer, option(viewer, "on"));
+    const auto* command = f.state.changes().find(
+        OpKind::SetRegistryValue, L"HKLM\\SOFTWARE\\Classes\\PhotoViewer.FileAssoc.Jpeg\\shell\\open\\command::");
+    REQUIRE(command);
+    const auto written = core::registryWriteFrom(command->target, command->value);
+    REQUIRE(written);
+    CHECK(written->type == REG_EXPAND_SZ); // as Windows' own TIFF entry: %ProgramFiles% is expanded when it runs
+    const std::wstring text(reinterpret_cast<const wchar_t*>(written->data.data()), written->data.size() / 2 - 1);
+    CHECK(text == L"%SystemRoot%\\System32\\rundll32.exe \"%ProgramFiles%\\Windows Photo Viewer\\PhotoViewer.dll\", ImageView_Fullscreen %1");
+    const auto* png = f.state.changes().find(
+        OpKind::SetRegistryValue, L"HKLM\\SOFTWARE\\Microsoft\\Windows Photo Viewer\\Capabilities\\FileAssociations::.png");
+    REQUIRE(png);
+    CHECK(png->value == L"\"PhotoViewer.FileAssoc.Png\"");
+    CHECK(f.controller.current(viewer) == option(viewer, "on"));
+}
+
 TEST_CASE("settings catalog: a file outside the default profile and ProgramData is a malformed setting") {
     const auto catalog = ImageSettingsCatalog::parse(R"({
       "format": "winlove.catalog.settings",

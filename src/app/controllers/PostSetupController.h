@@ -30,6 +30,22 @@ public:
     [[nodiscard]] std::size_t stepCount() const { return plan().steps.size(); }
 
     void add(core::PostSetupStep step);
+    // Ready command steps ("Hazır komutlar"): power plan and network settings that are commands,
+    // not registry values. They run where the plan runs (SetupComplete or the first logon).
+    enum class CommandCategory : std::uint8_t { Power, Network };
+    struct ReadyCommand {
+        std::wstring nameTr;
+        std::wstring nameEn;
+        std::wstring command;
+        CommandCategory category = CommandCategory::Power;
+        [[nodiscard]] const std::wstring& name(Language language) const {
+            return language == Language::Turkish ? nameTr : nameEn;
+        }
+    };
+    [[nodiscard]] static const std::vector<ReadyCommand>& readyCommands();
+    [[nodiscard]] bool hasCommand(std::size_t index) const; // the same command line is a step already
+    std::size_t addCommands(const std::vector<std::size_t>& indexes, Language language);
+
     // popularApps()[index] is a winget step of the plan already (ids compare without case).
     [[nodiscard]] bool hasApp(std::size_t index) const;
     // One queue edit for the whole pick; apps that are a step already are left out. Returns how

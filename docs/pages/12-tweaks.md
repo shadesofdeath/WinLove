@@ -57,6 +57,11 @@ etkisizdir. Kullanıcı sonradan kendi sabitlemelerini yapabilir (düzen kilitle
 bilgisayardaki bir JPEG, `CopyFile` işlemiyle imajdaki sabit yola + onu gösteren değerler). Boş değer = Windows
 varsayılanı. Dosya kutusuna JPEG olmayan / olmayan bir yol yazılırsa hiçbir şey kuyruğa girmez, ipucu kırmızı.
 
+### D-044 ile eklenenler
+Sistem › **Ağ**: LLMNR, IPv6 (varsayılan / IPv4'ü tercih et / kapalı), Wi-Fi etkin noktalarına bağlanma, yeni ağda keşif
+sorusu, parolasız (konuk) SMB, SMB imzalama zorunluluğu. Sistem › Diğer: klasik Windows Fotoğraf Görüntüleyicisi.
+Güç planı ve güvenlik duvarı komut olduğu için Kurulum Sonrası › Hazır komutlar'da.
+
 ### D-043 ile eklenenler
 Gezgin › **Sağ tık menüsü ve simgeler**: "Sahipliği al" (Yok / Türkçe / İngilizce), "Klasöre kopyala / taşı", "Paylaş".
 Sistem › **Bildirimler**: uygulama bildirimleri, kilit ekranında bildirimler, bildirim sesleri, güvenlik ve bakım.

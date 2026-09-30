@@ -114,6 +114,33 @@ TEST_CASE("post-setup controller: the app catalog adds what is ticked once, as o
     CHECK(f.state.changes().version() == version + 1); // nothing new: the queue is not touched
 }
 
+TEST_CASE("post-setup controller: ready commands are command steps, each once, named in the UI language") {
+    Fixture f;
+    const auto& commands = PostSetupController::readyCommands();
+    REQUIRE(commands.size() >= 10);
+    for (const auto& command : commands) {
+        CAPTURE(command.nameEn);
+        CHECK_FALSE(command.nameTr.empty());
+        PostSetupPlan one;
+        one.steps.push_back(Step{Step::Type::Command, command.nameTr, command.command, {}, true});
+        CHECK(core::validatePostSetup(one).empty());
+        // Firewall rule groups by resource id only: a localized group name would miss on another language.
+        if (command.command.find(L"advfirewall firewall set rule") != std::wstring::npos) {
+            CHECK(command.command.find(L"group=\"@FirewallAPI.dll,-") != std::wstring::npos);
+        }
+    }
+    CHECK(f.controller.addCommands({0, 2, 0}, Language::English) == 2);
+    CHECK(f.controller.stepCount() == 2);
+    CHECK(f.controller.plan().steps[0].name == commands[0].nameEn);
+    CHECK(f.controller.plan().steps[0].type == Step::Type::Command);
+    CHECK(f.controller.hasCommand(0));
+    CHECK_FALSE(f.controller.hasCommand(1));
+    CHECK(f.controller.addCommands({2}, Language::Turkish) == 0);
+    // The batch files carry them as they are.
+    const auto scripts = core::buildPostSetupScripts(f.controller.plan());
+    CHECK((scripts.user + scripts.machine).find(L"powercfg /change standby-timeout-ac 0") != std::wstring::npos);
+}
+
 TEST_CASE("post-setup controller: options chosen before the first step go into the plan") {
     Fixture f;
     f.controller.setWhen(PostSetupPlan::When::SetupComplete);

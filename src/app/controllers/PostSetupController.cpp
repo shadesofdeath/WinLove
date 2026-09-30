@@ -77,6 +77,75 @@ bool wingetStepOf(const PostSetupPlan& plan, const std::wstring& id) {
 }
 } // namespace
 
+bool PostSetupController::hasCommand(std::size_t index) const {
+    const auto& commands = readyCommands();
+    return index < commands.size() && std::ranges::any_of(plan().steps, [&](const PostSetupStep& step) {
+               return step.type == PostSetupStep::Type::Command && step.source == commands[index].command;
+           });
+}
+
+std::size_t PostSetupController::addCommands(const std::vector<std::size_t>& indexes, Language language) {
+    const auto& commands = readyCommands();
+    PostSetupPlan next = plan();
+    std::size_t added = 0;
+    for (const std::size_t index : indexes) {
+        if (index >= commands.size() || std::ranges::any_of(next.steps, [&](const PostSetupStep& step) {
+                return step.type == PostSetupStep::Type::Command && step.source == commands[index].command;
+            })) {
+            continue;
+        }
+        next.steps.push_back(
+            PostSetupStep{PostSetupStep::Type::Command, commands[index].name(language), commands[index].command, {}, true});
+        ++added;
+    }
+    if (added > 0) {
+        store(std::move(next));
+    }
+    return added;
+}
+
+const std::vector<PostSetupController::ReadyCommand>& PostSetupController::readyCommands() {
+    using enum CommandCategory;
+    // Power plans are copied from Windows' own definitions (hidden on some PCs, e.g. Modern
+    // Standby laptops, so /setactive on the built-in GUID alone would fail there) under fixed
+    // GUIDs; a second run finds the copy and just activates it. Firewall groups by their resource
+    // id, never by name: "Ağ Bulma" on a Turkish Windows (checked on this PC, 2026-09-30).
+    static const std::vector<ReadyCommand> commands{
+        {L"Güç planı: Yüksek performans", L"Power plan: High performance",
+         L"powercfg /duplicatescheme 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 5a1e0f00-7e57-4e1d-9f00-000000000001 & "
+         L"powercfg /setactive 5a1e0f00-7e57-4e1d-9f00-000000000001",
+         Power},
+        {L"Güç planı: Nihai performans", L"Power plan: Ultimate performance",
+         L"powercfg /duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 5a1e0f00-7e57-4e1d-9f00-000000000002 & "
+         L"powercfg /setactive 5a1e0f00-7e57-4e1d-9f00-000000000002",
+         Power},
+        {L"Uyku: fişe takılıyken hiçbir zaman", L"Sleep: never when plugged in", L"powercfg /change standby-timeout-ac 0", Power},
+        {L"Ekranı kapat: fişe takılıyken 30 dk", L"Turn off the display: 30 min when plugged in",
+         L"powercfg /change monitor-timeout-ac 30", Power},
+        {L"Disk kapanmasın (fişe takılıyken)", L"Never turn off the disk (plugged in)", L"powercfg /change disk-timeout-ac 0",
+         Power},
+        {L"USB seçmeli askıya almayı kapat", L"Turn off USB selective suspend",
+         L"powercfg /setacvalueindex SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0 & "
+         L"powercfg /setdcvalueindex SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0 & "
+         L"powercfg /setactive SCHEME_CURRENT",
+         Power},
+        {L"Ağ bulmayı aç", L"Turn on network discovery",
+         L"netsh advfirewall firewall set rule group=\"@FirewallAPI.dll,-32752\" new enable=Yes", Network},
+        {L"Dosya ve yazıcı paylaşımını aç", L"Turn on file and printer sharing",
+         L"netsh advfirewall firewall set rule group=\"@FirewallAPI.dll,-28502\" new enable=Yes", Network},
+        {L"Uzak Masaüstü'nü aç (Pro ve üstü)", L"Turn on Remote Desktop (Pro and above)",
+         L"reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\" /v fDenyTSConnections /t REG_DWORD /d 0 /f & "
+         L"netsh advfirewall firewall set rule group=\"@FirewallAPI.dll,-28752\" new enable=Yes",
+         Network},
+        {L"Ping'e yanıt ver (ICMPv4)", L"Answer ping (ICMPv4)",
+         L"netsh advfirewall firewall add rule name=\"WinLove ICMPv4\" dir=in action=allow protocol=icmpv4:8,any", Network},
+        {L"Bağlı ağları Özel yap", L"Make connected networks Private",
+         L"powershell -NoProfile -Command \"Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private\"",
+         Network},
+    };
+    return commands;
+}
+
 bool PostSetupController::hasApp(std::size_t index) const {
     const auto& apps = popularApps();
     return index < apps.size() && wingetStepOf(plan(), apps[index].id);

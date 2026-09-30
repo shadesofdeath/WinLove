@@ -241,6 +241,23 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-044 — Hazır komutlar (güç planı, ağ); ağ ayarları; klasik Fotoğraf Görüntüleyicisi (2026-09-30)
+Bağlam: Güç planı ve güvenlik duvarı kayıt defteriyle değil komutla (`powercfg`, `netsh`) ayarlanıyor.
+Karar:
+- Bunlar ayar kataloğuna değil Kurulum Sonrası'na **hazır komut adımları** olarak girer (`PostSetupController::
+  readyCommands`, "Hazır uygulamalar" ile aynı işaretleme dialogu — `makeCatalogDialog` artık ikisine de hizmet eder).
+  Plan nerede çalışıyorsa orada çalışırlar (SetupComplete / ilk oturum).
+- Güç planları Windows'un kendi tanımından sabit GUID'lerle **kopyalanır** (`/duplicatescheme`), sonra etkinleştirilir:
+  bazı bilgisayarlarda (Modern Standby) Yüksek performans gizli olduğundan doğrudan `/setactive` başarısız olur.
+- Güvenlik duvarı grupları kaynak kimliğiyle (`@FirewallAPI.dll,-32752 / -28502 / -28752`): bu bilgisayarda Türkçe
+  adlarına (Ağ Bulma, Dosya ve Yazıcı Paylaşımı, Uzak Masaüstü) karşılık geldikleri doğrulandı.
+- Ağ ayarları (LLMNR, IPv6, Wi-Fi etkin noktaları, yeni ağ sorusu, konuk SMB, SMB imzalama) Sistem sekmesinde, kayıt
+  defteriyle. IPv6 "kapalı" Microsoft'un önermediği seçenek: "IPv4'ü tercih et" ayrı seçenek, risk orta.
+- Fotoğraf Görüntüleyicisi: iki imajda da duran `PhotoViewer.FileAssoc.Tiff` kaydının birebir kopyası Bitmap / Jpeg /
+  Gif / Png için + `Capabilities\FileAssociations`; `PhotoViewer.dll` Windows 10 22H2 ve 11 25H2 imajlarında var (7-Zip ile
+  bakıldı). Varsayılan yapılmaz: "Birlikte aç" ve Varsayılan uygulamalar'da seçilebilir olur.
+Kanıt durumu: birim testli + render; kurulan Windows'ta görülmedi.
+
 ## D-043 — Sağ tık menüsü, bildirimler, oyun ayarları (2026-09-30)
 Bağlam: Kullanıcı eksik alanlardan üçünü seçmemi istedi.
 Karar: Hepsi ayar kataloğunda, kayıt defteriyle. "Sahipliği al" `HKLM\SOFTWARE\Classes\{*,Directory}\shell\runas` fiili (Windows
