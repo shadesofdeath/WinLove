@@ -19,7 +19,7 @@ olarak paylaşmak ve iki kümeyi karşılaştırmak.
 - **Dosya** (`app/state/Preset`): ChangeSet JSON'u + `name` + isteğe bağlı `unattend` (`includeInIso`, `xml` —
   yanıt dosyası kendi XML'iyle taşınır). Eski okuyucular ve `wlcli apply` dosyayı ChangeSet olarak okumaya devam eder;
   adsız düz ChangeSet dosyaları da preset olarak içe aktarılır (ad = dosya adı).
-- **Kitaplık**: `<çalışma kökü>\presets\*.wlpreset` (varsayılan `%LOCALAPPDATA%\WinLove\presets`); ada göre sıralı.
+- **Kitaplık**: `%LOCALAPPDATA%\WinLove\presets\*.wlpreset` (çalışma klasörü taşınsa da burada kalır); ada göre sıralı.
   Aynı adla kaydetmek eskisinin yerine yazar.
 - **Öğeler** (`PresetController::items`): bir presetin değişiklikleri okunur adlarla —
   P12 ayarı olan kayıt / servis işlemleri "Reklam kimliği: Kapalı" gibi tek öğe; kalan kayıt değerleri ham;

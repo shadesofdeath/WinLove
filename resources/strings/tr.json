@@ -726,7 +726,15 @@
     "workDir": "Çalışma klasörü",
     "dismPath": "DISM yolu",
     "mountDir": "Bağlama klasörü",
-    "unmountAfter": "İşlem sonrası mount'u çöz"
+    "unmountAfter": "İşlem sonrası mount'u çöz",
+    "langTr": "Türkçe",
+    "langEn": "English",
+    "browse": "Klasör seç…",
+    "mountDefault": "Boş: çalışma klasöründe \\mount",
+    "lockedHint": "Bağlı imaj ya da süren bir işlem varken değiştirilemez",
+    "pathInvalid": "Tam yol gerekli (ör. D:\\WinLove)",
+    "pressEnter": "Enter ile uygula",
+    "resetDone": "Ayarlar varsayılana döndü"
   },
   "about": {
     "title": "Hakkında",

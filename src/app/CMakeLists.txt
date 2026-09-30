@@ -28,6 +28,7 @@ add_library(wl_app STATIC
     pages/DriversPage.cpp
     pages/ServicesPage.cpp
     pages/RegistryPage.cpp
+    pages/SettingsPage.cpp
     pages/FeaturesPage.cpp
     pages/ImagesPage.cpp
     pages/IsoPage.cpp
@@ -54,7 +55,7 @@ add_library(wl_app STATIC
     state/Preset.cpp
     state/RecentSources.cpp)
 wl_configure_target(wl_app)
-target_link_libraries(wl_app PUBLIC wl_core wl_ui PRIVATE wl_json)
+target_link_libraries(wl_app PUBLIC wl_core wl_ui PRIVATE wl_json version)
 
 add_executable(WinLove WIN32
     main.cpp

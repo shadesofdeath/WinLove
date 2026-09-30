@@ -153,6 +153,7 @@ yanıt dosyası isteğe bağlı). Kopyalanacak dosyalar Uygula sırasında imaja
 Bağlam: P12 ayarları ve P14 planı zaten kuyruk işlemleri; P13 yanıt dosyası ise imaja değil ISO'ya ait olduğu için
 kuyruk dışında (`AppState::unattend()`). Tasarım 17 presetlerde "Katılımsız" kategorisini de gösteriyor.
 Karar: Preset dosyası ChangeSet JSON'unun üstüne iki anahtar ekler (`name`, `unattend`); biçim geriye dönük uyumlu
-kalır. Yanıt dosyası preset içinde kendi XML'i olarak taşınır (tek okuyucu / yazıcı). Kitaplık çalışma kökündeki
-`presets` klasörüdür (kullanıcının belgelerine ya da C:\ köküne klasör açılmaz). Karşılaştırma ham işlemleri değil
+kalır. Yanıt dosyası preset içinde kendi XML'i olarak taşınır (tek okuyucu / yazıcı). Kitaplık uygulama verisindeki
+`%LOCALAPPDATA%\WinLove\presets` klasörüdür (çalışma klasörü başka diske taşınsa da orada kalır; kullanıcının
+belgelerine ya da C:\ köküne klasör açılmaz). Karşılaştırma ham işlemleri değil
 adlandırılmış öğeleri gösterir; ad kaynağı P12 ayar kataloğudur.

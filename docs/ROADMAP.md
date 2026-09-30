@@ -54,7 +54,7 @@ Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **
 | P13 | Katılımsız Kurulum | 11 | `pages/13-unattended.md` | 🟨 test | ISO köküne bellekten eklenir (D-028); VM kurulum testi gerek |
 | P14 | Kurulum Sonrası | 12 | `pages/14-post-setup.md` | 🟨 test | Plan tek kuyruk işlemi (D-029); VM testi gerek |
 | P15 | Presetler (kaydet/yükle/karşılaştır) | 17 | `pages/15-presets.md` | 🟨 test | Preset = ChangeSet + ad + yanıt dosyası (D-030) |
-| P16 | Uygulama Ayarları | 19 | `pages/16-app-settings.md` | ⬜ | |
+| P16 | Uygulama Ayarları | 19 | `pages/16-app-settings.md` | 🟨 test | Vurgu rengi / yoğunluk / mount'u çözme ertelendi (spec §4) |
 | P17 | Hakkında | 20 | `pages/17-about.md` | ⬜ | |
 | P18 | Komut Paleti (Ctrl+K) | 21 | `pages/18-command-palette.md` | ⬜ | Tüm sayfaların `commands()`'ını toplar |
 

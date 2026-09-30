@@ -40,6 +40,25 @@ bool deviceLost(std::int32_t hr) {
 // Headless runs (--render) must never block on a dialog: tests and AI sessions drive them.
 bool g_headless = false;
 
+// "Sistem": high contrast when Windows has it on, else the app light / dark mode.
+ui::ThemeKind resolveTheme(ThemeChoice choice) {
+    switch (choice) {
+    case ThemeChoice::Dark: return ui::ThemeKind::Dark;
+    case ThemeChoice::Light: return ui::ThemeKind::Light;
+    case ThemeChoice::HighContrast: return ui::ThemeKind::HighContrast;
+    case ThemeChoice::System: break;
+    }
+    HIGHCONTRASTW contrast{sizeof(HIGHCONTRASTW), 0, nullptr};
+    if (SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0) && (contrast.dwFlags & HCF_HIGHCONTRASTON)) {
+        return ui::ThemeKind::HighContrast;
+    }
+    DWORD light = 0;
+    DWORD size = sizeof(light);
+    const LSTATUS status = RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                                        L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &light, &size);
+    return status == ERROR_SUCCESS && light != 0 ? ui::ThemeKind::Light : ui::ThemeKind::Dark;
+}
+
 COLORREF colorRef(ui::ThemeKind theme, Color token) {
     const std::uint32_t argb = ui::colorArgb(theme, token);
     return RGB((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF);
@@ -108,11 +127,13 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             else if (v == L"light") options.theme = ui::ThemeKind::Light;
             else if (v == L"hc") options.theme = ui::ThemeKind::HighContrast;
             else return fail(ErrorCode::InvalidArgument, L"--theme must be dark|light|hc", arg);
+            options.themeGiven = true;
         } else if (startsWith(a, L"--lang=")) {
             const auto v = value(L"--lang=");
             if (v == L"tr") options.language = Language::Turkish;
             else if (v == L"en") options.language = Language::English;
             else return fail(ErrorCode::InvalidArgument, L"--lang must be tr|en", arg);
+            options.languageGiven = true;
         } else if (startsWith(a, L"--scale=")) {
             options.scale = std::wcstof(std::wstring(value(L"--scale=")).c_str(), nullptr);
             if (options.scale < 0.5f || options.scale > 4.0f) {
@@ -151,6 +172,11 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoPostSetup = true;
         } else if (a == L"--demo-presets") {
             options.demoPresets = true;
+        } else if (startsWith(a, L"--switch-lang=")) {
+            const auto v = value(L"--switch-lang=");
+            if (v == L"tr") options.switchLanguage = Language::Turkish;
+            else if (v == L"en") options.switchLanguage = Language::English;
+            else return fail(ErrorCode::InvalidArgument, L"--switch-lang must be tr|en", arg);
         } else if (a == L"--demo-drivers") {
             options.demoDrivers = true;
         } else if (a == L"--demo-updates") {
@@ -226,11 +252,6 @@ Result<void> App::initialize() {
     }
     m_graphics = std::move(*graphics);
 
-    auto strings = embeddedStrings(m_options.language);
-    if (!strings) {
-        return std::unexpected(strings.error());
-    }
-    m_strings = std::move(*strings);
     // Headless renders (tests, AI sessions) never touch the user's recent list or settings: they
     // get throw-away files unless a fixture is passed with --recent-file.
     const bool render = m_options.renderTo.has_value();
@@ -238,6 +259,22 @@ Result<void> App::initialize() {
     m_state = std::make_unique<AppState>(
         m_options.recentFile.value_or(render ? scratch / L"recent.json" : RecentSources::defaultFile()),
         render ? scratch / L"settings.json" : AppSettings::defaultFile());
+    // The user's settings (P16) — a render shows what its arguments say, never the scratch file.
+    if (!render) {
+        const AppSettings& settings = m_state->settings();
+        if (!m_options.themeGiven) {
+            m_options.theme = resolveTheme(settings.theme);
+        }
+        if (!m_options.languageGiven) {
+            m_options.language = settings.language;
+        }
+        ui::setReducedMotionForced(settings.reduceMotion);
+    }
+    auto strings = embeddedStrings(m_options.language);
+    if (!strings) {
+        return std::unexpected(strings.error());
+    }
+    m_strings = std::move(*strings);
     return {};
 }
 
@@ -249,10 +286,13 @@ void App::buildUi(ui::HostServices services) {
     shellServices.minimize = [this] { m_window.minimize(); };
     shellServices.toggleMaximize = [this] { m_window.toggleMaximize(); };
     shellServices.close = [this] { m_window.close(); };
+    // Ctrl+Shift+T: through the settings, so the page and settings.json agree with the window.
     shellServices.toggleTheme = [this] {
-        m_options.theme = m_options.theme == ui::ThemeKind::Dark ? ui::ThemeKind::Light : ui::ThemeKind::Dark;
-        applyTheme();
+        AppSettings settings = m_state->settings();
+        settings.theme = m_options.theme == ui::ThemeKind::Dark ? ThemeChoice::Light : ThemeChoice::Dark;
+        m_state->setSettings(std::move(settings));
     };
+    shellServices.settingsChanged = [this] { applySettings(); };
     shellServices.postToUi = [this](std::function<void()> fn) {
         if (m_options.renderTo) {
             fn(); // headless: no message loop
@@ -646,6 +686,12 @@ int App::renderOffscreen() {
         m_state->beginOperation(op);
         m_state->updateOperation(m_options.fakeProgress);
     }
+    if (m_options.switchLanguage) {
+        // What "Arayüz dili" does at run time: every widget again in the other language, the
+        // state (mount, queue, answers) untouched.
+        m_options.language = *m_options.switchLanguage;
+        rebuildUi();
+    }
     m_host->layout(m_options.size);
 
     // Drive the real input paths so the frame shows exactly what the interaction would.
@@ -759,6 +805,7 @@ int App::runWindowed() {
     };
     callbacks.settingsChanged = [this] {
         ui::refreshReducedMotion();
+        applySettings(); // theme "Sistem" follows Windows
         m_window.invalidate();
     };
 
@@ -832,6 +879,52 @@ void App::applyTheme() {
     m_window.invalidate();
 }
 
+ui::HostServices App::windowHostServices() {
+    return {
+        [this] { m_window.invalidate(); },
+        [this](UINT id, UINT ms) { m_window.setTimer(id, ms); },
+        [this](UINT id) { m_window.stopTimer(id); },
+    };
+}
+
+void App::applySettings() {
+    if (m_options.renderTo) {
+        return; // a still frame shows what its arguments say
+    }
+    const AppSettings& settings = m_state->settings();
+    ui::setReducedMotionForced(settings.reduceMotion);
+    if (const ui::ThemeKind theme = resolveTheme(settings.theme); theme != m_options.theme) {
+        m_options.theme = theme;
+        applyTheme();
+    }
+    if (settings.language != m_options.language) {
+        m_options.language = settings.language;
+        // Later: this runs inside a control of the shell that is about to be destroyed.
+        m_window.post([this] { rebuildUi(); });
+    }
+}
+
+void App::rebuildUi() {
+    auto strings = embeddedStrings(m_options.language);
+    if (!strings) {
+        return;
+    }
+    if (m_shell) {
+        m_options.page = m_shell->currentPage();
+        m_options.navCollapsed = m_shell->navCollapsed();
+    }
+    m_host.reset(); // the old shell reads the old strings: it goes first
+    m_shell = nullptr;
+    m_strings = std::move(*strings);
+    if (m_options.renderTo) {
+        buildUi({}); // --switch-lang: the frame is laid out and drawn by renderOffscreen
+        return;
+    }
+    buildUi(windowHostServices());
+    m_host->layout(m_window.clientSize());
+    m_window.invalidate();
+}
+
 void App::paint() {
     if (!m_target || !m_host) {
         return;
@@ -866,11 +959,7 @@ Result<void> App::recreateGraphics() {
     // Host keeps a pointer to the old TextStyles: rebuild the UI on the new graphics.
     const PageId page = m_shell ? m_shell->currentPage() : PageId::Source;
     m_options.page = page;
-    buildUi({
-        [this] { m_window.invalidate(); },
-        [this](UINT id, UINT ms) { m_window.setTimer(id, ms); },
-        [this](UINT id) { m_window.stopTimer(id); },
-    });
+    buildUi(windowHostServices());
     m_host->layout(m_window.clientSize());
     auto target = ui::SwapChainTarget::create(*m_graphics->device, m_window.hwnd(), m_window.clientWidthPx(),
                                               m_window.clientHeightPx(), m_window.scale() * 96.0f);

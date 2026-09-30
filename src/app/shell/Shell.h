@@ -53,6 +53,7 @@ class ServicesPage;
 class RegistryPage;
 class UnattendedPage;
 class PresetsPage;
+class SettingsPage;
 
 class Shell : public ui::Widget {
 public:
@@ -63,6 +64,7 @@ public:
         std::function<void()> toggleMaximize;
         std::function<void()> close;
         std::function<void()> toggleTheme;
+        std::function<void()> settingsChanged; // AppState::Change::Settings: theme, motion, language
         std::function<void(std::function<void()>)> postToUi;     // run on the UI thread later
         std::function<HWND()> ownerWindow;                       // for system dialogs (may be null)
         std::function<bool(const std::wstring& args)> relaunchElevated; // true = new process started

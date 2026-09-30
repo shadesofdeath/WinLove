@@ -26,6 +26,7 @@ add_executable(wl_tests
     app/PresetTests.cpp
     app/RegistryImportTests.cpp
     app/ServiceTests.cpp
+    app/SettingsTests.cpp
     app/LocalizationTests.cpp
     app/SourceTests.cpp
     app/UnattendControllerTests.cpp)

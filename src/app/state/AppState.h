@@ -50,7 +50,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings };
     using Listener = std::function<void(Change)>;
 
     explicit AppState(std::filesystem::path recentFile = RecentSources::defaultFile(),
@@ -65,6 +65,9 @@ public:
     [[nodiscard]] core::TaskRunner& reader() noexcept { return m_reader; }
     [[nodiscard]] const AppSettings& settings() const noexcept { return m_settings; }
     void setIsoFolder(std::filesystem::path folder); // saved to settings.json
+    // P16: replaces the settings and saves them (Change::Settings). The caller checks that the
+    // work folders may change now (nothing mounted, nothing running).
+    void setSettings(AppSettings settings);
 
     [[nodiscard]] const std::optional<core::SourceInfo>& source() const noexcept { return m_source; }
     void setSource(core::SourceInfo source); // records it in the recent list; resets the selection

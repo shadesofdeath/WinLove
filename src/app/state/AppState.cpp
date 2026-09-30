@@ -149,6 +149,15 @@ void AppState::setIsoFolder(std::filesystem::path folder) {
     m_settings.save(m_settingsFile);
 }
 
+void AppState::setSettings(AppSettings settings) {
+    if (settings == m_settings) {
+        return;
+    }
+    m_settings = std::move(settings);
+    m_settings.save(m_settingsFile);
+    notify(Change::Settings);
+}
+
 void AppState::setIsoRun(std::optional<IsoRun> run) {
     m_iso = std::move(run);
     notify(Change::Iso);

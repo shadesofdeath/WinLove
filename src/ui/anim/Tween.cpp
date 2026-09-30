@@ -12,6 +12,7 @@ namespace {
 
 std::atomic<int> g_reducedMotion{-1}; // -1 unknown, 0 no, 1 yes
 std::atomic<bool> g_instant{false};
+std::atomic<bool> g_forced{false};
 
 float bezierAt(float t, float p1, float p2) {
     // B(t) for P0 = 0, P3 = 1.
@@ -47,8 +48,12 @@ void forceInstantMotion(bool instant) noexcept {
     g_instant = instant;
 }
 
+void setReducedMotionForced(bool forced) noexcept {
+    g_forced = forced;
+}
+
 bool reducedMotion() noexcept {
-    if (g_instant.load()) {
+    if (g_instant.load() || g_forced.load()) {
         return true;
     }
     if (g_reducedMotion.load() < 0) {

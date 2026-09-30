@@ -4,14 +4,18 @@
 
 ## Güncel
 - **Faz:** 3 — sayfalar. P01–P04 ✅. P05 Uygula, P06 ISO, P08 Güncellemeler, P09 Sürücüler, P10 Servisler, P11 Kayıt Defteri,
-  P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler: 🟨 geliştirme bitti, kullanıcı
-  testi bekliyor. P07 Bileşenler: 🟨 v1 (yalnız AppX; CBS paket
+  P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler, P16 Uygulama Ayarları:
+  🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v1 (yalnız AppX; CBS paket
   kaldırma kararı bekliyor).
 - **Çalışma şekli:** kullanıcı "her seferinde durma" dedi — sayfa bitince build + test + `-Dist` + yerel commit,
   sonra doğrudan bir sonraki sayfa. Kullanıcı `dist\WinLove.exe`'yi paralel test ediyor.
-- **Bir sonraki somut adım:** P16 Uygulama Ayarları (tasarım 19) — çalışma kökü, dil, tema vb. (`AppSettings`
-  bugün yalnız `workRoot` + `isoFolder` tutuyor; dil değiştirme buraya ertelenmişti). Spec yok: önce
-  `docs/pages/16-app-settings.md`. Sonra P17 Hakkında, P18 Komut Paleti.
+- **Bir sonraki somut adım:** P17 Hakkında (tasarım 20), ardından P18 Komut Paleti (tasarım 21; Ctrl+K — başlık
+  çubuğundaki arama kutusu şimdilik yalnız görsel). Spec'leri yok: önce `docs/pages/17-about.md`.
+- **P16 Uygulama Ayarları (2026-09-30):** `AppSettings` (tema, hareketi azalt, dil, çalışma / bağlama klasörü),
+  `SettingsPage` (`Ctrl+,`), `App::applySettings` (tema canlı, "Sistem" Windows'u izler; dil değişince arayüz durum
+  korunarak yeniden kurulur — `--switch-lang` render'ıyla doğrulandı). **Ertelenen (spec §4):** vurgu rengi (token
+  seti gerek), yoğunluk (çalışma zamanı ölçü işi), "işlem sonrası mount'u çöz" (P05 ekranları). Gerçek pencerede
+  tema / dil değişimi kullanıcı testi bekliyor.
 - **P15 Presetler (2026-09-30):** `app/state/Preset` (dosya biçimi, D-030), `PresetController` (kitaplık klasörü,
   adlandırılmış öğeler, A / B farkı), `PresetsPage`. Unit testli (dosya, kitaplık, öğeler, fark, yükleme), render'da
   doğrulandı; dosya diyalogları ve gerçek kitaplık klasörü kullanıcı testi bekliyor.
@@ -41,7 +45,7 @@
   (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
   ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
   (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
-- **Build:** `./build.ps1 -Dist` yeşil, 137 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Build:** `./build.ps1 -Dist` yeşil, 140 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi; güncellemelerde sürükle-sırala; imajdaki mevcut sürücüleri
@@ -63,6 +67,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — P13 Katılımsız Kurulum geliştirildi (test bekliyor); `ui::FormView` ortak form bileşeni.
 - 2026-09-30 — P14 Kurulum Sonrası geliştirildi (test bekliyor).
 - 2026-09-30 — P15 Presetler geliştirildi (test bekliyor).
+- 2026-09-30 — P16 Uygulama Ayarları geliştirildi (test bekliyor).
 - 2026-09-28 — Baştan sona inceleme (4 alan, paralel): ~35 hata düzeltildi. Öne çıkanlar: junction üzerinden ana
   makine ACL'si değişebilmesi (FileLocks), commit edilmeyen unmount'un başarılı raporlanması, DISM oturum yenileme,
   UDF çıkarmada yol dışına yazma + sınır dışı okuma, tıklamada yok edilen widget (use-after-free), Enter ile devre
