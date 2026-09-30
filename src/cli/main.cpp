@@ -407,6 +407,7 @@ const wchar_t* phaseName(core::ops::Phase phase) {
     case core::ops::Phase::Features: return L"features";
     case core::ops::Phase::Drivers: return L"drivers";
     case core::ops::Phase::Updates: return L"updates";
+    case core::ops::Phase::Cleanup: return L"cleanup";
     case core::ops::Phase::Settings: return L"settings";
     }
     return L"?";

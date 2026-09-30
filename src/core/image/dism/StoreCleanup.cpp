@@ -157,6 +157,12 @@ Result<void> cleanupComponentStore(DismSession& session, bool resetBase, const T
             current.push_back(static_cast<wchar_t>(static_cast<unsigned char>(c)));
         }
     }
+    if (*exit == 0x800F0806) { // CBS_E_PENDING
+        return fail(ErrorCode::Unsupported,
+                    L"component store cleanup skipped: the image has pending operations (a feature or update of this "
+                    L"run finishes at first boot); the image itself is unchanged by this step",
+                    message, static_cast<std::int32_t>(*exit));
+    }
     if (*exit != 0) {
         return fail(ErrorCode::IoError, L"component store cleanup failed",
                     message.empty() ? std::format(L"dism.exe exit code 0x{:08X}", *exit) : message,

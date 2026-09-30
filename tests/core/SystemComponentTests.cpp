@@ -287,22 +287,36 @@ TEST_CASE("store cleanup: options, command line, progress out of dism.exe's outp
     CHECK(lastDismPercent("Error: 0x800f0806 %1 20.0%") == doctest::Approx(0.20));
 }
 
-TEST_CASE("plan: the store cleanup runs first, component removals with the other removals") {
+TEST_CASE("plan: component removals with the other removals, the store cleanup right after the updates") {
     ChangeSet set;
     set.add({OpKind::SetRegistryValue, L"HKLM\\SOFTWARE\\X::y", L"dword:00000001"});
     set.add({OpKind::RemoveAppx, L"App_1.0_x64__abc"});
     set.add({OpKind::RemoveComponent, L"onedrive", utf8::toWide(componentRecipeToJson(oneDrive())), ops::Risk::Low, -700});
-    set.add({OpKind::DisableFeature, L"F1"});
     set.add({OpKind::CleanupImage, L"component-store", utf8::toWide(storeCleanupToJson({L"Temizlik", true}))});
-    const auto plan = ops::plan(set);
+    set.add({OpKind::DisableFeature, L"F1"});
+    auto plan = ops::plan(set);
     REQUIRE(plan.steps.size() == 5);
-    CHECK(plan.steps[0].operation.kind == OpKind::CleanupImage);
-    CHECK(plan.steps[1].operation.kind == OpKind::RemoveAppx);
-    CHECK(plan.steps[2].operation.kind == OpKind::RemoveComponent);
-    CHECK(plan.steps[2].phase == ops::Phase::Remove);
-    CHECK(plan.steps[3].operation.kind == OpKind::DisableFeature);
+    CHECK(plan.steps[0].operation.kind == OpKind::RemoveAppx);
+    CHECK(plan.steps[1].operation.kind == OpKind::RemoveComponent);
+    CHECK(plan.steps[1].phase == ops::Phase::Remove);
+    CHECK(plan.steps[2].operation.kind == OpKind::DisableFeature);
+    CHECK(plan.steps[3].operation.kind == OpKind::CleanupImage);
+    CHECK(plan.steps[3].phase == ops::Phase::Cleanup);
     CHECK(plan.steps[4].phase == ops::Phase::Settings);
-    CHECK(ops::estimateSeconds(OpKind::CleanupImage) > ops::estimateSeconds(OpKind::RemoveComponent));
+    // Nothing was added: seconds (13 s in the lab). With an update in the run: what it superseded goes.
+    CHECK(ops::estimateSeconds(plan, 3) < 60);
+    const auto quick = ops::groups(plan);
+    REQUIRE(quick.size() == 4);
+    CHECK(quick[2].phase == ops::Phase::Cleanup);
+
+    set.add({OpKind::AddPackage, L"C:\\updates\\lcu.msu", L"lcu"});
+    plan = ops::plan(set);
+    REQUIRE(plan.steps.size() == 6);
+    CHECK(plan.steps[3].operation.kind == OpKind::AddPackage);
+    CHECK(plan.steps[4].operation.kind == OpKind::CleanupImage); // after the update, before the registry
+    CHECK(plan.steps[5].phase == ops::Phase::Settings);
+    CHECK(ops::estimateSeconds(plan, 4) >= 300);
+    CHECK(ops::groups(plan)[3].estimateSeconds == doctest::Approx(ops::estimateSeconds(plan, 4)));
 
     // Presets carry both kinds, recipe included.
     const auto back = ChangeSet::fromJson(set.toJson());

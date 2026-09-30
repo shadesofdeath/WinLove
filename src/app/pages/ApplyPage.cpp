@@ -142,6 +142,7 @@ std::wstring ApplyPage::groupName(const Row& row) const {
     case Phase::Features: return m_strings.get(Str::ApplyOpsFeatures);
     case Phase::Drivers: return m_strings.get(Str::ApplyOpsDrivers);
     case Phase::Updates: return m_strings.get(Str::ApplyOpsUpdates);
+    case Phase::Cleanup: return m_strings.get(Str::ApplyOpsCleanup);
     case Phase::Settings: return m_strings.get(Str::ApplyOpsSettings);
     }
     return {};
@@ -156,6 +157,7 @@ ui::icons::Icon ApplyPage::groupIcon(const Row& row) {
     case Phase::Features: return ui::icons::Icon::PuzzleFeatures;
     case Phase::Drivers: return ui::icons::Icon::DriverChip;
     case Phase::Updates: return ui::icons::Icon::UpdateDownload;
+    case Phase::Cleanup: return ui::icons::Icon::SizeSaved;
     case Phase::Settings: return ui::icons::Icon::Registry;
     }
     return ui::icons::Icon::File;

@@ -10,8 +10,8 @@ Phase phaseOf(OpKind kind) noexcept {
     case OpKind::RemovePackage:
     case OpKind::RemoveCapability:
     case OpKind::RemoveComponent:
-    case OpKind::CleanupImage:
     case OpKind::RemoveAppx: return Phase::Remove;
+    case OpKind::CleanupImage: return Phase::Cleanup;
     case OpKind::DisableFeature:
     case OpKind::EnableFeature: return Phase::Features;
     case OpKind::AddDriver: return Phase::Drivers;
@@ -42,9 +42,18 @@ double estimateSeconds(OpKind kind) noexcept {
     case OpKind::SetServiceStart: return 1.0;
     case OpKind::SetPostSetup: return 5.0; // scripts; copy payloads add their own time
     case OpKind::RemoveComponent: return 25.0; // hive edit + package removal + a few thousand files
-    case OpKind::CleanupImage: return 600.0;   // StartComponentCleanup /ResetBase on an updated image
+    case OpKind::CleanupImage: return 30.0;    // StartComponentCleanup /ResetBase with nothing new to clean
     }
     return 5.0;
+}
+
+double estimateSeconds(const ApplyPlan& plan, std::size_t step) noexcept {
+    const OpKind kind = plan.steps[step].operation.kind;
+    if (kind == OpKind::CleanupImage &&
+        std::ranges::any_of(plan.steps, [](const PlanStep& s) { return s.operation.kind == OpKind::AddPackage; })) {
+        return 600.0; // the updates of this run left superseded versions behind
+    }
+    return estimateSeconds(kind);
 }
 
 std::vector<PlanGroup> groups(const ApplyPlan& plan) {
@@ -55,7 +64,7 @@ std::vector<PlanGroup> groups(const ApplyPlan& plan) {
             result.push_back({step.phase, i, 0, 0});
         }
         ++result.back().count;
-        result.back().estimateSeconds += estimateSeconds(step.operation.kind);
+        result.back().estimateSeconds += estimateSeconds(plan, i);
     }
     return result;
 }
@@ -68,9 +77,6 @@ ApplyPlan plan(const ChangeSet& changes) {
     // stable: keeps the user's order inside each phase; updates go SSU → LCU → .NET → other
     // (op.value holds the kind from UpdatePackage.h).
     const auto updateRank = [](const Operation& op) {
-        if (op.kind == OpKind::CleanupImage) {
-            return -1; // first of its (first) phase: needs an image without pending operations
-        }
         if (op.kind != OpKind::AddPackage) {
             return 0;
         }

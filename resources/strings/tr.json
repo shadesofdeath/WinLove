@@ -556,6 +556,7 @@
       "unattended": "autounattend.xml ve SetupComplete yerleştir",
       "commit": "İmajı kaydet ve temizle (ResetBase)",
       "commitUnmount": "İmajı kaydet ve çöz",
+      "cleanup": "Bileşen deposunu temizle",
       "settings": "Kayıt defteri ve servisler"
     },
     "emptyTitle": "Kuyruk boş",
