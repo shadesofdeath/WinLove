@@ -54,6 +54,10 @@ std::string_view embeddedSettingsCatalog() {
     return resourceBytes(IDR_CATALOG_SETTINGS);
 }
 
+std::string_view embeddedComponentsCatalog() {
+    return resourceBytes(IDR_CATALOG_COMPONENTS);
+}
+
 HICON appIcon() {
     return LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_WINLOVE));
 }

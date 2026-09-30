@@ -1,0 +1,10 @@
+{
+  "title": "Microsoft Edge",
+  "paths": [ "Program Files (x86)\\Microsoft\\Edge" ],
+  "registry": [
+    { "target": "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{56EB18F8-B008-4CBD-B6D2-8C97FE7E9062}\\\\::", "value": "[-]" },
+    { "target": "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\ClientState\\{56EB18F8-B008-4CBD-B6D2-8C97FE7E9062}\\\\::", "value": "[-]" },
+    { "target": "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Microsoft Edge\\\\::", "value": "[-]" },
+    { "target": "HKLM\\SOFTWARE\\Microsoft\\Active Setup\\Installed Components\\{9459C573-B17A-45AE-9F64-1857B5D58CEE}\\\\::", "value": "[-]" }
+  ]
+}

@@ -280,6 +280,18 @@ std::vector<FolderBlocker> blockersOf(const std::filesystem::path& folder) {
     return result;
 }
 
+Result<void> forceRemoveEntry(const std::filesystem::path& entry) {
+    if (!entry.is_absolute()) {
+        return fail(ErrorCode::InvalidArgument, L"refusing to remove a relative path", entry.wstring());
+    }
+    if (const DWORD status = removeEntry(entry); status != ERROR_SUCCESS) {
+        return fail(status == ERROR_ACCESS_DENIED ? ErrorCode::AccessDenied : ErrorCode::IoError,
+                    L"could not remove (still in use?)", entry.wstring(),
+                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(status)));
+    }
+    return {};
+}
+
 Result<void> forceRemoveContents(const std::filesystem::path& folder) {
     // Only dedicated folders at least two levels deep (C:\WinLove\mount), never C:\ or C:\WinLove.
     const auto relative = folder.lexically_normal().relative_path();

@@ -32,6 +32,8 @@ enum Category : int { kComponents, kFeatures, kUpdates, kDrivers, kRegistry, kSe
 Category categoryOf(OpKind kind) {
     switch (kind) {
     case OpKind::RemovePackage:
+    case OpKind::RemoveComponent:
+    case OpKind::CleanupImage:
     case OpKind::RemoveAppx: return kComponents;
     case OpKind::EnableFeature:
     case OpKind::DisableFeature:
@@ -77,6 +79,11 @@ ApplyPage::Mode ApplyPage::modeFor(const AppState& state) {
 }
 
 std::wstring ApplyPage::displayName(const AppState& state, const core::ops::Operation& op) {
+    if (op.kind == OpKind::RemoveComponent || op.kind == OpKind::CleanupImage) {
+        // The operation carries the name it was queued under.
+        const std::wstring title = core::componentTitle(op.value);
+        return title.empty() ? op.target : title;
+    }
     if (const auto& features = state.optionalFeatures()) {
         for (const auto& item : features->items) {
             if (item.name == op.target) {

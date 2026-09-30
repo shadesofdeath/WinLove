@@ -4,6 +4,8 @@
 #include "base/Utf8.h"
 #include "core/image/RegistryEdit.h"
 #include "core/image/Services.h"
+#include "core/image/SystemComponents.h"
+#include "core/image/dism/StoreCleanup.h"
 #include "core/postsetup/PostSetup.h"
 
 #include <algorithm>
@@ -64,6 +66,22 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
             return std::unexpected(plan.error());
         }
         return applyPostSetup(session.mountPath(), *plan, task);
+    }
+    case OpKind::RemoveComponent: {
+        auto recipe = componentRecipeFromJson(utf8::fromWide(op.value));
+        if (!recipe) {
+            return std::unexpected(recipe.error());
+        }
+        registry.reset(); // the recipe loads the hives itself, with the DISM session closed
+        return removeComponent(session, *recipe, task);
+    }
+    case OpKind::CleanupImage: {
+        auto cleanup = storeCleanupFromJson(utf8::fromWide(op.value));
+        if (!cleanup) {
+            return std::unexpected(cleanup.error());
+        }
+        registry.reset(); // dism.exe loads the image's hives
+        return cleanupComponentStore(session, cleanup->resetBase, task);
     }
     }
     return fail(ErrorCode::Unsupported, L"operation kind not implemented yet", utf8::toWide(opKindKey(op.kind)));

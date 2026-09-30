@@ -1,0 +1,8 @@
+{
+  "title": "OneDrive kurulumu",
+  "packages": [ "Microsoft-Windows-OneDrive-Setup-Package", "Microsoft-Windows-OneDrive-Setup-WOW64-Package" ],
+  "paths": [ "Windows\\System32\\OneDriveSetup.exe" ],
+  "registry": [
+    { "target": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run::OneDriveSetup", "value": "-" }
+  ]
+}

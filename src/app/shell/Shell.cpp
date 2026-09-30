@@ -104,7 +104,10 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         if (!catalog) {
             catalog = AppxCatalog::parse(R"({"format":"winlove.catalog.appx","groups":[],"apps":[]})");
         }
-        m_components = std::make_unique<ComponentController>(m_state, std::move(*catalog), m_language, m_services.postToUi);
+        // Without the resource (tools, tests): no system components, the apps still work.
+        auto system = ComponentCatalog::parse(embeddedComponentsCatalog());
+        m_components = std::make_unique<ComponentController>(m_state, std::move(*catalog), m_language, m_services.postToUi,
+                                                             system ? std::move(*system) : ComponentCatalog{});
     }
     {
         auto tweaks = TweakCatalog::parse(embeddedTweakCatalog());

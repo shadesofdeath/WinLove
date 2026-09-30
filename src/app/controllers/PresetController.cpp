@@ -201,6 +201,13 @@ std::vector<PresetController::Item> PresetController::items(const Preset& preset
             result.push_back({kComponents, L"component|" + lowered(identity), identity, s(Str::PresetsValueRemove), {}});
             break;
         }
+        case OpKind::RemoveComponent:
+        case OpKind::CleanupImage: {
+            const std::wstring title = core::componentTitle(op.value);
+            result.push_back({kComponents, L"system|" + lowered(op.target), title.empty() ? op.target : title,
+                              s(op.kind == OpKind::CleanupImage ? Str::PresetsValueRun : Str::PresetsValueRemove), {}});
+            break;
+        }
         case OpKind::DisableFeature:
         case OpKind::EnableFeature:
         case OpKind::RemoveCapability:

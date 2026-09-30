@@ -247,7 +247,17 @@ Result<std::unique_ptr<DismSession>> Dism::openSession(const std::filesystem::pa
 }
 
 DismSession::~DismSession() {
-    m_dism.m_api->closeSession(m_session);
+    if (m_session != 0) {
+        m_dism.m_api->closeSession(m_session);
+    }
+}
+
+void DismSession::suspend() {
+    if (m_session != 0) {
+        m_dism.m_api->closeSession(m_session);
+        m_session = 0;
+    }
+    m_reloadRequired = true;
 }
 
 void DismSession::noteReload(long hr) noexcept {
@@ -259,7 +269,9 @@ void DismSession::noteReload(long hr) noexcept {
 }
 
 Result<void> DismSession::reload() {
-    m_dism.m_api->closeSession(m_session);
+    if (m_session != 0) {
+        m_dism.m_api->closeSession(m_session);
+    }
     dismapi::Session session = 0;
     const HRESULT hr = m_dism.m_api->openSession(m_path.c_str(), nullptr, nullptr, &session);
     if (FAILED(hr)) {

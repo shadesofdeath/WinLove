@@ -135,6 +135,10 @@ public:
     // True after a mutation returned DISMAPI_S_RELOAD_IMAGE_SESSION_REQUIRED; reload() before the next one.
     [[nodiscard]] bool reloadRequired() const noexcept { return m_reloadRequired; }
     [[nodiscard]] Result<void> reload();
+    // Closes the session (the image stays mounted) for work DISM must not be part of: editing the
+    // image's hives, running dism.exe on the same image. reload() opens it again; until then
+    // reloadRequired() is true.
+    void suspend();
 
 private:
     friend class Dism;

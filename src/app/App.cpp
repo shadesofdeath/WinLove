@@ -397,6 +397,12 @@ int App::renderOffscreen() {
             app(L"Microsoft.VCLibs.140.00", L"14.0.33519.0", 6), app(L"Microsoft.WindowsCalculator", L"11.2409.0.0", 14),
             app(L"Contoso.Unknown", L"1.0.0.0", 3),
         };
+        // Sizes as measured in Windows 11 25H2 (26200.8037) Pro.
+        constexpr std::uint64_t mb = 1024 * 1024;
+        m_state->setSystemComponents(AppState::SystemComponents{
+            mountDir,
+            {{"edge", {true, 803 * mb}}, {"edge-webview", {true, 796 * mb}}, {"edge-update", {true, 806 * mb}},
+             {"onedrive", {true, 86 * mb}}, {"winre", {true, 643 * mb}}}});
         m_state->setAppxList(AppState::AppxList{AppState::AppxList::Status::Ready, mountDir, std::move(items), {}});
         auto& controller = m_shell->components();
         for (const auto& g : controller.groups()) {

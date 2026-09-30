@@ -1,7 +1,9 @@
 #pragma once
 // ChangeSet → ordered ApplyPlan (ARCHITECTURE §2.3). Order: removals first (packages,
-// capabilities, AppX), then features, drivers, updates, and registry/services last (they may
-// target files the earlier steps add or remove). Within a phase the user's order is kept.
+// capabilities, AppX, system components), then features, drivers, updates, and registry/services
+// last (they may target files the earlier steps add or remove). Within a phase the user's order
+// is kept — except the component store cleanup, which runs before everything: DISM refuses it
+// once another step has left a pending operation in the image.
 #include "core/ops/ChangeSet.h"
 
 #include <vector>

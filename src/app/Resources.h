@@ -22,6 +22,8 @@ namespace wl::app {
 [[nodiscard]] std::string_view embeddedTweakCatalog();
 // resources/catalog/settings.json (P12 form).
 [[nodiscard]] std::string_view embeddedSettingsCatalog();
+// resources/catalog/components.json (P07 system components and cleanup).
+[[nodiscard]] std::string_view embeddedComponentsCatalog();
 
 [[nodiscard]] HICON appIcon();
 

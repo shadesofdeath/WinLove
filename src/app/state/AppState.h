@@ -12,6 +12,7 @@
 #include "core/image/dism/MountHealth.h"
 #include "core/image/RegistryEdit.h"
 #include "core/image/Services.h"
+#include "core/image/SystemComponents.h"
 #include "core/image/dism/OptionalFeatures.h"
 #include "core/iso/IsoBuilder.h"
 #include "core/ops/ApplyJob.h"
@@ -20,6 +21,7 @@
 #include "core/unattend/Unattend.h"
 
 #include <functional>
+#include <map>
 #include <optional>
 #include <vector>
 
@@ -113,6 +115,15 @@ public:
     };
     [[nodiscard]] const std::optional<AppxList>& appxList() const noexcept { return m_appx; }
     void setAppxList(std::optional<AppxList> list);
+
+    // P07 data: which catalog system components the mounted image has, and how big they are
+    // (ComponentController, once per mount, after the app list). Change::Components.
+    struct SystemComponents {
+        std::filesystem::path mountDir;
+        std::map<std::string, core::ComponentPresence> items; // by catalog id
+    };
+    [[nodiscard]] const std::optional<SystemComponents>& systemComponents() const noexcept { return m_system; }
+    void setSystemComponents(std::optional<SystemComponents> components);
 
     // P10 data: services of the mounted image's SYSTEM hive (ServiceController), read once per mount.
     struct ServiceList {
@@ -229,6 +240,7 @@ private:
     std::optional<OptionalFeatures> m_features;
     std::optional<ApplyRun> m_apply;
     std::optional<AppxList> m_appx;
+    std::optional<SystemComponents> m_system;
     std::optional<ServiceList> m_services;
     std::vector<RegImport> m_regImports;
     DriverScan m_drivers;

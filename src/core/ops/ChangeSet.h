@@ -30,6 +30,8 @@ enum class OpKind : std::uint8_t {
     SetServiceStart,
     SetRegistryFirstLogon, // written offline AND re-applied after OOBE (SetupComplete / first logon)
     SetPostSetup,          // P14: target "postsetup", value = the whole plan as JSON (one slot)
+    RemoveComponent,       // P07 system component: target = catalog id, value = its recipe as JSON
+    CleanupImage,          // component store cleanup: target "component-store", value = options JSON
 };
 
 enum class Risk : std::uint8_t { Low, Medium, High };

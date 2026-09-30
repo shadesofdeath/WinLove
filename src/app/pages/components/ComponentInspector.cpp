@@ -36,6 +36,15 @@ Str riskText(core::ops::Risk risk) {
 }
 } // namespace
 
+ui::icons::Icon ComponentInspector::iconOf(ComponentController::Item::Kind kind) noexcept {
+    switch (kind) {
+    case ComponentController::Item::Kind::System: return ui::icons::Icon::WindowsLogoGeneric;
+    case ComponentController::Item::Kind::Cleanup: return ui::icons::Icon::SizeSaved;
+    case ComponentController::Item::Kind::Appx: break;
+    }
+    return ui::icons::Icon::AppxPackage;
+}
+
 ComponentInspector::ComponentInspector(const Localization& strings, Language language)
     : m_strings(strings), m_language(language) {
     m_toggle = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::ComponentsAddToQueue));
@@ -74,7 +83,7 @@ void ComponentInspector::paint(ui::Canvas& canvas) {
     const float x = b.x + kPadding;
     const float width = b.width - 2 * kPadding;
     float y = b.y + kPadding;
-    canvas.drawIcon(ui::icons::Icon::AppxPackage, {x, y + 4}, Color::TextSecondary);
+    canvas.drawIcon(iconOf(item.kind), {x, y + 4}, Color::TextSecondary);
     canvas.drawText(item.name, {x + 24, y, width - 24, kLine}, TypeStyle::BodyStrong, Color::TextPrimary);
     canvas.drawText(item.identity, {x + 24, y + kLine, width - 24, kLine}, TypeStyle::Mono, Color::TextTertiary);
 
@@ -103,7 +112,7 @@ void ComponentInspector::paint(ui::Canvas& canvas) {
     row(Str::CommonStatus, m_strings.get(m_queued ? Str::ComponentsQueued : Str::ComponentsStays));
     row(Str::ComponentsReversible, m_strings.get(Str::CommonNo));
 
-    const std::wstring notes = item.entry ? item.entry->notes(m_language) : std::wstring();
+    const std::wstring& notes = item.notes;
     if (!notes.empty()) {
         section(m_strings.get(Str::ComponentsCompat));
         const float h = std::ceil(canvas.text().measureWrapped(notes, TypeStyle::Caption, width - 20));
@@ -111,9 +120,20 @@ void ComponentInspector::paint(ui::Canvas& canvas) {
         canvas.drawTextWrapped(notes, {x + 20, y, width - 20, h}, TypeStyle::Caption, Color::TextSecondary);
         y += h + 4;
     }
+    // What goes: the package full name; a system component lists its packages and paths.
+    const std::wstring count = std::to_wstring(item.contents.size());
     section(m_strings.get(Str::ComponentsContents) + L" · " +
-            m_strings.format(Str::ComponentsPackages, {{L"n", L"1"}}));
-    canvas.drawText(item.packageName, {x, y, width, kRow}, TypeStyle::Mono, Color::TextSecondary);
+            m_strings.format(item.kind == ComponentController::Item::Kind::Appx ? Str::ComponentsPackages
+                                                                                : Str::ComponentsItemsN,
+                             {{L"n", count}}));
+    const float bottom = m_toggle->bounds().y - 8;
+    for (const auto& line : item.contents) {
+        if (y + kRow > bottom) {
+            break;
+        }
+        canvas.drawText(line, {x, y, width, kRow}, TypeStyle::Mono, Color::TextSecondary);
+        y += kRow;
+    }
 }
 
 } // namespace wl::app
