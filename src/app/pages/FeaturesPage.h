@@ -23,6 +23,9 @@ public:
     ~FeaturesPage() override;
 
     void focusSearch();
+    // Command palette: drops the filters, selects the feature's row and scrolls to it.
+    void reveal(const std::wstring& name);
+    [[nodiscard]] static Str statusName(FeatureController::Status status);
 
     void layout() override;
     void paint(ui::Canvas& canvas) override;

@@ -187,6 +187,28 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoFeatures = true;
         } else if (a == L"--demo-logs") {
             options.demoLogs = true;
+        } else if (a == L"--palette") {
+            options.palette = std::wstring();
+        } else if (startsWith(a, L"--palette=")) {
+            options.palette = std::wstring(value(L"--palette="));
+        } else if (startsWith(a, L"--keys=")) {
+            std::wstring_view rest = value(L"--keys=");
+            while (!rest.empty()) {
+                const auto comma = rest.find(L',');
+                const std::wstring_view name = rest.substr(0, comma);
+                rest = comma == std::wstring_view::npos ? std::wstring_view{} : rest.substr(comma + 1);
+                const UINT vk = name == L"up"      ? VK_UP
+                                : name == L"down"  ? VK_DOWN
+                                : name == L"left"  ? VK_LEFT
+                                : name == L"right" ? VK_RIGHT
+                                : name == L"enter" ? VK_RETURN
+                                : name == L"esc"   ? VK_ESCAPE
+                                                   : 0;
+                if (vk == 0) {
+                    return fail(ErrorCode::InvalidArgument, L"--keys takes up,down,left,right,enter,esc", arg);
+                }
+                options.keys.push_back(vk);
+            }
         } else if (a == L"--nav-collapsed") {
             options.navCollapsed = true;
         } else if (a == L"--maximized") {
@@ -693,6 +715,16 @@ int App::renderOffscreen() {
         rebuildUi();
     }
     m_host->layout(m_options.size);
+    if (m_options.palette) {
+        m_shell->openPalette(*m_options.palette);
+    }
+    for (const UINT vk : m_options.keys) {
+        // The window's own path: the focused widget first, then the shell's shortcuts.
+        if (const ui::KeyEvent key{vk, false, false, false}; !m_host->onKeyDown(key)) {
+            m_shell->handleShortcut(key);
+        }
+        m_host->layout(m_options.size);
+    }
 
     // Drive the real input paths so the frame shows exactly what the interaction would.
     for (int i = 0; i < m_options.tabPresses; ++i) {

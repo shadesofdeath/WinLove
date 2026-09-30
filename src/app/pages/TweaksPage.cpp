@@ -1,5 +1,7 @@
 #include "app/pages/TweaksPage.h"
 
+#include "ui/widget/Host.h"
+
 #include <algorithm>
 
 namespace wl::app {
@@ -68,6 +70,33 @@ void TweaksPage::showTab(const std::string& tab) {
         }
     }
     sync();
+}
+
+void TweaksPage::reveal(const std::string& settingId) {
+    const auto& catalog = m_controller.catalog();
+    const auto setting = std::ranges::find(catalog.settings(), settingId, &ImageSetting::id);
+    if (setting == catalog.settings().end()) {
+        return;
+    }
+    const auto section = std::ranges::find(catalog.sections(), setting->section, &ImageSettingSection::id);
+    if (section == catalog.sections().end()) {
+        return;
+    }
+    for (std::size_t i = 0; i < catalog.tabs().size(); ++i) {
+        if (catalog.tabs()[i].id == section->tab) {
+            m_tabs->setSelected(static_cast<int>(i));
+            showTab(section->tab);
+        }
+    }
+    layout(); // the new rows need their rectangles before one of them can be scrolled to
+    for (const auto& b : m_bindings) {
+        if (b.setting == &*setting && host()) {
+            ui::Widget* control = b.toggle     ? static_cast<ui::Widget*>(b.toggle)
+                                  : b.dropdown ? static_cast<ui::Widget*>(b.dropdown)
+                                               : static_cast<ui::Widget*>(b.radio);
+            host()->setFocus(control, /*visible=*/true);
+        }
+    }
 }
 
 void TweaksPage::addSetting(const ImageSetting& setting) {

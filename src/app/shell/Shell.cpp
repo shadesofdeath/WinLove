@@ -24,6 +24,7 @@
 #include "app/pages/UnattendedPage.h"
 #include "app/pages/UpdatesPage.h"
 #include "app/pages/images/ImageInspector.h"
+#include "app/shell/CommandPalette.h"
 #include "base/Log.h"
 #include "base/Path.h"
 #include "base/Utf8.h"
@@ -89,14 +90,12 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         }
     };
 
+    m_titleBar->palette().onInvoke = [this] { openPalette(); };
     m_titleBar->minimizeButton().onInvoke = [this] { m_services.minimize(); };
     m_titleBar->maximizeButton().onInvoke = [this] { m_services.toggleMaximize(); };
     m_titleBar->closeButton().onInvoke = [this] { m_services.close(); };
     m_nav->onSelect = [this](PageId page) { showPage(page); };
-    m_nav->onToggleCollapse = [this] {
-        m_userCollapsed = !navCollapsed();
-        setNavCollapsed(m_userCollapsed, /*animated=*/true);
-    };
+    m_nav->onToggleCollapse = [this] { toggleNav(); };
 
     m_features = std::make_unique<FeatureController>(m_state, m_services.postToUi);
     {
@@ -127,6 +126,11 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_presets = std::make_unique<PresetController>(m_state, m_imageSettings->catalog(), m_strings, m_language,
                                                    PresetController::defaultFolder());
     m_preload = std::make_unique<PreloadController>(m_state, m_services.postToUi);
+    m_palette = std::make_unique<PaletteIndex>(PaletteIndex::Sources{
+        m_state, m_strings, m_language, *m_imageSettings, *m_components, *m_features, *m_serviceCtl,
+        [this](PaletteCommand command) { return paletteCommandAvailable(command); },
+        [this] { return navCollapsed(); },
+    });
     m_preload->onCancelled = [this] { showToast(ui::InfoKind::Warning, m_strings.get(Str::ImagesCancelledToast), L""); };
     m_iso =std::make_unique<IsoController>(m_state, IsoController::Events{
         m_services.postToUi,
@@ -867,10 +871,7 @@ void Shell::showPage(PageId page) {
                                                       [this, raw] { host()->popModal(raw); }, /*primary=*/true);
                                        pushDialog(std::move(dialog));
                                    },
-                                   [] {
-                                       const std::wstring folder = log::defaultDirectory().wstring();
-                                       ShellExecuteW(nullptr, L"open", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-                                   }});
+                                   [this] { openLogFolder(); }});
         } else if (page == PageId::Settings) {
             auto& body = m_pageView->setBody<SettingsPage>(
                 m_state, m_strings,
@@ -1478,7 +1479,123 @@ bool Shell::tick(double now) {
     return running;
 }
 
+// ---- command palette (P18) -------------------------------------------------------------------
+
+void Shell::toggleNav() {
+    m_userCollapsed = !navCollapsed();
+    setNavCollapsed(m_userCollapsed, /*animated=*/true);
+}
+
+void Shell::openLogFolder() {
+    const std::wstring folder = log::defaultDirectory().wstring();
+    ShellExecuteW(nullptr, L"open", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+void Shell::openPalette(std::wstring query) {
+    if (!host() || host()->hasModal()) {
+        return; // never on top of a dialog or an open menu
+    }
+    auto s = [&](Str key) { return m_strings.get(key); };
+    auto palette = std::make_unique<CommandPalette>(
+        CommandPalette::Labels{s(Str::PalettePlaceholder), s(Str::KbdEsc), s(Str::KbdEnter), s(Str::PaletteResults),
+                               s(Str::PaletteCommands), s(Str::PaletteNoResults), s(Str::PaletteNoResultsHint)},
+        [this](const std::wstring& text) { return m_palette->search(text); });
+    CommandPalette* raw = palette.get();
+    raw->onClose = [this, raw] { host()->popModal(raw); };
+    raw->onRun = [this](const PaletteItem& item) { runPaletteItem(item); };
+    host()->pushModal(std::move(palette), &raw->input());
+    if (!query.empty()) {
+        raw->setQuery(std::move(query));
+    }
+}
+
+void Shell::runPaletteItem(const PaletteItem& item) {
+    switch (item.kind) {
+    case PaletteItem::Kind::Command: runPaletteCommand(item.command); break;
+    case PaletteItem::Kind::Page: showPage(item.page); break;
+    case PaletteItem::Kind::Setting:
+        showPage(PageId::Tweaks);
+        if (auto* page = dynamic_cast<TweaksPage*>(m_pageBody)) {
+            page->reveal(utf8::fromWide(item.id));
+        }
+        break;
+    case PaletteItem::Kind::Component:
+        showPage(PageId::Components);
+        if (auto* page = componentsPage()) {
+            page->reveal(item.id);
+        }
+        break;
+    case PaletteItem::Kind::Feature:
+        showPage(PageId::Features);
+        if (auto* page = featuresPage()) {
+            page->reveal(item.id);
+        }
+        break;
+    case PaletteItem::Kind::Service:
+        showPage(PageId::Services);
+        if (auto* page = servicesPage()) {
+            page->reveal(item.id);
+        }
+        break;
+    }
+}
+
+bool Shell::paletteCommandAvailable(PaletteCommand command) const {
+    const bool busy = m_images->busy() || m_state.queueLocked();
+    switch (command) {
+    case PaletteCommand::ApplyQueue: return m_apply->canStart();
+    case PaletteCommand::SavePreset: return !m_state.changes().empty();
+    case PaletteCommand::LoadPreset: return !busy; // without a mount it says why (toast)
+    case PaletteCommand::OpenSource: return !m_state.mounted() && !busy;
+    case PaletteCommand::Unmount: return m_state.mounted().has_value() && !busy;
+    case PaletteCommand::ToggleTheme: return static_cast<bool>(m_services.toggleTheme);
+    case PaletteCommand::ToggleNav:
+    case PaletteCommand::OpenLogFolder: return true;
+    }
+    return false;
+}
+
+void Shell::runPaletteCommand(PaletteCommand command) {
+    if (!paletteCommandAvailable(command)) {
+        return;
+    }
+    switch (command) {
+    case PaletteCommand::ApplyQueue:
+        // Never straight from somewhere else: the Apply page is the review (what, in which order,
+        // which risks). From there the same command starts the run.
+        if (m_page != PageId::Apply) {
+            showPage(PageId::Apply);
+        } else {
+            requestApply();
+        }
+        break;
+    case PaletteCommand::SavePreset: newPreset(); break;
+    case PaletteCommand::LoadPreset: loadPreset(); break;
+    case PaletteCommand::OpenSource: pickSourceFile(); break;
+    case PaletteCommand::Unmount: askUnmount(); break;
+    case PaletteCommand::ToggleTheme: m_services.toggleTheme(); break;
+    case PaletteCommand::ToggleNav: toggleNav(); break;
+    case PaletteCommand::OpenLogFolder: openLogFolder(); break;
+    }
+}
+
 bool Shell::handleShortcut(const ui::KeyEvent& key) {
+    // A dialog or a menu is open: its keys are its own (Ctrl+B must not move the rail under it).
+    if (host() && host()->hasModal()) {
+        return false;
+    }
+    if (key.ctrl && !key.shift && !key.alt && key.virtualKey == 'K') {
+        openPalette();
+        return true;
+    }
+    // interaction.md "Kısayollar": Ctrl+Enter applies the queue, Ctrl+S / Ctrl+O save / load a preset.
+    if (key.ctrl && !key.shift && !key.alt &&
+        (key.virtualKey == VK_RETURN || key.virtualKey == 'S' || key.virtualKey == 'O')) {
+        runPaletteCommand(key.virtualKey == VK_RETURN ? PaletteCommand::ApplyQueue
+                          : key.virtualKey == 'S'     ? PaletteCommand::SavePreset
+                                                      : PaletteCommand::LoadPreset);
+        return true;
+    }
     if (key.ctrl && !key.shift && !key.alt && key.virtualKey == 'F') {
         if (auto* logs = logsPage()) {
             logs->focusSearch();
@@ -1502,8 +1619,7 @@ bool Shell::handleShortcut(const ui::KeyEvent& key) {
         }
     }
     if (key.ctrl && !key.shift && !key.alt && key.virtualKey == 'B') {
-        m_userCollapsed = !navCollapsed();
-        setNavCollapsed(m_userCollapsed, /*animated=*/true);
+        toggleNav();
         return true;
     }
     if (key.ctrl && key.shift && key.virtualKey == 'T') {

@@ -759,12 +759,20 @@
     "component": "Component",
     "noResults": "No results",
     "noResultsHint": "Try a page name, command or component name.",
+    "go": "Go",
+    "queuedForRemoval": "Queued for removal",
+    "riskOf": "{risk} risk",
     "cmd": {
       "applyQueue": "Apply queue",
       "toggleTheme": "Theme: Dark / Light",
       "toggleDensity": "Toggle density",
       "collapseNav": "Collapse navigation",
-      "addSelected": "Add selected components to removal queue"
+      "expandNav": "Expand navigation",
+      "addSelected": "Add selected components to removal queue",
+      "openSource": "Open source…",
+      "unmount": "Unmount image…",
+      "savePreset": "Save queue as preset…",
+      "loadPreset": "Load preset from file…"
     }
   },
   "dialogs": {
@@ -812,6 +820,7 @@
     "shift": "Shift",
     "alt": "Alt",
     "enter": "↵",
+    "enterKey": "Enter",
     "esc": "Esc",
     "space": "Space"
   },

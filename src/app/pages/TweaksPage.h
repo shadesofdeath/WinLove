@@ -21,6 +21,10 @@ public:
                std::function<void()> goImages);
     ~TweaksPage() override;
 
+    // Command palette: shows the setting's tab and puts the focus on its control (the form
+    // scrolls the focused control into view).
+    void reveal(const std::string& settingId);
+
     void layout() override;
 
 private:

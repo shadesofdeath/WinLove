@@ -47,8 +47,10 @@ add_library(wl_app STATIC
     pages/UnattendedPage.cpp
     pages/UpdatesPage.cpp
     pages/source/RecentList.cpp
+    shell/CommandPalette.cpp
     shell/NavRail.cpp
     shell/PageView.cpp
+    shell/PaletteIndex.cpp
     shell/Shell.cpp
     shell/StatusBar.cpp
     shell/TitleBar.cpp

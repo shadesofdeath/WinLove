@@ -91,10 +91,11 @@ Render akışı: input → state değişir → `invalidate(rect)` → sonraki `W
 - `state/AppState`: motor thread'i (`TaskRunner`), açık kaynak (`SourceInfo`), son kullanılanlar (`state/RecentSources`, `%LOCALAPPDATA%\WinLove\recent.json`). `subscribe()` ile sayfalara `Change::Source/Recent` duyurur. Mount/Session/ChangeSet P02/P04 ile eklenecek.
 - Asenkron akış kalıbı (`Shell::openSource`): UI thread'inde `engine().run(work, done)`; `done` motor thread'inde yalnızca `postToUi`'ye devreder (UI nesnesine dokunmaz); UI tarafında `weak_ptr` canlılık kontrolü, sonra `AppState` güncellenir.
 - `Format`: arayüz diline göre sayı/tarih ("6,72 GB", "bugün 14:02", "3 gün önce", "12 Eyl").
-- `Page` arayüzü: `id()`, `title()`, `buildView()`, `onEnter()/onLeave()`, `inspectorContent()`, `commands()` (komut paleti için), `pendingCount()` (nav rozeti).
+- Sayfalar düz `ui::Widget`'tır (ortak bir `Page` arayüzü yok): gövdeyi `Shell::showPage` kurar, başlık / açıklama / ikon `pages/PageInfo`'dan gelir, nav rozetleri `Shell::updateQueue`'dan.
+- Komut paleti (P18): `shell/PaletteIndex` (ne bulunur, nasıl sıralanır — önbelleksiz, her aramada durumdan) + `shell/CommandPalette` (modal widget). Komutlar `PaletteCommand` enum'unda; çalıştıran `Shell::runPaletteCommand` (kısayollar da aynı yoldan). Bir sayfada satıra atlamak için sayfaya `reveal(id)` eklenir.
 - `App` (`app/App.cpp`): Graphics + Window + SwapChainTarget'ı kurar; pencere modu veya `--render` modu. Komut satırı `app/App.h` başında.
 - `Shell` (`app/shell`): kök widget. TitleBar 32 (PaletteTrigger + CaptionButton widget'ları, breadcrumb = sayfa başlığı), NavRail 200/44 (gruplar `pages/PageInfo`'dan, daralma animasyonu, <1200'de otomatik daralma), PageView (başlık + açıklama + gövde), StatusBar 24 (mount segmenti, imaj bağlıyken görünen "Uygula · n" CTA). Uygulama kısayolları `Shell::handleShortcut` (odaktaki widget tüketmezse).
-- `pages/PageInfo`: sayfa kataloğu (sıra, grup, metin anahtarları, ikon, yol haritası adımı). Menü, breadcrumb, Ctrl+1…9, `--page=` ve ileride komut paleti buradan beslenir. Yeni sayfa = buraya satır + `Shell::showPage`'de gövdesi.
+- `pages/PageInfo`: sayfa kataloğu (sıra, grup, metin anahtarları, ikon, yol haritası adımı). Menü, breadcrumb, Ctrl+1…9, `--page=` ve komut paleti buradan beslenir. Yeni sayfa = buraya satır + `Shell::showPage`'de gövdesi.
 - `Resources`: fontlar ve `strings/*.json` exe'ye gömülüdür (`WinLove.rc`, RCDATA); tek dosya dağıtım.
 - `Localization`: `strings.tr.json` / `strings.en.json`; eksik anahtar derlemede (tools/gen) ve testte yakalanır.
 - Ayarlar: `%LOCALAPPDATA%\WinLove\settings.json`.

@@ -56,7 +56,7 @@ Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **
 | P15 | Presetler (kaydet/yükle/karşılaştır) | 17 | `pages/15-presets.md` | 🟨 test | Preset = ChangeSet + ad + yanıt dosyası (D-030) |
 | P16 | Uygulama Ayarları | 19 | `pages/16-app-settings.md` | 🟨 test | Vurgu rengi / yoğunluk / mount'u çözme ertelendi (spec §4) |
 | P17 | Hakkında | 20 | `pages/17-about.md` | 🟨 test | Lisans satırı / güncelleme denetimi yok (spec §4) |
-| P18 | Komut Paleti (Ctrl+K) | 21 | `pages/18-command-palette.md` | ⬜ | Tüm sayfaların `commands()`'ını toplar |
+| P18 | Komut Paleti (Ctrl+K) | 21 | `pages/18-command-palette.md` | 🟨 test | `PaletteIndex`: sayfalar, P12 ayarları, okunan listeler, komutlar |
 
 ## Faz 4 — Sağlamlaştırma ve yayın
 Performans profili, erişilebilirlik (Narrator) turu, installer/portable paket, imzalama, sürüm notları.

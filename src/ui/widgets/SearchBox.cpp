@@ -18,6 +18,13 @@ using tokens::TypeStyle;
 constexpr float kPadding = 6.0f;
 constexpr float kIconGap = 6.0f;
 constexpr float kClearSize = 16.0f;
+// Bare (command palette) variant.
+constexpr float kBarePadding = 16.0f;
+constexpr float kBareIconGap = 8.0f;
+constexpr float kBareHintGap = 12.0f;
+constexpr float kBareLine = 20.0f;      // selection band
+constexpr float kBareCaret = 16.0f;
+constexpr float kCompletionGap = 3.0f;  // caret → greyed continuation
 
 bool isWordChar(wchar_t c) {
     return std::iswalnum(c) || c == L'_';
@@ -33,6 +40,7 @@ SearchBox::SearchBox(std::wstring placeholder, std::vector<std::wstring> hintKey
 
 void SearchBox::setText(std::wstring text) {
     m_text = std::move(text);
+    m_completion.clear();
     m_caret = m_anchor = m_text.size();
     m_scroll = 0;
     invalidate();
@@ -42,8 +50,30 @@ SizeF SearchBox::measure(SizeF /*available*/) {
     return {m_width, tokens::size::control};
 }
 
+void SearchBox::setCompletion(std::wstring rest) {
+    if (rest != m_completion) {
+        m_completion = std::move(rest);
+        invalidate();
+    }
+}
+
+bool SearchBox::acceptCompletion() {
+    if (m_completion.empty() || hasSelection() || m_caret != m_text.size()) {
+        return false;
+    }
+    const std::wstring rest = std::move(m_completion);
+    m_completion.clear();
+    replaceSelection(rest);
+    return true;
+}
+
 RectF SearchBox::textRect() const {
     const RectF b = bounds();
+    if (m_bare) {
+        const float left = b.x + kBarePadding + tokens::size::icon + kBareIconGap;
+        const float hint = m_hintKeys.empty() || !host() ? 0.0f : Kbd::keysWidth(host()->text(), m_hintKeys) + kBareHintGap;
+        return {left, b.y, std::max(b.right() - kBarePadding - hint - left, 0.0f), b.height};
+    }
     const float left = b.x + kPadding + (m_plain ? 0.0f : tokens::size::icon + kIconGap);
     const float right = b.right() - kPadding - (m_text.empty() || m_plain ? 0.0f : kClearSize + 4);
     return {left, b.y, std::max(right - left, 0.0f), b.height};
@@ -92,6 +122,7 @@ void SearchBox::ensureCaretVisible() {
 }
 
 void SearchBox::changed() {
+    m_completion.clear(); // the owner offers a new one from onChange
     ensureCaretVisible();
     invalidate();
     if (onChange) {
@@ -117,7 +148,7 @@ void SearchBox::moveCaret(std::size_t to, bool extend) {
 }
 
 void SearchBox::onPointerDown(PointF p) {
-    if (!m_plain && !m_text.empty() && clearRect().contains(p)) {
+    if (!m_plain && !m_bare && !m_text.empty() && clearRect().contains(p)) {
         setText({});
         if (onChange) {
             onChange(m_text);
@@ -194,12 +225,16 @@ bool SearchBox::onKeyDown(const KeyEvent& key) {
     case VK_RIGHT:
         if (hasSelection() && !key.shift) {
             moveCaret(std::max(m_anchor, m_caret), false);
-        } else {
+        } else if (key.shift || !acceptCompletion()) {
             moveCaret(key.ctrl ? wordRight(m_caret) : next(m_caret), key.shift);
         }
         return true;
     case VK_HOME: moveCaret(0, key.shift); return true;
-    case VK_END: moveCaret(m_text.size(), key.shift); return true;
+    case VK_END:
+        if (key.shift || !acceptCompletion()) {
+            moveCaret(m_text.size(), key.shift);
+        }
+        return true;
     case VK_BACK:
         if (!hasSelection() && m_caret > 0) {
             m_anchor = key.ctrl ? wordLeft(m_caret) : prev(m_caret);
@@ -213,8 +248,8 @@ bool SearchBox::onKeyDown(const KeyEvent& key) {
         replaceSelection({});
         return true;
     case VK_ESCAPE:
-        if (m_text.empty()) {
-            return false; // let the page handle Esc
+        if (m_text.empty() || m_bare) {
+            return false; // let the page (or the palette) handle Esc
         }
         setText({});
         if (onChange) {
@@ -264,37 +299,55 @@ bool SearchBox::onKeyDown(const KeyEvent& key) {
 
 void SearchBox::paint(Canvas& canvas) {
     const RectF b = bounds();
-    const Color border = focused() ? Color::AccentBase : hovered() ? Color::TextTertiary : Color::LineStrong;
-    canvas.fillRoundRect(b, tokens::radius::r2, Color::BgInput);
-    canvas.strokeRoundRect(b, tokens::radius::r2, border);
-    if (!m_plain) {
-        canvas.drawIcon(icons::Icon::Search, {b.x + kPadding, b.y + (b.height - tokens::size::icon) / 2},
+    if (m_bare) {
+        canvas.drawIcon(icons::Icon::Search, {b.x + kBarePadding, b.y + (b.height - tokens::size::icon) / 2},
                         Color::TextTertiary);
+        if (!m_hintKeys.empty()) {
+            Kbd::paintKeys(canvas, m_hintKeys, b.right() - kBarePadding, b.y + b.height / 2);
+        }
+    } else {
+        const Color border = focused() ? Color::AccentBase : hovered() ? Color::TextTertiary : Color::LineStrong;
+        canvas.fillRoundRect(b, tokens::radius::r2, Color::BgInput);
+        canvas.strokeRoundRect(b, tokens::radius::r2, border);
+        if (!m_plain) {
+            canvas.drawIcon(icons::Icon::Search, {b.x + kPadding, b.y + (b.height - tokens::size::icon) / 2},
+                            Color::TextTertiary);
+        }
     }
 
     const RectF area = textRect();
     if (m_text.empty()) {
         canvas.drawText(m_placeholder, area, TypeStyle::Body, Color::TextTertiary);
-        if (!m_hintKeys.empty() && !focused()) {
+        if (!m_bare && !m_hintKeys.empty() && !focused()) {
             Kbd::paintKeys(canvas, m_hintKeys, b.right() - kPadding, b.y + b.height / 2);
         }
-    } else if (!m_plain) {
+    } else if (!m_plain && !m_bare) {
         canvas.drawIcon(icons::Icon::Close, {clearRect().x, clearRect().y}, Color::TextTertiary);
     }
 
+    // The bare box is as tall as its row (40px): keep the selection and the caret text-sized.
+    const float band = m_bare ? kBareLine : b.height - 8;
+    const float caret = m_bare ? kBareCaret : b.height - 10;
     canvas.pushClip(area);
     if (focused() && hasSelection()) {
         const float x0 = area.x - m_scroll + offsetOf(std::min(m_anchor, m_caret));
         const float x1 = area.x - m_scroll + offsetOf(std::max(m_anchor, m_caret));
-        canvas.fillRect({x0, b.y + 4, x1 - x0, b.height - 8}, Color::AccentSubtle);
+        canvas.fillRect({x0, b.y + (b.height - band) / 2, x1 - x0, band}, Color::AccentSubtle);
     }
+    const float end = area.x - m_scroll + offsetOf(m_text.size());
     if (!m_text.empty()) {
         canvas.drawText(displayText(), {area.x - m_scroll, b.y, offsetOf(m_text.size()) + 8, b.height}, TypeStyle::Body,
                         Color::TextPrimary);
+        if (!m_completion.empty() && !hasSelection() && m_caret == m_text.size()) {
+            const float x = end + kCompletionGap;
+            canvas.drawText(m_completion, {x, b.y, std::max(area.right() - x, 0.0f), b.height}, TypeStyle::Body,
+                            Color::TextTertiary);
+        }
     }
     if (focused()) {
         const float x = std::round(area.x - m_scroll + offsetOf(m_caret));
-        canvas.fillRect({x, b.y + 5, 1.0f / canvas.scale(), b.height - 10}, Color::TextPrimary);
+        canvas.fillRect({x, b.y + (b.height - caret) / 2, 1.0f / canvas.scale(), caret},
+                        m_bare ? Color::AccentBase : Color::TextPrimary);
     }
     canvas.popClip();
 }

@@ -28,6 +28,7 @@ add_executable(wl_tests
     app/ServiceTests.cpp
     app/SettingsTests.cpp
     app/LocalizationTests.cpp
+    app/PaletteTests.cpp
     app/SourceTests.cpp
     app/UnattendControllerTests.cpp)
 wl_configure_target(wl_tests)

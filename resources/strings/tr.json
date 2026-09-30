@@ -759,12 +759,20 @@
     "component": "Bileşen",
     "noResults": "Sonuç yok",
     "noResultsHint": "Sayfa adı, komut veya bileşen adı dene.",
+    "go": "Git",
+    "queuedForRemoval": "Kaldırma kuyruğunda",
+    "riskOf": "{risk} risk",
     "cmd": {
       "applyQueue": "Kuyruğu uygula",
       "toggleTheme": "Tema: Koyu / Açık",
       "toggleDensity": "Yoğunluk değiştir",
       "collapseNav": "Navigasyonu daralt",
-      "addSelected": "Seçili bileşenleri kaldırma kuyruğuna ekle"
+      "expandNav": "Navigasyonu genişlet",
+      "addSelected": "Seçili bileşenleri kaldırma kuyruğuna ekle",
+      "openSource": "Kaynak aç…",
+      "unmount": "İmajı çöz…",
+      "savePreset": "Kuyruğu preset olarak kaydet…",
+      "loadPreset": "Dosyadan preset yükle…"
     }
   },
   "dialogs": {
@@ -812,6 +820,7 @@
     "shift": "Shift",
     "alt": "Alt",
     "enter": "↵",
+    "enterKey": "Enter",
     "esc": "Esc",
     "space": "Space"
   },

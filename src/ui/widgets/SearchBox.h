@@ -18,6 +18,12 @@ public:
     void setPlain(bool plain) noexcept { m_plain = plain; }
     // Password field: bullets instead of the text; copy and cut are off.
     void setPassword(bool password) noexcept { m_password = password; }
+    // Command palette input (log-console-inspector-diff-palette.md): no box of its own, 16px side
+    // padding, accent caret, the keycap hint stays while typing, no clear button, and Esc is left
+    // to the owner (it closes the palette whatever the text is).
+    void setBare(bool bare) noexcept { m_bare = bare; }
+    // Greyed continuation of the text (the best match); → / End at the end of the text accept it.
+    void setCompletion(std::wstring rest);
 
     std::function<void(const std::wstring&)> onChange;
     std::function<void()> onSubmit; // Enter
@@ -30,6 +36,7 @@ public:
     void paint(Canvas& canvas) override;
     [[nodiscard]] Cursor cursor() const override { return Cursor::IBeam; }
     [[nodiscard]] float focusRadius() const override { return tokens::radius::r2; }
+    [[nodiscard]] RectF focusRect() const override { return m_bare ? RectF{} : bounds(); }
 
     void onPointerDown(PointF p) override;
     void onPointerMove(PointF p) override;
@@ -44,6 +51,7 @@ private:
     [[nodiscard]] float offsetOf(std::size_t index) const; // text-space x of a caret index
     [[nodiscard]] bool hasSelection() const noexcept { return m_anchor != m_caret; }
     [[nodiscard]] std::wstring displayText() const; // what is drawn and measured
+    [[nodiscard]] bool acceptCompletion();
     void replaceSelection(std::wstring_view with);
     void moveCaret(std::size_t to, bool extend);
     void changed();
@@ -59,6 +67,8 @@ private:
     bool m_dragging = false;
     bool m_plain = false;
     bool m_password = false;
+    bool m_bare = false;
+    std::wstring m_completion;
 };
 
 } // namespace wl::ui
