@@ -42,6 +42,7 @@
     "stop": "Durdur",
     "scanning": "Dizin taranıyor",
     "mounting": "Bağlanıyor",
+    "reading": "İçerik okunuyor",
     "applying": "Uygulanıyor",
     "building": "ISO oluşturuluyor"
   },
@@ -137,6 +138,8 @@
     "cannotMount": "Bağlanamadı",
     "preparing": "{source} çalışma klasörüne kopyalanıyor",
     "preparingHint": "{path} · {pct}% · yaklaşık {eta} kaldı",
+    "reading": "{edition} içeriği okunuyor",
+    "readingHint": "{stage} ({step}/3) · {pct}% · yaklaşık {eta} kaldı",
     "unmounting": "{edition} çözülüyor",
     "unmountingHint": "{path} · {pct}%",
     "editionId": "Sürüm ID",

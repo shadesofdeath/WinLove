@@ -12,6 +12,7 @@
 #include "app/controllers/FeatureController.h"
 #include "app/controllers/IsoController.h"
 #include "app/controllers/ImageController.h"
+#include "app/controllers/PreloadController.h"
 #include "app/pages/PageInfo.h"
 #include "app/shell/NavRail.h"
 #include "app/shell/PageView.h"
@@ -162,6 +163,7 @@ private:
     std::unique_ptr<ComponentController> m_components;
     std::unique_ptr<ServiceController> m_serviceCtl;
     std::unique_ptr<RegistryController> m_registry;
+    std::unique_ptr<PreloadController> m_preload; // reads the page lists right after a mount
     ui::Widget* m_sideInspector = nullptr; // pages other than Images (Components)
     ui::Button* m_actionExpand = nullptr;  // Components: "Tümünü genişlet / daralt"
     ui::Button* m_actionIso = nullptr; // ISO page: "ISO Oluştur" / "İptal"

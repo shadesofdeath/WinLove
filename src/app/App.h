@@ -14,7 +14,7 @@
 //      --drag=valid|invalid   (Source page drop zone drag state)
 //      --mount=N              (windowed: after opening the source, mount edition N — UAC relaunch)
 //      --select=N             (select edition N on the Images page)
-//      --operation=mount|prepare --progress=0.38   (render: show the operation strip)
+//      --operation=mount|prepare|read --progress=0.38   (render: show the operation strip)
 #include "app/Localization.h"
 #include "app/pages/PageInfo.h"
 #include "app/shell/Shell.h"

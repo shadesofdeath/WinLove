@@ -2,8 +2,10 @@
 
 #include "ui/anim/Tween.h"
 
+#include <algorithm>
 #include <cmath>
 #include <format>
+#include <iterator>
 
 namespace wl::app {
 
@@ -24,8 +26,15 @@ std::pair<Str, Str> labelsFor(EngineOperation::Kind kind) {
     case EngineOperation::Kind::Exporting: return {Str::ImagesExporting, Str::ImagesExportingHint};
     case EngineOperation::Kind::Deleting: return {Str::ImagesDeleting, Str::ImagesWorkingHint};
     case EngineOperation::Kind::Cleaning: return {Str::ImagesCleaning, Str::ImagesWorkingHint};
+    case EngineOperation::Kind::Reading: return {Str::ImagesReading, Str::ImagesReadingHint};
     }
     return {Str::ImagesMounting, Str::ImagesWorkingHint};
+}
+
+// Reading: the page whose list is being read (EngineOperation::stage).
+Str stageName(int stage) {
+    constexpr Str kStages[]{Str::NavFeatures, Str::NavComponents, Str::NavServices};
+    return kStages[std::clamp(stage, 0, static_cast<int>(std::size(kStages)) - 1)];
 }
 } // namespace
 
@@ -85,7 +94,11 @@ void OperationStrip::paint(ui::Canvas& canvas) {
     const float textWidth = m_cancel->bounds().x - textX - 16;
     canvas.drawText(m_strings.format(titleKey, {{L"edition", op->edition}, {L"source", op->edition}}),
                     {textX, b.y + 17, textWidth, 16}, TypeStyle::BodyStrong, Color::TextPrimary);
-    canvas.drawText(m_strings.format(hintKey, {{L"path", op->path.wstring()}, {L"pct", pct}, {L"eta", eta(*op, m_now)}}),
+    canvas.drawText(m_strings.format(hintKey, {{L"path", op->path.wstring()},
+                                               {L"pct", pct},
+                                               {L"eta", eta(*op, m_now)},
+                                               {L"stage", m_strings.get(stageName(op->stage))},
+                                               {L"step", std::to_wstring(op->stage + 1)}}),
                     {textX, b.y + 33, textWidth, 16}, TypeStyle::Caption, Color::TextSecondary);
     const float barRight = b.right() - kRightInfo;
     canvas.progressBar({textX, b.y + 62, barRight - textX, 2}, static_cast<float>(op->fraction));

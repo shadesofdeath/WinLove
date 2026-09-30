@@ -200,6 +200,14 @@ void AppState::updateOperation(double fraction) {
     }
 }
 
+void AppState::updateOperation(double fraction, int stage) {
+    if (m_operation) {
+        m_operation->fraction = fraction;
+        m_operation->stage = stage;
+        notify(Change::Operation);
+    }
+}
+
 void AppState::endOperation() {
     m_operation.reset();
     notify(Change::Operation);

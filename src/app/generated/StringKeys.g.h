@@ -321,6 +321,8 @@ enum class Str : std::uint16_t {
     ImagesPreparing,
     ImagesPreparingHint,
     ImagesReadOnlySource,
+    ImagesReading,
+    ImagesReadingHint,
     ImagesSaveWim,
     ImagesSelectedState,
     ImagesSplit,
@@ -595,6 +597,7 @@ enum class Str : std::uint16_t {
     StatusNoMount,
     StatusOps,
     StatusQueue,
+    StatusReading,
     StatusScanning,
     StatusStop,
     TitleClose,
@@ -670,7 +673,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 660;
+inline constexpr std::size_t kStrCount = 663;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -986,6 +989,8 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "images.preparing",
     "images.preparingHint",
     "images.readOnlySource",
+    "images.reading",
+    "images.readingHint",
     "images.saveWim",
     "images.selectedState",
     "images.split",
@@ -1260,6 +1265,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "status.noMount",
     "status.ops",
     "status.queue",
+    "status.reading",
     "status.scanning",
     "status.stop",
     "title.close",

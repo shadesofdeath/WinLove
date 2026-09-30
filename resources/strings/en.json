@@ -42,6 +42,7 @@
     "stop": "Stop",
     "scanning": "Scanning index",
     "mounting": "Mounting",
+    "reading": "Reading contents",
     "applying": "Applying",
     "building": "Creating ISO"
   },
@@ -137,6 +138,8 @@
     "cannotMount": "Could not mount",
     "preparing": "Copying {source} to the work folder",
     "preparingHint": "{path} · {pct}% · about {eta} left",
+    "reading": "Reading the contents of {edition}",
+    "readingHint": "{stage} ({step}/3) · {pct}% · about {eta} left",
     "unmounting": "Unmounting {edition}",
     "unmountingHint": "{path} · {pct}%",
     "editionId": "Edition ID",

@@ -204,6 +204,9 @@ void ImageController::mount(int index) {
             [this, wim = *wim, mountDir, index, edition] {
                 m_state.setMounted(MountedImage{mountDir, wim, index, edition, false});
                 m_events.succeeded(Str::ImagesMountedToast, edition);
+                if (m_events.mounted) {
+                    m_events.mounted();
+                }
             },
             Failure::Mount);
     });
