@@ -11,9 +11,20 @@
   sonra doğrudan bir sonraki sayfa. Kullanıcı `dist\WinLove.exe`'yi paralel test ediyor.
 - **Faz 3'ün bütün sayfaları yazıldı** (P01–P04 onaylı, P05–P18 kullanıcı testi bekliyor). Kural 1 gereği Faz 4'e
   geçmeden önce bu sayfaların kullanıcı onayı gerekir.
-- **Bir sonraki somut adım (2026-09-30 akşam):** (`tools\lab_usb.ps1` MBR geçti; kalan `-Gpt` ve gerçek bellek) uygulamada P11 / P12 "imajda" gösterimini önceden Uygula'lanmış bir imajla ve
+- **Bir sonraki somut adım (2026-10-01 sabah):** kullanıcı yönetici PowerShell'de `tools\lab_features.ps1` çalıştırır (önce `winget download Microsoft.WindowsTerminal -d build\lab\appx`); sonuç logu `build\lab\out\features-test.log`. FAIL olanlar sırayla düzeltilir; sonra yeni sayfalar uygulamada denenir.
+- **Önceki adım (2026-09-30 akşam):** (`tools\lab_usb.ps1` MBR geçti; kalan `-Gpt` ve gerçek bellek) uygulamada P11 / P12 "imajda" gösterimini önceden Uygula'lanmış bir imajla ve
   "Güncellemeleri bul" akışını dener. Ardından (önceki adım sürüyor) VM'de kendi imajını deniyor (`docs/TESTING.md` → "VM kabul testi");
   testten gelen düzeltmeler sırayla. Log: `%LOCALAPPDATA%\WinLove\logs\WinLove-*.log` (oturum başına bir dosya).
+- **İkinci özellik turu (2026-10-01, kullanıcı seçimi "1,2,3,4,6,7,8,15", gece otonom):** yeni sayfalar **Uygulamalar**
+  (.appx / .msix provision + varsayılan uygulamalar, D-050 / D-054), **Diller** (dil paketleri + arayüz dili / yerel /
+  klavye / saat dilimi, D-053), **Görevler** (zamanlanmış görevler, kurulum sonrası schtasks, D-048), **Hosts** (+ Ayarlar ›
+  Ağ'da DNS / DoH, D-049), **Dosyalar** (bilgisayardan imaja, D-051); Sürücüler'e **İmajdaki sürücüler** sekmesi (listele,
+  kaldır, bu bilgisayarınkini al, D-052); Uygula'da **Diğer sürümlere de uygula** (D-055). Açılır menü artık kaydırılıyor
+  (uzun listeler: saat dilimleri). 250 test / 6049 doğrulama, build temiz. **Kanıt:** birim testleri, render
+  (`--demo-tasks/-hosts/-files/-image-drivers/-apps/-languages/-editions`), gerçek Windows Terminal paketinde manifest +
+  bağımlılık bulma. **Görülmeyen (yönetici gerekiyor):** DISM yolları gerçek imajda → `tools\lab_features.ps1`
+  (sürücü listele / ekle / kaldır, intl oku / yaz, ilişkilendirme, appx provision, görev + hosts + dosya kuyruğu ve aynı
+  kuyruk ikinci sürümde). Kurulan sistemde etki (görevler kapandı mı, hosts, DNS, varsayılan tarayıcı): VM.
 - **USB'ye yazma (2026-09-30, kullanıcı seçimi — üç özellikten 3.sü, D-047):** ISO sayfasının USB sekmesi: yalnız
   USB / SD diskleri (sistem diski asla), MBR (BIOS + UEFI) / GPT (UEFI), FAT32, 4 GB'tan büyük install.wim → .swm,
   yanıt dosyası + boot.wim atlamaları ISO'daki gibi; her zaman görünen silme uyarısı + adıyla onay. **Kanıt:** disk
