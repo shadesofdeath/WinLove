@@ -94,6 +94,8 @@ IsoPage::IsoPage(AppState& state, IsoController& controller, const Localization&
         m_repack->setTooltip(strings.get(Str::IsoRepackOnlyWork));
     }
     m_noPrompt = &add<ui::CheckField>(strings.get(Str::IsoNoPrompt), false);
+    m_bootBypass = &add<ui::CheckField>(strings.get(Str::IsoBootBypass), true);
+    m_bootBypass->onChange = [this](bool) { invalidate(); };
     // The row label says it: the boxes stand alone (screen 16).
     m_sha = &add<ui::CheckField>(L"", true);
     m_sha->setAccessible(ui::AccessRole::CheckBox, strings.get(Str::IsoSha));
@@ -167,6 +169,7 @@ IsoController::Request IsoPage::request() const {
     r.repack = static_cast<IsoController::Repack>(m_controller.canRepack() ? m_repack->selected() : 0);
     r.sha256 = m_sha->checked();
     r.openFolder = m_open->checked();
+    r.bootBypass = m_bootBypass->checked();
     return r;
 }
 
@@ -189,6 +192,9 @@ double IsoPage::estimateSeconds() const {
     }
     if (m_sha->checked()) {
         seconds += mb / 800.0;
+    }
+    if (m_bootBypass->checked() && !IsoController::bootPatch(m_state).empty()) {
+        seconds += 30; // mount + commit of boot.wim's setup image
     }
     return seconds;
 }
@@ -242,11 +248,14 @@ void IsoPage::refresh() {
     const bool isoTab = m_tabs->selected() == 0;
     const auto& run = m_state.isoRun();
     const bool running = run && run->running;
+    // Nothing to write into Setup's image while the answers switch no check off.
+    const bool bypasses = !IsoController::bootPatch(m_state).empty();
     for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_fileName, m_folder, m_browse, m_label, m_boot, m_repack,
-                                                            m_noPrompt, m_sha, m_open}) {
+                                                            m_noPrompt, m_bootBypass, m_sha, m_open}) {
         w->setVisible(isoTab);
-        w->setEnabled(!running && (w != m_repack || m_controller.canRepack()));
+        w->setEnabled(!running && (w != m_repack || m_controller.canRepack()) && (w != m_bootBypass || bypasses));
     }
+    m_bootBypass->setTooltip(bypasses ? std::wstring() : m_strings.get(Str::IsoBootBypassNone));
     m_usb->setVisible(!isoTab);
     if (isoTab) {
         updateBlocker();
@@ -289,6 +298,8 @@ void IsoPage::layout() {
     place(m_repack, 240);
     y += kRow;
     place(m_noPrompt, 0);
+    y += kRow;
+    place(m_bootBypass, 0);
     y += kRow + kSection; // DOĞRULAMA
     place(m_sha, 0);
     y += kRow;
@@ -304,8 +315,9 @@ void IsoPage::paint(ui::Canvas& canvas) {
     float y = b.y + kTop + ui::tokens::size::control + 2 + 12;
     const auto& run = m_state.isoRun();
     if (run && run->running) {
-        static constexpr Str kStages[] = {Str::IsoStageExtract, Str::IsoStageRepack, Str::IsoStageWrite, Str::IsoStageSha};
-        const std::wstring text = std::format(L"{} · {}%", m_strings.get(kStages[std::clamp(run->stage, 0, 3)]),
+        static constexpr Str kStages[] = {Str::IsoStageExtract, Str::IsoStageRepack, Str::IsoStageWrite, Str::IsoStageSha,
+                                          Str::IsoStageBoot};
+        const std::wstring text = std::format(L"{} · {}%", m_strings.get(kStages[std::clamp(run->stage, 0, 4)]),
                                               static_cast<int>(run->fraction * 100));
         canvas.drawIcon(ui::icons::Icon::Spinner, {b.x, y + 4}, Color::AccentBase);
         canvas.drawText(text, {b.x + 24, y, formRight - b.x - 24, 20}, TypeStyle::BodyStrong, Color::TextPrimary);
@@ -332,6 +344,7 @@ void IsoPage::paint(ui::Canvas& canvas) {
     label(Str::IsoBootMode);
     label(Str::IsoCompression);
     label(Str::IsoPrompt);
+    label(Str::IsoSetupImage);
     section(Str::IsoVerify);
     label(Str::IsoSha);
     label(Str::IsoOpenWhenDone);
@@ -342,7 +355,7 @@ void IsoPage::paint(ui::Canvas& canvas) {
     const auto& unattend = m_state.unattend();
     const bool answersUnused = !unattend.includeInIso && !(unattend.options == core::UnattendOptions{});
     const RectF box{b.right() - kSummaryWidth, b.y + kTop + ui::tokens::size::control + 2 + 12, kSummaryWidth,
-                    136 + kSummaryRow};
+                    136 + 2 * kSummaryRow};
     canvas.fillRoundRect(box, ui::tokens::radius::r3, Color::BgPanel);
     canvas.strokeRoundRect(box, ui::tokens::radius::r3, Color::LineSubtle);
     float sy = box.y + 12;
@@ -372,6 +385,13 @@ void IsoPage::paint(ui::Canvas& canvas) {
         row(Str::IsoUnattend, m_strings.get(Str::IsoUnattendOff), false, Color::StatusWarning);
     } else {
         row(Str::IsoUnattend, m_strings.get(Str::IsoUnattendNone), false, Color::TextSecondary);
+    }
+    // Setup's own image: what the build writes into boot.wim (D-038).
+    const std::size_t checks = m_bootBypass->checked() ? IsoController::bootPatch(m_state).labConfigValues().size() : 0;
+    if (checks > 0) {
+        row(Str::IsoSetupImage, m_strings.format(Str::IsoBootBypassN, {{L"n", std::to_wstring(checks)}}), false);
+    } else {
+        row(Str::IsoSetupImage, m_strings.get(Str::IsoBootUntouched), false, Color::TextSecondary);
     }
     row(Str::IsoEstIso, m_sourceBytes ? formatBytes(m_sourceBytes, m_language) : std::wstring(L"…"), true);
     row(Str::IsoDuration, m_sourceBytes ? formatDuration(estimateSeconds(), m_language, true) : std::wstring(L"…"),

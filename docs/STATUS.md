@@ -33,11 +33,17 @@
   gibi seçilir (risk Yüksek, uyarı bandı). **Görülmeyen:** uygulamanın kendi Uygula akışında bu yol (yalnız `wlcli`
   ile denendi); commit edilmiş imajdan kurulan Windows'ta Windows Güvenliği / winget'in durumu (VM); Windows 10'da
   yerel kaldırma (kayıt düzeni aynı varsayıldı, denenmedi).
-  (3) **boot.wim yaması** (LabConfig + sürücü): **yalnız motor** + `wlcli boot-patch` + `tools\lab_boot.ps1`. Yönetici
-  gerektirmeyen kısım denendi (ISO'dan çıkarma, 2 index / önyükleme index'i 2, hatalı girdilerin reddi); bağlama ve
-  yazma **çalıştırılmadı**, ISO sayfasına **bağlı değil**.
-  **Bir sonraki somut adım:** kullanıcı `tools\lab_boot.ps1`'i yönetici PowerShell'de çalıştırır. Geçerse ISO sayfasına
-  "kurulum ortamına da yaz" seçeneği (gereksinim atlama + kuyruktaki sürücüler). Geçmezse log'a göre karar.
+  (3) **boot.wim: gereksinim atlamaları Setup'ın kendi imajına** — motor kullanıcının yönetici çalıştırmasında
+  kanıtlandı (`tools\lab_boot.ps1`, 14 / 14: önyükleme index'i 2'ye beş `LabConfig` değeri yazıldı, commit, yeniden
+  bağlanıp okundu, index sayısı ve önyükleme index'i aynı, 13 869 akış sağlam; yama 27 sn). Ardından **ISO sayfasına
+  bağlandı**: ÖNYÜKLEME altında "Gereksinim atlamalarını boot.wim'e de yaz" (varsayılan açık; Katılımsız Kurulum'da
+  seçili atlamaları yazar, yanıt dosyasının ISO'ya girmesine bağlı değil), özet kutusunda "Kurulum ortamı" satırı,
+  yeni ilerleme aşaması. boot.wim'in **kopyası** yamalanır ve ISO'da klasördeki dosyanın yerini alır — kurulum
+  klasörü değişmez, kutu kapatılınca geri alınacak bir şey kalmaz. Unit test (yamalayıcı yerine sahte) + iki render.
+  **Görülmeyen:** uygulamanın içinden gerçek bir ISO üretimi (DISM'li yol yalnız `wlcli` ile denendi); o ISO'nun
+  TPM'siz VM'de kurulumu; boot.wim'e **sürücü** ekleme (betik `-Driver` olmadan çalıştı → arayüzü yazılmadı).
+  **Bir sonraki somut adım:** kullanıcı uygulamada atlamalı bir ISO üretir, TPM'siz VM'de dener. Sürücü için:
+  `tools\lab_boot.ps1 -Driver <inf>` geçerse Sürücüler sayfasına "kurulum ortamına da ekle".
 - **İmajlar — kısayollar (2026-09-30, kullanıcı isteği):** bağlama klasörünü aç (`Ctrl+E`, her sayfadan; inspector'da
   klasör düğmesi; sağ tık), komut istemini bağlama klasöründe aç, dosya konumunu aç (`Ctrl+Shift+E`), bilgileri
   kopyala (`Ctrl+C`), kaynağı yenile (`F5`). **Kullanıcının isteğiyle denenmeden teslim edildi:** yalnız derlendi,
@@ -133,7 +139,7 @@
   (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
   ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
   (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
-- **Build:** `./build.ps1 -Dist` yeşil, 197 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Build:** `./build.ps1 -Dist` yeşil, 198 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi (bilerek yazılmadı: denenemeyen disk biçimlendirme kodu; ISO'yu
@@ -167,6 +173,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — Yanıt dosyası doldurulunca ISO'ya kendiliğinden giriyor; işlemci / disk denetimi atlama; imajda olmayan AppX başarı (D-034).
 - 2026-09-30 — İmajlar: çoklu seçim, yeniden adlandırma, WIM doğrulama (kendi LZX çözücümüz), sürüm yükseltme (D-035).
 - 2026-09-30 — Yanıt dosyası: `UserData` her zaman `ProductKey` ile (genel anahtar / yer tutucu) (D-036).
+- 2026-09-30 — boot.wim yaması gerçek imajda kanıtlandı; ISO sayfasına "atlamaları boot.wim'e de yaz" (D-038).
 - 2026-09-30 — Yerel uygulama kaldırma gerçek imajda kanıtlandı, Applier'a bağlandı, katalog kilidi kalktı (D-038).
 - 2026-09-30 — Yanıt dosyası kalıcı (D-037); yerel uygulama kaldırma ve boot.wim yaması: motor, kanıt bekliyor (D-038).
 - 2026-09-30 — İmajlar kısayolları: bağlama klasörü, komut istemi, dosya konumu, bilgileri kopyala, yenile (denenmedi).

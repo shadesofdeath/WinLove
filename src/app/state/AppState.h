@@ -201,7 +201,7 @@ public:
     struct IsoRun {
         bool running = false;
         double fraction = 0;
-        int stage = 0; // 0 extract, 1 repack, 2 write, 3 sha256
+        int stage = 0; // 0 extract, 1 repack, 2 write, 3 sha256, 4 boot image
         double startedMs = 0;
         std::filesystem::path output;
         std::optional<core::IsoResult> result;

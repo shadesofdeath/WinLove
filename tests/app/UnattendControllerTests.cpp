@@ -197,6 +197,104 @@ TEST_CASE("unattend → ISO: answers given on the page are autounattend.xml in t
     std::filesystem::remove_all(dir, ec);
 }
 
+TEST_CASE("ISO: the requirement bypasses go into a patched copy of boot.wim, the setup folder keeps its own") {
+    const auto dir = scratch(L"iso-boot");
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    const auto media = dir / L"media";
+    std::filesystem::create_directories(media / L"boot");
+    std::filesystem::create_directories(media / L"sources");
+    auto write = [](const std::filesystem::path& file, const std::string& text) {
+        std::ofstream out(file, std::ios::binary | std::ios::trunc);
+        out << text;
+    };
+    write(media / L"boot" / L"etfsboot.com", std::string(4096, '\0'));
+    write(media / L"sources" / L"boot.wim", "the boot image as Microsoft made it");
+
+    Fixture f;
+    AppSettings settings = f.state.settings();
+    settings.workRoot = dir / L"work-root"; // where the copy is made and mounted
+    f.state.setSettings(settings);
+    core::SourceInfo source = armSource();
+    source.path = media;
+    f.state.setSource(std::move(source));
+
+    IsoController iso{f.state, IsoController::Events{[](std::function<void()> fn) { fn(); }, {}, {}}};
+    std::vector<std::wstring> asked;       // the LabConfig values of each patch
+    std::filesystem::path patchedFile;
+    iso.setBootPatcher([&](const std::filesystem::path& bootWim, const std::filesystem::path& mountDir,
+                           const core::BootPatch& patch, const core::TaskContext&) -> Result<core::BootPatchReport> {
+        asked = patch.labConfigValues();
+        patchedFile = bootWim;
+        CHECK(std::filesystem::is_directory(mountDir));
+        std::ofstream out(bootWim, std::ios::binary | std::ios::app);
+        out << " + LabConfig";
+        return core::BootPatchReport{2, 0, {}};
+    });
+    auto build = [&](bool bootBypass, const wchar_t* name) {
+        IsoController::Request request;
+        request.output = dir / name;
+        request.label = L"WL_BOOT";
+        request.boot = core::BootMode::BiosOnly;
+        request.sha256 = false;
+        request.openFolder = false;
+        request.bootBypass = bootBypass;
+        iso.start(request);
+        f.state.engine().drain();
+        REQUIRE(f.state.isoRun().has_value());
+        REQUIRE(f.state.isoRun()->result.has_value());
+        auto image = core::UdfImage::open(request.output);
+        REQUIRE(image.has_value());
+        auto node = image->find(L"sources/boot.wim");
+        REQUIRE(node.has_value());
+        const auto copy = dir / (std::wstring(name) + L".boot.wim");
+        REQUIRE(image->extract(*node, copy, core::TaskContext{}).has_value());
+        return readFile(copy);
+    };
+
+    // No check switched off in the answers: nothing to write, the patcher is not run.
+    CHECK(IsoController::bootPatch(f.state).empty());
+    CHECK(build(true, L"none.iso") == "the boot image as Microsoft made it");
+    CHECK(asked.empty());
+
+    // The answers do not go into the ISO, the bypass still reaches Setup's image.
+    f.controller.edit([](core::UnattendOptions& o) {
+        o.bypassTpm = true;
+        o.bypassCpu = true;
+    });
+    f.controller.setIncludeInIso(false);
+    CHECK(build(true, L"patched.iso") == "the boot image as Microsoft made it + LabConfig");
+    CHECK(asked == std::vector<std::wstring>{L"BypassTPMCheck", L"BypassCPUCheck"});
+    CHECK(patchedFile == settings.workRoot / L"boot" / L"boot.wim");
+    CHECK_FALSE(std::filesystem::exists(patchedFile));                                       // the copy is gone
+    CHECK(readFile(media / L"sources" / L"boot.wim") == "the boot image as Microsoft made it"); // the folder's is not touched
+
+    // The box cleared: the next ISO has the original again, nothing to undo.
+    asked.clear();
+    CHECK(build(false, L"plain.iso") == "the boot image as Microsoft made it");
+    CHECK(asked.empty());
+
+    // A patch that fails is a build that fails: an ISO without the bypass that was asked for is not "done".
+    iso.setBootPatcher([](const std::filesystem::path&, const std::filesystem::path&, const core::BootPatch&,
+                          const core::TaskContext&) -> Result<core::BootPatchReport> {
+        return fail(ErrorCode::AccessDenied, L"DISM needs an elevated (administrator) process", L"Dism");
+    });
+    IsoController::Request request;
+    request.output = dir / L"failed.iso";
+    request.label = L"WL_BOOT";
+    request.boot = core::BootMode::BiosOnly;
+    request.sha256 = false;
+    request.openFolder = false;
+    iso.start(request);
+    f.state.engine().drain();
+    REQUIRE(f.state.isoRun().has_value());
+    CHECK_FALSE(f.state.isoRun()->result.has_value());
+    REQUIRE(f.state.isoRun()->error.has_value());
+    CHECK(f.state.isoRun()->error->code == ErrorCode::AccessDenied);
+    CHECK_FALSE(std::filesystem::exists(settings.workRoot / L"boot" / L"boot.wim"));
+    std::filesystem::remove_all(dir, ec);
+}
+
 TEST_CASE("unattend controller: the ISO never gets an invalid file") {
     Fixture f;
     f.state.setSource(armSource());
