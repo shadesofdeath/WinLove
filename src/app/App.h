@@ -57,6 +57,8 @@ struct LaunchOptions {
     bool demoComponents = false; // render: fake mount + sample provisioned apps (screen 04)
     bool demoRegistry = false;   // render: fake mount + checked tweaks (08)
     bool demoServices = false;   // render: fake mount + sample services (09)
+    bool demoTasks = false;      // render: fake mount, two tasks off in the image, the recommended queued (D-048)
+    bool demoHosts = false;      // render: fake mount, telemetry list in the image, ads queued, imported entries (D-049)
     bool demoTweaks = false;     // render: fake mount + the selections of screen 10
     bool demoImageValues = false; // render (with --demo-tweaks / --demo-registry): the image already has a few (D-045)
     bool demoUnattended = false; // render: the answers of screen 11

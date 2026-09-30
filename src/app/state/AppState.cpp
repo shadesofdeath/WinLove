@@ -1,8 +1,11 @@
 #include "app/state/AppState.h"
 
 #include "app/state/AnswerStore.h"
+#include "core/image/HostsFile.h"
 
 #include <algorithm>
+#include <cwctype>
+#include <format>
 
 namespace wl::app {
 
@@ -242,10 +245,22 @@ void AppState::setImageValues(std::optional<ImageValues> values) {
 std::wstring AppState::imageValueKey(core::ops::OpKind kind, std::wstring_view target, std::wstring_view value) {
     using core::ops::OpKind;
     const bool registry = kind == OpKind::SetRegistryValue || kind == OpKind::SetRegistryFirstLogon;
-    std::wstring key = registry ? L"reg\n" : kind == OpKind::WriteFile ? L"file\n" : L"other\n";
-    key.append(target);
+    std::wstring key = registry                     ? std::wstring(L"reg\n")
+                       : kind == OpKind::WriteFile ? std::wstring(L"file\n")
+                                                   : std::format(L"op{}\n", static_cast<int>(kind));
+    if (kind == OpKind::SetTaskState) { // task paths compare without case
+        for (const wchar_t c : target) {
+            key.push_back(static_cast<wchar_t>(std::towlower(c)));
+        }
+    } else {
+        key.append(target);
+    }
     key += L'\n';
-    key.append(value);
+    if (kind == OpKind::SetHosts) { // entries compare as parsed ("0.0.0.0 name" lines)
+        key += core::formatHostEntries(core::parseHosts(value));
+    } else {
+        key.append(value);
+    }
     return key;
 }
 

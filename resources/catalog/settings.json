@@ -482,6 +482,33 @@
       "hint_tr": "Windows 11 · daha düşük gecikme, değişken yenileme hızı", "hint_en": "Windows 11 · lower latency, variable refresh rate",
       "writes": [ { "key": "HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences", "name": "DirectXUserGlobalSettings", "value": "\"SwapEffectUpgradeEnable=1;\"" } ] },
 
+    { "id": "dns-servers", "section": "network", "control": "dropdown", "tr": "DNS sunucuları", "en": "DNS servers", "risk": "medium",
+      "options": [
+        { "id": "default", "tr": "Ağdan (DHCP) — Windows varsayılanı", "en": "From the network (DHCP) — Windows default" },
+        { "id": "cloudflare", "tr": "Cloudflare (1.1.1.1)", "en": "Cloudflare (1.1.1.1)",
+          "writes": [ { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient", "name": "NameServer", "value": "\"1.1.1.1 1.0.0.1 2606:4700:4700::1111 2606:4700:4700::1001\"" } ] },
+        { "id": "cloudflare-family", "tr": "Cloudflare aile (zararlı + yetişkin engeli)", "en": "Cloudflare for Families (malware + adult)",
+          "writes": [ { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient", "name": "NameServer", "value": "\"1.1.1.3 1.0.0.3 2606:4700:4700::1113 2606:4700:4700::1003\"" } ] },
+        { "id": "google", "tr": "Google (8.8.8.8)", "en": "Google (8.8.8.8)",
+          "writes": [ { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient", "name": "NameServer", "value": "\"8.8.8.8 8.8.4.4 2001:4860:4860::8888 2001:4860:4860::8844\"" } ] },
+        { "id": "quad9", "tr": "Quad9 (zararlı engeli)", "en": "Quad9 (malware blocking)",
+          "writes": [ { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient", "name": "NameServer", "value": "\"9.9.9.9 149.112.112.112 2620:fe::fe 2620:fe::9\"" } ] },
+        { "id": "adguard", "tr": "AdGuard (reklam engeli)", "en": "AdGuard (ad blocking)",
+          "writes": [ { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient", "name": "NameServer", "value": "\"94.140.14.14 94.140.15.15 2a10:50c0::ad1:ff 2a10:50c0::ad2:ff\"" } ] }
+      ] },
+    { "id": "dns-custom", "section": "network", "control": "text", "tr": "Özel DNS sunucuları", "en": "Custom DNS servers", "risk": "medium",
+      "hint_tr": "Boşlukla ayrılmış IPv4 / IPv6 adresleri; yukarıdaki seçimin yerine geçer", "hint_en": "IPv4 / IPv6 addresses separated by spaces; replaces the choice above",
+      "writes": [ { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient", "name": "NameServer" } ] },
+    { "id": "doh", "section": "network", "control": "dropdown", "tr": "DNS over HTTPS (DoH)", "en": "DNS over HTTPS (DoH)", "risk": "medium",
+      "options": [
+        { "id": "default", "tr": "Windows varsayılanı", "en": "Windows default" },
+        { "id": "allow", "tr": "Destekleyen sunucuda kullan", "en": "Use where the server supports it",
+          "writes": [ { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient", "name": "DoHPolicy", "value": "dword:00000002" } ] },
+        { "id": "require", "tr": "Zorunlu (şifresiz DNS yok)", "en": "Required (no plain DNS)",
+          "writes": [ { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient", "name": "DoHPolicy", "value": "dword:00000003" } ] },
+        { "id": "off", "tr": "Kapalı", "en": "Off",
+          "writes": [ { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient", "name": "DoHPolicy", "value": "dword:00000001" } ] }
+      ] },
     { "id": "llmnr", "section": "network", "control": "toggle", "tr": "LLMNR (yerel ad çözümleme)", "en": "LLMNR (local name resolution)", "default": "on",
       "hint_tr": "Kapatmak yerel ağda ad sahteciliğine kapıyı kapatır", "hint_en": "Off closes a door to name spoofing on the local network",
       "writes": [ { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient", "name": "EnableMulticast", "value": "dword:00000000" } ] },

@@ -22,7 +22,9 @@
     "settings": "Uygulama ayarları",
     "about": "Hakkında",
     "collapse": "Daralt",
-    "expand": "Genişlet"
+    "expand": "Genişlet",
+    "tasks": "Görevler",
+    "hosts": "Hosts"
   },
   "title": {
     "cmdk": "Komut, sayfa veya bileşen ara",
@@ -1009,5 +1011,51 @@
     "freeDiskSpace": "Diskte yeterli boş alan yok.",
     "notSupported": "Bu işlem bu imaj için desteklenmiyor.",
     "unknown": "Ayrıntılar logda."
+  },
+  "tasks": {
+    "title": "Zamanlanmış Görevler",
+    "desc": "Seçilen görevler kurulumdan sonra kapatılır (SetupComplete, schtasks). İmajda olmayan görev yalnızca günlüğe yazılır.",
+    "search": "Görev ara",
+    "task": "Görev",
+    "custom": "Özel",
+    "recommended": "önerilen",
+    "stateOn": "açık",
+    "stateOff": "kapalı",
+    "willDisable": "kapatılacak",
+    "willEnable": "açılacak",
+    "inImage": "imajda kapalı",
+    "summary": "{n} / {total} görev kapalı",
+    "detailHint": "Kapatılan görev kurulumdan sonra çalışmaz; Windows Update bazılarını yeniden açabilir.",
+    "noMountTitle": "Bağlı imaj yok",
+    "noMountBody": "Görevleri seçmek için İmajlar sayfasından bir sürüm bağla.",
+    "applyRecommended": "Önerilenleri kapat",
+    "recommendedDone": "{n} önerilen görev kapatılacak",
+    "recommendedNone": "Önerilen görevlerin hepsi zaten kapalı",
+    "add": "Görev ekle…",
+    "addTitle": "Görev ekle",
+    "addBody": "Görev Zamanlayıcı'daki tam yolu yaz (ör. \\Microsoft\\Windows\\Autochk\\Proxy). Kurulumdan sonra kapatılır.",
+    "addPath": "Yol",
+    "addInvalid": "Bu bir görev yolu değil"
+  },
+  "hosts": {
+    "title": "Hosts",
+    "desc": "İmajın hosts dosyasına engel listeleri. Her liste ayrı bir bölüm olarak yazılır; dosyadaki diğer satırlara dokunulmaz.",
+    "list": "Liste",
+    "entries": "Girdi",
+    "custom": "İçe aktarılan girdiler",
+    "stateOff": "yok",
+    "willWrite": "yazılacak",
+    "willRemove": "kaldırılacak",
+    "inImage": "imajda",
+    "summary": "Uygula'dan sonra {n} alan adı engellenir (0.0.0.0)",
+    "customHint": "Bir hosts dosyasından içe aktarılan girdiler. Del kaldırır; boşken işaretlemek içe aktarmayı açar.",
+    "hint": "Bir listeyi seç: ne engellediği burada yazar.",
+    "noMountTitle": "Bağlı imaj yok",
+    "noMountBody": "Hosts dosyasını düzenlemek için İmajlar sayfasından bir sürüm bağla.",
+    "import": "Hosts dosyası içe aktar…",
+    "imported": "{n} yeni girdi eklendi",
+    "importedNone": "Dosyada yeni girdi yok",
+    "filter": "Hosts dosyaları",
+    "applyRecommended": "Önerilenleri seç"
   }
 }

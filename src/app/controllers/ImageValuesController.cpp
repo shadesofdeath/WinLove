@@ -4,7 +4,9 @@
 #include "app/catalog/TweakCatalog.h"
 #include "base/Log.h"
 #include "base/Utf8.h"
+#include "core/image/HostsFile.h"
 #include "core/image/ImageFiles.h"
+#include "core/image/ScheduledTasks.h"
 #include "core/image/RegistryRead.h"
 
 #include <windows.h>
@@ -89,6 +91,15 @@ Result<AppState::ImageValues> ImageValuesController::readImage(const std::filesy
         if (!text.empty()) {
             values.texts.emplace(core::registryTarget(write), std::move(text));
         }
+    }
+    // D-048 / D-049: what an earlier run left in the image's tasks.cmd and hosts file.
+    values.disabledTasks = core::readDisabledTasks(mountDir);
+    for (const auto& task : values.disabledTasks) {
+        values.held.insert(AppState::imageValueKey(OpKind::SetTaskState, task, L"disabled"));
+    }
+    values.hostsSections = core::readHostsSections(mountDir);
+    for (const auto& [id, entries] : values.hostsSections) {
+        values.held.insert(AppState::imageValueKey(OpKind::SetHosts, id, entries));
     }
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started);
     log::info("app", std::format(L"image values: {} of {} catalog writes / files already in the image, {} text value(s) ({} ms)",

@@ -15,7 +15,9 @@
 #include "app/controllers/PostSetupController.h"
 #include "app/controllers/ImageController.h"
 #include "app/controllers/ImageSettingsController.h"
+#include "app/controllers/HostsController.h"
 #include "app/controllers/ImageValuesController.h"
+#include "app/controllers/TaskController.h"
 #include "app/controllers/PreloadController.h"
 #include "app/controllers/UpdateCatalogController.h"
 #include "app/controllers/PresetController.h"
@@ -93,6 +95,8 @@ public:
     // D-046: the catalog's offers as a check list (also the render demo).
     void showUpdateOffers(const core::CatalogTarget& target, std::vector<core::CatalogOffer> offers);
     RegistryController& registry() { return *m_registry; }
+    TaskController& tasks() { return *m_tasks; }
+    HostsController& hosts() { return *m_hosts; }
     ImageSettingsController& imageSettings() { return *m_imageSettings; }
     UnattendController& unattend() { return *m_unattend; }
     PostSetupController& postSetup() { return *m_postSetup; }
@@ -192,6 +196,8 @@ private:
     void updateIsoChrome();
     void startIso();
     void confirmUsbWrite(IsoController::Request request); // D-047: "USB belleği sil ve yaz?"
+    void addTaskDialog();    // D-048: "Görev ekle…"
+    void importHostsFile();  // D-049: "Hosts dosyası içe aktar…"
     void updateApplyChrome();                         // CTA label, Apply page mode/header
     void savePreset(const core::ops::ChangeSet& changes);
     void saveApplyLog();
@@ -220,6 +226,8 @@ private:
     std::unique_ptr<ApplyController> m_apply;
     std::unique_ptr<IsoController> m_iso;
     std::unique_ptr<UpdateCatalogController> m_updateCatalog;
+    std::unique_ptr<TaskController> m_tasks;   // D-048
+    std::unique_ptr<HostsController> m_hosts;  // D-049
     std::unique_ptr<ComponentController> m_components;
     std::unique_ptr<ServiceController> m_serviceCtl;
     std::unique_ptr<RegistryController> m_registry;

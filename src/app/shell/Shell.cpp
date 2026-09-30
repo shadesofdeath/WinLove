@@ -27,6 +27,8 @@
 #include "app/ApplyReport.h"
 #include "app/pages/postsetup/AppsDialog.h"
 #include "app/pages/updates/UpdateCatalogDialog.h"
+#include "app/pages/HostsPage.h"
+#include "app/pages/TasksPage.h"
 #include "app/pages/postsetup/StepDialog.h"
 #include "app/pages/SourcePage.h"
 #include "app/pages/TweaksPage.h"
@@ -135,6 +137,8 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         m_imageSettings = std::make_unique<ImageSettingsController>(m_state, std::move(*settings));
     }
     m_serviceCtl = std::make_unique<ServiceController>(m_state, embeddedServiceCatalog(), m_services.postToUi);
+    m_tasks = std::make_unique<TaskController>(m_state, embeddedTaskCatalog());
+    m_hosts = std::make_unique<HostsController>(m_state, embeddedHostsCatalog());
     m_unattend = std::make_unique<UnattendController>(m_state);
     m_postSetup = std::make_unique<PostSetupController>(m_state);
     m_presets = std::make_unique<PresetController>(m_state, m_imageSettings->catalog(), m_strings, m_language,
@@ -641,6 +645,60 @@ void Shell::importPreset() {
     }
 }
 
+void Shell::addTaskDialog() {
+    if (!host()) {
+        return;
+    }
+    if (!m_state.mounted()) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::TasksNoMountTitle), m_strings.get(Str::TasksNoMountBody));
+        return;
+    }
+    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::TasksAddTitle), m_strings.get(Str::TasksAddBody),
+                                               ui::icons::Icon::QueueClock, ui::tokens::Color::TextSecondary, 520.0f);
+    ui::Dialog* raw = dialog.get();
+    auto& form = raw->setContent<ui::FormView>(ui::FormView::kRow, 64.0f);
+    auto& path = form.addRow<ui::SearchBox>(m_strings.get(Str::TasksAddPath), std::wstring(), 400.0f, std::wstring());
+    path.setPlain(true);
+    auto add = [this, raw, &path] {
+        const std::wstring text = path.text();
+        if (!m_tasks->addCustom(text)) {
+            showToast(ui::InfoKind::Warning, m_strings.get(Str::TasksAddInvalid), text);
+            return;
+        }
+        host()->popModal(raw);
+    };
+    path.onSubmit = add;
+    raw->onCancel = [this, raw] { host()->popModal(raw); };
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
+    raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::CommonAdd), add, /*primary=*/true);
+    host()->pushModal(std::move(dialog), &path);
+}
+
+void Shell::importHostsFile() {
+    if (!m_state.mounted()) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::HostsNoMountTitle), m_strings.get(Str::HostsNoMountBody));
+        return;
+    }
+    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+    const auto file = ui::pickFile(owner, m_strings.get(Str::HostsImport),
+                                   {{m_strings.get(Str::HostsFilter), L"hosts;*.txt;*.hosts;*"}});
+    if (!file) {
+        return;
+    }
+    std::ifstream in(*file, std::ios::binary);
+    std::stringstream buffer;
+    buffer << in.rdbuf();
+    std::string bytes = buffer.str();
+    if (bytes.size() > (64u << 20)) {
+        bytes.resize(64u << 20);
+    }
+    const std::size_t added = m_hosts->importText(utf8::toWide(bytes));
+    showToast(added > 0 ? ui::InfoKind::Success : ui::InfoKind::Info,
+              added > 0 ? m_strings.format(Str::HostsImported, {{L"n", std::to_wstring(added)}})
+                        : m_strings.get(Str::HostsImportedNone),
+              file->filename().wstring());
+}
+
 void Shell::newPreset() {
     if (!host()) {
         return;
@@ -900,6 +958,8 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::Registry, m_registry->checkedCount());
     m_nav->setBadge(PageId::Tweaks, m_imageSettings->changedCount());
     m_nav->setBadge(PageId::PostSetup, static_cast<int>(m_postSetup->stepCount()));
+    m_nav->setBadge(PageId::Tasks, m_tasks->changedCount());
+    m_nav->setBadge(PageId::Hosts, m_hosts->changedCount());
     if (m_actionReset) {
         m_actionReset->setEnabled(featureOps > 0);
     }
@@ -1249,6 +1309,32 @@ void Shell::showPage(PageId page) {
                     return ui::pickFile(owner, m_strings.get(Str::TweaksPickImage),
                                         {{m_strings.get(Str::TweaksJpegFiles), L"*.jpg;*.jpeg"}});
                 });
+        } else if (page == PageId::Tasks) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TasksAdd), ui::icons::Icon::Add).onInvoke =
+                [this] { addTaskDialog(); };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TasksApplyRecommended)).onInvoke = [this] {
+                if (!m_state.mounted()) {
+                    showToast(ui::InfoKind::Warning, m_strings.get(Str::TasksNoMountTitle), m_strings.get(Str::TasksNoMountBody));
+                    return;
+                }
+                const int n = m_tasks->applyRecommended();
+                showToast(ui::InfoKind::Success,
+                          n > 0 ? m_strings.format(Str::TasksRecommendedDone, {{L"n", std::to_wstring(n)}})
+                                : m_strings.get(Str::TasksRecommendedNone),
+                          L"");
+            };
+            m_pageBody = &m_pageView->setBody<TasksPage>(m_state, *m_tasks, m_strings, m_language,
+                                                         [this] { showPage(PageId::Images); });
+        } else if (page == PageId::Hosts) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::HostsImport), ui::icons::Icon::Import).onInvoke =
+                [this] { importHostsFile(); };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::HostsApplyRecommended)).onInvoke = [this] {
+                if (m_state.mounted()) {
+                    m_hosts->applyRecommended();
+                }
+            };
+            m_pageBody = &m_pageView->setBody<HostsPage>(m_state, *m_hosts, m_strings, m_language,
+                                                         [this] { showPage(PageId::Images); }, [this] { importHostsFile(); });
         } else if (page == PageId::Services) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ServicesReset)).onInvoke = [this] {
                 m_serviceCtl->resetChanges();

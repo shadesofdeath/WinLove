@@ -1,0 +1,47 @@
+{
+  "format": "winlove.catalog.hosts",
+  "version": 1,
+  "_comment": "D-049: block lists WinLove can put into the image's hosts file, each as a section of its own. Kept conservative: only names whose loss does not break Windows Update, activation, the Store or sign-in (CDN names such as *.msedge.net are left out on purpose).",
+  "lists": [
+    { "id": "telemetry", "risk": "medium", "recommended": true,
+      "tr": "Microsoft telemetri sunucuları", "en": "Microsoft telemetry servers",
+      "desc_tr": "Tanılama verisi, hata raporları ve CEIP uç noktaları. Windows Update ve etkinleştirme etkilenmez.",
+      "desc_en": "Diagnostic data, error reports and CEIP endpoints. Windows Update and activation are not affected.",
+      "entries": [
+        "vortex.data.microsoft.com", "vortex-win.data.microsoft.com", "telecommand.telemetry.microsoft.com",
+        "telecommand.telemetry.microsoft.com.nsatc.net", "oca.telemetry.microsoft.com", "oca.telemetry.microsoft.com.nsatc.net",
+        "sqm.telemetry.microsoft.com", "sqm.telemetry.microsoft.com.nsatc.net", "watson.telemetry.microsoft.com",
+        "watson.telemetry.microsoft.com.nsatc.net", "redir.metaservices.microsoft.com", "choice.microsoft.com",
+        "choice.microsoft.com.nsatc.net", "df.telemetry.microsoft.com", "reports.wes.df.telemetry.microsoft.com",
+        "wes.df.telemetry.microsoft.com", "services.wes.df.telemetry.microsoft.com", "sqm.df.telemetry.microsoft.com",
+        "telemetry.microsoft.com", "watson.ppe.telemetry.microsoft.com", "telemetry.appex.bing.net",
+        "telemetry.urs.microsoft.com", "settings-sandbox.data.microsoft.com", "vortex-sandbox.data.microsoft.com",
+        "watson.microsoft.com", "survey.watson.microsoft.com", "statsfe2.ws.microsoft.com", "statsfe1.ws.microsoft.com",
+        "corpext.msitadfs.glbdns2.microsoft.com", "compatexchange.cloudapp.net", "diagnostics.support.microsoft.com",
+        "feedback.windows.com", "feedback.microsoft-hohm.com", "feedback.search.microsoft.com",
+        "v10.events.data.microsoft.com", "v20.events.data.microsoft.com", "self.events.data.microsoft.com",
+        "umwatsonc.events.data.microsoft.com", "umwatson.events.data.microsoft.com", "ceuswatcab01.blob.core.windows.net",
+        "ceuswatcab02.blob.core.windows.net", "eaus2watcab01.blob.core.windows.net", "eaus2watcab02.blob.core.windows.net",
+        "weus2watcab01.blob.core.windows.net", "weus2watcab02.blob.core.windows.net"
+      ] },
+    { "id": "ads", "risk": "low", "recommended": true,
+      "tr": "Microsoft reklam sunucuları", "en": "Microsoft ad servers",
+      "desc_tr": "MSN ve Windows içindeki reklam kutucukları, reklam kimliği sunucuları.",
+      "desc_en": "Ad tiles in MSN and Windows, advertising ID servers.",
+      "entries": [
+        "ads.msn.com", "ads1.msn.com", "ads1.msads.net", "a.ads1.msn.com", "a.ads2.msn.com", "adnexus.net", "adnxs.com",
+        "rad.msn.com", "live.rads.msn.com", "b.rad.msn.com", "b.ads1.msn.com", "b.ads2.msads.net", "flex.msn.com",
+        "msntest.serving-sys.com", "preview.msn.com", "pricelist.skype.com", "apps.skype.com", "m.hotmail.com",
+        "s.gateway.messenger.live.com", "static.2mdn.net", "ad.doubleclick.net", "view.atdmt.com", "db3aqu.atdmt.com",
+        "cds26.ams9.msecn.net", "lb1.www.ms.akadns.net", "arc.msn.com", "ris.api.iris.microsoft.com"
+      ] },
+    { "id": "copilot", "risk": "medium", "recommended": false,
+      "tr": "Copilot ve Bing sohbet", "en": "Copilot and Bing chat",
+      "desc_tr": "Windows Copilot ve Bing sohbet uç noktaları. Copilot uygulaması çalışmaz.",
+      "desc_en": "Windows Copilot and Bing chat endpoints. The Copilot app stops working.",
+      "entries": [
+        "copilot.microsoft.com", "sydney.bing.com", "edgeservices.bing.com", "copilot.cloud.microsoft",
+        "substrate.office.com"
+      ] }
+  ]
+}
