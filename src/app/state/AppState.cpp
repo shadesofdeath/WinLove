@@ -90,6 +90,7 @@ void AppState::setMounted(std::optional<MountedImage> mounted) {
         m_system.reset();
         m_services.reset();
         m_imageValues.reset();
+        m_imageDrivers.reset();
         if (!m_changes.empty()) {
             m_changes.clear();
             notify(Change::Queue);
@@ -235,6 +236,11 @@ void AppState::setUnattend(Unattend unattend) {
 void AppState::setServiceList(std::optional<ServiceList> list) {
     m_services = std::move(list);
     notify(Change::Services);
+}
+
+void AppState::setImageDrivers(std::optional<ImageDrivers> drivers) {
+    m_imageDrivers = std::move(drivers);
+    notify(Change::Drivers);
 }
 
 void AppState::setImageValues(std::optional<ImageValues> values) {

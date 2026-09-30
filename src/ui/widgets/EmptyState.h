@@ -14,6 +14,7 @@ public:
     // Adds the secondary action button (or relabels the existing one); returns it so the caller
     // can wire onInvoke.
     Button& setAction(std::wstring label);
+    void clearAction(); // hides the button (a state that offers nothing to do)
     // In-place content change (safe to call from the action's own onInvoke).
     void setContent(icons::Icon icon, std::wstring title, std::wstring body);
     void hideAction();

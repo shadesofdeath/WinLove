@@ -28,6 +28,7 @@
 #include "app/pages/postsetup/AppsDialog.h"
 #include "app/pages/updates/UpdateCatalogDialog.h"
 #include "app/pages/FilesPage.h"
+#include "core/system/Privileges.h"
 #include "app/pages/HostsPage.h"
 #include "app/pages/TasksPage.h"
 #include "app/pages/postsetup/StepDialog.h"
@@ -141,6 +142,14 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_tasks = std::make_unique<TaskController>(m_state, embeddedTaskCatalog());
     m_hosts = std::make_unique<HostsController>(m_state, embeddedHostsCatalog());
     m_files = std::make_unique<FilesController>(m_state);
+    m_imageDriverCtl = std::make_unique<ImageDriverController>(m_state, ImageDriverController::Events{
+        m_services.postToUi,
+        [this](int packages, const std::filesystem::path& folder) {
+            showToast(ui::InfoKind::Success, m_strings.format(Str::DriversHostExported, {{L"n", std::to_wstring(packages)}}),
+                      folder.wstring());
+        },
+        [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::DriversHostFailed), e.message); },
+    });
     m_unattend = std::make_unique<UnattendController>(m_state);
     m_postSetup = std::make_unique<PostSetupController>(m_state);
     m_presets = std::make_unique<PresetController>(m_state, m_imageSettings->catalog(), m_strings, m_language,
@@ -1012,7 +1021,8 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::Apply, static_cast<int>(changes.size()));
     m_nav->setBadge(PageId::Components, static_cast<int>(m_components->queuedCount()));
     m_nav->setBadge(PageId::Updates, static_cast<int>(changes.count(core::ops::OpKind::AddPackage)));
-    m_nav->setBadge(PageId::Drivers, static_cast<int>(changes.count(core::ops::OpKind::AddDriver)));
+    m_nav->setBadge(PageId::Drivers, static_cast<int>(changes.count(core::ops::OpKind::AddDriver) +
+                                                      changes.count(core::ops::OpKind::RemoveDriver)));
     m_nav->setBadge(PageId::Services, static_cast<int>(changes.count(core::ops::OpKind::SetServiceStart)));
     m_nav->setBadge(PageId::Registry, m_registry->checkedCount());
     m_nav->setBadge(PageId::Tweaks, m_imageSettings->changedCount());
@@ -1427,8 +1437,20 @@ void Shell::showPage(PageId page) {
         } else if (page == PageId::Drivers) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesScanFolder), ui::icons::Icon::OpenFolder)
                 .onInvoke = [this] { scanDriverFolder(); };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::DriversFromHost), ui::icons::Icon::Import)
+                .onInvoke = [this] {
+                    if (m_imageDriverCtl->exporting()) {
+                        return;
+                    }
+                    if (!core::isElevated()) {
+                        showAdminRequired(L"--page=drivers");
+                        return;
+                    }
+                    showToast(ui::InfoKind::Info, m_strings.get(Str::DriversHostExporting), m_imageDriverCtl->hostFolder().wstring());
+                    m_imageDriverCtl->exportHost();
+                };
             m_pageBody = &m_pageView->setBody<DriversPage>(
-                m_state, m_strings, m_language,
+                m_state, *m_imageDriverCtl, m_strings, m_language,
                 DriversPage::Intents{[this] { scanDriverFolder(); }, [this] { showPage(PageId::Images); }});
         } else if (page == PageId::Updates) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesFind), ui::icons::Icon::Download)

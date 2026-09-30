@@ -17,6 +17,7 @@
 #include "app/controllers/ImageSettingsController.h"
 #include "app/controllers/FilesController.h"
 #include "app/controllers/HostsController.h"
+#include "app/controllers/ImageDriverController.h"
 #include "app/controllers/ImageValuesController.h"
 #include "app/controllers/TaskController.h"
 #include "app/controllers/PreloadController.h"
@@ -92,6 +93,7 @@ public:
     ComponentController& components() { return *m_components; }
     ServiceController& services() { return *m_serviceCtl; }
     IsoPage* isoPageForDemo() const { return isoPage(); } // render: --demo-usb
+    DriversPage* driversPageForDemo() const { return driversPage(); } // render: --demo-image-drivers
     // D-051: "Dosya ekle…" / "Klasör ekle…" / a drop on the Dosyalar page → "Nereye?" → queue.
     void addFilesTo(std::vector<std::filesystem::path> sources);
     void startIsoForDemo() { startIso(); }
@@ -235,6 +237,7 @@ private:
     std::unique_ptr<TaskController> m_tasks;   // D-048
     std::unique_ptr<HostsController> m_hosts;  // D-049
     std::unique_ptr<FilesController> m_files;  // D-051
+    std::unique_ptr<ImageDriverController> m_imageDriverCtl; // D-052
     std::unique_ptr<ComponentController> m_components;
     std::unique_ptr<ServiceController> m_serviceCtl;
     std::unique_ptr<RegistryController> m_registry;

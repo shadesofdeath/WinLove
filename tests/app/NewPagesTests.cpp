@@ -1,6 +1,7 @@
 // D-048 / D-049 / D-051: the logic behind the Görevler, Hosts and Dosyalar pages.
 #include "app/controllers/FilesController.h"
 #include "app/controllers/HostsController.h"
+#include "app/controllers/ImageDriverController.h"
 #include "app/controllers/TaskController.h"
 
 #include <doctest.h>
@@ -148,4 +149,25 @@ TEST_CASE("files page: the typed place, the operation, refusals") {
     CHECK(n == 1);
     CHECK(errors.size() == 1);
     CHECK(files.count() == 1);
+}
+
+TEST_CASE("drivers page: removing a driver of the image") {
+    Fixture f;
+    ImageDriverController drivers(f.state, ImageDriverController::Events{});
+    core::DriverEntry storage;
+    storage.publishedName = L"oem1.inf";
+    storage.originalFileName = L"iastorvd.inf";
+    storage.bootCritical = true;
+    core::DriverEntry net;
+    net.publishedName = L"oem0.inf";
+    net.originalFileName = L"rt640x64.inf";
+    CHECK(ImageDriverController::operationFor(storage).risk == core::ops::Risk::High);
+    CHECK(ImageDriverController::operationFor(net).risk == core::ops::Risk::Medium);
+    drivers.toggle(net);
+    CHECK(drivers.queuedForRemoval(net));
+    CHECK(f.state.changes().find(OpKind::RemoveDriver, L"oem0.inf")->value == L"rt640x64.inf");
+    CHECK(drivers.removalCount() == 1);
+    drivers.toggle(net);
+    CHECK(f.state.changes().empty());
+    CHECK(drivers.hostFolder().filename() == L"host-drivers");
 }

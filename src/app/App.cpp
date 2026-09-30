@@ -4,6 +4,7 @@
 
 #include "core/image/DriverInf.h"
 
+#include "app/pages/DriversPage.h"
 #include "app/pages/IsoPage.h"
 #include "app/pages/UpdatesPage.h"
 
@@ -181,6 +182,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoTasks = true;
         } else if (a == L"--demo-files" || startsWith(a, L"--demo-files=")) {
             options.demoFiles = a == L"--demo-files" ? std::wstring() : std::wstring(value(L"--demo-files="));
+        } else if (a == L"--demo-image-drivers") {
+            options.demoImageDrivers = true;
         } else if (a == L"--demo-hosts") {
             options.demoHosts = true;
         } else if (a == L"--demo-services") {
@@ -721,6 +724,37 @@ int App::renderOffscreen() {
         m_shell->showPage(PageId::Files);
         if (*m_options.demoFiles == L"where") {
             m_shell->addFilesTo({repo / L"docs"});
+        }
+    }
+    if (m_options.demoImageDrivers) {
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,
+                                         L"Windows 11 Pro"});
+        auto driver = [](const wchar_t* published, const wchar_t* original, const wchar_t* cls, const wchar_t* desc,
+                         const wchar_t* provider, const wchar_t* version, const wchar_t* date, bool boot) {
+            core::DriverEntry d;
+            d.publishedName = published;
+            d.originalFileName = original;
+            d.className = cls;
+            d.classDescription = desc;
+            d.provider = provider;
+            d.version = version;
+            d.date = date;
+            d.bootCritical = boot;
+            d.signed_ = true;
+            return d;
+        };
+        std::vector<core::DriverEntry> items{
+            driver(L"oem0.inf", L"rt640x64.inf", L"Net", L"Ağ bağdaştırıcıları", L"Realtek", L"10.72.524.2024", L"2024-05-24", false),
+            driver(L"oem1.inf", L"iastorvd.inf", L"SCSIAdapter", L"Depolama denetleyicileri", L"Intel Corporation", L"20.0.0.1038", L"2023-11-02", true),
+            driver(L"oem2.inf", L"nvlddmkm.inf", L"Display", L"Görüntü bağdaştırıcıları", L"NVIDIA", L"32.0.15.6094", L"2024-08-14", false),
+            driver(L"oem3.inf", L"ibtusb.inf", L"Bluetooth", L"Bluetooth", L"Intel Corporation", L"23.60.5.10", L"2024-06-11", false),
+        };
+        m_state->setImageDrivers(AppState::ImageDrivers{AppState::ImageDrivers::Status::Ready, m_state->mounted()->mountDir,
+                                                        std::move(items), {}});
+        m_state->queue(ImageDriverController::operationFor(m_state->imageDrivers()->items[2]));
+        m_shell->showPage(PageId::Drivers);
+        if (auto* page = m_shell->driversPageForDemo()) {
+            page->showImageTab();
         }
     }
     if (m_options.demoTasks || m_options.demoHosts) {

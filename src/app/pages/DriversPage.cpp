@@ -1,10 +1,12 @@
 #include "app/pages/DriversPage.h"
 
 #include "app/Format.h"
+#include "app/pages/PageBits.h"
 #include "ui/widget/Host.h"
 #include "ui/widgets/Checkbox.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cwctype>
 #include <map>
 
@@ -16,12 +18,15 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kToolbarTop = 12.0f;
+constexpr float kTabsTop = 11.0f;
+constexpr float kTabsHeight = ui::tokens::size::control + 1;
+constexpr float kToolbarTop = kTabsTop + kTabsHeight + 11.0f;
 constexpr float kToolbar = 24.0f;
 constexpr float kGap = 8.0f;
 constexpr float kIndent = 16.0f;
 constexpr float kChevron = 16.0f;
 enum Column : int { kName, kProvider, kSize };
+enum ImageColumn : int { kDriver, kClass, kImageProvider, kVersion, kDate };
 
 std::wstring lowered(std::wstring text) {
     for (auto& c : text) {
@@ -77,8 +82,39 @@ std::wstring DriversPage::className(const std::wstring& cls, const Localization&
     return strings.get(it->second) + L" (" + cls + L")";
 }
 
-DriversPage::DriversPage(AppState& state, const Localization& strings, Language language, Intents intents)
-    : m_state(state), m_strings(strings), m_language(language), m_intents(std::move(intents)) {
+DriversPage::DriversPage(AppState& state, ImageDriverController& images, const Localization& strings, Language language,
+                         Intents intents)
+    : m_state(state), m_images(images), m_strings(strings), m_language(language), m_intents(std::move(intents)) {
+    m_tabs = &add<ui::TabBar>(std::vector<std::wstring>{strings.get(Str::DriversTabAdd), strings.get(Str::DriversTabImage)}, 0);
+    m_tabs->onChange = [this](int) {
+        if (imageTab()) {
+            m_images.load();
+        }
+        refresh();
+    };
+    m_imageTable = &add<ui::TableView>(std::vector<ui::TableColumn>{
+        {strings.get(Str::DriversDriver), 0},
+        {strings.get(Str::DriversClass), 190},
+        {strings.get(Str::DriversProviderName), 200},
+        {strings.get(Str::DriversVersion), 130},
+        {strings.get(Str::DriversDate), 96},
+    });
+    m_imageTable->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
+        paintImageCell(c, row, column, rect, cell);
+    };
+    auto toggleImage = [this](int row) {
+        const auto& list = m_state.imageDrivers();
+        if (list && row >= 0 && row < static_cast<int>(list->items.size())) {
+            m_images.toggle(list->items[static_cast<std::size_t>(row)]);
+        }
+    };
+    m_imageTable->onCellClick = [this, toggleImage](int row, int column, ui::PointF p) {
+        if (column == kDriver && p.x < m_imageTable->cellRect(row, kDriver).x + ui::TableView::kCellPad + ui::Checkbox::kBox + 6) {
+            toggleImage(row);
+        }
+    };
+    m_imageTable->onActivate = toggleImage;
+    m_imageTable->onSelect = [this](int) { invalidate(); };
     m_search = &add<ui::SearchBox>(strings.get(Str::DriversSearch), std::vector<std::wstring>{L"/"});
     m_search->onChange = [this](const std::wstring& text) {
         m_needle = lowered(text);
@@ -161,6 +197,7 @@ DriversPage::DriversPage(AppState& state, const Localization& strings, Language 
             refresh();
         } else if (change == AppState::Change::Queue) {
             m_table->refresh();
+            m_imageTable->refresh();
             invalidate();
         }
     });
@@ -169,6 +206,11 @@ DriversPage::DriversPage(AppState& state, const Localization& strings, Language 
 
 DriversPage::~DriversPage() {
     m_state.unsubscribe(m_subscription);
+}
+
+void DriversPage::showImageTab() {
+    m_tabs->setSelected(1);
+    refresh();
 }
 
 void DriversPage::focusSearch() {
@@ -212,6 +254,32 @@ void DriversPage::toggleGroup(const Group& group) {
 void DriversPage::refresh() {
     const bool mounted = m_state.mounted().has_value();
     const bool any = !m_state.driverScan().infs.empty();
+    m_tabs->setVisible(mounted);
+    if (mounted && imageTab()) {
+        // The image's own drivers.
+        for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_search, m_class, m_arch, m_table}) {
+            w->setVisible(false);
+        }
+        const auto& list = m_state.imageDrivers();
+        const bool ready = list && list->status == AppState::ImageDrivers::Status::Ready;
+        if (!list || list->status == AppState::ImageDrivers::Status::Loading) {
+            m_empty->setContent(ui::icons::Icon::Spinner, m_strings.get(Str::DriversImageLoading), m_strings.get(Str::DriversImageLoadingBody));
+            m_empty->clearAction();
+        } else if (list->status == AppState::ImageDrivers::Status::Failed) {
+            m_empty->setContent(ui::icons::Icon::ErrorOctagon, m_strings.get(Str::DriversImageFailed), list->error.message);
+            m_empty->setAction(m_strings.get(Str::CommonRetry)).onInvoke = [this] { m_images.load(true); };
+        } else if (list->items.empty()) {
+            m_empty->setContent(ui::icons::Icon::DriverChip, m_strings.get(Str::DriversImageNone), m_strings.get(Str::DriversImageNoneBody));
+            m_empty->clearAction();
+        }
+        m_empty->setVisible(!ready || list->items.empty());
+        m_imageTable->setVisible(ready && !list->items.empty());
+        m_imageTable->setRowCount(ready ? static_cast<int>(list->items.size()) : 0);
+        layout();
+        invalidate();
+        return;
+    }
+    m_imageTable->setVisible(false);
     if (!mounted) {
         m_empty->setContent(ui::icons::Icon::DriverChip, m_strings.get(Str::DriversNoMountTitle),
                             m_strings.get(Str::DriversNoMountBody));
@@ -341,7 +409,13 @@ void DriversPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect,
 
 void DriversPage::layout() {
     const RectF b = bounds();
-    m_empty->setBounds(b);
+    m_tabs->setBounds({b.x, b.y + kTabsTop, b.width, kTabsHeight});
+    const float below = b.y + kTabsTop + kTabsHeight + 11.0f;
+    m_empty->setBounds(m_state.mounted() ? RectF{b.x, below, b.width, std::max(b.bottom() - below, 0.0f)} : b);
+    {
+        const float top = below + kToolbar + 12;
+        m_imageTable->setBounds({b.x, top, b.width, std::max(b.bottom() - top - kDetailLine, 0.0f)});
+    }
     const float y = b.y + kToolbarTop;
     float x = b.x;
     m_search->setWidth(240);
@@ -355,7 +429,54 @@ void DriversPage::layout() {
     m_table->setBounds({b.x, top, b.width, std::max(b.bottom() - top, 0.0f)});
 }
 
+void DriversPage::paintImageCell(ui::Canvas& canvas, int row, int column, RectF rect, ui::TableView::CellState cell) {
+    const auto& list = m_state.imageDrivers();
+    if (!list || row < 0 || row >= static_cast<int>(list->items.size())) {
+        return;
+    }
+    const auto& d = list->items[static_cast<std::size_t>(row)];
+    switch (column) {
+    case kDriver: {
+        const bool remove = m_images.queuedForRemoval(d);
+        ui::Checkbox::paintBox(canvas, {rect.x, rect.y + (rect.height - ui::Checkbox::kBox) / 2},
+                               remove ? ui::CheckState::On : ui::CheckState::Off, cell.hoveredCell);
+        float x = rect.x + ui::Checkbox::kBox + 8;
+        canvas.drawIcon(classIcon(d.className), {x, rect.y + 4}, Color::TextSecondary);
+        x += ui::tokens::size::icon + 6;
+        const std::wstring name = d.originalFileName.empty() ? d.publishedName : d.originalFileName;
+        const auto style = cell.selected ? TypeStyle::BodyStrong : TypeStyle::Body;
+        const float nameW = std::min(rect.right() - x, std::ceil(canvas.text().measure(name, style)));
+        canvas.drawText(name, {x, rect.y, nameW, rect.height}, style, remove ? Color::TextTertiary : Color::TextPrimary);
+        const float sx = x + nameW + 8;
+        const std::wstring tag = remove ? m_strings.get(Str::DriversWillRemove)
+                                        : d.bootCritical ? m_strings.get(Str::DriversBootCritical) : d.publishedName;
+        canvas.drawText(tag, {sx, rect.y, std::max(rect.right() - sx, 0.0f), rect.height}, TypeStyle::Caption,
+                        remove ? Color::AccentBase : d.bootCritical ? Color::StatusWarning : Color::TextTertiary);
+        break;
+    }
+    case kClass:
+        canvas.drawText(d.classDescription.empty() ? className(d.className, m_strings) : d.classDescription, rect,
+                        TypeStyle::Caption, Color::TextSecondary);
+        break;
+    case kImageProvider: canvas.drawText(d.provider.empty() ? L"—" : d.provider, rect, TypeStyle::Caption, Color::TextSecondary); break;
+    case kVersion: canvas.drawText(d.version, rect, TypeStyle::Mono, Color::TextPrimary); break;
+    case kDate: canvas.drawText(d.date, rect, TypeStyle::Mono, Color::TextSecondary); break;
+    default: break;
+    }
+}
+
 void DriversPage::paint(ui::Canvas& canvas) {
+    if (m_imageTable->visible()) {
+        const RectF b = bounds();
+        const auto& list = m_state.imageDrivers();
+        const int n = list ? static_cast<int>(list->items.size()) : 0;
+        canvas.drawText(m_strings.format(Str::DriversImageSummary, {{L"n", std::to_wstring(n)},
+                                                                    {L"r", std::to_wstring(m_images.removalCount())}}),
+                        {b.x, b.y + kToolbarTop, b.width, kToolbar}, TypeStyle::Body, Color::TextSecondary);
+        paintDetail(canvas, {b.x, m_imageTable->bounds().bottom(), b.width, kDetailLine}, L"",
+                    m_strings.get(Str::DriversImageHint));
+        return;
+    }
     if (!m_table->visible()) {
         return;
     }

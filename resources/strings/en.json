@@ -409,7 +409,26 @@
       "softwarecomponent": "Software component",
       "firmware": "Firmware",
       "none": "No class"
-    }
+    },
+    "tabAdd": "Drivers to add",
+    "tabImage": "Drivers in the image",
+    "driver": "Driver",
+    "version": "Version",
+    "date": "Date",
+    "willRemove": "will be removed",
+    "bootCritical": "boot critical",
+    "imageLoading": "Reading the image's drivers",
+    "imageLoadingBody": "DISM is listing the driver store…",
+    "imageFailed": "Could not read the drivers",
+    "imageNone": "No third-party drivers in the image",
+    "imageNoneBody": "Only Windows' own (inbox) drivers are there; those are not removed here.",
+    "imageSummary": "{n} third-party drivers · {r} to remove",
+    "imageHint": "A ticked driver is removed from the image's driver store. Boot-critical ones (storage, chipset) can break setup.",
+    "fromHost": "Take from this PC",
+    "hostExporting": "Exporting this PC's drivers…",
+    "hostExported": "{n} driver packages taken — pick them on the first tab",
+    "hostFailed": "Could not take this PC's drivers",
+    "providerName": "Provider"
   },
   "registry": {
     "title": "Registry",

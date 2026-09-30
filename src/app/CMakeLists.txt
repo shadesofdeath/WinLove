@@ -21,6 +21,7 @@ add_library(wl_app STATIC
     controllers/TaskController.cpp
     controllers/HostsController.cpp
     controllers/FilesController.cpp
+    controllers/ImageDriverController.cpp
     controllers/UpdateCatalogController.cpp
     ApplyReport.cpp
     Format.cpp
