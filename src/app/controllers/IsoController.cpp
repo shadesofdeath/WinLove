@@ -89,6 +89,14 @@ void IsoController::start(Request request) {
     const core::CancelToken cancel = run.cancel;
     m_state.setIsoRun(std::move(run));
     log::info("iso", L"ISO build started: " + request.output.wstring());
+    // Whether Setup will find an answer file is the first thing to know when it asks its questions anyway.
+    if (answerFile.empty()) {
+        const bool unused = !(m_state.unattend().options == core::UnattendOptions{});
+        log::info("iso", unused ? L"answer file: not added (\"ISO'ya ekle\" is off; the answers on the page stay unused)"
+                                : L"answer file: none");
+    } else {
+        log::info("iso", std::format(L"answer file: autounattend.xml ({} bytes) goes to the ISO root", answerFile.size()));
+    }
 
     auto post = m_events.postToUi;
     std::weak_ptr<bool> alive = m_alive;

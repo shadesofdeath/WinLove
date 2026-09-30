@@ -38,7 +38,17 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
     case OpKind::EnableFeature: return session.enableFeature(op.target, task, options.featureSources);
     case OpKind::RemovePackage: return session.removePackage(op.target, task);
     case OpKind::RemoveCapability: return session.removeCapability(op.target, task);
-    case OpKind::RemoveAppx: return session.removeAppx(op.target);
+    case OpKind::RemoveAppx: {
+        auto removed = session.removeAppx(op.target);
+        // ERROR_FILE_NOT_FOUND: the package is not provisioned in this image — an edition that
+        // never had it, or a preset applied to an image it was already applied to. Absent is
+        // what "remove" asked for.
+        if (!removed && removed.error().hresult == static_cast<std::int32_t>(0x80070002)) {
+            log::info("apply", L"app not in the image (already removed): " + op.target);
+            return {};
+        }
+        return removed;
+    }
     case OpKind::AddPackage: return session.addPackage(op.target, task);
     case OpKind::AddDriver: return session.addDriver(op.target);
     case OpKind::SetServiceStart: {

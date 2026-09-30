@@ -415,6 +415,8 @@ enum class Str : std::uint16_t {
     IsoTabUsb,
     IsoTitle,
     IsoUnattend,
+    IsoUnattendNone,
+    IsoUnattendOff,
     IsoUsbSoonBody,
     IsoUsbSoonTitle,
     IsoVerify,
@@ -731,6 +733,7 @@ enum class Str : std::uint16_t {
     UnattendedBypassNro,
     UnattendedComputerName,
     UnattendedComputerNameHint,
+    UnattendedCpu,
     UnattendedDesc,
     UnattendedDiskGpt,
     UnattendedDiskLayout,
@@ -770,6 +773,7 @@ enum class Str : std::uint16_t {
     UnattendedStepsLocale,
     UnattendedStepsOobe,
     UnattendedStepsRequirements,
+    UnattendedStorage,
     UnattendedTimeZone,
     UnattendedTimeZoneAuto,
     UnattendedTitle,
@@ -803,7 +807,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 793;
+inline constexpr std::size_t kStrCount = 797;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -1213,6 +1217,8 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "iso.tabUsb",
     "iso.title",
     "iso.unattend",
+    "iso.unattendNone",
+    "iso.unattendOff",
     "iso.usbSoonBody",
     "iso.usbSoonTitle",
     "iso.verify",
@@ -1529,6 +1535,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "unattended.bypassNro",
     "unattended.computerName",
     "unattended.computerNameHint",
+    "unattended.cpu",
     "unattended.desc",
     "unattended.diskGpt",
     "unattended.diskLayout",
@@ -1568,6 +1575,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "unattended.steps.locale",
     "unattended.steps.oobe",
     "unattended.steps.requirements",
+    "unattended.storage",
     "unattended.timeZone",
     "unattended.timeZoneAuto",
     "unattended.title",

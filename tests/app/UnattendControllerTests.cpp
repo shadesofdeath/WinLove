@@ -1,11 +1,13 @@
 // P13: answer file options in the app state — editing, save / import, what goes into the ISO.
 #include "app/controllers/IsoController.h"
 #include "app/controllers/UnattendController.h"
+#include "core/image/UdfImage.h"
 
 #include <doctest.h>
 
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 
 using namespace wl;
 using namespace wl::app;
@@ -104,13 +106,101 @@ TEST_CASE("unattend controller: save writes UTF-8 with CRLF; import reads it bac
     CHECK_FALSE(f.controller.import(scratch(L"missing.xml")));
 }
 
-TEST_CASE("unattend controller: the ISO gets the file only when asked, and never an invalid one") {
+TEST_CASE("unattend controller: the first answer puts the file into the ISO; the box opts out") {
+    Fixture f;
+    CHECK_FALSE(f.controller.includeInIso());
+    CHECK(UnattendController::isoFile(f.state).empty()); // nothing answered: no file
+
+    // A real case: every answer given, the box never noticed, the ISO built without the file.
+    f.controller.edit([](core::UnattendOptions& o) { o.bypassTpm = true; });
+    CHECK(f.controller.includeInIso());
+    CHECK(UnattendController::isoFile(f.state).find("BypassTPMCheck") != std::string::npos);
+
+    // Unchecked by hand: later edits leave it alone.
+    f.controller.setIncludeInIso(false);
+    f.controller.edit([](core::UnattendOptions& o) { o.bypassRam = true; });
+    CHECK_FALSE(f.controller.includeInIso());
+    CHECK(UnattendController::isoFile(f.state).empty());
+
+    // An imported file is one to use.
+    const auto file = scratch(L"imported.xml");
+    REQUIRE(f.controller.save(file));
+    REQUIRE(f.controller.import(file));
+    CHECK(f.controller.includeInIso());
+}
+
+TEST_CASE("unattend → ISO: answers given on the page are autounattend.xml in the ISO that gets built") {
+    const auto dir = scratch(L"iso-flow");
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    const auto media = dir / L"media";
+    std::filesystem::create_directories(media / L"boot");
+    std::filesystem::create_directories(media / L"sources");
+    {
+        std::ofstream boot(media / L"boot" / L"etfsboot.com", std::ios::binary); // stands in for the boot sector
+        boot << std::string(4096, '\0');
+        std::ofstream marker(media / L"sources" / L"marker.txt", std::ios::binary);
+        marker << "setup files";
+    }
+
+    Fixture f;
+    core::SourceInfo source = armSource();
+    source.path = media;
+    source.install.images.front().architecture = core::Architecture::X64;
+    f.state.setSource(std::move(source));
+    // Only the form is filled in; "ISO'ya ekle" is never touched.
+    f.controller.edit([](core::UnattendOptions& o) {
+        o.bypassTpm = true;
+        o.accountName = L"berkay";
+    });
+
+    std::mutex mutex;
+    std::vector<std::function<void()>> posted;
+    std::vector<Error> failures;
+    IsoController iso{f.state, IsoController::Events{[&](std::function<void()> fn) {
+                                                        std::scoped_lock lock(mutex);
+                                                        posted.push_back(std::move(fn));
+                                                    },
+                                                    [&](const Error& error) { failures.push_back(error); },
+                                                    {}}};
+    REQUIRE_FALSE(iso.blocker());
+    IsoController::Request request;
+    request.output = dir / L"out.iso";
+    request.label = L"WL_TEST";
+    request.boot = core::BootMode::BiosOnly;
+    request.sha256 = false;
+    request.openFolder = false;
+    iso.start(request);
+    f.state.engine().drain();
+    {
+        std::scoped_lock lock(mutex);
+        for (auto& fn : posted) {
+            fn();
+        }
+    }
+    REQUIRE(failures.empty());
+    REQUIRE(f.state.isoRun().has_value());
+    REQUIRE(f.state.isoRun()->result.has_value());
+
+    {
+        auto image = core::UdfImage::open(request.output);
+        REQUIRE(image.has_value());
+        auto node = image->find(L"autounattend.xml");
+        REQUIRE(node.has_value());
+        const auto copy = dir / L"autounattend-from-iso.xml";
+        REQUIRE(image->extract(*node, copy, core::TaskContext{}).has_value());
+        const std::string text = readFile(copy);
+        CHECK(text.find("BypassTPMCheck") != std::string::npos);
+        CHECK(text.find("<Name>berkay</Name>") != std::string::npos);
+        CHECK_FALSE(std::filesystem::exists(media / L"autounattend.xml")); // the setup folder is not touched
+    } // the ISO is closed before it is deleted
+    std::filesystem::remove_all(dir, ec);
+}
+
+TEST_CASE("unattend controller: the ISO never gets an invalid file") {
     Fixture f;
     f.state.setSource(armSource());
     f.controller.edit([](core::UnattendOptions& o) { o.computerName = L"LAB-01"; });
-    CHECK(UnattendController::isoFile(f.state).empty());
-
-    f.controller.setIncludeInIso(true);
     const std::string bytes = UnattendController::isoFile(f.state);
     CHECK(bytes.find("<ComputerName>LAB-01</ComputerName>") != std::string::npos);
     CHECK(bytes.find("processorArchitecture=\"arm64\"") != std::string::npos);

@@ -279,7 +279,9 @@ std::wstring buildUnattendXml(const UnattendOptions& o) {
         std::vector<std::wstring> commands;
         for (const auto& [enabled, value] : {std::pair{o.bypassTpm, L"BypassTPMCheck"},
                                              std::pair{o.bypassSecureBoot, L"BypassSecureBootCheck"},
-                                             std::pair{o.bypassRam, L"BypassRAMCheck"}}) {
+                                             std::pair{o.bypassRam, L"BypassRAMCheck"},
+                                             std::pair{o.bypassCpu, L"BypassCPUCheck"},
+                                             std::pair{o.bypassStorage, L"BypassStorageCheck"}}) {
             if (enabled) {
                 commands.push_back(labConfig(value));
             }
@@ -430,6 +432,8 @@ Result<UnattendOptions> parseUnattendXml(std::string_view utf8) {
                 o.bypassTpm = o.bypassTpm || commands(component, "BypassTPMCheck");
                 o.bypassSecureBoot = o.bypassSecureBoot || commands(component, "BypassSecureBootCheck");
                 o.bypassRam = o.bypassRam || commands(component, "BypassRAMCheck");
+                o.bypassCpu = o.bypassCpu || commands(component, "BypassCPUCheck");
+                o.bypassStorage = o.bypassStorage || commands(component, "BypassStorageCheck");
                 const auto disk = component.child("DiskConfiguration").child("Disk");
                 if (disk && truthy(disk.child("WillWipeDisk").text().as_string("false"))) {
                     o.disk = UnattendDisk::WipeMbr;
