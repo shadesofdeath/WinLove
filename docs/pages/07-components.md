@@ -53,6 +53,8 @@ Bağlı imajdan kaldırılacak bileşenleri seçmek; seçimler kuyruğa girer (P
 - CLI: `wlcli appx <mount>`, `wlcli cbs <mount> [metin]`, `wlcli component <mount> <tarif.json> [--remove]`,
   `wlcli store-cleanup <mount> [--resetbase]`. Tarif örnekleri: `tests/integration/fixtures/recipe-*.json`.
 - Gerçek imajda deneme (yönetici, VM'siz, kaydetmeden): `tools\lab_components.ps1` [`-Cleanup`].
+  2026-09-30'da 25H2 Pro kopyasında geçti: OneDrive'ın 5 gizli paketi DISM ile kaldırıldı, Edge klasörü silindi,
+  imaj sonrasında servislenebilir. Depo temizliği ve commit + VM kurulumu henüz denenmedi.
 
 ## 5. Ekran
 - Başlık: Preset yükle, Tümünü daralt / genişlet.

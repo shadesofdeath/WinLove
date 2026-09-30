@@ -546,7 +546,7 @@ int cmdComponent(const std::wstring& dir, const std::wstring& recipeFile, bool r
         return reportError(valid.error());
     }
     const auto presence = core::probeComponent(dir, *recipe);
-    print(std::format(L"{}: {} · {} bytes in {} path(s)\n", recipe->title, presence.present ? L"present" : L"not found",
+    print(std::format(L"{}: {}, {} bytes in {} path(s)\n", recipe->title, presence.present ? L"present" : L"not found",
                       presence.size, recipe->paths.size()));
     if (!recipe->packages.empty()) {
         auto all = core::readCbsPackages(std::filesystem::path(dir));

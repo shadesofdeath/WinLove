@@ -1,0 +1,4 @@
+{
+  "title": "Windows Recovery Environment (WinRE)",
+  "paths": [ "Windows\\System32\\Recovery\\Winre.wim" ]
+}
