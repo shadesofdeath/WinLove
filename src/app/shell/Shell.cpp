@@ -15,6 +15,7 @@
 #include "app/pages/IsoPage.h"
 #include "app/pages/LogsPage.h"
 #include "app/pages/PostSetupPage.h"
+#include "app/pages/PresetsPage.h"
 #include "app/pages/postsetup/StepDialog.h"
 #include "app/pages/SourcePage.h"
 #include "app/pages/TweaksPage.h"
@@ -31,6 +32,8 @@
 #include "ui/widget/Host.h"
 #include "ui/widgets/Dialog.h"
 #include "ui/widgets/EmptyState.h"
+#include "ui/widgets/FormView.h"
+#include "ui/widgets/SearchBox.h"
 
 #include <shellapi.h>
 
@@ -119,6 +122,8 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_serviceCtl = std::make_unique<ServiceController>(m_state, embeddedServiceCatalog(), m_services.postToUi);
     m_unattend = std::make_unique<UnattendController>(m_state);
     m_postSetup = std::make_unique<PostSetupController>(m_state);
+    m_presets = std::make_unique<PresetController>(m_state, m_imageSettings->catalog(), m_strings, m_language,
+                                                   PresetController::defaultFolder(m_state.settings()));
     m_preload = std::make_unique<PreloadController>(m_state, m_services.postToUi);
     m_preload->onCancelled = [this] { showToast(ui::InfoKind::Warning, m_strings.get(Str::ImagesCancelledToast), L""); };
     m_iso =std::make_unique<IsoController>(m_state, IsoController::Events{
@@ -426,19 +431,85 @@ void Shell::loadPreset() {
     if (!file) {
         return;
     }
-    std::ifstream in(*file, std::ios::binary);
-    std::stringstream buffer;
-    buffer << in.rdbuf();
-    auto set = core::ops::ChangeSet::fromJson(buffer.str());
-    if (!set) {
-        showToast(ui::InfoKind::Error, m_strings.get(Str::ComponentsPresetFailed), set.error().message);
+    const auto preset = readPreset(*file);
+    if (!preset) {
+        showToast(ui::InfoKind::Error, m_strings.get(Str::ComponentsPresetFailed), preset.error().message);
         return;
     }
-    for (const auto& op : set->operations()) {
-        m_state.queue(op);
+    const std::size_t queued = m_presets->apply(*preset);
+    showToast(ui::InfoKind::Success, m_strings.format(Str::ComponentsPresetLoaded, {{L"n", std::to_wstring(queued)}}),
+              file->wstring());
+}
+
+PresetsPage* Shell::presetsPage() const {
+    return m_page == PageId::Presets ? dynamic_cast<PresetsPage*>(m_pageBody) : nullptr;
+}
+
+void Shell::applyPreset(const Preset& preset) {
+    if (!preset.changes.empty() && !m_state.mounted()) {
+        // The queue belongs to a mounted image.
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::ComponentsPresetNeedsMount), L"");
+        return;
     }
-    showToast(ui::InfoKind::Success,
-              m_strings.format(Str::ComponentsPresetLoaded, {{L"n", std::to_wstring(set->size())}}), file->wstring());
+    const std::size_t queued = m_presets->apply(preset);
+    showToast(ui::InfoKind::Success, m_strings.format(Str::PresetsLoaded, {{L"n", std::to_wstring(queued)}}), preset.name);
+}
+
+void Shell::importPreset() {
+    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+    const auto file = ui::pickFile(owner, m_strings.get(Str::CommonImport),
+                                   {{m_strings.get(Str::ApplyPresetFiles), L"*.wlpreset;*.json"}});
+    if (!file) {
+        return;
+    }
+    if (auto r = m_presets->importFile(*file); !r) {
+        log::error("app", describe(r.error()));
+        showToast(ui::InfoKind::Error, m_strings.get(Str::PresetsFailed), r.error().message);
+        return;
+    }
+    showToast(ui::InfoKind::Success, m_strings.get(Str::PresetsImported), file->filename().wstring());
+    if (auto* page = presetsPage()) {
+        page->reloadList();
+    }
+}
+
+void Shell::newPreset() {
+    if (!host()) {
+        return;
+    }
+    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::PresetsNew), m_strings.get(Str::PresetsNewBody),
+                                               ui::icons::Icon::PresetBookmark, ui::tokens::Color::TextSecondary);
+    ui::Dialog* raw = dialog.get();
+    auto& form = raw->setContent<ui::FormView>(ui::FormView::kRow, 96.0f);
+    auto& name = form.addRow<ui::SearchBox>(m_strings.get(Str::PresetsName), std::wstring(), 300.0f, std::wstring());
+    name.setPlain(true);
+    // A name to start from: the mounted edition, else the source file.
+    if (const auto& mounted = m_state.mounted()) {
+        name.setText(mounted->edition);
+    } else if (const auto& source = m_state.source()) {
+        name.setText(source->path.stem().wstring());
+    }
+    auto save = [this, raw, &name] {
+        const std::wstring chosen = name.text();
+        if (chosen.empty()) {
+            return;
+        }
+        host()->popModal(raw); // `name` is gone from here on
+        if (auto r = m_presets->saveCurrent(chosen); !r) {
+            log::error("app", describe(r.error()));
+            showToast(ui::InfoKind::Error, m_strings.get(Str::PresetsFailed), r.error().message);
+            return;
+        }
+        showToast(ui::InfoKind::Success, m_strings.get(Str::PresetsSaved), chosen);
+        if (auto* page = presetsPage()) {
+            page->reloadList();
+        }
+    };
+    name.onSubmit = save;
+    raw->onCancel = [this, raw] { host()->popModal(raw); };
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
+    raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::CommonSave), save, /*primary=*/true);
+    host()->pushModal(std::move(dialog), &name);
 }
 
 void Shell::updateIsoChrome() {
@@ -776,6 +847,64 @@ void Shell::showPage(PageId page) {
             m_pageBody = &m_pageView->setBody<RegistryPage>(
                 m_state, *m_registry, m_strings, m_language,
                 RegistryPage::Intents{pick, [this] { showPage(PageId::Images); }});
+        } else if (page == PageId::Presets) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::CommonImport), ui::icons::Icon::Import)
+                .onInvoke = [this] { importPreset(); };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PresetsNew), ui::icons::Icon::Add)
+                .onInvoke = [this] { newPreset(); };
+            m_presets->reload();
+            auto byIndex = [this](std::size_t index) -> const Preset* {
+                return index < m_presets->presets().size() ? &m_presets->presets()[index] : nullptr;
+            };
+            m_pageBody = &m_pageView->setBody<PresetsPage>(
+                m_state, *m_presets, m_strings,
+                PresetsPage::Intents{
+                    [this, byIndex](std::size_t index) {
+                        if (const Preset* preset = byIndex(index)) {
+                            applyPreset(*preset);
+                        }
+                    },
+                    [this, byIndex](std::size_t index) {
+                        const Preset* preset = byIndex(index);
+                        if (!preset) {
+                            return;
+                        }
+                        const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+                        const auto target = ui::pickSaveFile(owner, m_strings.get(Str::CommonExport),
+                                                             {{m_strings.get(Str::ApplyPresetFiles), L"*.wlpreset;*.json"}},
+                                                             PresetController::fileNameFor(preset->name) + L".wlpreset",
+                                                             L"wlpreset");
+                        if (!target) {
+                            return;
+                        }
+                        const auto saved = m_presets->exportTo(index, *target);
+                        showToast(saved ? ui::InfoKind::Success : ui::InfoKind::Error,
+                                  m_strings.get(saved ? Str::PresetsExported : Str::PresetsFailed), target->wstring());
+                    },
+                    [this, byIndex](std::size_t index) {
+                        const Preset* preset = byIndex(index);
+                        if (!preset || !host()) {
+                            return;
+                        }
+                        auto dialog = std::make_unique<ui::Dialog>(
+                            m_strings.get(Str::PresetsDeleteTitle),
+                            m_strings.format(Str::PresetsDeleteBody, {{L"name", preset->name}}), ui::icons::Icon::ErrorOctagon,
+                            ui::tokens::Color::StatusError);
+                        ui::Dialog* raw = dialog.get();
+                        raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel),
+                                       [this, raw] { host()->popModal(raw); });
+                        raw->addButton(ui::ButtonKind::Danger, m_strings.get(Str::CommonDelete), [this, raw, index] {
+                            host()->popModal(raw);
+                            const auto removed = m_presets->remove(index);
+                            showToast(removed ? ui::InfoKind::Success : ui::InfoKind::Error,
+                                      m_strings.get(removed ? Str::PresetsDeleted : Str::PresetsFailed), L"");
+                            if (auto* page = presetsPage()) {
+                                page->reloadList();
+                            }
+                        });
+                        pushDialog(std::move(dialog));
+                    },
+                });
         } else if (page == PageId::PostSetup) {
             using Type = core::PostSetupStep::Type;
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupAddCommand), ui::icons::Icon::LogTerminal)

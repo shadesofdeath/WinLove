@@ -23,6 +23,7 @@ add_executable(wl_tests
     app/ImageSettingsTests.cpp
     app/PostSetupControllerTests.cpp
     app/PreloadTests.cpp
+    app/PresetTests.cpp
     app/RegistryImportTests.cpp
     app/ServiceTests.cpp
     app/LocalizationTests.cpp

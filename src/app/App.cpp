@@ -149,6 +149,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoUnattended = true;
         } else if (a == L"--demo-postsetup") {
             options.demoPostSetup = true;
+        } else if (a == L"--demo-presets") {
+            options.demoPresets = true;
         } else if (a == L"--demo-drivers") {
             options.demoDrivers = true;
         } else if (a == L"--demo-updates") {
@@ -484,6 +486,67 @@ int App::renderOffscreen() {
             controller.add(std::move(step));
         }
         m_shell->showPage(m_options.page.value_or(PageId::PostSetup));
+    }
+    if (m_options.demoPresets) {
+        // A library like screen 17 (in memory: the user's own presets are neither read nor touched).
+        using core::ops::OpKind;
+        using core::ops::Operation;
+        const auto& catalog = m_shell->imageSettings().catalog();
+        auto choose = [&](core::ops::ChangeSet& set, std::string_view id, std::string_view option) {
+            for (const auto& setting : catalog.settings()) {
+                if (setting.id != id) {
+                    continue;
+                }
+                const auto it = std::ranges::find(setting.options, option, &ImageSettingOption::id);
+                if (it != setting.options.end()) {
+                    set.addAll(ImageSettingsController::operationsFor(setting, static_cast<int>(it - setting.options.begin())));
+                }
+            }
+        };
+        auto appx = [](const wchar_t* identity) {
+            return Operation{OpKind::RemoveAppx, std::wstring(identity) + L"_1.0.0.0_neutral_~_8wekyb3d8bbwe"};
+        };
+        auto postSetup = [](std::vector<core::PostSetupStep> steps) {
+            core::PostSetupPlan plan;
+            plan.steps = std::move(steps);
+            return PostSetupController::operationFor(plan, 0);
+        };
+        using Step = core::PostSetupStep;
+
+        Preset gaming;
+        gaming.name = L"Gaming Slim";
+        gaming.changes.addAll({appx(L"Microsoft.BingNews"), appx(L"Microsoft.XboxGamingOverlay"),
+                               appx(L"Microsoft.SecHealthUI"), Operation{OpKind::SetServiceStart, L"DiagTrack", L"disabled"},
+                               postSetup({Step{Step::Type::Winget, L"Steam", L"Valve.Steam", {}, true}})});
+        choose(gaming.changes, "game-dvr", "off");
+        choose(gaming.changes, "telemetry", "security");
+        gaming.unattend = AppState::Unattend{};
+        gaming.unattend->options.accountName = L"gamer";
+
+        Preset office;
+        office.name = L"Ofis G\u00fcvenli";
+        office.changes.addAll({appx(L"Microsoft.BingNews"), appx(L"Microsoft.GetHelp"),
+                               Operation{OpKind::SetServiceStart, L"DiagTrack", L"manual"},
+                               postSetup({Step{Step::Type::Winget, L"LibreOffice", L"TheDocumentFoundation.LibreOffice", {},
+                                               true}})});
+        choose(office.changes, "web-search", "off");
+        choose(office.changes, "telemetry", "security");
+        office.unattend = AppState::Unattend{};
+        office.unattend->options.accountName = L"ofis";
+
+        Preset kiosk;
+        kiosk.name = L"Minimal Kiosk";
+        kiosk.changes.addAll({appx(L"Microsoft.BingNews"), appx(L"Microsoft.ZuneMusic"), appx(L"Microsoft.WindowsStore")});
+        choose(kiosk.changes, "widgets", "off");
+        Preset blank;
+        blank.name = L"Varsay\u0131lan (bo\u015f)";
+        std::vector<Preset> library;
+        library.push_back(std::move(gaming));
+        library.push_back(std::move(office));
+        library.push_back(std::move(kiosk));
+        library.push_back(std::move(blank));
+        m_shell->presets().adopt(std::move(library));
+        m_shell->showPage(m_options.page.value_or(PageId::Presets));
     }
     if (m_options.demoServices) {
         const std::filesystem::path mountDir = L"C:\\WinLove\\mount";

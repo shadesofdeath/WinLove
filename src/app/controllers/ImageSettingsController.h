@@ -17,7 +17,9 @@ public:
     [[nodiscard]] const ImageSettingsCatalog& catalog() const noexcept { return m_catalog; }
 
     // Index into setting.options.
-    [[nodiscard]] int current(const ImageSetting& setting) const;
+    [[nodiscard]] int current(const ImageSetting& setting) const { return optionIn(m_state.changes(), setting); }
+    // The same reading for any change set (a preset being listed or compared, P15).
+    [[nodiscard]] static int optionIn(const core::ops::ChangeSet& changes, const ImageSetting& setting);
     // Queues `option` (the default option just removes the setting's operations).
     void select(const ImageSetting& setting, int option);
     // "Önerilenleri uygula": every setting with a recommended option, as one queue edit.
@@ -31,7 +33,6 @@ public:
 private:
     // Queue slots held by any option of `setting` with that option's value (what select() replaces).
     void collectQueued(const ImageSetting& setting, std::vector<std::pair<core::ops::OpKind, std::wstring>>& slots) const;
-    [[nodiscard]] bool queued(const core::ops::Operation& op) const;
 
     AppState& m_state;
     ImageSettingsCatalog m_catalog;
