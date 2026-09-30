@@ -1,5 +1,6 @@
 #include "app/controllers/IsoController.h"
 
+#include "app/controllers/UnattendController.h"
 #include "base/Log.h"
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
@@ -49,6 +50,9 @@ std::optional<IsoController::Blocker> IsoController::blocker() const {
     if (m_state.operation() || running() || (apply && apply->stage != AppState::ApplyRun::Stage::Done)) {
         return Blocker::Busy;
     }
+    if (m_state.unattend().includeInIso && !core::validateUnattend(UnattendController::effective(m_state)).empty()) {
+        return Blocker::UnattendInvalid;
+    }
     return std::nullopt;
 }
 
@@ -77,6 +81,7 @@ void IsoController::start(Request request) {
         request.repack = Repack::AsIs;
     }
     const std::filesystem::path workFolder = m_state.settings().workDirectoryFor(source.path);
+    const std::string answerFile = UnattendController::isoFile(m_state); // empty: not asked for
     Run run;
     run.running = true;
     run.output = request.output;
@@ -106,7 +111,7 @@ void IsoController::start(Request request) {
     };
 
     m_state.engine().run<core::IsoResult>(
-        [source, workFolder, request, cancel, report](const core::TaskContext&) -> Result<core::IsoResult> {
+        [source, workFolder, request, cancel, report, answerFile](const core::TaskContext&) -> Result<core::IsoResult> {
             // Weights: extract 0.35 (ISO sources), repack 0.35 (if asked), build the rest.
             const bool extract = source.format == core::ImageFormat::Iso;
             const bool repack = request.repack != Repack::AsIs;
@@ -138,6 +143,9 @@ void IsoController::start(Request request) {
             options.boot = request.boot;
             options.noPrompt = request.noPrompt;
             options.writeSha256 = request.sha256;
+            if (!answerFile.empty()) {
+                options.rootFiles.push_back({L"autounattend.xml", answerFile});
+            }
             const core::TaskContext t{cancel, [&](double f, std::wstring_view stage) {
                                           report(we + wr + f * wb, stage == L"sha256" ? 3 : 2);
                                       }};

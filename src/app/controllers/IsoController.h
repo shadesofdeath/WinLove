@@ -23,7 +23,8 @@ public:
         bool openFolder = true;
     };
     // Why a build cannot start now (nullopt = it can).
-    enum class Blocker : std::uint8_t { NoSource, WimOnly, Mounted, Busy };
+    // UnattendInvalid: "ISO'ya ekle" is on and the answer file has a value Setup would reject.
+    enum class Blocker : std::uint8_t { NoSource, WimOnly, Mounted, Busy, UnattendInvalid };
 
     struct Events {
         std::function<void(std::function<void()>)> postToUi;

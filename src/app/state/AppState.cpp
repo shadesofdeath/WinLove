@@ -173,6 +173,11 @@ void AppState::removeRegImport(std::size_t index) {
     }
 }
 
+void AppState::setUnattend(Unattend unattend) {
+    m_unattend = std::move(unattend);
+    notify(Change::Unattend);
+}
+
 void AppState::setServiceList(std::optional<ServiceList> list) {
     m_services = std::move(list);
     notify(Change::Services);

@@ -105,7 +105,8 @@ IsoPage::IsoPage(AppState& state, IsoController& controller, const Localization&
 
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Iso || change == AppState::Change::Mount || change == AppState::Change::Source ||
-            change == AppState::Change::Apply || change == AppState::Change::Operation) {
+            change == AppState::Change::Apply || change == AppState::Change::Operation ||
+            change == AppState::Change::Unattend) {
             refresh();
         }
     });
@@ -227,6 +228,7 @@ void IsoPage::updateBlocker() {
         case IsoController::Blocker::WimOnly: text = Str::IsoBlockWimOnly; break;
         case IsoController::Blocker::Mounted: text = Str::IsoBlockMounted; break;
         case IsoController::Blocker::Busy: text = Str::IsoBlockBusy; break;
+        case IsoController::Blocker::UnattendInvalid: text = Str::IsoBlockUnattend; break;
         }
         m_bar->set(ui::InfoKind::Warning, m_strings.get(text), L"");
         m_bar->setAction(L"", nullptr);
@@ -335,7 +337,9 @@ void IsoPage::paint(ui::Canvas& canvas) {
     label(Str::IsoOpenWhenDone);
 
     // Summary box.
-    const RectF box{b.right() - kSummaryWidth, b.y + kTop + ui::tokens::size::control + 2 + 12, kSummaryWidth, 136};
+    const bool answerFile = m_state.unattend().includeInIso; // P13: one more summary row
+    const RectF box{b.right() - kSummaryWidth, b.y + kTop + ui::tokens::size::control + 2 + 12, kSummaryWidth,
+                    136 + (answerFile ? kSummaryRow : 0.0f)};
     canvas.fillRoundRect(box, ui::tokens::radius::r3, Color::BgPanel);
     canvas.strokeRoundRect(box, ui::tokens::radius::r3, Color::LineSubtle);
     float sy = box.y + 12;
@@ -359,6 +363,9 @@ void IsoPage::paint(ui::Canvas& canvas) {
     row(Str::IsoSource, sourceLine, false);
     static constexpr Str kBootText[] = {Str::IsoBootSummaryBoth, Str::IsoBootSummaryUefi, Str::IsoBootSummaryBios};
     row(Str::IsoBoot, m_strings.get(kBootText[std::clamp(m_boot->selected(), 0, 2)]), false);
+    if (answerFile) {
+        row(Str::IsoUnattend, L"autounattend.xml", true);
+    }
     row(Str::IsoEstIso, m_sourceBytes ? formatBytes(m_sourceBytes, m_language) : std::wstring(L"…"), true);
     row(Str::IsoDuration, m_sourceBytes ? formatDuration(estimateSeconds(), m_language, true) : std::wstring(L"…"),
         true);

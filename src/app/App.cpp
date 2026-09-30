@@ -145,6 +145,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoServices = true;
         } else if (a == L"--demo-tweaks") {
             options.demoTweaks = true;
+        } else if (a == L"--demo-unattended") {
+            options.demoUnattended = true;
         } else if (a == L"--demo-drivers") {
             options.demoDrivers = true;
         } else if (a == L"--demo-updates") {
@@ -442,6 +444,22 @@ int App::renderOffscreen() {
             }
         }
         m_shell->showPage(m_options.page.value_or(PageId::Tweaks));
+    }
+    if (m_options.demoUnattended) {
+        // The answers of screen 11; the second edit is what the preview marks as changed.
+        auto& controller = m_shell->unattend();
+        controller.edit([](core::UnattendOptions& o) {
+            o.skipPrivacy = true;
+            o.bypassNro = true;
+            o.skipOnlineAccount = true;
+            o.accountName = L"admin";
+            o.password = L"parola12";
+            o.autoLogon = true;
+            o.bypassSecureBoot = true;
+            o.bypassRam = true;
+        });
+        m_shell->showPage(m_options.page.value_or(PageId::Unattended));
+        controller.edit([](core::UnattendOptions& o) { o.bypassTpm = true; });
     }
     if (m_options.demoServices) {
         const std::filesystem::path mountDir = L"C:\\WinLove\\mount";

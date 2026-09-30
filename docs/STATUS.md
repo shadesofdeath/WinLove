@@ -4,13 +4,18 @@
 
 ## Güncel
 - **Faz:** 3 — sayfalar. P01–P04 ✅. P05 Uygula, P06 ISO, P08 Güncellemeler, P09 Sürücüler, P10 Servisler, P11 Kayıt Defteri,
-  P12 Ayarlar / Tweaks: 🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v1 (yalnız AppX; CBS paket
+  P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum: 🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v1 (yalnız AppX; CBS paket
   kaldırma kararı bekliyor).
 - **Çalışma şekli:** kullanıcı "her seferinde durma" dedi — sayfa bitince build + test + `-Dist` + yerel commit,
   sonra doğrudan bir sonraki sayfa. Kullanıcı `dist\WinLove.exe`'yi paralel test ediyor.
-- **Bir sonraki somut adım:** P13 Katılımsız Kurulum (tasarım 11) — adım göstergesi + form / canlı autounattend.xml
-  önizlemesi (pugixml vendored). Spec yok: önce `docs/pages/13-unattended.md`. Sonra P14 Kurulum Sonrası
-  (SetupComplete / ilk oturum betikleri — D-026 klasörünü genişletir).
+- **Bir sonraki somut adım:** P14 Kurulum Sonrası (tasarım 12) — sıralı adım tablosu (winget / komut / dosya kopyala).
+  Spec yok: önce `docs/pages/14-post-setup.md`. Mekanizma D-026 ile aynı klasör (`Windows\Setup\Scripts\WinLove\`,
+  SetupComplete.cmd + ilk oturum RunOnce); işlemler bağlı imaja yazılacağı için yeni OpKind gerekir.
+- **P13 Katılımsız Kurulum (2026-09-30):** `core/unattend` (üret / oku / doğrula), `UnattendController`,
+  `UnattendedPage` (adım çubuğu = çapalar, `ui::FormView`, canlı XML önizleme + değişen satır vurgusu),
+  "ISO'ya ekle" → `IsoOptions::rootFiles` ile köke bellekten (D-028). ISO üretimi + geri okuma unit testte gerçek
+  IMAPI ile doğrulandı. **VM'de kurulum denenmedi:** üretilen XML'in Setup tarafından kabul edildiği kullanıcı
+  testi bekliyor (özellikle disk düzeni ve BypassNRO).
 - **P12 Ayarlar / Tweaks (2026-09-30):** `resources/catalog/settings.json` (5 sekme, 13 bölüm, 39 ayar; toggle /
   dropdown / radio), `ImageSettingsController` — seçili seçenek **kuyruktan türetilir** (ayrı durum yok), bu yüzden
   P11 tweak'leri, Servisler ve presetlerle kendiliğinden tutarlı. Form kaydırılabilir. Sınır: imajdaki mevcut değer
@@ -26,7 +31,7 @@
   (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
   ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
   (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
-- **Build:** `./build.ps1 -Dist` yeşil, 113 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Build:** `./build.ps1 -Dist` yeşil, 123 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi; güncellemelerde sürükle-sırala; imajdaki mevcut sürücüleri
@@ -45,6 +50,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — Ön okuma: mount sonrası ikinci ilerleme ile sayfa listeleri önceden okunuyor (D-027).
 - 2026-09-30 — İçe aktarılan .reg dosyaları kurulum sonrası da uygulanıyor; .reg ayrıştırma / kuyruk düzeltmeleri.
 - 2026-09-30 — P12 Ayarlar / Tweaks geliştirildi (test bekliyor).
+- 2026-09-30 — P13 Katılımsız Kurulum geliştirildi (test bekliyor); `ui::FormView` ortak form bileşeni.
 - 2026-09-28 — Baştan sona inceleme (4 alan, paralel): ~35 hata düzeltildi. Öne çıkanlar: junction üzerinden ana
   makine ACL'si değişebilmesi (FileLocks), commit edilmeyen unmount'un başarılı raporlanması, DISM oturum yenileme,
   UDF çıkarmada yol dışına yazma + sınır dışı okuma, tıklamada yok edilen widget (use-after-free), Enter ile devre

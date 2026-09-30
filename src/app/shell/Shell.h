@@ -9,6 +9,7 @@
 #include "app/controllers/ComponentController.h"
 #include "app/controllers/RegistryController.h"
 #include "app/controllers/ServiceController.h"
+#include "app/controllers/UnattendController.h"
 #include "app/controllers/FeatureController.h"
 #include "app/controllers/IsoController.h"
 #include "app/controllers/ImageController.h"
@@ -48,6 +49,7 @@ class UpdatesPage;
 class DriversPage;
 class ServicesPage;
 class RegistryPage;
+class UnattendedPage;
 
 class Shell : public ui::Widget {
 public:
@@ -79,6 +81,7 @@ public:
     ServiceController& services() { return *m_serviceCtl; }
     RegistryController& registry() { return *m_registry; }
     ImageSettingsController& imageSettings() { return *m_imageSettings; }
+    UnattendController& unattend() { return *m_unattend; }
     // "Uygula": straight to the run, or through the 13b confirmation when something is irreversible.
     void requestApply();
     [[nodiscard]] PageId currentPage() const noexcept { return m_page; }
@@ -138,6 +141,8 @@ private:
     [[nodiscard]] ServicesPage* servicesPage() const;
     [[nodiscard]] RegistryPage* registryPage() const;
     void importRegFiles(const std::vector<std::filesystem::path>& files);
+    void importAnswerFile();
+    void saveAnswerFile();
     void scanDriverFolder();
     void updateIsoChrome();
     void startIso();
@@ -166,6 +171,7 @@ private:
     std::unique_ptr<ServiceController> m_serviceCtl;
     std::unique_ptr<RegistryController> m_registry;
     std::unique_ptr<ImageSettingsController> m_imageSettings; // P12 form
+    std::unique_ptr<UnattendController> m_unattend; // P13 answer file
     std::unique_ptr<PreloadController> m_preload; // reads the page lists right after a mount
     ui::Widget* m_sideInspector = nullptr; // pages other than Images (Components)
     ui::Button* m_actionExpand = nullptr;  // Components: "Tümünü genişlet / daralt"
