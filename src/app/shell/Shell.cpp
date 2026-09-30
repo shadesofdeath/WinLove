@@ -24,6 +24,7 @@
 #include "app/pages/LogsPage.h"
 #include "app/pages/PostSetupPage.h"
 #include "app/pages/PresetsPage.h"
+#include "app/ApplyReport.h"
 #include "app/pages/postsetup/AppsDialog.h"
 #include "app/pages/postsetup/StepDialog.h"
 #include "app/pages/SourcePage.h"
@@ -691,6 +692,26 @@ void Shell::saveApplyLog() {
               m_strings.get(out ? Str::ApplyLogSaved : Str::ApplySaveFailed), target->wstring());
 }
 
+void Shell::saveApplyReport() {
+    const auto& run = m_state.applyRun();
+    if (!run) {
+        return;
+    }
+    const auto now = std::chrono::system_clock::now();
+    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+    const auto target = ui::pickSaveFile(owner, m_strings.get(Str::ApplySaveReport),
+                                         {{m_strings.get(Str::ApplyReportFiles), L"*.html"}}, applyReportFileName(now), L"html");
+    if (!target) {
+        return;
+    }
+    const std::string bytes = applyReportHtml(m_state, *run, m_strings, m_language, now);
+    std::ofstream out(*target, std::ios::binary | std::ios::trunc);
+    out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    out.flush();
+    showToast(out ? ui::InfoKind::Success : ui::InfoKind::Error,
+              m_strings.get(out ? Str::ApplyReportSaved : Str::ApplySaveFailed), target->wstring());
+}
+
 bool Shell::inspectorVisible() const {
     // Screen 02 shows it for the selected edition; screen 03 hides it while the engine works.
     if (m_sideInspector) {
@@ -1136,6 +1157,8 @@ void Shell::showPage(PageId page) {
             } else if (mode == ApplyPage::Mode::Done) {
                 m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ApplySaveLog), ui::icons::Icon::Save)
                     .onInvoke = [this] { saveApplyLog(); };
+                m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ApplySaveReport), ui::icons::Icon::File)
+                    .onInvoke = [this] { saveApplyReport(); };
                 m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ApplySaveToPreset),
                                       ui::icons::Icon::PresetBookmark)
                     .onInvoke = [this] {
