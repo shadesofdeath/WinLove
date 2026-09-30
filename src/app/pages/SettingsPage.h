@@ -18,6 +18,7 @@
 namespace wl::app {
 
 class PathField;
+class AccentSwatches;
 
 class SettingsPage : public ui::Widget {
 public:
@@ -46,6 +47,7 @@ private:
     std::size_t m_subscription = 0;
     ui::FormView* m_form = nullptr;
     ui::RadioGroup* m_theme = nullptr;
+    AccentSwatches* m_accent = nullptr;
     ui::Toggle* m_motion = nullptr;
     ui::Dropdown* m_language = nullptr;
     PathField* m_work = nullptr;

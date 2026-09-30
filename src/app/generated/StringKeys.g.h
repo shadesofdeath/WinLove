@@ -696,7 +696,12 @@ enum class Str : std::uint16_t {
     ServicesStartFilter,
     ServicesTitle,
     SettingsAccent,
+    SettingsAccentCopper,
     SettingsAccentCustom,
+    SettingsAccentOlive,
+    SettingsAccentPomegranate,
+    SettingsAccentSea,
+    SettingsAccentSky,
     SettingsAppearance,
     SettingsBrowse,
     SettingsDensity,
@@ -883,7 +888,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 873;
+inline constexpr std::size_t kStrCount = 878;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -1574,7 +1579,12 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "services.startFilter",
     "services.title",
     "settings.accent",
+    "settings.accentCopper",
     "settings.accentCustom",
+    "settings.accentOlive",
+    "settings.accentPomegranate",
+    "settings.accentSea",
+    "settings.accentSky",
     "settings.appearance",
     "settings.browse",
     "settings.density",

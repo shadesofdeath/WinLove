@@ -37,6 +37,8 @@ public:
     void clear(tokens::Color color);
     void fillRect(RectF rect, Ink ink);
     void fillRoundRect(RectF rect, float radius, Ink ink);
+    // A color that is not a token of the theme (the accent swatches of the app settings).
+    void fillRoundRect(RectF rect, float radius, Rgba color);
     // Border drawn inside `rect`, `widthPx` in physical pixels.
     void strokeRoundRect(RectF rect, float radius, Ink ink, float widthPx = 1.0f);
     void hairlineH(float x, float y, float width, Ink ink);  // 1 physical px, below y

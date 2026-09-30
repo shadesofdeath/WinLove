@@ -4,7 +4,7 @@
 //    right away (file associations, "Open with", drag onto the exe)
 //  - offscreen: WinLove.exe --render=<file.png> [options] draws one frame without a window,
 //    for visual checks against WinLove-UI-Handoff/04_screens. Options:
-//      --theme=dark|light|hc  --lang=tr|en  --scale=1.5  --size=1440x900
+//      --theme=dark|light|hc  --accent=copper|sea|pomegranate|sky|olive  --lang=tr|en  --scale=1.5  --size=1440x900
 //      --page=<key>           (source, images, …, settings, about, gallery)
 //      --nav-collapsed        --maximized (restore glyph)
 //      --hover-at=x,y         --press-at=x,y   --tooltip-at=x,y   (DIPs; simulate the pointer)
@@ -44,6 +44,7 @@ struct LaunchOptions {
     ui::ThemeKind theme = ui::ThemeKind::Dark;
     Language language = Language::Turkish;
     bool themeGiven = false;    // --theme= / --lang= on the command line win over settings.json
+    std::optional<ui::Accent> accent; // --accent=
     bool languageGiven = false;
     std::optional<std::filesystem::path> renderTo;
     float scale = 1.0f;

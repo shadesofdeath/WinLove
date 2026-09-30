@@ -52,6 +52,11 @@ void Canvas::fillRoundRect(RectF rect, float radius, Ink ink) {
     m_context->FillRoundedRectangle(D2D1::RoundedRect(toD2D(rect), radius, radius), brush(ink));
 }
 
+void Canvas::fillRoundRect(RectF rect, float radius, Rgba color) {
+    m_brush->SetColor(D2D1::ColorF(color.r, color.g, color.b, color.a));
+    m_context->FillRoundedRectangle(D2D1::RoundedRect(toD2D(rect), radius, radius), m_brush.Get());
+}
+
 void Canvas::strokeRoundRect(RectF rect, float radius, Ink ink, float widthPx) {
     // Snap the outer edge to pixels, then inset half the stroke so the line lands on whole pixels.
     const float w = widthPx * px();
