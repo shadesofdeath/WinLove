@@ -197,6 +197,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoDrivers = true;
         } else if (a == L"--demo-updates") {
             options.demoUpdates = true;
+        } else if (startsWith(a, L"--demo-catalog=")) {
+            options.demoCatalog = std::wstring(value(L"--demo-catalog="));
         } else if (a == L"--demo-components") {
             options.demoComponents = true;
         } else if (a == L"--demo-features") {
@@ -780,6 +782,37 @@ int App::renderOffscreen() {
                                               LR"(C:\Updates\windows11.0-kb5044030-x64-ndp481_a1b2.msu)",
                                               LR"(C:\Updates\windows10.0-kb5041585-x64.msu)"});
         m_shell->showPage(PageId::Updates);
+        if (m_options.demoCatalog == L"download") {
+            AppState::UpdateFetch fetch;
+            fetch.stage = AppState::UpdateFetch::Stage::Downloading;
+            fetch.kb = L"KB5129195";
+            fetch.doneBytes = 1'342'177'280;
+            fetch.totalBytes = 5'269'923'022;
+            m_state->setUpdateFetch(std::move(fetch));
+        } else if (m_options.demoCatalog == L"dialog") {
+            // What the catalog offered for 25H2 x64 on 2026-09-30 (wlcli catalog 26200.8037).
+            auto entry = [](const wchar_t* title, const wchar_t* kb, core::CatalogKind kind, bool preview, int m, int d,
+                            std::uint64_t size, int revision) {
+                core::CatalogEntry e;
+                e.title = title;
+                e.kb = kb;
+                e.kind = kind;
+                e.preview = preview;
+                e.year = 2026;
+                e.month = m;
+                e.day = d;
+                e.size = size;
+                e.build = revision ? 26200 : 0;
+                e.revision = revision;
+                return e;
+            };
+            std::vector<core::CatalogOffer> offers{
+                {entry(L"LCU", L"KB5129195", core::CatalogKind::Cumulative, false, 9, 14, 5173184334, 9457), true, false},
+                {entry(L"LCU preview", L"KB5124010", core::CatalogKind::Cumulative, true, 9, 22, 5223465117, 9550), false, false},
+                {entry(L".NET", L"KB5126052", core::CatalogKind::DotNet, false, 9, 8, 96738688, 0), true, false},
+            };
+            m_shell->showUpdateOffers(core::catalogTarget(26200, 8037, L"x64"), std::move(offers));
+        }
     }
     if (m_options.fakeOperation && m_state->source()) {
         const bool reading = *m_options.fakeOperation == L"read";

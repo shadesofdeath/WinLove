@@ -1,7 +1,9 @@
 #include "app/pages/UpdatesPage.h"
 
 #include "app/Format.h"
+#include "ui/anim/Tween.h"
 
+#include <algorithm>
 #include <format>
 
 namespace wl::app {
@@ -17,6 +19,78 @@ constexpr float kDrop = 56.0f;
 enum Column : int { kHandle, kOrder, kPackage, kKind, kKb, kSize, kState };
 } // namespace
 
+// D-046: the catalog search / download, where the drop zone is: spinner, what is happening,
+// bytes, a 2px bar and "Durdur" (the .part files stay; the next download resumes).
+class UpdatesPage::FetchStrip : public ui::Widget {
+public:
+    FetchStrip(const Localization& strings, const AppState& state, Language language)
+        : m_strings(strings), m_state(state), m_language(language) {
+        m_stop = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::StatusStop), ui::icons::Icon::Stop);
+        m_stop->onInvoke = [this] {
+            if (onStop) {
+                onStop();
+            }
+        };
+    }
+    std::function<void()> onStop;
+
+    void start() {
+        m_now = ui::nowMs();
+        animate();
+    }
+    bool tick(double now) override {
+        m_now = now;
+        invalidate();
+        return visible() && m_state.updateFetch().has_value();
+    }
+    void layout() override {
+        const RectF b = bounds();
+        const ui::SizeF size = m_stop->measure({});
+        m_stop->setBounds({b.right() - 8 - size.width, b.y + (b.height - size.height) / 2, size.width, size.height});
+    }
+    void paint(ui::Canvas& canvas) override {
+        const auto& fetch = m_state.updateFetch();
+        if (!fetch) {
+            return;
+        }
+        const RectF b = bounds();
+        canvas.fillRect(b, Color::BgPanel);
+        const float angle = static_cast<float>(static_cast<int>(m_now / 100.0) % 8) * 45.0f;
+        canvas.drawIcon(ui::icons::Icon::Spinner, {b.x + 17, b.y + 12}, Color::AccentBase, ui::IconVariant::Regular16, 0,
+                        ui::reducedMotion() ? 0.0f : angle);
+        const float x = b.x + 40;
+        const float width = std::max(m_stop->bounds().x - x - 16, 0.0f);
+        using Stage = AppState::UpdateFetch::Stage;
+        std::wstring title;
+        if (fetch->stage == Stage::Searching) {
+            title = m_strings.get(Str::UpdatesSearching);
+        } else if (fetch->stage == Stage::Verifying) {
+            title = m_strings.format(Str::UpdatesVerifyingKb, {{L"kb", fetch->kb}});
+        } else {
+            title = m_strings.format(Str::UpdatesDownloading, {{L"kb", fetch->kb},
+                                                               {L"done", formatBytes(fetch->doneBytes, m_language)},
+                                                               {L"total", formatBytes(fetch->totalBytes, m_language)}});
+        }
+        canvas.drawText(title, {x, b.y + 12, width, 16}, TypeStyle::BodyStrong, Color::TextPrimary);
+        if (fetch->stage != Stage::Searching && fetch->totalBytes > 0) {
+            const float fraction = std::clamp(static_cast<float>(static_cast<double>(fetch->doneBytes) /
+                                                                 static_cast<double>(fetch->totalBytes)),
+                                              0.0f, 1.0f);
+            const float barWidth = std::max(width - 48, 0.0f);
+            canvas.progressBar({x, b.y + 38, barWidth, 2}, fraction);
+            canvas.drawText(std::to_wstring(static_cast<int>(fraction * 100)) + L"%", {x + barWidth + 8, b.y + 31, 40, 16},
+                            TypeStyle::Mono, Color::TextSecondary, ui::TextAlign::Trailing);
+        }
+    }
+
+private:
+    const Localization& m_strings;
+    const AppState& m_state;
+    Language m_language;
+    ui::Button* m_stop = nullptr;
+    double m_now = 0;
+};
+
 UpdatesPage::UpdatesPage(AppState& state, const Localization& strings, Language language, Intents intents)
     : m_state(state), m_strings(strings), m_language(language), m_intents(std::move(intents)) {
     m_drop = &add<ui::DropZone>(strings.get(Str::UpdatesDrop), strings.get(Str::UpdatesDrop),
@@ -25,6 +99,12 @@ UpdatesPage::UpdatesPage(AppState& state, const Localization& strings, Language 
     m_drop->onInvoke = [this] {
         if (m_intents.addPackages) {
             m_intents.addPackages();
+        }
+    };
+    m_fetch = &add<FetchStrip>(strings, state, language);
+    m_fetch->onStop = [this] {
+        if (m_intents.stopFetch) {
+            m_intents.stopFetch();
         }
     };
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
@@ -58,6 +138,12 @@ UpdatesPage::UpdatesPage(AppState& state, const Localization& strings, Language 
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Queue || change == AppState::Change::Mount) {
             refresh();
+        } else if (change == AppState::Change::UpdateFetch) {
+            const bool was = m_fetch->visible();
+            refresh();
+            if (!was && m_fetch->visible()) {
+                m_fetch->start();
+            }
         }
     });
     refresh();
@@ -119,8 +205,10 @@ UpdatesPage::Compat UpdatesPage::compatibility(const core::UpdateInfo& info) con
 
 void UpdatesPage::refresh() {
     const bool mounted = m_state.mounted().has_value();
+    const bool fetching = m_state.updateFetch().has_value();
     m_empty->setVisible(!mounted);
-    m_drop->setVisible(mounted);
+    m_drop->setVisible(mounted && !fetching);
+    m_fetch->setVisible(mounted && fetching);
     m_table->setVisible(mounted);
     m_rows.clear();
     for (const auto& step : core::ops::plan(m_state.changes()).steps) {
@@ -194,6 +282,7 @@ void UpdatesPage::layout() {
     m_empty->setBounds(b);
     float y = b.y + kTop;
     m_drop->setBounds({b.x, y, b.width, kDrop});
+    m_fetch->setBounds({b.x, y, b.width, kDrop});
     y += kDrop + 16;
     m_table->setBounds({b.x, y, b.width, std::max(b.bottom() - y, 0.0f)});
 }

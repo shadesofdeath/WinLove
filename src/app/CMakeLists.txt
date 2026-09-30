@@ -18,6 +18,7 @@ add_library(wl_app STATIC
     controllers/PreloadController.cpp
     controllers/PresetController.cpp
     controllers/UnattendController.cpp
+    controllers/UpdateCatalogController.cpp
     ApplyReport.cpp
     Format.cpp
     Localization.cpp
@@ -49,6 +50,7 @@ add_library(wl_app STATIC
     pages/PresetsPage.cpp
     pages/postsetup/AppsDialog.cpp
     pages/postsetup/StepDialog.cpp
+    pages/updates/UpdateCatalogDialog.cpp
     pages/SourcePage.cpp
     pages/TweaksPage.cpp
     pages/UnattendedPage.cpp

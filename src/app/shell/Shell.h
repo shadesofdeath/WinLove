@@ -17,6 +17,7 @@
 #include "app/controllers/ImageSettingsController.h"
 #include "app/controllers/ImageValuesController.h"
 #include "app/controllers/PreloadController.h"
+#include "app/controllers/UpdateCatalogController.h"
 #include "app/controllers/PresetController.h"
 #include "app/pages/PageInfo.h"
 #include "app/shell/NavRail.h"
@@ -87,6 +88,8 @@ public:
     ApplyController& apply() { return *m_apply; }
     ComponentController& components() { return *m_components; }
     ServiceController& services() { return *m_serviceCtl; }
+    // D-046: the catalog's offers as a check list (also the render demo).
+    void showUpdateOffers(const core::CatalogTarget& target, std::vector<core::CatalogOffer> offers);
     RegistryController& registry() { return *m_registry; }
     ImageSettingsController& imageSettings() { return *m_imageSettings; }
     UnattendController& unattend() { return *m_unattend; }
@@ -167,6 +170,7 @@ private:
     void loadPreset();
     [[nodiscard]] UpdatesPage* updatesPage() const;
     void addUpdates(const std::vector<std::filesystem::path>& files);
+    void findUpdates(); // D-046: Microsoft Update Catalog → check list → download → queue
     [[nodiscard]] DriversPage* driversPage() const;
     [[nodiscard]] ServicesPage* servicesPage() const;
     [[nodiscard]] RegistryPage* registryPage() const;
@@ -212,6 +216,7 @@ private:
     std::unique_ptr<FeatureController> m_features;
     std::unique_ptr<ApplyController> m_apply;
     std::unique_ptr<IsoController> m_iso;
+    std::unique_ptr<UpdateCatalogController> m_updateCatalog;
     std::unique_ptr<ComponentController> m_components;
     std::unique_ptr<ServiceController> m_serviceCtl;
     std::unique_ptr<RegistryController> m_registry;

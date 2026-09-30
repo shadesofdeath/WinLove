@@ -13,6 +13,12 @@
   geçmeden önce bu sayfaların kullanıcı onayı gerekir.
 - **Bir sonraki somut adım:** kullanıcı VM'de kendi imajını deniyor (`docs/TESTING.md` → "VM kabul testi");
   testten gelen düzeltmeler sırayla. Log: `%LOCALAPPDATA%\WinLove\logs\WinLove-*.log` (oturum başına bir dosya).
+- **Güncelleme indirme (2026-09-30, kullanıcı seçimi — üç özellikten 2.si, D-046):** Güncellemeler sayfasında
+  "Güncellemeleri bul": Microsoft Update Catalog'dan bağlı imajın sürümüne uygun en yeni LCU ve .NET → seçim dialogu
+  → `<çalışma kökü>\updates\`e doğrulamalı / devam ettirilebilir indirme → kuyruk. **Kanıt:** `wlcli catalog` üç
+  hedefte (11 25H2 x64, 10 22H2, 11 24H2 arm64) doğru teklif; .NET CU gerçekten indirildi, SHA-256 tuttu, önbellek ve
+  Range ile devam çalıştı; birim testleri; render. **Görülmeyen:** uygulamanın içinden indirme (ağ + dialog akışı
+  gerçek pencerede) ve 4,8 GB'lık LCU'nun Uygula'da imaja eklenmesi.
 - **İmajdaki mevcut değerler (2026-09-30, kullanıcı seçimi — üç özellikten 1.si, D-045):** Kayıt Defteri ve Ayarlar /
   Tweaks artık bağlı imajın durumunu gösterir ("imajda"); imajdakini kaldırmak geri alma işlemi kuyruklar. Okuma
   `offreg.dll` ile (yönetici / RegLoadKey yok), bağlamadan sonra ~0,4 sn. `wlcli reg-check`. **Kanıt:** bozulmamış
