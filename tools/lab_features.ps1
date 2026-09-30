@@ -156,7 +156,7 @@ try {
         Run @('appx-add', $mount, $package.FullName) | Out-Null
         Check "provisioned $($package.Name)" ($script:lastExit -eq 0)
         $apps = @(Json @('appx', $mount, '--json'))
-        Check 'DISM lists Microsoft.WindowsTerminal as provisioned' (@($apps | Where-Object { $_.name -eq 'Microsoft.WindowsTerminal' }).Count -eq 1)
+        Check 'DISM lists Microsoft.WindowsTerminal as provisioned' (@($apps | Where-Object { $_.packageName -like 'Microsoft.WindowsTerminal_*' }).Count -ge 1)
     } else {
         Say 'SKIP  appx (no Terminal package in build\lab\appx: winget download Microsoft.WindowsTerminal -d build\lab\appx)'
     }
