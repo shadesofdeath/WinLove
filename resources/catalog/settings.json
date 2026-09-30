@@ -1,7 +1,7 @@
 {
   "format": "winlove.catalog.settings",
   "version": 1,
-  "_comment": "P12 Ayarlar / Tweaks form. tab > section > setting. A toggle has two states; 'default' is what Windows does on its own (nothing is written) and 'writes' / 'services' belong to the other state. A dropdown / radio lists 'options'; the one without writes or services is the Windows default. apply=firstLogon: also re-applied after setup (D-026). recommended: what 'Önerilenleri uygula' picks (toggle: true = the non-default state; dropdown / radio: an option id). Writes that also exist in tweaks.json use the same values and the same apply mode, so P11 and P12 show the same queue.",
+  "_comment": "P12 Ayarlar / Tweaks form. tab > section > setting. A toggle has two states; 'default' is what Windows does on its own (nothing is written) and 'writes' / 'services' belong to the other state. A dropdown / radio lists 'options'; the one without writes or services is the Windows default. apply=firstLogon: also re-applied after setup (D-026); 'files' ({path, content}: a text file written into the image, under Users\\Default or ProgramData) belong to an option like its writes. recommended: what 'Önerilenleri uygula' picks (toggle: true = the non-default state; dropdown / radio: an option id). Writes that also exist in tweaks.json use the same values and the same apply mode, so P11 and P12 show the same queue.",
   "tabs": [
     { "id": "privacy", "tr": "Gizlilik", "en": "Privacy" },
     { "id": "performance", "tr": "Performans", "en": "Performance" },
@@ -149,8 +149,20 @@
     { "id": "start-recommended", "section": "startmenu", "control": "toggle", "tr": "Öneriler ve son öğeler", "en": "Recommendations and recent items", "default": "on", "apply": "firstLogon",
       "writes": [ { "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "name": "Start_TrackDocs", "value": "dword:00000000" },
                   { "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "name": "Start_IrisRecommendations", "value": "dword:00000000" } ] },
-    { "id": "consumer-features", "section": "startmenu", "control": "toggle", "tr": "Önerilen uygulamaların otomatik kurulumu", "en": "Automatic install of suggested apps", "default": "on", "recommended": true,
-      "writes": [ { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent", "name": "DisableWindowsConsumerFeatures", "value": "dword:00000001" } ] },
+    { "id": "start-pins", "section": "startmenu", "control": "toggle", "tr": "Sabitlenmiş uygulamalar ve kutucuklar", "en": "Pinned apps and tiles", "default": "on",
+      "hint_tr": "Windows 10 kutucukları, Windows 11 sabitlenenleri · kapalıyken Başlat boş açılır", "hint_en": "Windows 10 tiles, Windows 11 pins · off: Start opens empty",
+      "writes": [ { "key": "HKLM\\SOFTWARE\\Microsoft\\PolicyManager\\current\\device\\Start", "name": "ConfigureStartPins", "value": "\"{\\\"pinnedList\\\":[]}\"" } ],
+      "files": [ { "path": "Users\\Default\\AppData\\Local\\Microsoft\\Windows\\Shell\\LayoutModification.xml",
+                   "content": "<LayoutModificationTemplate xmlns=\"http://schemas.microsoft.com/Start/2014/LayoutModification\" xmlns:defaultlayout=\"http://schemas.microsoft.com/Start/2014/FullDefaultLayout\" xmlns:start=\"http://schemas.microsoft.com/Start/2014/StartLayout\" Version=\"1\">\r\n  <LayoutOptions StartTileGroupCellWidth=\"6\" />\r\n  <DefaultLayoutOverride>\r\n    <StartLayoutCollection>\r\n      <defaultlayout:StartLayout GroupCellWidth=\"6\" />\r\n    </StartLayoutCollection>\r\n  </DefaultLayoutOverride>\r\n</LayoutModificationTemplate>\r\n" } ] },
+    { "id": "consumer-features", "section": "startmenu", "control": "toggle", "tr": "Reklam uygulamalarının otomatik kurulumu", "en": "Automatic install of promoted apps", "default": "on", "recommended": true, "apply": "firstLogon",
+      "hint_tr": "Başlat'taki uygulama önerileri dahil", "hint_en": "Including the app suggestions in Start",
+      "writes": [ { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent", "name": "DisableWindowsConsumerFeatures", "value": "dword:00000001" },
+                  { "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SilentInstalledAppsEnabled", "value": "dword:00000000" },
+                  { "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "PreInstalledAppsEnabled", "value": "dword:00000000" },
+                  { "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "PreInstalledAppsEverEnabled", "value": "dword:00000000" },
+                  { "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "OemPreInstalledAppsEnabled", "value": "dword:00000000" },
+                  { "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SystemPaneSuggestionsEnabled", "value": "dword:00000000" },
+                  { "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SubscribedContent-338388Enabled", "value": "dword:00000000" } ] },
 
     { "id": "taskbar-align", "section": "taskbar", "control": "radio", "tr": "Görev çubuğu hizası", "en": "Taskbar alignment", "apply": "firstLogon",
       "options": [
@@ -171,6 +183,8 @@
     { "id": "task-view", "section": "taskbar", "control": "toggle", "tr": "Görev görünümü düğmesi", "en": "Task View button", "default": "on", "apply": "firstLogon",
       "writes": [ { "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "name": "ShowTaskViewButton", "value": "dword:00000000" } ] },
     { "id": "widgets", "section": "taskbar", "control": "toggle", "tr": "Widget'lar", "en": "Widgets", "default": "on", "recommended": true,
-      "writes": [ { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Dsh", "name": "AllowNewsAndInterests", "value": "dword:00000000" } ] }
+      "hint_tr": "Windows 10: Haberler ve ilgi alanları", "hint_en": "Windows 10: News and interests",
+      "writes": [ { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Dsh", "name": "AllowNewsAndInterests", "value": "dword:00000000" },
+                  { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Feeds", "name": "EnableFeeds", "value": "dword:00000000" } ] }
   ]
 }

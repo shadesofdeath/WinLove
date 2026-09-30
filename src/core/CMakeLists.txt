@@ -5,6 +5,7 @@ add_library(wl_core STATIC
     image/OfflineHive.cpp
     image/RegistryEdit.cpp
     image/Services.cpp
+    image/ImageFiles.cpp
     image/ImageFormat.cpp
     image/Source.cpp
     image/SystemComponents.cpp

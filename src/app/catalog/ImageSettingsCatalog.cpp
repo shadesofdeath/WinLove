@@ -2,6 +2,7 @@
 
 #include "base/Log.h"
 #include "base/Utf8.h"
+#include "core/image/ImageFiles.h"
 
 #include <json.hpp>
 
@@ -25,7 +26,7 @@ core::ops::Risk riskFrom(const std::string& value) {
     return value == "high" ? core::ops::Risk::High : value == "medium" ? core::ops::Risk::Medium : core::ops::Risk::Low;
 }
 
-// "writes" and "services" of a toggle or of one option. False when an entry is malformed.
+// "writes", "services" and "files" of a toggle or of one option. False when an entry is malformed.
 bool readOperations(const Json& j, ImageSettingOption& option, std::wstring& why) {
     for (const auto& w : j.value("writes", Json::array())) {
         auto write = core::parseRegValue(wide(w, "key"), wide(w, "name"), wide(w, "value"));
@@ -43,6 +44,15 @@ bool readOperations(const Json& j, ImageSettingOption& option, std::wstring& why
             return false;
         }
         option.services.emplace_back(name, *start);
+    }
+    for (const auto& f : j.value("files", Json::array())) {
+        const std::wstring path = wide(f, "path");
+        const std::string content = f.value("content", std::string{});
+        if (auto ok = core::validateImageFile(path, content.size()); !ok) {
+            why = describe(ok.error());
+            return false;
+        }
+        option.files.emplace_back(path, utf8::toWide(content));
     }
     return true;
 }
@@ -62,7 +72,7 @@ bool readOptions(const Json& j, ImageSetting& setting, std::wstring& why) {
             return false;
         }
         if (setting.options[static_cast<std::size_t>(other)].isDefault()) {
-            why = L"toggle without writes or services";
+            why = L"toggle without writes, services or files";
             return false;
         }
         const auto recommended = j.find("recommended");

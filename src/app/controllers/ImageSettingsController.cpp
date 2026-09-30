@@ -27,6 +27,11 @@ std::vector<Operation> ImageSettingsController::operationsFor(const ImageSetting
         op.risk = setting.risk;
         ops.push_back(std::move(op));
     }
+    for (const auto& [path, content] : chosen.files) {
+        Operation op{OpKind::WriteFile, path, content};
+        op.risk = setting.risk;
+        ops.push_back(std::move(op));
+    }
     return ops;
 }
 

@@ -1,8 +1,9 @@
 #pragma once
 // resources/catalog/settings.json: the P12 "Ayarlar / Tweaks" form. tab → section → setting →
 // options. An option is a list of registry writes (.reg value syntax, validated with
-// core::parseRegValue at load) and service start types; exactly one option per setting has
-// neither: what Windows does on its own, for which nothing is written.
+// core::parseRegValue at load), service start types and text files put into the image
+// (core/image/ImageFiles.h); exactly one option per setting has none of them: what Windows does
+// on its own, for which nothing is written.
 #include "app/Localization.h"
 #include "base/Result.h"
 #include "core/image/RegistryEdit.h"
@@ -38,7 +39,8 @@ struct ImageSettingOption {
     LocalizedText label; // dropdown / radio text (empty for toggles)
     std::vector<core::RegistryWrite> writes;
     std::vector<std::pair<std::wstring, core::StartType>> services; // service name → start type
-    [[nodiscard]] bool isDefault() const noexcept { return writes.empty() && services.empty(); }
+    std::vector<std::pair<std::wstring, std::wstring>> files;       // path in the image → text
+    [[nodiscard]] bool isDefault() const noexcept { return writes.empty() && services.empty() && files.empty(); }
 };
 
 struct ImageSetting {

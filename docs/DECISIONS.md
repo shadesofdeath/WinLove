@@ -241,6 +241,24 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-040 — Başlat menüsü temizliği; yeni kuyruk işlemi `WriteFile` (2026-09-30)
+Bağlam: Kullanıcı Windows 10 ve 11 için Başlat menüsü temizliği istedi (kutucuklar, reklam uygulamaları, widget).
+Windows 11'in sabitlenenleri bir ilke değeriyle boşaltılabiliyor; Windows 10'un kutucukları için kayıt defteri
+karşılığı yok — düzen, varsayılan profildeki `LayoutModification.xml` dosyasından okunuyor.
+Karar:
+- Yeni işlem **`OpKind::WriteFile`** (hedef = imaj köküne göre yol, değer = metin): `core/image/ImageFiles`. Yol
+  kullanıcı girdisidir (presetle gelir): yalnız `Users\Default\…` ve `ProgramData\…` altına, bileşen yolu kurallarıyla
+  (göreli, `.`/`..` yok, link üzerinden değil), en çok 1 MiB. Kök klasör imajda yoksa yazılmaz. `Settings` aşamasında.
+- Ayar kataloğunda (`settings.json`) bir seçenek artık dosya da taşıyabilir (`files`). P11 tweak listesi yalnız kayıt
+  defteri olduğundan "sabitlenenler" ayarı yalnız P12'de; diğer ikisi iki katalogda da aynı değerlerle.
+- "Reklam uygulamaları" ayarı genişledi: `DisableWindowsConsumerFeatures` ilkesi Pro / Home'da etkisiz olduğu için
+  işi varsayılan profildeki `ContentDeliveryManager` değerleri yapar; Windows bunları ilk oturumda sıfırlayabildiği
+  için ayar `firstLogon` oldu (D-026).
+- "Sabitlenenler" önerilenlere **alınmadı** (zevk meselesi); diğer ikisi zaten önerilendi.
+Kanıt durumu: dosya yazımı ve katalog birim testli (geçici klasörde; gerçek bağlı imajda çalıştırılmadı —
+`Users\Default\…\Shell` klasörünün yazılabilirliği orada görülecek). **Kurulan Windows'taki etkisi görülmedi**; değerler
+yaygın kullanılan yöntemlerden (boş `pinnedList`, boş `StartLayout`) alındı, kullanıcının VM kurulumu gösterecek.
+
 ## D-039 — OOBE'de kendiliğinden kurulanlar: OneDrive (Windows 10) ve yeni Outlook (2026-09-30)
 Bağlam: Kullanıcının Windows 10 22H2 kurulumunda, internet varken OneDrive ve yeni Outlook yine kuruldu. İmaj
 incelendi (yönetici olmadan, 7-Zip + hive okuma): OneDrive bileşeni Windows 10'da hiç sunulmuyordu (kurulum dosyası

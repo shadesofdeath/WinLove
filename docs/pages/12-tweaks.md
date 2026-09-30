@@ -19,7 +19,8 @@ olarak gösterir; P12 aynı işlemleri form olarak sunar.
 
 ## 3. Veri ve model
 - Katalog: `resources/catalog/settings.json` (gömülü `IDR_CATALOG_SETTINGS`), `app/catalog/ImageSettingsCatalog`.
-  Sekme → bölüm → ayar → seçenekler. Bir seçenek = kayıt defteri yazımları (+ servis başlangıçları).
+  Sekme → bölüm → ayar → seçenekler. Bir seçenek = kayıt defteri yazımları (+ servis başlangıçları, + imaja
+  yazılan metin dosyaları: `"files": [{path, content}]` → `WriteFile` işlemi, D-040).
   Tam olarak bir seçenek "Windows varsayılanı"dır: **hiçbir şey yazmaz**.
 - Durum ayrı tutulmaz; **kuyruktan türetilir** (`ImageSettingsController::current`): bir seçeneğin tüm işlemleri
   kendi değerleriyle kuyruktaysa o seçenek seçilidir, yoksa varsayılan. Böylece P11'de işaretlenen bir tweak P12'de,
@@ -27,6 +28,17 @@ olarak gösterir; P12 aynı işlemleri form olarak sunar.
 - Seçim: ayarın diğer seçeneklerinin kuyruktaki işlemleri çıkarılır, yeni seçeneğinkiler eklenir.
 - `"apply": "firstLogon"` ayarları `SetRegistryFirstLogon` (D-026), diğerleri `SetRegistryValue`; servisler
   `SetServiceStart` (P10 ile aynı işlem → Servisler sayfasında da görünür).
+
+### Başlat menüsü temizliği (D-040)
+| Ayar | Kapalıyken ne yazılır | Hangi Windows |
+|---|---|---|
+| Sabitlenmiş uygulamalar ve kutucuklar | `HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Start\ConfigureStartPins = {"pinnedList":[]}` | 11 |
+| | `Users\Default\AppData\Local\Microsoft\Windows\Shell\LayoutModification.xml` (kutucuksuz düzen) | 10 |
+| Reklam uygulamalarının otomatik kurulumu | `CloudContent\DisableWindowsConsumerFeatures = 1` + varsayılan profilde `ContentDeliveryManager`: `SilentInstalledAppsEnabled`, `PreInstalledAppsEnabled`, `PreInstalledAppsEverEnabled`, `OemPreInstalledAppsEnabled`, `SystemPaneSuggestionsEnabled`, `SubscribedContent-338388Enabled` = 0 (ilk oturumda yeniden) | 10 + 11 |
+| Widget'lar | `Dsh\AllowNewsAndInterests = 0` (11) + `Windows Feeds\EnableFeeds = 0` (10: Haberler ve ilgi alanları) | 10 + 11 |
+
+İki değer de her imaja yazılır (katalog sürüme göre ayrılmıyor): diğer Windows'ta karşılığı olmayan değer / dosya
+etkisizdir. Kullanıcı sonradan kendi sabitlemelerini yapabilir (düzen kilitlenmez).
 
 ## 4. Sınırlar
 - İmajdaki mevcut değer okunmuyor: form Windows varsayılanını gösterir (P11 ile aynı sınır). "Varsayılan" seçeneği
@@ -37,6 +49,9 @@ olarak gösterir; P12 aynı işlemleri form olarak sunar.
 ## 5. Kabul
 - [ ] Ayar değiştir → kuyrukta ilgili işlemler, nav rozeti artar; varsayılana dönünce işlemler çıkar.
 - [ ] P11'de karşılığı olan tweak işaretli görünür (ve tersi).
+- [ ] Başlat menüsü sekmesi: "Sabitlenmiş uygulamalar ve kutucuklar" + "Reklam uygulamalarının otomatik kurulumu"
+      + "Widget'lar" kapalı → Uygula → VM kurulumu: Windows 10'da Başlat'ta kutucuk yok, görev çubuğunda hava durumu
+      yok; Windows 11'de sabitlenenler boş; reklam uygulamaları (Candy Crush, Spotify…) inmiyor.
 - [ ] "Önerilenleri uygula" → önerilen ayarlar seçilir; ikinci kez basınca "hepsi zaten seçili".
 - [ ] Uygula → değerler hive'da (`wlcli reg` / yeniden bağlama ile), servis başlangıçları Servisler sayfasında.
 - [ ] Klavye: Tab ile kontroller, ←/→ sekme ve radio, Space toggle, Enter dropdown.
