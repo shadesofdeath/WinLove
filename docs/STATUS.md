@@ -4,13 +4,19 @@
 
 ## Güncel
 - **Faz:** 3 — sayfalar. P01–P04 ✅. P05 Uygula, P06 ISO, P08 Güncellemeler, P09 Sürücüler, P10 Servisler, P11 Kayıt Defteri,
-  P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum: 🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v1 (yalnız AppX; CBS paket
+  P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası: 🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v1 (yalnız AppX; CBS paket
   kaldırma kararı bekliyor).
 - **Çalışma şekli:** kullanıcı "her seferinde durma" dedi — sayfa bitince build + test + `-Dist` + yerel commit,
   sonra doğrudan bir sonraki sayfa. Kullanıcı `dist\WinLove.exe`'yi paralel test ediyor.
-- **Bir sonraki somut adım:** P14 Kurulum Sonrası (tasarım 12) — sıralı adım tablosu (winget / komut / dosya kopyala).
-  Spec yok: önce `docs/pages/14-post-setup.md`. Mekanizma D-026 ile aynı klasör (`Windows\Setup\Scripts\WinLove\`,
-  SetupComplete.cmd + ilk oturum RunOnce); işlemler bağlı imaja yazılacağı için yeni OpKind gerekir.
+- **Bir sonraki somut adım:** P15 Presetler (tasarım 17) — kaydet / yükle / karşılaştır. Preset = ChangeSet JSON'u
+  (P12 ayarları ve P14 planı zaten içinde); P13 yanıt dosyası seçenekleri `AppState::unattend()`'de, ChangeSet dışında:
+  presete dahil edilip edilmeyeceği P15'te karara bağlanmalı. Spec yok: önce `docs/pages/15-presets.md`.
+- **Önce kullanıcı testi iyi olur:** P05–P14 sayfalarının hepsi "test bekliyor". En riskli, hiç denenmemiş üç şey
+  aynı VM kurulumunda görülebilir: (1) SetupComplete.cmd satırları (kayıt + kurulum sonrası), (2) ilk oturum
+  görevi / RunOnce, (3) autounattend.xml'in Setup tarafından kabulü.
+- **P14 Kurulum Sonrası (2026-09-30):** `core/postsetup` (plan JSON, betik üretimi, imaja yazma), tek kuyruk işlemi
+  `SetPostSetup` (D-029), `PostSetupPage` (tablo, Alt+↑/↓, Bekle etiketi) + adım dialogları. Makine betiği scratch
+  klasörde gerçekten çalıştırılıp doğrulandı; zamanlanmış görev + winget + SetupComplete çağrısı VM testi bekliyor.
 - **P13 Katılımsız Kurulum (2026-09-30):** `core/unattend` (üret / oku / doğrula), `UnattendController`,
   `UnattendedPage` (adım çubuğu = çapalar, `ui::FormView`, canlı XML önizleme + değişen satır vurgusu),
   "ISO'ya ekle" → `IsoOptions::rootFiles` ile köke bellekten (D-028). ISO üretimi + geri okuma unit testte gerçek
@@ -31,7 +37,7 @@
   (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
   ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
   (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
-- **Build:** `./build.ps1 -Dist` yeşil, 123 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Build:** `./build.ps1 -Dist` yeşil, 132 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi; güncellemelerde sürükle-sırala; imajdaki mevcut sürücüleri
@@ -51,6 +57,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — İçe aktarılan .reg dosyaları kurulum sonrası da uygulanıyor; .reg ayrıştırma / kuyruk düzeltmeleri.
 - 2026-09-30 — P12 Ayarlar / Tweaks geliştirildi (test bekliyor).
 - 2026-09-30 — P13 Katılımsız Kurulum geliştirildi (test bekliyor); `ui::FormView` ortak form bileşeni.
+- 2026-09-30 — P14 Kurulum Sonrası geliştirildi (test bekliyor).
 - 2026-09-28 — Baştan sona inceleme (4 alan, paralel): ~35 hata düzeltildi. Öne çıkanlar: junction üzerinden ana
   makine ACL'si değişebilmesi (FileLocks), commit edilmeyen unmount'un başarılı raporlanması, DISM oturum yenileme,
   UDF çıkarmada yol dışına yazma + sınır dışı okuma, tıklamada yok edilen widget (use-after-free), Enter ile devre

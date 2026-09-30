@@ -147,6 +147,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoTweaks = true;
         } else if (a == L"--demo-unattended") {
             options.demoUnattended = true;
+        } else if (a == L"--demo-postsetup") {
+            options.demoPostSetup = true;
         } else if (a == L"--demo-drivers") {
             options.demoDrivers = true;
         } else if (a == L"--demo-updates") {
@@ -460,6 +462,28 @@ int App::renderOffscreen() {
         });
         m_shell->showPage(m_options.page.value_or(PageId::Unattended));
         controller.edit([](core::UnattendOptions& o) { o.bypassTpm = true; });
+    }
+    if (m_options.demoPostSetup) {
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,
+                                         L"Windows 11 Pro"});
+        // The steps of screen 12.
+        using Step = core::PostSetupStep;
+        auto& controller = m_shell->postSetup();
+        for (Step step : {
+                 Step{Step::Type::Winget, L"7-Zip 24.08", L"7zip.7zip", {}, true},
+                 Step{Step::Type::Winget, L"Firefox", L"Mozilla.Firefox", {}, true},
+                 Step{Step::Type::Command, L"G\u00fc\u00e7 plan\u0131: Y\u00fcksek performans",
+                      L"powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c", {}, true},
+                 Step{Step::Type::Copy, L"Duvar ka\u011f\u0131tlar\u0131 kopyala", L"D:\\assets\\wallpapers",
+                      L"C:\\Users\\Public\\Pictures", true},
+                 Step{Step::Type::Command, L"OneDrive kald\u0131r", L"%SystemRoot%\\SysWOW64\\OneDriveSetup.exe /uninstall", {},
+                      true},
+                 Step{Step::Type::Winget, L"VS Code", L"Microsoft.VisualStudioCode", {}, true},
+                 Step{Step::Type::Command, L"Yeniden ba\u015flat", L"shutdown /r /t 30", {}, false},
+             }) {
+            controller.add(std::move(step));
+        }
+        m_shell->showPage(m_options.page.value_or(PageId::PostSetup));
     }
     if (m_options.demoServices) {
         const std::filesystem::path mountDir = L"C:\\WinLove\\mount";

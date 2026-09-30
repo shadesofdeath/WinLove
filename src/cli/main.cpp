@@ -17,6 +17,7 @@
 #include "core/ops/Applier.h"
 #include "core/ops/Planner.h"
 #include "core/image/WindowsRelease.h"
+#include "core/postsetup/PostSetup.h"
 #include "core/system/Privileges.h"
 #include "core/unattend/Unattend.h"
 
@@ -544,6 +545,25 @@ int cmdUnattend(const std::wstring& file) {
     return problems.empty() ? 0 : 1;
 }
 
+// P14: write a post-setup plan (the JSON a preset holds) into a mounted image — or any folder
+// standing in for one: scripts, task definition, copy payloads, SetupComplete.cmd line.
+int cmdPostSetup(const std::wstring& planFile, const std::wstring& mountDir) {
+    std::ifstream in(planFile, std::ios::binary);
+    if (!in) {
+        return reportError(Error{ErrorCode::NotFound, L"could not open the plan", planFile, 0});
+    }
+    const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const auto plan = core::postSetupFromJson(bytes);
+    if (!plan) {
+        return reportError(plan.error());
+    }
+    if (auto r = core::applyPostSetup(mountDir, *plan, core::TaskContext{}); !r) {
+        return reportError(r.error());
+    }
+    print(std::format(L"{} step(s) written under {}\\Windows\\Setup\\Scripts\\WinLove\n", plan->steps.size(), mountDir));
+    return 0;
+}
+
 // P11: parse a .reg file (no admin) and optionally apply it to a mounted image's hives.
 // --first-logon: what the app does with an imported .reg file — also record every value for the
 // post-setup import (SetupComplete.cmd / default-user RunOnce, D-026).
@@ -652,6 +672,7 @@ void printUsage() {
           L"  wlcli packages|features|capabilities <mountdir>\n"
           L"  wlcli iso <setup-folder> <out.iso> [--label=X] [--boot=both|uefi|bios] [--sha256] [--no-prompt]\n"
           L"  wlcli unattend <answer.xml>         (read an answer file; print it as WinLove writes it, P13)\n"
+          L"  wlcli postsetup <plan.json> <mountdir>   (write post-setup scripts and payloads into the image, P14)\n"
           L"  wlcli reg <file.reg> [<mountdir>] [--first-logon]   (parse; with a mount: write into the image's\n"
           L"                                      hives, P11; --first-logon: also re-import after setup)\n"
           L"  wlcli services <mountdir> [--set=Name=auto|autoDelayed|manual|disabled]   (P10)\n"
@@ -771,6 +792,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"iso" && args.size() == 3) {
         return cmdIso(args[1], args[2], label, boot, sha, noPrompt);
+    }
+    if (command == L"postsetup" && args.size() == 3) {
+        return cmdPostSetup(args[1], args[2]);
     }
     if (command == L"unattend" && args.size() == 2) {
         return cmdUnattend(args[1]);

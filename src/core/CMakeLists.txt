@@ -22,6 +22,7 @@ add_library(wl_core STATIC
     ops/Applier.cpp
     ops/ChangeSet.cpp
     ops/Planner.cpp
+    postsetup/PostSetup.cpp
     system/FileLocks.cpp
     system/Privileges.cpp
     tasks/Task.cpp

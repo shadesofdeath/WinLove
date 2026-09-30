@@ -12,6 +12,7 @@ add_library(wl_app STATIC
     controllers/ImageController.cpp
     controllers/ImageSettingsController.cpp
     controllers/IsoController.cpp
+    controllers/PostSetupController.cpp
     controllers/PreloadController.cpp
     controllers/UnattendController.cpp
     Format.cpp
@@ -34,6 +35,8 @@ add_library(wl_app STATIC
     pages/images/ImageInspector.cpp
     pages/images/OperationStrip.cpp
     pages/PageInfo.cpp
+    pages/PostSetupPage.cpp
+    pages/postsetup/StepDialog.cpp
     pages/SourcePage.cpp
     pages/TweaksPage.cpp
     pages/UnattendedPage.cpp

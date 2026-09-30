@@ -10,6 +10,7 @@ add_executable(wl_tests
     core/RegistryTests.cpp
     core/ImageFormatTests.cpp
     core/IsoTests.cpp
+    core/PostSetupTests.cpp
     core/UnattendTests.cpp
     core/UpdateTests.cpp
     ui/TokensTests.cpp
@@ -20,6 +21,7 @@ add_executable(wl_tests
     app/ComponentTests.cpp
     app/FeatureTests.cpp
     app/ImageSettingsTests.cpp
+    app/PostSetupControllerTests.cpp
     app/PreloadTests.cpp
     app/RegistryImportTests.cpp
     app/ServiceTests.cpp
