@@ -4,7 +4,7 @@
 // language 72 · size 96 (mono, right) · status 120. Several rows can be marked (the check boxes
 // show them; rules in EditionSelection.h), one of them is the primary row.
 // ↑↓ Home End move (Shift extends), Ctrl+A all, Enter / double click = activate (mount),
-// Del = delete, F2 = rename, right click = row menu.
+// Del = delete, F2 = rename, Ctrl+C = copy details, right click = row menu.
 #include "app/Localization.h"
 #include "app/pages/images/EditionSelection.h"
 #include "core/image/ImageInfo.h"
@@ -26,6 +26,7 @@ public:
     std::function<void(int index)> onActivate;
     std::function<void()> onDelete;                        // Del: the marked editions
     std::function<void()> onRename;                        // F2: the primary one
+    std::function<void()> onCopy;                          // Ctrl+C: details of the marked editions
     // Right click on a row. A marked row keeps the marks (the menu acts on all of them); any
     // other row becomes the only one.
     std::function<bool(int index, ui::PointF at)> onMenu;

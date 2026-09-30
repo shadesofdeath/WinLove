@@ -20,6 +20,7 @@ public:
     std::function<void()> onDelete;
     std::function<void()> onRename;
     std::function<void()> onUpgrade; // the second button of a mounted edition: "Sürümü yükselt…"
+    std::function<void()> onExplore; // the folder next to the pencil, on the mounted edition
 
     struct State {
         const core::SourceInfo* source = nullptr;
@@ -50,6 +51,7 @@ private:
     ui::Button* m_primary = nullptr;
     ui::Button* m_delete = nullptr;
     ui::Button* m_rename = nullptr;
+    ui::Button* m_explore = nullptr;
     int m_marked = 1;
     std::wstring m_upgradeQueued;
 };

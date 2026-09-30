@@ -239,7 +239,14 @@
     "upgradeNone": "Bu sürüm daha üst bir sürüme çevrilemiyor",
     "upgradeQueuedToast": "{edition} kuyruğa eklendi",
     "upgradeRemovedToast": "Sürüm yükseltme kuyruktan çıkarıldı",
-    "readingEditions": "{edition}: çevrilebileceği sürümler okunuyor"
+    "readingEditions": "{edition}: çevrilebileceği sürümler okunuyor",
+    "exploreMount": "Bağlama klasörünü aç",
+    "exploreMountHint": "Bağlama klasörünü Dosya Gezgini'nde aç (Ctrl+E)",
+    "terminalHere": "Komut istemini bağlama klasöründe aç",
+    "revealFile": "Dosya konumunu aç",
+    "copyInfo": "Bilgileri kopyala",
+    "copiedToast": "Sürüm bilgileri panoya kopyalandı",
+    "noMountToExplore": "Açılacak bağlı imaj yok"
   },
   "components": {
     "title": "Bileşenler",

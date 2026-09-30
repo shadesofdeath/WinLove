@@ -20,10 +20,16 @@ bütünlüğü doğrula; birden çok sürümü birlikte seçip dışa aktar / si
   Satıra sağ tık (yalnız o an yapılabilenler) — tek sürüm: Bağla / Dışa aktar / Yeniden adlandır… / Sürümü sil… /
   Yalnız bu sürümü tut…; birden çok: Seçili N sürümü dışa aktar… / sil… / Yalnız seçili N sürümü tut….
   `Del` = sil, `F2` = yeniden adlandır.
+  **Kısayollar (2026-09-30):** sağ tıkta ayrıca *Dosya konumunu aç* (install.wim / ISO Dosya Gezgini'nde seçili) ve
+  *Bilgileri kopyala* (işaretli sürümlerin adı, sürüm ID, build, mimari, dil, boyut, dosya yolu → pano); **bağlı**
+  sürümde *Bağlama klasörünü aç* ve *Komut istemini bağlama klasöründe aç* (yönetici, `dism /Image:.` hazır).
+  Klavye: `Ctrl+E` bağlama klasörü (**her sayfadan**), `Ctrl+Shift+E` dosya konumu, `Ctrl+C` bilgileri kopyala
+  (tablo odaktayken), `F5` kaynağı yeniden oku (bağlı imaj yokken; işaretler korunur).
 - **Inspector (280):** sürüm, build, dal, mimari, dil (+n), kurulum tipi, Sysprep durumu, oluşturma,
   değiştirilme, boyut, içerik (dosya · klasör), WIMBoot; "WIM dosyası": sıkıştırma, dosya boyutu,
   index sayısı, bölünmüş, önyükleme index'i. Altta Bağla/Çöz + "Sürümü sil…" / "Seçili N sürümü sil…" (kapalıysa
-  tooltip nedenini söyler). Başlığın sağında kalem: yeniden adlandır.
+  tooltip nedenini söyler). Başlığın sağında kalem: yeniden adlandır; bağlı sürümde yanında klasör: bağlama
+  klasörünü aç.
 - **Durum çubuğu:** mount segmenti (nokta + yol + imaj boyutu), görev segmenti, "Uygula" CTA (mount'ta görünür).
 
 ## 3. Akışlar
@@ -90,4 +96,7 @@ Ertelenen: tasarımdaki arama kutusu ve mimari filtresi, birleştirme (merge).
       yeni ad görünür.
 - [ ] Sürümü yükselt: Home'u bağla → "Sürümü yükselt…" → Windows 11 Pro → Uygula → tabloda ad "Windows 11 Pro",
       Sürüm ID "Professional"; ISO + VM: Pro kurulur.
+- [ ] Kısayollar: bağlıyken `Ctrl+E` / klasör düğmesi → Dosya Gezgini bağlama klasöründe; sağ tık → komut istemi o
+      klasörde açılır; Dosya konumunu aç; Bilgileri kopyala → yapıştırınca sürüm bilgileri; `F5`.
+      (Yazıldı, **hiç denenmedi** — kullanıcı "test etme, ben ederim" dedi: render / birim testi yok.)
 - [ ] Doğrula: ISO açıkken (kopyalamadan) ve çalışma klasöründe → ilerleme şeridi → yeşil "sağlam" çubuğu.

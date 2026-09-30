@@ -239,7 +239,14 @@
     "upgradeNone": "This edition cannot be turned into a higher one",
     "upgradeQueuedToast": "{edition} added to the queue",
     "upgradeRemovedToast": "Edition upgrade removed from the queue",
-    "readingEditions": "{edition}: reading the editions it can become"
+    "readingEditions": "{edition}: reading the editions it can become",
+    "exploreMount": "Open the mount folder",
+    "exploreMountHint": "Open the mount folder in File Explorer (Ctrl+E)",
+    "terminalHere": "Open a command prompt in the mount folder",
+    "revealFile": "Show the file in its folder",
+    "copyInfo": "Copy details",
+    "copiedToast": "Edition details copied to the clipboard",
+    "noMountToExplore": "No mounted image to open"
   },
   "components": {
     "title": "Components",

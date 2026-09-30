@@ -61,6 +61,11 @@ ImagesPage::ImagesPage(AppState& state, ImageController& controller, const Local
             onRename();
         }
     };
+    m_table->onCopy = [this] {
+        if (onCopyInfo) {
+            onCopyInfo();
+        }
+    };
     m_table->onMenu = [this](int, ui::PointF at) { return showRowMenu(at); };
 
     m_subscription = m_state.subscribe([this](AppState::Change change) { refresh(change); });
@@ -205,6 +210,7 @@ bool ImagesPage::showRowMenu(ui::PointF at) {
             counted(Str::ImagesDeleteMany, onDelete);
             counted(Str::ImagesKeepSelected, onKeepOnly);
         }
+        item(Str::ImagesCopyInfo, onCopyInfo);
     } else {
         if (m_controller.canMount()) {
             item(Str::ImagesMount, [&controller = m_controller, index = *index] { controller.mount(index); });
@@ -222,6 +228,12 @@ bool ImagesPage::showRowMenu(ui::PointF at) {
                 item(Str::ImagesKeepOnly, onKeepOnly);
             }
         }
+        if (const auto& mounted = m_state.mounted(); mounted && mounted->index == *index) {
+            item(Str::ImagesExploreMount, onExploreMount);
+            item(Str::ImagesTerminalHere, onTerminal);
+        }
+        item(Str::ImagesRevealFile, onReveal);
+        item(Str::ImagesCopyInfo, onCopyInfo);
     }
     auto popup = std::make_unique<ui::MenuPopup>(
         RectF{at.x, at.y, 0, 0}, std::move(labels), -1,
