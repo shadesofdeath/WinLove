@@ -109,7 +109,15 @@
     "filterImages": "Windows imajları",
     "filterAll": "Tüm dosyalar",
     "pickFolder": "Kurulum klasörünü seç (sources\\install.* içeren)",
-    "loading": "Açılıyor…"
+    "loading": "Açılıyor…",
+    "remove": "Listeden kaldır",
+    "showInFolder": "Klasörde göster",
+    "removeTitle": "Kaynağı kaldır",
+    "removeBody": "{name} listeden kaldırılacak. Bu klasör WinLove'un ISO'dan çıkardığı çalışma kopyası ({path}); içindeki değiştirilmiş imajla birlikte diskten de silinsin mi? Orijinal ISO'ya dokunulmaz.",
+    "removeKeep": "Yalnız listeden kaldır",
+    "removeDelete": "Kopyayı da sil",
+    "copyDeleted": "Çalışma kopyası silindi",
+    "deleteFailed": "Çalışma kopyası silinemedi"
   },
   "images": {
     "title": "Sürümler",

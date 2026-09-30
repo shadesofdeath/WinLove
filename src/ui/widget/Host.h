@@ -35,6 +35,8 @@ public:
     void onPointer(const PointerEvent& event);
     // Returns true when the key was consumed by the tree (focus navigation or a widget).
     bool onKeyDown(const KeyEvent& key);
+    // Right click: the widget under `p`, then its parents, until one opens a menu.
+    bool onContextMenu(PointF p);
     void onWheel(PointF p, float lines);
     void onChar(wchar_t ch);
     void onTimer(UINT id);

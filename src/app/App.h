@@ -8,6 +8,7 @@
 //      --page=<key>           (source, images, …, settings, about, gallery)
 //      --nav-collapsed        --maximized (restore glyph)
 //      --hover-at=x,y         --press-at=x,y   --tooltip-at=x,y   (DIPs; simulate the pointer)
+//      --context-at=x,y       (right click: context menu)
 //      --tab=N                (press Tab N times: keyboard focus ring)
 //      --recent-file=<json>   (recent-sources file to show; default %LOCALAPPDATA%\WinLove\recent.json)
 //      --dialog=admin         (open the administrator dialog, s4)
@@ -62,6 +63,7 @@ struct LaunchOptions {
     std::wstring demoApply;    // render (with --demo-features): "running" | "done" | "skipped" — fake Uygula run // render: fill the log with the design's sample lines (screen 18)
     bool maximized = false;
     std::optional<ui::PointF> hoverAt;
+    std::optional<ui::PointF> contextAt; // --context-at=x,y: right click (context menu)
     std::optional<ui::PointF> pressAt;
     std::vector<ui::PointF> clickAt; // --click-at=x,y (repeatable): full click, e.g. open a dropdown
     std::optional<ui::PointF> tooltipAt;

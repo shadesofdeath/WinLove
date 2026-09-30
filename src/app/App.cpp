@@ -221,6 +221,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             if (p) {
                 options.clickAt.push_back(*p);
             }
+        } else if (startsWith(a, L"--context-at=")) {
+            ok = point(L"--context-at=", options.contextAt);
         } else if (startsWith(a, L"--press-at=")) {
             ok = point(L"--press-at=", options.pressAt);
         } else if (startsWith(a, L"--tooltip-at=")) {
@@ -758,6 +760,11 @@ int App::renderOffscreen() {
         m_host->onPointer({ui::PointerAction::Up, p, m_host->windowZone(p)});
         m_host->layout(m_options.size); // popups get their bounds from the host size
     }
+    if (m_options.contextAt) {
+        pointerAt(*m_options.contextAt);
+        m_host->onContextMenu(*m_options.contextAt);
+        m_host->layout(m_options.size); // the menu gets its bounds from the host size
+    }
     if (m_options.pressAt) {
         pointerAt(*m_options.pressAt);
         m_host->onPointer({ui::PointerAction::Down, *m_options.pressAt, m_host->windowZone(*m_options.pressAt)});
@@ -821,6 +828,11 @@ int App::runWindowed() {
     callbacks.pointer = [this](const ui::PointerEvent& event) {
         if (m_host) {
             m_host->onPointer(event);
+        }
+    };
+    callbacks.contextMenu = [this](ui::PointF p) {
+        if (m_host) {
+            m_host->onContextMenu(p);
         }
     };
     callbacks.activated = [this](bool active) {

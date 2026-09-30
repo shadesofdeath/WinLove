@@ -648,7 +648,9 @@ enum class Str : std::uint16_t {
     SettingsWorkDir,
     ShellPendingBody,
     ShellPendingTitle,
+    SourceCopyDeleted,
     SourceDaysAgo,
+    SourceDeleteFailed,
     SourceDesc,
     SourceDropHint,
     SourceDropTitle,
@@ -663,6 +665,12 @@ enum class Str : std::uint16_t {
     SourceOpenFolder,
     SourcePickFolder,
     SourceRecent,
+    SourceRemove,
+    SourceRemoveBody,
+    SourceRemoveDelete,
+    SourceRemoveKeep,
+    SourceRemoveTitle,
+    SourceShowInFolder,
     SourceTitle,
     SourceToday,
     SourceVersion,
@@ -789,7 +797,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 779;
+inline constexpr std::size_t kStrCount = 787;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -1432,7 +1440,9 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "settings.workDir",
     "shell.pendingBody",
     "shell.pendingTitle",
+    "source.copyDeleted",
     "source.daysAgo",
+    "source.deleteFailed",
     "source.desc",
     "source.dropHint",
     "source.dropTitle",
@@ -1447,6 +1457,12 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "source.openFolder",
     "source.pickFolder",
     "source.recent",
+    "source.remove",
+    "source.removeBody",
+    "source.removeDelete",
+    "source.removeKeep",
+    "source.removeTitle",
+    "source.showInFolder",
     "source.title",
     "source.today",
     "source.version",

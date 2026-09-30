@@ -79,6 +79,7 @@ Bileşen adları, açıklamaları, risk seviyeleri, bağımlılıklar, "kaldır�
 | `anim/Tween` | cubic-bezier easing (motion token'ları), Windows "animasyonları göster" kapalıysa anında; `--render` için `forceInstantMotion` |
 | `widgets/*` | Şu an: Button, Label, Kbd, Splitter, EmptyState. Checkbox, Toggle, TextBox, ComboBox, Menu, TreeView (sanal), DataGrid (sanal), InfoBar, Toast, Dialog, Progress, Spinner, LogView, ScrollBar… ihtiyaç duyan ilk sayfayla birlikte yazılır ve galeriye eklenir |
 | `platform/DropTarget`, `platform/FileDialog` | OLE sürükle-bırak (pencere geneli; `OleInitialize` gerekir), sistem dosya/klasör seçicileri |
+| Sağ tık menüsü | `Window` `WM_RBUTTONUP` → `Host::onContextMenu(p)` → imleç altındaki widget'tan köke `Widget::onContextMenu`; Menü tuşu / Shift+F10 odaktaki widget için aynı yol. Menü = `MenuPopup` (`selected = -1`, çapa = tıklanan nokta). İlk kullanan: `RecentList`. |
 | Host modal katmanı | `Host::pushModal/popModal`: scrim, girdi ve odak kapanı, kapanınca odak geri döner; modal açıkken başlık sürüklenir ama caption butonları pasif |
 | `a11y` | UI Automation provider'ları (widget başına rol/ad/durum) |
 

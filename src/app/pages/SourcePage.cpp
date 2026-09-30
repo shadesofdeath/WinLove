@@ -38,6 +38,16 @@ SourcePage::SourcePage(AppState& state, const Localization& strings, Language la
             m_intents.openPath(path);
         }
     };
+    m_recent->onRemove = [this](const std::filesystem::path& path) {
+        if (m_intents.removePath) {
+            m_intents.removePath(path);
+        }
+    };
+    m_recent->onShowInFolder = [this](const std::filesystem::path& path) {
+        if (m_intents.showInFolder) {
+            m_intents.showInFolder(path);
+        }
+    };
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Recent) {
             refreshRecent();

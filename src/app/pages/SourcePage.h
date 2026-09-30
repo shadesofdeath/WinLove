@@ -16,6 +16,8 @@ public:
     struct Intents {
         std::function<void()> pickFile;
         std::function<void(const std::filesystem::path&)> openPath;
+        std::function<void(const std::filesystem::path&)> removePath; // out of the recent list
+        std::function<void(const std::filesystem::path&)> showInFolder; // Explorer, with the entry selected
     };
 
     SourcePage(AppState& state, const Localization& strings, Language language, Intents intents);

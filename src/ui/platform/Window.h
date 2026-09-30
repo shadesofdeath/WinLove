@@ -42,6 +42,7 @@ struct WindowCallbacks {
     std::function<void(SizeF size, float scale)> resized; // also fires on DPI change
     std::function<HitZone(PointF)> hitTest;
     std::function<void(const PointerEvent&)> pointer;
+    std::function<void(PointF)> contextMenu; // right button released in the client area (client DIPs)
     std::function<void(bool active)> activated;
     std::function<void(bool maximized)> maximizedChanged;
     std::function<void(const KeyEvent&)> keyDown;
