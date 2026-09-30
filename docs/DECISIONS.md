@@ -220,3 +220,15 @@ Karar:
 - Kalan sürümler yeniden numaralanır: seçim ve yanıt dosyasındaki sürüm index'i kaydırılır; yanıt dosyasının sürümü
   silindiyse 0'a (Setup sorar) döner.
 Kapalı düğme nedenini tooltip'te söyler (bağlı imaj, ESD / bölünmüş, tek sürüm).
+
+## D-034 — Yanıt dosyası doldurulunca ISO'ya kendiliğinden girer (2026-09-30)
+Bağlam: Kullanıcı Katılımsız Kurulum'u doldurdu, ISO'yu üretti; VM'de Setup "gereksinimler karşılanmıyor" dedi —
+ISO'da `autounattend.xml` yoktu. "ISO'ya ekle" kutusu önizleme başlığının sağ ucunda, varsayılan kapalıydı; ISO
+sayfası dosyanın eklenmeyeceğini söylemiyordu, log da yazmıyordu.
+Karar:
+- İlk yanıt (ve XML içe aktarma) "ISO'ya ekle"yi açar. Kutu vazgeçmek için kalır; elle kapatılan kutuyu sonraki
+  düzenlemeler açmaz. Preset kendi bayrağını taşır.
+- ISO sayfası özetinde "Yanıt dosyası" satırı hep görünür; yanıt var ama kutu kapalıysa turuncu uyarı.
+- ISO logu dosyanın eklenip eklenmediğini yazar (`answer file: …`).
+- Gereksinimler'e işlemci ve disk boyutu denetimleri eklendi (LabConfig `BypassCPUCheck`, `BypassStorageCheck`):
+  VM'lerde TPM kadar sık takılan iki denetim.

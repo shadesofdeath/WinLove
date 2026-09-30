@@ -271,6 +271,8 @@ std::vector<PresetController::Item> PresetController::items(const Preset& preset
         flag(Str::UnattendedTpm, o.bypassTpm, Str::PresetsOn);
         flag(Str::UnattendedSecureBoot, o.bypassSecureBoot, Str::PresetsOn);
         flag(Str::UnattendedRam, o.bypassRam, Str::PresetsOn);
+        flag(Str::UnattendedCpu, o.bypassCpu, Str::PresetsOn);
+        flag(Str::UnattendedStorage, o.bypassStorage, Str::PresetsOn);
         flag(Str::UnattendedIncludeInIso, preset.unattend->includeInIso, Str::PresetsOn);
     }
     return result;

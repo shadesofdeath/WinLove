@@ -24,6 +24,8 @@ public:
     // The options as they go into the file: architecture follows the open source.
     [[nodiscard]] static core::UnattendOptions effective(const AppState& state);
     [[nodiscard]] core::UnattendOptions options() const { return effective(m_state); }
+    // The first answer given (and an import) also turns "ISO'ya ekle" on: answers that silently
+    // stay out of the ISO are never what was meant. The box remains to opt out.
     void edit(const std::function<void(core::UnattendOptions&)>& change);
     [[nodiscard]] bool includeInIso() const noexcept { return m_state.unattend().includeInIso; }
     void setIncludeInIso(bool include);

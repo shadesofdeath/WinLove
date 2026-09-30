@@ -19,12 +19,15 @@ istenirse bir sonraki ISO'nun köküne yazılır.
   - OOBE: Lisans sözleşmesini kabul et, Gizlilik sorularını atla, Microsoft hesabı zorunluluğunu kaldır
     (açık = BypassNRO yazılır), Çevrimiçi kurulumu atla.
   - Ürün anahtarı: anahtar, Kurulacak sürüm (kaynağın index'leri).
-  - Gereksinimler: TPM 2.0 / Secure Boot / RAM denetimini atla — açık = LabConfig yazılır.
+  - Gereksinimler: TPM 2.0 / Secure Boot / RAM / işlemci / disk boyutu denetimini atla — açık = LabConfig yazılır
+    (`BypassTPMCheck`, `BypassSecureBootCheck`, `BypassRAMCheck`, `BypassCPUCheck`, `BypassStorageCheck`).
   - Bütün düğmeler aynı yönde okunur: açık = WinLove bunu XML'e yazar (D-032; ilk sürümde bu satırlar ters çalışıyordu).
   - Geçersiz değerde satırın ipucu kırmızı olur (bilgisayar adı, hesap adı, ürün anahtarı, hesapsız otomatik oturum).
 - **Canlı önizleme** (sağ, ~%45): dosyanın gerçek metni, satır numaralı mono; son düzenlemeyle değişen satırlar
   vurgu renginde; uzun satırlar kaydırılır (devam satırı numarasız); tekerlek / kaydırma çubuğu.
-  Panel başlığında **ISO'ya ekle** onay kutusu.
+  Panel başlığında **ISO'ya ekle** onay kutusu. **İlk yanıt verildiğinde (ve XML içe aktarılınca) kendiliğinden
+  işaretlenir** (D-034); elle kapatılırsa sonraki düzenlemeler onu açmaz. ISO sayfasının özetinde "Yanıt dosyası"
+  satırı her zaman durur: `autounattend.xml` / "yok" / turuncu "eklenmiyor · "ISO'ya ekle" kapalı".
 
 ## 3. Motor (`core/unattend/Unattend`)
 - `UnattendOptions` → `buildUnattendXml`: yalnız istenen ayar yazılır (boş seçenekler = hiç `<settings>` yok).
@@ -54,7 +57,9 @@ istenirse bir sonraki ISO'nun köküne yazılır.
 ## 5. Kabul
 - [ ] Form değiştikçe önizleme güncellenir, değişen satırlar vurgulanır.
 - [ ] XML kaydet → dosya; XML içe aktar → form aynı değerlerle dolar.
-- [ ] "ISO'ya ekle" + ISO Oluştur → ISO kökünde `autounattend.xml`; çalışma klasöründe dosya yok.
+- [ ] Formu doldur (kutuya dokunmadan) + ISO Oluştur → ISO kökünde `autounattend.xml`; çalışma klasöründe dosya yok.
+      (2026-09-30: kullanıcının ilk ISO'sunda dosya yoktu — kutu varsayılan kapalıydı ve fark edilmedi; D-034.
+      Akış unit testte gerçek ISO üretilerek doğrulanıyor; logda `answer file: …` satırı.)
 - [ ] VM: üretilen ISO ile kurulum soruları atlanır (dil, disk, hesap, OOBE); TPM'siz VM'de kurulum başlar.
 - [ ] Geçersiz bilgisayar adı → kırmızı ipucu; "ISO'ya ekle" açıkken ISO sayfası engel gösterir.
 

@@ -42,9 +42,15 @@ core::UnattendOptions UnattendController::effective(const AppState& state) {
 
 void UnattendController::edit(const std::function<void(core::UnattendOptions&)>& change) {
     AppState::Unattend unattend = m_state.unattend();
+    const bool untouched = unattend.options == core::UnattendOptions{};
     change(unattend.options);
     if (unattend.options == m_state.unattend().options) {
         return;
+    }
+    if (untouched) {
+        // The first answer: a file somebody fills in is meant for the ISO. Unchecking "ISO'ya
+        // ekle" afterwards stays unchecked.
+        unattend.includeInIso = true;
     }
     m_state.setUnattend(std::move(unattend));
 }
@@ -91,6 +97,7 @@ Result<void> UnattendController::import(const std::filesystem::path& file) {
     }
     AppState::Unattend unattend = m_state.unattend();
     unattend.options = std::move(*parsed);
+    unattend.includeInIso = true; // an answer file brought in is one to use
     m_state.setUnattend(std::move(unattend));
     log::info("app", L"answer file imported: " + file.wstring());
     return {};

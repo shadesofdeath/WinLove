@@ -54,6 +54,8 @@ struct UnattendOptions {
     bool bypassTpm = false;
     bool bypassSecureBoot = false;
     bool bypassRam = false;
+    bool bypassCpu = false;     // supported processor list / 2 cores
+    bool bypassStorage = false; // 64 GB system disk
 
     [[nodiscard]] bool operator==(const UnattendOptions&) const = default;
 };

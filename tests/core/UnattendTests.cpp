@@ -34,6 +34,8 @@ UnattendOptions everything() {
     o.bypassTpm = true;
     o.bypassSecureBoot = true;
     o.bypassRam = true;
+    o.bypassCpu = true;
+    o.bypassStorage = true;
     return o;
 }
 
@@ -98,6 +100,12 @@ TEST_CASE("unattend: every option written, in its pass, and read back unchanged"
     CHECK(in(L"<Key>/IMAGE/INDEX</Key>", pe, specialize));
     CHECK(in(L"<Key>VK7JG-NPHTM-C97JM-9MPGT-3V66T</Key>", pe, specialize));
     CHECK(in(L"<AcceptEula>true</AcceptEula>", pe, specialize));
+    // Every Windows 11 hardware check has its LabConfig value, in windowsPE (read before the checks run).
+    for (const wchar_t* check : {L"BypassTPMCheck", L"BypassSecureBootCheck", L"BypassRAMCheck", L"BypassCPUCheck",
+                                 L"BypassStorageCheck"}) {
+        CAPTURE(check);
+        CHECK(in(std::wstring(L"LabConfig /v ") + check + L" /t REG_DWORD /d 1 /f", pe, specialize));
+    }
     CHECK(in(L"<ComputerName>WINLOVE-PC</ComputerName>", specialize, oobe));
     CHECK(in(L"<TimeZone>Turkey Standard Time</TimeZone>", specialize, oobe));
     CHECK(in(L"/v BypassNRO /t REG_DWORD /d 1 /f", specialize, oobe));

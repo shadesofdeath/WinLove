@@ -450,6 +450,10 @@ void UnattendedPage::buildForm() {
               [](const Options& o) { return o.bypassSecureBoot; }, [](Options& o, bool on) { o.bypassSecureBoot = on; });
     addSwitch(Str::UnattendedRam, s(Str::UnattendedSkipLabConfig), [](const Options& o) { return o.bypassRam; },
               [](Options& o, bool on) { o.bypassRam = on; });
+    addSwitch(Str::UnattendedCpu, s(Str::UnattendedSkipLabConfig), [](const Options& o) { return o.bypassCpu; },
+              [](Options& o, bool on) { o.bypassCpu = on; });
+    addSwitch(Str::UnattendedStorage, s(Str::UnattendedSkipLabConfig), [](const Options& o) { return o.bypassStorage; },
+              [](Options& o, bool on) { o.bypassStorage = on; });
 
     sync();
     m_steps->setCurrent(m_form->currentSection());

@@ -337,19 +337,22 @@ void IsoPage::paint(ui::Canvas& canvas) {
     label(Str::IsoOpenWhenDone);
 
     // Summary box.
-    const bool answerFile = m_state.unattend().includeInIso; // P13: one more summary row
+    // P13: the answer file always has its row — that it is NOT going into the ISO is worth seeing
+    // before the build, not at Setup's first question.
+    const auto& unattend = m_state.unattend();
+    const bool answersUnused = !unattend.includeInIso && !(unattend.options == core::UnattendOptions{});
     const RectF box{b.right() - kSummaryWidth, b.y + kTop + ui::tokens::size::control + 2 + 12, kSummaryWidth,
-                    136 + (answerFile ? kSummaryRow : 0.0f)};
+                    136 + kSummaryRow};
     canvas.fillRoundRect(box, ui::tokens::radius::r3, Color::BgPanel);
     canvas.strokeRoundRect(box, ui::tokens::radius::r3, Color::LineSubtle);
     float sy = box.y + 12;
     canvas.drawText(m_strings.get(Str::IsoSummary), {box.x + 16, sy, box.width - 32, 20}, TypeStyle::Section,
                     Color::TextSecondary);
     sy += 28;
-    auto row = [&](Str key, const std::wstring& value, bool mono) {
+    auto row = [&](Str key, const std::wstring& value, bool mono, Color ink = Color::TextPrimary) {
         canvas.drawText(m_strings.get(key), {box.x + 16, sy, 96, kSummaryRow}, TypeStyle::Caption, Color::TextSecondary);
         canvas.drawText(value, {box.x + 112, sy, box.width - 128, kSummaryRow}, mono ? TypeStyle::Mono : TypeStyle::Caption,
-                        Color::TextPrimary);
+                        ink);
         sy += kSummaryRow;
     };
     const auto& source = m_state.source();
@@ -363,8 +366,12 @@ void IsoPage::paint(ui::Canvas& canvas) {
     row(Str::IsoSource, sourceLine, false);
     static constexpr Str kBootText[] = {Str::IsoBootSummaryBoth, Str::IsoBootSummaryUefi, Str::IsoBootSummaryBios};
     row(Str::IsoBoot, m_strings.get(kBootText[std::clamp(m_boot->selected(), 0, 2)]), false);
-    if (answerFile) {
+    if (unattend.includeInIso) {
         row(Str::IsoUnattend, L"autounattend.xml", true);
+    } else if (answersUnused) {
+        row(Str::IsoUnattend, m_strings.get(Str::IsoUnattendOff), false, Color::StatusWarning);
+    } else {
+        row(Str::IsoUnattend, m_strings.get(Str::IsoUnattendNone), false, Color::TextSecondary);
     }
     row(Str::IsoEstIso, m_sourceBytes ? formatBytes(m_sourceBytes, m_language) : std::wstring(L"…"), true);
     row(Str::IsoDuration, m_sourceBytes ? formatDuration(estimateSeconds(), m_language, true) : std::wstring(L"…"),
