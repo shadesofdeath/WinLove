@@ -29,6 +29,8 @@ public:
     [[nodiscard]] std::wstring selectedGroupName() const;
 
     void focusSearch();
+    // Command palette: drops the filters, opens the app's group, selects its row and scrolls to it.
+    void reveal(const std::wstring& packageName);
     void setAllExpanded(bool expanded);
     [[nodiscard]] bool allExpanded() const;
 

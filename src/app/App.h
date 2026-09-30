@@ -17,6 +17,8 @@
 //      --operation=mount|prepare|read --progress=0.38   (render: show the operation strip)
 //      --demo-<page>          (render: sample state for a page; see LaunchOptions)
 //      --switch-lang=tr|en    (render: rebuild the UI in another language, as the settings page does)
+//      --palette[=query]      (render: open the command palette, optionally with text typed)
+//      --keys=down,enter,…    (render: press these keys in order — up down left right enter esc)
 #include "app/Localization.h"
 #include "app/pages/PageInfo.h"
 #include "app/shell/Shell.h"
@@ -71,6 +73,8 @@ struct LaunchOptions {
     std::optional<int> mountIndex;
     std::optional<int> selectIndex;
     std::optional<std::wstring> fakeOperation; // render only
+    std::optional<std::wstring> palette;       // render only: the command palette with this query
+    std::vector<UINT> keys;                    // render only: virtual keys pressed after the setup
     float fakeProgress = 0.38f;
 };
 

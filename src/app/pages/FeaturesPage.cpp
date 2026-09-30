@@ -102,6 +102,39 @@ void FeaturesPage::focusSearch() {
     }
 }
 
+Str FeaturesPage::statusName(Status status) {
+    switch (status) {
+    case Status::Enabled: return Str::FeaturesEnabled;
+    case Status::Installed: return Str::FeaturesInstalled;
+    case Status::Disabled: return Str::FeaturesDisabled;
+    case Status::Removed: return Str::FeaturesRemoved;
+    case Status::Pending: return Str::FeaturesPending;
+    case Status::WillEnable: return Str::FeaturesWillEnable;
+    case Status::WillDisable: return Str::FeaturesWillDisable;
+    case Status::WillRemove: return Str::FeaturesWillRemove;
+    }
+    return Str::FeaturesDisabled;
+}
+
+void FeaturesPage::reveal(const std::wstring& name) {
+    m_search->setText({});
+    m_needle.clear();
+    m_stateBox->setSelected(0);
+    m_filter = Filter::All;
+    m_changed->setOn(false, /*animated=*/false);
+    m_onlyChanged = false;
+    refilter();
+    for (int row = 0; row < static_cast<int>(m_rows.size()); ++row) {
+        if (const auto* item = itemAt(row); item && item->name == name) {
+            m_table->setSelected(row);
+            if (host()) {
+                host()->setFocus(m_table, /*visible=*/false);
+            }
+            return;
+        }
+    }
+}
+
 bool FeaturesPage::onChar(wchar_t ch) {
     if (ch == L'/') {
         focusSearch();
@@ -202,16 +235,17 @@ void FeaturesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
     case kState: {
         ui::icons::Icon icon = ui::icons::Icon::InfoCircle;
         Color ink = Color::StatusInfo;
-        Str text = Str::FeaturesDisabled;
-        switch (m_controller.status(*item)) {
-        case Status::Enabled: icon = ui::icons::Icon::SuccessCircle; ink = Color::StatusSuccess; text = Str::FeaturesEnabled; break;
-        case Status::Installed: icon = ui::icons::Icon::SuccessCircle; ink = Color::StatusSuccess; text = Str::FeaturesInstalled; break;
+        const Status status = m_controller.status(*item);
+        const Str text = statusName(status);
+        switch (status) {
+        case Status::Enabled: icon = ui::icons::Icon::SuccessCircle; ink = Color::StatusSuccess; break;
+        case Status::Installed: icon = ui::icons::Icon::SuccessCircle; ink = Color::StatusSuccess; break;
         case Status::Disabled: break;
-        case Status::Removed: ink = Color::TextTertiary; text = Str::FeaturesRemoved; break;
-        case Status::Pending: icon = ui::icons::Icon::QueueClock; ink = Color::TextSecondary; text = Str::FeaturesPending; break;
-        case Status::WillEnable: icon = ui::icons::Icon::QueueClock; ink = Color::AccentBase; text = Str::FeaturesWillEnable; break;
-        case Status::WillDisable: icon = ui::icons::Icon::QueueClock; ink = Color::AccentBase; text = Str::FeaturesWillDisable; break;
-        case Status::WillRemove: icon = ui::icons::Icon::QueueClock; ink = Color::AccentBase; text = Str::FeaturesWillRemove; break;
+        case Status::Removed: ink = Color::TextTertiary; break;
+        case Status::Pending: icon = ui::icons::Icon::QueueClock; ink = Color::TextSecondary; break;
+        case Status::WillEnable: icon = ui::icons::Icon::QueueClock; ink = Color::AccentBase; break;
+        case Status::WillDisable: icon = ui::icons::Icon::QueueClock; ink = Color::AccentBase; break;
+        case Status::WillRemove: icon = ui::icons::Icon::QueueClock; ink = Color::AccentBase; break;
         }
         canvas.drawIcon(icon, {rect.x, rect.y + 4}, ink);
         const float x = rect.x + ui::tokens::size::icon + 6;

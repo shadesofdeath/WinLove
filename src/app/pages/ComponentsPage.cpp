@@ -142,6 +142,34 @@ void ComponentsPage::focusSearch() {
     }
 }
 
+void ComponentsPage::reveal(const std::wstring& packageName) {
+    m_search->setText({});
+    m_needle.clear();
+    m_category->setSelected(0);
+    m_categoryFilter = 0;
+    m_risk->setSelected(0);
+    m_riskFilter = 0;
+    m_selectedOnly->setOn(false, /*animated=*/false);
+    m_onlySelected = false;
+    for (const auto& group : m_groups) {
+        if (std::ranges::any_of(group.items, [&](const Item& item) { return item.packageName == packageName; })) {
+            m_collapsed.erase(group.catalogIndex);
+        }
+    }
+    rebuildRows();
+    for (std::size_t row = 0; row < m_rows.size(); ++row) {
+        const Row& r = m_rows[row];
+        if (r.item >= 0 &&
+            m_groups[static_cast<std::size_t>(r.group)].items[static_cast<std::size_t>(r.item)].packageName == packageName) {
+            m_table->setSelected(static_cast<int>(row));
+            if (host()) {
+                host()->setFocus(m_table, /*visible=*/false);
+            }
+            return;
+        }
+    }
+}
+
 bool ComponentsPage::onChar(wchar_t ch) {
     if (ch == L'/') {
         focusSearch();

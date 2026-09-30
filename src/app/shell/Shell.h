@@ -20,6 +20,7 @@
 #include "app/pages/PageInfo.h"
 #include "app/shell/NavRail.h"
 #include "app/shell/PageView.h"
+#include "app/shell/PaletteIndex.h"
 #include "app/shell/StatusBar.h"
 #include "app/shell/TitleBar.h"
 #include "app/state/AppState.h"
@@ -95,6 +96,8 @@ public:
     [[nodiscard]] PageId currentPage() const noexcept { return m_page; }
 
     void showPage(PageId page);
+    // P18: Ctrl+K or the title bar box. `query` as if typed (render checks).
+    void openPalette(std::wstring query = {});
     void setNavCollapsed(bool collapsed, bool animated);
     [[nodiscard]] bool navCollapsed() const noexcept { return m_navTarget < 0.5f; }
     // Shortcuts not consumed by the focused widget. Returns true if handled.
@@ -167,6 +170,11 @@ private:
     void showApplyConfirm();
     void updateQueue(); // CTA count, nav badges, page actions that depend on the queue
     [[nodiscard]] bool inspectorVisible() const;
+    void runPaletteItem(const PaletteItem& item);
+    [[nodiscard]] bool paletteCommandAvailable(PaletteCommand command) const;
+    void runPaletteCommand(PaletteCommand command);
+    void toggleNav();
+    void openLogFolder();
     ui::Dialog& pushDialog(std::unique_ptr<ui::Dialog> dialog);
 public:
     // WM_CLOSE: while a mount / apply / ISO job runs, closing would leave a windowless process
@@ -190,6 +198,7 @@ private:
     std::unique_ptr<PostSetupController> m_postSetup; // P14 steps
     std::unique_ptr<PresetController> m_presets;      // P15 library
     std::unique_ptr<PreloadController> m_preload; // reads the page lists right after a mount
+    std::unique_ptr<PaletteIndex> m_palette;      // P18: what Ctrl+K searches
     ui::Widget* m_sideInspector = nullptr; // pages other than Images (Components)
     ui::Button* m_actionExpand = nullptr;  // Components: "Tümünü genişlet / daralt"
     ui::Button* m_actionIso = nullptr; // ISO page: "ISO Oluştur" / "İptal"

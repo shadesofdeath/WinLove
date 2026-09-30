@@ -124,6 +124,25 @@ void ServicesPage::focusSearch() {
     }
 }
 
+void ServicesPage::reveal(const std::wstring& name) {
+    m_search->setText({});
+    m_needle.clear();
+    m_startBox->setSelected(0);
+    m_startFilter = 0;
+    m_changed->setOn(false, /*animated=*/false);
+    m_onlyChanged = false;
+    refilter();
+    for (int row = 0; row < static_cast<int>(m_rows.size()); ++row) {
+        if (const auto* item = itemAt(row); item && item->name == name) {
+            m_table->setSelected(row);
+            if (host()) {
+                host()->setFocus(m_table, /*visible=*/false);
+            }
+            return;
+        }
+    }
+}
+
 bool ServicesPage::onChar(wchar_t ch) {
     if (ch == L'/') {
         focusSearch();

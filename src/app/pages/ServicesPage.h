@@ -27,6 +27,8 @@ public:
     ~ServicesPage() override;
 
     void focusSearch();
+    // Command palette: drops the filters, selects the service's row and scrolls to it.
+    void reveal(const std::wstring& name);
     [[nodiscard]] static Str startName(core::StartType start);
 
     void layout() override;

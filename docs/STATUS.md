@@ -4,13 +4,22 @@
 
 ## Güncel
 - **Faz:** 3 — sayfalar. P01–P04 ✅. P05 Uygula, P06 ISO, P08 Güncellemeler, P09 Sürücüler, P10 Servisler, P11 Kayıt Defteri,
-  P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler, P16 Uygulama Ayarları, P17 Hakkında:
+  P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler, P16 Uygulama Ayarları, P17 Hakkında, P18 Komut Paleti:
   🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v1 (yalnız AppX; CBS paket
   kaldırma kararı bekliyor).
 - **Çalışma şekli:** kullanıcı "her seferinde durma" dedi — sayfa bitince build + test + `-Dist` + yerel commit,
   sonra doğrudan bir sonraki sayfa. Kullanıcı `dist\WinLove.exe`'yi paralel test ediyor.
-- **Bir sonraki somut adım:** P18 Komut Paleti (tasarım 21; Ctrl+K — başlık çubuğundaki arama kutusu şimdilik
-  yalnız görsel). Spec'i yok: önce `docs/pages/18-command-palette.md`. Ardından Faz 4.
+- **Faz 3'ün bütün sayfaları yazıldı** (P01–P04 onaylı, P05–P18 kullanıcı testi bekliyor). Kural 1 gereği Faz 4'e
+  geçmeden önce bu sayfaların kullanıcı onayı gerekir.
+- **Bir sonraki somut adım:** kullanıcı testinden gelen düzeltmeler (sayfa sayfa, `docs/pages/NN-*.md` §Kabul
+  listeleri üzerinden). Kullanıcıdan bağımsız yapılabilecekler: P07 CBS paket kaldırma kararı, P06 USB sekmesi,
+  "işlem sonrası mount'u çöz" (P16 §4), Faz 4 hazırlığı (UIA, DComp / dirty-rect D-011).
+- **P18 Komut Paleti (2026-09-30):** `shell/PaletteIndex` (sayfalar, P12 ayarları, okunan bileşen / özellik / servis
+  listeleri, o an çalışabilen komutlar; Türkçe-duyarlı katlama, puanlı eşleşme) + `shell/CommandPalette` (modal;
+  `ui::SearchBox` "bare" + soluk tamamlama). Enter → sayfa + `reveal` (satır seçilir / kontrol odaklanır). Yeni
+  kısayollar: `Ctrl+K`, `Ctrl+Enter`, `Ctrl+S`, `Ctrl+O`; dialog açıkken uygulama kısayolları artık çalışmıyor.
+  Render'da `--palette[=sorgu]` ve `--keys=`. Unit testli (puan, durum, widget klavye / tık); gerçek pencerede
+  klavye akışı kullanıcı testi bekliyor.
 - **P17 Hakkında (2026-09-30):** `app/SystemInfo` (DISM yolu / sürümü, derleme tarihi, mimari — Ayarlar da buradan
   okur), `AboutPage` (`F1`): sürüm satırı, DISM / çalışma dizini / fontlar / üçüncü taraf, Lisanslar dialogu, log
   klasörünü aç. **Konmayan (spec §4):** Lisans satırı (proje lisansı seçilmedi), Güncellemeleri denetle (servis yok).
@@ -48,7 +57,7 @@
   (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
   ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
   (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
-- **Build:** `./build.ps1 -Dist` yeşil, 140 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Build:** `./build.ps1 -Dist` yeşil, 147 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi; güncellemelerde sürükle-sırala; imajdaki mevcut sürücüleri
@@ -72,6 +81,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — P15 Presetler geliştirildi (test bekliyor).
 - 2026-09-30 — P16 Uygulama Ayarları geliştirildi (test bekliyor).
 - 2026-09-30 — P17 Hakkında geliştirildi (test bekliyor).
+- 2026-09-30 — P18 Komut Paleti geliştirildi (test bekliyor). Faz 3 sayfalarının tamamı yazıldı.
 - 2026-09-28 — Baştan sona inceleme (4 alan, paralel): ~35 hata düzeltildi. Öne çıkanlar: junction üzerinden ana
   makine ACL'si değişebilmesi (FileLocks), commit edilmeyen unmount'un başarılı raporlanması, DISM oturum yenileme,
   UDF çıkarmada yol dışına yazma + sınır dışı okuma, tıklamada yok edilen widget (use-after-free), Enter ile devre
