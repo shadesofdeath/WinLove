@@ -103,6 +103,11 @@ Result<WimHeader> readWimHeader(const ByteSource& source) {
     h.partNumber = le<std::uint16_t>(raw + 40);
     h.totalParts = le<std::uint16_t>(raw + 42);
     h.imageCount = le<std::uint32_t>(raw + 44);
+    // rhOffsetTable at 48: the lookup table (same RESHDR_DISK_SHORT layout as below).
+    const auto lookupPacked = le<std::uint64_t>(raw + 48);
+    h.lookupSize = lookupPacked & 0x00FFFFFFFFFFFFFFull;
+    h.lookupCompressed = (static_cast<std::uint32_t>(lookupPacked >> 56) & kResourceCompressed) != 0;
+    h.lookupOffset = le<std::uint64_t>(raw + 48 + 8);
     // rhXmlData: RESHDR_DISK_SHORT at 72 = { u56 size, u8 flags, u64 offset, u64 original size }
     const auto packed = le<std::uint64_t>(raw + 72);
     const auto xmlFlags = static_cast<std::uint32_t>(packed >> 56);

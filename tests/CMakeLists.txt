@@ -10,12 +10,14 @@ add_executable(wl_tests
     core/EngineTests.cpp
     core/RegistryTests.cpp
     core/SystemComponentTests.cpp
+    core/ImageEditionTests.cpp
     core/ImageFormatTests.cpp
     core/IsoTests.cpp
     core/PostSetupTests.cpp
     core/UnattendTests.cpp
     core/UpdateTests.cpp
     core/WimEditTests.cpp
+    core/WimVerifyTests.cpp
     ui/TokensTests.cpp
     ui/IconsTests.cpp
     ui/RenderTests.cpp

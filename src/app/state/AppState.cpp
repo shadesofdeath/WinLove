@@ -19,6 +19,7 @@ void AppState::setSource(core::SourceInfo source) {
     m_source = std::move(source);
     // Default selection: the first edition, so the inspector has something to show.
     m_selected = m_source->install.images.empty() ? std::nullopt : std::optional<int>(m_source->install.images.front().index);
+    m_selection = m_selected ? std::vector<int>{*m_selected} : std::vector<int>{};
     notify(Change::Recent);
     notify(Change::Source);
     notify(Change::Selection);
@@ -27,13 +28,29 @@ void AppState::setSource(core::SourceInfo source) {
 void AppState::clearSource() {
     m_source.reset();
     m_selected.reset();
+    m_selection.clear();
     notify(Change::Source);
     notify(Change::Selection);
 }
 
 void AppState::select(std::optional<int> index) {
-    if (index != m_selected) {
+    std::vector<int> only = index ? std::vector<int>{*index} : std::vector<int>{};
+    if (index != m_selected || only != m_selection) {
         m_selected = index;
+        m_selection = std::move(only);
+        notify(Change::Selection);
+    }
+}
+
+void AppState::selectMany(std::vector<int> indexes, int primary) {
+    std::ranges::sort(indexes);
+    indexes.erase(std::ranges::unique(indexes).begin(), indexes.end());
+    if (!std::ranges::binary_search(indexes, primary)) {
+        indexes.insert(std::ranges::lower_bound(indexes, primary), primary);
+    }
+    if (m_selected != primary || indexes != m_selection) {
+        m_selected = primary;
+        m_selection = std::move(indexes);
         notify(Change::Selection);
     }
 }

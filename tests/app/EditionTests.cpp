@@ -1,6 +1,8 @@
-// P02: deleting editions — when the Images page allows it and what it says when it does not.
+// P02: deleting, renaming, verifying editions and marking several of them — when the Images page
+// allows it and what it says when it does not.
 // The rewrite of a real WIM is tested on the lab copy (tools/lab_editions.ps1).
 #include "app/controllers/ImageController.h"
+#include "app/pages/images/EditionSelection.h"
 #include "app/shell/Shell.h"
 #include "support/TestGraphics.h"
 #include "ui/widget/Host.h"
@@ -164,8 +166,8 @@ TEST_CASE("editions: right click → \"Yalnız bu sürümü tut…\" → confirm
     REQUIRE(host.onContextMenu({400, 244}));
     host.layout({1440, 900});
     CHECK(state.selectedIndex() == 4);
-    // Bağla · Dışa aktar · Sürümü sil… · Yalnız bu sürümü tut…
-    for (int i = 0; i < 4; ++i) {
+    // Bağla · Dışa aktar · Yeniden adlandır… · Sürümü sil… · Yalnız bu sürümü tut…
+    for (int i = 0; i < 5; ++i) {
         key(VK_DOWN);
     }
     key(VK_RETURN);
@@ -183,4 +185,149 @@ TEST_CASE("editions: right click → \"Yalnız bu sürümü tut…\" → confirm
     }
     CHECK_FALSE(state.operation().has_value());
     CHECK(state.source()->install.images.size() == 6);
+}
+
+TEST_CASE("edition selection: click, Ctrl+click, Shift range, Ctrl+A") {
+    EditionSelection s;
+    s.only(3);
+    CHECK(s.rows == std::vector<int>{3});
+    CHECK(s.primary == 3);
+
+    s.toggle(1); // Ctrl+click adds, and the row added is the one shown
+    s.toggle(5);
+    CHECK(s.rows == std::vector<int>{1, 3, 5});
+    CHECK(s.primary == 5);
+    CHECK(s.contains(3));
+    CHECK_FALSE(s.contains(2));
+
+    s.toggle(5); // taking the primary row out moves the primary to a row that stays
+    CHECK(s.rows == std::vector<int>{1, 3});
+    CHECK(s.primary == 3);
+    s.toggle(1);
+    s.toggle(3); // the last marked row stays marked
+    CHECK(s.rows == std::vector<int>{3});
+    CHECK(s.primary == 3);
+
+    s.only(2);
+    s.extendTo(4); // Shift: from the last plain click
+    CHECK(s.rows == std::vector<int>{2, 3, 4});
+    CHECK(s.primary == 4);
+    s.extendTo(0); // the anchor stays, the range turns around
+    CHECK(s.rows == std::vector<int>{0, 1, 2});
+    CHECK(s.primary == 0);
+
+    s.all(6);
+    CHECK(s.rows == std::vector<int>{0, 1, 2, 3, 4, 5});
+    CHECK(s.primary == 0);
+}
+
+TEST_CASE("editions: several can be marked; the state keeps them sorted with the primary among them") {
+    Fixture f;
+    f.state.setSource(source(core::ImageFormat::Wim, L"install.wim", 6));
+    CHECK(f.state.selection() == std::vector<int>{1});
+    int notified = 0;
+    f.state.subscribe([&](AppState::Change change) { notified += change == AppState::Change::Selection ? 1 : 0; });
+
+    f.state.selectMany({5, 2, 5, 3}, 3);
+    CHECK(f.state.selection() == std::vector<int>{2, 3, 5});
+    CHECK(f.state.selectedIndex() == 3);
+    CHECK(notified == 1);
+    f.state.selectMany({2, 3, 5}, 3); // nothing new: nobody is told
+    CHECK(notified == 1);
+    f.state.selectMany({2}, 4); // a primary outside the set joins it
+    CHECK(f.state.selection() == std::vector<int>{2, 4});
+    f.state.select(6);
+    CHECK(f.state.selection() == std::vector<int>{6});
+}
+
+TEST_CASE("editions: rename and verify refuse what they cannot do, and a failed rename changes nothing") {
+    Fixture f;
+    f.state.setSource(source(core::ImageFormat::Esd, L"install.esd", 6));
+    CHECK(f.controller.editRefusal() == Str::ImagesDeleteNeedsWim);
+    CHECK(f.controller.verifyRefusal() == Str::ImagesVerifyEsd);
+    f.controller.verify();
+    f.controller.renameEdition(1, L"x", L"");
+    CHECK(f.refused == std::vector<Str>{Str::ImagesVerifyEsd, Str::ImagesDeleteNeedsWim});
+    CHECK_FALSE(f.state.operation().has_value());
+
+    // One edition is enough to rename (unlike delete), and a mounted image can still be verified.
+    f.state.setSource(source(core::ImageFormat::Wim, L"install.wim", 1));
+    CHECK_FALSE(f.controller.editRefusal());
+    CHECK(f.controller.deleteRefusal() == Str::ImagesLastEdition);
+    f.state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Edition 1"});
+    CHECK(f.controller.editRefusal() == Str::ImagesUnmountFirst);
+    CHECK_FALSE(f.controller.verifyRefusal());
+    f.state.setMounted(std::nullopt);
+
+    f.state.setSource(source(core::ImageFormat::Wim, L"install.wim", 6));
+    f.state.selectMany({2, 4}, 4);
+    f.controller.renameEdition(4, L"Windows 11 Pro WinLove", L"");
+    REQUIRE(f.state.operation().has_value());
+    CHECK(f.state.operation()->kind == EngineOperation::Kind::Renaming);
+    f.settle(); // the WIM is not on disk
+    CHECK(f.failed == std::vector<ImageController::Failure>{ImageController::Failure::Rename});
+    CHECK(f.state.source()->install.images[3].name == L"Edition 4");
+    CHECK(f.state.selection() == std::vector<int>{2, 4});
+
+    f.controller.verify();
+    REQUIRE(f.state.operation().has_value());
+    CHECK(f.state.operation()->kind == EngineOperation::Kind::Verifying);
+    f.settle();
+    CHECK(f.failed.back() == ImageController::Failure::Verify);
+}
+
+TEST_CASE("editions: the marked ones are deleted together; \"keep only\" keeps the marked ones") {
+    std::ifstream file(std::filesystem::path(WL_SOURCE_DIR) / L"resources/strings/tr.json", std::ios::binary);
+    std::stringstream text;
+    text << file.rdbuf();
+    const Localization strings = Localization::fromJson(text.str()).value();
+
+    AppState state{scratch(L"recent-many.json"), scratch(L"settings-many.json")};
+    std::vector<std::function<void()>> posted;
+    Shell::Services services;
+    services.minimize = services.toggleMaximize = services.close = services.toggleTheme = [] {};
+    services.postToUi = [&](std::function<void()> fn) { posted.push_back(std::move(fn)); };
+    ui::Host host(ui::HostServices{[] {}, nullptr, nullptr, test::graphics().text.get()});
+    auto shell = std::make_unique<Shell>(strings, Language::Turkish, state, services);
+    Shell* raw = shell.get();
+    host.setRoot(std::move(shell));
+    state.setSource(source(core::ImageFormat::Wim, L"install.wim", 6));
+    raw->showPage(PageId::Images);
+    host.layout({1440, 900});
+    auto key = [&](UINT vk) { host.onKeyDown(ui::KeyEvent{vk, false, false, false}); };
+    auto confirm = [&] {
+        host.layout({1440, 900});
+        key(VK_TAB);    // Vazgeç → Sil
+        key(VK_RETURN);
+    };
+    auto settle = [&] {
+        state.engine().drain();
+        for (auto& fn : std::vector(std::move(posted))) {
+            fn();
+        }
+        posted.clear();
+    };
+
+    state.selectMany({2, 3}, 3);
+    raw->askDeleteSelected();
+    CHECK_FALSE(state.operation().has_value()); // asks first
+    confirm();
+    REQUIRE(state.operation().has_value());
+    CHECK(state.operation()->edition == L"2 sürüm");
+    settle();
+
+    // Keeping the two marked editions deletes the other four.
+    state.selectMany({2, 3}, 3);
+    raw->askDeleteSelected(/*keepOnly=*/true);
+    confirm();
+    REQUIRE(state.operation().has_value());
+    CHECK(state.operation()->edition == L"4 sürüm");
+    settle();
+
+    // Everything marked: there is nothing to keep, so nothing is asked.
+    state.selectMany({1, 2, 3, 4, 5, 6}, 1);
+    raw->askDeleteSelected();
+    host.layout({1440, 900});
+    CHECK_FALSE(host.hasModal());
+    CHECK_FALSE(state.operation().has_value());
 }

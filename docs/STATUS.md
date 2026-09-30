@@ -23,6 +23,17 @@
 - **Kaynak sayfası (2026-09-30, kullanıcı isteği):** son kullanılanlardan kaldırma (satır sonunda ×, `Del`, sağ tık
   menüsü) + çalışma kopyasını silme dialogu; UI çatısına sağ tık yönlendirmesi eklendi (`Widget::onContextMenu`).
   Dialogun kendisi render'da görülmedi (diskte çalışma kopyası yoktu); liste girdisini kaldırma ve menü görüldü.
+- **İmajlar sayfası — dört yeni özellik (2026-09-30, kullanıcı isteği, D-035):**
+  (1) **Yeniden adlandır** (kalem / `F2` / sağ tık): `core::setImageText`, gerçek imaj kopyasında denendi (Türkçe
+  karakter, `&` `<`; yönetici gerekmez). (2) **Çoklu seçim**: onay kutusu, Ctrl / Shift, Ctrl+A; seçilenleri sil,
+  "yalnız seçilileri tut", tek WIM'e dışa aktar. (3) **Doğrula**: kendi doğrulayıcımız (`WimVerify` + LZX çözücü) —
+  lab WIM'inde 94.409 akış 9 sn'de hatasız, ISO içinden yerinde 12 sn, XPRESS de; üç bit çevrilince tam üç bozuk akış
+  bulundu. (4) **Sürüm yükseltme: yalnız motor.** `core/image/dism/Edition` + `wlcli edition` + `tools\lab_edition.ps1`
+  yazıldı, **çalıştığı kanıtlanmadı** (mount yönetici ister) → UI yok. **Bir sonraki somut adım:** kullanıcı yönetici
+  PowerShell'de `powershell -ExecutionPolicy Bypass -File tools\lab_edition.ps1` çalıştırır (~10 dk); geçerse
+  kuyruk işlemi + commit sonrası ad / FLAGS + "Sürümü yükselt…" yazılır, geçmezse log'a göre karar.
+  Render'da görülenler: çoklu seçim + menü, yeniden adlandırma dialogu, doğrulama şeridi, sağlam / bozuk çubuğu.
+  **Uygulama içinde denenmeyen:** gerçek yeniden adlandırma ve doğrulamanın baştan sona akışı, fareyle Ctrl / Shift.
 - **Yanıt dosyası ISO'ya girmiyordu (2026-09-30, kullanıcı VM testi, D-034):** "ISO'ya ekle" kutusu varsayılan
   kapalıydı ve fark edilmedi → ISO'da `autounattend.xml` yok → Setup "gereksinimler karşılanmıyor". Düzeltme: ilk
   yanıt / içe aktarma kutuyu açar; ISO sayfası özetinde "Yanıt dosyası" satırı hep görünür (kapalıysa turuncu);
@@ -94,7 +105,7 @@
   (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
   ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
   (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
-- **Build:** `./build.ps1 -Dist` yeşil, 172 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Build:** `./build.ps1 -Dist` yeşil, 185 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi (bilerek yazılmadı: denenemeyen disk biçimlendirme kodu; ISO'yu
@@ -126,6 +137,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — Kullanıcının ilk gerçek Uygula'sı (143 / 148); ondan çıkan düzeltmeler (D-032, kilitli uygulamalar, optimizeWim).
 - 2026-09-30 — Sürüm silme: WIM kalanlarla yeniden yazılıyor, ISO kaynakta da çalışıyor, "yalnız bu sürümü tut" (D-033).
 - 2026-09-30 — Yanıt dosyası doldurulunca ISO'ya kendiliğinden giriyor; işlemci / disk denetimi atlama; imajda olmayan AppX başarı (D-034).
+- 2026-09-30 — İmajlar: çoklu seçim, yeniden adlandırma, WIM doğrulama (kendi LZX çözücümüz); sürüm yükseltme motoru kanıt bekliyor (D-035).
 - 2026-09-28 — Baştan sona inceleme (4 alan, paralel): ~35 hata düzeltildi. Öne çıkanlar: junction üzerinden ana
   makine ACL'si değişebilmesi (FileLocks), commit edilmeyen unmount'un başarılı raporlanması, DISM oturum yenileme,
   UDF çıkarmada yol dışına yazma + sınır dışı okuma, tıklamada yok edilen widget (use-after-free), Enter ile devre

@@ -10,12 +10,14 @@
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
 #include "core/image/dism/Dism.h"
+#include "core/image/dism/Edition.h"
 #include "core/image/dism/Appx.h"
 #include "core/image/dism/MountHealth.h"
 #include "core/image/dism/OptionalFeatures.h"
 #include "core/iso/IsoBuilder.h"
 #include "core/ops/ApplyJob.h"
 #include "core/image/wim/WimGapi.h"
+#include "core/image/wim/WimVerify.h"
 #include "core/ops/Applier.h"
 #include "core/ops/Planner.h"
 #include "core/image/WindowsRelease.h"
@@ -598,6 +600,47 @@ int cmdOptimize(const std::wstring& wim) {
     return 0;
 }
 
+// Reads every stream and checks its SHA-1 (what the Images page's "Dogrula" does). Exit code 3:
+// the image is damaged.
+int cmdVerify(const std::wstring& path) {
+    auto source = core::openSource(path);
+    if (!source) {
+        return reportError(source.error());
+    }
+    auto bytes = core::openInstallImage(*source);
+    if (!bytes) {
+        return reportError(bytes.error());
+    }
+    const auto task = progressTask(L"verify");
+    const auto started = GetTickCount64();
+    const auto report = core::verifyWim(**bytes, task);
+    print(L"\n");
+    if (!report) {
+        return reportError(report.error());
+    }
+    print(std::format(L"  {} streams, {} bytes in {:.1f} s: {}\n", report->streams, report->bytes,
+                      static_cast<double>(GetTickCount64() - started) / 1000.0,
+                      report->sound() ? std::wstring(L"sound") : std::format(L"{} DAMAGED", report->damaged)));
+    for (const auto& damage : report->first) {
+        print(std::format(L"  offset {} ({} bytes{}): {}\n", damage.offset, damage.size,
+                          damage.metadata ? L", metadata" : L"", damage.reason));
+    }
+    return report->sound() ? 0 : 3;
+}
+
+int cmdSetInfo(const std::wstring& wim, const std::wstring& index, const std::wstring& name,
+               const std::wstring& description, const std::wstring& flags) {
+    core::ImageText text{name, description, {}};
+    if (!flags.empty()) {
+        text.flags = flags;
+    }
+    if (auto r = core::setImageText(wim, parseIndex(index), text); !r) {
+        return reportError(r.error());
+    }
+    print(std::format(L"  index {} of {} is now \"{}\"\n", index, wim, name));
+    return 0;
+}
+
 int cmdStoreCleanup(const std::wstring& dir, bool resetBase) {
     auto d = dism();
     if (!d) {
@@ -616,6 +659,49 @@ int cmdStoreCleanup(const std::wstring& dir, bool resetBase) {
         return reportError(cleaned.error());
     }
     print(L"component store cleaned (image not committed)\n");
+    return 0;
+}
+
+// The edition of a mounted image and what it can be changed to; with `target`: changes it
+// (dism.exe /Set-Edition — one-way; the image is not committed).
+int cmdEdition(const std::wstring& dir, const std::wstring& target, bool asJson) {
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    auto session = (*d)->openSession(dir);
+    if (!session) {
+        return reportError(session.error());
+    }
+    if (!target.empty()) {
+        const core::TaskContext task{g_cancel, [](double fraction, std::wstring_view) {
+                                         print(std::format(L"\r  {:5.1f}%", fraction * 100));
+                                     }};
+        const auto changed = core::setEdition(**session, target, task);
+        print(L"\n");
+        if (!changed) {
+            return reportError(changed.error());
+        }
+    }
+    const auto editions = core::readEditions(**session);
+    if (!editions) {
+        return reportError(editions.error());
+    }
+    if (asJson) {
+        json targets = json::array();
+        for (const auto& edition : editions->targets) {
+            targets.push_back(narrow(edition));
+        }
+        print(utf8::toWide(json{{"current", narrow(editions->current)}, {"targets", targets}}.dump(2)) + L"\n");
+        return 0;
+    }
+    print(std::format(L"current edition: {}\n", editions->current));
+    for (const auto& edition : editions->targets) {
+        print(std::format(L"  can become: {:<28} {}\n", edition, core::editionDisplayName(edition, 26100)));
+    }
+    if (!target.empty()) {
+        print(L"edition changed (image not committed: wlcli unmount <dir> --commit)\n");
+    }
     return 0;
 }
 
@@ -819,6 +905,7 @@ void printUsage() {
           L"  wlcli cbs <mountdir> [text]   (CBS packages from the image's registry, hidden ones too)\n"
           L"  wlcli component <mountdir> <recipe.json> [--remove]   (P07 system component: probe / remove)\n"
           L"  wlcli store-cleanup <mountdir> [--resetbase]   (dism /Cleanup-Image /StartComponentCleanup)\n"
+          L"  wlcli edition <mountdir> [--set=<EditionId>] [--json]   (current + target editions; --set: dism /Set-Edition)\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
           L"  wlcli apply <changeset.json> <mountdir> [--commit] [--source=<sources\\sxs>]\n"
           L"\n  Change sets (no admin):\n"
@@ -827,6 +914,8 @@ void printUsage() {
           L"  wlcli export <wim|esd> <index> <dst.wim> [--compress=max|fast|none|recovery]\n"
           L"  wlcli delete-index <wim> <index>[,<index>...]   Remove editions; the WIM is rewritten with the rest\n"
           L"  wlcli optimize <wim>                      Rewrite a WIM without what commits left behind\n"
+          L"  wlcli verify <iso|wim|folder>             Read every stream and check its SHA-1 (exit 3: damaged)\n"
+          L"  wlcli set-info <wim> <index> <name> [<description>] [--flags=<EditionId>]\n"
           L"  wlcli version | help\n"
           L"\n"
           L"Options: --json (machine-readable), --verbose (log to stdout)\n");
@@ -844,6 +933,7 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring source;
     std::wstring label;
     std::wstring serviceSet;
+    std::wstring flags;
     std::wstring boot;
     bool sha = false;
     bool noPrompt = false;
@@ -856,6 +946,8 @@ int wmain(int argc, wchar_t** argv) {
             asJson = true;
         } else if (a.starts_with(L"--compress=")) {
             compress = std::wstring(a.substr(11));
+        } else if (a.starts_with(L"--flags=")) {
+            flags = std::wstring(a.substr(8));
         } else if (a.starts_with(L"--set=")) {
             serviceSet = std::wstring(a.substr(6));
         } else if (a.starts_with(L"--label=")) {
@@ -915,6 +1007,12 @@ int wmain(int argc, wchar_t** argv) {
     if (command == L"export" && args.size() == 4) {
         return cmdExport(args[1], args[2], args[3], compress);
     }
+    if (command == L"verify" && args.size() == 2) {
+        return cmdVerify(args[1]);
+    }
+    if (command == L"set-info" && (args.size() == 4 || args.size() == 5)) {
+        return cmdSetInfo(args[1], args[2], args[3], args.size() == 5 ? args[4] : L"", flags);
+    }
     if (command == L"optimize" && args.size() == 2) {
         return cmdOptimize(args[1]);
     }
@@ -944,6 +1042,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"component" && args.size() == 3) {
         return cmdComponent(args[1], args[2], remove);
+    }
+    if (command == L"edition" && args.size() == 2) {
+        return cmdEdition(args[1], serviceSet, asJson);
     }
     if (command == L"store-cleanup" && args.size() == 2) {
         return cmdStoreCleanup(args[1], resetBase);

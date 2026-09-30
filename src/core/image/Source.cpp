@@ -111,4 +111,24 @@ Result<SourceInfo> openSource(const std::filesystem::path& input) {
     return info;
 }
 
+Result<std::shared_ptr<const ByteSource>> openInstallImage(const SourceInfo& source) {
+    if (source.format == ImageFormat::Iso) {
+        auto iso = UdfImage::open(source.path);
+        if (!iso) {
+            return std::unexpected(iso.error());
+        }
+        auto node = iso->find(source.installImage);
+        if (!node) {
+            return std::unexpected(node.error());
+        }
+        return iso->openFile(std::move(*node));
+    }
+    auto file = DiskFile::open(source.format == ImageFormat::Folder ? nativePath(source.path / source.installImage)
+                                                                    : nativePath(source.path));
+    if (!file) {
+        return std::unexpected(file.error());
+    }
+    return std::shared_ptr<const ByteSource>(std::move(*file));
+}
+
 } // namespace wl::core

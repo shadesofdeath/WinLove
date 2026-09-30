@@ -232,3 +232,23 @@ Karar:
 - ISO logu dosyanın eklenip eklenmediğini yazar (`answer file: …`).
 - Gereksinimler'e işlemci ve disk boyutu denetimleri eklendi (LabConfig `BypassCPUCheck`, `BypassStorageCheck`):
   VM'lerde TPM kadar sık takılan iki denetim.
+
+## D-035 — İmajlar: çoklu seçim, yeniden adlandırma, kendi doğrulayıcımız; sürüm yükseltme kanıt bekliyor (2026-09-30)
+Bağlam: Kullanıcı İmajlar sayfasına dört özellik istedi: sürüm bilgilerini düzenleme, sürüm yükseltme, çoklu seçim,
+WIM bütünlük denetimi.
+Karar:
+- **Çoklu seçim** durumda tutulur (`AppState::selection()`, sıralı; `selectedIndex()` içlerinden birincil olan).
+  Kurallar widget'tan ayrı, saf bir yapıda (`EditionSelection`): tık = tek, onay kutusu / Ctrl+tık = ekle-çıkar,
+  Shift = aralık, Ctrl+A = hepsi. Sil ve dışa aktar işaretlilerin hepsini alır; bağla ve yeniden adlandır birincili.
+- **Yeniden adlandırma** wimgapi ile (`WIMSetImageInformation`): ad NAME + DISPLAYNAME'e, açıklama DESCRIPTION +
+  DISPLAYDESCRIPTION'a birlikte yazılır — ayrı ayrı sormak Setup'ta görünmeyen bir ad üretmenin yolu olurdu.
+  FLAGS arayüzde yok (motor ve CLI alır; sürüm yükseltme kullanacak).
+- **Doğrulama kendi kodumuz**: wimgapi'nin "verify" bayrakları yalnız bütünlük tablosuna bakar, Microsoft imajlarında
+  o tablo yok (başlıkta boş); `WIM_FLAG_NO_APPLY` veriyi hiç okumuyor (ölçüldü: 0,2 sn). Bu yüzden lookup table +
+  chunk tabloları + LZX çözücü (`core/image/wim/Lzx`, ~300 satır, yalnız çözme) + BCrypt SHA-1; XPRESS için
+  `RtlDecompressBufferEx`. 8 iş parçacığı, akış başına bağımsız. Yazma tarafı wimgapi'de kalır. ESD (LZMS) kapsam
+  dışı. Doğruluğun kanıtı imajın kendisi: 94.409 akışın hepsi kayıtlı SHA-1'iyle çıkıyor.
+- **Sürüm yükseltme** (`dism.exe /Set-Edition`, DISM API'sinde karşılığı yok): motor (`core/image/dism/Edition`,
+  ortak `DismExe` çalıştırıcısı), `wlcli edition` ve `tools\lab_edition.ps1` yazıldı; **UI yazılmadı** — mount
+  yönetici ister, kural 6 gerçek imaj kanıtı olmadan UI'a izin vermez. Betik geçince: kuyruk işlemi (en başta
+  çalışan yeni bir faz), commit sonrası ad / FLAGS güncellemesi, İmajlar'da "Sürümü yükselt…".

@@ -238,7 +238,19 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
         } else if (startsWith(a, L"--mount=")) {
             options.mountIndex = static_cast<int>(std::wcstol(std::wstring(value(L"--mount=")).c_str(), nullptr, 10));
         } else if (startsWith(a, L"--select=")) {
-            options.selectIndex = static_cast<int>(std::wcstol(std::wstring(value(L"--select=")).c_str(), nullptr, 10));
+            // "4" or "4,2,3": the first is the edition the inspector shows, the rest are marked too.
+            std::wstring_view rest = value(L"--select=");
+            while (!rest.empty()) {
+                const auto comma = rest.find(L',');
+                const int index = static_cast<int>(std::wcstol(std::wstring(rest.substr(0, comma)).c_str(), nullptr, 10));
+                rest = comma == std::wstring_view::npos ? std::wstring_view{} : rest.substr(comma + 1);
+                if (!options.selectIndex) {
+                    options.selectIndex = index;
+                }
+                options.selectMarked.push_back(index);
+            }
+        } else if (startsWith(a, L"--verified=")) {
+            options.verified = std::wstring(value(L"--verified="));
         } else if (startsWith(a, L"--operation=")) {
             options.fakeOperation = std::wstring(value(L"--operation="));
         } else if (startsWith(a, L"--progress=")) {
@@ -693,7 +705,7 @@ int App::renderOffscreen() {
         if (auto info = core::openSource(*m_options.openPath)) {
             m_state->setSource(std::move(*info));
             if (m_options.selectIndex) {
-                m_state->select(*m_options.selectIndex);
+                m_state->selectMany(m_options.selectMarked, *m_options.selectIndex);
             }
             m_shell->showPage(m_options.page.value_or(PageId::Images));
         }
@@ -710,11 +722,16 @@ int App::renderOffscreen() {
     }
     if (m_options.fakeOperation && m_state->source()) {
         const bool reading = *m_options.fakeOperation == L"read";
+        const bool verifying = *m_options.fakeOperation == L"verify";
         EngineOperation op{reading                                  ? EngineOperation::Kind::Reading
+                           : verifying                              ? EngineOperation::Kind::Verifying
                            : *m_options.fakeOperation == L"prepare" ? EngineOperation::Kind::Preparing
                                                                     : EngineOperation::Kind::Mounting,
-                           m_state->selectedImage() ? m_state->selectedImage()->name : L"", L"C:\\WinLove\\mount",
-                           m_state->selectedIndex().value_or(1)};
+                           verifying                  ? std::filesystem::path(m_state->source()->installImage).filename().wstring()
+                           : m_state->selectedImage() ? m_state->selectedImage()->name
+                                                      : L"",
+                           verifying ? m_state->source()->path : std::filesystem::path(L"C:\\WinLove\\mount"),
+                           verifying ? 0 : m_state->selectedIndex().value_or(1)};
         op.startedMs = ui::nowMs() - 60000.0 * m_options.fakeProgress;
         if (reading) {
             // The second progress (D-027): the image is mounted, its lists are being read.
@@ -723,6 +740,13 @@ int App::renderOffscreen() {
         }
         m_state->beginOperation(op);
         m_state->updateOperation(m_options.fakeProgress);
+    }
+    if (m_options.verified && m_state->source()) {
+        core::WimVerifyReport report;
+        report.streams = 94409;
+        report.bytes = 15091372328ull;
+        report.damaged = *m_options.verified == L"damaged" ? 3 : 0;
+        m_shell->onImageVerified(report, std::filesystem::path(m_state->source()->installImage).filename().wstring());
     }
     if (m_options.switchLanguage) {
         // What "Arayüz dili" does at run time: every widget again in the other language, the

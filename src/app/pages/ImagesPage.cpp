@@ -45,15 +45,20 @@ ImagesPage::ImagesPage(AppState& state, ImageController& controller, const Local
     m_strip->onCancel = [this] { m_controller.cancel(); };
 
     m_table = &add<EditionTable>(strings, language);
-    m_table->onSelect = [this](int index) { m_state.select(index); };
+    m_table->onSelect = [this](int primary, std::vector<int> marked) { m_state.selectMany(std::move(marked), primary); };
     m_table->onActivate = [this](int index) {
         if (m_controller.canMount()) {
             m_controller.mount(index);
         }
     };
-    m_table->onDelete = [this](int) {
+    m_table->onDelete = [this] {
         if (onDelete) {
             onDelete();
+        }
+    };
+    m_table->onRename = [this] {
+        if (onRename && m_state.selection().size() == 1) {
+            onRename();
         }
     };
     m_table->onMenu = [this](int, ui::PointF at) { return showRowMenu(at); };
@@ -186,14 +191,33 @@ bool ImagesPage::showRowMenu(ui::PointF at) {
         labels.push_back(m_strings.get(label));
         actions.push_back(std::move(action));
     };
-    if (m_controller.canMount()) {
-        item(Str::ImagesMount, [&controller = m_controller, index = *index] { controller.mount(index); });
-    }
-    item(Str::ImagesExport, onExport);
-    if (m_controller.canDelete()) {
-        item(Str::ImagesDeleteIndex, onDelete);
-        if (m_state.source()->install.images.size() > 2) {
-            item(Str::ImagesKeepOnly, onKeepOnly);
+    const std::size_t marked = m_state.selection().size();
+    const std::size_t editions = m_state.source()->install.images.size();
+    const std::wstring count = std::to_wstring(marked);
+    auto counted = [&](Str label, std::function<void()> action) {
+        labels.push_back(m_strings.format(label, {{L"n", count}}));
+        actions.push_back(std::move(action));
+    };
+    if (marked > 1) {
+        // Several editions: what takes them all.
+        counted(Str::ImagesExportMany, onExport);
+        if (m_controller.canDelete() && marked < editions) {
+            counted(Str::ImagesDeleteMany, onDelete);
+            counted(Str::ImagesKeepSelected, onKeepOnly);
+        }
+    } else {
+        if (m_controller.canMount()) {
+            item(Str::ImagesMount, [&controller = m_controller, index = *index] { controller.mount(index); });
+        }
+        item(Str::ImagesExport, onExport);
+        if (!m_controller.editRefusal()) {
+            item(Str::ImagesRename, onRename);
+        }
+        if (m_controller.canDelete()) {
+            item(Str::ImagesDeleteIndex, onDelete);
+            if (editions > 2) {
+                item(Str::ImagesKeepOnly, onKeepOnly);
+            }
         }
     }
     auto popup = std::make_unique<ui::MenuPopup>(
@@ -209,6 +233,13 @@ bool ImagesPage::showRowMenu(ui::PointF at) {
     return true;
 }
 
+void ImagesPage::showNotice(ui::InfoKind kind, const std::wstring& title, const std::wstring& message) {
+    m_error->set(kind, title, message);
+    m_error->setAction(L"", nullptr);
+    m_error->setVisible(true);
+    layout();
+}
+
 void ImagesPage::refresh(AppState::Change change) {
     const auto& source = m_state.source();
     m_empty->setVisible(!source);
@@ -216,7 +247,7 @@ void ImagesPage::refresh(AppState::Change change) {
     if (change == AppState::Change::Source) {
         m_table->setImages(source ? source->install.images : std::vector<core::ImageInfo>{});
     }
-    m_table->setSelected(m_state.selectedIndex());
+    m_table->setSelection(m_state.selectedIndex(), m_state.selection());
     updateFolderBar();
 
     const auto& op = m_state.operation();
@@ -228,7 +259,9 @@ void ImagesPage::refresh(AppState::Change change) {
     }
     // While its contents are read the image is already mounted: the row says so.
     if (op && op->kind != EngineOperation::Kind::Reading) {
-        m_table->setRowState(op->index, EditionTable::RowState::Working, true);
+        // "Bağlanıyor" is for a mount; any other work only dims the rows it is not about.
+        const bool mounting = op->kind == EngineOperation::Kind::Mounting || op->kind == EngineOperation::Kind::Preparing;
+        m_table->setRowState(op->index, mounting ? EditionTable::RowState::Working : EditionTable::RowState::Normal, true);
     } else if (const auto& mounted = m_state.mounted()) {
         m_table->setRowState(mounted->index, EditionTable::RowState::Mounted, false);
     } else if (const auto failed = m_controller.failedIndex()) {

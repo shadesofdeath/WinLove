@@ -36,9 +36,11 @@ add_library(wl_app STATIC
     pages/ImagesPage.cpp
     pages/IsoPage.cpp
     pages/LogsPage.cpp
+    pages/images/EditionSelection.cpp
     pages/images/EditionTable.cpp
     pages/images/ImageInspector.cpp
     pages/images/OperationStrip.cpp
+    pages/images/RenameDialog.cpp
     pages/PageInfo.cpp
     pages/PostSetupPage.cpp
     pages/PresetsPage.cpp

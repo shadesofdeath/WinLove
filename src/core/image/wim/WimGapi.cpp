@@ -2,7 +2,10 @@
 
 #include "base/Log.h"
 #include "base/Path.h"
+#include "base/Utf8.h"
 #include "core/io/ByteSource.h"
+
+#include <pugixml.hpp>
 
 #include <windows.h>
 
@@ -29,6 +32,8 @@ using SetTemporaryPathFn = BOOL(WINAPI*)(HANDLE, PCWSTR);
 using LoadImageFn = HANDLE(WINAPI*)(HANDLE, DWORD);
 using ExportImageFn = BOOL(WINAPI*)(HANDLE, HANDLE, DWORD);
 using DeleteImageFn = BOOL(WINAPI*)(HANDLE, DWORD);
+using GetImageInformationFn = BOOL(WINAPI*)(HANDLE, PVOID*, PDWORD);
+using SetImageInformationFn = BOOL(WINAPI*)(HANDLE, PVOID, DWORD);
 using CallbackFn = DWORD(CALLBACK*)(DWORD, WPARAM, LPARAM, PVOID);
 using RegisterCallbackFn = DWORD(WINAPI*)(HANDLE, FARPROC, PVOID);
 using UnregisterCallbackFn = BOOL(WINAPI*)(HANDLE, FARPROC);
@@ -40,6 +45,8 @@ struct Api {
     LoadImageFn loadImage = nullptr;
     ExportImageFn exportImage = nullptr;
     DeleteImageFn deleteImage = nullptr;
+    GetImageInformationFn getImageInformation = nullptr;
+    SetImageInformationFn setImageInformation = nullptr;
     RegisterCallbackFn registerCallback = nullptr;
     UnregisterCallbackFn unregisterCallback = nullptr;
 };
@@ -64,6 +71,8 @@ Result<const Api*> api() {
                         load(m, "WIMSetTemporaryPath", instance.setTemporaryPath) &&
                         load(m, "WIMLoadImage", instance.loadImage) && load(m, "WIMExportImage", instance.exportImage) &&
                         load(m, "WIMDeleteImage", instance.deleteImage) &&
+                        load(m, "WIMGetImageInformation", instance.getImageInformation) &&
+                        load(m, "WIMSetImageInformation", instance.setImageInformation) &&
                         load(m, "WIMRegisterMessageCallback", instance.registerCallback) &&
                         load(m, "WIMUnregisterMessageCallback", instance.unregisterCallback);
         if (!ok) {
@@ -314,6 +323,73 @@ Result<void> removeImages(const std::filesystem::path& wimInput, std::span<const
         return {};
     }
     return rewriteWith(wim, info->header.compression, keep, task, L"remove");
+}
+
+Result<void> setImageText(const std::filesystem::path& wimInput, int index, const ImageText& text) {
+    const std::filesystem::path wim = nativePath(wimInput);
+    auto clean = [](std::wstring value) {
+        std::erase_if(value, [](wchar_t c) { return c < L' '; });
+        const auto first = value.find_first_not_of(L' ');
+        const auto last = value.find_last_not_of(L' ');
+        return first == std::wstring::npos ? std::wstring() : value.substr(first, last - first + 1);
+    };
+    const std::wstring name = clean(text.name);
+    if (name.empty() || name.size() > 255) {
+        return fail(ErrorCode::InvalidArgument, L"an edition needs a name of 1 to 255 characters", wim.wstring());
+    }
+    auto a = api();
+    if (!a) {
+        return std::unexpected(a.error());
+    }
+    const Api* w = *a;
+    WimHandle file{w, w->createFile(wim.c_str(), GENERIC_WRITE | GENERIC_READ, kOpenExisting, 0, 0, nullptr)};
+    if (!file.h) {
+        return std::unexpected(lastError(L"open " + wim.wstring()));
+    }
+    w->setTemporaryPath(file.h, wim.parent_path().c_str());
+    WimHandle image{w, w->loadImage(file.h, static_cast<DWORD>(index))};
+    if (!image.h) {
+        return std::unexpected(lastError(std::format(L"load index {} of {}", index, wim.wstring())));
+    }
+    // The image's own <IMAGE> element, UTF-16 with a byte order mark; wimgapi owns the numbers
+    // in it (sizes, times), the texts are ours to set.
+    PVOID current = nullptr;
+    DWORD currentSize = 0;
+    if (!w->getImageInformation(image.h, &current, &currentSize)) {
+        return std::unexpected(lastError(std::format(L"read the description of index {} of {}", index, wim.wstring())));
+    }
+    pugi::xml_document doc;
+    const auto parsed = doc.load_buffer(current, currentSize, pugi::parse_default, pugi::encoding_auto);
+    LocalFree(current);
+    pugi::xml_node node = doc.child("IMAGE");
+    if (!parsed || !node) {
+        return fail(ErrorCode::ParseError, L"the image description is not the XML expected", wim.wstring());
+    }
+    auto set = [&](const char* tag, const std::wstring& value) {
+        pugi::xml_node child = node.child(tag);
+        if (!child) {
+            child = node.append_child(tag);
+        }
+        child.text().set(utf8::fromWide(value).c_str());
+    };
+    set("NAME", name);
+    set("DESCRIPTION", clean(text.description));
+    // What Setup's edition list shows (Windows 10 and later); older images do not have them.
+    set("DISPLAYNAME", name);
+    set("DISPLAYDESCRIPTION", clean(text.description));
+    if (text.flags) {
+        set("FLAGS", clean(*text.flags));
+    }
+    struct Bytes final : pugi::xml_writer {
+        std::string data;
+        void write(const void* chunk, std::size_t size) override { data.append(static_cast<const char*>(chunk), size); }
+    } out;
+    doc.save(out, "", pugi::format_raw | pugi::format_no_declaration | pugi::format_write_bom, pugi::encoding_utf16_le);
+    log::info("wim", std::format(L"rename index {} of {}: {}", index, wim.wstring(), name));
+    if (!w->setImageInformation(image.h, out.data.data(), static_cast<DWORD>(out.data.size()))) {
+        return std::unexpected(lastError(std::format(L"write the description of index {} of {}", index, wim.wstring())));
+    }
+    return {};
 }
 
 std::optional<int> indexAfterRemoval(int index, std::span<const int> removed) {

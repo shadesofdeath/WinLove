@@ -23,10 +23,13 @@ public:
 
     // "Devam et" on the mount-folder bar: restore the mount found there (Shell::continueFolderMount).
     std::function<void()> onContinueMount;
-    // Row menu / Del, on the selected edition (the Shell owns the dialogs).
+    // Row menu / Del / F2, on the marked editions (the Shell owns the dialogs).
     std::function<void()> onExport;
     std::function<void()> onDelete;
     std::function<void()> onKeepOnly;
+    std::function<void()> onRename;
+    // A result that stays on the page until closed (e.g. what "Doğrula" found).
+    void showNotice(ui::InfoKind kind, const std::wstring& title, const std::wstring& message);
 
     [[nodiscard]] static Str remedyText(core::Remedy remedy) noexcept;
     [[nodiscard]] static Str folderStateText(core::MountState state) noexcept;
@@ -37,7 +40,8 @@ public:
 private:
     void refresh(AppState::Change change);
     void updateFolderBar();
-    bool showRowMenu(ui::PointF at); // Bağla / Dışa aktar / Sürümü sil… / Yalnız bu sürümü tut…
+    bool showRowMenu(ui::PointF at); // one edition: Bağla / Dışa aktar / Yeniden adlandır… / Sürümü sil… /
+                                     // Yalnız bu sürümü tut…; several: export / delete / keep them
 
     AppState& m_state;
     ImageController& m_controller;

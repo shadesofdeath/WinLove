@@ -44,7 +44,9 @@
     "mounting": "Bağlanıyor",
     "reading": "İçerik okunuyor",
     "applying": "Uygulanıyor",
-    "building": "ISO oluşturuluyor"
+    "building": "ISO oluşturuluyor",
+    "verifying": "Doğrulanıyor",
+    "working": "İmaj işleniyor"
   },
   "common": {
     "search": "Ara",
@@ -121,7 +123,7 @@
   },
   "images": {
     "title": "Sürümler",
-    "desc": "İmajdaki sürümleri yönet: bağla, dışa aktar, dönüştür, birleştir.",
+    "desc": "İmajdaki sürümleri yönet: bağla, dışa aktar, yeniden adlandır, sil, doğrula.",
     "mount": "Bağla (mount)",
     "unmount": "Çöz (unmount)",
     "esdToWim": "ESD → WIM",
@@ -182,7 +184,7 @@
     "mountingState": "Bağlanıyor",
     "esdNoMount": "ESD bağlanamaz — önce ESD → WIM",
     "esdOnly": "Yalnızca ESD kaynaklar için",
-    "deleteNeedsWim": "ESD veya bölünmüş imajdan sürüm silinemez — önce WIM'e dönüştür",
+    "deleteNeedsWim": "ESD veya bölünmüş imaj düzenlenemez — önce WIM'e dönüştür",
     "lastEdition": "İmajda tek sürüm var",
     "unmountTitle": "İmaj çözülsün mü?",
     "unmountBody": "Bağlı imajdaki değişiklikler WIM dosyasına kaydedilsin mi? Kaydetmeden çözersen dosya değişmeden kalır.",
@@ -214,7 +216,23 @@
     "folderImageMissing": "WIM dosyası kayıp",
     "folderOrphaned": "yarım kalmış (artık dosyalar)",
     "folderFound": "Bağlı imaj bulundu: {edition} (index {index})",
-    "folderContinue": "Devam et"
+    "folderContinue": "Devam et",
+    "rename": "Yeniden adlandır…",
+    "renaming": "{edition} yeniden adlandırılıyor",
+    "renamedToast": "Ad değişti: {edition}",
+    "verify": "Doğrula",
+    "verifyHint": "İmajdaki her akışı okuyup SHA-1 özetiyle karşılaştırır; imaj değişmez",
+    "verifying": "{edition} doğrulanıyor",
+    "verifyEsd": "ESD doğrulanamaz — önce ESD → WIM",
+    "verifySound": "{file} sağlam",
+    "verifySoundBody": "{n} akış okundu ({size}); hepsi SHA-1 özetiyle uyuşuyor.",
+    "verifyDamaged": "{file} bozuk",
+    "verifyDamagedBody": "{total} akıştan {n} tanesi SHA-1 özetiyle uyuşmuyor. Dosyayı yeniden indir ya da kopyala; bozuk akışların yeri Loglar'da.",
+    "exportMany": "Seçili {n} sürümü dışa aktar…",
+    "deleteMany": "Seçili {n} sürümü sil…",
+    "keepSelected": "Yalnız seçili {n} sürümü tut…",
+    "keepOne": "İmajda en az bir sürüm kalmalı",
+    "selectedHint": "{n} sürüm seçili: dışa aktar veya sil."
   },
   "components": {
     "title": "Bileşenler",
@@ -820,7 +838,13 @@
     "unsavedTitle": "Kaydedilmemiş değişiklikler",
     "unsavedBody": "Kuyrukta {n} değişiklik var. Çıkmadan preset olarak kaydetmek ister misin?",
     "busyCloseTitle": "Bir işlem sürüyor",
-    "busyCloseBody": "İmaj bağlama, uygulama veya ISO oluşturma devam ediyor. Şimdi kapatmak imajı yarım bırakabilir; işlem bitince (ya da durdurulunca) kapat."
+    "busyCloseBody": "İmaj bağlama, uygulama veya ISO oluşturma devam ediyor. Şimdi kapatmak imajı yarım bırakabilir; işlem bitince (ya da durdurulunca) kapat.",
+    "deleteManyTitle": "{n} sürüm silinsin mi?",
+    "deleteManyBody": "{names} imajdan kalıcı olarak silinecek. İmaj dosyası kalan sürümlerle yeniden yazılır.",
+    "keepManyBody": "Seçili {k} sürüm kalacak; diğer {n} sürüm imajdan kalıcı olarak silinecek. İmaj dosyası yeniden yazılır.",
+    "renameTitle": "Sürümü yeniden adlandır",
+    "renameDescription": "Açıklama",
+    "renameHint": "Windows Kurulumu'nun sürüm listesinde ve DISM'de bu ad görünür."
   },
   "toasts": {
     "imageAdded": "İmaj eklendi",
