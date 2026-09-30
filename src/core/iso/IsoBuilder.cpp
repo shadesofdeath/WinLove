@@ -188,6 +188,22 @@ Result<IsoResult> buildIso(const IsoOptions& options, const TaskContext& task) {
     if (FAILED(hr)) {
         return comFail(hr, L"add " + folder.wstring());
     }
+    for (const auto& file : options.rootFiles) {
+        Com<IStream> content;
+        *content.put() = SHCreateMemStream(reinterpret_cast<const BYTE*>(file.content.data()),
+                                           static_cast<UINT>(file.content.size()));
+        if (!content.get()) {
+            return comFail(E_OUTOFMEMORY, L"stream for " + file.name);
+        }
+        BSTR name = SysAllocString(file.name.c_str());
+        root->Remove(name); // the folder's own copy, if any (fails when there is none: fine)
+        hr = root->AddFile(name, content.get());
+        SysFreeString(name);
+        if (FAILED(hr)) {
+            return comFail(hr, L"add " + file.name);
+        }
+        log::info("iso", std::format(L"added {} ({} bytes) to the image root", file.name, file.content.size()));
+    }
 
     Com<IFileSystemImageResult> result;
     if (FAILED(hr = image->CreateResultImage(result.put()))) {

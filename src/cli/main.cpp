@@ -18,6 +18,7 @@
 #include "core/ops/Planner.h"
 #include "core/image/WindowsRelease.h"
 #include "core/system/Privileges.h"
+#include "core/unattend/Unattend.h"
 
 #include <json.hpp>
 
@@ -522,6 +523,27 @@ int cmdServices(const std::wstring& dir, const std::wstring& set, bool asJson) {
     return 0;
 }
 
+// P13: read an answer file for the options WinLove knows and print the file it would write.
+int cmdUnattend(const std::wstring& file) {
+    std::ifstream in(file, std::ios::binary);
+    if (!in) {
+        return reportError(Error{ErrorCode::NotFound, L"could not open the answer file", file, 0});
+    }
+    const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const auto options = core::parseUnattendXml(bytes);
+    if (!options) {
+        return reportError(options.error());
+    }
+    print(core::buildUnattendXml(*options));
+    const auto problems = core::validateUnattend(*options);
+    for (const auto problem : problems) {
+        static constexpr const wchar_t* kNames[] = {L"computer name", L"account name", L"product key",
+                                                   L"automatic logon needs a local account"};
+        print(std::format(L"problem: {}\n", kNames[static_cast<std::size_t>(problem)]));
+    }
+    return problems.empty() ? 0 : 1;
+}
+
 // P11: parse a .reg file (no admin) and optionally apply it to a mounted image's hives.
 // --first-logon: what the app does with an imported .reg file — also record every value for the
 // post-setup import (SetupComplete.cmd / default-user RunOnce, D-026).
@@ -629,6 +651,7 @@ void printUsage() {
           L"  wlcli mounts | cleanup\n"
           L"  wlcli packages|features|capabilities <mountdir>\n"
           L"  wlcli iso <setup-folder> <out.iso> [--label=X] [--boot=both|uefi|bios] [--sha256] [--no-prompt]\n"
+          L"  wlcli unattend <answer.xml>         (read an answer file; print it as WinLove writes it, P13)\n"
           L"  wlcli reg <file.reg> [<mountdir>] [--first-logon]   (parse; with a mount: write into the image's\n"
           L"                                      hives, P11; --first-logon: also re-import after setup)\n"
           L"  wlcli services <mountdir> [--set=Name=auto|autoDelayed|manual|disabled]   (P10)\n"
@@ -748,6 +771,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"iso" && args.size() == 3) {
         return cmdIso(args[1], args[2], label, boot, sha, noPrompt);
+    }
+    if (command == L"unattend" && args.size() == 2) {
+        return cmdUnattend(args[1]);
     }
     if (command == L"reg" && (args.size() == 2 || args.size() == 3)) {
         return cmdReg(args[1], args.size() == 3 ? args[2] : std::wstring(), firstLogon);

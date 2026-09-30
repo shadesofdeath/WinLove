@@ -10,6 +10,7 @@ add_executable(wl_tests
     core/RegistryTests.cpp
     core/ImageFormatTests.cpp
     core/IsoTests.cpp
+    core/UnattendTests.cpp
     core/UpdateTests.cpp
     ui/TokensTests.cpp
     ui/IconsTests.cpp

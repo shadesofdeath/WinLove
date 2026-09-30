@@ -16,6 +16,8 @@ public:
     SearchBox(std::wstring placeholder, std::vector<std::wstring> hintKeys = {});
     // Plain TextBox (textbox.md): no search icon, no clear button, no keycap hint.
     void setPlain(bool plain) noexcept { m_plain = plain; }
+    // Password field: bullets instead of the text; copy and cut are off.
+    void setPassword(bool password) noexcept { m_password = password; }
 
     std::function<void(const std::wstring&)> onChange;
     std::function<void()> onSubmit; // Enter
@@ -41,6 +43,7 @@ private:
     [[nodiscard]] std::size_t indexAt(float x) const;
     [[nodiscard]] float offsetOf(std::size_t index) const; // text-space x of a caret index
     [[nodiscard]] bool hasSelection() const noexcept { return m_anchor != m_caret; }
+    [[nodiscard]] std::wstring displayText() const; // what is drawn and measured
     void replaceSelection(std::wstring_view with);
     void moveCaret(std::size_t to, bool extend);
     void changed();
@@ -55,6 +58,7 @@ private:
     float m_width = 240.0f;
     bool m_dragging = false;
     bool m_plain = false;
+    bool m_password = false;
 };
 
 } // namespace wl::ui
