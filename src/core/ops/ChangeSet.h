@@ -33,6 +33,7 @@ enum class OpKind : std::uint8_t {
     RemoveComponent,       // P07 system component: target = catalog id, value = its recipe as JSON
     CleanupImage,          // component store cleanup: target "component-store", value = options JSON
     SetEdition,            // edition upgrade: target "edition" (one slot), value = the edition id ("Professional")
+    WriteFile,             // a text file in the image: target = its path from the image root, value = the text
 };
 
 enum class Risk : std::uint8_t { Low, Medium, High };

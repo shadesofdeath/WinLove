@@ -237,6 +237,9 @@ std::vector<PresetController::Item> PresetController::items(const Preset& preset
             result.push_back({kServices, plainKey(op), op.target, start ? s(startLabel(*start)) : op.value, {}});
             break;
         }
+        case OpKind::WriteFile: // one that no known setting owns (a preset written by hand)
+            result.push_back({kTweaks, L"file|" + lowered(op.target), file, s(Str::PresetsValueAdd), {}});
+            break;
         case OpKind::SetPostSetup:
             if (const auto plan = core::postSetupFromJson(utf8::fromWide(op.value))) {
                 for (const auto& step : plan->steps) {

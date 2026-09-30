@@ -23,6 +23,12 @@
 - **Kaynak sayfası (2026-09-30, kullanıcı isteği):** son kullanılanlardan kaldırma (satır sonunda ×, `Del`, sağ tık
   menüsü) + çalışma kopyasını silme dialogu; UI çatısına sağ tık yönlendirmesi eklendi (`Widget::onContextMenu`).
   Dialogun kendisi render'da görülmedi (diskte çalışma kopyası yoktu); liste girdisini kaldırma ve menü görüldü.
+- **Başlat menüsü temizliği (2026-09-30, kullanıcı isteği, D-040):** Ayarlar / Tweaks → Başlat menüsü sekmesine
+  "Sabitlenmiş uygulamalar ve kutucuklar" (Windows 11: `ConfigureStartPins`; Windows 10: `LayoutModification.xml` —
+  yeni kuyruk işlemi `WriteFile`); "Reklam uygulamalarının otomatik kurulumu" varsayılan profilin
+  `ContentDeliveryManager` değerleriyle genişledi (artık ilk oturumda da uygulanır); "Widget'lar" Windows 10'un
+  "Haberler ve ilgi alanları"nı da kapatır. **Kanıt:** birim testleri + render; gerçek imajda Uygula çalıştırılmadı,
+  kurulan Windows'taki etkisi görülmedi. **Bir sonraki somut adım:** kullanıcı üç ayarı kapatıp Uygula → ISO → VM.
 - **OneDrive ve yeni Outlook OOBE'de kurulmasın (2026-09-30, kullanıcı VM testi, Windows 10, D-039):** kullanıcı
   Windows 10'da her şeyin çalıştığını, ama internet varken OneDrive ve Outlook'un yine kurulduğunu bildirdi. Neden:
   OneDrive bileşeni Windows 10'da listelenmiyordu (dosya `SysWOW64`'te); Outlook bir güncelleme kaydıyla iniyor.
@@ -146,7 +152,7 @@
   (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
   ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
   (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
-- **Build:** `./build.ps1 -Dist` yeşil, 198 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Build:** `./build.ps1 -Dist` yeşil, 203 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi (bilerek yazılmadı: denenemeyen disk biçimlendirme kodu; ISO'yu
@@ -180,6 +186,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — Yanıt dosyası doldurulunca ISO'ya kendiliğinden giriyor; işlemci / disk denetimi atlama; imajda olmayan AppX başarı (D-034).
 - 2026-09-30 — İmajlar: çoklu seçim, yeniden adlandırma, WIM doğrulama (kendi LZX çözücümüz), sürüm yükseltme (D-035).
 - 2026-09-30 — Yanıt dosyası: `UserData` her zaman `ProductKey` ile (genel anahtar / yer tutucu) (D-036).
+- 2026-09-30 — Başlat menüsü temizliği: boş sabitlenenler / kutucuklar (`WriteFile`), reklam uygulamaları, widget (D-040).
 - 2026-09-30 — OneDrive (Windows 10 yolları) ve yeni Outlook'un OOBE kurulumunu engelleyen bileşenler (D-039).
 - 2026-09-30 — boot.wim yaması gerçek imajda kanıtlandı; ISO sayfasına "atlamaları boot.wim'e de yaz" (D-038).
 - 2026-09-30 — Yerel uygulama kaldırma gerçek imajda kanıtlandı, Applier'a bağlandı, katalog kilidi kalktı (D-038).

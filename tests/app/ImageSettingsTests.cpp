@@ -212,7 +212,70 @@ TEST_CASE("form and Registry page share the queue: a tweak checked there shows h
     const auto widgetTweak = std::ranges::find(registry.catalog().tweaks(), std::string("widgets"), &Tweak::id);
     REQUIRE(widgetTweak != registry.catalog().tweaks().end());
     CHECK(registry.checked(*widgetTweak));
-    CHECK(f.state.changes().size() == 3); // two theme values + the widget policy: no duplicates
+    CHECK(f.state.changes().size() == 4); // two theme values + the widget policies of either Windows: no duplicates
+}
+
+TEST_CASE("form: an empty Start is a policy value (Windows 11) and a layout file (Windows 10)") {
+    Fixture f;
+    const auto& catalog = f.controller.catalog();
+    const auto& pins = setting(catalog, "start-pins");
+    CHECK(f.controller.current(pins) == option(pins, "on"));
+    f.controller.select(pins, option(pins, "off"));
+    REQUIRE(f.state.changes().size() == 2);
+
+    // The value the Applier will write is the JSON Windows expects, quotes and all.
+    const auto& policy = f.state.changes().operations()[0];
+    CHECK(policy.kind == OpKind::SetRegistryValue);
+    const auto written = core::registryWriteFrom(policy.target, policy.value);
+    REQUIRE(written);
+    CHECK(written->name == L"ConfigureStartPins");
+    CHECK(written->type == REG_SZ);
+    CHECK(std::wstring(reinterpret_cast<const wchar_t*>(written->data.data()), written->data.size() / 2 - 1) ==
+          LR"({"pinnedList":[]})");
+
+    const auto* file = f.state.changes().find(
+        OpKind::WriteFile, L"Users\\Default\\AppData\\Local\\Microsoft\\Windows\\Shell\\LayoutModification.xml");
+    REQUIRE(file);
+    CHECK(file->value.starts_with(L"<LayoutModificationTemplate "));
+    CHECK(file->value.find(L"<defaultlayout:StartLayout GroupCellWidth=\"6\" />") != std::wstring::npos);
+    CHECK(file->value.find(L"start:Tile") == std::wstring::npos); // no tile: that is the point
+    CHECK(f.controller.current(pins) == option(pins, "off"));
+    CHECK(f.controller.changedCount() == 1);
+
+    // A preset keeps the file: the queue survives the trip through its JSON.
+    const auto back = core::ops::ChangeSet::fromJson(f.state.changes().toJson());
+    REQUIRE(back);
+    CHECK(ImageSettingsController::optionIn(*back, pins) == option(pins, "off"));
+
+    f.controller.select(pins, pins.defaultOption);
+    CHECK(f.state.changes().empty());
+
+    // The promoted apps: the policy alone only counts on Enterprise, the default profile's values do the work.
+    const auto& promoted = setting(catalog, "consumer-features");
+    f.controller.select(promoted, option(promoted, "off"));
+    CHECK(f.state.changes().count(OpKind::SetRegistryFirstLogon) == 7);
+    CHECK(f.state.changes().find(
+        OpKind::SetRegistryFirstLogon,
+        L"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager::SilentInstalledAppsEnabled"));
+}
+
+TEST_CASE("settings catalog: a file outside the default profile and ProgramData is a malformed setting") {
+    const auto catalog = ImageSettingsCatalog::parse(R"({
+      "format": "winlove.catalog.settings",
+      "tabs": [ { "id": "t", "tr": "T", "en": "T" } ],
+      "sections": [ { "id": "s", "tab": "t", "tr": "S", "en": "S" } ],
+      "settings": [
+        { "id": "ok", "section": "s", "control": "toggle", "tr": "a", "en": "a", "default": "on",
+          "files": [ { "path": "ProgramData\\WinLove\\note.txt", "content": "x" } ] },
+        { "id": "system32", "section": "s", "control": "toggle", "tr": "a", "en": "a", "default": "on",
+          "files": [ { "path": "Windows\\System32\\x.dll", "content": "x" } ] },
+        { "id": "up", "section": "s", "control": "toggle", "tr": "a", "en": "a", "default": "on",
+          "files": [ { "path": "Users\\Default\\..\\Public\\x.txt", "content": "x" } ] }
+      ] })");
+    REQUIRE(catalog);
+    REQUIRE(catalog->settings().size() == 1);
+    CHECK(catalog->settings().front().id == "ok");
+    CHECK(catalog->settings().front().options[0].files.size() == 1);
 }
 
 TEST_CASE("form: 'apply recommended' picks every recommended option once") {

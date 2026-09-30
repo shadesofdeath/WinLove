@@ -12,6 +12,7 @@ add_executable(wl_tests
     core/RegistryTests.cpp
     core/SystemComponentTests.cpp
     core/ImageEditionTests.cpp
+    core/ImageFilesTests.cpp
     core/ImageFormatTests.cpp
     core/IsoTests.cpp
     core/PostSetupTests.cpp

@@ -20,6 +20,7 @@ Phase phaseOf(OpKind kind) noexcept {
     case OpKind::SetRegistryValue:
     case OpKind::SetRegistryFirstLogon:
     case OpKind::SetPostSetup:
+    case OpKind::WriteFile:
     case OpKind::SetServiceStart: return Phase::Settings;
     }
     return Phase::Settings;
@@ -39,6 +40,7 @@ double estimateSeconds(OpKind kind) noexcept {
     case OpKind::AddDriver: return 6.0;
     case OpKind::AddPackage: return 60.0;
     case OpKind::SetRegistryValue:
+    case OpKind::WriteFile:
     case OpKind::SetRegistryFirstLogon: return 0.3;
     case OpKind::SetServiceStart: return 1.0;
     case OpKind::SetPostSetup: return 5.0; // scripts; copy payloads add their own time

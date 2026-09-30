@@ -1,7 +1,7 @@
 #pragma once
 // P12 logic (docs/pages/12-tweaks.md): form settings ↔ ChangeSet operations. Nothing is stored
 // here: the selected option of a setting is read back from the queue — the option whose registry
-// writes and service start types are all queued with its values; none → the Windows default.
+// writes, service start types and files are all queued with its values; none → the Windows default.
 // So a tweak checked on the Registry page (same writes) shows here, and presets restore the form.
 #include "app/catalog/ImageSettingsCatalog.h"
 #include "app/state/AppState.h"

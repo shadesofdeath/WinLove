@@ -46,6 +46,7 @@ Category categoryOf(OpKind kind) {
     case OpKind::SetRegistryFirstLogon: return kRegistry;
     case OpKind::SetServiceStart: return kServices;
     case OpKind::SetEdition:
+    case OpKind::WriteFile:
     case OpKind::SetPostSetup: return kTweaks;
     }
     return kTweaks;

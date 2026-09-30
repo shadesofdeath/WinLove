@@ -4,6 +4,7 @@
 #include "base/Utf8.h"
 #include "core/image/RegistryEdit.h"
 #include "core/image/Services.h"
+#include "core/image/ImageFiles.h"
 #include "core/image/SystemComponents.h"
 #include "core/image/dism/Appx.h"
 #include "core/image/dism/Edition.h"
@@ -104,6 +105,7 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
         registry.reset(); // the recipe loads the hives itself, with the DISM session closed
         return removeComponent(session, *recipe, task);
     }
+    case OpKind::WriteFile: return writeImageFile(session.mountPath(), op.target, utf8::fromWide(op.value));
     case OpKind::SetEdition: {
         registry.reset(); // dism.exe loads the image's hives
         auto changed = setEdition(session, op.value, task);
