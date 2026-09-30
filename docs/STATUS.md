@@ -11,16 +11,14 @@
   sonra doğrudan bir sonraki sayfa. Kullanıcı `dist\WinLove.exe`'yi paralel test ediyor.
 - **Faz 3'ün bütün sayfaları yazıldı** (P01–P04 onaylı, P05–P18 kullanıcı testi bekliyor). Kural 1 gereği Faz 4'e
   geçmeden önce bu sayfaların kullanıcı onayı gerekir.
-- **Bir sonraki somut adım (2026-09-30 akşam):** kullanıcı yönetici PowerShell'de `tools\lab_usb.ps1` (USB yazıcı,
-  VHDX'te) çalıştırır; sonra uygulamada P11 / P12 "imajda" gösterimini önceden Uygula'lanmış bir imajla ve
+- **Bir sonraki somut adım (2026-09-30 akşam):** (`tools\lab_usb.ps1` MBR geçti; kalan `-Gpt` ve gerçek bellek) uygulamada P11 / P12 "imajda" gösterimini önceden Uygula'lanmış bir imajla ve
   "Güncellemeleri bul" akışını dener. Ardından (önceki adım sürüyor) VM'de kendi imajını deniyor (`docs/TESTING.md` → "VM kabul testi");
   testten gelen düzeltmeler sırayla. Log: `%LOCALAPPDATA%\WinLove\logs\WinLove-*.log` (oturum başına bir dosya).
 - **USB'ye yazma (2026-09-30, kullanıcı seçimi — üç özellikten 3.sü, D-047):** ISO sayfasının USB sekmesi: yalnız
   USB / SD diskleri (sistem diski asla), MBR (BIOS + UEFI) / GPT (UEFI), FAT32, 4 GB'tan büyük install.wim → .swm,
   yanıt dosyası + boot.wim atlamaları ISO'daki gibi; her zaman görünen silme uyarısı + adıyla onay. **Kanıt:** disk
-  listeleme gerçek makinede; birim testleri; hat testi (sahte yazıcı); render. **Görülmeyen — bir sonraki somut adım:**
-  kullanıcı yönetici PowerShell'de `powershell -ExecutionPolicy Bypass -File tools\lab_usb.ps1` (ve `-Gpt`) çalıştırır
-  (VHDX'e gerçek diskpart + bootsect + kopya + bölme; `build\lab\setup` hazır); sonra gerçek bellekle önyükleme.
+  listeleme gerçek makinede; birim testleri; hat testi (sahte yazıcı); render. **Gerçek yazma kanıtlandı (kullanıcı, yönetici, 2026-09-30 23:33, `tools\lab_usb.ps1`, MBR): 26 / 26 PASS** — VHDX disk 1 (dosya destekli sanal) yalnız `--allow-virtual` ile listelendi; `--yes` olmadan reddedildi; diskpart 1,4 sn (clean, MBR, FAT32, active, D:); bootsect FAT32 + MBR önyükleme kodunu yazdı; install.wim (6882 MB) 2 .swm parçasına bölündü, DISM 6 sürümü okudu; önyükleme sektörü 55 AA + BOOTMGR; 7733 MB 14 sn (VHDX, önbellek). **Görülmeyen:** `-Gpt`, gerçek bellek
+  ve ondan önyükleme (UEFI + BIOS).
 - **Güncelleme indirme (2026-09-30, kullanıcı seçimi — üç özellikten 2.si, D-046):** Güncellemeler sayfasında
   "Güncellemeleri bul": Microsoft Update Catalog'dan bağlı imajın sürümüne uygun en yeni LCU ve .NET → seçim dialogu
   → `<çalışma kökü>\updates\`e doğrulamalı / devam ettirilebilir indirme → kuyruk. **Kanıt:** `wlcli catalog` üç

@@ -265,9 +265,8 @@ Karar:
   `writeUsb`. Yönetici değilse UAC ile yeniden başlatılır (`--page=iso`), disk yeniden seçilir.
 Kanıt: disk listeleme bu makinede (NVMe sistem diski "system" olarak tanındı, listeye girmedi); saf parçalar birim
 testli (etiket, bölüm boyutu, diskpart betiği, 4 GB planı seyrek dosyayla); hat testi (sahte yazıcıyla: kök dosya,
-yamalı boot.wim, kök sürücü sonucu); render (USB sekmesi, onay). **Görülmeyen — önce bu:** gerçek yazma.
-`tools\lab_usb.ps1` (yönetici) bir VHDX'e yazıp bölüm stili, etkin bölüm, FAT32, BOOTMGR önyükleme kodu, .swm
-parçaları (DISM okuyor mu) denetler. Sonra gerçek bellekle VM / bilgisayar önyüklemesi.
+yamalı boot.wim, kök sürücü sonucu); render (USB sekmesi, onay). **Gerçek yazma kanıtlandı (kullanıcı, yönetici, 2026-09-30 23:33, `tools\lab_usb.ps1`, MBR): 26 / 26 PASS** — VHDX disk 1 (dosya destekli sanal) yalnız `--allow-virtual` ile listelendi; `--yes` olmadan reddedildi; diskpart 1,4 sn (clean, MBR, FAT32, active, D:); bootsect FAT32 + MBR önyükleme kodunu yazdı; install.wim (6882 MB) 2 .swm parçasına bölündü, DISM 6 sürümü okudu; önyükleme sektörü 55 AA + BOOTMGR; 7733 MB 14 sn (VHDX, önbellek). **Görülmeyen:** `-Gpt` çalıştırması, gerçek USB bellek (yazma hızı, çıkarılabilir
+medya) ve ondan önyükleme.
 
 ## D-046 — Güncelleme indirme: Microsoft Update Catalog'dan en yeni LCU / .NET, doğrulamalı indirme (2026-09-30)
 Bağlam: Kullanıcı "güncelleme indirme"yi istedi. P08 yalnız elle getirilen .msu / .cab dosyalarını alıyordu.

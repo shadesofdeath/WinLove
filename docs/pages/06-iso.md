@@ -49,6 +49,7 @@ istemi seçeneği geldi (USB/FAT32 konusu USB sekmesiyle ele alınacak).
 - [ ] Katılımsız Kurulum'da TPM / Secure Boot atlaması seçili, "ISO'ya ekle" kapalı → ISO üret → log'da
       `boot.wim index 2: N requirement check(s) switched off`; TPM'siz VM'de Setup gereksinim uyarısı vermez.
 - [ ] Aynı kaynakla kutu kapalı ISO → boot.wim özgün (kurulum klasöründeki dosyanın boyutu / tarihi hiç değişmedi).
-- [ ] `tools\lab_usb.ps1` (MBR) ve `-Gpt`: ALL PASSED.
+- [x] `tools\lab_usb.ps1` (MBR): ALL PASSED (26 / 26, 2026-09-30).
+- [ ] `tools\lab_usb.ps1 -Gpt`: ALL PASSED.
 - [ ] Gerçek USB bellek: uygulamada yaz → aynı bellekten bir bilgisayar / VM UEFI ve BIOS ile kurulum başlatır;
       install.swm'den sürüm listesi gelir.
