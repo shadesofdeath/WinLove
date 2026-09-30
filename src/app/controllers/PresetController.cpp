@@ -179,10 +179,12 @@ std::vector<PresetController::Item> PresetController::items(const Preset& preset
             continue;
         }
         const auto& chosen = setting.options[static_cast<std::size_t>(option)];
+        // A text / file setting is told by what was typed or picked.
+        const std::wstring typed = ImageSettingsController::valueIn(preset.changes, setting);
         const std::wstring value = setting.control == ImageSetting::Control::Toggle
                                        ? s(option == 1 ? Str::PresetsOn : Str::PresetsOff)
-                                       : chosen.label.get(m_language);
-        const auto ops = ImageSettingsController::operationsFor(setting, option);
+                                       : ImageSettingsController::takesValue(setting) ? typed : chosen.label.get(m_language);
+        const auto ops = ImageSettingsController::operationsFor(setting, option, typed);
         result.push_back({kTweaks, L"setting|" + utf8::toWide(setting.id), setting.label.get(m_language), value,
                           ops.empty() ? std::wstring() : plainKey(ops.front())});
         for (const auto& op : ops) {
@@ -237,6 +239,7 @@ std::vector<PresetController::Item> PresetController::items(const Preset& preset
             result.push_back({kServices, plainKey(op), op.target, start ? s(startLabel(*start)) : op.value, {}});
             break;
         }
+        case OpKind::CopyFile:
         case OpKind::WriteFile: // one that no known setting owns (a preset written by hand)
             result.push_back({kTweaks, L"file|" + lowered(op.target), file, s(Str::PresetsValueAdd), {}});
             break;

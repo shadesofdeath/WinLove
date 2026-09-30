@@ -23,6 +23,16 @@
 - **Kaynak sayfası (2026-09-30, kullanıcı isteği):** son kullanılanlardan kaldırma (satır sonunda ×, `Del`, sağ tık
   menüsü) + çalışma kopyasını silme dialogu; UI çatısına sağ tık yönlendirmesi eklendi (`Widget::onContextMenu`).
   Dialogun kendisi render'da görülmedi (diskte çalışma kopyası yoktu); liste girdisini kaldırma ve menü görüldü.
+- **Yedi yeni özellik (2026-09-30, kullanıcı seçimi 1,2,3,4,5,7,8; D-041):** Ayarlar / Tweaks'e görev çubuğu
+  (sabitlemeler → yalnız Dosya Gezgini, sohbet / toplantı / Cortana düğmeleri), Copilot, Recall, Edge (ilk çalıştırma,
+  kısayol, arka plan), BitLocker otomatik şifreleme, yeni **Güncelleme** sekmesi (otomatik güncelleme, yeniden
+  başlatma, WU sürücüleri, özellik güncellemesi erteleme, teslim iyileştirme), masaüstü simgeleri, **duvar kağıdı**,
+  **kilit ekranı resmi**, **OEM bilgisi** (yeni metin / dosya denetimleri, yeni `CopyFile` işlemi). Kurulum
+  Sonrası'na **Hazır uygulamalar** (42 winget paketi, çoklu seçim). Uygula bitince **Raporu kaydet** (HTML).
+  **Kanıt:** 210 birim testi + render'lar; gerçek imajda Uygula ve VM'de etkileri görülmedi.
+  **Bir sonraki somut adım:** kullanıcı bu ayarlarla Uygula → ISO → VM; bozuk çıkanı logla birlikte bildirir.
+  Kullanıcı ayrıca sürüm yükseltmenin yerini sordu: yalnız imaj bağlıyken İmajlar sayfasında görünüyor (anlatıldı;
+  bağlı değilken de gösterip "önce bağla" demek açık öneri).
 - **Başlat menüsü temizliği (2026-09-30, kullanıcı isteği, D-040):** Ayarlar / Tweaks → Başlat menüsü sekmesine
   "Sabitlenmiş uygulamalar ve kutucuklar" (Windows 11: `ConfigureStartPins`; Windows 10: `LayoutModification.xml` —
   yeni kuyruk işlemi `WriteFile`); "Reklam uygulamalarının otomatik kurulumu" varsayılan profilin
@@ -152,7 +162,7 @@
   (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
   ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
   (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
-- **Build:** `./build.ps1 -Dist` yeşil, 203 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Build:** `./build.ps1 -Dist` yeşil, 210 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi (bilerek yazılmadı: denenemeyen disk biçimlendirme kodu; ISO'yu
@@ -186,6 +196,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — Yanıt dosyası doldurulunca ISO'ya kendiliğinden giriyor; işlemci / disk denetimi atlama; imajda olmayan AppX başarı (D-034).
 - 2026-09-30 — İmajlar: çoklu seçim, yeniden adlandırma, WIM doğrulama (kendi LZX çözücümüz), sürüm yükseltme (D-035).
 - 2026-09-30 — Yanıt dosyası: `UserData` her zaman `ProductKey` ile (genel anahtar / yer tutucu) (D-036).
+- 2026-09-30 — Görev çubuğu, Copilot / Recall / Edge / BitLocker / Windows Update ayarları, masaüstü, duvar kağıdı, kilit ekranı, OEM; hazır uygulamalar; Uygula raporu (D-041).
 - 2026-09-30 — Başlat menüsü temizliği: boş sabitlenenler / kutucuklar (`WriteFile`), reklam uygulamaları, widget (D-040).
 - 2026-09-30 — OneDrive (Windows 10 yolları) ve yeni Outlook'un OOBE kurulumunu engelleyen bileşenler (D-039).
 - 2026-09-30 — boot.wim yaması gerçek imajda kanıtlandı; ISO sayfasına "atlamaları boot.wim'e de yaz" (D-038).

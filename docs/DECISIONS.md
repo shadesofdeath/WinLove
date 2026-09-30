@@ -241,6 +241,26 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-041 — Görev çubuğu, Copilot / Edge / BitLocker / Windows Update ayarları, hazır uygulamalar, rapor, kişiselleştirme (2026-09-30)
+Bağlam: Kullanıcı önerilen listeden 1, 2, 3, 4, 5, 7, 8'i seçti.
+Karar:
+- Hepsi mevcut mekanizmalarla: ayar kataloğu (`settings.json`, P12) + kuyruk işlemleri. Kayıt defteri dışında iki
+  işlem türü: `WriteFile` (D-040) ve yeni **`CopyFile`** (bu bilgisayardaki bir dosya → imajda `Users\Default` /
+  `ProgramData` altı, en çok 64 MB; hedef yol kuralları `WriteFile` ile aynı).
+- Ayar kataloğunda iki yeni denetim: **metin** (OEM bilgisi) ve **dosya** (duvar kağıdı, kilit ekranı). Durum yine
+  kuyruktan türetilir (`ImageSettingsController::valueIn`); presetler değeri taşır. Dosya ayarı yalnız .jpg/.jpeg
+  kabul eder (hedef adı sabit `….jpg`; biçimi uzantıdan tahmin etmek yerine sınırlamak).
+- Görev çubuğu: Microsoft'un OEM yöntemi — `LayoutXMLPath` (REG_EXPAND_SZ, `%ProgramData%\WinLove\…`) ve
+  `PinListPlacement="Replace"` düzeni. Başlat düzeni (D-040) ayrı dosyada: ikisi birlikte seçilebilir.
+- Kilit ekranı `PersonalizationCSP` ile (Pro'da da işleyen tek çevrimdışı yol); yan etkisi: kullanıcı Ayarlar'dan
+  değiştiremez — ipucunda yazıyor. Duvar kağıdı varsayılan profildeki `Control Panel\Desktop` ile; yol `C:\` varsayar.
+- Yeni "Güncelleme" sekmesi (tasarımda yok: sapma). Yeni ayarların hiçbiri önerilenlere alınmadı.
+- Hazır uygulamalar: katalog kodda (`PostSetupController::popularApps`, 42 paket, kategorili), çoklu seçim dialogu.
+- Rapor: `app/ApplyReport` — sayfa ile aynı sözcükler (`applySkipReason`, `applyPhaseName` artık ortak).
+Kanıt durumu: hepsi birim testli + render; **hiçbiri gerçek imajda Uygula ile çalıştırılmadı ve kurulan Windows'taki
+etkileri görülmedi**. Değerler Microsoft'un belgelediği / yaygın kullanılan yöntemlerden; en belirsizleri duvar kağıdı
+(ilk oturumda temanın ezip ezmediği) ve `NoAutoRebootWithLoggedOnUsers` (yalnız zamanlanmış kurulumlarda etkili).
+
 ## D-040 — Başlat menüsü temizliği; yeni kuyruk işlemi `WriteFile` (2026-09-30)
 Bağlam: Kullanıcı Windows 10 ve 11 için Başlat menüsü temizliği istedi (kutucuklar, reklam uygulamaları, widget).
 Windows 11'in sabitlenenleri bir ilke değeriyle boşaltılabiliyor; Windows 10'un kutucukları için kayıt defteri

@@ -47,6 +47,10 @@ yine kaydedilmiştir, logda uyarı kalır.
 Durum çubuğundaki "Uygula · n" düğmesi başka sayfalarda Uygula sayfasını açar; Uygula sayfasının özetindeyken
 başlıktaki düğmeyle aynı işi yapar (çalıştırmayı başlatır).
 
+**Raporu kaydet** (D-041): Tamamlandı ekranının başlığında. Tek sayfalık, dışa bağımlılığı olmayan HTML (UTF-8):
+imaj, kaynak, tarih; önce / sonra / kazanç, süre, adım sayısı, kaydedildi mi; her adım için grup, ad, sonuç
+(atlananlar sayfadaki sözcüklerle nedenli) ve süre. Varsayılan ad `WinLove-rapor-YYYYMMDD-HHMM.html`.
+
 ## 6. Bilinen sınırlar
 - "Kazanç" imajın açılmış boyutudur (XML TOTALBYTES); install.wim dosyasının kendisi export ile küçülür (P06).
 - Bileşen deposu temizliği P07'de (kuyruk işlemi `CleanupImage`, güncellemelerden sonra).

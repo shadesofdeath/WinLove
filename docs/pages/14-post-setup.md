@@ -18,6 +18,11 @@ kurma, **komut** çalıştırma, **dosya kopyalama**. Adımlar Uygula ile imaja 
 - "Kurulum sonu" modunda winget adımı varsa bilgi çubuğu: winget adımları yine ilk oturumda çalışır.
 - Bağlı imaj yoksa boş durum. Nav rozeti: adım sayısı.
 
+**Hazır uygulamalar** (başlık düğmesi, D-041): 42 winget paketinden oluşan kategorili (Tarayıcı, Araçlar, Medya,
+Geliştirme, İletişim, Oyun, Ofis) işaretleme listesi; işaretlenenler tek kuyruk düzenlemesiyle winget adımı olur,
+plandakiler "eklendi" diye pasif görünür. Kimlikler 2026-09-30'da `winget show --id … -e` ile winget deposunda
+doğrulandı. Uygulama Yükleyici (winget) kaldırma kuyruğundaysa dialog bunu söyler.
+
 ## 3. Model
 - Tüm plan kuyrukta **tek işlem**: `SetPostSetup`, hedef `post-setup`, değer = planın JSON'u (sıra + seçenekler).
   Durum ayrı tutulmaz (`PostSetupController::plan()` işlemi okur); preset planı taşır; Uygula tek adımda yazar.

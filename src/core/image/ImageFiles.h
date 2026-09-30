@@ -11,6 +11,7 @@
 #include "base/Result.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <string_view>
 
@@ -25,5 +26,12 @@ inline constexpr std::size_t kImageFileLimit = 1u << 20; // 1 MiB: these are con
 // (Users\Default, ProgramData) must exist: a folder that is not a Windows image gets nothing.
 [[nodiscard]] Result<void> writeImageFile(const std::filesystem::path& mountDir, std::wstring_view relative,
                                           std::string_view content);
+
+// A file of this PC copied into the image (a CopyFile operation: target = the path in the image,
+// value = the source here) — the default wallpaper, the lock screen picture. Same places and
+// rules as writeImageFile; the source must be a regular file of at most kImageCopyLimit bytes.
+inline constexpr std::uint64_t kImageCopyLimit = 64ull << 20;
+[[nodiscard]] Result<void> copyImageFile(const std::filesystem::path& mountDir, std::wstring_view relative,
+                                         const std::filesystem::path& source);
 
 } // namespace wl::core
