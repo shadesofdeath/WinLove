@@ -20,6 +20,7 @@ add_library(wl_app STATIC
     controllers/UnattendController.cpp
     controllers/TaskController.cpp
     controllers/HostsController.cpp
+    controllers/FilesController.cpp
     controllers/UpdateCatalogController.cpp
     ApplyReport.cpp
     Format.cpp
@@ -59,6 +60,7 @@ add_library(wl_app STATIC
     pages/UpdatesPage.cpp
     pages/TasksPage.cpp
     pages/HostsPage.cpp
+    pages/FilesPage.cpp
     pages/source/RecentList.cpp
     shell/CommandPalette.cpp
     shell/NavRail.cpp

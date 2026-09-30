@@ -25,6 +25,7 @@ enum class PageId : std::uint8_t {
     Hosts, // D-049
     Unattended,
     PostSetup,
+    Files, // D-051
     Apply,
     Iso,
     Presets,

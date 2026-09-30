@@ -23,6 +23,7 @@ constexpr std::array<PageInfo, static_cast<std::size_t>(PageId::Count)> kPages =
     {PageId::Hosts, "hosts", Str::NavHosts, Str::HostsTitle, Str::HostsDesc, Icon::Network, 2, "D-049"},
     {PageId::Unattended, "unattended", Str::NavUnattended, Str::UnattendedTitle, Str::UnattendedDesc, Icon::UnattendedRobot, 3, "P13"},
     {PageId::PostSetup, "postsetup", Str::NavPostsetup, Str::PostsetupTitle, Str::PostsetupDesc, Icon::PostSetupRocket, 3, "P14"},
+    {PageId::Files, "files", Str::NavFiles, Str::FilesTitle, Str::FilesDesc, Icon::Folder, 3, "D-051"},
     {PageId::Apply, "apply", Str::NavApply, Str::ApplyTitle, std::nullopt, Icon::ApplyPlay, 4, "P05"},
     {PageId::Iso, "iso", Str::NavIso, Str::IsoTitle, Str::IsoDesc, Icon::IsoBuild, 4, "P06"},
     {PageId::Presets, "presets", Str::NavPresets, Str::PresetsTitle, Str::PresetsDesc, Icon::PresetBookmark, 5, "P15"},
