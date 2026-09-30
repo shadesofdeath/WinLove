@@ -333,13 +333,20 @@ ComponentPresence probeComponent(const std::filesystem::path& mountDir, const Co
         if (!path) {
             continue;
         }
-        WIN32_FILE_ATTRIBUTE_DATA data{};
-        if (!GetFileAttributesExW(path->c_str(), GetFileExInfoStandard, &data)) {
+        // The directory entry, not the file: it carries the reparse tag. A mounted WIM serves its
+        // untouched files as reparse points of its own kind — those ARE the files, and counting
+        // them as links reported OneDriveSetup.exe as 0 bytes on the first real run. Only
+        // junctions / symlinks (name surrogates) are links.
+        WIN32_FIND_DATAW data{};
+        const HANDLE find =
+            FindFirstFileExW(path->c_str(), FindExInfoBasic, &data, FindExSearchNameMatch, nullptr, 0);
+        if (find == INVALID_HANDLE_VALUE) {
             continue;
         }
+        FindClose(find);
         presence.present = true;
-        if (data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
-            continue; // a link: removed as a link, nothing behind it is counted
+        if ((data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) && IsReparseTagNameSurrogate(data.dwReserved0)) {
+            continue; // removed as a link, nothing behind it is counted
         }
         if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
             presence.size += backupFolderSize(*path);

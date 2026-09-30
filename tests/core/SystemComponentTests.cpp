@@ -165,6 +165,11 @@ TEST_CASE("component presence and size; forced removal takes links as links") {
     ComponentRecipe single;
     single.paths = {L"Windows\\System32\\OneDriveSetup.exe"};
     CHECK(probeComponent(image, single).size == 700);
+    // The path itself a junction: there, but nothing behind it is counted.
+    ComponentRecipe link;
+    link.paths = {L"Program Files (x86)\\Microsoft\\Edge\\Link"};
+    CHECK(probeComponent(image, link).present);
+    CHECK(probeComponent(image, link).size == 0);
 
     const fs::path target = *resolveImagePath(image, L"Program Files (x86)\\Microsoft\\Edge");
     SetFileAttributesW((target / L"Application" / L"msedge.dll").c_str(), FILE_ATTRIBUTE_READONLY);
@@ -310,7 +315,7 @@ TEST_CASE("plan: the store cleanup runs first, component removals with the other
 }
 
 TEST_CASE("the recipes tools/lab_components.ps1 feeds to wlcli are valid") {
-    for (const wchar_t* name : {L"recipe-onedrive.json", L"recipe-edge.json"}) {
+    for (const wchar_t* name : {L"recipe-onedrive.json", L"recipe-edge.json", L"recipe-winre.json"}) {
         CAPTURE(name);
         std::ifstream in(fs::path(WL_SOURCE_DIR) / L"tests/integration/fixtures" / name, std::ios::binary);
         REQUIRE(in);
