@@ -47,4 +47,15 @@ struct ApplyJobResult {
                                                  const ApplyPlan& plan, const ApplyJobOptions& options,
                                                  const TaskContext& task, const ApplyJobCallbacks& callbacks = {});
 
+// ---- D-055: the same queue on further editions of the WIM ------------------------------------
+// After the mounted edition, each further one is mounted (read-write) into the same folder, the
+// plan runs on it, and it is committed and unmounted — one after the other. The edition change is
+// left out: it belongs to the edition it was queued on. A commit that fails is discarded so the
+// next edition can be mounted; the WIM is rewritten (optimizeWim) once, by the caller, at the end.
+[[nodiscard]] ApplyPlan planForOtherEdition(const ApplyPlan& plan);
+[[nodiscard]] Result<ApplyJobResult> applyToEdition(Dism& dism, const std::filesystem::path& wim, int index,
+                                                    const std::filesystem::path& mountDir, const ApplyPlan& plan,
+                                                    const ApplyJobOptions& options, const TaskContext& task,
+                                                    const ApplyJobCallbacks& callbacks = {});
+
 } // namespace wl::core::ops

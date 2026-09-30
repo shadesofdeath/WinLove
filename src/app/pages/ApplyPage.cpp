@@ -29,6 +29,8 @@ constexpr float kInfoBar = 32.0f;
 constexpr float kStepsWidth = 420.0f;
 constexpr float kStepRow = 32.0f;
 constexpr float kProgress = 2.0f;
+constexpr float kEditionsLabel = 220.0f; // "Diğer sürümlere de uygula" column (D-055)
+constexpr float kEditionsRow = 28.0f;
 
 // Counter categories of screen 13.
 enum Category : int { kComponents, kFeatures, kUpdates, kDrivers, kRegistry, kServices, kTweaks, kCategories };
@@ -322,6 +324,18 @@ void ApplyPage::buildSummary() {
         layout();
     };
 
+    // D-055: the same queue on other editions of the WIM.
+    for (const auto& e : m_controller.otherEditions()) {
+        const bool on = std::ranges::find(m_controller.extraEditions(), e.index) != m_controller.extraEditions().end();
+        auto& check = add<ui::CheckField>(e.name, on);
+        const int index = e.index;
+        check.onChange = [this, index](bool checked) {
+            m_controller.setExtraEdition(index, checked);
+            invalidate();
+        };
+        m_editions.push_back(&check);
+    }
+
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {m_strings.get(Str::ApplyOrder), 48},
         {m_strings.get(Str::ApplyOperation), 0},
@@ -373,6 +387,18 @@ void ApplyPage::buildDone() {
     } else if (run.error) {
         m_infoBar = &add<ui::InfoBar>(ui::InfoKind::Error, m_strings.get(Str::ApplyFailedTitle),
                                       run.error->message + L" — " + run.error->context, m_strings.get(Str::CommonClose));
+    }
+    if (m_infoBar && !run.extras.empty()) {
+        std::wstring line;
+        for (const auto& e : run.extras) {
+            using State = AppState::ApplyRun::ExtraEdition::State;
+            std::wstring outcome = e.state == State::Done
+                                       ? (e.failures ? m_strings.format(Str::ApplyEditionSkipped, {{L"n", std::to_wstring(e.failures)}})
+                                                     : m_strings.get(Str::ApplyEditionOk))
+                                       : m_strings.get(Str::ApplyEditionFailed) + (e.error.empty() ? L"" : L" (" + e.error + L")");
+            line += (line.empty() ? L"" : L" · ") + e.name + L": " + outcome;
+        }
+        m_infoBar->appendBody(L" " + m_strings.get(Str::ApplyOtherEditionsDone) + L" " + line);
     }
     if (m_infoBar) {
         m_infoBar->onClose = [this] {
@@ -629,6 +655,20 @@ void ApplyPage::layout() {
                 y += kInfoBar + kGap;
             }
         }
+        if (!m_editions.empty()) {
+            float x = b.x + kEditionsLabel;
+            float rowY = y;
+            for (auto* check : m_editions) {
+                const ui::SizeF size = check->measure({});
+                if (x + size.width > b.right() && x > b.x + kEditionsLabel) {
+                    x = b.x + kEditionsLabel;
+                    rowY += kEditionsRow;
+                }
+                check->setBounds({x, rowY + (kEditionsRow - size.height) / 2, size.width, size.height});
+                x += size.width + 16;
+            }
+            y = rowY + kEditionsRow + kGap;
+        }
     }
     if (m_table) {
         m_table->setBounds({b.x, y + 4, b.width, std::max(b.bottom() - y - 4, 0.0f)});
@@ -636,6 +676,14 @@ void ApplyPage::layout() {
 }
 
 void ApplyPage::paint(ui::Canvas& canvas) {
+    if (m_mode == Mode::Summary && !m_editions.empty()) {
+        const RectF first = m_editions.front()->bounds();
+        const RectF b = bounds();
+        canvas.drawText(m_strings.get(Str::ApplyOtherEditions), {b.x, first.y - (kEditionsRow - first.height) / 2, kEditionsLabel - 8,
+                                                               kEditionsRow},
+                        TypeStyle::Body, Color::TextSecondary);
+        return;
+    }
     if (m_mode != Mode::Running) {
         return;
     }
@@ -643,6 +691,15 @@ void ApplyPage::paint(ui::Canvas& canvas) {
     const auto& run = *m_state.applyRun();
     const float y = b.y + kTop;
     canvas.progressBar({b.x, y, b.width, kProgress}, static_cast<float>(std::clamp(run.fraction, 0.0, 1.0)));
+    if (!run.extras.empty()) {
+        // "Sürüm 2 / 3 · Windows 11 Home" while the queue goes to the other editions.
+        const int k = run.extraCurrent + 2; // the mounted one is 1
+        const std::wstring name = run.extraCurrent >= 0 ? run.extras[static_cast<std::size_t>(run.extraCurrent)].name : run.edition;
+        canvas.drawText(m_strings.format(Str::ApplyEditionOf, {{L"k", std::to_wstring(run.extraCurrent >= 0 ? k : 1)},
+                                                              {L"n", std::to_wstring(run.extras.size() + 1)},
+                                                              {L"name", name}}),
+                        {b.x, y + kProgress + 2, b.width, 14}, TypeStyle::Caption, Color::TextSecondary, ui::TextAlign::Trailing);
+    }
     const float top = y + kProgress + 16;
     paintSteps(canvas, {b.x, top, kStepsWidth, b.bottom() - top});
     const float logX = b.x + kStepsWidth + 16;

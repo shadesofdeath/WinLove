@@ -727,7 +727,13 @@
     "presetFiles": "WinLove preset",
     "presetSaved": "Preset kaydedildi",
     "logSaved": "Log kaydedildi",
-    "saveFailed": "Dosya yazılamadı"
+    "saveFailed": "Dosya yazılamadı",
+    "otherEditions": "Diğer sürümlere de uygula",
+    "otherEditionsDone": "Diğer sürümler:",
+    "editionOf": "Sürüm {k} / {n} · {name}",
+    "editionOk": "tamam",
+    "editionSkipped": "{n} adım atlandı",
+    "editionFailed": "kaydedilmedi"
   },
   "iso": {
     "title": "ISO Oluştur / USB'ye yaz",

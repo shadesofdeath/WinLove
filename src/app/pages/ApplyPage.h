@@ -6,6 +6,7 @@
 #include "app/Localization.h"
 #include "app/controllers/ApplyController.h"
 #include "app/pages/apply/StatStrip.h"
+#include "ui/widgets/Checkbox.h"
 #include "ui/widgets/EmptyState.h"
 #include "ui/widgets/InfoBar.h"
 #include "ui/widgets/LogConsole.h"
@@ -74,6 +75,7 @@ private:
     ui::InfoBar* m_riskBar = nullptr;
     ui::InfoBar* m_infoBar = nullptr;
     ui::TableView* m_table = nullptr;
+    std::vector<ui::CheckField*> m_editions; // Summary: "Diğer sürümlere de uygula" (D-055)
     ui::LogConsole* m_log = nullptr;
     ui::EmptyState* m_empty = nullptr;
 };

@@ -20,6 +20,10 @@ public:
     void setAction(std::wstring label, std::function<void()> onInvoke);
 
     void set(InfoKind kind, std::wstring title, std::wstring message);
+    void appendBody(std::wstring_view more) {
+        m_message += more;
+        invalidate();
+    }
     [[nodiscard]] SizeF measure(SizeF available) override { return {available.width, 32.0f}; }
     void layout() override;
     void paint(Canvas& canvas) override;
