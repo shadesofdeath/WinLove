@@ -227,6 +227,8 @@ Operation ComponentController::operationFor(const Item& item) {
         op.value = utf8::toWide(core::componentRecipeToJson(recipe));
     } else if (item.kind == Item::Kind::Cleanup) {
         op.value = utf8::toWide(core::storeCleanupToJson({item.name, !item.system || item.system->resetBase}));
+    } else {
+        op.value = item.name; // not used by the engine: the name the Apply lists show instead of the package id
     }
     return op;
 }

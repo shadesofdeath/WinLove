@@ -21,7 +21,9 @@
   WinRE, depo temizliği), Bileşenler sayfasında "Sistem Bileşenleri" + "Temizlik" grupları, `wlcli cbs | component |
   store-cleanup`. Test imajı yönetici gerektirmeden incelendi (7-Zip + hive okuyucu): **Defender 25H2'de ayrı paket
   değil → kaldırma sunulmuyor**; FoD'lar zaten Özellikler'de. **Gerçek imajda hiç çalıştırılmadı** (terminal yönetici
-  değil): mantık unit testli, kaldırmanın kendisi `lab_components.ps1` + VM testini bekliyor.
+  değil): mantık unit testli, kaldırmanın kendisi `lab_components.ps1` + VM testini bekliyor. Yan düzeltmeler:
+  Uygula listeleri / onay dialogu uygulamaları paket tam adıyla değil katalog adıyla gösteriyor; korumalı kayıt
+  anahtarı silme tanıtıcı üzerinden (`deleteKeyByHandle`).
 - **P18 Komut Paleti (2026-09-30):** `shell/PaletteIndex` (sayfalar, P12 ayarları, okunan bileşen / özellik / servis
   listeleri, o an çalışabilen komutlar; Türkçe-duyarlı katlama, puanlı eşleşme) + `shell/CommandPalette` (modal;
   `ui::SearchBox` "bare" + soluk tamamlama). Enter → sayfa + `reveal` (satır seçilir / kontrol odaklanır). Yeni
@@ -72,8 +74,8 @@
   Rufus / Ventoy yazar); güncellemelerde sürükle-sırala; imajdaki mevcut sürücüleri listeleme/kaldırma; "işlem
   sonrası mount'u çöz" (P16 §4); servis katalog notlarının ekranda gösterimi; `C:\WinLove` eski klasörü (kullanıcı
   unmount sonrası silebilir); Faz 4: DComp/dirty-rect (D-011), UIA, imzalama.
-- **Lab:** `build\lab\iso\sources\install.wim` (test ISO'sundan kopya, 6,7 GB) duruyor; `build\lab\probe` +
-  `build\lab\venv` imaj incelemesinin artıkları (silinebilir).
+- **Lab:** `build\lab\iso\sources\install.wim` (test ISO'sundan kopya, 6,7 GB) duruyor — `lab_components.ps1` ve
+  `dism_smoke.ps1` bunu kullanır. İmaj incelemesinin geçici dosyaları silindi (yöntem: ENGINE saha notu "CBS / 25H2").
 
 ## Son eklenenler (P01)
 - Motor: klasör kaynağı, `WindowsRelease` (sürüm adları), `LiveSystem`; `wlcli live`, `wlcli info <klasör>`.

@@ -43,6 +43,10 @@ private:
     HKEY m_key = nullptr;
 };
 
+// Deletes the (empty) key behind an open handle that has DELETE access. RegDeleteKey would open
+// the key again by name and run into the ACL a backup / restore open went around.
+[[nodiscard]] bool deleteKeyByHandle(HKEY key) noexcept;
+
 class OfflineHive {
 public:
     // `file`: e.g. <mount>\Windows\System32\config\SYSTEM.

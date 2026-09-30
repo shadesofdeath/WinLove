@@ -139,6 +139,13 @@ Result<void> RegKey::deleteValue(const wchar_t* name) {
     return {};
 }
 
+bool deleteKeyByHandle(HKEY key) noexcept {
+    using NtDeleteKeyFn = LONG(NTAPI*)(HANDLE);
+    static const auto ntDeleteKey =
+        reinterpret_cast<NtDeleteKeyFn>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtDeleteKey"));
+    return ntDeleteKey && ntDeleteKey(key) >= 0;
+}
+
 Result<OfflineHive> OfflineHive::load(const std::filesystem::path& file) {
     static std::atomic<int> counter{0};
     for (const wchar_t* privilege : {SE_BACKUP_NAME, SE_RESTORE_NAME}) {
