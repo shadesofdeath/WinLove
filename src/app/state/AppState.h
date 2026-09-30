@@ -35,7 +35,8 @@ struct MountedImage {
 // One engine operation at a time (TaskRunner is single-threaded anyway); drives the progress
 // strip on the Images page and the status-bar task segment.
 struct EngineOperation {
-    enum class Kind : std::uint8_t { Preparing, Mounting, Unmounting, Exporting, Deleting, Cleaning };
+    // Reading: the mounted image's lists are read for the pages (PreloadController, D-027).
+    enum class Kind : std::uint8_t { Preparing, Mounting, Unmounting, Exporting, Deleting, Cleaning, Reading };
     Kind kind;
     std::wstring edition;      // "Windows 11 Pro"
     std::filesystem::path path; // mount dir, work dir or export target (shown in the strip)
@@ -43,6 +44,7 @@ struct EngineOperation {
     double fraction = 0;       // 0..1
     double startedMs = 0;      // ui::nowMs() at start, for the ETA
     core::CancelToken cancel;
+    int stage = 0;             // Reading: 0 features, 1 apps, 2 services
 };
 
 class AppState {
@@ -184,6 +186,7 @@ public:
     [[nodiscard]] const std::optional<EngineOperation>& operation() const noexcept { return m_operation; }
     void beginOperation(EngineOperation operation);
     void updateOperation(double fraction);
+    void updateOperation(double fraction, int stage);
     void endOperation();
 
     // Process log ring buffer (installed as a sink for the lifetime of AppState); Loglar reads it.

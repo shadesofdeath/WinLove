@@ -24,6 +24,10 @@ işlemleri yapmak: bağla (mount), çöz (commit / discard), dışa aktar, ESD �
   devam ettirilebilir), kaynak o klasöre geçer.
 - **Bağla:** `core::mountSafely` — Explorer pencerelerini taşır, artıkları onarır, klasörü yeniden
   oluşturur, "klasör meşgul" kodlarında bir kez temizleyip yeniden dener; aynı imaj zaten bağlıysa onu kullanır.
+- **İçerik okuma (D-027):** bağlama (veya açılışta geri yükleme) biter bitmez aynı şeritte ikinci bir ilerleme
+  başlar: "Windows 11 Pro içeriği okunuyor — Özellikler (1/3)". Sırayla Özellikler → Bileşenler (AppX) → Servisler
+  okunur; her liste okunduğu an sayfasına düşer. Satır bu sırada "Bağlı" görünür. Vazgeç: kalan listeler
+  sayfalarına girilince okunur (eski davranış). Okuma sürerken pencere kapatılabilir (okuma iptal edilir).
 - **Çöz:** kaydet / at. `core::unmountSafely` — hive'ları boşaltır, Explorer'ı taşır, yarım unmount'ta
   (0xC1420117) yeniden dener, gerekiyorsa klasörü onarır.
 - **Açılışta geri yükleme:** mount klasörü incelenir; sağlam mount varsa kaynağı açılır, sürüm seçilir,
@@ -46,3 +50,5 @@ Ertelenen: tasarımdaki arama kutusu ve mimari filtresi, çoklu seçim, birleşt
 - [x] Explorer mount içindeyken çözme / bağlama → kendiliğinden toparlanır.
 - [x] Dışa aktar, index sil (lab WIM).
 - [ ] Uygulama kapat/aç → bağlı imaj geri gelir (düzeltme 2026-09-28 akşam, tekrar test edilecek).
+- [ ] Bağla → mount ilerlemesinden sonra "içeriği okunuyor" ilerlemesi; bitince Özellikler / Bileşenler /
+      Servisler sayfaları beklemeden açılır (2026-09-30, D-027).

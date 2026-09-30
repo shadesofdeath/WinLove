@@ -29,6 +29,7 @@ public:
         // A mount from a previous run is still attached: open `source`, then show it as mounted
         // (`edition` is left empty; the shell fills it from the opened source).
         std::function<void(std::filesystem::path source, MountedImage mounted)> restored;
+        std::function<void()> mounted; // a fresh mount is up: time to read its contents (PreloadController)
     };
 
     ImageController(AppState& state, Events events);

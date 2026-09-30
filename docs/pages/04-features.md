@@ -19,7 +19,8 @@ aç/kapa isteklerini **değişiklik kuyruğuna** (ChangeSet, D-003) eklemek. İm
 `core::readOptionalFeatures(dism, mountDir)` — tek DISM oturumu: `DismGetFeatures` + `DismGetCapabilities`, her
 öğe için `DismGetFeatureInfo` / `DismGetCapabilityInfo` (görünen ad imajın dilinde, açıklama, boyut, yeniden
 başlatma). Yüklü olmayan capability'ler listelenmez (çevrimdışı eklemek FoD kaynağı ister). Ada göre sıralı.
-Bağlı imaj başına bir kez okunur (`AppState::optionalFeatures`), mount değişince atılır.
+Bağlı imaj başına bir kez okunur (`AppState::optionalFeatures`), mount değişince atılır. Okuma mount biter
+bitmez başlar (D-027, `PreloadController`); liste yoksa (iptal, Uygula sonrası) sayfaya girince okunur.
 CLI: `wlcli optional-features <mountdir> [--json]` (yönetici) — sayfanın gösterdiğinin aynısı + süre logu.
 
 ## 4. Kuyruk kuralları (FeatureController)

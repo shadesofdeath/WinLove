@@ -106,7 +106,9 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         m_registry = std::make_unique<RegistryController>(m_state, std::move(*tweaks));
     }
     m_serviceCtl = std::make_unique<ServiceController>(m_state, embeddedServiceCatalog(), m_services.postToUi);
-    m_iso = std::make_unique<IsoController>(m_state, IsoController::Events{
+    m_preload = std::make_unique<PreloadController>(m_state, m_services.postToUi);
+    m_preload->onCancelled = [this] { showToast(ui::InfoKind::Warning, m_strings.get(Str::ImagesCancelledToast), L""); };
+    m_iso =std::make_unique<IsoController>(m_state, IsoController::Events{
         m_services.postToUi,
         [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::IsoFailed), e.message); },
         [this](const core::IsoResult& result, const std::filesystem::path& output, bool openFolder) {
@@ -141,6 +143,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         [this](Str title) { showToast(ui::InfoKind::Warning, m_strings.get(title), L""); },
         [this](std::wstring args) { showAdminRequired(std::move(args)); },
         [this](std::filesystem::path source, MountedImage mounted) { restoreMount(source, std::move(mounted)); },
+        [this] { m_preload->start(); },
     });
 
     m_subscription = m_state.subscribe([this](AppState::Change change) {
@@ -545,7 +548,9 @@ void Shell::updateStatus() {
     } else if (iso && iso->running) {
         m_status->setTask(m_strings.get(Str::StatusBuilding), static_cast<float>(iso->fraction));
     } else if (const auto& op = m_state.operation()) {
-        const Str label = op->kind == EngineOperation::Kind::Mounting ? Str::StatusMounting : Str::StatusScanning;
+        const Str label = op->kind == EngineOperation::Kind::Mounting  ? Str::StatusMounting
+                          : op->kind == EngineOperation::Kind::Reading ? Str::StatusReading
+                                                                       : Str::StatusScanning;
         m_status->setTask(m_strings.get(label), static_cast<float>(op->fraction));
     } else {
         m_status->setTask(std::nullopt, 0);
@@ -914,6 +919,7 @@ void Shell::restoreMount(const std::filesystem::path& source, MountedImage mount
         const std::wstring edition = mounted.edition;
         m_state.setMounted(std::move(mounted));
         showToast(ui::InfoKind::Info, m_strings.format(Str::ImagesMountRestored, {{L"edition", edition}}), L"");
+        m_preload->start();
         return;
     }
     openSource(source, [this, mounted = std::move(mounted)]() mutable {
@@ -930,6 +936,7 @@ void Shell::restoreMount(const std::filesystem::path& source, MountedImage mount
         m_state.setMounted(std::move(mounted));
         showToast(ui::InfoKind::Info, m_strings.format(Str::ImagesMountRestored, {{L"edition", edition}}),
                   m_state.mounted()->imagePath.wstring());
+        m_preload->start();
     });
 }
 
@@ -1052,8 +1059,14 @@ void Shell::onImageFailure(ImageController::Failure failure, const Error& error,
 }
 
 bool Shell::confirmClose() {
-    const bool busy = m_images->busy() || m_apply->running() || m_iso->running();
+    // Reading the mounted image's lists changes nothing: stop it and let the window go.
+    const auto& op = m_state.operation();
+    const bool reading = op && op->kind == EngineOperation::Kind::Reading;
+    const bool busy = (m_images->busy() && !reading) || m_apply->running() || m_iso->running();
     if (!busy || !host()) {
+        if (reading) {
+            m_images->cancel();
+        }
         return true;
     }
     auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::DialogsBusyCloseTitle),

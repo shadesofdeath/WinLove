@@ -503,11 +503,18 @@ int App::renderOffscreen() {
         m_shell->showPage(PageId::Updates);
     }
     if (m_options.fakeOperation && m_state->source()) {
-        EngineOperation op{*m_options.fakeOperation == L"prepare" ? EngineOperation::Kind::Preparing
-                                                                   : EngineOperation::Kind::Mounting,
+        const bool reading = *m_options.fakeOperation == L"read";
+        EngineOperation op{reading                                  ? EngineOperation::Kind::Reading
+                           : *m_options.fakeOperation == L"prepare" ? EngineOperation::Kind::Preparing
+                                                                    : EngineOperation::Kind::Mounting,
                            m_state->selectedImage() ? m_state->selectedImage()->name : L"", L"C:\\WinLove\\mount",
                            m_state->selectedIndex().value_or(1)};
         op.startedMs = ui::nowMs() - 60000.0 * m_options.fakeProgress;
+        if (reading) {
+            // The second progress (D-027): the image is mounted, its lists are being read.
+            m_state->setMounted(MountedImage{op.path, L"C:\\WinLove\\work\\sources\\install.wim", op.index, op.edition});
+            op.stage = m_options.fakeProgress < 0.6f ? 0 : m_options.fakeProgress < 0.9f ? 1 : 2;
+        }
         m_state->beginOperation(op);
         m_state->updateOperation(m_options.fakeProgress);
     }

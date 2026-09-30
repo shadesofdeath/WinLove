@@ -10,6 +10,7 @@ add_library(wl_app STATIC
     controllers/RegistryController.cpp
     controllers/ImageController.cpp
     controllers/IsoController.cpp
+    controllers/PreloadController.cpp
     Format.cpp
     Localization.cpp
     Resources.cpp

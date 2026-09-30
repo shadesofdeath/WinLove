@@ -182,7 +182,8 @@ void ImagesPage::refresh(AppState::Change change) {
         m_strip->start();
         m_error->setVisible(false);
     }
-    if (op) {
+    // While its contents are read the image is already mounted: the row says so.
+    if (op && op->kind != EngineOperation::Kind::Reading) {
         m_table->setRowState(op->index, EditionTable::RowState::Working, true);
     } else if (const auto& mounted = m_state.mounted()) {
         m_table->setRowState(mounted->index, EditionTable::RowState::Mounted, false);
