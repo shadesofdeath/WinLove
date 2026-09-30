@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  DISM smoke test (Faz 2.4) — run in an ELEVATED PowerShell:
+  DISM smoke test (Faz 2.4) - run in an ELEVATED PowerShell:
     powershell -ExecutionPolicy Bypass -File tools\dism_smoke.ps1
   Mounts one edition of the lab copy READ-ONLY, lists features/packages/capabilities, unmounts
   with DISCARD and checks that nothing stays mounted. Never touches the source ISO.
