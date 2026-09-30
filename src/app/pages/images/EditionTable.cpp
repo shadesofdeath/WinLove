@@ -208,6 +208,12 @@ bool EditionTable::onKeyDown(const ui::KeyEvent& key) {
             onRename();
         }
         return true;
+    case 'C':
+        if (!key.ctrl || m_selection.primary < 0 || !onCopy) {
+            return false;
+        }
+        onCopy();
+        return true;
     default: return false;
     }
 }

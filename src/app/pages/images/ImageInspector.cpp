@@ -76,6 +76,14 @@ ImageInspector::ImageInspector(const Localization& strings, Language language) :
         }
     };
     addChild(std::move(rename));
+    auto explore = ui::Button::iconOnly(ui::icons::Icon::OpenFolder, strings.get(Str::ImagesExploreMountHint));
+    m_explore = explore.get();
+    m_explore->onInvoke = [this] {
+        if (onExplore) {
+            onExplore();
+        }
+    };
+    addChild(std::move(explore));
     setAccessible(ui::AccessRole::Group, strings.get(Str::CommonDetails));
 }
 
@@ -105,6 +113,7 @@ void ImageInspector::set(State state) {
     m_primary->setVisible(m_image.has_value());
     m_delete->setVisible(m_image.has_value());
     m_rename->setVisible(m_image.has_value());
+    m_explore->setVisible(m_image.has_value() && state.mountedHere);
     layout();
     invalidate();
 }
@@ -118,6 +127,7 @@ void ImageInspector::layout() {
     m_primary->setBounds({b.x + kPadding, y, primary.width, primary.height});
     m_delete->setBounds({b.x + kPadding + primary.width + 4, y, del.width, del.height});
     m_rename->setBounds({b.right() - kPadding - kRow, b.y + kPadding - 4, kRow, kRow});
+    m_explore->setBounds({b.right() - kPadding - 2 * kRow - 2, b.y + kPadding - 4, kRow, kRow});
 }
 
 void ImageInspector::paint(ui::Canvas& canvas) {
@@ -133,7 +143,9 @@ void ImageInspector::paint(ui::Canvas& canvas) {
     float y = b.y + kPadding;
 
     canvas.drawIcon(ui::icons::Icon::LayersEditions, {x, y + 4}, Color::TextSecondary);
-    canvas.drawText(image.name, {x + 24, y, width - 24 - kRow - 4, kLine}, TypeStyle::BodyStrong, Color::TextPrimary);
+    // Room for the pencil, and for the folder while this edition is mounted.
+    const float buttons = (m_mountedHere ? 2 * kRow + 2 : kRow) + 4;
+    canvas.drawText(image.name, {x + 24, y, width - 24 - buttons, kLine}, TypeStyle::BodyStrong, Color::TextPrimary);
     canvas.drawText(std::format(L"{} · {} {}", std::filesystem::path(m_source->installImage).filename().wstring(),
                                 m_strings.get(Str::ImagesIndex), image.index),
                     {x + 24, y + kLine, width - 24, kLine}, TypeStyle::Caption, Color::TextTertiary);

@@ -132,6 +132,15 @@ public:
     void askRenameSelected();
     // The mounted edition: reads what it can become, then offers the choice for the queue.
     void askUpgradeEdition();
+    // Shortcuts out of the app (P02): Explorer at the mount folder (Ctrl+E, from any page), a
+    // command prompt there, Explorer with the image file selected (Ctrl+Shift+E), the details of
+    // the marked editions as text on the clipboard (Ctrl+C in the table).
+    void exploreMount();
+    void openTerminalAtMount();
+    void revealImageFile();
+    void copyEditionInfo();
+    // Reads the open source again (F5 on the Images page): a WIM changed by another tool.
+    void refreshSource();
     void onImageVerified(const core::WimVerifyReport& report, const std::wstring& file);
     void exportSelected();
     void convertEsd();

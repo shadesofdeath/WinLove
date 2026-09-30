@@ -23,6 +23,10 @@
 - **Kaynak sayfası (2026-09-30, kullanıcı isteği):** son kullanılanlardan kaldırma (satır sonunda ×, `Del`, sağ tık
   menüsü) + çalışma kopyasını silme dialogu; UI çatısına sağ tık yönlendirmesi eklendi (`Widget::onContextMenu`).
   Dialogun kendisi render'da görülmedi (diskte çalışma kopyası yoktu); liste girdisini kaldırma ve menü görüldü.
+- **İmajlar — kısayollar (2026-09-30, kullanıcı isteği):** bağlama klasörünü aç (`Ctrl+E`, her sayfadan; inspector'da
+  klasör düğmesi; sağ tık), komut istemini bağlama klasöründe aç, dosya konumunu aç (`Ctrl+Shift+E`), bilgileri
+  kopyala (`Ctrl+C`), kaynağı yenile (`F5`). **Kullanıcının isteğiyle denenmeden teslim edildi:** yalnız derlendi,
+  var olan birim testleri geçti; yeni test / render yok. Kullanıcı deneyecek.
 - **Setup "<ProductKey> ayarını okuyamıyor" (2026-09-30, kullanıcı VM testi, Windows 10 22H2, D-036):** yanıt
   dosyasında `UserData` (EULA kabulü) `ProductKey`'siz yazılıyordu. Artık her zaman anahtarla yazılır: kullanıcının
   anahtarı / kurulacak sürümün genel anahtarı / sürüm belli değilse yer tutucu + "Setup sorsun". 16 genel anahtar
@@ -148,6 +152,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — Yanıt dosyası doldurulunca ISO'ya kendiliğinden giriyor; işlemci / disk denetimi atlama; imajda olmayan AppX başarı (D-034).
 - 2026-09-30 — İmajlar: çoklu seçim, yeniden adlandırma, WIM doğrulama (kendi LZX çözücümüz), sürüm yükseltme (D-035).
 - 2026-09-30 — Yanıt dosyası: `UserData` her zaman `ProductKey` ile (genel anahtar / yer tutucu) (D-036).
+- 2026-09-30 — İmajlar kısayolları: bağlama klasörü, komut istemi, dosya konumu, bilgileri kopyala, yenile (denenmedi).
 - 2026-09-28 — Baştan sona inceleme (4 alan, paralel): ~35 hata düzeltildi. Öne çıkanlar: junction üzerinden ana
   makine ACL'si değişebilmesi (FileLocks), commit edilmeyen unmount'un başarılı raporlanması, DISM oturum yenileme,
   UDF çıkarmada yol dışına yazma + sınır dışı okuma, tıklamada yok edilen widget (use-after-free), Enter ile devre

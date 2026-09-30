@@ -29,6 +29,11 @@ public:
     std::function<void()> onKeepOnly;
     std::function<void()> onRename;
     std::function<void()> onUpgrade; // the mounted edition: "Sürümü yükselt…"
+    // Shortcuts into Explorer / a prompt / the clipboard (Shell: exploreMount, …).
+    std::function<void()> onExploreMount;
+    std::function<void()> onTerminal;
+    std::function<void()> onReveal;
+    std::function<void()> onCopyInfo;
     // A result that stays on the page until closed (e.g. what "Doğrula" found).
     void showNotice(ui::InfoKind kind, const std::wstring& title, const std::wstring& message);
 
@@ -41,8 +46,10 @@ public:
 private:
     void refresh(AppState::Change change);
     void updateFolderBar();
-    bool showRowMenu(ui::PointF at); // one edition: Bağla / Dışa aktar / Yeniden adlandır… / Sürümü sil… /
-                                     // Yalnız bu sürümü tut…; several: export / delete / keep them
+    // One edition: Bağla / Dışa aktar / (mounted: Sürümü yükselt…) / Yeniden adlandır… / Sürümü sil… /
+    // Yalnız bu sürümü tut… / (mounted: Bağlama klasörünü aç / Komut istemi) / Dosya konumunu aç /
+    // Bilgileri kopyala. Several: export / delete / keep them / copy.
+    bool showRowMenu(ui::PointF at);
 
     AppState& m_state;
     ImageController& m_controller;

@@ -3,6 +3,8 @@
 #include "app/pages/images/EditionDialog.h"
 #include "app/pages/images/RenameDialog.h"
 #include "core/image/dism/Edition.h"
+#include "core/image/WindowsRelease.h"
+#include "ui/platform/Clipboard.h"
 
 #include "app/Format.h"
 #include "app/pages/GalleryPage.h"
@@ -858,6 +860,10 @@ void Shell::showPage(PageId page) {
             images.onKeepOnly = [this] { askDeleteSelected(/*keepOnly=*/true); };
             images.onRename = [this] { askRenameSelected(); };
             images.onUpgrade = [this] { askUpgradeEdition(); };
+            images.onExploreMount = [this] { exploreMount(); };
+            images.onTerminal = [this] { openTerminalAtMount(); };
+            images.onReveal = [this] { revealImageFile(); };
+            images.onCopyInfo = [this] { copyEditionInfo(); };
             m_inspector = &add<ImageInspector>(m_strings, m_language);
             m_inspector->onMount = [this] {
                 if (const auto index = m_state.selectedIndex()) {
@@ -868,6 +874,7 @@ void Shell::showPage(PageId page) {
             m_inspector->onDelete = [this] { askDeleteSelected(); };
             m_inspector->onRename = [this] { askRenameSelected(); };
             m_inspector->onUpgrade = [this] { askUpgradeEdition(); };
+            m_inspector->onExplore = [this] { exploreMount(); };
         } else if (page == PageId::Components) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsLoadPreset),
                                   ui::icons::Icon::PresetBookmark)
@@ -1596,6 +1603,97 @@ void Shell::askRenameSelected() {
     host()->pushModal(std::move(built.dialog), built.initialFocus);
 }
 
+void Shell::exploreMount() {
+    const auto& mounted = m_state.mounted();
+    if (!mounted) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::ImagesNoMountToExplore), L"");
+        return;
+    }
+    // An Explorer window inside the mount folder does not block the unmount: unmountSafely moves
+    // such windows away first.
+    ShellExecuteW(nullptr, L"explore", mounted->mountDir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+void Shell::openTerminalAtMount() {
+    const auto& mounted = m_state.mounted();
+    if (!mounted) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::ImagesNoMountToExplore), L"");
+        return;
+    }
+    // Inherits this process' elevation: dism /Image:. works right away.
+    ShellExecuteW(nullptr, L"open", L"cmd.exe", L"/k title WinLove mount", mounted->mountDir.c_str(), SW_SHOWNORMAL);
+}
+
+void Shell::revealImageFile() {
+    const auto& source = m_state.source();
+    if (!source) {
+        return;
+    }
+    // The install image itself where it is a file on disk; for an ISO, the ISO.
+    const std::filesystem::path file =
+        source->format == core::ImageFormat::Folder ? source->path / source->installImage : source->path;
+    const std::wstring args = L"/select,\"" + file.lexically_normal().wstring() + L"\"";
+    ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+}
+
+void Shell::copyEditionInfo() {
+    const auto& source = m_state.source();
+    if (!source) {
+        return;
+    }
+    const std::filesystem::path file =
+        source->format == core::ImageFormat::Folder ? source->path / source->installImage : source->path;
+    std::wstring text;
+    for (const auto& image : source->install.images) {
+        if (!std::ranges::binary_search(m_state.selection(), image.index)) {
+            continue;
+        }
+        if (!text.empty()) {
+            text += L"\r\n";
+        }
+        auto line = [&](Str label, const std::wstring& value) {
+            if (!value.empty()) {
+                text += std::format(L"{}: {}\r\n", m_strings.get(label), value);
+            }
+        };
+        text += std::format(L"{} · {}\r\n", image.index, image.name);
+        line(Str::ImagesEditionId, image.editionId);
+        line(Str::ImagesBuild, std::format(L"{} ({})", image.versionString(), core::releaseLabel(image.build)));
+        line(Str::ImagesArch, core::architectureName(image.architecture));
+        line(Str::ImagesLang, image.defaultLanguage);
+        line(Str::CommonSize, formatBytes(image.totalBytes, m_language));
+        line(Str::ImagesModified, formatDate(image.modifiedTime ? image.modifiedTime : image.creationTime, m_language));
+        line(Str::ImagesWimFile, file.lexically_normal().wstring());
+    }
+    if (!text.empty() && ui::setClipboardText(text)) {
+        showToast(ui::InfoKind::Success, m_strings.get(Str::ImagesCopiedToast), L"");
+    }
+}
+
+void Shell::refreshSource() {
+    const auto& source = m_state.source();
+    if (!source || m_state.mounted() || m_images->busy()) {
+        return; // a mounted image's list is the one on screen; nothing to re-read mid-operation
+    }
+    // Keeps what was marked: the same file, read again.
+    const std::vector<int> marked = m_state.selection();
+    const auto primary = m_state.selectedIndex();
+    openSource(source->path, [this, marked, primary] {
+        if (!primary) {
+            return;
+        }
+        std::vector<int> still;
+        for (const auto& image : m_state.source()->install.images) {
+            if (std::ranges::binary_search(marked, image.index)) {
+                still.push_back(image.index);
+            }
+        }
+        if (std::ranges::binary_search(still, *primary)) {
+            m_state.selectMany(still, *primary);
+        }
+    });
+}
+
 void Shell::askUpgradeEdition() {
     const auto mounted = m_state.mounted();
     if (!host() || !mounted) {
@@ -1859,6 +1957,20 @@ bool Shell::handleShortcut(const ui::KeyEvent& key) {
         runPaletteCommand(key.virtualKey == VK_RETURN ? PaletteCommand::ApplyQueue
                           : key.virtualKey == 'S'     ? PaletteCommand::SavePreset
                                                       : PaletteCommand::LoadPreset);
+        return true;
+    }
+    // The mount folder is one keystroke away from every page; the image file and a fresh read of
+    // the source from the Images page.
+    if (key.ctrl && !key.alt && key.virtualKey == 'E') {
+        if (key.shift) {
+            revealImageFile();
+        } else {
+            exploreMount();
+        }
+        return true;
+    }
+    if (!key.ctrl && !key.shift && !key.alt && key.virtualKey == VK_F5 && m_page == PageId::Images) {
+        refreshSource();
         return true;
     }
     if (key.ctrl && !key.shift && !key.alt && key.virtualKey == 'F') {
