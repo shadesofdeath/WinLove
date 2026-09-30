@@ -9,6 +9,7 @@
 #include "core/image/Services.h"
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
+#include "core/image/BootImage.h"
 #include "core/image/dism/Dism.h"
 #include "core/image/dism/Edition.h"
 #include "core/image/dism/Appx.h"
@@ -663,6 +664,103 @@ int cmdStoreCleanup(const std::wstring& dir, bool resetBase) {
     return 0;
 }
 
+// A provisioned app out of a mounted image: DISM, and — when DISM refuses it, or with --native —
+// WinLove's own removal (Appx.h). Afterwards the image is checked against what either way must
+// leave behind: no folder of the app's family, its license gone, nothing staged (exit 3 if not).
+// The image is not committed.
+int cmdAppxRemove(const std::wstring& dir, const std::wstring& package, bool native) {
+    const std::wstring family = core::appxFamilyName(package);
+    if (family.empty()) {
+        return reportError(Error{ErrorCode::InvalidArgument, L"not a package full name", package});
+    }
+    // Before any DISM session: it keeps the hives to itself.
+    auto staged = core::readStagedAppx(std::filesystem::path(dir), family);
+    if (!staged) {
+        return reportError(staged.error());
+    }
+    const core::ComponentRecipe recipe = core::appxRemovalRecipe(package, *staged);
+    const auto before = core::probeComponent(dir, recipe);
+    print(std::format(L"{}: {} package(s) staged, {} bytes on disk\n", family, staged->size(), before.size));
+    {
+        auto d = dism();
+        if (!d) {
+            return reportError(d.error());
+        }
+        auto session = (*d)->openSession(dir);
+        if (!session) {
+            return reportError(session.error());
+        }
+        bool byDism = false;
+        if (!native) {
+            const auto removed = (*session)->removeAppx(package);
+            if (removed) {
+                byDism = true;
+                print(L"removed by DISM\n");
+            } else if (removed.error().hresult != core::kAppxRemovalRefused) {
+                return reportError(removed.error());
+            } else {
+                print(std::format(L"DISM refuses it (0x{:08X}): removing it natively\n",
+                                  static_cast<std::uint32_t>(removed.error().hresult)));
+            }
+        }
+        if (!byDism) {
+            const auto removed = core::removeAppxNative(**session, package, core::TaskContext{g_cancel, {}});
+            if (!removed) {
+                return reportError(removed.error());
+            }
+            print(L"removed natively\n");
+        }
+    } // session closed: the hives can be read again
+    const auto after = core::probeComponent(dir, recipe);
+    const auto left = core::readStagedAppx(std::filesystem::path(dir), family);
+    const bool clean = !after.present && left && left->empty();
+    print(std::format(L"after: files {}, staged {}\n", after.present ? L"STILL THERE" : L"gone",
+                      !left ? L"unreadable" : left->empty() ? L"none" : L"STILL LISTED"));
+    print(L"(image not committed: wlcli unmount <dir> --commit)\n");
+    return clean ? 0 : 3;
+}
+
+// Setup's own image (sources\boot.wim): LabConfig bypasses and drivers, mounted in `mountDir`,
+// committed (BootImage.h). `bypass`: "tpm,secureboot,ram,cpu,storage" or "all".
+int cmdBootPatch(const std::wstring& bootWim, const std::wstring& mountDir, const std::wstring& bypass,
+                 const std::vector<std::wstring>& drivers) {
+    core::BootPatch patch;
+    std::wstringstream parts(bypass);
+    for (std::wstring part; std::getline(parts, part, L',');) {
+        const bool all = part == L"all";
+        if (!all && part != L"tpm" && part != L"secureboot" && part != L"ram" && part != L"cpu" && part != L"storage") {
+            return reportError(Error{ErrorCode::InvalidArgument, L"--bypass takes tpm,secureboot,ram,cpu,storage or all", part});
+        }
+        patch.bypassTpm = patch.bypassTpm || all || part == L"tpm";
+        patch.bypassSecureBoot = patch.bypassSecureBoot || all || part == L"secureboot";
+        patch.bypassRam = patch.bypassRam || all || part == L"ram";
+        patch.bypassCpu = patch.bypassCpu || all || part == L"cpu";
+        patch.bypassStorage = patch.bypassStorage || all || part == L"storage";
+    }
+    for (const auto& driver : drivers) {
+        patch.drivers.emplace_back(driver);
+    }
+    if (patch.empty()) {
+        return reportError(Error{ErrorCode::InvalidArgument, L"nothing to do: give --bypass= and / or --driver=", bootWim});
+    }
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    const auto task = progressTask(L"boot");
+    const auto report = core::patchBootImage(**d, bootWim, mountDir, patch, task);
+    print(L"\n");
+    if (!report) {
+        return reportError(report.error());
+    }
+    print(std::format(L"  boot image index {} patched: {} LabConfig value(s), {} driver(s) added\n", report->index,
+                      patch.labConfigValues().size(), report->driversAdded));
+    for (const auto& refused : report->driversRefused) {
+        print(std::format(L"  driver not added: {}\n", refused));
+    }
+    return report->driversRefused.empty() ? 0 : 3;
+}
+
 // The edition of a mounted image and what it can be changed to; with `target`: changes it
 // (dism.exe /Set-Edition — one-way; the image is not committed).
 int cmdEdition(const std::wstring& dir, const std::wstring& target, bool asJson) {
@@ -907,6 +1005,9 @@ void printUsage() {
           L"  wlcli component <mountdir> <recipe.json> [--remove]   (P07 system component: probe / remove)\n"
           L"  wlcli store-cleanup <mountdir> [--resetbase]   (dism /Cleanup-Image /StartComponentCleanup)\n"
           L"  wlcli edition <mountdir> [--set=<EditionId>] [--json]   (current + target editions; --set: dism /Set-Edition)\n"
+          L"  wlcli appx-remove <mountdir> <PackageFullName> [--native]   (DISM; natively when DISM refuses the app)\n"
+          L"  wlcli boot-patch <boot.wim> <mountdir> [--bypass=tpm,secureboot,ram,cpu,storage|all] [--driver=<inf>]...\n"
+          L"                                      (Setup's image: LabConfig + drivers; mounts, commits)\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
           L"  wlcli apply <changeset.json> <mountdir> [--commit] [--source=<sources\\sxs>]\n"
           L"\n  Change sets (no admin):\n"
@@ -935,6 +1036,9 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring label;
     std::wstring serviceSet;
     std::wstring flags;
+    std::wstring bypass;
+    std::vector<std::wstring> drivers;
+    bool native = false;
     std::wstring boot;
     bool sha = false;
     bool noPrompt = false;
@@ -947,6 +1051,12 @@ int wmain(int argc, wchar_t** argv) {
             asJson = true;
         } else if (a.starts_with(L"--compress=")) {
             compress = std::wstring(a.substr(11));
+        } else if (a == L"--native") {
+            native = true;
+        } else if (a.starts_with(L"--bypass=")) {
+            bypass = std::wstring(a.substr(9));
+        } else if (a.starts_with(L"--driver=")) {
+            drivers.emplace_back(a.substr(9));
         } else if (a.starts_with(L"--flags=")) {
             flags = std::wstring(a.substr(8));
         } else if (a.starts_with(L"--set=")) {
@@ -1043,6 +1153,12 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"component" && args.size() == 3) {
         return cmdComponent(args[1], args[2], remove);
+    }
+    if (command == L"appx-remove" && args.size() == 3) {
+        return cmdAppxRemove(args[1], args[2], native);
+    }
+    if (command == L"boot-patch" && args.size() == 3) {
+        return cmdBootPatch(args[1], args[2], bypass, drivers);
     }
     if (command == L"edition" && args.size() == 2) {
         return cmdEdition(args[1], serviceSet, asJson);

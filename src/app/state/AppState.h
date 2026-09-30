@@ -57,8 +57,11 @@ public:
     enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings };
     using Listener = std::function<void(Change)>;
 
+    // `answersFile`: where the answer file being edited is kept between runs (AnswerStore.h).
+    // Empty — the default, and what tests and renders pass — keeps it in memory only.
     explicit AppState(std::filesystem::path recentFile = RecentSources::defaultFile(),
-                      std::filesystem::path settingsFile = AppSettings::defaultFile());
+                      std::filesystem::path settingsFile = AppSettings::defaultFile(),
+                      std::filesystem::path answersFile = {});
     ~AppState();
     AppState(const AppState&) = delete;
     AppState& operator=(const AppState&) = delete;
@@ -161,8 +164,8 @@ public:
     [[nodiscard]] const DriverScan& driverScan() const noexcept { return m_drivers; }
     void addDriverScan(const std::filesystem::path& folder, std::vector<core::DriverInf> infs);
 
-    // P13: the answer file being edited (kept across pages and sources); written to the root of
-    // the next ISO when `includeInIso` is on.
+    // P13: the answer file being edited (kept across pages, sources and — with an answers file —
+    // runs of the app); written to the root of the next ISO when `includeInIso` is on.
     struct Unattend {
         core::UnattendOptions options;
         bool includeInIso = false;
@@ -255,6 +258,7 @@ private:
     Unattend m_unattend;
     std::optional<IsoRun> m_iso;
     std::filesystem::path m_settingsFile;
+    std::filesystem::path m_answersFile;
     std::shared_ptr<log::RingBufferSink> m_logBuffer = std::make_shared<log::RingBufferSink>();
     std::uint64_t m_logCleared = 0;
     RecentSources m_recent;

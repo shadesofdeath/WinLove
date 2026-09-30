@@ -233,6 +233,30 @@ Karar:
 - Gereksinimler'e işlemci ve disk boyutu denetimleri eklendi (LabConfig `BypassCPUCheck`, `BypassStorageCheck`):
   VM'lerde TPM kadar sık takılan iki denetim.
 
+## D-037 — Yanıt dosyası oturumlar arasında saklanır, DPAPI ile (2026-09-30)
+Bağlam: Yanıtlar yalnız bellekteydi; kullanıcı formu iki kez baştan doldurmak zorunda kaldı.
+Karar: `AppState` her `setUnattend`'de `answers.dat`'a yazar, açılışta okur (`app/state/AnswerStore`). İçerik preset'teki
+ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamasıyla durduğu için dosyanın tamamı
+`CryptProtectData` ile (kullanıcı kapsamı) korunur — koruma başarısızsa dosya hiç yazılmaz. Yol `AppState`'e kurucu
+parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
+Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
+
+## D-038 — DISM'in yapmadığını kendi kodumuzla: kilitli uygulamalar ve boot.wim (2026-09-30, motor; kanıt bekliyor)
+Bağlam: `Microsoft.SecHealthUI` ve `Microsoft.DesktopAppInstaller` her Uygula'da `0x80073CFA` ile kalıyordu; gereksinim
+atlama yalnız yanıt dosyasına bağlıydı (dosya ISO'ya girmeyince Setup durdu); Setup'ın kendi imajına sürücü eklenemiyordu.
+Karar:
+- **Uygulama kaldırma (yerel):** DISM'in bir uygulamayı kaldırırken imajda ne değiştirdiği, 45 uygulaması kaldırılmış
+  imajla özgün imaj karşılaştırılarak çıkarıldı (ENGINE saha notu) ve aynısı bir `ComponentRecipe` olarak üretiliyor:
+  ailenin `WindowsApps` klasörleri + ClipSVC lisans dosyası silinir; `AppxAllUserStore\Applications\<ad>` ve
+  `\Staged\<aile>` silinir, `\Deprovisioned\<aile>` oluşturulur. Bağımlı framework paketlerine dokunulmaz.
+  Yeni bir silme kodu yok: sistem bileşenlerinin tarif yürütücüsü (yol denetimleri, ACL, junction reddi) çalışır.
+- **boot.wim:** `patchBootImage` önyükleme index'ini ayrı bir klasöre bağlar, `HKLM\SYSTEM\Setup\LabConfig` değerlerini
+  Setup'ın kendi kayıt defterine yazar, sürücüleri ekler, commit eder. Başarısızlıkta discard.
+- **Sıra (kural 6):** ikisi de yalnız motor + `wlcli appx-remove` / `wlcli boot-patch` + `tools\lab_appx.ps1` /
+  `tools\lab_boot.ps1`. Applier'a, kataloğa (kilit) ve ISO sayfasına **bağlanmadı**: betikler yönetici olarak gerçek
+  imajda geçince bağlanacak. Kurulan sistemde bir şeyin bozulup bozulmadığı (Windows Güvenliği sayfası, winget) ayrıca
+  VM'de görülmeli.
+
 ## D-036 — Yanıt dosyasında `UserData` her zaman `ProductKey` taşır (2026-09-30)
 Bağlam: Kullanıcının Windows 10 22H2 (tek sürüme indirilmiş) ISO'sunda Setup "Windows unattend yanıt dosyasından
 <ProductKey> ayarını okuyamıyor" diye durdu. Dosyada "Lisans sözleşmesini kabul et" yüzünden

@@ -58,12 +58,13 @@ add_library(wl_app STATIC
     shell/Shell.cpp
     shell/StatusBar.cpp
     shell/TitleBar.cpp
+    state/AnswerStore.cpp
     state/AppSettings.cpp
     state/AppState.cpp
     state/Preset.cpp
     state/RecentSources.cpp)
 wl_configure_target(wl_app)
-target_link_libraries(wl_app PUBLIC wl_core wl_ui PRIVATE wl_json version)
+target_link_libraries(wl_app PUBLIC wl_core wl_ui PRIVATE wl_json version crypt32)
 
 add_executable(WinLove WIN32
     main.cpp
