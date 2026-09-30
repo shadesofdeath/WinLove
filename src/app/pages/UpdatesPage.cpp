@@ -212,7 +212,8 @@ void UpdatesPage::refresh() {
     m_table->setVisible(mounted);
     m_rows.clear();
     for (const auto& step : core::ops::plan(m_state.changes()).steps) {
-        if (step.operation.kind == OpKind::AddPackage) {
+        // Language packs are listed on the Diller page (D-053).
+        if (step.operation.kind == OpKind::AddPackage && step.operation.value != L"language") {
             m_rows.push_back(step.operation);
         }
     }

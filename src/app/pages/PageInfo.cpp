@@ -16,6 +16,7 @@ constexpr std::array<PageInfo, static_cast<std::size_t>(PageId::Count)> kPages =
     {PageId::Apps, "apps", Str::NavApps, Str::AppsTitle, Str::AppsDesc, Icon::AppxPackage, 1, "D-050"},
     {PageId::Features, "features", Str::NavFeatures, Str::FeaturesTitle, Str::FeaturesDesc, Icon::PuzzleFeatures, 1, "P04"},
     {PageId::Updates, "updates", Str::NavUpdates, Str::UpdatesTitle, Str::UpdatesDesc, Icon::UpdateDownload, 1, "P08"},
+    {PageId::Languages, "languages", Str::NavLanguages, Str::LanguagesTitle, Str::LanguagesDesc, Icon::LanguageGlobe, 1, "D-053"},
     {PageId::Drivers, "drivers", Str::NavDrivers, Str::DriversTitle, Str::DriversDesc, Icon::DriverChip, 1, "P09"},
     {PageId::Registry, "registry", Str::NavRegistry, Str::RegistryTitle, Str::RegistryDesc, Icon::Registry, 2, "P11"},
     {PageId::Services, "services", Str::NavServices, Str::ServicesTitle, Str::ServicesDesc, Icon::ServicesGear, 2, "P10"},

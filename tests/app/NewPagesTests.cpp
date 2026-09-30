@@ -3,6 +3,7 @@
 #include "app/controllers/FilesController.h"
 #include "app/controllers/HostsController.h"
 #include "app/controllers/ImageDriverController.h"
+#include "app/controllers/LanguageController.h"
 #include "app/controllers/TaskController.h"
 
 #include <doctest.h>
@@ -210,4 +211,45 @@ TEST_CASE("apps page: default associations merge, the browser pick, removing row
     REQUIRE(apps.queuedApps().size() == 1);
     CHECK(apps.queuedApps().front().package == app.package);
     CHECK(apps.imageArchitecture() == L"x64");
+}
+
+TEST_CASE("languages page: packs of the image's architecture, the display languages, the queued settings") {
+    Fixture f;
+    LanguageController languages(f.state, [](std::function<void()> fn) { fn(); });
+    std::vector<core::LanguagePackFile> found;
+    for (const wchar_t* name : {LR"(D:\m\Microsoft-Windows-Client-Language-Pack_x64_de-de.cab)",
+                                LR"(D:\m\Microsoft-Windows-Client-Language-Pack_arm64_de-de.cab)",
+                                LR"(D:\m\Microsoft-Windows-LanguageFeatures-Basic-de-de-Package~31bf3856ad364e35~amd64~~.cab)"}) {
+        found.push_back(core::classifyLanguageFile(name));
+    }
+    const auto fitting = languages.fitting(found); // no source open: x64
+    REQUIRE(fitting.size() == 2);
+    languages.queuePacks(fitting);
+    languages.queuePacks(fitting); // once
+    CHECK(languages.queuedPacks().size() == 2);
+    CHECK(f.state.changes().find(OpKind::AddPackage, fitting[0].path.wstring())->value == L"language");
+    CHECK(languages.changedCount() == 2);
+
+    // The image has tr-TR; the queued pack adds de-DE.
+    core::ImageIntl intl;
+    intl.languages = {L"tr-TR"};
+    f.state.setImageIntl(AppState::ImageIntl{AppState::ImageIntl::Status::Ready, kMount, intl, {}});
+    CHECK(languages.uiLanguages() == std::vector<std::wstring>{L"tr-TR", L"de-DE"});
+
+    core::IntlSettings s;
+    s.uiLanguage = L"de-DE";
+    s.timeZone = L"W. Europe Standard Time";
+    languages.setSettings(s);
+    CHECK(languages.settings() == s);
+    CHECK(languages.changedCount() == 3);
+    languages.setSettings(core::IntlSettings{});
+    CHECK(f.state.changes().find(OpKind::SetIntl, L"intl") == nullptr);
+    languages.unqueuePack(fitting[0].path);
+    CHECK(languages.queuedPacks().size() == 1);
+
+    // This PC's lists are there and sorted.
+    CHECK(LanguageController::locales().size() > 100);
+    CHECK(LanguageController::timeZones().size() > 50);
+    CHECK(!LanguageController::keyboards().empty());
+    CHECK(LanguageController::localeName(L"tr-TR") != L"tr-TR");
 }

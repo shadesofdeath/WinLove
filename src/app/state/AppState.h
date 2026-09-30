@@ -10,6 +10,7 @@
 #include "core/image/Source.h"
 #include "core/image/dism/Appx.h"
 #include "core/image/dism/Dism.h"
+#include "core/image/dism/Intl.h"
 #include "core/image/dism/MountHealth.h"
 #include "core/image/RegistryEdit.h"
 #include "core/image/Services.h"
@@ -56,7 +57,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch, Intl };
     using Listener = std::function<void(Change)>;
 
     // `answersFile`: where the answer file being edited is kept between runs (AnswerStore.h).
@@ -193,6 +194,18 @@ public:
     [[nodiscard]] const std::optional<ImageDrivers>& imageDrivers() const noexcept { return m_imageDrivers; }
     void setImageDrivers(std::optional<ImageDrivers> drivers);
 
+    // D-053: the international settings and languages of the mounted image (LanguageController),
+    // read once per mount when the Diller page is first shown. Change::Intl.
+    struct ImageIntl {
+        enum class Status : std::uint8_t { Loading, Ready, Failed };
+        Status status = Status::Loading;
+        std::filesystem::path mountDir;
+        core::ImageIntl intl;
+        Error error;
+    };
+    [[nodiscard]] const std::optional<ImageIntl>& imageIntl() const noexcept { return m_imageIntl; }
+    void setImageIntl(std::optional<ImageIntl> intl);
+
     // P09: driver folders the user scanned (kept across pages and mounts) and their INFs.
     struct DriverScan {
         std::vector<std::filesystem::path> folders;
@@ -308,6 +321,7 @@ private:
     std::optional<ServiceList> m_services;
     std::optional<ImageValues> m_imageValues;
     std::optional<ImageDrivers> m_imageDrivers;
+    std::optional<ImageIntl> m_imageIntl;
     std::vector<RegImport> m_regImports;
     DriverScan m_drivers;
     Unattend m_unattend;
