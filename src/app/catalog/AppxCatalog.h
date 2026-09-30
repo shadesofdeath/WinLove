@@ -29,8 +29,6 @@ struct AppxCatalogEntry {
     core::ops::Risk risk = core::ops::Risk::Medium;
     std::wstring notesTr;
     std::wstring notesEn;
-    // Image build from which DISM refuses to deprovision the app (0x80073CFA); 0 = never.
-    int lockedSince = 0;
     [[nodiscard]] const std::wstring& name(Language language) const {
         return language == Language::Turkish ? nameTr : nameEn;
     }

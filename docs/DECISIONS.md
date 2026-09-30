@@ -241,7 +241,7 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
-## D-038 — DISM'in yapmadığını kendi kodumuzla: kilitli uygulamalar ve boot.wim (2026-09-30, motor; kanıt bekliyor)
+## D-038 — DISM'in yapmadığını kendi kodumuzla: kilitli uygulamalar ve boot.wim (2026-09-30; uygulamalar kanıtlandı, boot.wim bekliyor)
 Bağlam: `Microsoft.SecHealthUI` ve `Microsoft.DesktopAppInstaller` her Uygula'da `0x80073CFA` ile kalıyordu; gereksinim
 atlama yalnız yanıt dosyasına bağlıydı (dosya ISO'ya girmeyince Setup durdu); Setup'ın kendi imajına sürücü eklenemiyordu.
 Karar:
@@ -252,10 +252,14 @@ Karar:
   Yeni bir silme kodu yok: sistem bileşenlerinin tarif yürütücüsü (yol denetimleri, ACL, junction reddi) çalışır.
 - **boot.wim:** `patchBootImage` önyükleme index'ini ayrı bir klasöre bağlar, `HKLM\SYSTEM\Setup\LabConfig` değerlerini
   Setup'ın kendi kayıt defterine yazar, sürücüleri ekler, commit eder. Başarısızlıkta discard.
-- **Sıra (kural 6):** ikisi de yalnız motor + `wlcli appx-remove` / `wlcli boot-patch` + `tools\lab_appx.ps1` /
-  `tools\lab_boot.ps1`. Applier'a, kataloğa (kilit) ve ISO sayfasına **bağlanmadı**: betikler yönetici olarak gerçek
-  imajda geçince bağlanacak. Kurulan sistemde bir şeyin bozulup bozulmadığı (Windows Güvenliği sayfası, winget) ayrıca
-  VM'de görülmeli.
+- **Sıra (kural 6):** ikisi de önce yalnız motor + `wlcli appx-remove` / `wlcli boot-patch` + `tools\lab_appx.ps1` /
+  `tools\lab_boot.ps1`.
+- **Uygulamalar — kanıt sonrası (aynı gün):** `lab_appx.ps1` kullanıcının yönetici oturumunda geçti. Applier
+  `RemoveAppx` adımında `0x80073CFA` alınca `removeAppxNative`'e geçer (sürüm koşulu yok: DISM'in cevabı belirler).
+  Katalogdaki `lockedSince` alanı, `Item::locked`, kilit simgesi ve "Kaldırılamaz" metinleri **kaldırıldı**: iki
+  uygulama diğer Yüksek riskli uygulamalar gibi seçilir; ne anlama geldiği katalog notunda ve uyarı bandında yazar.
+  Kurulan sistemde bir şeyin bozulup bozulmadığı (Windows Güvenliği sayfası, winget) VM'de görülmeli — görülmedi.
+- **boot.wim:** ISO sayfasına bağlanmadı; `lab_boot.ps1` geçince bağlanacak.
 
 ## D-036 — Yanıt dosyasında `UserData` her zaman `ProductKey` taşır (2026-09-30)
 Bağlam: Kullanıcının Windows 10 22H2 (tek sürüme indirilmiş) ISO'sunda Setup "Windows unattend yanıt dosyasından

@@ -25,12 +25,19 @@
   Dialogun kendisi render'da görülmedi (diskte çalışma kopyası yoktu); liste girdisini kaldırma ve menü görüldü.
 - **Üç yeni iş (2026-09-30, kullanıcı isteği, D-037 / D-038):**
   (1) **Yanıt dosyası kalıcı** — `answers.dat` (DPAPI), her değişiklikte yazılır, açılışta geri gelir; unit testli. **Bitti.**
-  (2) **Kilitli uygulamaları yerel kaldırma** ve (3) **boot.wim yaması** (LabConfig + sürücü): **yalnız motor** +
-  `wlcli appx-remove` / `wlcli boot-patch` + `tools\lab_appx.ps1` / `tools\lab_boot.ps1`. Hiçbiri gerçek imajda çalışmadı
-  (yönetici gerekir); Applier / katalog / ISO sayfasına **bağlı değil**.
-  **Bir sonraki somut adım:** kullanıcı iki betiği yönetici PowerShell'de çalıştırır. Geçerse: Applier'da `0x80073CFA`
-  → yerel kaldırma, katalogdaki `lockedSince` kilidinin kalkması (yüksek risk uyarısıyla), ISO sayfasına "kurulum
-  ortamına da yaz" seçeneği (gereksinim atlama + kuyruktaki sürücüler). Geçmezse log'a göre karar.
+  (2) **DISM'in reddettiği uygulamaları kendi kodumuzla kaldırma** — motor kullanıcının yönetici çalıştırmasında
+  gerçek imajda kanıtlandı (`tools\lab_appx.ps1`, 25H2 Pro: SecHealthUI ve DesktopAppInstaller `0x80073CFA` → yerel
+  kaldırma; dosyalar, `Applications` / `Staged` gitti, `Deprovisioned` yazıldı, DISM artık listelemiyor, paket listesi
+  okunuyor; yapıştırılan çıktı son discard adımında kesildi, o ana dek 27 PASS / 0 FAIL). Ardından **Applier'a bağlandı**
+  (`RemoveAppx` `0x80073CFA` alınca `removeAppxNative`) ve katalogdaki kilit kaldırıldı: iki uygulama artık diğerleri
+  gibi seçilir (risk Yüksek, uyarı bandı). **Görülmeyen:** uygulamanın kendi Uygula akışında bu yol (yalnız `wlcli`
+  ile denendi); commit edilmiş imajdan kurulan Windows'ta Windows Güvenliği / winget'in durumu (VM); Windows 10'da
+  yerel kaldırma (kayıt düzeni aynı varsayıldı, denenmedi).
+  (3) **boot.wim yaması** (LabConfig + sürücü): **yalnız motor** + `wlcli boot-patch` + `tools\lab_boot.ps1`. Yönetici
+  gerektirmeyen kısım denendi (ISO'dan çıkarma, 2 index / önyükleme index'i 2, hatalı girdilerin reddi); bağlama ve
+  yazma **çalıştırılmadı**, ISO sayfasına **bağlı değil**.
+  **Bir sonraki somut adım:** kullanıcı `tools\lab_boot.ps1`'i yönetici PowerShell'de çalıştırır. Geçerse ISO sayfasına
+  "kurulum ortamına da yaz" seçeneği (gereksinim atlama + kuyruktaki sürücüler). Geçmezse log'a göre karar.
 - **İmajlar — kısayollar (2026-09-30, kullanıcı isteği):** bağlama klasörünü aç (`Ctrl+E`, her sayfadan; inspector'da
   klasör düğmesi; sağ tık), komut istemini bağlama klasöründe aç, dosya konumunu aç (`Ctrl+Shift+E`), bilgileri
   kopyala (`Ctrl+C`), kaynağı yenile (`F5`). **Kullanıcının isteğiyle denenmeden teslim edildi:** yalnız derlendi,
@@ -40,8 +47,8 @@
   anahtarı / kurulacak sürümün genel anahtarı / sürüm belli değilse yer tutucu + "Setup sorsun". 16 genel anahtar
   imajın kendi `pkeyconfig`'ine karşı doğrulandı. **VM'de yeniden denenmedi.** Aynı oturumun logundan: sürüm silme
   (6 → 1 tek seferde), Uygula (132 / 134) ve ISO'ya `autounattend.xml` eklenmesi Windows 10'da da çalıştı;
-  `Microsoft.DesktopAppInstaller` Windows 10'da da kaldırılamıyor (`0x80073CFA`) — katalogda yalnız 26100+ için
-  kilitli, düzeltilmedi (kullanıcıya soruldu).
+  `Microsoft.DesktopAppInstaller` Windows 10'da da kaldırılamıyor (`0x80073CFA`) — artık Applier her sürümde bu
+  kodda yerel kaldırmaya geçiyor (D-038); Windows 10'da denenmedi.
 - **İmajlar sayfası — dört yeni özellik (2026-09-30, kullanıcı isteği, D-035):**
   (1) **Yeniden adlandır** (kalem / `F2` / sağ tık): `core::setImageText`, gerçek imaj kopyasında denendi (Türkçe
   karakter, `&` `<`; yönetici gerekmez). (2) **Çoklu seçim**: onay kutusu, Ctrl / Shift, Ctrl+A; seçilenleri sil,
@@ -160,6 +167,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — Yanıt dosyası doldurulunca ISO'ya kendiliğinden giriyor; işlemci / disk denetimi atlama; imajda olmayan AppX başarı (D-034).
 - 2026-09-30 — İmajlar: çoklu seçim, yeniden adlandırma, WIM doğrulama (kendi LZX çözücümüz), sürüm yükseltme (D-035).
 - 2026-09-30 — Yanıt dosyası: `UserData` her zaman `ProductKey` ile (genel anahtar / yer tutucu) (D-036).
+- 2026-09-30 — Yerel uygulama kaldırma gerçek imajda kanıtlandı, Applier'a bağlandı, katalog kilidi kalktı (D-038).
 - 2026-09-30 — Yanıt dosyası kalıcı (D-037); yerel uygulama kaldırma ve boot.wim yaması: motor, kanıt bekliyor (D-038).
 - 2026-09-30 — İmajlar kısayolları: bağlama klasörü, komut istemi, dosya konumu, bilgileri kopyala, yenile (denenmedi).
 - 2026-09-28 — Baştan sona inceleme (4 alan, paralel): ~35 hata düzeltildi. Öne çıkanlar: junction üzerinden ana

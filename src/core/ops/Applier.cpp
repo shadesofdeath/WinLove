@@ -5,6 +5,7 @@
 #include "core/image/RegistryEdit.h"
 #include "core/image/Services.h"
 #include "core/image/SystemComponents.h"
+#include "core/image/dism/Appx.h"
 #include "core/image/dism/Edition.h"
 #include "core/image/dism/StoreCleanup.h"
 #include "core/postsetup/PostSetup.h"
@@ -47,6 +48,13 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
         if (!removed && removed.error().hresult == static_cast<std::int32_t>(0x80070002)) {
             log::info("apply", L"app not in the image (already removed): " + op.target);
             return {};
+        }
+        // 0x80073CFA: DISM will not deprovision this app (Windows Security UI, App Installer).
+        // WinLove then changes in the image what DISM changes for the apps it lets go (D-038).
+        if (!removed && removed.error().hresult == kAppxRemovalRefused) {
+            log::info("apply", L"DISM refuses this app; removing it with WinLove's own removal: " + op.target);
+            registry.reset(); // the recipe loads the hives itself, with the DISM session closed
+            return removeAppxNative(session, op.target, task);
         }
         return removed;
     }
