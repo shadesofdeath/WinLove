@@ -56,7 +56,7 @@ function Run([string[]] $arguments) {
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $output = @(Native { & $Cli @arguments })
     $script:lastExit = $LASTEXITCODE
-    $output | Where-Object { $_ -notmatch '^\s*((mount|discard|commit|verify|boot|extract)\s+)?[\d.]+%\s*$' -and $_.Trim() } |
+    $output | Where-Object { $_ -notmatch '^\s*((mount|discard|commit|verify|boot|extract)\s+)?[\d.]+(%| GB)\s*$' -and $_.Trim() } |
         ForEach-Object { Say ("  " + ($_ -replace '^(\s*((verify|boot|extract)\s+)?[\d.]+%)+', '').TrimEnd()) }
     Say ("  (exit $script:lastExit, " + [int]$watch.Elapsed.TotalSeconds + " s)")
     return $output
