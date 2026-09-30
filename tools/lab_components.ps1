@@ -7,7 +7,7 @@
 
   Needs an elevated PowerShell:
     powershell -ExecutionPolicy Bypass -File tools\lab_components.ps1
-  With -Cleanup it also runs the component store cleanup (/ResetBase) — 5 to 20 minutes.
+  With -Cleanup it also runs the component store cleanup (/ResetBase) - 5 to 20 minutes.
   The whole output is also written to build\lab\out\components-test.log.
 #>
 param(
@@ -50,14 +50,15 @@ function Check([string] $what, [bool] $ok) {
 }
 
 Remove-Item $log -ErrorAction SilentlyContinue
-Say "WinLove system component check — $(Get-Date -Format s)"
+Say "WinLove system component check - $(Get-Date -Format s)"
 Say "copying the lab image (the original stays untouched)..."
 Copy-Item $golden $work -Force
 
 $mounted = $false
 try {
-    Check 'mount' ((Run @('mount', $work, "$Index", $mount)) -eq 0)
-    $mounted = $true
+    $mounted = (Run @('mount', $work, "$Index", $mount)) -eq 0
+    Check 'mount' $mounted
+    if (-not $mounted) { throw 'the image could not be mounted: nothing else can be checked' }
 
     # ---- OneDrive: hidden package, setup file, Run value of the default profile ----
     $setup = Join-Path $mount 'Windows\System32\OneDriveSetup.exe'
@@ -65,11 +66,15 @@ try {
     Run @('cbs', $mount, 'OneDrive-Setup') | Out-Null
     Check 'remove OneDrive' ((Run @('component', $mount, (Join-Path $fixtures 'recipe-onedrive.json'), '--remove', '--verbose')) -eq 0)
     Check 'OneDriveSetup.exe is gone' (-not (Test-Path $setup))
-    $left = (& $Cli cbs $mount 'OneDrive-Setup' --json | Out-String) | ConvertFrom-Json
-    $installed = @($left | Where-Object { $_.state -ge 0x70 })
-    Say ("  packages still installed: " + $installed.Count)
-    $installed | ForEach-Object { Say ("    " + $_.identity) }
-    Check 'OneDrive packages are out of the component store' ($installed.Count -eq 0)
+    # What the image's registry still lists as installed (state 0x70 = 112).
+    $listed = (& $Cli cbs $mount 'OneDrive-Setup' --json 2>$null | Out-String)
+    $installed = $null
+    if ($LASTEXITCODE -eq 0 -and $listed.Trim()) {
+        $installed = @($listed | ConvertFrom-Json | Where-Object { $_.state -ge 112 })
+        Say ("  packages still installed: " + $installed.Count)
+        $installed | ForEach-Object { Say ("    " + $_.identity) }
+    }
+    Check 'OneDrive packages are out of the component store' ($null -ne $installed -and $installed.Count -eq 0)
 
     # ---- Edge: folder + registry ----
     $edge = Join-Path $mount 'Program Files (x86)\Microsoft\Edge'
@@ -82,10 +87,14 @@ try {
     Check 'DISM still lists packages' ((Run @('packages', $mount)) -eq 0)
 
     if ($Cleanup) {
-        Say "`ncomponent store cleanup (/ResetBase) — this takes a while..."
+        Say "`ncomponent store cleanup (/ResetBase) - this takes a while..."
         Check 'store cleanup' ((Run @('store-cleanup', $mount, '--resetbase', '--verbose')) -eq 0)
         Check 'DISM still lists packages after the cleanup' ((Run @('packages', $mount)) -eq 0)
     }
+}
+catch {
+    Say "FAIL  script error: $($_.Exception.Message)"
+    $failed++
 }
 finally {
     if ($mounted) {
@@ -93,5 +102,6 @@ finally {
     }
     Remove-Item $work -Force -ErrorAction SilentlyContinue
 }
-Say "`n$(if ($failed) { "$failed check(s) FAILED" } else { 'all checks passed' }) — log: $log"
+if ($failed) { $summary = "$failed check(s) FAILED" } else { $summary = 'all checks passed' }
+Say "`n$summary - log: $log"
 exit $failed
