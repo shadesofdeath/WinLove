@@ -13,7 +13,7 @@ namespace wl::core::ops {
 namespace {
 
 Result<void> runStep(const Operation& op, DismSession& session, const TaskContext& task, const ApplyOptions& options,
-                     std::unique_ptr<OfflineRegistry>& registry) {
+                     std::unique_ptr<OfflineRegistry>& registry, std::unique_ptr<DeferredRegistry>& deferred) {
     auto reg = [&]() -> OfflineRegistry& {
         if (!registry) {
             registry = std::make_unique<OfflineRegistry>(session.mountPath());
@@ -52,7 +52,10 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
         if (!write) {
             return std::unexpected(write.error());
         }
-        return deferRegistryWrite(session.mountPath(), reg(), *write);
+        if (!deferred) {
+            deferred = std::make_unique<DeferredRegistry>(session.mountPath());
+        }
+        return deferRegistryWrite(reg(), *deferred, *write);
     }
     }
     return fail(ErrorCode::Unsupported, L"operation kind not implemented yet", utf8::toWide(opKindKey(op.kind)));
@@ -68,6 +71,7 @@ ApplyReport apply(const ApplyPlan& plan, DismSession& session, const TaskContext
                   const ApplyCallbacks& callbacks, const ApplyOptions& options) {
     ApplyReport report;
     std::unique_ptr<OfflineRegistry> registry; // hives stay loaded for the run, unloaded on return
+    std::unique_ptr<DeferredRegistry> deferred; // the post-setup .reg files, tidied on return
     const std::size_t total = plan.steps.size();
     for (std::size_t i = 0; i < total; ++i) {
         const PlanStep& step = plan.steps[i];
@@ -86,7 +90,7 @@ ApplyReport apply(const ApplyPlan& plan, DismSession& session, const TaskContext
                                                        static_cast<double>(total),
                                                    stage);
                                    }};
-        StepResult result{step, runStep(step.operation, session, stepTask, options, registry)};
+        StepResult result{step, runStep(step.operation, session, stepTask, options, registry, deferred)};
         if (!result.outcome) {
             log::error("apply", describe(result.outcome.error()));
         }

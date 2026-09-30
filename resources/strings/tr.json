@@ -366,6 +366,7 @@
     "customDesc": "İçe aktarılan .reg dosyaları",
     "valuesN": "{n} değer",
     "skippedN": "{n} atlandı (imajda yok)",
+    "reapplied": "kurulumdan sonra yeniden uygulanır",
     "noImports": ".reg dosyası yok — başlıktaki \".reg içe aktar…\" ya da sürükle-bırak",
     "imported": "{n} kayıt defteri değeri kuyruğa eklendi",
     "importFailed": ".reg dosyası okunamadı",

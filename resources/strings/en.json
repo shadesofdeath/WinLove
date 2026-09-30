@@ -366,6 +366,7 @@
     "customDesc": "Imported .reg files",
     "valuesN": "{n} values",
     "skippedN": "{n} skipped (not in the image)",
+    "reapplied": "re-applied after setup",
     "noImports": "No .reg files — use \"Import .reg…\" above or drag and drop",
     "imported": "{n} registry values queued",
     "importFailed": "Could not read the .reg file",

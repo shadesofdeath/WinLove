@@ -150,8 +150,9 @@ std::wstring normalizeRegistryKey(std::wstring_view key) {
     }
     const std::pair<std::wstring_view, std::wstring_view> roots[] = {
         {L"HKEY_LOCAL_MACHINE", L"HKLM"}, {L"HKEY_CURRENT_USER", L"HKCU"}, {L"HKEY_USERS", L"HKU"},
-        {L"HKEY_CLASSES_ROOT", L"HKCR"},  {L"HKLM", L"HKLM"},              {L"HKCU", L"HKCU"},
-        {L"HKU", L"HKU"},                 {L"HKCR", L"HKCR"},
+        {L"HKEY_CLASSES_ROOT", L"HKCR"},  {L"HKEY_CURRENT_CONFIG", L"HKCC"}, {L"HKLM", L"HKLM"},
+        {L"HKCU", L"HKCU"},               {L"HKU", L"HKU"},                  {L"HKCR", L"HKCR"},
+        {L"HKCC", L"HKCC"},
     };
     for (const auto& [longName, shortName] : roots) {
         if (auto rest = stripSegmentPrefix(k, longName)) {
@@ -163,6 +164,13 @@ std::wstring normalizeRegistryKey(std::wstring_view key) {
 
 bool isUserKey(std::wstring_view key) {
     return istartsWith(normalizeRegistryKey(key), L"HKCU");
+}
+
+bool isPostSetupOnlyKey(std::wstring_view rawKey) {
+    const std::wstring key = normalizeRegistryKey(rawKey);
+    // LocalService / NetworkService profiles and the current hardware profile.
+    return stripSegmentPrefix(key, L"HKCC") || stripSegmentPrefix(key, L"HKU\\S-1-5-19") ||
+           stripSegmentPrefix(key, L"HKU\\S-1-5-20");
 }
 
 Result<OfflineKey> mapOfflineKey(std::wstring_view rawKey) {
@@ -183,6 +191,9 @@ Result<OfflineKey> mapOfflineKey(std::wstring_view rawKey) {
         return OfflineKey{OfflineHiveFile::DefaultUser, *rest};
     }
     if (auto rest = stripSegmentPrefix(key, L"HKU\\.DEFAULT")) {
+        return OfflineKey{OfflineHiveFile::DotDefault, *rest};
+    }
+    if (auto rest = stripSegmentPrefix(key, L"HKU\\S-1-5-18")) { // LocalSystem: the same hive
         return OfflineKey{OfflineHiveFile::DotDefault, *rest};
     }
     return fail(ErrorCode::Unsupported, L"registry root not available in an offline image", std::wstring(rawKey));
@@ -211,6 +222,11 @@ Result<RegistryWrite> parseRegValue(std::wstring key, std::wstring name, std::ws
     const std::wstring value = trim(rawValue);
     if (value == L"[-]") {
         w.kind = RegistryWrite::Kind::DeleteKey;
+        w.name.clear();
+        return w;
+    }
+    if (value == L"[+]") {
+        w.kind = RegistryWrite::Kind::CreateKey;
         w.name.clear();
         return w;
     }
@@ -273,6 +289,7 @@ Result<RegistryWrite> parseRegValue(std::wstring key, std::wstring name, std::ws
 std::wstring formatRegValue(const RegistryWrite& w) {
     switch (w.kind) {
     case RegistryWrite::Kind::DeleteKey: return L"[-]";
+    case RegistryWrite::Kind::CreateKey: return L"[+]";
     case RegistryWrite::Kind::DeleteValue: return L"-";
     case RegistryWrite::Kind::Set: break;
     }
@@ -299,6 +316,14 @@ std::wstring formatRegValue(const RegistryWrite& w) {
 }
 
 std::wstring registryTarget(const RegistryWrite& w) {
+    // Key operations get slots of their own, apart from the key's default value ("<key>::"): a file
+    // that deletes a key and then sets its default value needs both. No key name ends in '\', so
+    // these forms cannot clash with a value; the slashes are trimmed again when the target is parsed.
+    switch (w.kind) {
+    case RegistryWrite::Kind::CreateKey: return w.key + L"\\::";
+    case RegistryWrite::Kind::DeleteKey: return w.key + L"\\\\::";
+    default: break;
+    }
     return w.key + L"::" + w.name;
 }
 
@@ -329,6 +354,16 @@ Result<std::vector<RegistryWrite>> parseRegText(std::wstring_view text) {
     bool header = false;
     bool regedit4 = false;     // REGEDIT4: hex(1/2/7) payloads are ANSI bytes, not UTF-16
     bool skipValues = false;   // after [-key], until the next [key] (as regedit does)
+    bool emptySection = false; // "[key]" seen, no value yet: importing it still creates the key
+    auto closeSection = [&] {
+        if (emptySection) {
+            RegistryWrite w;
+            w.kind = RegistryWrite::Kind::CreateKey;
+            w.key = key;
+            writes.push_back(std::move(w));
+        }
+        emptySection = false;
+    };
     for (std::size_t i = 0; i < lines.size(); ++i) {
         const std::size_t lineNo = i + 1;
         std::wstring line = trim(lines[i]);
@@ -355,6 +390,7 @@ Result<std::vector<RegistryWrite>> parseRegText(std::wstring_view text) {
             if (line.back() != L']') {
                 return std::unexpected(lineError(lineNo, L"unterminated key"));
             }
+            closeSection();
             const bool remove = line.size() > 2 && line[1] == L'-';
             std::wstring raw = line.substr(remove ? 2 : 1, line.size() - (remove ? 3 : 2));
             key = normalizeRegistryKey(raw);
@@ -362,6 +398,7 @@ Result<std::vector<RegistryWrite>> parseRegText(std::wstring_view text) {
                 return std::unexpected(lineError(lineNo, L"unknown registry root: " + raw));
             }
             skipValues = remove;
+            emptySection = !remove;
             if (remove) {
                 RegistryWrite w;
                 w.kind = RegistryWrite::Kind::DeleteKey;
@@ -402,11 +439,13 @@ Result<std::vector<RegistryWrite>> parseRegText(std::wstring_view text) {
             !std::wstring_view(line).substr(pos + 1).starts_with(L"\"")) {
             write->data = ansiToUtf16Bytes(write->data);
         }
+        emptySection = false;
         writes.push_back(std::move(*write));
     }
     if (!header) {
         return std::unexpected(lineError(1, L"not a .reg file (missing header)"));
     }
+    closeSection();
     return writes;
 }
 
@@ -426,11 +465,16 @@ Result<std::vector<RegistryWrite>> readRegFile(const std::filesystem::path& file
     return writes;
 }
 
-std::wstring formatRegText(const std::vector<RegistryWrite>& writes) {
+namespace {
+
+const wchar_t* const kRegHeader = L"Windows Registry Editor Version 5.00\r\n";
+
+// The [key] groups of a .reg file, in order (no header): what follows kRegHeader.
+std::wstring formatRegBody(const std::vector<RegistryWrite>& writes) {
     auto longKey = [](const std::wstring& key) {
         const std::pair<std::wstring_view, std::wstring_view> roots[] = {
             {L"HKLM", L"HKEY_LOCAL_MACHINE"}, {L"HKCU", L"HKEY_CURRENT_USER"}, {L"HKU", L"HKEY_USERS"},
-            {L"HKCR", L"HKEY_CLASSES_ROOT"}};
+            {L"HKCR", L"HKEY_CLASSES_ROOT"},  {L"HKCC", L"HKEY_CURRENT_CONFIG"}};
         for (const auto& [shortName, longName] : roots) {
             if (auto rest = stripSegmentPrefix(key, shortName)) {
                 return std::wstring(longName) + (rest->empty() ? L"" : L"\\" + *rest);
@@ -438,21 +482,34 @@ std::wstring formatRegText(const std::vector<RegistryWrite>& writes) {
         }
         return key;
     };
-    std::wstring out = L"Windows Registry Editor Version 5.00\r\n";
+    std::wstring out;
     std::wstring current;
+    bool open = false; // a [key] group is open: more values of `current` go under it
     for (const auto& w : writes) {
         if (w.kind == RegistryWrite::Kind::DeleteKey) {
             out += L"\r\n[-" + longKey(w.key) + L"]\r\n";
-            current.clear();
+            open = false;
             continue;
         }
-        if (w.key != current) {
+        // A created key always gets its own group: two in a row must stay two.
+        if (!open || w.key != current || w.kind == RegistryWrite::Kind::CreateKey) {
             out += L"\r\n[" + longKey(w.key) + L"]\r\n";
             current = w.key;
+            open = true;
+        }
+        if (w.kind == RegistryWrite::Kind::CreateKey) {
+            open = false; // the next value opens the group again, so the key stays "created empty"
+            continue;
         }
         out += (w.name.empty() ? std::wstring(L"@") : L"\"" + escape(w.name) + L"\"") + L"=" + formatRegValue(w) + L"\r\n";
     }
     return out;
+}
+
+} // namespace
+
+std::wstring formatRegText(const std::vector<RegistryWrite>& writes) {
+    return kRegHeader + formatRegBody(writes);
 }
 
 const wchar_t* const kSetupCompleteImportLine =
@@ -467,37 +524,108 @@ std::filesystem::path deferredRegFile(const std::filesystem::path& mountDir, Def
            (scope == DeferredScope::User ? L"firstlogon-user.reg" : L"setupcomplete.reg");
 }
 
-Result<void> updateDeferredRegFile(const std::filesystem::path& file, const RegistryWrite& write) {
-    std::vector<RegistryWrite> writes;
-    std::error_code ec;
-    if (std::filesystem::exists(file, ec)) {
-        auto existing = readRegFile(file);
-        if (!existing) {
-            return std::unexpected(existing.error());
-        }
-        writes = std::move(*existing);
-    }
-    // Same slot replaces; a new [-K] replaces everything under K; an earlier [-K] stays before
-    // later values so the re-import reproduces "delete, then set" like the offline hive.
-    std::erase_if(writes, [&](const RegistryWrite& w) {
+namespace {
+
+// Puts `write` at the end of `writes`, dropping what it supersedes: the same slot; for a new [-K]
+// everything recorded for K. An earlier [-K] stays before later values, so the re-import
+// reproduces "delete, then set" like the offline hive. Returns true when something was dropped.
+bool replaceSlot(std::vector<RegistryWrite>& writes, const RegistryWrite& write) {
+    const bool creates = write.kind == RegistryWrite::Kind::CreateKey;
+    const auto dropped = std::erase_if(writes, [&](const RegistryWrite& w) {
         if (!iequals(w.key, write.key)) {
             return false;
         }
         if (write.kind == RegistryWrite::Kind::DeleteKey) {
             return true;
         }
-        return w.kind != RegistryWrite::Kind::DeleteKey && iequals(w.name, write.name);
+        // A created key and the key's default value both have an empty name: different slots.
+        return w.kind != RegistryWrite::Kind::DeleteKey && (w.kind == RegistryWrite::Kind::CreateKey) == creates &&
+               iequals(w.name, write.name);
     });
     writes.push_back(write);
+    return dropped > 0;
+}
+
+// UTF-16 LE with BOM, what reg.exe import and regedit read. `append` adds to an existing file.
+Result<void> writeRegFile(const std::filesystem::path& file, std::wstring_view text, bool append) {
+    std::error_code ec;
     std::filesystem::create_directories(file.parent_path(), ec);
-    const std::wstring text = formatRegText(writes);
-    std::ofstream out(file, std::ios::binary | std::ios::trunc);
+    std::ofstream out(file, std::ios::binary | (append ? std::ios::app : std::ios::trunc));
     if (!out) {
         return fail(ErrorCode::IoError, L"could not write deferred .reg file", file.wstring());
     }
-    out.write("\xFF\xFE", 2);
+    if (!append) {
+        out.write("\xFF\xFE", 2);
+    }
     out.write(reinterpret_cast<const char*>(text.data()), static_cast<std::streamsize>(text.size() * sizeof(wchar_t)));
+    out.flush();
     return out ? Result<void>{} : fail(ErrorCode::IoError, L"could not write deferred .reg file", file.wstring());
+}
+
+} // namespace
+
+DeferredRegistry::DeferredRegistry(std::filesystem::path mountDir) : m_mountDir(std::move(mountDir)) {
+    m_machine.path = deferredRegFile(m_mountDir, DeferredScope::Machine);
+    m_user.path = deferredRegFile(m_mountDir, DeferredScope::User);
+}
+
+DeferredRegistry::~DeferredRegistry() {
+    close();
+}
+
+Result<void> DeferredRegistry::record(const RegistryWrite& write) {
+    const bool user = deferredScope(write) == DeferredScope::User;
+    File& file = user ? m_user : m_machine;
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(file.path, ec);
+    const bool exists = !ec && size > 0;
+    if (!file.loaded) {
+        // What earlier runs recorded (the same image can be serviced more than once).
+        if (exists) {
+            auto existing = readRegFile(file.path);
+            if (!existing) {
+                return std::unexpected(existing.error());
+            }
+            file.writes = std::move(*existing);
+        }
+        file.loaded = true;
+    }
+    const std::wstring entry = formatRegBody({write});
+    if (auto r = writeRegFile(file.path, exists ? entry : kRegHeader + entry, /*append=*/exists); !r) {
+        return r;
+    }
+    file.superseded = replaceSlot(file.writes, write) || file.superseded;
+    if (user) {
+        m_userHookPending = !m_userHooked;
+        return {};
+    }
+    if (!m_machineHooked) {
+        if (auto r = ensureSetupCompleteImport(m_mountDir / L"Windows" / L"Setup" / L"Scripts" / L"SetupComplete.cmd"); !r) {
+            return r;
+        }
+        m_machineHooked = true;
+    }
+    return {};
+}
+
+bool DeferredRegistry::takeUserHook() noexcept {
+    const bool pending = m_userHookPending;
+    m_userHookPending = false;
+    m_userHooked = m_userHooked || pending;
+    return pending;
+}
+
+void DeferredRegistry::close() {
+    for (File* file : {&m_machine, &m_user}) {
+        if (!file->superseded) {
+            continue;
+        }
+        // Only tidying: the appended file already imports to the same values.
+        if (auto r = writeRegFile(file->path, formatRegText(file->writes), /*append=*/false); !r) {
+            log::warn("reg", describe(r.error()));
+        }
+        file->superseded = false;
+    }
 }
 
 Result<void> ensureSetupCompleteImport(const std::filesystem::path& setupComplete) {
@@ -540,17 +668,18 @@ Result<void> ensureSetupCompleteImport(const std::filesystem::path& setupComplet
     return out ? Result<void>{} : fail(ErrorCode::IoError, L"could not write SetupComplete.cmd", setupComplete.wstring());
 }
 
-Result<void> deferRegistryWrite(const std::filesystem::path& mountDir, OfflineRegistry& registry,
-                                const RegistryWrite& write) {
-    if (auto r = registry.apply(write); !r) {
+Result<void> deferRegistryWrite(OfflineRegistry& registry, DeferredRegistry& deferred, const RegistryWrite& write) {
+    // HKCC and the service accounts exist only on the installed system: recorded, not written here.
+    if (!isPostSetupOnlyKey(write.key)) {
+        if (auto r = registry.apply(write); !r) {
+            return r;
+        }
+    }
+    if (auto r = deferred.record(write); !r) {
         return r;
     }
-    const DeferredScope scope = deferredScope(write);
-    if (auto r = updateDeferredRegFile(deferredRegFile(mountDir, scope), write); !r) {
-        return r;
-    }
-    if (scope == DeferredScope::Machine) {
-        return ensureSetupCompleteImport(mountDir / L"Windows" / L"Setup" / L"Scripts" / L"SetupComplete.cmd");
+    if (!deferred.takeUserHook()) {
+        return {};
     }
     // Default profile RunOnce: copied into every new account, run once at its first logon.
     RegistryWrite hook;
@@ -613,6 +742,19 @@ Result<void> OfflineRegistry::apply(const RegistryWrite& write) {
         return fail(status == ERROR_ACCESS_DENIED ? ErrorCode::AccessDenied : ErrorCode::IoError, what, context,
                     static_cast<std::int32_t>(HRESULT_FROM_WIN32(status)));
     };
+    if (write.kind == RegistryWrite::Kind::CreateKey) {
+        HKEY created = nullptr;
+        LSTATUS status = RegCreateKeyExW(HKEY_LOCAL_MACHINE, full->c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE,
+                                         KEY_QUERY_VALUE, nullptr, &created, nullptr);
+        if (status == ERROR_ACCESS_DENIED) { // TrustedInstaller-owned parent: see the value write below
+            status = RegCreateKeyExW(HKEY_LOCAL_MACHINE, full->c_str(), 0, nullptr, REG_OPTION_BACKUP_RESTORE,
+                                     KEY_QUERY_VALUE, nullptr, &created, nullptr);
+        }
+        if (status == ERROR_SUCCESS) {
+            RegCloseKey(created);
+        }
+        return win32(status, L"could not create registry key");
+    }
     if (write.kind == RegistryWrite::Kind::DeleteKey) {
         if (mapped->path.empty()) {
             return fail(ErrorCode::InvalidArgument, L"refusing to delete a hive root", context);

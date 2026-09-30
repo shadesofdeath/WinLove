@@ -500,6 +500,7 @@ enum class Str : std::uint16_t {
     RegistryNoImports,
     RegistryNoMountBody,
     RegistryNoMountTitle,
+    RegistryReapplied,
     RegistryScope,
     RegistryScopeSystem,
     RegistryScopeUser,
@@ -673,7 +674,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 663;
+inline constexpr std::size_t kStrCount = 664;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -1168,6 +1169,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "registry.noImports",
     "registry.noMountBody",
     "registry.noMountTitle",
+    "registry.reapplied",
     "registry.scope",
     "registry.scopeSystem",
     "registry.scopeUser",
