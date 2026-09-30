@@ -14,6 +14,7 @@ add_library(wl_app STATIC
     controllers/IsoController.cpp
     controllers/PostSetupController.cpp
     controllers/PreloadController.cpp
+    controllers/PresetController.cpp
     controllers/UnattendController.cpp
     Format.cpp
     Localization.cpp
@@ -36,6 +37,7 @@ add_library(wl_app STATIC
     pages/images/OperationStrip.cpp
     pages/PageInfo.cpp
     pages/PostSetupPage.cpp
+    pages/PresetsPage.cpp
     pages/postsetup/StepDialog.cpp
     pages/SourcePage.cpp
     pages/TweaksPage.cpp
@@ -49,6 +51,7 @@ add_library(wl_app STATIC
     shell/TitleBar.cpp
     state/AppSettings.cpp
     state/AppState.cpp
+    state/Preset.cpp
     state/RecentSources.cpp)
 wl_configure_target(wl_app)
 target_link_libraries(wl_app PUBLIC wl_core wl_ui PRIVATE wl_json)

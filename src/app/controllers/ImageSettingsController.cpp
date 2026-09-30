@@ -30,19 +30,21 @@ std::vector<Operation> ImageSettingsController::operationsFor(const ImageSetting
     return ops;
 }
 
-bool ImageSettingsController::queued(const Operation& op) const {
-    const auto* found = m_state.changes().find(op.kind, op.target);
+namespace {
+bool queued(const core::ops::ChangeSet& changes, const Operation& op) {
+    const auto* found = changes.find(op.kind, op.target);
     return found && found->value == op.value;
 }
+} // namespace
 
-int ImageSettingsController::current(const ImageSetting& setting) const {
+int ImageSettingsController::optionIn(const core::ops::ChangeSet& changes, const ImageSetting& setting) {
     // Options of one setting may share slots with different values, never a whole set; when two
     // match anyway (a preset edited by hand) the one that says more wins.
     int best = setting.defaultOption;
     std::size_t bestSize = 0;
     for (int i = 0; i < static_cast<int>(setting.options.size()); ++i) {
         const auto ops = operationsFor(setting, i);
-        if (ops.size() > bestSize && std::ranges::all_of(ops, [&](const Operation& op) { return queued(op); })) {
+        if (ops.size() > bestSize && std::ranges::all_of(ops, [&](const Operation& op) { return queued(changes, op); })) {
             best = i;
             bestSize = ops.size();
         }
@@ -54,7 +56,7 @@ void ImageSettingsController::collectQueued(const ImageSetting& setting,
                                             std::vector<std::pair<OpKind, std::wstring>>& slots) const {
     for (int i = 0; i < static_cast<int>(setting.options.size()); ++i) {
         for (auto& op : operationsFor(setting, i)) {
-            if (queued(op)) {
+            if (queued(m_state.changes(), op)) {
                 slots.emplace_back(op.kind, std::move(op.target));
             }
         }
