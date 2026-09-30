@@ -45,6 +45,7 @@ add_library(wl_app STATIC
     pages/PageInfo.cpp
     pages/PostSetupPage.cpp
     pages/PresetsPage.cpp
+    pages/postsetup/AppsDialog.cpp
     pages/postsetup/StepDialog.cpp
     pages/SourcePage.cpp
     pages/TweaksPage.cpp

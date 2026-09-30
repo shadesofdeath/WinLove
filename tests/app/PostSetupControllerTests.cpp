@@ -4,6 +4,7 @@
 
 #include <doctest.h>
 
+#include <algorithm>
 #include <filesystem>
 
 using namespace wl;
@@ -80,6 +81,37 @@ TEST_CASE("post-setup controller: the whole plan is one queue operation") {
     f.controller.remove(0);
     f.controller.remove(0);
     CHECK(f.state.changes().empty()); // no steps: nothing to apply
+}
+
+TEST_CASE("post-setup controller: the app catalog adds what is ticked once, as one queue edit") {
+    Fixture f;
+    const auto& apps = PostSetupController::popularApps();
+    REQUIRE(apps.size() >= 40);
+    for (const auto& app : apps) {
+        CAPTURE(app.id);
+        // Every entry is a step winget can be given.
+        PostSetupPlan one;
+        one.steps.push_back(Step{Step::Type::Winget, app.name, app.id, {}, true});
+        CHECK(core::validatePostSetup(one).empty());
+        CHECK(std::ranges::count(apps, app.id, &PostSetupController::App::id) == 1);
+    }
+
+    f.controller.add(Step{Step::Type::Winget, L"mine", L"7ZIP.7zip", {}, true}); // typed by hand, other case
+    const auto sevenZip = static_cast<std::size_t>(
+        std::ranges::find(apps, std::wstring(L"7zip.7zip"), &PostSetupController::App::id) - apps.begin());
+    CHECK(f.controller.hasApp(sevenZip));
+    CHECK_FALSE(f.controller.hasApp(0));
+
+    const auto version = f.state.changes().version();
+    CHECK(f.controller.addApps({0, 1, sevenZip, 0, apps.size() + 5}) == 2); // the known one, the repeat and the bad index are left out
+    CHECK(f.controller.stepCount() == 3);
+    CHECK(f.state.changes().size() == 1);
+    CHECK(f.state.changes().version() == version + 1); // one edit: one undo step
+    CHECK(f.controller.plan().steps[1].source == apps[0].id);
+    CHECK(f.controller.plan().steps[1].name == apps[0].name);
+    CHECK(f.controller.hasApp(0));
+    CHECK(f.controller.addApps({0, 1}) == 0);
+    CHECK(f.state.changes().version() == version + 1); // nothing new: the queue is not touched
 }
 
 TEST_CASE("post-setup controller: options chosen before the first step go into the plan") {

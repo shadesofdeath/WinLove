@@ -15,10 +15,13 @@ namespace wl::app {
 class PostSetupController {
 public:
     static constexpr const wchar_t* kTarget = L"post-setup";
-    // Well-known winget packages offered by the "Uygulama ekle" dialog.
+    // Well-known winget packages: the "Uygulama ekle" dialog offers them one at a time, "Hazır
+    // uygulamalar" as a check list. Every id was looked up in the winget source (2026-09-30).
+    enum class AppCategory : std::uint8_t { Browsers, Tools, Media, Development, Communication, Games, Office };
     struct App {
         std::wstring name;
         std::wstring id;
+        AppCategory category = AppCategory::Tools;
     };
 
     explicit PostSetupController(AppState& state);
@@ -27,6 +30,11 @@ public:
     [[nodiscard]] std::size_t stepCount() const { return plan().steps.size(); }
 
     void add(core::PostSetupStep step);
+    // popularApps()[index] is a winget step of the plan already (ids compare without case).
+    [[nodiscard]] bool hasApp(std::size_t index) const;
+    // One queue edit for the whole pick; apps that are a step already are left out. Returns how
+    // many steps were added.
+    std::size_t addApps(const std::vector<std::size_t>& indexes);
     void replace(std::size_t index, core::PostSetupStep step);
     void remove(std::size_t index);
     // Moves a step up (-1) or down (+1); false at the ends.

@@ -65,7 +65,7 @@ TEST_CASE("settings catalog: every shipped entry is valid and placed in a known 
     // Nothing was skipped as malformed.
     const auto raw = nlohmann::json::parse(shippedJson(L"settings.json"));
     CHECK(catalog.settings().size() == raw["settings"].size());
-    CHECK(catalog.tabs().size() == 5);
+    CHECK(catalog.tabs().size() == 6);
 
     std::set<std::string> ids;
     for (const auto& s : catalog.settings()) {
@@ -257,6 +257,64 @@ TEST_CASE("form: an empty Start is a policy value (Windows 11) and a layout file
     CHECK(f.state.changes().find(
         OpKind::SetRegistryFirstLogon,
         L"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager::SilentInstalledAppsEnabled"));
+}
+
+TEST_CASE("form: the taskbar comes with File Explorer only — a layout file and the value that points Windows at it") {
+    Fixture f;
+    const auto& catalog = f.controller.catalog();
+    const auto& pins = setting(catalog, "taskbar-pins");
+    f.controller.select(pins, option(pins, "off"));
+    const auto* file = f.state.changes().find(OpKind::WriteFile, L"ProgramData\\WinLove\\TaskbarLayoutModification.xml");
+    REQUIRE(file);
+    CHECK(file->value.find(L"PinListPlacement=\"Replace\"") != std::wstring::npos);
+    CHECK(file->value.find(L"Microsoft.Windows.Explorer") != std::wstring::npos);
+    // REG_EXPAND_SZ, as Microsoft documents the value: Explorer expands %ProgramData% itself.
+    const auto* value = f.state.changes().find(
+        OpKind::SetRegistryValue, L"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer::LayoutXMLPath");
+    REQUIRE(value);
+    const auto written = core::registryWriteFrom(value->target, value->value);
+    REQUIRE(written);
+    CHECK(written->type == REG_EXPAND_SZ);
+    CHECK(std::wstring(reinterpret_cast<const wchar_t*>(written->data.data()), written->data.size() / 2 - 1) ==
+          L"%ProgramData%\\WinLove\\TaskbarLayoutModification.xml");
+    // The Start layout is another file: both settings can be off together.
+    const auto& start = setting(catalog, "start-pins");
+    f.controller.select(start, option(start, "off"));
+    CHECK(f.state.changes().count(OpKind::WriteFile) == 2);
+    CHECK(f.controller.current(pins) == option(pins, "off"));
+    CHECK(f.controller.current(start) == option(start, "off"));
+}
+
+TEST_CASE("form: Windows Update options share the AU key without stepping on each other") {
+    Fixture f;
+    const auto& catalog = f.controller.catalog();
+    const auto& automatic = setting(catalog, "wu-auto");
+    const auto& restart = setting(catalog, "wu-restart");
+    const auto& defer = setting(catalog, "wu-feature-defer");
+    f.controller.select(automatic, option(automatic, "notify"));
+    f.controller.select(restart, option(restart, "off"));
+    f.controller.select(defer, option(defer, "365"));
+    CHECK(f.controller.current(automatic) == option(automatic, "notify"));
+    CHECK(f.controller.current(restart) == option(restart, "off"));
+    CHECK(f.controller.current(defer) == option(defer, "365"));
+    // "Off" replaces what "notify" wrote, the restart value stays.
+    f.controller.select(automatic, option(automatic, "off"));
+    CHECK(f.controller.current(automatic) == option(automatic, "off"));
+    CHECK(f.controller.current(restart) == option(restart, "off"));
+    CHECK_FALSE(f.state.changes().find(
+        OpKind::SetRegistryValue, L"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU::AUOptions"));
+    f.controller.select(defer, option(defer, "180"));
+    const auto* days = f.state.changes().find(
+        OpKind::SetRegistryValue,
+        L"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate::DeferFeatureUpdatesPeriodInDays");
+    REQUIRE(days);
+    CHECK(days->value == L"dword:000000b4");
+
+    // Desktop icons are "off" by default: switching one on is the change.
+    const auto& thisPc = setting(catalog, "desktop-this-pc");
+    CHECK(f.controller.current(thisPc) == option(thisPc, "off"));
+    f.controller.select(thisPc, option(thisPc, "on"));
+    CHECK(f.controller.current(thisPc) == option(thisPc, "on"));
 }
 
 TEST_CASE("settings catalog: a file outside the default profile and ProgramData is a malformed setting") {

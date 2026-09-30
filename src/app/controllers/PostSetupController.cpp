@@ -3,6 +3,7 @@
 #include "base/Log.h"
 #include "base/Utf8.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace wl::app {
@@ -68,6 +69,36 @@ void PostSetupController::add(PostSetupStep step) {
     store(std::move(next));
 }
 
+namespace {
+bool wingetStepOf(const PostSetupPlan& plan, const std::wstring& id) {
+    return std::ranges::any_of(plan.steps, [&](const PostSetupStep& step) {
+        return step.type == PostSetupStep::Type::Winget && _wcsicmp(step.source.c_str(), id.c_str()) == 0;
+    });
+}
+} // namespace
+
+bool PostSetupController::hasApp(std::size_t index) const {
+    const auto& apps = popularApps();
+    return index < apps.size() && wingetStepOf(plan(), apps[index].id);
+}
+
+std::size_t PostSetupController::addApps(const std::vector<std::size_t>& indexes) {
+    const auto& apps = popularApps();
+    PostSetupPlan next = plan();
+    std::size_t added = 0;
+    for (const std::size_t index : indexes) {
+        if (index >= apps.size() || wingetStepOf(next, apps[index].id)) {
+            continue;
+        }
+        next.steps.push_back(PostSetupStep{PostSetupStep::Type::Winget, apps[index].name, apps[index].id, {}, true});
+        ++added;
+    }
+    if (added > 0) {
+        store(std::move(next));
+    }
+    return added;
+}
+
 void PostSetupController::replace(std::size_t index, PostSetupStep step) {
     PostSetupPlan next = plan();
     if (index < next.steps.size()) {
@@ -123,23 +154,56 @@ void PostSetupController::setContinueOnError(bool value) {
 }
 
 const std::vector<PostSetupController::App>& PostSetupController::popularApps() {
+    using enum AppCategory;
     static const std::vector<App> apps{
-        {L"7-Zip", L"7zip.7zip"},
-        {L"Firefox", L"Mozilla.Firefox"},
-        {L"Google Chrome", L"Google.Chrome"},
-        {L"Brave", L"Brave.Brave"},
-        {L"VLC", L"VideoLAN.VLC"},
-        {L"Notepad++", L"Notepad++.Notepad++"},
-        {L"VS Code", L"Microsoft.VisualStudioCode"},
-        {L"Git", L"Git.Git"},
-        {L"PowerToys", L"Microsoft.PowerToys"},
-        {L"Windows Terminal", L"Microsoft.WindowsTerminal"},
-        {L"Everything", L"voidtools.Everything"},
-        {L"qBittorrent", L"qBittorrent.qBittorrent"},
-        {L"Discord", L"Discord.Discord"},
-        {L"Steam", L"Valve.Steam"},
-        {L"Spotify", L"Spotify.Spotify"},
-        {L"OBS Studio", L"OBSProject.OBSStudio"},
+        {L"Google Chrome", L"Google.Chrome", Browsers},
+        {L"Firefox", L"Mozilla.Firefox", Browsers},
+        {L"Brave", L"Brave.Brave", Browsers},
+        {L"Opera", L"Opera.Opera", Browsers},
+        {L"Vivaldi", L"Vivaldi.Vivaldi", Browsers},
+
+        {L"7-Zip", L"7zip.7zip", Tools},
+        {L"WinRAR", L"RARLab.WinRAR", Tools},
+        {L"Everything", L"voidtools.Everything", Tools},
+        {L"PowerToys", L"Microsoft.PowerToys", Tools},
+        {L"Notepad++", L"Notepad++.Notepad++", Tools},
+        {L"Windows Terminal", L"Microsoft.WindowsTerminal", Tools},
+        {L"ShareX", L"ShareX.ShareX", Tools},
+        {L"qBittorrent", L"qBittorrent.qBittorrent", Tools},
+        {L"Rufus", L"Rufus.Rufus", Tools},
+        {L"CPU-Z", L"CPUID.CPU-Z", Tools},
+        {L"HWiNFO", L"REALiX.HWiNFO", Tools},
+        {L"CrystalDiskInfo", L"CrystalDewWorld.CrystalDiskInfo", Tools},
+        {L"AnyDesk", L"AnyDesk.AnyDesk", Tools},
+        {L"TeamViewer", L"TeamViewer.TeamViewer", Tools},
+
+        {L"VLC", L"VideoLAN.VLC", Media},
+        {L"MPC-HC", L"clsid2.mpc-hc", Media},
+        {L"Spotify", L"Spotify.Spotify", Media},
+        {L"OBS Studio", L"OBSProject.OBSStudio", Media},
+        {L"IrfanView", L"IrfanSkiljan.IrfanView", Media},
+        {L"GIMP", L"GIMP.GIMP.3", Media},
+        {L"Audacity", L"Audacity.Audacity", Media},
+        {L"HandBrake", L"HandBrake.HandBrake", Media},
+
+        {L"VS Code", L"Microsoft.VisualStudioCode", Development},
+        {L"Git", L"Git.Git", Development},
+        {L"Python 3.13", L"Python.Python.3.13", Development},
+        {L"Node.js LTS", L"OpenJS.NodeJS.LTS", Development},
+        {L"Docker Desktop", L"Docker.DockerDesktop", Development},
+        {L"PuTTY", L"PuTTY.PuTTY", Development},
+        {L"WinSCP", L"WinSCP.WinSCP", Development},
+
+        {L"Discord", L"Discord.Discord", Communication},
+        {L"Telegram", L"Telegram.TelegramDesktop", Communication},
+        {L"Zoom", L"Zoom.Zoom", Communication},
+
+        {L"Steam", L"Valve.Steam", Games},
+        {L"Epic Games Launcher", L"EpicGames.EpicGamesLauncher", Games},
+
+        {L"LibreOffice", L"TheDocumentFoundation.LibreOffice", Office},
+        {L"Adobe Acrobat Reader", L"Adobe.Acrobat.Reader.64-bit", Office},
+        {L"SumatraPDF", L"SumatraPDF.SumatraPDF", Office},
     };
     return apps;
 }

@@ -24,6 +24,7 @@
 #include "app/pages/LogsPage.h"
 #include "app/pages/PostSetupPage.h"
 #include "app/pages/PresetsPage.h"
+#include "app/pages/postsetup/AppsDialog.h"
 #include "app/pages/postsetup/StepDialog.h"
 #include "app/pages/SourcePage.h"
 #include "app/pages/TweaksPage.h"
@@ -339,6 +340,40 @@ void Shell::editPostSetupStep(core::PostSetupStep::Type type, std::optional<std:
         }
     };
     StepDialog built = makeStepDialog(m_strings, std::move(step), index.has_value(), std::move(actions));
+    *raw = built.dialog.get();
+    host()->pushModal(std::move(built.dialog), built.initialFocus);
+}
+
+void Shell::pickPostSetupApps() {
+    if (!host()) {
+        return;
+    }
+    if (!m_state.mounted()) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::PostsetupNoMountTitle), m_strings.get(Str::PostsetupNoMountBody));
+        return;
+    }
+    std::wstring body = m_strings.get(Str::PostsetupCatalogBody);
+    // winget is the App Installer: with its removal queued these steps would have nothing to run with.
+    const bool noWinget = std::ranges::any_of(m_state.changes().operations(), [](const core::ops::Operation& op) {
+        return op.kind == core::ops::OpKind::RemoveAppx && op.target.starts_with(L"Microsoft.DesktopAppInstaller_");
+    });
+    if (noWinget) {
+        body += L" " + m_strings.get(Str::PostsetupCatalogNoWinget);
+    }
+    auto raw = std::make_shared<ui::Dialog*>(nullptr);
+    AppsDialogActions actions;
+    actions.present = [this](std::size_t index) { return m_postSetup->hasApp(index); };
+    actions.close = [this, raw] {
+        if (*raw) {
+            ui::Dialog* dialog = std::exchange(*raw, nullptr);
+            host()->popModal(dialog);
+        }
+    };
+    actions.accept = [this](std::vector<std::size_t> picked) {
+        const std::size_t added = m_postSetup->addApps(picked);
+        showToast(ui::InfoKind::Success, m_strings.format(Str::PostsetupCatalogAdded, {{L"n", std::to_wstring(added)}}), L"");
+    };
+    AppsDialog built = makeAppsDialog(m_strings, std::move(body), std::move(actions));
     *raw = built.dialog.get();
     host()->pushModal(std::move(built.dialog), built.initialFocus);
 }
@@ -1010,6 +1045,8 @@ void Shell::showPage(PageId page) {
                 .onInvoke = [this] { editPostSetupStep(Type::Copy, std::nullopt); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupAddApp), ui::icons::Icon::AppxPackage)
                 .onInvoke = [this] { editPostSetupStep(Type::Winget, std::nullopt); };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupCatalog), ui::icons::Icon::AppxPackage)
+                .onInvoke = [this] { pickPostSetupApps(); };
             m_pageBody = &m_pageView->setBody<PostSetupPage>(
                 m_state, *m_postSetup, m_strings, m_language,
                 PostSetupPage::Intents{[this](std::size_t index) {

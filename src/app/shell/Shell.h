@@ -177,6 +177,7 @@ private:
     void applyPreset(const Preset& preset);
     // P14: the add dialog for `type`, or the edit dialog of step `index`.
     void editPostSetupStep(core::PostSetupStep::Type type, std::optional<std::size_t> index);
+    void pickPostSetupApps(); // "Hazır uygulamalar": the winget catalog as a check list
     void saveAnswerFile();
     void scanDriverFolder();
     void updateIsoChrome();
