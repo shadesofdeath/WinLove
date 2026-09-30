@@ -494,7 +494,7 @@
     "diskWarning": "Everything on disk 0 is erased",
     "acceptEula": "Accept the license terms",
     "productKey": "Product key",
-    "productKeyHint": "Empty: setup asks",
+    "productKeyHint": "Empty: the edition's generic key is written (activate after setup); with the edition unknown, setup asks",
     "edition": "Edition to install",
     "includeInIso": "Add to the ISO",
     "includeInIsoHint": "Written to the ISO root as autounattend.xml when the ISO is built",

@@ -36,6 +36,16 @@ core::UnattendOptions UnattendController::effective(const AppState& state) {
         if (architecture != core::Architecture::Unknown) {
             options.architecture = architecture;
         }
+        // The edition Setup will install, when the image leaves no doubt: its generic key goes
+        // into the file when the user gave none (Unattend.h).
+        const auto& images = source->install.images;
+        if (options.imageIndex > 0) {
+            if (const auto at = std::ranges::find(images, options.imageIndex, &core::ImageInfo::index); at != images.end()) {
+                options.editionId = at->editionId;
+            }
+        } else if (images.size() == 1) {
+            options.editionId = images.front().editionId;
+        }
     }
     return options;
 }

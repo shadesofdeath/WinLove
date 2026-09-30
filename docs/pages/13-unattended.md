@@ -18,7 +18,9 @@ istenirse bir sonraki ISO'nun köküne yazılır.
   - Disk: Kurulumda sor · Disk 0'ı sil UEFI (GPT) · Disk 0'ı sil BIOS (MBR) — silme seçeneklerinde turuncu uyarı.
   - OOBE: Lisans sözleşmesini kabul et, Gizlilik sorularını atla, Microsoft hesabı zorunluluğunu kaldır
     (açık = BypassNRO yazılır), Çevrimiçi kurulumu atla.
-  - Ürün anahtarı: anahtar, Kurulacak sürüm (kaynağın index'leri).
+  - Ürün anahtarı: anahtar, Kurulacak sürüm (kaynağın index'leri). Anahtar boşsa ve kurulacak sürüm belliyse
+    (imajda tek sürüm var ya da "Kurulacak sürüm" seçili) o sürümün **genel anahtarı** yazılır: Setup sormadan o
+    sürümü kurar, etkinleştirme kurulumdan sonraya kalır. Sürüm belli değilse Setup anahtar sayfasını gösterir.
   - Gereksinimler: TPM 2.0 / Secure Boot / RAM / işlemci / disk boyutu denetimini atla — açık = LabConfig yazılır
     (`BypassTPMCheck`, `BypassSecureBootCheck`, `BypassRAMCheck`, `BypassCPUCheck`, `BypassStorageCheck`).
   - Bütün düğmeler aynı yönde okunur: açık = WinLove bunu XML'e yazar (D-032; ilk sürümde bu satırlar ters çalışıyordu).
@@ -33,6 +35,10 @@ istenirse bir sonraki ISO'nun köküne yazılır.
 - `UnattendOptions` → `buildUnattendXml`: yalnız istenen ayar yazılır (boş seçenekler = hiç `<settings>` yok).
   - `windowsPE`: `International-Core-WinPE` (dil), `Windows-Setup` (LabConfig `RunSynchronous`, `DiskConfiguration`,
     `ImageInstall` — `/IMAGE/INDEX` + `InstallTo`, `UserData` — anahtar, `AcceptEula`).
+    **`UserData` hiçbir zaman `ProductKey`'siz yazılmaz** (D-036): kullanıcının anahtarı, yoksa kurulacak sürümün
+    genel anahtarı (`genericProductKey`, `WillShowUI=OnError`), o da bilinmiyorsa `00000-…-00000` + `WillShowUI=Always`
+    (Setup sorar). Kurulacak sürüm seçeneklerde değil, açık kaynaktan türetilir (`UnattendOptions::editionId`,
+    mimari gibi). Dosyadan okunan genel anahtar / yer tutucu "kullanıcının anahtarı" sayılmaz.
   - `specialize`: `Shell-Setup` (ComputerName, TimeZone), `Deployment` (BypassNRO `reg add`).
   - `oobeSystem`: `International-Core`, `Shell-Setup` (OOBE, LocalAccount — Administrators, AutoLogon 1 kez).
   - Parola açık yazılmaz: Setup'ın kendi kodlaması (UTF-16LE + "Password", Base64, `PlainText=false`).
@@ -61,6 +67,8 @@ istenirse bir sonraki ISO'nun köküne yazılır.
       (2026-09-30: kullanıcının ilk ISO'sunda dosya yoktu — kutu varsayılan kapalıydı ve fark edilmedi; D-034.
       Akış unit testte gerçek ISO üretilerek doğrulanıyor; logda `answer file: …` satırı.)
 - [ ] VM: üretilen ISO ile kurulum soruları atlanır (dil, disk, hesap, OOBE); TPM'siz VM'de kurulum başlar.
+      (2026-09-30, Windows 10 22H2 tek sürüm: Setup "yanıt dosyasından <ProductKey> ayarını okuyamıyor" dedi —
+      `UserData` anahtarsız yazılıyordu; D-036 ile düzeltildi, yeniden denenecek.)
 - [ ] Geçersiz bilgisayar adı → kırmızı ipucu; "ISO'ya ekle" açıkken ISO sayfası engel gösterir.
 
 ## 6. Görsel doğrulama / bilinçli sapmalar

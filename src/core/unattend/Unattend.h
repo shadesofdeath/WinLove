@@ -5,7 +5,9 @@
 //
 // Passes used:
 //   windowsPE   language of Setup, LabConfig requirement bypasses, disk layout, image index,
-//               product key, EULA
+//               product key, EULA. A <UserData> block never goes out without a <ProductKey>:
+//               Setup then stops with "cannot read the <ProductKey> setting from the unattend
+//               answer file" (seen on Windows 10 22H2 media, 2026-09-30).
 //   specialize  computer name, time zone, BypassNRO
 //   oobeSystem  language, OOBE pages, local account, one automatic logon
 #include "base/Result.h"
@@ -47,8 +49,14 @@ struct UnattendOptions {
     bool acceptEula = false;        // AcceptEula + HideEULAPage
 
     // Ürün anahtarı
-    std::wstring productKey; // XXXXX-XXXXX-XXXXX-XXXXX-XXXXX
+    std::wstring productKey; // XXXXX-XXXXX-XXXXX-XXXXX-XXXXX; empty: see editionId
     int imageIndex = 0;      // edition to install; 0 = Setup asks (or the key decides)
+    // The edition Setup will install, when that is known (the image has one edition, or
+    // imageIndex names it): "CoreSingleLanguage". Without a key of the user's, its generic key is
+    // written — Setup installs that edition without asking, activation is for later. Unknown
+    // (empty): the all-zero key with WillShowUI "Always", and Setup shows its key page.
+    // Not read back from a file: it describes the image, not the answers.
+    std::wstring editionId;
 
     // Gereksinimler (Windows 11 checks, skipped through HKLM\SYSTEM\Setup\LabConfig)
     bool bypassTpm = false;
@@ -74,6 +82,14 @@ enum class UnattendProblem : std::uint8_t {
     AutoLogonNeedsAccount // automatic logon without a local account
 };
 [[nodiscard]] std::vector<UnattendProblem> validateUnattend(const UnattendOptions& options);
+
+// Microsoft's generic (default) key of a client edition: it selects the edition and installs
+// without activating. Empty for editions that have none here. Each was checked against the
+// pkeyconfig of a Windows 10 22H2 image and of a Windows 11 25H2 installation (PidGenX names the
+// edition a key belongs to).
+[[nodiscard]] std::wstring_view genericProductKey(std::wstring_view editionId) noexcept;
+// "00000-00000-00000-00000-00000": stands in the answer file where Setup is to ask.
+inline constexpr std::wstring_view kNoProductKey = L"00000-00000-00000-00000-00000";
 
 // Setup's own encoding of a password element (<PlainText>false</PlainText>): Base64 of the
 // UTF-16LE text followed by the element name ("Password"). Obfuscation, not encryption.

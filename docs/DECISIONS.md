@@ -233,6 +233,19 @@ Karar:
 - Gereksinimler'e işlemci ve disk boyutu denetimleri eklendi (LabConfig `BypassCPUCheck`, `BypassStorageCheck`):
   VM'lerde TPM kadar sık takılan iki denetim.
 
+## D-036 — Yanıt dosyasında `UserData` her zaman `ProductKey` taşır (2026-09-30)
+Bağlam: Kullanıcının Windows 10 22H2 (tek sürüme indirilmiş) ISO'sunda Setup "Windows unattend yanıt dosyasından
+<ProductKey> ayarını okuyamıyor" diye durdu. Dosyada "Lisans sözleşmesini kabul et" yüzünden
+`<UserData><AcceptEula>true</AcceptEula></UserData>` vardı, `ProductKey` yoktu (anahtar alanı boş bırakılmıştı).
+Karar: `UserData` yazılıyorsa `ProductKey` de yazılır — kullanıcının anahtarı; yoksa kurulacak sürümün Microsoft'un
+genel (varsayılan) anahtarı; sürüm bilinmiyorsa `00000-00000-00000-00000-00000` + `WillShowUI=Always` (Setup anahtar
+sayfasını gösterir). Kurulacak sürüm açık kaynaktan türetilir: imajda tek sürüm varsa o, "Kurulacak sürüm" seçiliyse o.
+16 genel anahtar kodda (`kGenericKeys`); her biri `pidgenx.dll` ile Windows 10 22H2 imajının ve Windows 11 25H2
+kurulumunun `pkeyconfig.xrm-ms` dosyasına karşı denendi (hepsi beklenen sürümü verdi). Dosyadan okunan genel anahtar
+ya da yer tutucu seçeneklere "kullanıcının anahtarı" diye girmez: Pro'da kaydedilmiş bir preset Home imajına Pro'nun
+anahtarını dayatmasın.
+Doğrulanmayan: sıfır anahtar + `Always` ile Setup'ın anahtar sayfasını gerçekten gösterdiği (çok sürümlü imajda VM testi).
+
 ## D-035 — İmajlar: çoklu seçim, yeniden adlandırma, kendi doğrulayıcımız; sürüm yükseltme kanıt bekliyor (2026-09-30)
 Bağlam: Kullanıcı İmajlar sayfasına dört özellik istedi: sürüm bilgilerini düzenleme, sürüm yükseltme, çoklu seçim,
 WIM bütünlük denetimi.
