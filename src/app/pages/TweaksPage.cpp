@@ -14,11 +14,41 @@ constexpr float kTabsHeight = ui::tokens::size::control + 1;
 constexpr float kFormGap = 11.0f;     // tab line → first section
 constexpr float kLabelWidth = 240.0f; // screens.md: "240px etiket sütunu"
 constexpr float kDropdownWidth = 280.0f;
+constexpr float kBrowseWidth = 28.0f;
+constexpr float kBrowseGap = 4.0f;
 } // namespace
 
+PictureField::PictureField(std::wstring browseTooltip) {
+    m_box = &add<ui::SearchBox>(L"");
+    m_box->setPlain(true);
+    m_box->onChange = [this](const std::wstring& value) {
+        if (onChange) {
+            onChange(value);
+        }
+    };
+    m_browse = &add<ui::Button>(ui::ButtonKind::Secondary, L"", ui::icons::Icon::OpenFolder);
+    m_browse->setTooltip(std::move(browseTooltip));
+    m_browse->onInvoke = [this] {
+        if (onBrowse) {
+            onBrowse();
+        }
+    };
+    setFocusable(false); // the box and the button take the focus, not their frame
+}
+
+ui::SizeF PictureField::measure(ui::SizeF) {
+    return {kDropdownWidth, ui::tokens::size::control};
+}
+
+void PictureField::layout() {
+    const RectF b = bounds();
+    m_box->setBounds({b.x, b.y, std::max(b.width - kBrowseWidth - kBrowseGap, 0.0f), b.height});
+    m_browse->setBounds({b.right() - kBrowseWidth, b.y, kBrowseWidth, b.height});
+}
+
 TweaksPage::TweaksPage(AppState& state, ImageSettingsController& controller, const Localization& strings,
-                       Language language, std::function<void()> goImages)
-    : m_state(state), m_controller(controller), m_strings(strings), m_language(language) {
+                       Language language, std::function<void()> goImages, PickImage pickImage)
+    : m_state(state), m_controller(controller), m_strings(strings), m_language(language), m_pickImage(std::move(pickImage)) {
     std::vector<std::wstring> tabs;
     for (const auto& tab : m_controller.catalog().tabs()) {
         tabs.push_back(tab.title.get(language));
@@ -93,14 +123,55 @@ void TweaksPage::reveal(const std::string& settingId) {
         if (b.setting == &*setting && host()) {
             ui::Widget* control = b.toggle     ? static_cast<ui::Widget*>(b.toggle)
                                   : b.dropdown ? static_cast<ui::Widget*>(b.dropdown)
+                                  : b.text     ? static_cast<ui::Widget*>(b.text)
+                                  : b.file     ? static_cast<ui::Widget*>(&b.file->box())
                                                : static_cast<ui::Widget*>(b.radio);
             host()->setFocus(control, /*visible=*/true);
         }
     }
 }
 
+void TweaksPage::valueTyped(std::size_t binding, const std::wstring& value) {
+    if (binding >= m_bindings.size()) {
+        return;
+    }
+    // The queue change comes back as sync(): it must not rewrite the box under the caret.
+    m_typing = binding;
+    const bool accepted = m_controller.setValue(*m_bindings[binding].setting, value);
+    m_typing = static_cast<std::size_t>(-1);
+    m_bindings[binding].shown = m_controller.value(*m_bindings[binding].setting);
+    m_bindings[binding].problem = !accepted;
+    sync();
+}
+
 void TweaksPage::addSetting(const ImageSetting& setting) {
-    Binding binding{&setting, nullptr, nullptr, nullptr};
+    Binding binding;
+    binding.setting = &setting;
+    const std::wstring& name = setting.label.get(m_language);
+    if (ImageSettingsController::takesValue(setting)) {
+        const std::size_t index = m_bindings.size();
+        if (setting.control == ImageSetting::Control::Text) {
+            binding.text = &m_form->addRow<ui::SearchBox>(name, std::wstring(), kDropdownWidth, std::wstring());
+            binding.text->setPlain(true);
+            binding.text->onChange = [this, index](const std::wstring& value) { valueTyped(index, value); };
+            binding.text->setAccessible(ui::AccessRole::Edit, name);
+        } else {
+            binding.file = &m_form->addRow<PictureField>(name, std::wstring(), kDropdownWidth, m_strings.get(Str::TweaksPickImage));
+            binding.file->onChange = [this, index](const std::wstring& value) { valueTyped(index, value); };
+            binding.file->onBrowse = [this, index] {
+                if (!m_pickImage || index >= m_bindings.size()) {
+                    return;
+                }
+                if (const auto picked = m_pickImage()) {
+                    m_bindings[index].file->setText(picked->wstring());
+                    valueTyped(index, picked->wstring());
+                }
+            };
+            binding.file->box().setAccessible(ui::AccessRole::Edit, name);
+        }
+        m_bindings.push_back(binding);
+        return;
+    }
     const ImageSetting* s = &setting; // catalog entries outlive the page
     auto choose = [this, s](int option) {
         m_controller.select(*s, option);
@@ -138,11 +209,36 @@ void TweaksPage::sync() {
     // is what Windows does on its own. A bare switch beside "Reklam kimliği" does not say whether
     // "on" keeps the feature or applies a tweak against it.
     const std::wstring separator = L" \u00b7 ";
-    for (const auto& b : m_bindings) {
+    for (std::size_t i = 0; i < m_bindings.size(); ++i) {
+        Binding& b = m_bindings[i];
         const int current = m_controller.current(*b.setting);
         const bool changed = current != b.setting->defaultOption;
         const std::wstring& mark = m_strings.get(changed ? Str::TweaksChanged : Str::TweaksIsDefault);
         const auto color = changed ? ui::tokens::Color::AccentBase : ui::tokens::Color::TextTertiary;
+        if (b.text || b.file) {
+            // The box follows the queue (a preset, undo) unless it is the one being typed into.
+            const std::wstring value = m_controller.value(*b.setting);
+            if (i != m_typing && value != b.shown) {
+                b.shown = value;
+                b.problem = false;
+                if (b.text) {
+                    b.text->setText(value);
+                } else {
+                    b.file->setText(value);
+                }
+            }
+            const ui::Widget& control = b.text ? static_cast<const ui::Widget&>(*b.text) : *b.file;
+            if (b.problem) {
+                m_form->setHint(control, m_strings.get(Str::TweaksFileProblem), ui::tokens::Color::StatusError);
+            } else {
+                std::wstring hint = mark;
+                if (const std::wstring& note = b.setting->hint.get(m_language); !note.empty()) {
+                    hint += separator + note;
+                }
+                m_form->setHint(control, std::move(hint), color);
+            }
+            continue;
+        }
         if (b.toggle) {
             if (b.toggle->isOn() != (current == 1)) {
                 b.toggle->setOn(current == 1);

@@ -27,8 +27,20 @@ public:
     int applyRecommended();
     [[nodiscard]] int changedCount() const; // nav badge: settings not at the Windows default
 
-    // Pure mapping, unit-tested.
-    [[nodiscard]] static std::vector<core::ops::Operation> operationsFor(const ImageSetting& setting, int option);
+    // Text and file settings: what the user typed / picked; empty = the Windows default.
+    [[nodiscard]] static bool takesValue(const ImageSetting& setting) noexcept {
+        return setting.control == ImageSetting::Control::Text || setting.control == ImageSetting::Control::File;
+    }
+    [[nodiscard]] std::wstring value(const ImageSetting& setting) const { return valueIn(m_state.changes(), setting); }
+    [[nodiscard]] static std::wstring valueIn(const core::ops::ChangeSet& changes, const ImageSetting& setting);
+    // Queues the value (an empty one removes the setting's operations). False when a file setting
+    // is given something that is not a JPEG file of this PC: nothing is queued for it then.
+    bool setValue(const ImageSetting& setting, std::wstring value);
+    static constexpr std::size_t kTextLimit = 200;
+
+    // Pure mapping, unit-tested. `value`: for text / file settings (option 1).
+    [[nodiscard]] static std::vector<core::ops::Operation> operationsFor(const ImageSetting& setting, int option,
+                                                                         std::wstring_view value = {});
 
 private:
     // Queue slots held by any option of `setting` with that option's value (what select() replaces).

@@ -49,6 +49,7 @@ Category categoryOf(OpKind kind) {
     case OpKind::SetServiceStart: return kServices;
     case OpKind::SetEdition:
     case OpKind::WriteFile:
+    case OpKind::CopyFile:
     case OpKind::SetPostSetup: return kTweaks;
     }
     return kTweaks;

@@ -55,16 +55,16 @@ Result<void> validateImageFile(std::wstring_view relative, std::size_t bytes) {
     return {};
 }
 
-Result<void> writeImageFile(const std::filesystem::path& mountDir, std::wstring_view relative, std::string_view content) {
-    if (auto ok = validateImageFile(relative, content.size()); !ok) {
-        return ok;
-    }
+namespace {
+
+// <mountDir>\<relative> ready to be written: folders made, a file in its place made replaceable.
+Result<std::filesystem::path> prepareTarget(const std::filesystem::path& mountDir, std::wstring_view relative) {
     const std::wstring path = normalized(relative);
     std::error_code ec;
     if (!std::filesystem::is_directory(mountDir / std::wstring(rootOf(path)), ec)) {
         return fail(ErrorCode::NotFound, L"the image has no such folder", (mountDir / std::wstring(rootOf(path))).wstring());
     }
-    const auto target = resolveImagePath(mountDir, relative); // refuses a link on the way
+    auto target = resolveImagePath(mountDir, relative); // refuses a link on the way
     if (!target) {
         return std::unexpected(target.error());
     }
@@ -79,6 +79,19 @@ Result<void> writeImageFile(const std::filesystem::path& mountDir, std::wstring_
         }
         SetFileAttributesW(target->c_str(), FILE_ATTRIBUTE_NORMAL);
     }
+    return target;
+}
+
+} // namespace
+
+Result<void> writeImageFile(const std::filesystem::path& mountDir, std::wstring_view relative, std::string_view content) {
+    if (auto ok = validateImageFile(relative, content.size()); !ok) {
+        return ok;
+    }
+    const auto target = prepareTarget(mountDir, relative);
+    if (!target) {
+        return std::unexpected(target.error());
+    }
     {
         std::ofstream out(*target, std::ios::binary | std::ios::trunc);
         out.write(content.data(), static_cast<std::streamsize>(content.size()));
@@ -88,6 +101,32 @@ Result<void> writeImageFile(const std::filesystem::path& mountDir, std::wstring_
         }
     }
     log::info("file", std::format(L"wrote {} ({} bytes)", target->wstring(), content.size()));
+    return {};
+}
+
+Result<void> copyImageFile(const std::filesystem::path& mountDir, std::wstring_view relative,
+                           const std::filesystem::path& source) {
+    if (auto ok = validateImageFile(relative, 0); !ok) {
+        return ok;
+    }
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(source, ec)) {
+        return fail(ErrorCode::NotFound, L"the file to copy into the image is not there", source.wstring());
+    }
+    const std::uintmax_t size = std::filesystem::file_size(source, ec);
+    if (ec || size > kImageCopyLimit) {
+        return fail(ErrorCode::InvalidArgument, L"file is too large to copy into the image", source.wstring());
+    }
+    const auto target = prepareTarget(mountDir, relative);
+    if (!target) {
+        return std::unexpected(target.error());
+    }
+    std::filesystem::copy_file(source, *target, std::filesystem::copy_options::overwrite_existing, ec);
+    if (ec) {
+        return fail(ErrorCode::IoError, L"cannot copy file into the image", target->wstring(), ec.value());
+    }
+    SetFileAttributesW(target->c_str(), FILE_ATTRIBUTE_NORMAL); // a read-only source stays replaceable in the image
+    log::info("file", std::format(L"copied {} -> {} ({} bytes)", source.wstring(), target->wstring(), size));
     return {};
 }
 

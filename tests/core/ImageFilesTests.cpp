@@ -80,6 +80,30 @@ TEST_CASE("image files: written as given, folders made, an old file replaced") {
     std::filesystem::remove_all(root, ec);
 }
 
+TEST_CASE("image files: a file of this PC copied into the image") {
+    const auto root = image(L"copy");
+    std::filesystem::create_directories(root / L"ProgramData");
+    const auto source = root.parent_path() / L"copy-source.jpg";
+    {
+        std::ofstream out(source, std::ios::binary);
+        out << std::string(4096, '\xFF');
+    }
+    std::filesystem::permissions(source, std::filesystem::perms::owner_write, std::filesystem::perm_options::remove);
+    REQUIRE(copyImageFile(root, L"ProgramData\\WinLove\\wallpaper.jpg", source));
+    const auto copied = root / L"ProgramData" / L"WinLove" / L"wallpaper.jpg";
+    CHECK(std::filesystem::file_size(copied) == 4096);
+    REQUIRE(copyImageFile(root, L"ProgramData\\WinLove\\wallpaper.jpg", source)); // again: the read-only copy is replaced
+
+    CHECK_FALSE(copyImageFile(root, L"Windows\\System32\\evil.dll", source));
+    CHECK_FALSE(copyImageFile(root, L"ProgramData\\WinLove\\x.jpg", root / L"missing.jpg"));
+    CHECK_FALSE(copyImageFile(root, L"ProgramData\\WinLove\\x.jpg", root)); // a folder is not a file
+
+    std::filesystem::permissions(source, std::filesystem::perms::owner_write, std::filesystem::perm_options::add);
+    std::error_code ec;
+    std::filesystem::remove(source, ec);
+    std::filesystem::remove_all(root, ec);
+}
+
 TEST_CASE("image files: a WriteFile operation is a settings step and survives a preset file") {
     ops::ChangeSet changes;
     changes.add(ops::Operation{ops::OpKind::WriteFile, kLayout, L"<a b=\"c\">\r\n</a>"});

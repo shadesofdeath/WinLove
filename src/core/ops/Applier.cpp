@@ -106,6 +106,7 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
         return removeComponent(session, *recipe, task);
     }
     case OpKind::WriteFile: return writeImageFile(session.mountPath(), op.target, utf8::fromWide(op.value));
+    case OpKind::CopyFile: return copyImageFile(session.mountPath(), op.target, op.value);
     case OpKind::SetEdition: {
         registry.reset(); // dism.exe loads the image's hives
         auto changed = setEdition(session, op.value, task);

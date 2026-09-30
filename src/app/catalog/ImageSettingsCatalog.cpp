@@ -79,6 +79,36 @@ bool readOptions(const Json& j, ImageSetting& setting, std::wstring& why) {
         setting.recommended = recommended != j.end() && recommended->is_boolean() && recommended->get<bool>() ? other : -1;
         return true;
     }
+    if (setting.control == ImageSetting::Control::Text || setting.control == ImageSetting::Control::File) {
+        setting.options = {ImageSettingOption{"default", {}, {}, {}}, ImageSettingOption{"value", {}, {}, {}}};
+        setting.defaultOption = 0;
+        auto& value = setting.options[1];
+        if (setting.control == ImageSetting::Control::Text) {
+            // Key and name only: the data is what the user types.
+            for (const auto& w : j.value("writes", Json::array())) {
+                auto write = core::parseRegValue(wide(w, "key"), wide(w, "name"), L"\"\"");
+                if (!write) {
+                    why = describe(write.error());
+                    return false;
+                }
+                value.writes.push_back(std::move(*write));
+            }
+            if (value.writes.empty()) {
+                why = L"text setting without a value to write";
+                return false;
+            }
+            return true;
+        }
+        if (!readOperations(j, value, why)) {
+            return false;
+        }
+        value.copyTo = wide(j, "copy");
+        if (auto ok = core::validateImageFile(value.copyTo, 0); !ok) {
+            why = describe(ok.error());
+            return false;
+        }
+        return true;
+    }
     for (const auto& o : j.value("options", Json::array())) {
         ImageSettingOption option{o.value("id", std::string{}), text(o, "tr", "en"), {}, {}};
         if (!readOperations(o, option, why)) {
@@ -128,6 +158,8 @@ Result<ImageSettingsCatalog> ImageSettingsCatalog::parse(std::string_view json) 
             const std::string control = j.value("control", std::string{"toggle"});
             setting.control = control == "dropdown" ? ImageSetting::Control::Dropdown
                               : control == "radio"  ? ImageSetting::Control::Radio
+                              : control == "text"   ? ImageSetting::Control::Text
+                              : control == "file"   ? ImageSetting::Control::File
                                                     : ImageSetting::Control::Toggle;
             setting.label = text(j, "tr", "en");
             setting.hint = text(j, "hint_tr", "hint_en");

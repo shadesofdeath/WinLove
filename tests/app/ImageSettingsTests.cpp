@@ -78,7 +78,7 @@ TEST_CASE("settings catalog: every shipped entry is valid and placed in a known 
         CHECK(std::ranges::find(catalog.tabs(), section->tab, &ImageSettingTab::id) != catalog.tabs().end());
         CHECK(std::ranges::count_if(s.options, &ImageSettingOption::isDefault) == 1);
         CHECK(s.options[static_cast<std::size_t>(s.defaultOption)].isDefault());
-        if (s.control == ImageSetting::Control::Toggle) {
+        if (s.control == ImageSetting::Control::Toggle || ImageSettingsController::takesValue(s)) {
             CHECK(s.options.size() == 2);
         } else {
             for (const auto& o : s.options) {
@@ -315,6 +315,82 @@ TEST_CASE("form: Windows Update options share the AU key without stepping on eac
     CHECK(f.controller.current(thisPc) == option(thisPc, "off"));
     f.controller.select(thisPc, option(thisPc, "on"));
     CHECK(f.controller.current(thisPc) == option(thisPc, "on"));
+}
+
+TEST_CASE("form: OEM information is typed text, written as strings; clearing it is the Windows default") {
+    Fixture f;
+    const auto& catalog = f.controller.catalog();
+    const auto& maker = setting(catalog, "oem-manufacturer");
+    REQUIRE(maker.control == ImageSetting::Control::Text);
+    CHECK(f.controller.value(maker).empty());
+    CHECK(f.controller.current(maker) == maker.defaultOption);
+
+    CHECK(f.controller.setValue(maker, L"Berkay Bilgisayar \"Özel\""));
+    CHECK(f.controller.value(maker) == L"Berkay Bilgisayar \"Özel\"");
+    CHECK(f.controller.current(maker) == 1);
+    REQUIRE(f.state.changes().size() == 1);
+    const auto& op = f.state.changes().operations().front();
+    CHECK(op.target == L"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation::Manufacturer");
+    const auto written = core::registryWriteFrom(op.target, op.value);
+    REQUIRE(written);
+    CHECK(written->type == REG_SZ);
+
+    // Typing on replaces the value, it does not add another.
+    CHECK(f.controller.setValue(maker, L"Berkay"));
+    CHECK(f.state.changes().size() == 1);
+    CHECK(f.controller.value(maker) == L"Berkay");
+    // Control characters are dropped, the length is capped.
+    CHECK(f.controller.setValue(maker, L"a\tb\r\n" + std::wstring(500, L'x')));
+    CHECK(f.controller.value(maker).starts_with(L"ab"));
+    CHECK(f.controller.value(maker).size() == ImageSettingsController::kTextLimit);
+    // A preset keeps the text.
+    const auto back = core::ops::ChangeSet::fromJson(f.state.changes().toJson());
+    REQUIRE(back);
+    CHECK(ImageSettingsController::valueIn(*back, maker) == f.controller.value(maker));
+
+    CHECK(f.controller.setValue(maker, L""));
+    CHECK(f.state.changes().empty());
+    CHECK(f.controller.changedCount() == 0);
+}
+
+TEST_CASE("form: a wallpaper is a JPEG of this PC copied into the image, with the values that point at it") {
+    Fixture f;
+    const auto& catalog = f.controller.catalog();
+    const auto& wallpaper = setting(catalog, "wallpaper");
+    REQUIRE(wallpaper.control == ImageSetting::Control::File);
+
+    const auto picture = scratch(L"duvar kağıdı.jpg");
+    {
+        std::ofstream out(picture, std::ios::binary);
+        out << std::string(2048, 'j');
+    }
+    // Not a JPEG, or not there: refused, nothing queued.
+    CHECK_FALSE(f.controller.setValue(wallpaper, scratch(L"missing.jpg").wstring()));
+    CHECK_FALSE(f.controller.setValue(wallpaper, scratch(L"settings.json").wstring()));
+    CHECK(f.state.changes().empty());
+
+    CHECK(f.controller.setValue(wallpaper, picture.wstring()));
+    CHECK(f.controller.value(wallpaper) == picture.wstring());
+    CHECK(f.controller.current(wallpaper) == 1);
+    const auto* copy = f.state.changes().find(OpKind::CopyFile, L"ProgramData\\WinLove\\wallpaper.jpg");
+    REQUIRE(copy);
+    CHECK(copy->value == picture.wstring());
+    CHECK(copy->sizeDelta == 2048);
+    CHECK(f.state.changes().find(OpKind::SetRegistryValue, L"HKCU\\Control Panel\\Desktop::Wallpaper"));
+    CHECK(f.state.changes().size() == 4);
+
+    // Another picture replaces the first; clearing takes everything out.
+    const auto other = scratch(L"other.JPEG");
+    {
+        std::ofstream out(other, std::ios::binary);
+        out << "jpeg";
+    }
+    CHECK(f.controller.setValue(wallpaper, other.wstring()));
+    CHECK(f.state.changes().size() == 4);
+    CHECK(f.controller.value(wallpaper) == other.wstring());
+    // A bad path typed over a good one: the old picture does not stay behind in the queue.
+    CHECK_FALSE(f.controller.setValue(wallpaper, L"C:\\nope"));
+    CHECK(f.state.changes().empty());
 }
 
 TEST_CASE("settings catalog: a file outside the default profile and ProgramData is a malformed setting") {

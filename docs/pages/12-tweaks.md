@@ -40,6 +40,23 @@ olarak gösterir; P12 aynı işlemleri form olarak sunar.
 İki değer de her imaja yazılır (katalog sürüme göre ayrılmıyor): diğer Windows'ta karşılığı olmayan değer / dosya
 etkisizdir. Kullanıcı sonradan kendi sabitlemelerini yapabilir (düzen kilitlenmez).
 
+### Yeni ayarlar (2026-09-30, D-041)
+| Sekme › bölüm | Ayar | Ne yazılır |
+|---|---|---|
+| Başlat menüsü › Görev çubuğu | Sabitlenmiş uygulamalar (Edge, Store…) | `ProgramData\WinLove\TaskbarLayoutModification.xml` (yalnız Dosya Gezgini, `PinListPlacement="Replace"`) + `Explorer\LayoutXMLPath` (REG_EXPAND_SZ) |
+| | Sohbet, toplantı ve Cortana düğmeleri | `TaskbarMn`, `ShowCortanaButton`, `People\PeopleBand` = 0; `HideSCAMeetNow` = 1 (ilk oturumda da) |
+| Gizlilik › Copilot ve yapay zekâ | Copilot · Recall | `WindowsCopilot\TurnOffWindowsCopilot` (HKCU + HKLM), `ShowCopilotButton` = 0 · `WindowsAI\DisableAIDataAnalysis` = 1, `AllowRecallEnablement` = 0 |
+| Gizlilik › Microsoft Edge | İlk çalıştırma · masaüstü kısayolu · arka planda çalışma | Edge ilkeleri (`HideFirstRunExperience`, `DefaultBrowserSettingEnabled`, `StartupBoostEnabled`, `BackgroundModeEnabled`), `EdgeUpdate\CreateDesktopShortcutDefault`, `DisableEdgeDesktopShortcutCreation` |
+| Gizlilik › Şifreleme | Otomatik cihaz şifreleme (BitLocker) | `Control\BitLocker\PreventDeviceEncryption` = 1 |
+| Güncelleme (yeni sekme) › Windows Update | Otomatik güncelleme (bildir / kapalı) · oturum açıkken yeniden başlatma · WU sürücüleri · özellik güncellemesi ertele (180 / 365 gün) · teslim iyileştirme | `Policies\…\WindowsUpdate(\AU)`, `DriverSearching\SearchOrderConfig`, `DeliveryOptimization\DODownloadMode` |
+| Görünüm › Masaüstü | "Bu bilgisayar" · kullanıcı klasörü simgesi · **duvar kağıdı** | `HideDesktopIcons` · JPEG → `ProgramData\WinLove\wallpaper.jpg` + varsayılan profilde `Control Panel\Desktop\Wallpaper` |
+| Görünüm › Kilit ekranı | **Kilit ekranı resmi** | JPEG → `ProgramData\WinLove\lockscreen.jpg` + `PersonalizationCSP` (ilke: kullanıcı değiştiremez) |
+| Görünüm › OEM bilgisi | Üretici, model, destek sitesi / telefonu / saatleri | `CurrentVersion\OEMInformation` (yazılan metin) |
+
+İki yeni denetim türü: **metin** (yazılan değer REG_SZ olarak katalogdaki anahtar / adlara) ve **dosya** (bu
+bilgisayardaki bir JPEG, `CopyFile` işlemiyle imajdaki sabit yola + onu gösteren değerler). Boş değer = Windows
+varsayılanı. Dosya kutusuna JPEG olmayan / olmayan bir yol yazılırsa hiçbir şey kuyruğa girmez, ipucu kırmızı.
+
 ## 4. Sınırlar
 - İmajdaki mevcut değer okunmuyor: form Windows varsayılanını gösterir (P11 ile aynı sınır). "Varsayılan" seçeneği
   değeri değiştirmez, varsayılana *geri yazmaz*.
@@ -52,6 +69,9 @@ etkisizdir. Kullanıcı sonradan kendi sabitlemelerini yapabilir (düzen kilitle
 - [ ] Başlat menüsü sekmesi: "Sabitlenmiş uygulamalar ve kutucuklar" + "Reklam uygulamalarının otomatik kurulumu"
       + "Widget'lar" kapalı → Uygula → VM kurulumu: Windows 10'da Başlat'ta kutucuk yok, görev çubuğunda hava durumu
       yok; Windows 11'de sabitlenenler boş; reklam uygulamaları (Candy Crush, Spotify…) inmiyor.
+- [ ] VM: görev çubuğunda yalnız Dosya Gezgini; Copilot / sohbet düğmesi yok; Edge sihirbazsız açılır; kurulumda
+      BitLocker kendiliğinden açılmaz; duvar kağıdı, kilit ekranı resmi ve Sistem › Hakkında'daki OEM satırları
+      seçilenler.
 - [ ] "Önerilenleri uygula" → önerilen ayarlar seçilir; ikinci kez basınca "hepsi zaten seçili".
 - [ ] Uygula → değerler hive'da (`wlcli reg` / yeniden bağlama ile), servis başlangıçları Servisler sayfasında.
 - [ ] Klavye: Tab ile kontroller, ←/→ sekme ve radio, Space toggle, Enter dropdown.

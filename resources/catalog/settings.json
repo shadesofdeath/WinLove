@@ -1,7 +1,7 @@
 {
   "format": "winlove.catalog.settings",
   "version": 1,
-  "_comment": "P12 Ayarlar / Tweaks form. tab > section > setting. A toggle has two states; 'default' is what Windows does on its own (nothing is written) and 'writes' / 'services' belong to the other state. A dropdown / radio lists 'options'; the one without writes or services is the Windows default. apply=firstLogon: also re-applied after setup (D-026); 'files' ({path, content}: a text file written into the image, under Users\\Default or ProgramData) belong to an option like its writes. recommended: what 'Önerilenleri uygula' picks (toggle: true = the non-default state; dropdown / radio: an option id). Writes that also exist in tweaks.json use the same values and the same apply mode, so P11 and P12 show the same queue.",
+  "_comment": "P12 Ayarlar / Tweaks form. tab > section > setting. A toggle has two states; 'default' is what Windows does on its own (nothing is written) and 'writes' / 'services' belong to the other state. A dropdown / radio lists 'options'; the one without writes or services is the Windows default. apply=firstLogon: also re-applied after setup (D-026). control 'text': no options — the typed string goes to every key / name in 'writes'; control 'file': the picked JPEG is copied to 'copy' in the image and the 'writes' (which point Windows at it) go with it; for both an empty value is the Windows default. 'files' ({path, content}: a text file written into the image, under Users\\Default or ProgramData) belong to an option like its writes. recommended: what 'Önerilenleri uygula' picks (toggle: true = the non-default state; dropdown / radio: an option id). Writes that also exist in tweaks.json use the same values and the same apply mode, so P11 and P12 show the same queue.",
   "tabs": [
     { "id": "privacy", "tr": "Gizlilik", "en": "Privacy" },
     { "id": "performance", "tr": "Performans", "en": "Performance" },
@@ -24,6 +24,7 @@
     { "id": "effects", "tab": "appearance", "tr": "Efektler", "en": "Effects" },
     { "id": "lockscreen", "tab": "appearance", "tr": "Kilit ekranı", "en": "Lock screen" },
     { "id": "desktop", "tab": "appearance", "tr": "Masaüstü", "en": "Desktop" },
+    { "id": "oem", "tab": "appearance", "tr": "OEM bilgisi", "en": "OEM information" },
     { "id": "files", "tab": "explorer", "tr": "Dosyalar", "en": "Files" },
     { "id": "menus", "tab": "explorer", "tr": "Menüler", "en": "Menus" },
     { "id": "startmenu", "tab": "start", "tr": "Başlat", "en": "Start" },
@@ -259,6 +260,30 @@
                   { "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\HideDesktopIcons\\ClassicStartMenu", "name": "{20D04FE0-3AEA-1069-A2D8-08002B30309D}", "value": "dword:00000000" } ] },
     { "id": "desktop-user-files", "section": "desktop", "control": "toggle", "tr": "Kullanıcı klasörü simgesi", "en": "User folder icon", "default": "off",
       "writes": [ { "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\HideDesktopIcons\\NewStartPanel", "name": "{59031a47-3f72-44a7-89c5-5595fe6b30ee}", "value": "dword:00000000" },
-                  { "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\HideDesktopIcons\\ClassicStartMenu", "name": "{59031a47-3f72-44a7-89c5-5595fe6b30ee}", "value": "dword:00000000" } ] }
+                  { "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\HideDesktopIcons\\ClassicStartMenu", "name": "{59031a47-3f72-44a7-89c5-5595fe6b30ee}", "value": "dword:00000000" } ] },
+
+    { "id": "wallpaper", "section": "desktop", "control": "file", "tr": "Duvar kağıdı", "en": "Wallpaper",
+      "hint_tr": "JPEG · yeni kullanıcıların varsayılanı", "hint_en": "JPEG · the default of new users",
+      "copy": "ProgramData\\WinLove\\wallpaper.jpg",
+      "writes": [ { "key": "HKCU\\Control Panel\\Desktop", "name": "Wallpaper", "value": "\"C:\\\\ProgramData\\\\WinLove\\\\wallpaper.jpg\"" },
+                  { "key": "HKCU\\Control Panel\\Desktop", "name": "WallpaperStyle", "value": "\"10\"" },
+                  { "key": "HKCU\\Control Panel\\Desktop", "name": "TileWallpaper", "value": "\"0\"" } ] },
+    { "id": "lockscreen-image", "section": "lockscreen", "control": "file", "tr": "Kilit ekranı resmi", "en": "Lock screen picture",
+      "hint_tr": "JPEG · ilke olarak yazılır: kullanıcı Ayarlar'dan değiştiremez", "hint_en": "JPEG · written as a policy: users cannot change it in Settings",
+      "copy": "ProgramData\\WinLove\\lockscreen.jpg",
+      "writes": [ { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\PersonalizationCSP", "name": "LockScreenImagePath", "value": "\"C:\\\\ProgramData\\\\WinLove\\\\lockscreen.jpg\"" },
+                  { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\PersonalizationCSP", "name": "LockScreenImageUrl", "value": "\"C:\\\\ProgramData\\\\WinLove\\\\lockscreen.jpg\"" },
+                  { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\PersonalizationCSP", "name": "LockScreenImageStatus", "value": "dword:00000001" } ] },
+    { "id": "oem-manufacturer", "section": "oem", "control": "text", "tr": "Üretici", "en": "Manufacturer",
+      "hint_tr": "Ayarlar › Sistem › Hakkında'da görünür", "hint_en": "Shown in Settings › System › About",
+      "writes": [ { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Manufacturer" } ] },
+    { "id": "oem-model", "section": "oem", "control": "text", "tr": "Model", "en": "Model",
+      "writes": [ { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Model" } ] },
+    { "id": "oem-support-url", "section": "oem", "control": "text", "tr": "Destek sitesi", "en": "Support website",
+      "writes": [ { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "SupportURL" } ] },
+    { "id": "oem-support-phone", "section": "oem", "control": "text", "tr": "Destek telefonu", "en": "Support phone",
+      "writes": [ { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "SupportPhone" } ] },
+    { "id": "oem-support-hours", "section": "oem", "control": "text", "tr": "Destek saatleri", "en": "Support hours",
+      "writes": [ { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "SupportHours" } ] }
   ]
 }

@@ -1095,8 +1095,13 @@ void Shell::showPage(PageId page) {
                                       : m_strings.get(Str::TweaksRecommendedNone),
                           L"");
             };
-            m_pageBody = &m_pageView->setBody<TweaksPage>(m_state, *m_imageSettings, m_strings, m_language,
-                                                          [this] { showPage(PageId::Images); });
+            m_pageBody = &m_pageView->setBody<TweaksPage>(
+                m_state, *m_imageSettings, m_strings, m_language, [this] { showPage(PageId::Images); },
+                [this]() -> std::optional<std::filesystem::path> {
+                    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+                    return ui::pickFile(owner, m_strings.get(Str::TweaksPickImage),
+                                        {{m_strings.get(Str::TweaksJpegFiles), L"*.jpg;*.jpeg"}});
+                });
         } else if (page == PageId::Services) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ServicesReset)).onInvoke = [this] {
                 m_serviceCtl->resetChanges();

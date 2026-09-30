@@ -4,6 +4,10 @@
 // core::parseRegValue at load), service start types and text files put into the image
 // (core/image/ImageFiles.h); exactly one option per setting has none of them: what Windows does
 // on its own, for which nothing is written.
+// Two controls take a value from the user instead of offering options: "text" (the value is
+// written as a string to every key / name listed) and "file" (a JPEG of this PC is copied to the
+// fixed path "copy" in the image, and the listed writes — which point Windows at it — go with it).
+// For both, an empty value is the Windows default.
 #include "app/Localization.h"
 #include "base/Result.h"
 #include "core/image/RegistryEdit.h"
@@ -40,11 +44,14 @@ struct ImageSettingOption {
     std::vector<core::RegistryWrite> writes;
     std::vector<std::pair<std::wstring, core::StartType>> services; // service name → start type
     std::vector<std::pair<std::wstring, std::wstring>> files;       // path in the image → text
-    [[nodiscard]] bool isDefault() const noexcept { return writes.empty() && services.empty() && files.empty(); }
+    std::wstring copyTo;                                            // "file" control: where the picked file goes
+    [[nodiscard]] bool isDefault() const noexcept {
+        return writes.empty() && services.empty() && files.empty() && copyTo.empty();
+    }
 };
 
 struct ImageSetting {
-    enum class Control : std::uint8_t { Toggle, Dropdown, Radio };
+    enum class Control : std::uint8_t { Toggle, Dropdown, Radio, Text, File };
     std::string id;
     std::string section;
     Control control = Control::Toggle;
@@ -52,7 +59,7 @@ struct ImageSetting {
     LocalizedText hint; // optional caption right of a toggle
     core::ops::Risk risk = core::ops::Risk::Low;
     bool firstLogon = false; // "apply": "firstLogon" → SetRegistryFirstLogon
-    std::vector<ImageSettingOption> options; // toggle: [0] off, [1] on
+    std::vector<ImageSettingOption> options; // toggle: [0] off, [1] on · text / file: [0] default, [1] with a value
     int defaultOption = 0;
     int recommended = -1; // option "Önerilenleri uygula" picks; -1 = leave alone
 };
