@@ -5,6 +5,7 @@ add_executable(wl_tests
     support/TestGraphics.cpp
     base/ResultTests.cpp
     base/ScriptTests.cpp
+    core/AppxRemovalTests.cpp
     core/ChangeSetTests.cpp
     core/DriverTests.cpp
     core/EngineTests.cpp
@@ -22,6 +23,7 @@ add_executable(wl_tests
     ui/IconsTests.cpp
     ui/RenderTests.cpp
     ui/WidgetTests.cpp
+    app/AnswerStoreTests.cpp
     app/ApplyTests.cpp
     app/ComponentTests.cpp
     app/EditionTests.cpp

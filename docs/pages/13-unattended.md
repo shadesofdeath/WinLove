@@ -58,7 +58,9 @@ istenirse bir sonraki ISO'nun köküne yazılır.
 - Kurulum dili imajda bulunan bir dil olmalı (liste kaynaktan gelir; elle yazılan XML'de denetlenmez).
 - BypassNRO kayıt değeri 25H2'de hâlâ çalışıyor varsayımıyla yazılır; yerel hesap + "Çevrimiçi kurulumu atla"
   birlikte kullanıldığında zaten gerekmez.
-- Yanıt dosyası oturumda tutulur (uygulama kapanınca gider); kalıcılık P15 Presetler ile.
+- Yanıt dosyası artık oturumlar arasında da tutulur (D-037): her değişiklikte `%LOCALAPPDATA%\WinLove\answers.dat`
+  dosyasına yazılır, açılışta geri yüklenir. Dosya parolayı da içerdiği için tamamı Windows kullanıcısının anahtarıyla
+  (DPAPI) korunur: başka bir hesap ya da dosyanın kopyası okuyamaz. Hiç yanıt yoksa dosya silinir.
 
 ## 5. Kabul
 - [ ] Form değiştikçe önizleme güncellenir, değişen satırlar vurgulanır.

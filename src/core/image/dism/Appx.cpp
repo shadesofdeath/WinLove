@@ -1,12 +1,15 @@
 #include "core/image/dism/Appx.h"
 
 #include "base/Log.h"
+#include "core/image/OfflineHive.h"
+#include "core/image/RegistryEdit.h"
 #include "core/system/Privileges.h"
 
 #include <windows.h>
 
 #include <algorithm>
 #include <chrono>
+#include <cwctype>
 #include <format>
 
 namespace wl::core {
@@ -109,6 +112,121 @@ Result<std::vector<AppxComponent>> readAppx(Dism& dism, const std::filesystem::p
     log::info("dism", std::format(L"{} provisioned apps read in {} ms ({} WindowsApps folders)", result.size(), ms,
                                   folders.size()));
     return result;
+}
+
+// ---- removal without DISM ----------------------------------------------------------------------
+
+namespace {
+
+constexpr const wchar_t* kAllUserStore = L"Microsoft\\Windows\\CurrentVersion\\Appx\\AppxAllUserStore";
+
+// A package (full or family) name as a path component and a registry key name: nothing that
+// could leave the folder or the key it is put under.
+bool plainPackageName(std::wstring_view name) {
+    return !name.empty() && name.size() <= 200 && name.front() != L'.' && name.back() != L'.' &&
+           std::ranges::all_of(name, [](wchar_t c) {
+               return c < 128 && (std::iswalnum(static_cast<wint_t>(c)) != 0 || c == L'.' || c == L'_' || c == L'-' || c == L'~');
+           });
+}
+
+std::wstring lowerAscii(std::wstring_view text) {
+    std::wstring out(text);
+    for (auto& c : out) {
+        if (c >= L'A' && c <= L'Z') {
+            c = static_cast<wchar_t>(c - L'A' + L'a');
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+std::wstring appxFamilyName(std::wstring_view packageFullName) {
+    if (!plainPackageName(packageFullName)) {
+        return {};
+    }
+    // Name _ Version _ Architecture _ ResourceId _ PublisherId; the name itself has no '_'.
+    std::vector<std::wstring_view> parts;
+    for (std::size_t start = 0; start <= packageFullName.size();) {
+        const std::size_t end = std::min(packageFullName.find(L'_', start), packageFullName.size());
+        parts.push_back(packageFullName.substr(start, end - start));
+        start = end + 1;
+    }
+    if (parts.size() != 5 || parts.front().empty() || parts.back().empty()) {
+        return {};
+    }
+    return std::wstring(parts.front()) + L"_" + std::wstring(parts.back());
+}
+
+ComponentRecipe appxRemovalRecipe(std::wstring_view packageFullName, const std::vector<std::wstring>& staged) {
+    ComponentRecipe recipe;
+    const std::wstring family = appxFamilyName(packageFullName);
+    if (family.empty()) {
+        return recipe;
+    }
+    recipe.title = std::wstring(packageFullName.substr(0, packageFullName.find(L'_')));
+    auto folder = [&](std::wstring_view name) {
+        // Only packages of this family: the list comes out of a registry that a preset's author
+        // does not control, but a folder of another app must never ride along.
+        if (appxFamilyName(name) != family) {
+            return;
+        }
+        std::wstring path = L"Program Files\\WindowsApps\\" + std::wstring(name);
+        if (std::ranges::find(recipe.paths, path) == recipe.paths.end()) {
+            recipe.paths.push_back(std::move(path));
+        }
+    };
+    folder(packageFullName);
+    for (const auto& name : staged) {
+        folder(name);
+    }
+    recipe.paths.push_back(L"ProgramData\\Microsoft\\Windows\\ClipSVC\\Install\\Apps\\" + lowerAscii(family) + L".xml");
+
+    const std::wstring store = std::wstring(L"HKLM\\SOFTWARE\\") + kAllUserStore;
+    auto key = [&](RegistryWrite::Kind kind, std::wstring path) {
+        RegistryWrite write;
+        write.kind = kind;
+        write.key = std::move(path);
+        recipe.registry.push_back(std::move(write));
+    };
+    key(RegistryWrite::Kind::DeleteKey, store + L"\\Applications\\" + std::wstring(packageFullName));
+    key(RegistryWrite::Kind::DeleteKey, store + L"\\Staged\\" + family);
+    key(RegistryWrite::Kind::CreateKey, store + L"\\Deprovisioned\\" + family);
+    return recipe;
+}
+
+Result<std::vector<std::wstring>> readStagedAppx(const std::filesystem::path& mountDir, std::wstring_view family) {
+    if (!plainPackageName(family)) {
+        return fail(ErrorCode::InvalidArgument, L"not a package family name", std::wstring(family));
+    }
+    auto hive = OfflineHive::load(hiveFilePath(mountDir, OfflineHiveFile::Software));
+    if (!hive) {
+        return std::unexpected(hive.error());
+    }
+    auto staged = RegKey::open(hive->root(), std::wstring(kAllUserStore) + L"\\Staged\\" + std::wstring(family));
+    if (!staged) {
+        return std::vector<std::wstring>{}; // nothing staged under that name
+    }
+    return staged->subkeys(); // `staged` closes before `hive` unloads
+}
+
+Result<void> removeAppxNative(DismSession& session, std::wstring_view packageFullName, const TaskContext& task) {
+    const std::wstring family = appxFamilyName(packageFullName);
+    if (family.empty()) {
+        return fail(ErrorCode::InvalidArgument, L"not a package full name", std::wstring(packageFullName));
+    }
+    session.suspend(); // DISM keeps the hives to itself
+    auto staged = readStagedAppx(session.mountPath(), family);
+    if (auto reopened = session.reload(); !reopened) {
+        return reopened;
+    }
+    if (!staged) {
+        return std::unexpected(staged.error());
+    }
+    const ComponentRecipe recipe = appxRemovalRecipe(packageFullName, *staged);
+    log::info("appx", std::format(L"native removal of {}: {} folder(s) / file(s), {} registry change(s)", packageFullName,
+                                  recipe.paths.size(), recipe.registry.size()));
+    return removeComponent(session, recipe, task);
 }
 
 } // namespace wl::core

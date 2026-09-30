@@ -23,6 +23,14 @@
 - **Kaynak sayfası (2026-09-30, kullanıcı isteği):** son kullanılanlardan kaldırma (satır sonunda ×, `Del`, sağ tık
   menüsü) + çalışma kopyasını silme dialogu; UI çatısına sağ tık yönlendirmesi eklendi (`Widget::onContextMenu`).
   Dialogun kendisi render'da görülmedi (diskte çalışma kopyası yoktu); liste girdisini kaldırma ve menü görüldü.
+- **Üç yeni iş (2026-09-30, kullanıcı isteği, D-037 / D-038):**
+  (1) **Yanıt dosyası kalıcı** — `answers.dat` (DPAPI), her değişiklikte yazılır, açılışta geri gelir; unit testli. **Bitti.**
+  (2) **Kilitli uygulamaları yerel kaldırma** ve (3) **boot.wim yaması** (LabConfig + sürücü): **yalnız motor** +
+  `wlcli appx-remove` / `wlcli boot-patch` + `tools\lab_appx.ps1` / `tools\lab_boot.ps1`. Hiçbiri gerçek imajda çalışmadı
+  (yönetici gerekir); Applier / katalog / ISO sayfasına **bağlı değil**.
+  **Bir sonraki somut adım:** kullanıcı iki betiği yönetici PowerShell'de çalıştırır. Geçerse: Applier'da `0x80073CFA`
+  → yerel kaldırma, katalogdaki `lockedSince` kilidinin kalkması (yüksek risk uyarısıyla), ISO sayfasına "kurulum
+  ortamına da yaz" seçeneği (gereksinim atlama + kuyruktaki sürücüler). Geçmezse log'a göre karar.
 - **İmajlar — kısayollar (2026-09-30, kullanıcı isteği):** bağlama klasörünü aç (`Ctrl+E`, her sayfadan; inspector'da
   klasör düğmesi; sağ tık), komut istemini bağlama klasöründe aç, dosya konumunu aç (`Ctrl+Shift+E`), bilgileri
   kopyala (`Ctrl+C`), kaynağı yenile (`F5`). **Kullanıcının isteğiyle denenmeden teslim edildi:** yalnız derlendi,
@@ -118,7 +126,7 @@
   (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
   ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
   (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
-- **Build:** `./build.ps1 -Dist` yeşil, 191 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Build:** `./build.ps1 -Dist` yeşil, 197 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi (bilerek yazılmadı: denenemeyen disk biçimlendirme kodu; ISO'yu
@@ -152,6 +160,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — Yanıt dosyası doldurulunca ISO'ya kendiliğinden giriyor; işlemci / disk denetimi atlama; imajda olmayan AppX başarı (D-034).
 - 2026-09-30 — İmajlar: çoklu seçim, yeniden adlandırma, WIM doğrulama (kendi LZX çözücümüz), sürüm yükseltme (D-035).
 - 2026-09-30 — Yanıt dosyası: `UserData` her zaman `ProductKey` ile (genel anahtar / yer tutucu) (D-036).
+- 2026-09-30 — Yanıt dosyası kalıcı (D-037); yerel uygulama kaldırma ve boot.wim yaması: motor, kanıt bekliyor (D-038).
 - 2026-09-30 — İmajlar kısayolları: bağlama klasörü, komut istemi, dosya konumu, bilgileri kopyala, yenile (denenmedi).
 - 2026-09-28 — Baştan sona inceleme (4 alan, paralel): ~35 hata düzeltildi. Öne çıkanlar: junction üzerinden ana
   makine ACL'si değişebilmesi (FileLocks), commit edilmeyen unmount'un başarılı raporlanması, DISM oturum yenileme,

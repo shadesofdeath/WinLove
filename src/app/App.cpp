@@ -1,5 +1,7 @@
 #include "app/App.h"
 
+#include "app/state/AnswerStore.h"
+
 #include "core/image/DriverInf.h"
 
 #include "app/pages/UpdatesPage.h"
@@ -298,7 +300,8 @@ Result<void> App::initialize() {
     const auto scratch = std::filesystem::temp_directory_path() / L"WinLove-render";
     m_state = std::make_unique<AppState>(
         m_options.recentFile.value_or(render ? scratch / L"recent.json" : RecentSources::defaultFile()),
-        render ? scratch / L"settings.json" : AppSettings::defaultFile());
+        render ? scratch / L"settings.json" : AppSettings::defaultFile(),
+        render ? std::filesystem::path() : defaultAnswersFile()); // renders show what their arguments say
     // The user's settings (P16) — a render shows what its arguments say, never the scratch file.
     if (!render) {
         const AppSettings& settings = m_state->settings();

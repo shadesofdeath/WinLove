@@ -1,13 +1,22 @@
 #include "app/state/AppState.h"
 
+#include "app/state/AnswerStore.h"
+
 #include <algorithm>
 
 namespace wl::app {
 
-AppState::AppState(std::filesystem::path recentFile, std::filesystem::path settingsFile)
-    : m_settings(AppSettings::load(settingsFile)), m_settingsFile(settingsFile), m_recent(std::move(recentFile)) {
+AppState::AppState(std::filesystem::path recentFile, std::filesystem::path settingsFile, std::filesystem::path answersFile)
+    : m_settings(AppSettings::load(settingsFile)), m_settingsFile(settingsFile), m_answersFile(std::move(answersFile)),
+      m_recent(std::move(recentFile)) {
     log::addSink(m_logBuffer);
     m_recent.load();
+    if (!m_answersFile.empty()) {
+        if (auto answers = loadAnswers(m_answersFile)) {
+            m_unattend = Unattend{std::move(answers->options), answers->includeInIso};
+            log::info("app", L"answer file of the last run restored");
+        }
+    }
 }
 
 AppState::~AppState() {
@@ -207,6 +216,9 @@ void AppState::removeRegImport(std::size_t index) {
 
 void AppState::setUnattend(Unattend unattend) {
     m_unattend = std::move(unattend);
+    if (!m_answersFile.empty()) {
+        saveAnswers(m_answersFile, StoredAnswers{m_unattend.options, m_unattend.includeInIso});
+    }
     notify(Change::Unattend);
 }
 
