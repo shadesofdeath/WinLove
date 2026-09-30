@@ -22,4 +22,8 @@ struct SourceInfo {
 
 [[nodiscard]] Result<SourceInfo> openSource(const std::filesystem::path& path);
 
+// The install image of an open source as bytes: the WIM itself, the one under sources\ of a setup
+// folder, or — read in place — the one inside the ISO.
+[[nodiscard]] Result<std::shared_ptr<const ByteSource>> openInstallImage(const SourceInfo& source);
+
 } // namespace wl::core

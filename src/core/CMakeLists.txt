@@ -14,10 +14,14 @@ add_library(wl_core STATIC
     image/dism/Appx.cpp
     image/dism/Dism.cpp
     image/dism/DismErrors.cpp
+    image/dism/DismExe.cpp
+    image/dism/Edition.cpp
     image/dism/MountHealth.cpp
     image/dism/OptionalFeatures.cpp
     image/dism/StoreCleanup.cpp
+    image/wim/Lzx.cpp
     image/wim/WimGapi.cpp
+    image/wim/WimVerify.cpp
     io/ByteSource.cpp
     iso/IsoBuilder.cpp
     ops/ApplyJob.cpp

@@ -1,0 +1,56 @@
+#include "app/pages/images/EditionSelection.h"
+
+#include <algorithm>
+
+namespace wl::app {
+
+bool EditionSelection::contains(int row) const {
+    return std::ranges::binary_search(rows, row);
+}
+
+void EditionSelection::only(int row) {
+    rows = {row};
+    primary = row;
+    anchor = row;
+}
+
+void EditionSelection::toggle(int row) {
+    const auto at = std::ranges::lower_bound(rows, row);
+    if (at == rows.end() || *at != row) {
+        rows.insert(at, row);
+        primary = row;
+        anchor = row;
+        return;
+    }
+    if (rows.size() == 1) {
+        return;
+    }
+    const auto next = rows.erase(at);
+    if (primary == row) {
+        primary = next != rows.end() ? *next : rows.back(); // the one after it, else the last
+    }
+    anchor = primary;
+}
+
+void EditionSelection::extendTo(int row) {
+    const int from = anchor < 0 ? row : anchor;
+    rows.clear();
+    for (int i = std::min(from, row); i <= std::max(from, row); ++i) {
+        rows.push_back(i);
+    }
+    primary = row;
+    anchor = from;
+}
+
+void EditionSelection::all(int count) {
+    rows.clear();
+    for (int i = 0; i < count; ++i) {
+        rows.push_back(i);
+    }
+    if (primary < 0 || primary >= count) {
+        primary = count > 0 ? 0 : -1;
+    }
+    anchor = primary;
+}
+
+} // namespace wl::app

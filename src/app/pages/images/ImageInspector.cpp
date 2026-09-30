@@ -67,21 +67,36 @@ ImageInspector::ImageInspector(const Localization& strings, Language language) :
             onDelete();
         }
     };
+    auto rename = ui::Button::iconOnly(ui::icons::Icon::Edit, strings.get(Str::ImagesRename));
+    m_rename = rename.get();
+    m_rename->onInvoke = [this] {
+        if (onRename) {
+            onRename();
+        }
+    };
+    addChild(std::move(rename));
     setAccessible(ui::AccessRole::Group, strings.get(Str::CommonDetails));
 }
 
-void ImageInspector::set(const core::SourceInfo* source, const core::ImageInfo* image, bool mountedHere, bool canMount,
-                         bool canDelete, std::wstring mountTooltip, std::wstring deleteTooltip) {
-    m_source = source ? std::optional<core::SourceInfo>(*source) : std::nullopt;
-    m_image = image ? std::optional<core::ImageInfo>(*image) : std::nullopt;
-    m_mountedHere = mountedHere;
-    m_primary->setText(m_strings.get(mountedHere ? Str::ImagesUnmount : Str::ImagesMount));
-    m_primary->setEnabled(mountedHere || canMount);
-    m_primary->setTooltip(std::move(mountTooltip));
-    m_delete->setEnabled(canDelete);
-    m_delete->setTooltip(std::move(deleteTooltip));
+void ImageInspector::set(State state) {
+    m_source = state.source ? std::optional<core::SourceInfo>(*state.source) : std::nullopt;
+    m_image = state.image ? std::optional<core::ImageInfo>(*state.image) : std::nullopt;
+    m_mountedHere = state.mountedHere;
+    m_marked = state.marked;
+    m_primary->setText(m_strings.get(state.mountedHere ? Str::ImagesUnmount : Str::ImagesMount));
+    m_primary->setEnabled(state.mountedHere || state.canMount);
+    m_primary->setTooltip(std::move(state.mountTooltip));
+    m_delete->setText(state.marked > 1
+                          ? m_strings.format(Str::ImagesDeleteMany, {{L"n", std::to_wstring(state.marked)}})
+                          : m_strings.get(Str::ImagesDeleteIndex));
+    m_delete->setEnabled(state.canDelete);
+    m_delete->setTooltip(std::move(state.deleteTooltip));
+    m_rename->setEnabled(state.canRename);
+    // Enabled: what the pencil does; disabled: why not.
+    m_rename->setTooltip(state.canRename ? m_strings.get(Str::ImagesRename) : std::move(state.renameTooltip));
     m_primary->setVisible(m_image.has_value());
     m_delete->setVisible(m_image.has_value());
+    m_rename->setVisible(m_image.has_value());
     layout();
     invalidate();
 }
@@ -94,6 +109,7 @@ void ImageInspector::layout() {
     const float y = b.bottom() - 12 - primary.height;
     m_primary->setBounds({b.x + kPadding, y, primary.width, primary.height});
     m_delete->setBounds({b.x + kPadding + primary.width + 4, y, del.width, del.height});
+    m_rename->setBounds({b.right() - kPadding - kRow, b.y + kPadding - 4, kRow, kRow});
 }
 
 void ImageInspector::paint(ui::Canvas& canvas) {
@@ -109,7 +125,7 @@ void ImageInspector::paint(ui::Canvas& canvas) {
     float y = b.y + kPadding;
 
     canvas.drawIcon(ui::icons::Icon::LayersEditions, {x, y + 4}, Color::TextSecondary);
-    canvas.drawText(image.name, {x + 24, y, width - 24, kLine}, TypeStyle::BodyStrong, Color::TextPrimary);
+    canvas.drawText(image.name, {x + 24, y, width - 24 - kRow - 4, kLine}, TypeStyle::BodyStrong, Color::TextPrimary);
     canvas.drawText(std::format(L"{} · {} {}", std::filesystem::path(m_source->installImage).filename().wstring(),
                                 m_strings.get(Str::ImagesIndex), image.index),
                     {x + 24, y + kLine, width - 24, kLine}, TypeStyle::Caption, Color::TextTertiary);
@@ -169,7 +185,9 @@ void ImageInspector::paint(ui::Canvas& canvas) {
     row(Str::ImagesBootIndex, header.bootIndex ? std::to_wstring(header.bootIndex) : m_strings.get(Str::ImagesNone));
 
     section(Str::ImagesActionsTitle);
-    canvas.drawText(m_strings.get(Str::ImagesActionsHint), {x, y - 4, width, kLine}, TypeStyle::Caption, Color::TextTertiary);
+    canvas.drawText(m_marked > 1 ? m_strings.format(Str::ImagesSelectedHint, {{L"n", std::to_wstring(m_marked)}})
+                                 : m_strings.get(Str::ImagesActionsHint),
+                    {x, y - 4, width, kLine}, TypeStyle::Caption, Color::TextTertiary);
 }
 
 } // namespace wl::app

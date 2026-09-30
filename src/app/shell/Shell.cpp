@@ -1,5 +1,7 @@
 #include "app/shell/Shell.h"
 
+#include "app/pages/images/RenameDialog.h"
+
 #include "app/Format.h"
 #include "app/pages/GalleryPage.h"
 #include "app/Resources.h"
@@ -173,6 +175,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         [this](std::wstring args) { showAdminRequired(std::move(args)); },
         [this](std::filesystem::path source, MountedImage mounted) { restoreMount(source, std::move(mounted)); },
         [this] { m_preload->start(); },
+        [this](const core::WimVerifyReport& report, std::wstring file) { onImageVerified(report, file); },
     });
 
     m_subscription = m_state.subscribe([this](AppState::Change change) {
@@ -718,9 +721,10 @@ void Shell::updateStatus() {
     } else if (iso && iso->running) {
         m_status->setTask(m_strings.get(Str::StatusBuilding), static_cast<float>(iso->fraction));
     } else if (const auto& op = m_state.operation()) {
-        const Str label = op->kind == EngineOperation::Kind::Mounting  ? Str::StatusMounting
-                          : op->kind == EngineOperation::Kind::Reading ? Str::StatusReading
-                                                                       : Str::StatusScanning;
+        const Str label = op->kind == EngineOperation::Kind::Mounting    ? Str::StatusMounting
+                          : op->kind == EngineOperation::Kind::Reading   ? Str::StatusReading
+                          : op->kind == EngineOperation::Kind::Verifying ? Str::StatusVerifying
+                                                                         : Str::StatusWorking;
         m_status->setTask(m_strings.get(label), static_cast<float>(op->fraction));
     } else {
         m_status->setTask(std::nullopt, 0);
@@ -740,16 +744,32 @@ void Shell::updateImagesChrome() {
     if (m_actionExport) {
         m_actionExport->setEnabled(!busy && image != nullptr);
     }
+    if (m_actionVerify) {
+        const auto refusal = m_images->verifyRefusal();
+        m_actionVerify->setEnabled(!refusal);
+        m_actionVerify->setTooltip(m_strings.get(refusal && !busy ? *refusal : Str::ImagesVerifyHint));
+    }
     if (m_actionEsd) {
         m_actionEsd->setEnabled(!busy && m_images->isEsdSource());
         m_actionEsd->setTooltip(m_images->isEsdSource() ? std::wstring{} : m_strings.get(Str::ImagesEsdOnly));
     }
     if (m_inspector) {
-        const auto deleteRefusal = m_images->deleteRefusal(); // the disabled button's tooltip says why
-        m_inspector->set(m_state.source() ? &*m_state.source() : nullptr, image, mountedHere,
-                         image && m_images->canMount(), image && !deleteRefusal,
-                         m_images->isEsdSource() ? m_strings.get(Str::ImagesEsdNoMount) : std::wstring{},
-                         deleteRefusal ? m_strings.get(*deleteRefusal) : std::wstring{});
+        // A disabled button's tooltip says why.
+        const auto deleteRefusal = m_images->deleteRefusal();
+        const auto editRefusal = m_images->editRefusal();
+        const int marked = static_cast<int>(m_state.selection().size());
+        ImageInspector::State inspector;
+        inspector.source = m_state.source() ? &*m_state.source() : nullptr;
+        inspector.image = image;
+        inspector.mountedHere = mountedHere;
+        inspector.canMount = image && m_images->canMount();
+        inspector.canDelete = image && !deleteRefusal;
+        inspector.canRename = image && !editRefusal && marked == 1;
+        inspector.marked = marked;
+        inspector.mountTooltip = m_images->isEsdSource() ? m_strings.get(Str::ImagesEsdNoMount) : std::wstring{};
+        inspector.deleteTooltip = deleteRefusal ? m_strings.get(*deleteRefusal) : std::wstring{};
+        inspector.renameTooltip = editRefusal ? m_strings.get(*editRefusal) : std::wstring{};
+        m_inspector->set(std::move(inspector));
         m_inspector->setVisible(inspectorVisible());
     }
     layout();
@@ -778,7 +798,7 @@ void Shell::showPage(PageId page) {
         m_sideInspector = nullptr;
     }
     m_actionExpand = nullptr;
-    m_actionMount = m_actionExport = m_actionEsd = nullptr;
+    m_actionMount = m_actionExport = m_actionEsd = m_actionVerify = nullptr;
     m_actionReset = nullptr;
     m_actionIso = nullptr;
 
@@ -807,6 +827,9 @@ void Shell::showPage(PageId page) {
             if (m_state.source()) {
                 m_actionEsd = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesEsdToWim));
                 m_actionEsd->onInvoke = [this] { convertEsd(); };
+                m_actionVerify = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesVerify),
+                                                        ui::icons::Icon::ShieldCheck);
+                m_actionVerify->onInvoke = [this] { m_images->verify(); };
                 m_actionExport = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesExport));
                 m_actionExport->onInvoke = [this] { exportSelected(); };
                 m_actionMount = &m_pageView->addAction(ui::ButtonKind::Primary, m_strings.get(Str::ImagesMount));
@@ -825,6 +848,7 @@ void Shell::showPage(PageId page) {
             images.onExport = [this] { exportSelected(); };
             images.onDelete = [this] { askDeleteSelected(); };
             images.onKeepOnly = [this] { askDeleteSelected(/*keepOnly=*/true); };
+            images.onRename = [this] { askRenameSelected(); };
             m_inspector = &add<ImageInspector>(m_strings, m_language);
             m_inspector->onMount = [this] {
                 if (const auto index = m_state.selectedIndex()) {
@@ -833,6 +857,7 @@ void Shell::showPage(PageId page) {
             };
             m_inspector->onUnmount = [this] { askUnmount(); };
             m_inspector->onDelete = [this] { askDeleteSelected(); };
+            m_inspector->onRename = [this] { askRenameSelected(); };
         } else if (page == PageId::Components) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsLoadPreset),
                                   ui::icons::Icon::PresetBookmark)
@@ -1472,36 +1497,106 @@ void Shell::askDeleteSelected(bool keepOnly) {
         showToast(ui::InfoKind::Warning, m_strings.get(*refusal), L"");
         return;
     }
-    const std::wstring name = std::format(L"{} · {}", image->index, image->name);
-    std::vector<int> doomed{image->index};
-    std::wstring label = image->name; // what the strip and the toast call them
-    Str title = Str::DialogsDeleteIndexTitle;
-    std::wstring body = m_strings.format(Str::DialogsDeleteIndexBody, {{L"name", name}});
-    if (keepOnly) {
-        doomed.clear();
-        for (const auto& other : m_state.source()->install.images) {
-            if (other.index != image->index) {
-                doomed.push_back(other.index);
-            }
+    // Delete: the marked editions go. Keep only: the marked ones stay, every other one goes.
+    const auto& images = m_state.source()->install.images;
+    const std::vector<int>& marked = m_state.selection();
+    std::vector<const core::ImageInfo*> doomed;
+    for (const auto& edition : images) {
+        if (std::ranges::binary_search(marked, edition.index) != keepOnly) {
+            doomed.push_back(&edition);
         }
-        const std::wstring count = std::to_wstring(doomed.size());
-        label = m_strings.format(Str::ImagesEditionCount, {{L"n", count}});
-        title = Str::DialogsKeepOnlyTitle;
-        body = m_strings.format(Str::DialogsKeepOnlyBody, {{L"name", name}, {L"n", count}});
+    }
+    if (doomed.empty()) {
+        return;
+    }
+    if (doomed.size() >= images.size()) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::ImagesKeepOne), L"");
+        return;
+    }
+    auto named = [](const core::ImageInfo& edition) { return std::format(L"{} · {}", edition.index, edition.name); };
+    const std::wstring count = std::to_wstring(doomed.size());
+    // What the strip and the toast call them.
+    std::wstring label = doomed.size() == 1 ? doomed.front()->name : m_strings.format(Str::ImagesEditionCount, {{L"n", count}});
+    std::wstring title;
+    std::wstring body;
+    if (keepOnly) {
+        title = m_strings.get(Str::DialogsKeepOnlyTitle);
+        body = marked.size() == 1
+                   ? m_strings.format(Str::DialogsKeepOnlyBody, {{L"name", named(*image)}, {L"n", count}})
+                   : m_strings.format(Str::DialogsKeepManyBody, {{L"k", std::to_wstring(marked.size())}, {L"n", count}});
+    } else if (doomed.size() == 1) {
+        title = m_strings.get(Str::DialogsDeleteIndexTitle);
+        body = m_strings.format(Str::DialogsDeleteIndexBody, {{L"name", named(*doomed.front())}});
+    } else {
+        std::wstring names;
+        for (const auto* edition : doomed) {
+            names += (names.empty() ? L"" : L", ") + named(*edition);
+        }
+        title = m_strings.format(Str::DialogsDeleteManyTitle, {{L"n", count}});
+        body = m_strings.format(Str::DialogsDeleteManyBody, {{L"names", names}});
     }
     if (m_state.source()->format == core::ImageFormat::Iso) {
         body += L" " + m_strings.get(Str::DialogsDeleteIsoNote);
     }
-    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(title), body, ui::icons::Icon::ErrorOctagon,
-                                               ui::tokens::Color::StatusError);
+    std::vector<int> indexes;
+    for (const auto* edition : doomed) {
+        indexes.push_back(edition->index);
+    }
+    auto dialog = std::make_unique<ui::Dialog>(title, body, ui::icons::Icon::ErrorOctagon, ui::tokens::Color::StatusError);
     ui::Dialog* raw = dialog.get();
     raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
     raw->addButton(ui::ButtonKind::Danger, m_strings.get(Str::CommonDelete),
-                   [this, raw, doomed = std::move(doomed), label = std::move(label)] {
+                   [this, raw, indexes = std::move(indexes), label = std::move(label)] {
                        host()->popModal(raw);
-                       m_images->removeEditions(doomed, label);
+                       m_images->removeEditions(indexes, label);
                    });
     pushDialog(std::move(dialog));
+}
+
+void Shell::askRenameSelected() {
+    const auto* image = m_state.selectedImage();
+    if (!host() || !image) {
+        return;
+    }
+    if (const auto refusal = m_images->editRefusal()) {
+        showToast(ui::InfoKind::Warning, m_strings.get(*refusal), L"");
+        return;
+    }
+    std::wstring note = m_strings.get(Str::DialogsRenameHint);
+    if (m_state.source()->format == core::ImageFormat::Iso) {
+        note += L" " + m_strings.get(Str::DialogsDeleteIsoNote);
+    }
+    const int index = image->index;
+    auto raw = std::make_shared<ui::Dialog*>(nullptr);
+    RenameDialogActions actions;
+    actions.close = [this, raw] {
+        if (*raw) {
+            ui::Dialog* dialog = std::exchange(*raw, nullptr);
+            host()->popModal(dialog);
+        }
+    };
+    actions.accept = [this, index](std::wstring name, std::wstring description) {
+        m_images->renameEdition(index, std::move(name), std::move(description));
+    };
+    // Setup shows DISPLAYNAME; images without one fall back to the name.
+    RenameDialog built = makeRenameDialog(m_strings, image->displayName.empty() ? image->name : image->displayName,
+                                          image->displayDescription.empty() ? image->description : image->displayDescription,
+                                          std::move(note), std::move(actions));
+    *raw = built.dialog.get();
+    host()->pushModal(std::move(built.dialog), built.initialFocus);
+}
+
+void Shell::onImageVerified(const core::WimVerifyReport& report, const std::wstring& file) {
+    const std::wstring streams = formatCount(report.streams, m_language);
+    const std::wstring title = m_strings.format(report.sound() ? Str::ImagesVerifySound : Str::ImagesVerifyDamaged, {{L"file", file}});
+    const std::wstring body =
+        report.sound() ? m_strings.format(Str::ImagesVerifySoundBody, {{L"n", streams}, {L"size", formatBytes(report.bytes, m_language)}})
+                       : m_strings.format(Str::ImagesVerifyDamagedBody,
+                                          {{L"n", formatCount(report.damaged, m_language)}, {L"total", streams}});
+    if (auto* page = imagesPage()) {
+        page->showNotice(report.sound() ? ui::InfoKind::Success : ui::InfoKind::Error, title, body);
+    }
+    showToast(report.sound() ? ui::InfoKind::Success : ui::InfoKind::Error, title, report.sound() ? std::wstring() : body);
 }
 
 void Shell::exportSelected() {
@@ -1509,10 +1604,19 @@ void Shell::exportSelected() {
     if (!image) {
         return;
     }
+    const std::vector<int> marked = m_state.selection();
     const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+    // Several editions go into one file, named after the image they come from.
+    const std::wstring suggested = marked.size() > 1 ? std::filesystem::path(m_state.source()->installImage).stem().wstring() + L".wim"
+                                                     : image->name + L".wim";
     const auto target = ui::pickSaveFile(owner, m_strings.get(Str::ImagesExport), {{m_strings.get(Str::ImagesSaveWim), L"*.wim"}},
-                                         image->name + L".wim", L"wim");
-    if (target) {
+                                         suggested, L"wim");
+    if (!target) {
+        return;
+    }
+    if (marked.size() > 1) {
+        m_images->exportEditions(marked, *target);
+    } else {
         m_images->exportIndex(image->index, *target);
     }
 }

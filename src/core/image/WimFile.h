@@ -22,6 +22,9 @@ struct WimHeader {
     std::uint32_t bootIndex = 0;
     std::uint64_t xmlOffset = 0;
     std::uint64_t xmlSize = 0;
+    std::uint64_t lookupOffset = 0; // the table of every stream: location, sizes, SHA-1 (WimVerify)
+    std::uint64_t lookupSize = 0;
+    bool lookupCompressed = false;
     WimCompression compression = WimCompression::None;
     bool solid = false; // ESD-style solid resources (LZMS)
 };

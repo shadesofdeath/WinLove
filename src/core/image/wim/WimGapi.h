@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <optional>
 #include <span>
+#include <string>
 
 namespace wl::core {
 
@@ -31,6 +32,16 @@ namespace wl::core {
 // size: an export would drop its boot index. Not for ESD / split images; one edition must stay.
 [[nodiscard]] Result<void> removeImages(const std::filesystem::path& wim, std::span<const int> indexes,
                                         const TaskContext& task);
+
+// The texts of an edition: what DISM and Setup's edition list show. Written into the image's XML
+// (NAME / DISPLAYNAME, DESCRIPTION / DISPLAYDESCRIPTION, FLAGS); the file grows by the difference,
+// nothing else in it changes. Control characters and outer spaces are dropped.
+struct ImageText {
+    std::wstring name;                 // 1 to 255 characters
+    std::wstring description;          // may be empty
+    std::optional<std::wstring> flags; // the edition id Setup matches keys against; untouched when not given
+};
+[[nodiscard]] Result<void> setImageText(const std::filesystem::path& wim, int index, const ImageText& text);
 
 // The index an edition has once the editions `removed` are gone; empty when it is one of them.
 [[nodiscard]] std::optional<int> indexAfterRemoval(int index, std::span<const int> removed);

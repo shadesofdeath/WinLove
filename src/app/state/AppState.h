@@ -39,7 +39,8 @@ struct MountedImage {
 // strip on the Images page and the status-bar task segment.
 struct EngineOperation {
     // Reading: the mounted image's lists are read for the pages (PreloadController, D-027).
-    enum class Kind : std::uint8_t { Preparing, Mounting, Unmounting, Exporting, Deleting, Cleaning, Reading };
+    // Verifying: every stream of the install image is read and checked (nothing is written).
+    enum class Kind : std::uint8_t { Preparing, Mounting, Unmounting, Exporting, Deleting, Cleaning, Reading, Renaming, Verifying };
     Kind kind;
     std::wstring edition;      // "Windows 11 Pro"
     std::filesystem::path path; // mount dir, work dir or export target (shown in the strip)
@@ -77,6 +78,11 @@ public:
 
     [[nodiscard]] std::optional<int> selectedIndex() const noexcept { return m_selected; }
     void select(std::optional<int> index);
+    // The editions marked on the Images page, ascending; with a source open never empty. The
+    // selected one is among them: the inspector shows it, mount and rename act on it; export
+    // and delete take all of them.
+    [[nodiscard]] const std::vector<int>& selection() const noexcept { return m_selection; }
+    void selectMany(std::vector<int> indexes, int primary);
     [[nodiscard]] const core::ImageInfo* selectedImage() const;
 
     [[nodiscard]] const std::optional<MountedImage>& mounted() const noexcept { return m_mounted; }
@@ -233,6 +239,7 @@ private:
     AppSettings m_settings;
     std::optional<core::SourceInfo> m_source;
     std::optional<int> m_selected;
+    std::vector<int> m_selection;
     std::optional<MountedImage> m_mounted;
     std::optional<EngineOperation> m_operation;
     std::optional<core::MountCheck> m_mountFolder;

@@ -14,8 +14,9 @@
 //      --dialog=admin         (open the administrator dialog, s4)
 //      --drag=valid|invalid   (Source page drop zone drag state)
 //      --mount=N              (windowed: after opening the source, mount edition N — UAC relaunch)
-//      --select=N             (select edition N on the Images page)
-//      --operation=mount|prepare|read --progress=0.38   (render: show the operation strip)
+//      --select=N[,M…]        (select edition N on the Images page; more: marked as well)
+//      --operation=mount|prepare|read|verify --progress=0.38   (render: show the operation strip)
+//      --verified=sound|damaged   (render: the result of "Doğrula" on the Images page)
 //      --demo-<page>          (render: sample state for a page; see LaunchOptions)
 //      --switch-lang=tr|en    (render: rebuild the UI in another language, as the settings page does)
 //      --palette[=query]      (render: open the command palette, optionally with text typed)
@@ -74,7 +75,9 @@ struct LaunchOptions {
     std::optional<std::filesystem::path> openPath; // positional argument
     std::optional<int> mountIndex;
     std::optional<int> selectIndex;
+    std::vector<int> selectMarked; // --select=4,2,3: every edition named (the first is selectIndex)
     std::optional<std::wstring> fakeOperation; // render only
+    std::optional<std::wstring> verified;      // render only: --verified=sound|damaged, what "Doğrula" found
     std::optional<std::wstring> palette;       // render only: the command palette with this query
     std::vector<UINT> keys;                    // render only: virtual keys pressed after the setup
     float fakeProgress = 0.38f;

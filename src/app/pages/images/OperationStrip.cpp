@@ -27,6 +27,8 @@ std::pair<Str, Str> labelsFor(EngineOperation::Kind kind) {
     case EngineOperation::Kind::Deleting: return {Str::ImagesDeleting, Str::ImagesWorkingHint};
     case EngineOperation::Kind::Cleaning: return {Str::ImagesCleaning, Str::ImagesWorkingHint};
     case EngineOperation::Kind::Reading: return {Str::ImagesReading, Str::ImagesReadingHint};
+    case EngineOperation::Kind::Renaming: return {Str::ImagesRenaming, Str::ImagesWorkingHint};
+    case EngineOperation::Kind::Verifying: return {Str::ImagesVerifying, Str::ImagesExportingHint};
     }
     return {Str::ImagesMounting, Str::ImagesWorkingHint};
 }

@@ -1,11 +1,13 @@
 #pragma once
 // Image operations for P02 (docs/pages/02-images.md): prepare (ISO → work folder), mount,
-// unmount, export, ESD → WIM, delete editions, clean up mounts, adopt an existing mount at startup.
+// unmount, export, ESD → WIM, delete / rename editions, verify, clean up mounts, adopt an existing
+// mount at startup.
 // Lives on the UI thread; heavy work runs on AppState::engine(); results come back through
 // `postToUi`. Knows nothing about widgets: it reports through Events.
 #include "app/generated/StringKeys.g.h"
 #include "app/state/AppState.h"
 #include "base/Result.h"
+#include "core/image/wim/WimVerify.h"
 
 #include <functional>
 #include <memory>
@@ -20,7 +22,7 @@ namespace wl::app {
 
 class ImageController {
 public:
-    enum class Failure : std::uint8_t { Mount, Unmount, Export, Delete, Prepare, Cleanup };
+    enum class Failure : std::uint8_t { Mount, Unmount, Export, Delete, Prepare, Cleanup, Rename, Verify };
 
     struct Events {
         std::function<void(std::function<void()>)> postToUi;
@@ -32,6 +34,8 @@ public:
         // (`edition` is left empty; the shell fills it from the opened source).
         std::function<void(std::filesystem::path source, MountedImage mounted)> restored;
         std::function<void()> mounted; // a fresh mount is up: time to read its contents (PreloadController)
+        // Every stream of `file` was read: sound, or how many are damaged.
+        std::function<void(const core::WimVerifyReport& report, std::wstring file)> verified;
     };
 
     ImageController(AppState& state, Events events);
@@ -39,9 +43,12 @@ public:
 
     [[nodiscard]] bool busy() const;
     [[nodiscard]] bool canMount() const;          // source mountable (not ESD), nothing mounted, idle
-    // Why editions cannot be deleted now (busy, mounted, ESD / split image, one edition left);
-    // empty: they can.
+    // Why the image file cannot be changed now (busy, mounted, ESD / split image); empty: it can.
+    [[nodiscard]] std::optional<Str> editRefusal() const;
+    // Why editions cannot be deleted now: the above, or one edition left.
     [[nodiscard]] std::optional<Str> deleteRefusal() const;
+    // Why the image cannot be verified (busy, ESD); empty: it can — mounted or not, ISO or file.
+    [[nodiscard]] std::optional<Str> verifyRefusal() const;
     [[nodiscard]] bool canDelete() const { return !deleteRefusal(); }
     [[nodiscard]] bool isEsdSource() const;
     [[nodiscard]] std::optional<int> failedIndex() const noexcept { return m_failedIndex; }
@@ -49,6 +56,14 @@ public:
     void mount(int index);
     void unmount(bool commit);
     void exportIndex(int index, const std::filesystem::path& destination);
+    // Several editions, in this order, into one new WIM.
+    void exportEditions(std::vector<int> indexes, const std::filesystem::path& destination);
+    // Name and description of an edition, as DISM and Setup's edition list show them
+    // (core::setImageText). An ISO is copied to the work folder first.
+    void renameEdition(int index, std::wstring name, std::wstring description);
+    // Reads every stream of the install image and checks its SHA-1 (core::verifyWim); nothing is
+    // written, an ISO is read in place. The result arrives through Events::verified.
+    void verify();
     void convertEsd(const std::filesystem::path& destination);
     // Removes these editions; the WIM is rewritten with the ones that stay (core::removeImages),
     // which are renumbered. An ISO is copied to the work folder first. `label` is what the strip

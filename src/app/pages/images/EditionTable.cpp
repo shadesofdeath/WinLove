@@ -3,6 +3,8 @@
 #include "app/Format.h"
 #include "ui/widgets/Checkbox.h"
 
+#include <windows.h>
+
 #include <algorithm>
 #include <cmath>
 #include <format>
@@ -64,8 +66,18 @@ void EditionTable::setImages(std::vector<core::ImageInfo> images) {
     invalidate();
 }
 
-void EditionTable::setSelected(std::optional<int> index) {
-    m_selected = index;
+void EditionTable::setSelection(std::optional<int> primary, const std::vector<int>& marked) {
+    EditionSelection next;
+    for (const int index : marked) {
+        if (const int row = rowOfIndex(index); row >= 0) {
+            next.rows.push_back(row);
+        }
+    }
+    std::ranges::sort(next.rows);
+    next.primary = rowOfIndex(primary);
+    // The Shift anchor survives a refresh as long as its row is still marked.
+    next.anchor = next.contains(m_selection.anchor) ? m_selection.anchor : next.primary;
+    m_selection = std::move(next);
     invalidate();
 }
 
@@ -103,17 +115,18 @@ int EditionTable::rowOfIndex(std::optional<int> index) const {
     return -1;
 }
 
-void EditionTable::selectRow(int row) {
-    if (row >= 0 && row < static_cast<int>(m_images.size())) {
-        const int index = m_images[static_cast<std::size_t>(row)].index;
-        if (!m_selected || *m_selected != index) {
-            m_selected = index;
-            if (onSelect) {
-                onSelect(index);
-            }
-            invalidate();
+void EditionTable::publish() {
+    invalidate();
+    if (!onSelect || m_selection.primary < 0 || m_selection.primary >= static_cast<int>(m_images.size())) {
+        return;
+    }
+    std::vector<int> marked;
+    for (const int row : m_selection.rows) {
+        if (row >= 0 && row < static_cast<int>(m_images.size())) {
+            marked.push_back(m_images[static_cast<std::size_t>(row)].index);
         }
     }
+    onSelect(m_images[static_cast<std::size_t>(m_selection.primary)].index, std::move(marked));
 }
 
 void EditionTable::onPointerMove(ui::PointF p) {
@@ -132,12 +145,24 @@ void EditionTable::onHoverChanged(bool hovered) {
 }
 
 void EditionTable::onPointerDown(ui::PointF p) {
-    selectRow(rowAt(p));
+    const int row = rowAt(p);
+    if (row < 0) {
+        return;
+    }
+    // Pointer events carry no modifiers: the keyboard state at the click is what counts.
+    if (GetKeyState(VK_SHIFT) < 0) {
+        m_selection.extendTo(row);
+    } else if (GetKeyState(VK_CONTROL) < 0 || p.x < bounds().x + kCheck) {
+        m_selection.toggle(row);
+    } else {
+        m_selection.only(row);
+    }
+    publish();
 }
 
 void EditionTable::onDoubleClick() {
-    if (m_selected && onActivate) {
-        onActivate(*m_selected);
+    if (m_selection.primary >= 0 && m_selection.rows.size() == 1 && onActivate) {
+        onActivate(m_images[static_cast<std::size_t>(m_selection.primary)].index);
     }
 }
 
@@ -146,20 +171,41 @@ bool EditionTable::onKeyDown(const ui::KeyEvent& key) {
     if (count == 0) {
         return false;
     }
-    const int current = std::max(rowOfIndex(m_selected), 0);
+    const int current = std::clamp(m_selection.primary, 0, count - 1);
+    auto moveTo = [&](int row) {
+        if (key.shift) {
+            m_selection.extendTo(row);
+        } else {
+            m_selection.only(row);
+        }
+        publish();
+        return true;
+    };
     switch (key.virtualKey) {
-    case VK_UP: selectRow(std::max(current - 1, 0)); return true;
-    case VK_DOWN: selectRow(std::min(current + 1, count - 1)); return true;
-    case VK_HOME: selectRow(0); return true;
-    case VK_END: selectRow(count - 1); return true;
+    case VK_UP: return moveTo(std::max(current - 1, 0));
+    case VK_DOWN: return moveTo(std::min(current + 1, count - 1));
+    case VK_HOME: return moveTo(0);
+    case VK_END: return moveTo(count - 1);
+    case 'A':
+        if (!key.ctrl) {
+            return false;
+        }
+        m_selection.all(count);
+        publish();
+        return true;
     case VK_RETURN:
-        if (m_selected && onActivate) {
-            onActivate(*m_selected);
+        if (m_selection.primary >= 0 && onActivate) {
+            onActivate(m_images[static_cast<std::size_t>(m_selection.primary)].index);
         }
         return true;
     case VK_DELETE:
-        if (m_selected && onDelete) {
-            onDelete(*m_selected);
+        if (m_selection.primary >= 0 && onDelete) {
+            onDelete();
+        }
+        return true;
+    case VK_F2:
+        if (m_selection.primary >= 0 && onRename) {
+            onRename();
         }
         return true;
     default: return false;
@@ -171,13 +217,18 @@ bool EditionTable::onContextMenu(ui::PointF p) {
     if (row < 0 || !onMenu) {
         return false;
     }
-    selectRow(row);
+    if (m_selection.contains(row)) {
+        m_selection.primary = row;
+    } else {
+        m_selection.only(row);
+    }
+    publish();
     return onMenu(m_images[static_cast<std::size_t>(row)].index, p);
 }
 
 RectF EditionTable::focusRect() const {
-    const int row = rowOfIndex(m_selected);
-    return row >= 0 ? rowRect(row) : bounds();
+    return m_selection.primary >= 0 && m_selection.primary < static_cast<int>(m_images.size()) ? rowRect(m_selection.primary)
+                                                                                                 : bounds();
 }
 
 void EditionTable::paint(ui::Canvas& canvas) {
@@ -205,7 +256,8 @@ void EditionTable::paint(ui::Canvas& canvas) {
     for (int i = 0; i < static_cast<int>(m_images.size()); ++i) {
         const auto& image = m_images[static_cast<std::size_t>(i)];
         const RectF row = rowRect(i);
-        const bool selected = m_selected && *m_selected == image.index;
+        const bool selected = m_selection.contains(i);
+        const bool primary = i == m_selection.primary;
         const bool stateRow = m_stateIndex && *m_stateIndex == image.index;
         if (selected) {
             canvas.fillRoundRect(row, ui::tokens::radius::r2, Color::AccentSubtle);
@@ -220,7 +272,7 @@ void EditionTable::paint(ui::Canvas& canvas) {
         canvas.drawIcon(ui::icons::Icon::LayersEditions, {c.name, row.y + 4}, Color::TextSecondary);
         const float nameX = c.name + ui::tokens::size::icon + kIconGap;
         canvas.drawText(std::format(L"{} · {}", image.index, image.name), {nameX, row.y, c.nameEnd - nameX - kCellPad, kRow},
-                        selected ? TypeStyle::BodyStrong : TypeStyle::Body, nameInk);
+                        primary ? TypeStyle::BodyStrong : TypeStyle::Body, nameInk);
         if (c.showEditionId) {
             canvas.drawText(image.editionId.empty() ? L"—" : image.editionId,
                             {c.editionId, row.y, kEditionId - kCellPad, kRow}, TypeStyle::Body, Color::TextSecondary);

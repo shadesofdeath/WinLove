@@ -44,7 +44,9 @@
     "mounting": "Mounting",
     "reading": "Reading contents",
     "applying": "Applying",
-    "building": "Creating ISO"
+    "building": "Creating ISO",
+    "verifying": "Verifying",
+    "working": "Working on the image"
   },
   "common": {
     "search": "Search",
@@ -121,7 +123,7 @@
   },
   "images": {
     "title": "Editions",
-    "desc": "Manage editions in the image: mount, export, convert, merge.",
+    "desc": "Manage editions in the image: mount, export, rename, delete, verify.",
     "mount": "Mount",
     "unmount": "Unmount",
     "esdToWim": "ESD → WIM",
@@ -182,7 +184,7 @@
     "mountingState": "Mounting",
     "esdNoMount": "ESD cannot be mounted — convert ESD → WIM first",
     "esdOnly": "Only for ESD sources",
-    "deleteNeedsWim": "Editions cannot be deleted from an ESD or a split image — convert it to WIM first",
+    "deleteNeedsWim": "An ESD or a split image cannot be edited — convert it to WIM first",
     "lastEdition": "The image has only one edition",
     "unmountTitle": "Unmount the image?",
     "unmountBody": "Save the changes in the mounted image to the WIM file? If you discard, the file stays unchanged.",
@@ -214,7 +216,23 @@
     "folderImageMissing": "WIM file missing",
     "folderOrphaned": "left over (stale files)",
     "folderFound": "Mounted image found: {edition} (index {index})",
-    "folderContinue": "Continue"
+    "folderContinue": "Continue",
+    "rename": "Rename…",
+    "renaming": "Renaming {edition}",
+    "renamedToast": "Renamed: {edition}",
+    "verify": "Verify",
+    "verifyHint": "Reads every stream of the image and compares it with its SHA-1; the image is not changed",
+    "verifying": "Verifying {edition}",
+    "verifyEsd": "An ESD cannot be verified — convert ESD → WIM first",
+    "verifySound": "{file} is sound",
+    "verifySoundBody": "{n} streams read ({size}); every one matches its SHA-1.",
+    "verifyDamaged": "{file} is damaged",
+    "verifyDamagedBody": "{n} of {total} streams do not match their SHA-1. Download or copy the file again; the log lists where they are.",
+    "exportMany": "Export the {n} selected editions…",
+    "deleteMany": "Delete the {n} selected editions…",
+    "keepSelected": "Keep only the {n} selected editions…",
+    "keepOne": "The image must keep at least one edition",
+    "selectedHint": "{n} editions selected: export or delete them."
   },
   "components": {
     "title": "Components",
@@ -820,7 +838,13 @@
     "unsavedTitle": "Unsaved changes",
     "unsavedBody": "{n} changes are queued. Save them as a preset before leaving?",
     "busyCloseTitle": "An operation is running",
-    "busyCloseBody": "Mounting, applying or building an ISO is still in progress. Closing now could leave the image half-done; close once it finishes (or is stopped)."
+    "busyCloseBody": "Mounting, applying or building an ISO is still in progress. Closing now could leave the image half-done; close once it finishes (or is stopped).",
+    "deleteManyTitle": "Delete {n} editions?",
+    "deleteManyBody": "{names} will be permanently deleted from the image. The image file is rewritten with the editions that stay.",
+    "keepManyBody": "The {k} selected editions will stay; the other {n} will be permanently deleted from the image. The image file is rewritten.",
+    "renameTitle": "Rename the edition",
+    "renameDescription": "Description",
+    "renameHint": "Windows Setup's edition list and DISM show this name."
   },
   "toasts": {
     "imageAdded": "Image added",

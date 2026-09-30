@@ -6,6 +6,7 @@
 // with our session closed meanwhile. Fails with 0x800F0806 when the image has pending servicing
 // operations. The Planner runs it right after the updates (Planner.h).
 #include "core/image/dism/Dism.h"
+#include "core/image/dism/DismExe.h"
 
 #include <optional>
 #include <string>
@@ -25,8 +26,6 @@ struct StoreCleanupOptions {
 
 [[nodiscard]] std::wstring storeCleanupCommandLine(const std::filesystem::path& dismExe,
                                                    const std::filesystem::path& mountDir, bool resetBase);
-// The last percentage in a piece of dism.exe console output ("[=====   20.0%   ]"), 0 … 1.
-[[nodiscard]] std::optional<double> lastDismPercent(std::string_view output);
 
 // Not cancellable once dism.exe runs: stopping it half way can leave the store inconsistent.
 [[nodiscard]] Result<void> cleanupComponentStore(DismSession& session, bool resetBase, const TaskContext& task);

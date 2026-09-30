@@ -129,6 +129,8 @@ public:
     void askUnmount();
     // Confirms, then deletes the selected edition — or, with `keepOnly`, every other one.
     void askDeleteSelected(bool keepOnly = false);
+    void askRenameSelected();
+    void onImageVerified(const core::WimVerifyReport& report, const std::wstring& file);
     void exportSelected();
     void convertEsd();
     void exportLog();
@@ -223,6 +225,7 @@ private:
     ui::Button* m_actionMount = nullptr;
     ui::Button* m_actionExport = nullptr;
     ui::Button* m_actionEsd = nullptr;
+    ui::Button* m_actionVerify = nullptr;
     PageId m_page = PageId::Source;
     std::uint64_t m_openSerial = 0; // latest openSource request; older results are dropped
     bool m_autoRestoreTried = false; // one automatic restore per session; then the page offers it
