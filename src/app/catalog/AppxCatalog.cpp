@@ -35,7 +35,7 @@ Result<AppxCatalog> AppxCatalog::parse(std::string_view json) {
                                      utf8::toWide(a.value("en", std::string{})), a.value("group", std::string{"other"}),
                                      riskFrom(a.value("risk", std::string{"medium"})),
                                      utf8::toWide(a.value("notes_tr", std::string{})),
-                                     utf8::toWide(a.value("notes_en", std::string{}))});
+                                     utf8::toWide(a.value("notes_en", std::string{})), a.value("lockedSince", 0)});
     }
     if (catalog.groupIndex("other") < 0 || catalog.m_groups.empty() || catalog.m_groups.back().id != "other") {
         catalog.m_groups.push_back({"other", L"Diğer Uygulamalar", L"Other apps"});

@@ -11,9 +11,15 @@
   sonra doğrudan bir sonraki sayfa. Kullanıcı `dist\WinLove.exe`'yi paralel test ediyor.
 - **Faz 3'ün bütün sayfaları yazıldı** (P01–P04 onaylı, P05–P18 kullanıcı testi bekliyor). Kural 1 gereği Faz 4'e
   geçmeden önce bu sayfaların kullanıcı onayı gerekir.
-- **Bir sonraki somut adım:** kullanıcı VM'de kendi imajını deniyor (`docs/TESTING.md` → "VM kabul testi").
-  `tools\lab_components.ps1 -Cleanup` iki kez geçti (log `build\lab\out\components-test.log`). Sonra testten
-  gelen düzeltmeler.
+- **Bir sonraki somut adım:** kullanıcı VM'de kendi imajını deniyor (`docs/TESTING.md` → "VM kabul testi");
+  testten gelen düzeltmeler sırayla. Log: `%LOCALAPPDATA%\WinLove\logs\WinLove-*.log` (oturum başına bir dosya).
+- **Kullanıcının ilk gerçek Uygula'sı (2026-09-30, 148 işlem, 143 geçti, commit tamam):** bulunanlar ve düzeltmeler —
+  durum çubuğundaki Uygula düğmesi Uygula sayfasında tepkisizdi (artık başlatıyor); Katılımsız Kurulum'da dört
+  düğme ters çalışıyordu ve Ayarlar / Tweaks'te düğmenin anlamı belirsizdi (D-032); atlanan 5 adımın nedeni yalnız
+  logdaydı (Tamamlandı ekranı artık adım + neden listeliyor); SecHealthUI / DesktopAppInstaller ve kalıcı capability
+  artık seçilemiyor; paketiyle giden özelliği kapatmak başarı sayılıyor; commit sonrası WIM `[DELETED]` artıkları
+  olmadan yeniden yazılıyor (`optimizeWim`, gerçek imaj kopyasında doğrulandı). Ayrıntı: ENGINE saha notları.
+  **Hâlâ görülmeyen:** ISO + VM kurulumu.
 - **P07 v2 — sistem bileşenleri ve depo temizliği (2026-09-30, D-031):** `core/image/SystemComponents` (tarif: CBS
   paket aileleri + yollar + kayıt yazımları; gizli paket `Visibility` / `Owners` ile açılıp `DismRemovePackage`;
   junction'dan geçen yol reddi), `core/image/dism/StoreCleanup` (`dism.exe /StartComponentCleanup /ResetBase`, kendi
@@ -70,7 +76,7 @@
   (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
   ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
   (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
-- **Build:** `./build.ps1 -Dist` yeşil, 159 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Build:** `./build.ps1 -Dist` yeşil, 162 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi (bilerek yazılmadı: denenemeyen disk biçimlendirme kodu; ISO'yu
@@ -99,6 +105,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — P17 Hakkında geliştirildi (test bekliyor).
 - 2026-09-30 — P18 Komut Paleti geliştirildi (test bekliyor). Faz 3 sayfalarının tamamı yazıldı.
 - 2026-09-30 — P07 v2: sistem bileşenleri (Edge, WebView2, OneDrive, WinRE) ve bileşen deposu temizliği (D-031).
+- 2026-09-30 — Kullanıcının ilk gerçek Uygula'sı (143 / 148); ondan çıkan düzeltmeler (D-032, kilitli uygulamalar, optimizeWim).
 - 2026-09-28 — Baştan sona inceleme (4 alan, paralel): ~35 hata düzeltildi. Öne çıkanlar: junction üzerinden ana
   makine ACL'si değişebilmesi (FileLocks), commit edilmeyen unmount'un başarılı raporlanması, DISM oturum yenileme,
   UDF çıkarmada yol dışına yazma + sınır dışı okuma, tıklamada yok edilen widget (use-after-free), Enter ile devre

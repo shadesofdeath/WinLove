@@ -44,12 +44,15 @@ public:
 private:
     struct Row { // one line of the step tables: a plan group or the final commit
         std::optional<core::ops::PlanGroup> group;
+        int failedStep = -1; // Done only: a plan step that was skipped (listed under the groups)
     };
     void buildSummary();
     void buildRunning();
     void buildDone();
     void buildEmpty();
     [[nodiscard]] std::vector<Row> rows() const;
+    [[nodiscard]] std::vector<Row> doneRows() const; // rows() + one line per skipped step
+    [[nodiscard]] std::wstring skipReason(const Error& error) const;
     [[nodiscard]] std::wstring groupName(const Row& row) const;
     [[nodiscard]] static ui::icons::Icon groupIcon(const Row& row);
     void paintSteps(ui::Canvas& canvas, ui::RectF area);

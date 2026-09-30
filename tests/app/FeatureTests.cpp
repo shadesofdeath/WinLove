@@ -90,3 +90,34 @@ TEST_CASE("resetChanges drops only feature operations; a new mount clears the qu
     CHECK(f.state.changes().empty());
     CHECK_FALSE(f.state.optionalFeatures().has_value());
 }
+
+TEST_CASE("a permanent capability cannot be queued, and says so") {
+    Fixture f;
+    auto sense = capability(L"Microsoft.Windows.Sense.Client~~~~", S::Installed, 0);
+    sense.permanent = true;
+    CHECK_FALSE(f.controller.canToggle(sense));
+    CHECK(f.controller.status(sense) == Status::Permanent);
+    f.controller.toggle(sense);
+    CHECK(f.state.changes().empty());
+    // Only what is installed is "permanent"; the flag on an absent one changes nothing.
+    auto absent = capability(L"X~~~~", S::NotPresent, 0);
+    absent.permanent = true;
+    CHECK(f.controller.status(absent) == Status::Disabled);
+}
+
+TEST_CASE("permanent capabilities are read from the package manifests") {
+    // Windows 11 25H2: the Defender for Endpoint client, and an ordinary FoD next to it.
+    const std::string sense = R"(<assembly><assemblyIdentity name="Microsoft-Windows-SenseClient-FoD-Package" version="10.0.26100.8036" />
+      <package identifier="KB777778" permanence="permanent" releaseType="OnDemand Pack">
+        <declareCapability><capability><capabilityIdentity name="Microsoft.Windows.Sense.Client" /></capability></declareCapability>
+      </package></assembly>)";
+    const std::string steps = R"(<assembly><package identifier="KB777778" releaseType="OnDemand Pack">
+        <declareCapability><capability><capabilityIdentity name="App.StepsRecorder" version="1.0" /></capability></declareCapability>
+      </package></assembly>)";
+    CHECK(core::permanentCapabilitiesIn(sense) == std::vector<std::wstring>{L"Microsoft.Windows.Sense.Client"});
+    CHECK(core::permanentCapabilitiesIn(steps).empty());
+    CHECK(core::permanentCapabilitiesIn("").empty());
+    CHECK(core::permanentCapabilitiesIn(R"(<package permanence="permanent"><capabilityIdentity version="1" /></package>)").empty());
+    CHECK(core::permanentCapabilitiesIn(R"(<package permanence="permanent"><capabilityIdentity name="A"/><x/><capabilityIdentity name="B" /></package>)") ==
+          std::vector<std::wstring>{L"A", L"B"});
+}

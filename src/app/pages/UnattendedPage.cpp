@@ -367,7 +367,7 @@ ui::SearchBox& UnattendedPage::addText(Str label, std::optional<Str> hint, float
     return box;
 }
 
-void UnattendedPage::addSwitch(Str label, std::wstring offHint, std::function<bool(const Options&)> get,
+void UnattendedPage::addSwitch(Str label, std::wstring onHint, std::function<bool(const Options&)> get,
                                std::function<void(Options&, bool)> set) {
     auto& toggle = m_form->addRow<ui::Toggle>(m_strings.get(label), std::wstring(), ui::tokens::size::toggleW,
                                               std::wstring(), false);
@@ -375,7 +375,7 @@ void UnattendedPage::addSwitch(Str label, std::wstring offHint, std::function<bo
     toggle.onChange = [this, set = std::move(set)](bool on) {
         m_controller.edit([&](Options& o) { set(o, on); });
     };
-    m_switches.push_back(Switch{&toggle, std::move(get), std::move(offHint)});
+    m_switches.push_back(Switch{&toggle, std::move(get), std::move(onHint)});
 }
 
 void UnattendedPage::buildForm() {
@@ -427,9 +427,10 @@ void UnattendedPage::buildForm() {
               [](Options& o, bool on) { o.acceptEula = on; });
     addSwitch(Str::UnattendedSkipPrivacy, {}, [](const Options& o) { return o.skipPrivacy; },
               [](Options& o, bool on) { o.skipPrivacy = on; });
-    // On = Windows keeps asking for a Microsoft account; off writes BypassNRO.
-    addSwitch(Str::UnattendedMsAccount, s(Str::UnattendedBypassNro), [](const Options& o) { return !o.bypassNro; },
-              [](Options& o, bool on) { o.bypassNro = !on; });
+    // Every switch reads "on = WinLove writes this into the answer file" (D-032): the design's
+    // "Microsoft hesabı zorunluluğu" / "TPM denetimi" rows wrote their XML when switched OFF.
+    addSwitch(Str::UnattendedMsAccount, s(Str::UnattendedBypassNro), [](const Options& o) { return o.bypassNro; },
+              [](Options& o, bool on) { o.bypassNro = on; });
     addSwitch(Str::UnattendedSkipOnline, {}, [](const Options& o) { return o.skipOnlineAccount; },
               [](Options& o, bool on) { o.skipOnlineAccount = on; });
 
@@ -441,14 +442,14 @@ void UnattendedPage::buildForm() {
               [](const Options& o) { return o.imageIndex > 0 ? std::to_wstring(o.imageIndex) : std::wstring(); },
               [](Options& o, const std::wstring& v) { o.imageIndex = v.empty() ? 0 : std::stoi(v); });
 
-    // On = the check stays; off = Setup skips it (LabConfig).
+    // On = Setup skips the check (LabConfig).
     m_form->addSection(s(Str::UnattendedStepsRequirements));
-    addSwitch(Str::UnattendedTpm, s(Str::UnattendedSkipLabConfig), [](const Options& o) { return !o.bypassTpm; },
-              [](Options& o, bool on) { o.bypassTpm = !on; });
-    addSwitch(Str::UnattendedSecureBoot, s(Str::UnattendedSkip), [](const Options& o) { return !o.bypassSecureBoot; },
-              [](Options& o, bool on) { o.bypassSecureBoot = !on; });
-    addSwitch(Str::UnattendedRam, s(Str::UnattendedSkip), [](const Options& o) { return !o.bypassRam; },
-              [](Options& o, bool on) { o.bypassRam = !on; });
+    addSwitch(Str::UnattendedTpm, s(Str::UnattendedSkipLabConfig), [](const Options& o) { return o.bypassTpm; },
+              [](Options& o, bool on) { o.bypassTpm = on; });
+    addSwitch(Str::UnattendedSecureBoot, s(Str::UnattendedSkipLabConfig),
+              [](const Options& o) { return o.bypassSecureBoot; }, [](Options& o, bool on) { o.bypassSecureBoot = on; });
+    addSwitch(Str::UnattendedRam, s(Str::UnattendedSkipLabConfig), [](const Options& o) { return o.bypassRam; },
+              [](Options& o, bool on) { o.bypassRam = on; });
 
     sync();
     m_steps->setCurrent(m_form->currentSection());
@@ -486,7 +487,7 @@ void UnattendedPage::sync() {
         if (sw.toggle->isOn() != on) {
             sw.toggle->setOn(on);
         }
-        m_form->setHint(*sw.toggle, on ? std::wstring() : sw.offHint);
+        m_form->setHint(*sw.toggle, on ? sw.onHint : std::wstring());
     }
     m_disk->setSelected(static_cast<int>(o.disk));
     m_form->setHint(*m_disk, o.disk == core::UnattendDisk::Ask ? std::wstring() : m_strings.get(Str::UnattendedDiskWarning),

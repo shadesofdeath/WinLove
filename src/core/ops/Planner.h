@@ -44,5 +44,7 @@ struct PlanGroup {
 [[nodiscard]] double estimateSeconds(const ApplyPlan& plan, std::size_t step) noexcept;
 // Commit + unmount of a Windows 11 install image (lab: ~90 s).
 inline constexpr double kCommitSeconds = 90.0;
+// Rewriting the WIM after the commit (WimGapi optimizeWim): a copy of its streams, no recompression.
+inline constexpr double kOptimizeSeconds = 30.0; // lab: 17 s for a 6.8 GB, 6-edition install.wim
 
 } // namespace wl::core::ops

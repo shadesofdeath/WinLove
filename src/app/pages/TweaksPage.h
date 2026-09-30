@@ -41,6 +41,7 @@ private:
 
     AppState& m_state;
     ImageSettingsController& m_controller;
+    const Localization& m_strings;
     Language m_language;
     std::size_t m_subscription = 0;
     std::vector<Binding> m_bindings;

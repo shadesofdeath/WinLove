@@ -85,6 +85,8 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_status->cta().onInvoke = [this] {
         if (m_apply && m_apply->running()) {
             m_apply->cancel();
+        } else if (m_page == PageId::Apply) {
+            requestApply(); // already looking at the summary: the button starts the run, like the header's
         } else {
             showPage(PageId::Apply);
         }

@@ -16,10 +16,11 @@ istenirse bir sonraki ISO'nun köküne yazılır.
   - Dil ve bölge: Kurulum dili (kaynağın dilleri), Bölge biçimi, Klavye, Saat dilimi — ilk seçenek "Kurulumda sor".
   - Hesap: Yerel hesap (yönetici), Parola (maskeli), Otomatik oturum açma (ilk açılışta, 1 kez), Bilgisayar adı.
   - Disk: Kurulumda sor · Disk 0'ı sil UEFI (GPT) · Disk 0'ı sil BIOS (MBR) — silme seçeneklerinde turuncu uyarı.
-  - OOBE: Lisans sözleşmesini kabul et, Gizlilik sorularını atla, Microsoft hesabı zorunluluğu (kapalı = BypassNRO),
-    Çevrimiçi kurulumu atla.
+  - OOBE: Lisans sözleşmesini kabul et, Gizlilik sorularını atla, Microsoft hesabı zorunluluğunu kaldır
+    (açık = BypassNRO yazılır), Çevrimiçi kurulumu atla.
   - Ürün anahtarı: anahtar, Kurulacak sürüm (kaynağın index'leri).
-  - Gereksinimler: TPM 2.0 / Secure Boot / RAM denetimi — açık = denetim kalır, kapalı = atlanır (LabConfig).
+  - Gereksinimler: TPM 2.0 / Secure Boot / RAM denetimini atla — açık = LabConfig yazılır.
+  - Bütün düğmeler aynı yönde okunur: açık = WinLove bunu XML'e yazar (D-032; ilk sürümde bu satırlar ters çalışıyordu).
   - Geçersiz değerde satırın ipucu kırmızı olur (bilgisayar adı, hesap adı, ürün anahtarı, hesapsız otomatik oturum).
 - **Canlı önizleme** (sağ, ~%45): dosyanın gerçek metni, satır numaralı mono; son düzenlemeyle değişen satırlar
   vurgu renginde; uzun satırlar kaydırılır (devam satırı numarasız); tekerlek / kaydırma çubuğu.

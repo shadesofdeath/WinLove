@@ -12,6 +12,8 @@ namespace wl::core::ops {
 struct ApplyJobOptions {
     ApplyOptions apply;
     bool commitAndUnmount = true; // false: leave the image mounted (changes stay in the mount)
+    // After a commit: rewrite this WIM without what the commit orphaned (optimizeWim). Empty: no.
+    std::filesystem::path optimizeWim;
 };
 
 struct ApplyJobCallbacks {
@@ -23,6 +25,7 @@ struct ApplyJobResult {
     ApplyReport report;
     bool committed = false;
     std::optional<Error> commitError; // steps ran but saving failed: the image is still mounted
+    bool optimized = false;           // the WIM was rewritten without the commit's leftovers
     std::chrono::milliseconds elapsed{0};
     std::vector<std::chrono::milliseconds> stepTimes; // per plan step
     std::chrono::milliseconds commitTime{0};

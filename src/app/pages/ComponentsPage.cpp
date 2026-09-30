@@ -402,11 +402,18 @@ void ComponentsPage::paintCell(ui::Canvas& canvas, int row, int column, RectF re
         x += kChevron + 4;
         const auto state = isGroup ? m_controller.check(group) : (m_controller.queued(*item) ? ComponentController::Check::On
                                                                                             : ComponentController::Check::Off);
+        const bool locked = !isGroup && item->locked && state == ComponentController::Check::Off;
+        if (locked) {
+            canvas.pushOpacity(ui::tokens::opacity::disabled);
+        }
         ui::Checkbox::paintBox(canvas, {x, rect.y + (rect.height - ui::Checkbox::kBox) / 2},
                                state == ComponentController::Check::On        ? ui::CheckState::On
                                : state == ComponentController::Check::Partial ? ui::CheckState::Indeterminate
                                                                               : ui::CheckState::Off,
-                               cell.hoveredCell);
+                               cell.hoveredCell && !locked);
+        if (locked) {
+            canvas.popOpacity();
+        }
         x += ui::Checkbox::kBox + 8;
         canvas.drawIcon(isGroup ? ui::icons::Icon::Folder : ComponentInspector::iconOf(item->kind), {x, rect.y + 4},
                         Color::TextSecondary);
@@ -431,6 +438,10 @@ void ComponentsPage::paintCell(ui::Canvas& canvas, int row, int column, RectF re
                                                                                         {L"n", std::to_wstring(group.items.size())}})
                                           : m_strings.format(Str::ComponentsItemsN, {{L"n", std::to_wstring(group.items.size())}});
             canvas.drawText(text, rect, TypeStyle::Caption, Color::TextTertiary);
+        } else if (item->locked) {
+            canvas.drawIcon(ui::icons::Icon::Lock, {rect.x - 4, rect.y + 4}, Color::TextTertiary);
+            canvas.drawText(m_strings.get(Str::ComponentsLocked), {rect.x + 16, rect.y, rect.width - 16, rect.height},
+                            TypeStyle::Caption, Color::TextTertiary);
         } else {
             canvas.fillRect({rect.x, rect.y + 9, 6, 6}, riskInk(item->risk));
             canvas.drawText(m_strings.get(riskText(item->risk)), {rect.x + 12, rect.y, rect.width - 12, rect.height},

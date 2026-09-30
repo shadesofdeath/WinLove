@@ -2,6 +2,7 @@
 
 #include "base/Log.h"
 #include "base/Path.h"
+#include "core/io/ByteSource.h"
 
 #include <windows.h>
 
@@ -187,6 +188,60 @@ Result<void> deleteImage(const std::filesystem::path& wimInput, int index) {
     if (!w->deleteImage(file.h, static_cast<DWORD>(index))) {
         return std::unexpected(lastError(std::format(L"delete index {} of {}", index, wim.wstring())));
     }
+    return {};
+}
+
+Result<void> optimizeWim(const std::filesystem::path& wimInput, const TaskContext& task) {
+    const std::filesystem::path wim = nativePath(wimInput);
+    WimFile info;
+    {
+        auto file = DiskFile::open(wim);
+        if (!file) {
+            return std::unexpected(file.error());
+        }
+        auto read = readWim(**file);
+        if (!read) {
+            return std::unexpected(read.error());
+        }
+        info = std::move(*read);
+    } // the handle is closed before the file is replaced
+    const auto& header = info.header;
+    if (header.compression == WimCompression::Lzms || header.compression == WimCompression::Unknown || header.solid ||
+        header.totalParts > 1 || header.bootIndex != 0 || info.images.empty()) {
+        return {}; // an export would change what the file is
+    }
+    const std::filesystem::path fresh = wim.wstring() + L".new";
+    std::error_code ec;
+    std::filesystem::remove(fresh, ec);
+    const double count = static_cast<double>(info.images.size());
+    for (std::size_t i = 0; i < info.images.size(); ++i) {
+        const TaskContext one{task.cancel, [&](double fraction, std::wstring_view) {
+                                  task.report((static_cast<double>(i) + fraction) / count, L"optimize");
+                              }};
+        if (auto exported = exportImage(wim, info.images[i].index, fresh, header.compression, one); !exported) {
+            std::filesystem::remove(fresh, ec);
+            return std::unexpected(exported.error());
+        }
+    }
+    const std::filesystem::path old = wim.wstring() + L".old";
+    std::filesystem::remove(old, ec);
+    // Swap through a rename: the original is only deleted once the new file is in its place.
+    std::filesystem::rename(wim, old, ec);
+    if (ec) {
+        std::filesystem::remove(fresh, ec);
+        return fail(ErrorCode::IoError, L"cannot replace the image file (in use?)", wim.wstring(),
+                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(ec.value())));
+    }
+    std::filesystem::rename(fresh, wim, ec);
+    if (ec) {
+        const auto code = ec.value();
+        std::filesystem::rename(old, wim, ec); // put the original back
+        std::filesystem::remove(fresh, ec);
+        return fail(ErrorCode::IoError, L"cannot move the rewritten image into place", wim.wstring(),
+                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(code)));
+    }
+    std::filesystem::remove(old, ec);
+    task.report(1.0, L"optimize");
     return {};
 }
 

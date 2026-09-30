@@ -24,7 +24,17 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
         return *registry;
     };
     switch (op.kind) {
-    case OpKind::DisableFeature: return session.disableFeature(op.target, task);
+    case OpKind::DisableFeature: {
+        auto disabled = session.disableFeature(op.target, task);
+        // CBS_E_UNKNOWN_UPDATE: the feature no longer exists — an earlier step removed the package
+        // that carried it (the Media Player capability takes the "WindowsMediaPlayer" feature with
+        // it). Gone is what "off" asked for.
+        if (!disabled && disabled.error().hresult == static_cast<std::int32_t>(0x800F080C)) {
+            log::info("apply", L"feature already gone with its package: " + op.target);
+            return {};
+        }
+        return disabled;
+    }
     case OpKind::EnableFeature: return session.enableFeature(op.target, task, options.featureSources);
     case OpKind::RemovePackage: return session.removePackage(op.target, task);
     case OpKind::RemoveCapability: return session.removeCapability(op.target, task);

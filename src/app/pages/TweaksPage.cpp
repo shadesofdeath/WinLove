@@ -18,7 +18,7 @@ constexpr float kDropdownWidth = 280.0f;
 
 TweaksPage::TweaksPage(AppState& state, ImageSettingsController& controller, const Localization& strings,
                        Language language, std::function<void()> goImages)
-    : m_state(state), m_controller(controller), m_language(language) {
+    : m_state(state), m_controller(controller), m_strings(strings), m_language(language) {
     std::vector<std::wstring> tabs;
     for (const auto& tab : m_controller.catalog().tabs()) {
         tabs.push_back(tab.title.get(language));
@@ -134,16 +134,30 @@ void TweaksPage::addSetting(const ImageSetting& setting) {
 }
 
 void TweaksPage::sync() {
+    // Next to every control: what its position means for the installed Windows, and whether that
+    // is what Windows does on its own. A bare switch beside "Reklam kimliği" does not say whether
+    // "on" keeps the feature or applies a tweak against it.
+    const std::wstring separator = L" \u00b7 ";
     for (const auto& b : m_bindings) {
         const int current = m_controller.current(*b.setting);
+        const bool changed = current != b.setting->defaultOption;
+        const std::wstring& mark = m_strings.get(changed ? Str::TweaksChanged : Str::TweaksIsDefault);
+        const auto color = changed ? ui::tokens::Color::AccentBase : ui::tokens::Color::TextTertiary;
         if (b.toggle) {
             if (b.toggle->isOn() != (current == 1)) {
                 b.toggle->setOn(current == 1);
             }
+            std::wstring hint = m_strings.get(current == 1 ? Str::TweaksStateOn : Str::TweaksStateOff) + separator + mark;
+            if (const std::wstring& note = b.setting->hint.get(m_language); !note.empty()) {
+                hint += separator + note;
+            }
+            m_form->setHint(*b.toggle, std::move(hint), color);
         } else if (b.dropdown) {
             b.dropdown->setSelected(current);
+            m_form->setHint(*b.dropdown, mark, color);
         } else if (b.radio) {
             b.radio->setSelected(current);
+            m_form->setHint(*b.radio, mark, color);
         }
     }
 }

@@ -30,6 +30,7 @@ CLI: `wlcli optional-features <mountdir> [--json]` (yönetici) — sayfanın gö
 | Özellik kapalı (Staged / NotPresent / Removed) | EnableFeature | Devre dışı / Kaldırılmış → "Etkinleştirilecek" |
 | Capability yüklü | RemoveCapability (boyut kazancı) | Yüklü → "Kaldırılacak" |
 | Capability yok | — (pasif, ipucu) | — |
+| Capability kalıcı (paketinin `.mum`'unda `permanence="permanent"`, ör. Defender for Endpoint istemcisi) | — (pasif) | "Kalıcı (kaldırılamaz)" |
 Tekrar tıklamak kuyruktaki işlemi siler (imajın kendi durumuna döner). Mount değişince kuyruk temizlenir.
 Space/Enter/çift tık seçili satırı değiştirir.
 

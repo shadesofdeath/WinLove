@@ -2,6 +2,7 @@
 
 #include "base/Log.h"
 #include "core/image/dism/MountHealth.h"
+#include "core/image/wim/WimGapi.h"
 
 #include <algorithm>
 #include <format>
@@ -28,7 +29,8 @@ Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& moun
         stepsWeight += estimateSeconds(plan, i);
     }
     const double commitWeight = options.commitAndUnmount ? kCommitSeconds : 0.0;
-    const double total = std::max(stepsWeight + commitWeight, 1.0);
+    const double optimizeWeight = options.commitAndUnmount && !options.optimizeWim.empty() ? kOptimizeSeconds : 0.0;
+    const double total = std::max(stepsWeight + commitWeight + optimizeWeight, 1.0);
 
     {
         auto session = dism.openSession(mountDir);
@@ -74,6 +76,19 @@ Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& moun
             result.commitError = r.error();
         } else {
             result.committed = true;
+            if (!options.optimizeWim.empty()) {
+                // Not cancellable and never fatal: the image is saved either way.
+                const TaskContext optimizeTask{CancelToken{}, [&](double fraction, std::wstring_view stage) {
+                                                   task.report((stepsWeight + commitWeight + fraction * optimizeWeight) / total,
+                                                               stage);
+                                               }};
+                if (auto rewritten = optimizeWim(options.optimizeWim, optimizeTask); !rewritten) {
+                    log::warn("apply", L"image saved, but not rewritten without the commit's leftovers: " +
+                                           describe(rewritten.error()));
+                } else {
+                    result.optimized = true;
+                }
+            }
         }
         result.commitTime = since(commitStart);
     }

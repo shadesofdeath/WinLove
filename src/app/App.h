@@ -59,7 +59,7 @@ struct LaunchOptions {
     std::optional<Language> switchLanguage; // render: rebuild the UI in this language after the demo setup (P16)
     bool demoDrivers = false;    // render: fake mount + sample driver INFs (07)
     bool demoUpdates = false;    // render: with a source path — fake mount + sample update packages (06)
-    std::wstring demoApply;    // render (with --demo-features): "running" | "done" — fake Uygula run // render: fill the log with the design's sample lines (screen 18)
+    std::wstring demoApply;    // render (with --demo-features): "running" | "done" | "skipped" — fake Uygula run // render: fill the log with the design's sample lines (screen 18)
     bool maximized = false;
     std::optional<ui::PointF> hoverAt;
     std::optional<ui::PointF> pressAt;
