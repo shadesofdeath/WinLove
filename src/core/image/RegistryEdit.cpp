@@ -774,7 +774,8 @@ Result<void> OfflineRegistry::apply(const RegistryWrite& write) {
                                 &backup, nullptr) == ERROR_SUCCESS) {
                 RegKey owned(backup);
                 status = RegDeleteTreeW(owned.get(), nullptr);
-                if (status == ERROR_SUCCESS) {
+                // Through the handle: deleting by name would be checked against the ACL again.
+                if (status == ERROR_SUCCESS && !deleteKeyByHandle(owned.get())) {
                     status = RegDeleteKeyExW(HKEY_LOCAL_MACHINE, full->c_str(), 0, 0);
                 }
             }

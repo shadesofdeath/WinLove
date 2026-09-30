@@ -100,15 +100,6 @@ LSTATUS openForWrite(HKEY parent, const wchar_t* name, REGSAM access, HKEY& out)
     return status;
 }
 
-// Deletes the key behind an open handle (the handle needs DELETE). RegDeleteKey would open the
-// key again by name — and run into the ACL the handle was opened around.
-bool deleteKeyByHandle(HKEY key) {
-    using NtDeleteKeyFn = LONG(NTAPI*)(HANDLE);
-    static const auto ntDeleteKey =
-        reinterpret_cast<NtDeleteKeyFn>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtDeleteKey"));
-    return ntDeleteKey && ntDeleteKey(key) >= 0;
-}
-
 } // namespace
 
 // ---- recipe ------------------------------------------------------------------------------------

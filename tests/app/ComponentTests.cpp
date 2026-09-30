@@ -85,6 +85,9 @@ TEST_CASE("ComponentController groups apps, checks groups tri-state and queues R
     const auto* op = state.changes().find(OpKind::RemoveAppx, xbox.items.front().packageName);
     REQUIRE(op);
     CHECK(op->sizeDelta < 0);
+    // The Apply lists show the catalog name, not the package full name.
+    CHECK(ApplyPage::displayName(state, *op) == xbox.items.front().name);
+    CHECK(ApplyPage::displayName(state, {OpKind::RemoveAppx, L"Contoso.App_1.0.0.0_neutral_~_abc"}) == L"Contoso.App");
     controller.toggleGroup(xbox); // all → none
     CHECK(controller.queuedCount() == 0);
 

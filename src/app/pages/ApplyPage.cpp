@@ -84,6 +84,11 @@ std::wstring ApplyPage::displayName(const AppState& state, const core::ops::Oper
         const std::wstring title = core::componentTitle(op.value);
         return title.empty() ? op.target : title;
     }
+    if (op.kind == OpKind::RemoveAppx) {
+        // The catalog name it was queued under; from a bare changeset file, the package identity
+        // ("Microsoft.BingNews_4.55…_8wekyb3d8bbwe" → "Microsoft.BingNews").
+        return !op.value.empty() ? op.value : op.target.substr(0, op.target.find(L'_'));
+    }
     if (const auto& features = state.optionalFeatures()) {
         for (const auto& item : features->items) {
             if (item.name == op.target) {
