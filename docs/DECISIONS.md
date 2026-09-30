@@ -241,7 +241,7 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
-## D-038 — DISM'in yapmadığını kendi kodumuzla: kilitli uygulamalar ve boot.wim (2026-09-30; uygulamalar kanıtlandı, boot.wim bekliyor)
+## D-038 — DISM'in yapmadığını kendi kodumuzla: kilitli uygulamalar ve boot.wim (2026-09-30; ikisi de gerçek imajda kanıtlandı)
 Bağlam: `Microsoft.SecHealthUI` ve `Microsoft.DesktopAppInstaller` her Uygula'da `0x80073CFA` ile kalıyordu; gereksinim
 atlama yalnız yanıt dosyasına bağlıydı (dosya ISO'ya girmeyince Setup durdu); Setup'ın kendi imajına sürücü eklenemiyordu.
 Karar:
@@ -259,7 +259,14 @@ Karar:
   Katalogdaki `lockedSince` alanı, `Item::locked`, kilit simgesi ve "Kaldırılamaz" metinleri **kaldırıldı**: iki
   uygulama diğer Yüksek riskli uygulamalar gibi seçilir; ne anlama geldiği katalog notunda ve uyarı bandında yazar.
   Kurulan sistemde bir şeyin bozulup bozulmadığı (Windows Güvenliği sayfası, winget) VM'de görülmeli — görülmedi.
-- **boot.wim:** ISO sayfasına bağlanmadı; `lab_boot.ps1` geçince bağlanacak.
+- **boot.wim — kanıt sonrası (aynı gün):** `lab_boot.ps1` geçti. ISO sayfasına tek seçenek eklendi (tasarımdan
+  sapma: ekran 16'da yok): "Gereksinim atlamalarını boot.wim'e de yaz". Yazılan değerler Katılımsız Kurulum'daki
+  atlama seçimleridir (tek kaynak); yanıt dosyası ISO'ya girmese de yazılır. **Kurulum klasörü değiştirilmez:**
+  `sources\boot.wim` `<çalışma>\boot\boot.wim`'e kopyalanır, kopya `<çalışma>\boot\mount`'a bağlanıp yamalanır, `buildIso`
+  ISO'da klasördeki dosyanın yerine onu koyar (`IsoOptions::replacedFiles`), kopya silinir. Böylece sonuç her
+  üretimde istekten türer (kutu kapatılınca eski yama kalmaz), kullanıcının kendi klasörü de kaynak olabilir.
+  Yama başarısızsa ISO üretimi de başarısızdır: istenen atlama olmadan "hazır" denmez. Sürücü ekleme kanıtlanmadığı
+  için arayüze alınmadı.
 
 ## D-036 — Yanıt dosyasında `UserData` her zaman `ProductKey` taşır (2026-09-30)
 Bağlam: Kullanıcının Windows 10 22H2 (tek sürüme indirilmiş) ISO'sunda Setup "Windows unattend yanıt dosyasından

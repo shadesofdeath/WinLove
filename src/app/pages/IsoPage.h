@@ -58,6 +58,7 @@ private:
     ui::RadioGroup* m_boot = nullptr;
     ui::Dropdown* m_repack = nullptr;
     ui::CheckField* m_noPrompt = nullptr;
+    ui::CheckField* m_bootBypass = nullptr;
     ui::CheckField* m_sha = nullptr;
     ui::CheckField* m_open = nullptr;
     ui::EmptyState* m_usb = nullptr;

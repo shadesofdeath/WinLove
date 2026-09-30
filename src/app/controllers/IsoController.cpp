@@ -4,6 +4,7 @@
 #include "base/Log.h"
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
+#include "core/image/dism/Dism.h"
 
 #include <atomic>
 #include <cmath>
@@ -27,6 +28,29 @@ core::WimCompression compressionOf(IsoController::Repack r) {
     default: return core::WimCompression::Lzx;
     }
 }
+
+Result<core::BootPatchReport> patchWithDism(const std::filesystem::path& bootWim, const std::filesystem::path& mountDir,
+                                            const core::BootPatch& patch, const core::TaskContext& task) {
+    auto dism = core::Dism::instance();
+    if (!dism) {
+        return std::unexpected(dism.error());
+    }
+    return core::patchBootImage(**dism, bootWim, mountDir, patch, task);
+}
+
+// Deletes the patched copy when the build is over, however it ends.
+struct ScratchFile {
+    std::filesystem::path file;
+    ScratchFile() = default;
+    ScratchFile(const ScratchFile&) = delete;
+    ScratchFile& operator=(const ScratchFile&) = delete;
+    ~ScratchFile() {
+        if (!file.empty()) {
+            std::error_code ignored;
+            std::filesystem::remove(file, ignored);
+        }
+    }
+};
 } // namespace
 
 IsoController::IsoController(AppState& state, Events events) : m_state(state), m_events(std::move(events)) {}
@@ -67,6 +91,17 @@ bool IsoController::canRepack() const {
            isInside(source->path, legacyWork);
 }
 
+core::BootPatch IsoController::bootPatch(const AppState& state) {
+    const core::UnattendOptions& answers = state.unattend().options;
+    core::BootPatch patch;
+    patch.bypassTpm = answers.bypassTpm;
+    patch.bypassSecureBoot = answers.bypassSecureBoot;
+    patch.bypassRam = answers.bypassRam;
+    patch.bypassCpu = answers.bypassCpu;
+    patch.bypassStorage = answers.bypassStorage;
+    return patch;
+}
+
 bool IsoController::running() const {
     const auto& run = m_state.isoRun();
     return run && run->running;
@@ -82,6 +117,9 @@ void IsoController::start(Request request) {
     }
     const std::filesystem::path workFolder = m_state.settings().workDirectoryFor(source.path);
     const std::string answerFile = UnattendController::isoFile(m_state); // empty: not asked for
+    const core::BootPatch boot = request.bootBypass ? bootPatch(m_state) : core::BootPatch{};
+    const std::filesystem::path bootFolder = m_state.settings().workRoot / L"boot"; // the copy and its mount folder
+    const BootPatcher patcher = m_patcher ? m_patcher : BootPatcher{patchWithDism};
     Run run;
     run.running = true;
     run.output = request.output;
@@ -96,6 +134,10 @@ void IsoController::start(Request request) {
                                 : L"answer file: none");
     } else {
         log::info("iso", std::format(L"answer file: autounattend.xml ({} bytes) goes to the ISO root", answerFile.size()));
+    }
+    if (!boot.empty()) {
+        log::info("iso", std::format(L"setup image: {} requirement check(s) are switched off in boot.wim as well",
+                                     boot.labConfigValues().size()));
     }
 
     auto post = m_events.postToUi;
@@ -119,13 +161,16 @@ void IsoController::start(Request request) {
     };
 
     m_state.engine().run<core::IsoResult>(
-        [source, workFolder, request, cancel, report, answerFile](const core::TaskContext&) -> Result<core::IsoResult> {
-            // Weights: extract 0.35 (ISO sources), repack 0.35 (if asked), build the rest.
+        [source, workFolder, request, cancel, report, answerFile, boot, bootFolder,
+         patcher](const core::TaskContext&) -> Result<core::IsoResult> {
+            // Weights: extract 0.30 (ISO sources), repack 0.30 (if asked), boot image 0.15 (if
+            // asked), build the rest.
             const bool extract = source.format == core::ImageFormat::Iso;
             const bool repack = request.repack != Repack::AsIs;
-            const double we = extract ? 0.35 : 0.0;
-            const double wr = repack ? 0.35 : 0.0;
-            const double wb = 1.0 - we - wr;
+            const double we = extract ? 0.30 : 0.0;
+            const double wr = repack ? 0.30 : 0.0;
+            const double wp = boot.empty() ? 0.0 : 0.15;
+            const double wb = 1.0 - we - wr - wp;
             std::filesystem::path folder = source.path;
             if (extract) {
                 auto iso = core::UdfImage::open(source.path);
@@ -154,8 +199,39 @@ void IsoController::start(Request request) {
             if (!answerFile.empty()) {
                 options.rootFiles.push_back({L"autounattend.xml", answerFile});
             }
+            // Setup's own image: patched in a copy, so the setup folder keeps the file it has and
+            // the next build starts from that again (nothing to undo when the box is cleared).
+            ScratchFile patched; // outlives buildIso, which reads it while writing
+            const std::filesystem::path original = folder / L"sources" / L"boot.wim";
+            std::error_code ec;
+            if (!boot.empty() && !std::filesystem::exists(original, ec)) {
+                log::warn("iso", L"no sources\\boot.wim in the setup files: the requirement bypass stays out of Setup's image");
+            } else if (!boot.empty()) {
+                const std::filesystem::path mountDir = bootFolder / L"mount";
+                std::filesystem::create_directories(mountDir, ec);
+                if (ec) {
+                    return fail(ErrorCode::IoError, L"cannot create folder", mountDir.wstring(), ec.value());
+                }
+                report(we + wr, 4);
+                patched.file = bootFolder / L"boot.wim";
+                std::filesystem::copy_file(original, patched.file, std::filesystem::copy_options::overwrite_existing, ec);
+                if (ec) {
+                    return fail(ErrorCode::IoError, L"cannot copy boot.wim", patched.file.wstring(), ec.value());
+                }
+                // Setup files copied off a DVD are read-only; the copy is ours to change.
+                std::filesystem::permissions(patched.file, std::filesystem::perms::owner_write,
+                                             std::filesystem::perm_options::add, ec);
+                const core::TaskContext t{cancel, [&](double f, std::wstring_view) { report(we + wr + f * wp, 4); }};
+                const auto done = patcher(patched.file, mountDir, boot, t);
+                if (!done) {
+                    return std::unexpected(done.error());
+                }
+                log::info("iso", std::format(L"boot.wim index {}: {} requirement check(s) switched off", done->index,
+                                             boot.labConfigValues().size()));
+                options.replacedFiles.push_back({L"sources\\boot.wim", patched.file});
+            }
             const core::TaskContext t{cancel, [&](double f, std::wstring_view stage) {
-                                          report(we + wr + f * wb, stage == L"sha256" ? 3 : 2);
+                                          report(we + wr + wp + f * wb, stage == L"sha256" ? 3 : 2);
                                       }};
             return core::buildIso(options, t);
         },

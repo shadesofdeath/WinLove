@@ -17,12 +17,18 @@ Açık kaynaktan (kurulum klasörü veya ISO) önyüklenebilir Windows kurulum I
   (servis sonrası boşluğu geri kazanır; LZMS → install.esd). Yalnızca WinLove çalışma klasörlerinde.
 - Ölçüm (2026-09-28): 8,1 GB kurulum klasörü → ISO 17 sn (SSD, önbellekte); kendi UDF okuyucumuz 6 sürümü okudu.
 - CLI: `wlcli iso <klasör> <çıktı.iso> [--label=] [--boot=both|uefi|bios] [--sha256] [--no-prompt]`.
+- **Kurulum ortamı (D-038):** `core::patchBootImage` — `sources\boot.wim`'in önyükleme index'ine
+  `HKLM\SYSTEM\Setup\LabConfig` atlamalarını yazar (yönetici + DISM). ISO üretimi bunu dosyanın bir kopyasında yapar ve
+  `IsoOptions::replacedFiles` ile ISO'ya kopyayı koyar; kurulum klasörü değişmez. CLI: `wlcli boot-patch`.
 
 ## 3. Ekran
 Sekmeler ISO / USB · ÇIKTI (dosya adı, klasör + gözat, birim etiketi) · ÖNYÜKLEME (UEFI+BIOS / UEFI / BIOS radyo,
 install.wim sıkıştırma: Olduğu gibi / LZX / XPRESS / ESD, "tuşa basın" istemi) · DOĞRULAMA (SHA-256, bitince
 klasörü aç) · sağda 320 px özet (kaynak, önyükleme, tahmini ISO, süre). Başlık: "ISO Oluştur" (çalışırken "İptal").
 Engeller InfoBar'da: kaynak yok / tek WIM / bağlı imaj / başka işlem. ISO kaynağı önce çalışma klasörüne açılır.
+ÖNYÜKLEME'de ayrıca **Kurulum ortamı**: "Gereksinim atlamalarını boot.wim'e de yaz" (varsayılan açık). Katılımsız
+Kurulum'da atlama seçili değilse pasif + ipucu. Özette "Kurulum ortamı: N gereksinim denetimi atlanıyor / değiştirilmiyor";
+çalışırken "Kurulum ortamı (boot.wim) hazırlanıyor" aşaması (~30 sn). Yama başarısızsa ISO üretilmez (hata bandı).
 Sapma: tasarımdaki "4 GB üstü WIM → ESD" satırı sıkıştırma listesindeki ESD seçeneğine taşındı; yerine önyükleme
 istemi seçeneği geldi (USB/FAT32 konusu USB sekmesiyle ele alınacak).
 
@@ -30,3 +36,6 @@ istemi seçeneği geldi (USB/FAT32 konusu USB sekmesiyle ele alınacak).
 - [ ] Kaynak açıkken ISO Oluştur → ilerleme → ISO + .sha256; klasör açılır.
 - [ ] ISO'yu VM'de UEFI ve BIOS ile başlat → Windows kurulumu açılır.
 - [ ] Uygula sonrası LZX yeniden paketle → install.wim küçülür.
+- [ ] Katılımsız Kurulum'da TPM / Secure Boot atlaması seçili, "ISO'ya ekle" kapalı → ISO üret → log'da
+      `boot.wim index 2: N requirement check(s) switched off`; TPM'siz VM'de Setup gereksinim uyarısı vermez.
+- [ ] Aynı kaynakla kutu kapalı ISO → boot.wim özgün (kurulum klasöründeki dosyanın boyutu / tarihi hiç değişmedi).

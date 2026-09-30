@@ -29,6 +29,13 @@ struct IsoOptions {
         std::string content;
     };
     std::vector<RootFile> rootFiles;
+    // Files of the source folder that go into the image from somewhere else (sources\boot.wim
+    // patched in a copy, D-038): the folder's own file is left out and stays as it is.
+    struct ReplacedFile {
+        std::wstring path;          // in the image, from its root: L"sources\\boot.wim"
+        std::filesystem::path file; // read while the image is written: must stay until buildIso returns
+    };
+    std::vector<ReplacedFile> replacedFiles;
 };
 
 struct IsoResult {

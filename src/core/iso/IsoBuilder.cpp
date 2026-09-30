@@ -204,6 +204,24 @@ Result<IsoResult> buildIso(const IsoOptions& options, const TaskContext& task) {
         }
         log::info("iso", std::format(L"added {} ({} bytes) to the image root", file.name, file.content.size()));
     }
+    for (const auto& file : options.replacedFiles) {
+        Com<IStream> content;
+        hr = SHCreateStreamOnFileEx(nativePath(file.file).c_str(), STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL,
+                                    FALSE, nullptr, content.put());
+        if (FAILED(hr)) {
+            return comFail(hr, L"open " + file.file.wstring());
+        }
+        BSTR path = SysAllocString(file.path.c_str());
+        hr = root->Remove(path); // it replaces a file of the folder: one that is not there is a mistake
+        if (SUCCEEDED(hr)) {
+            hr = root->AddFile(path, content.get());
+        }
+        SysFreeString(path);
+        if (FAILED(hr)) {
+            return comFail(hr, L"replace " + file.path);
+        }
+        log::info("iso", std::format(L"{} comes from {}", file.path, file.file.wstring()));
+    }
 
     Com<IFileSystemImageResult> result;
     if (FAILED(hr = image->CreateResultImage(result.put()))) {
