@@ -57,6 +57,7 @@ struct LaunchOptions {
     bool demoRegistry = false;   // render: fake mount + checked tweaks (08)
     bool demoServices = false;   // render: fake mount + sample services (09)
     bool demoTweaks = false;     // render: fake mount + the selections of screen 10
+    bool demoImageValues = false; // render (with --demo-tweaks / --demo-registry): the image already has a few (D-045)
     bool demoUnattended = false; // render: the answers of screen 11
     bool demoPostSetup = false;  // render: fake mount + the steps of screen 12
     bool demoPresets = false;    // render: an in-memory library like screen 17

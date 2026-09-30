@@ -30,6 +30,12 @@ public:
 
     [[nodiscard]] const std::wstring& text() const noexcept { return m_text; }
     void setText(std::wstring text); // no onChange
+    void setPlaceholder(std::wstring placeholder) {
+        if (placeholder != m_placeholder) {
+            m_placeholder = std::move(placeholder);
+            invalidate();
+        }
+    }
     void setWidth(float width) noexcept { m_width = width; }
 
     [[nodiscard]] SizeF measure(SizeF available) override;

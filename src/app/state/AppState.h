@@ -23,6 +23,7 @@
 #include <functional>
 #include <map>
 #include <optional>
+#include <set>
 #include <vector>
 
 namespace wl::app {
@@ -54,7 +55,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues };
     using Listener = std::function<void(Change)>;
 
     // `answersFile`: where the answer file being edited is kept between runs (AnswerStore.h).
@@ -145,6 +146,26 @@ public:
     };
     [[nodiscard]] const std::optional<ServiceList>& serviceList() const noexcept { return m_services; }
     void setServiceList(std::optional<ServiceList> list);
+
+    // D-045: which catalog operations (P11 tweaks, P12 settings) the mounted image already has —
+    // read from its hive files and configuration files once per mount (ImageValuesController).
+    // `held` keys: imageValueKey(). Services come from serviceList(), not from here.
+    struct ImageValues {
+        enum class Status : std::uint8_t { Loading, Ready, Failed };
+        Status status = Status::Loading;
+        std::filesystem::path mountDir;
+        std::set<std::wstring> held;
+        std::map<std::wstring, std::wstring> texts; // registry target → string value (text settings)
+        Error error;
+    };
+    [[nodiscard]] const std::optional<ImageValues>& imageValues() const noexcept { return m_imageValues; }
+    void setImageValues(std::optional<ImageValues> values);
+    // "Registry: target + value" / "file: path + text" — the identity of an operation's result.
+    [[nodiscard]] static std::wstring imageValueKey(core::ops::OpKind kind, std::wstring_view target,
+                                                    std::wstring_view value);
+    // Does the mounted image already have what `op` would write (registry value, service start
+    // type, file)? False while nothing is read and for every other kind.
+    [[nodiscard]] bool imageHas(const core::ops::Operation& op) const;
 
     // P11: .reg files the user imported (kept across mounts; queued writes live in the ChangeSet).
     struct RegImport {
@@ -253,6 +274,7 @@ private:
     std::optional<AppxList> m_appx;
     std::optional<SystemComponents> m_system;
     std::optional<ServiceList> m_services;
+    std::optional<ImageValues> m_imageValues;
     std::vector<RegImport> m_regImports;
     DriverScan m_drivers;
     Unattend m_unattend;

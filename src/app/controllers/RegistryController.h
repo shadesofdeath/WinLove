@@ -18,7 +18,13 @@ public:
 
     [[nodiscard]] bool checked(const std::vector<core::RegistryWrite>& writes,
                                core::ops::OpKind kind = core::ops::OpKind::SetRegistryValue) const;
-    [[nodiscard]] bool checked(const Tweak& tweak) const { return checked(tweak.writes, kindOf(tweak)); }
+    // D-045: a tweak is checked when each write holds — queued with its value, or (its slot and
+    // its way back not queued) already in the mounted image. inImage: the image alone.
+    [[nodiscard]] bool checked(const Tweak& tweak) const;
+    [[nodiscard]] bool inImage(const Tweak& tweak) const;
+    // Unchecking a tweak the image has queues its way back (values deleted); false when there
+    // is none (a deletion cannot be undone).
+    [[nodiscard]] bool canUncheck(const Tweak& tweak) const;
     void toggle(const Tweak& tweak);
     void setChecked(const std::vector<core::RegistryWrite>& writes, bool on, core::ops::Risk risk,
                     core::ops::OpKind kind = core::ops::OpKind::SetRegistryValue);
@@ -32,7 +38,7 @@ public:
 
     // Checked / total tweaks of a category ("custom" = imported .reg files).
     [[nodiscard]] std::pair<int, int> selection(std::string_view category) const;
-    [[nodiscard]] int checkedCount() const; // nav badge: tweaks + imports
+    [[nodiscard]] int checkedCount() const; // nav badge: tweaks Uygula changes + imports
 
     // Imports: parsed on the reader thread by the caller, then added here (queued immediately).
     void addImport(const std::filesystem::path& file, std::vector<core::RegistryWrite> writes);
@@ -43,6 +49,9 @@ public:
                                                            core::ops::OpKind kind = core::ops::OpKind::SetRegistryValue);
 
 private:
+    [[nodiscard]] bool holds(const core::RegistryWrite& write, core::ops::OpKind kind, bool withQueue, bool& asserts) const;
+    [[nodiscard]] static std::vector<core::RegistryWrite> revertWrites(const Tweak& tweak); // empty: none
+
     AppState& m_state;
     TweakCatalog m_catalog;
 };

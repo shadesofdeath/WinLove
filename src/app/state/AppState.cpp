@@ -86,6 +86,7 @@ void AppState::setMounted(std::optional<MountedImage> mounted) {
         m_appx.reset();
         m_system.reset();
         m_services.reset();
+        m_imageValues.reset();
         if (!m_changes.empty()) {
             m_changes.clear();
             notify(Change::Queue);
@@ -93,6 +94,7 @@ void AppState::setMounted(std::optional<MountedImage> mounted) {
         notify(Change::Features);
         notify(Change::Components);
         notify(Change::Services);
+        notify(Change::ImageValues);
     }
     notify(Change::Mount);
 }
@@ -225,6 +227,43 @@ void AppState::setUnattend(Unattend unattend) {
 void AppState::setServiceList(std::optional<ServiceList> list) {
     m_services = std::move(list);
     notify(Change::Services);
+}
+
+void AppState::setImageValues(std::optional<ImageValues> values) {
+    m_imageValues = std::move(values);
+    notify(Change::ImageValues);
+}
+
+std::wstring AppState::imageValueKey(core::ops::OpKind kind, std::wstring_view target, std::wstring_view value) {
+    using core::ops::OpKind;
+    const bool registry = kind == OpKind::SetRegistryValue || kind == OpKind::SetRegistryFirstLogon;
+    std::wstring key = registry ? L"reg\n" : kind == OpKind::WriteFile ? L"file\n" : L"other\n";
+    key.append(target);
+    key += L'\n';
+    key.append(value);
+    return key;
+}
+
+bool AppState::imageHas(const core::ops::Operation& op) const {
+    using core::ops::OpKind;
+    if (!m_mounted) {
+        return false;
+    }
+    if (op.kind == OpKind::SetServiceStart) {
+        if (!m_services || m_services->mountDir != m_mounted->mountDir ||
+            m_services->status != ServiceList::Status::Ready) {
+            return false;
+        }
+        const auto it = std::ranges::find_if(m_services->items, [&](const core::ServiceEntry& s) {
+            return _wcsicmp(s.name.c_str(), op.target.c_str()) == 0;
+        });
+        return it != m_services->items.end() && core::startTypeKey(it->start) == op.value;
+    }
+    if (!m_imageValues || m_imageValues->mountDir != m_mounted->mountDir ||
+        m_imageValues->status != ImageValues::Status::Ready) {
+        return false;
+    }
+    return m_imageValues->held.contains(imageValueKey(op.kind, op.target, op.value));
 }
 
 void AppState::setOptionalFeatures(std::optional<OptionalFeatures> features) {

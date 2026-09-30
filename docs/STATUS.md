@@ -13,6 +13,12 @@
   geçmeden önce bu sayfaların kullanıcı onayı gerekir.
 - **Bir sonraki somut adım:** kullanıcı VM'de kendi imajını deniyor (`docs/TESTING.md` → "VM kabul testi");
   testten gelen düzeltmeler sırayla. Log: `%LOCALAPPDATA%\WinLove\logs\WinLove-*.log` (oturum başına bir dosya).
+- **İmajdaki mevcut değerler (2026-09-30, kullanıcı seçimi — üç özellikten 1.si, D-045):** Kayıt Defteri ve Ayarlar /
+  Tweaks artık bağlı imajın durumunu gösterir ("imajda"); imajdakini kaldırmak geri alma işlemi kuyruklar. Okuma
+  `offreg.dll` ile (yönetici / RegLoadKey yok), bağlamadan sonra ~0,4 sn. `wlcli reg-check`. **Kanıt:** bozulmamış
+  25H2 Pro hive'larında 277 katalog yazımından yalnız beklenen 3'ü "imajda"; birim testleri (sentetik hive + P11/P12
+  mantığı); render. **Görülmeyen:** uygulamada gerçek bağlı imajda (önce Uygula'lanmış bir imajı bağlayıp P11/P12'ye
+  bakmak). Yan bulgu: "Paylaş" menüsü ayarı çevrimdışı etkisizdi → kurulum sonrası da uygulanıyor (VM'de görülmedi).
 - **Kullanıcının ilk gerçek Uygula'sı (2026-09-30, 148 işlem, 143 geçti, commit tamam):** bulunanlar ve düzeltmeler —
   durum çubuğundaki Uygula düğmesi Uygula sayfasında tepkisizdi (artık başlatıyor); Katılımsız Kurulum'da dört
   düğme ters çalışıyordu ve Ayarlar / Tweaks'te düğmenin anlamı belirsizdi (D-032); atlanan 5 adımın nedeni yalnız

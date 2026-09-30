@@ -241,6 +241,37 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-045 — İmajdaki mevcut değerleri okuma: Kayıt Defteri ve Ayarlar / Tweaks imajı gösterir (2026-09-30)
+Bağlam: Kullanıcı "imajdaki mevcut değeri okuma"yı istedi. P11 / P12 yalnız kuyruğa bakıyordu: bir kez uygulanmış
+(ya da başka bir araçla yapılmış) imaj yeniden bağlanınca her şey "Windows varsayılanı" görünüyordu.
+Karar:
+- **Okuma `offreg.dll` ile** (Offline Registry Library, Windows 8'den beri System32'de, dinamik yüklenir):
+  `core/image/RegistryRead` (`OfflineRegistryReader`). Hive dosyası belleğe ayrıştırılır; `RegLoadKey` yok →
+  ayrıcalık açılmaz, hive boşaltılmaz, unmount'u kilitleyemez. Yalnız dosyaya okuma izni ister (bağlı imajda
+  yükseltilmiş süreç zaten var). `RegLoadAppKey` SOFTWARE'de `ERROR_BADDB` verdiği için seçenek değildi; kendi regf
+  ayrıştırıcımız gereksiz iş olurdu. `CurrentControlSet` → `Select\Current`. `wlcli reg-check <file.reg> <klasör>`.
+- **Ne okunur:** iki katalogdaki (tweaks.json, settings.json) her yazım, ayarların metin dosyaları (`imageFileHas`),
+  metin ayarlarının (OEM bilgisi) dize değerleri. Servis başlangıç türleri zaten okunan servis listesinden gelir.
+  Bağlamadan hemen sonra, önyüklemeden (`PreloadController`) **önce** motor iş parçacığında (~0,4 sn);
+  sonuç `AppState::imageValues()`, soru `AppState::imageHas(op)`. Uygula imaj bağlıyken biterse yeniden okunur.
+- **Gösterim kuralı:** bir işlem "tutar" = kuyrukta o değerle var, ya da yuvası ve geri dönüşü kuyrukta değilken
+  imajda var. Ayarın gösterilen seçeneği = bütün işlemleri tutan (en çok şey söyleyen) seçenek; yoksa varsayılan.
+  **Yalnız silmelerden oluşan seçenek imajdan tanınmaz**: olmayan bir değer, silme çalışmadan önce de sonra da
+  aynı görünür (bozulmamış 25H2'de ModernSharing anahtarı zaten yok → "Paylaş" menüsü kapalı görünürdü).
+- **Geri alma:** imajdaki seçenekten varsayılana dönmek = değer silinir (`"-"`), oluşturulmuş anahtar silinir.
+  Servis, dosya ve silme içeren seçeneklerde geri dönüş yok (öncesi bilinmiyor): denetim imajdaki konuma döner,
+  ipucu "burada geri alınamaz" der. Başka bir seçeneğe geçişte, eski seçeneğin yeni seçenekle ortak olmayan yazımları
+  da geri alınır.
+- **Sayılar:** gezinme rozetleri artık "Uygula'nın değiştireceği" ayar / tweak sayısı (imajda olan sayılmaz);
+  P11 kategori kartları ("{s} / {n} seçili") imajdakileri de sayar.
+- Metin ayarında imajdaki dize kutunun yer tutucusu olur ("imajda: Contoso"); kuyruk değişmez.
+Kanıt: bozulmamış 25H2 Pro hive'ları (7-Zip ile lab WIM'inden, yönetici gerekmeden) üzerinde 277 katalog yazımı:
+3'ü imajda — duvar kağıdının iki varsayılan değeri ve ModernSharing silmesi; diğer her ayar doğru biçimde
+varsayılan. offreg ile üretilen sentetik hive'larla birim testi; P11 / P12 mantığı birim testli; render
+(`--demo-image-values`). **Görülmeyen:** uygulama içinde gerçek bağlı imajda okuma (yönetici oturumu).
+Yan bulgu: "Paylaş menüsü" ayarı çevrimdışı hiçbir şey yapmıyordu (anahtar kurulumda oluşuyor) → `firstLogon`
+yapıldı: silme SetupComplete'te yeniden çalışır. VM'de doğrulanmadı.
+
 ## D-044 — Hazır komutlar (güç planı, ağ); ağ ayarları; klasik Fotoğraf Görüntüleyicisi (2026-09-30)
 Bağlam: Güç planı ve güvenlik duvarı kayıt defteriyle değil komutla (`powercfg`, `netsh`) ayarlanıyor.
 Karar:

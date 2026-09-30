@@ -15,6 +15,7 @@
 #include "app/controllers/PostSetupController.h"
 #include "app/controllers/ImageController.h"
 #include "app/controllers/ImageSettingsController.h"
+#include "app/controllers/ImageValuesController.h"
 #include "app/controllers/PreloadController.h"
 #include "app/controllers/PresetController.h"
 #include "app/pages/PageInfo.h"
@@ -108,6 +109,7 @@ public:
     // ---- sources --------------------------------------------------------------------------
     // `then` runs after a successful open (e.g. --mount=N after a UAC relaunch).
     void openSource(const std::filesystem::path& path, std::function<void()> then = {});
+    void startPreload(); // image values first (fast), then the page lists
     // A mount from a previous run (ImageController::adoptExistingMount): reopen its source and
     // show it as mounted again.
     void restoreMount(const std::filesystem::path& source, MountedImage mounted);
@@ -218,6 +220,7 @@ private:
     std::unique_ptr<PostSetupController> m_postSetup; // P14 steps
     std::unique_ptr<PresetController> m_presets;      // P15 library
     std::unique_ptr<PreloadController> m_preload; // reads the page lists right after a mount
+    std::unique_ptr<ImageValuesController> m_imageValues; // what the image already has (D-045)
     std::unique_ptr<PaletteIndex> m_palette;      // P18: what Ctrl+K searches
     ui::Widget* m_sideInspector = nullptr; // pages other than Images (Components)
     ui::Button* m_actionExpand = nullptr;  // Components: "Tümünü genişlet / daralt"

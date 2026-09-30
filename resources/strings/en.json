@@ -415,7 +415,10 @@
     "imported": "{n} registry values queued",
     "importFailed": "Could not read the .reg file",
     "filter": "Registration files",
-    "firstLogon": "After setup"
+    "firstLogon": "After setup",
+    "inImage": "in the image",
+    "revert": "will be taken back from the image",
+    "noRevert": "cannot be undone"
   },
   "services": {
     "title": "Services",
@@ -456,7 +459,9 @@
     "noMountTitle": "No image mounted",
     "noMountBody": "Mount an edition on the Images page to change its settings.",
     "recommendedApplied": "{n} settings set to the recommended value",
-    "recommendedNone": "Every recommended setting is already selected"
+    "recommendedNone": "Every recommended setting is already selected",
+    "inImage": "in the image",
+    "noRevert": "cannot be undone here"
   },
   "unattended": {
     "title": "Unattended Setup",

@@ -6,6 +6,7 @@
 #include "core/image/SystemComponents.h"
 #include "core/image/dism/StoreCleanup.h"
 #include "core/image/RegistryEdit.h"
+#include "core/image/RegistryRead.h"
 #include "core/image/Services.h"
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
@@ -908,6 +909,58 @@ int cmdReg(const std::wstring& file, const std::wstring& mountDir, bool firstLog
     return failures == 0 ? 0 : 1;
 }
 
+// D-045: which writes of a .reg file the mounted image already has (offreg.dll, read only).
+int cmdRegCheck(const std::wstring& file, const std::wstring& mountDir, bool asJson) {
+    auto writes = core::readRegFile(file);
+    if (!writes) {
+        return reportError(writes.error());
+    }
+    core::OfflineRegistryReader reader(mountDir);
+    json out = json::array();
+    int held = 0;
+    int errors = 0;
+    for (const auto& w : *writes) {
+        std::wstring status;
+        std::wstring current;
+        auto holds = reader.holds(w);
+        if (!holds) {
+            status = L"error";
+            current = holds.error().message;
+            ++errors;
+        } else {
+            status = *holds ? L"in-image" : L"differs";
+            held += *holds ? 1 : 0;
+            if (w.kind == core::RegistryWrite::Kind::Set || w.kind == core::RegistryWrite::Kind::DeleteValue) {
+                if (auto value = reader.value(w.key, w.name); value && *value) {
+                    core::RegistryWrite seen = w;
+                    seen.kind = core::RegistryWrite::Kind::Set;
+                    seen.type = (*value)->type;
+                    seen.data = (*value)->data;
+                    current = core::formatRegValue(seen);
+                } else if (value) {
+                    current = L"(none)";
+                }
+            }
+        }
+        if (asJson) {
+            out.push_back({{"target", narrow(core::registryTarget(w))},
+                           {"value", narrow(core::formatRegValue(w))},
+                           {"status", narrow(status)},
+                           {"current", narrow(current)}});
+        } else {
+            print(std::format(L"  {:<9} {} = {}{}\n", status, core::registryTarget(w), core::formatRegValue(w),
+                              current.empty() || (holds && *holds) ? L"" : L"   (image: " + current + L")"));
+        }
+    }
+    if (asJson) {
+        printJson(out);
+    } else {
+        print(std::format(L"\n  {} / {} already in the image{}\n", held, writes->size(),
+                          errors ? std::format(L", {} unreadable", errors) : std::wstring()));
+    }
+    return errors == 0 ? 0 : 1;
+}
+
 // P06: bootable ISO from a setup folder (IMAPI2FS, no admin).
 int cmdIso(const std::wstring& folder, const std::wstring& output, const std::wstring& label, const std::wstring& boot,
            bool sha, bool noPrompt) {
@@ -999,6 +1052,8 @@ void printUsage() {
           L"  wlcli postsetup <plan.json> <mountdir>   (write post-setup scripts and payloads into the image, P14)\n"
           L"  wlcli reg <file.reg> [<mountdir>] [--first-logon]   (parse; with a mount: write into the image's\n"
           L"                                      hives, P11; --first-logon: also re-import after setup)\n"
+          L"  wlcli reg-check <file.reg> <mountdir> [--json]   (which writes the image already has; read only,\n"
+          L"                                      offreg.dll — also works on hive files copied into a folder)\n"
           L"  wlcli services <mountdir> [--set=Name=auto|autoDelayed|manual|disabled]   (P10)\n"
           L"  wlcli appx <mountdir>   (provisioned apps + size, as on P07)\n"
           L"  wlcli cbs <mountdir> [text]   (CBS packages from the image's registry, hidden ones too)\n"
@@ -1180,6 +1235,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"reg" && (args.size() == 2 || args.size() == 3)) {
         return cmdReg(args[1], args.size() == 3 ? args[2] : std::wstring(), firstLogon);
+    }
+    if (command == L"reg-check" && args.size() == 3) {
+        return cmdRegCheck(args[1], args[2], asJson);
     }
     if (command == L"services" && args.size() == 2) {
         return cmdServices(args[1], serviceSet, asJson);

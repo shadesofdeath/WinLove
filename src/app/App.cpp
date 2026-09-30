@@ -180,6 +180,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoServices = true;
         } else if (a == L"--demo-tweaks") {
             options.demoTweaks = true;
+        } else if (a == L"--demo-image-values") {
+            options.demoImageValues = true;
         } else if (a == L"--demo-unattended") {
             options.demoUnattended = true;
         } else if (a == L"--demo-postsetup") {
@@ -527,6 +529,20 @@ int App::renderOffscreen() {
         m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,
                                          L"Windows 11 Pro"});
         auto& registry = m_shell->registry();
+        if (m_options.demoImageValues) {
+            // The image has the first three privacy tweaks; the demo toggles take one of them back.
+            AppState::ImageValues values{AppState::ImageValues::Status::Ready, m_state->mounted()->mountDir, {}, {}, {}};
+            int n = 0;
+            for (const auto& tweak : registry.catalog().tweaks()) {
+                if (tweak.category == "privacy" && n++ < 3) {
+                    for (const auto& w : tweak.writes) {
+                        const auto op = RegistryController::operationFor(w, tweak.risk, RegistryController::kindOf(tweak));
+                        values.held.insert(AppState::imageValueKey(op.kind, op.target, op.value));
+                    }
+                }
+            }
+            m_state->setImageValues(std::move(values));
+        }
         for (const auto& tweak : registry.catalog().tweaks()) {
             if (tweak.recommended && tweak.category != "appearance") {
                 registry.toggle(tweak);
@@ -543,6 +559,25 @@ int App::renderOffscreen() {
                                          L"Windows 11 Pro"});
         // The selections of screen 10.
         auto& controller = m_shell->imageSettings();
+        if (m_options.demoImageValues) {
+            // The image already has "Konum" off (the demo picks it too), "Uyarlanmış deneyimler" off (taken back
+            // below) and "Geri bildirim" off, plus an OEM manufacturer.
+            AppState::ImageValues values{AppState::ImageValues::Status::Ready, m_state->mounted()->mountDir, {}, {}, {}};
+            for (const auto& setting : controller.catalog().settings()) {
+                for (const auto& [id, option] : {std::pair<std::string_view, std::string_view>{"location", "off"},
+                                                 {"tailored", "off"}, {"feedback", "off"}}) {
+                    const auto it = std::ranges::find(setting.options, option, &ImageSettingOption::id);
+                    if (setting.id == id && it != setting.options.end()) {
+                        for (const auto& op : ImageSettingsController::operationsFor(
+                                 setting, static_cast<int>(it - setting.options.begin()))) {
+                            values.held.insert(AppState::imageValueKey(op.kind, op.target, op.value));
+                        }
+                    }
+                }
+            }
+            values.texts[L"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation::Manufacturer"] = L"Contoso";
+            m_state->setImageValues(std::move(values));
+        }
         const std::pair<std::string_view, std::string_view> picks[] = {
             {"telemetry", "security"}, {"advertising-id", "off"}, {"diag-viewer", "off"},
             {"inking", "off"},         {"web-search", "off"},     {"location", "off"}};
@@ -555,6 +590,12 @@ int App::renderOffscreen() {
                 if (it != setting.options.end()) {
                     controller.select(setting, static_cast<int>(it - setting.options.begin()));
                 }
+            }
+        }
+        if (m_options.demoImageValues) {
+            const auto& settings = controller.catalog().settings();
+            if (const auto it = std::ranges::find(settings, "tailored", &ImageSetting::id); it != settings.end()) {
+                controller.select(*it, it->defaultOption);
             }
         }
         m_shell->showPage(m_options.page.value_or(PageId::Tweaks));

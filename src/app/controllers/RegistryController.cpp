@@ -1,5 +1,7 @@
 #include "app/controllers/RegistryController.h"
 
+#include "app/controllers/ImageValuesController.h"
+
 #include <algorithm>
 #include <cwctype>
 #include <set>
@@ -51,8 +53,82 @@ void RegistryController::setChecked(const std::vector<RegistryWrite>& writes, bo
     m_state.unqueueMany(slots);
 }
 
+bool RegistryController::holds(const RegistryWrite& write, OpKind kind, bool withQueue, bool& asserts) const {
+    const Operation op = operationFor(write, core::ops::Risk::Low, kind);
+    if (withQueue) {
+        if (const auto* q = m_state.changes().find(op.kind, op.target)) {
+            asserts = true;
+            return q->value == op.value;
+        }
+        if (const auto back = revertWrite(write)) {
+            if (const auto* q = m_state.changes().find(kind, core::registryTarget(*back));
+                q && q->value == core::formatRegValue(*back)) {
+                return false;
+            }
+        }
+    }
+    if (!m_state.imageHas(op)) {
+        return false;
+    }
+    asserts = asserts || assertsSomething(write);
+    return true;
+}
+
+bool RegistryController::checked(const Tweak& tweak) const {
+    bool asserts = false;
+    return !tweak.writes.empty() && std::ranges::all_of(tweak.writes, [&](const RegistryWrite& w) {
+        return holds(w, kindOf(tweak), /*withQueue=*/true, asserts);
+    }) && asserts;
+}
+
+bool RegistryController::inImage(const Tweak& tweak) const {
+    bool asserts = false;
+    return !tweak.writes.empty() && std::ranges::all_of(tweak.writes, [&](const RegistryWrite& w) {
+        return holds(w, kindOf(tweak), /*withQueue=*/false, asserts);
+    }) && asserts;
+}
+
+std::vector<RegistryWrite> RegistryController::revertWrites(const Tweak& tweak) {
+    std::vector<RegistryWrite> back;
+    for (const auto& w : tweak.writes) {
+        auto revert = revertWrite(w);
+        if (!revert) {
+            return {};
+        }
+        back.push_back(std::move(*revert));
+    }
+    return back;
+}
+
+bool RegistryController::canUncheck(const Tweak& tweak) const {
+    return !inImage(tweak) || !revertWrites(tweak).empty();
+}
+
 void RegistryController::toggle(const Tweak& tweak) {
-    setChecked(tweak.writes, !checked(tweak), tweak.risk, kindOf(tweak));
+    const OpKind kind = kindOf(tweak);
+    const auto reverts = revertWrites(tweak);
+    if (checked(tweak)) {
+        if (inImage(tweak) && reverts.empty()) {
+            return; // the image has it and there is no way back from here
+        }
+        std::vector<std::pair<OpKind, std::wstring>> slots;
+        for (const auto& w : tweak.writes) {
+            if (const auto* op = m_state.changes().find(kind, core::registryTarget(w));
+                op && op->value == core::formatRegValue(w)) {
+                slots.emplace_back(kind, core::registryTarget(w));
+            }
+        }
+        m_state.unqueueMany(slots);
+        if (inImage(tweak)) {
+            setChecked(reverts, true, tweak.risk, kind);
+        }
+        return;
+    }
+    // Unchecked: a queued way back is taken back first — the image may have the tweak.
+    setChecked(reverts, false, tweak.risk, kind);
+    if (!checked(tweak)) {
+        setChecked(tweak.writes, true, tweak.risk, kind);
+    }
 }
 
 std::pair<int, int> RegistryController::selection(std::string_view category) const {
@@ -77,7 +153,7 @@ std::pair<int, int> RegistryController::selection(std::string_view category) con
 int RegistryController::checkedCount() const {
     int n = 0;
     for (const auto& tweak : m_catalog.tweaks()) {
-        n += checked(tweak) ? 1 : 0;
+        n += checked(tweak) != inImage(tweak) ? 1 : 0; // what Uygula changes
     }
     return n + selection("custom").first;
 }
