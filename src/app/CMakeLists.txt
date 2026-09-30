@@ -19,6 +19,8 @@ add_library(wl_app STATIC
     Format.cpp
     Localization.cpp
     Resources.cpp
+    SystemInfo.cpp
+    pages/AboutPage.cpp
     pages/GalleryPage.cpp
     pages/apply/RiskConfirm.cpp
     pages/apply/StatStrip.cpp

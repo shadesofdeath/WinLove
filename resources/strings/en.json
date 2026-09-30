@@ -746,7 +746,10 @@
     "thirdParty": "Third party",
     "checkUpdates": "Check for updates",
     "licenses": "Licenses",
-    "openLogFolder": "Open log folder"
+    "openLogFolder": "Open log folder",
+    "fontsValue": "IBM Plex Sans, JetBrains Mono (OFL 1.1)",
+    "thirdPartyValue": "nlohmann/json (MIT), pugixml (MIT)",
+    "licensesBody": "Bundled inside WinLove.exe:\n\nIBM Plex Sans — SIL Open Font License 1.1\nJetBrains Mono — SIL Open Font License 1.1\nnlohmann/json — MIT License\npugixml — MIT License\n\nDISM and IMAPI2FS are Windows' own components; WinLove does not ship them, it loads them from the system."
   },
   "palette": {
     "placeholder": "Search commands, pages or components",

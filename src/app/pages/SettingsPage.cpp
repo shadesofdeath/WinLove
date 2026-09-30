@@ -1,10 +1,9 @@
 #include "app/pages/SettingsPage.h"
 
+#include "app/SystemInfo.h"
 #include "ui/widgets/Button.h"
 #include "ui/widgets/Label.h"
 #include "ui/widgets/SearchBox.h"
-
-#include <windows.h>
 
 #include <algorithm>
 #include <format>
@@ -22,27 +21,6 @@ constexpr float kLabelWidth = 240.0f;
 constexpr float kPathWidth = 360.0f;
 constexpr float kLanguageWidth = 240.0f;
 constexpr float kBrowse = 28.0f;
-
-// "C:\Windows\System32\dismapi.dll · 10.0.26100.1" — the library the engine loads (D-017).
-std::wstring dismLibrary() {
-    wchar_t system[MAX_PATH] = {};
-    const UINT length = GetSystemDirectoryW(system, MAX_PATH);
-    if (length == 0 || length >= MAX_PATH) {
-        return {};
-    }
-    const std::wstring path = std::wstring(system) + L"\\dismapi.dll";
-    DWORD handle = 0;
-    const DWORD size = GetFileVersionInfoSizeW(path.c_str(), &handle);
-    std::vector<BYTE> data(size);
-    VS_FIXEDFILEINFO* info = nullptr;
-    UINT infoSize = 0;
-    if (size == 0 || !GetFileVersionInfoW(path.c_str(), 0, size, data.data()) ||
-        !VerQueryValueW(data.data(), L"\\", reinterpret_cast<void**>(&info), &infoSize) || !info) {
-        return path;
-    }
-    return std::format(L"{} \u00b7 {}.{}.{}.{}", path, HIWORD(info->dwFileVersionMS), LOWORD(info->dwFileVersionMS),
-                       HIWORD(info->dwFileVersionLS), LOWORD(info->dwFileVersionLS));
-}
 
 } // namespace
 
@@ -142,7 +120,10 @@ SettingsPage::SettingsPage(AppState& state, const Localization& strings, Intents
     };
     m_work = folder(Str::SettingsWorkDir, std::wstring(), &AppSettings::workRoot, /*allowEmpty=*/false);
     m_mount = folder(Str::SettingsMountDir, s(Str::SettingsMountDefault), &AppSettings::mountFolder, /*allowEmpty=*/true);
-    m_form->addRow<ui::Label>(s(Str::SettingsDismPath), std::wstring(), 0.0f, dismLibrary(), ui::tokens::TypeStyle::Mono,
+    const std::wstring dismVersion = dismLibraryVersion();
+    m_form->addRow<ui::Label>(s(Str::SettingsDismPath), std::wstring(), 0.0f,
+                              dismVersion.empty() ? dismLibraryPath() : dismLibraryPath() + L" \u00b7 " + dismVersion,
+                              ui::tokens::TypeStyle::Mono,
                               Color::TextSecondary);
     setAccessible(ui::AccessRole::Group, s(Str::SettingsTitle));
 

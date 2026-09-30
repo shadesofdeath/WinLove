@@ -10,10 +10,13 @@ enum class Str : std::uint16_t {
     AboutCheckUpdates,
     AboutDism,
     AboutFonts,
+    AboutFontsValue,
     AboutLicense,
     AboutLicenses,
+    AboutLicensesBody,
     AboutOpenLogFolder,
     AboutThirdParty,
+    AboutThirdPartyValue,
     AboutTitle,
     AboutVersion,
     AboutWorkDir,
@@ -763,15 +766,18 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 753;
+inline constexpr std::size_t kStrCount = 756;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
     "about.fonts",
+    "about.fontsValue",
     "about.license",
     "about.licenses",
+    "about.licensesBody",
     "about.openLogFolder",
     "about.thirdParty",
+    "about.thirdPartyValue",
     "about.title",
     "about.version",
     "about.workDir",

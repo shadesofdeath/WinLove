@@ -3,6 +3,7 @@
 #include "app/Format.h"
 #include "app/pages/GalleryPage.h"
 #include "app/Resources.h"
+#include "app/pages/AboutPage.h"
 #include "app/pages/ApplyPage.h"
 #include "app/pages/ComponentsPage.h"
 #include "app/pages/DriversPage.h"
@@ -851,6 +852,25 @@ void Shell::showPage(PageId page) {
             m_pageBody = &m_pageView->setBody<RegistryPage>(
                 m_state, *m_registry, m_strings, m_language,
                 RegistryPage::Intents{pick, [this] { showPage(PageId::Images); }});
+        } else if (page == PageId::About) {
+            m_pageBody = &m_pageView->setBody<AboutPage>(
+                m_state, m_strings,
+                AboutPage::Intents{[this] {
+                                       if (!host()) {
+                                           return;
+                                       }
+                                       auto dialog = std::make_unique<ui::Dialog>(
+                                           m_strings.get(Str::AboutLicenses), m_strings.get(Str::AboutLicensesBody),
+                                           ui::icons::Icon::InfoCircle, ui::tokens::Color::TextSecondary);
+                                       ui::Dialog* raw = dialog.get();
+                                       raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::CommonOk),
+                                                      [this, raw] { host()->popModal(raw); }, /*primary=*/true);
+                                       pushDialog(std::move(dialog));
+                                   },
+                                   [] {
+                                       const std::wstring folder = log::defaultDirectory().wstring();
+                                       ShellExecuteW(nullptr, L"open", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                                   }});
         } else if (page == PageId::Settings) {
             auto& body = m_pageView->setBody<SettingsPage>(
                 m_state, m_strings,
@@ -1498,6 +1518,10 @@ bool Shell::handleShortcut(const ui::KeyEvent& key) {
     }
     if (key.ctrl && !key.shift && key.virtualKey == VK_OEM_COMMA) {
         showPage(PageId::Settings);
+        return true;
+    }
+    if (!key.ctrl && !key.shift && !key.alt && key.virtualKey == VK_F1) {
+        showPage(PageId::About);
         return true;
     }
     if (key.ctrl && !key.shift && !key.alt && key.virtualKey >= '1' && key.virtualKey <= '9') {

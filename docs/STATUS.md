@@ -4,13 +4,16 @@
 
 ## Güncel
 - **Faz:** 3 — sayfalar. P01–P04 ✅. P05 Uygula, P06 ISO, P08 Güncellemeler, P09 Sürücüler, P10 Servisler, P11 Kayıt Defteri,
-  P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler, P16 Uygulama Ayarları:
+  P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler, P16 Uygulama Ayarları, P17 Hakkında:
   🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v1 (yalnız AppX; CBS paket
   kaldırma kararı bekliyor).
 - **Çalışma şekli:** kullanıcı "her seferinde durma" dedi — sayfa bitince build + test + `-Dist` + yerel commit,
   sonra doğrudan bir sonraki sayfa. Kullanıcı `dist\WinLove.exe`'yi paralel test ediyor.
-- **Bir sonraki somut adım:** P17 Hakkında (tasarım 20), ardından P18 Komut Paleti (tasarım 21; Ctrl+K — başlık
-  çubuğundaki arama kutusu şimdilik yalnız görsel). Spec'leri yok: önce `docs/pages/17-about.md`.
+- **Bir sonraki somut adım:** P18 Komut Paleti (tasarım 21; Ctrl+K — başlık çubuğundaki arama kutusu şimdilik
+  yalnız görsel). Spec'i yok: önce `docs/pages/18-command-palette.md`. Ardından Faz 4.
+- **P17 Hakkında (2026-09-30):** `app/SystemInfo` (DISM yolu / sürümü, derleme tarihi, mimari — Ayarlar da buradan
+  okur), `AboutPage` (`F1`): sürüm satırı, DISM / çalışma dizini / fontlar / üçüncü taraf, Lisanslar dialogu, log
+  klasörünü aç. **Konmayan (spec §4):** Lisans satırı (proje lisansı seçilmedi), Güncellemeleri denetle (servis yok).
 - **P16 Uygulama Ayarları (2026-09-30):** `AppSettings` (tema, hareketi azalt, dil, çalışma / bağlama klasörü),
   `SettingsPage` (`Ctrl+,`), `App::applySettings` (tema canlı, "Sistem" Windows'u izler; dil değişince arayüz durum
   korunarak yeniden kurulur — `--switch-lang` render'ıyla doğrulandı). **Ertelenen (spec §4):** vurgu rengi (token
@@ -68,6 +71,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — P14 Kurulum Sonrası geliştirildi (test bekliyor).
 - 2026-09-30 — P15 Presetler geliştirildi (test bekliyor).
 - 2026-09-30 — P16 Uygulama Ayarları geliştirildi (test bekliyor).
+- 2026-09-30 — P17 Hakkında geliştirildi (test bekliyor).
 - 2026-09-28 — Baştan sona inceleme (4 alan, paralel): ~35 hata düzeltildi. Öne çıkanlar: junction üzerinden ana
   makine ACL'si değişebilmesi (FileLocks), commit edilmeyen unmount'un başarılı raporlanması, DISM oturum yenileme,
   UDF çıkarmada yol dışına yazma + sınır dışı okuma, tıklamada yok edilen widget (use-after-free), Enter ile devre
