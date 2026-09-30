@@ -46,7 +46,7 @@ private:
     struct Switch {
         ui::Toggle* toggle = nullptr;
         std::function<bool(const Options&)> get;
-        std::wstring offHint; // shown while the switch is off ("Atla (LabConfig)")
+        std::wstring onHint; // shown while the switch is on ("LabConfig uygulanır")
     };
 
     void buildForm(); // choices come from the open source: rebuilt when it changes
@@ -55,7 +55,7 @@ private:
     ui::SearchBox& addText(Str label, std::optional<Str> hint, float width,
                            std::function<std::wstring(const Options&)> get,
                            std::function<void(Options&, const std::wstring&)> set);
-    void addSwitch(Str label, std::wstring offHint, std::function<bool(const Options&)> get,
+    void addSwitch(Str label, std::wstring onHint, std::function<bool(const Options&)> get,
                    std::function<void(Options&, bool)> set);
     void sync(); // controls, hints and the preview from the options
 

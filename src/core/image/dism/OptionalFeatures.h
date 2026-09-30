@@ -18,10 +18,20 @@ struct OptionalFeature {
     ServicingState state = ServicingState::NotPresent;
     std::uint64_t size = 0;     // install size (capabilities); 0 = unknown
     bool restartRequired = false;
+    // Capability whose package is marked permanence="permanent" in its .mum: DISM refuses to
+    // remove it (0x800F0825), e.g. the Defender for Endpoint client.
+    bool permanent = false;
 
     // Enabled / installed (or about to be): the "on" side of the toggle.
     [[nodiscard]] bool isOn() const noexcept;
 };
+
+// Capability names ("Microsoft.Windows.Sense.Client") a package manifest (.mum text) declares, when
+// the manifest marks its package permanent; empty otherwise.
+[[nodiscard]] std::vector<std::wstring> permanentCapabilitiesIn(std::string_view mum);
+// The permanent capabilities of a mounted image: the manifests of its visible, installed packages
+// (Windows\servicing\Packages). Needs the image's SOFTWARE hive (elevated); empty when unreadable.
+[[nodiscard]] std::vector<std::wstring> readPermanentCapabilities(const std::filesystem::path& mountDir);
 
 // Reads everything in one DISM session; reports progress per item (details are one call each).
 [[nodiscard]] Result<std::vector<OptionalFeature>> readOptionalFeatures(Dism& dism, const std::filesystem::path& mountDir,

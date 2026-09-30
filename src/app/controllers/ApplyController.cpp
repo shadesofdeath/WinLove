@@ -71,6 +71,7 @@ void ApplyController::start() {
     }
     // Payload for NetFx3 / removed features: the setup media's sources\sxs next to the WIM.
     core::ops::ApplyJobOptions options;
+    options.optimizeWim = mounted.imagePath; // no "[DELETED]" leftovers of the commit in the file
     std::error_code ec;
     const auto sxs = mounted.imagePath.parent_path() / L"sxs";
     if (std::filesystem::is_directory(sxs, ec)) {

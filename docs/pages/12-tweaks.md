@@ -50,5 +50,7 @@ ve 8 px içerden alt çizgi tasarım 10 / 16'ya göre düzeltildi.
 ## 7. Bilinçli sapmalar
 - İçerik tasarımdaki örnek 7 satır yerine gerçek katalog (39 ayar); "Cortana ve arama" bölümü "Arama" oldu
   (Windows 11'de Cortana yok), konumun üçüncü seçeneği "Uygulama bazlı" yerine "Yalnız sistem" (HKCU izni kapalı).
-- Tasarımda toggle ipucu durumu anlatıyor ("…izleme kapalı"); bizde ipucu ayarı anlatır, durum toggle'dan okunur.
+- Her satırın yanında durumu yazar (D-032): toggle'da "Açık · Windows varsayılanı" / "Kapalı · değiştirilecek"
+  (+ katalog ipucu), dropdown / radio'da yalnız işaret; değişenler vurgu renginde. Toggle, özelliğin kurulan
+  Windows'taki durumudur (açık = özellik açık kalır) — sayfa açıklaması da bunu söyler.
 - Sayfa içeriği diğer sayfalar gibi x=216'da başlar (tasarım 217).

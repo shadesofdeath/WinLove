@@ -214,3 +214,53 @@ TEST_CASE("ComponentController: system components the image has, the cleanup, an
     CHECK_FALSE(state.systemComponents());
     CHECK(controller.groups().empty());
 }
+
+TEST_CASE("ComponentController: apps Windows protects from a build on are shown, not selectable") {
+    const auto path = scratch(L"locked");
+    AppState state{scratch(L"recent-locked.json"), scratch(L"settings-locked.json")};
+    ComponentController controller(state, shippedCatalog(), Language::Turkish, [](std::function<void()> fn) { fn(); });
+    // The build the rule is read from: the mounted edition of the open source.
+    core::SourceInfo source;
+    source.path = path;
+    core::ImageInfo image;
+    image.index = 1;
+    image.build = 26200;
+    source.install.images.push_back(image);
+    state.setSource(source);
+    state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});
+    state.setAppxList(AppState::AppxList{AppState::AppxList::Status::Ready, L"C:\\m",
+                                         {makeApp(L"Microsoft.WindowsStore", 50), makeApp(L"Microsoft.SecHealthUI", 9),
+                                          makeApp(L"Microsoft.DesktopAppInstaller", 20)},
+                                         {}});
+    auto groups = controller.groups();
+    REQUIRE(groups.size() == 1);
+    const auto& system = groups.front();
+    REQUIRE(system.items.size() == 3);
+    std::size_t locked = 0;
+    for (const auto& item : system.items) {
+        locked += item.locked ? 1 : 0;
+        if (item.locked) {
+            controller.toggle(item);
+        }
+    }
+    CHECK(locked == 2); // Windows Security UI and App Installer (0x80073CFA from 24H2 on)
+    CHECK(state.changes().empty());
+    controller.toggleGroup(system);
+    CHECK(state.changes().size() == 1); // only the Store
+    CHECK(controller.check(system) == ComponentController::Check::On); // everything that can be picked is
+    // Something a preset queued can still be taken out.
+    const auto& lockedItem = *std::ranges::find(system.items, true, &ComponentController::Item::locked);
+    state.queue(ComponentController::operationFor(lockedItem));
+    CHECK(controller.queued(lockedItem));
+    controller.toggle(lockedItem);
+    CHECK_FALSE(controller.queued(lockedItem));
+
+    // An older Windows: nothing is locked.
+    source.install.images.front().build = 22631;
+    state.setSource(source);
+    state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});
+    state.setAppxList(AppState::AppxList{AppState::AppxList::Status::Ready, L"C:\\m", {makeApp(L"Microsoft.SecHealthUI", 9)}, {}});
+    groups = controller.groups();
+    REQUIRE(groups.size() == 1);
+    CHECK_FALSE(groups.front().items.front().locked);
+}

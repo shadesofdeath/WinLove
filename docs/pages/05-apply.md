@@ -35,14 +35,23 @@ gerçek ölçümlerle güncellenecek).
 
 ## 5. Tamamlandı
 Sonuç InfoBar'ı (başarı / atlananlar / commit hatası / durduruldu), 6 sayaç (Önce, Sonra, Kazanç, Süre, Uyarı,
-Hata), grup başına sonuç tablosu (ok / toplam, atlanan, süre). Logu kaydet: çalışma başından beri log satırları.
+Hata), grup başına sonuç tablosu (ok / toplam, atlanan, süre) ve altında **atlanan her adım için bir satır: adı +
+nedeni** (bilinen kodlar Türkçe / İngilizce: 0x80073CFA korumalı uygulama, 0x800F0825 kalıcı paket, 0x800F0806
+bekleyen işlem; diğerlerinde DISM'in metni + kod). Logu kaydet: çalışma başından beri log satırları.
 Presete kaydet: uygulanan ChangeSet (`.wlpreset`, ChangeSet JSON).
+
+Kaydet ve çöz adımının sonunda WIM, commit'in bıraktığı başvurusuz akışlar olmadan yeniden yazılır
+(`core::optimizeWim`; 7-Zip'te görünen `[DELETED]` klasörü kalmaz; 6,8 GB'lık imajda 17 sn). Başarısız olursa imaj
+yine kaydedilmiştir, logda uyarı kalır.
+
+Durum çubuğundaki "Uygula · n" düğmesi başka sayfalarda Uygula sayfasını açar; Uygula sayfasının özetindeyken
+başlıktaki düğmeyle aynı işi yapar (çalıştırmayı başlatır).
 
 ## 6. Bilinen sınırlar
 - "Kazanç" imajın açılmış boyutudur (XML TOTALBYTES); install.wim dosyasının kendisi export ile küçülür (P06).
-- ResetBase / StartComponentCleanup DISM API'de yok; P06'da ele alınacak.
-- Yalnızca özellik/capability işlemleri gerçek; bileşen, sürücü, güncelleme, kayıt defteri, servis Applier'da
-  `Unsupported` (kendi sayfalarıyla gelecek) — kuyruğa şu an bunları ekleyen sayfa yok.
+- Bileşen deposu temizliği P07'de (kuyruk işlemi `CleanupImage`, güncellemelerden sonra).
+- Kapatılmak istenen özellik aynı çalıştırmada paketiyle birlikte kaldırıldıysa (0x800F080C) adım başarılı sayılır.
+- Atlanan adımların adı, imaj çözüldükten sonra DISM adıyla görünebilir (özellik listesi imajla birlikte gider).
 
 ## 7. Kabul (kullanıcı testi)
 - [ ] Özellikler'de birkaç değişiklik → Uygula sayfası özet: sayaçlar, süre, adımlar doğru.

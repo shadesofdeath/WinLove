@@ -146,6 +146,15 @@ std::vector<ComponentController::Group> ComponentController::groups() const {
         return {};
     }
     const int other = m_catalog.groupIndex("other");
+    // The mounted edition's build: some apps are protected from a certain Windows build on.
+    int build = 0;
+    if (const auto& mounted = m_state.mounted(); mounted && m_state.source()) {
+        for (const auto& image : m_state.source()->install.images) {
+            if (image.index == mounted->index) {
+                build = image.build;
+            }
+        }
+    }
     for (std::size_t i = 0; i < list->items.size(); ++i) {
         const auto& appx = list->items[i];
         Item item;
@@ -158,6 +167,7 @@ std::vector<ComponentController::Group> ComponentController::groups() const {
         item.identity = appx.package.displayName;
         item.notes = item.entry ? item.entry->notes(m_language) : std::wstring();
         item.contents = {appx.package.packageName};
+        item.locked = item.entry && item.entry->lockedSince > 0 && build >= item.entry->lockedSince;
         const int g = item.entry ? m_catalog.groupIndex(item.entry->group) : other;
         auto& group = groups[static_cast<std::size_t>(g < 0 ? other : g)];
         group.size += item.size;
@@ -238,15 +248,21 @@ bool ComponentController::queued(const Item& item) const {
 }
 
 ComponentController::Check ComponentController::check(const Group& group) const {
+    // Locked items cannot be queued: "all" means all that can be.
     std::size_t n = 0;
+    std::size_t selectable = 0;
     for (const auto& item : group.items) {
         n += queued(item) ? 1 : 0;
+        selectable += item.locked ? 0 : 1;
     }
-    return n == 0 ? Check::Off : n == group.items.size() ? Check::On : Check::Partial;
+    return n == 0 ? Check::Off : n >= selectable ? Check::On : Check::Partial;
 }
 
 void ComponentController::toggle(const Item& item) {
-    if (!m_state.unqueue(kindOf(item), item.packageName)) {
+    if (m_state.unqueue(kindOf(item), item.packageName)) {
+        return; // out of the queue is always allowed (a preset may have put a locked app there)
+    }
+    if (!item.locked) {
         m_state.queue(operationFor(item));
     }
 }
@@ -256,7 +272,7 @@ void ComponentController::toggleGroup(const Group& group) {
     for (const auto& item : group.items) {
         if (all) {
             m_state.unqueue(kindOf(item), item.packageName);
-        } else if (!queued(item)) {
+        } else if (!item.locked && !queued(item)) {
             m_state.queue(operationFor(item));
         }
     }

@@ -11,6 +11,9 @@ Bağlı imajdan kaldırılacak bileşenleri seçmek; seçimler kuyruğa girer (P
 - **Önceden yüklü (provisioned) AppX uygulamaları** — `DismGetProvisionedAppxPackages` /
   `DismRemoveProvisionedAppxPackage` (desteklenen, güvenilir yol). Boyut: `Program Files\WindowsApps\<Ad>_*`
   klasörleri, yedekleme semantiğiyle okunur (ACL yöneticiye kapalı; sahiplik değiştirilmez).
+- **Windows'un kaldırtmadığı uygulamalar**: `Microsoft.SecHealthUI` ve `Microsoft.DesktopAppInstaller` 24H2+
+  imajlarda DISM tarafından reddediliyor (0x80073CFA, gerçek çalıştırmada görüldü) → katalogda `lockedSince: 26100`;
+  listede kilit simgesi + "Kaldırılamaz", kutusu pasif, grup seçimi bunları atlar.
 - **Sistem bileşenleri** (`resources/catalog/components.json`, yalnız imajda bulunanlar listelenir):
 
   | Bileşen | Ne silinir | Risk |

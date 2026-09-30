@@ -83,6 +83,9 @@ bool FeatureController::targetOn(const OptionalFeature& item) const {
 }
 
 bool FeatureController::canToggle(const OptionalFeature& item) const {
+    if (item.permanent) {
+        return false; // DISM would refuse (0x800F0825): do not let it into the queue
+    }
     return item.kind == OptionalFeature::Kind::Feature || item.isOn();
 }
 
@@ -93,6 +96,9 @@ FeatureController::Status FeatureController::status(const OptionalFeature& item)
         case OpKind::DisableFeature: return Status::WillDisable;
         default: return Status::WillRemove;
         }
+    }
+    if (item.permanent && item.isOn()) {
+        return Status::Permanent;
     }
     switch (item.state) {
     case core::ServicingState::Installed:

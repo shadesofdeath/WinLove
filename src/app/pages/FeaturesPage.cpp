@@ -112,6 +112,7 @@ Str FeaturesPage::statusName(Status status) {
     case Status::WillEnable: return Str::FeaturesWillEnable;
     case Status::WillDisable: return Str::FeaturesWillDisable;
     case Status::WillRemove: return Str::FeaturesWillRemove;
+    case Status::Permanent: return Str::FeaturesPermanent;
     }
     return Str::FeaturesDisabled;
 }
@@ -246,6 +247,7 @@ void FeaturesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
         case Status::WillEnable: icon = ui::icons::Icon::QueueClock; ink = Color::AccentBase; break;
         case Status::WillDisable: icon = ui::icons::Icon::QueueClock; ink = Color::AccentBase; break;
         case Status::WillRemove: icon = ui::icons::Icon::QueueClock; ink = Color::AccentBase; break;
+        case Status::Permanent: icon = ui::icons::Icon::Lock; ink = Color::TextTertiary; break;
         }
         canvas.drawIcon(icon, {rect.x, rect.y + 4}, ink);
         const float x = rect.x + ui::tokens::size::icon + 6;

@@ -581,6 +581,23 @@ int cmdComponent(const std::wstring& dir, const std::wstring& recipeFile, bool r
     return 0;
 }
 
+// Rewrites a WIM without the streams a commit left unreferenced ("[DELETED]" in 7-Zip).
+int cmdOptimize(const std::wstring& wim) {
+    std::error_code ec;
+    const auto before = std::filesystem::file_size(wim, ec);
+    const core::TaskContext task{g_cancel, [](double fraction, std::wstring_view) {
+                                     print(std::format(L"\r  {:5.1f}%", fraction * 100));
+                                 }};
+    const auto done = core::optimizeWim(wim, task);
+    print(L"\n");
+    if (!done) {
+        return reportError(done.error());
+    }
+    const auto after = std::filesystem::file_size(wim, ec);
+    print(std::format(L"rewritten: {} -> {} bytes\n", before, after));
+    return 0;
+}
+
 int cmdStoreCleanup(const std::wstring& dir, bool resetBase) {
     auto d = dism();
     if (!d) {
@@ -798,6 +815,7 @@ void printUsage() {
           L"  wlcli extract-all <iso> <dir>             Copy the whole ISO into a folder (resumable)\n"
           L"  wlcli export <wim|esd> <index> <dst.wim> [--compress=max|fast|none|recovery]\n"
           L"  wlcli delete-index <wim> <index>\n"
+          L"  wlcli optimize <wim>                      Rewrite a WIM without what commits left behind\n"
           L"  wlcli version | help\n"
           L"\n"
           L"Options: --json (machine-readable), --verbose (log to stdout)\n");
@@ -885,6 +903,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"export" && args.size() == 4) {
         return cmdExport(args[1], args[2], args[3], compress);
+    }
+    if (command == L"optimize" && args.size() == 2) {
+        return cmdOptimize(args[1]);
     }
     if (command == L"delete-index" && args.size() == 3) {
         return cmdDeleteIndex(args[1], args[2]);

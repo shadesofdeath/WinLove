@@ -264,13 +264,13 @@ std::vector<PresetController::Item> PresetController::items(const Preset& preset
                                                                                 : std::wstring());
         flag(Str::UnattendedAcceptEula, o.acceptEula, Str::PresetsOn);
         flag(Str::UnattendedSkipPrivacy, o.skipPrivacy, Str::PresetsOn);
-        flag(Str::UnattendedMsAccount, o.bypassNro, Str::PresetsOff);
+        flag(Str::UnattendedMsAccount, o.bypassNro, Str::PresetsOn);
         flag(Str::UnattendedSkipOnline, o.skipOnlineAccount, Str::PresetsOn);
         flag(Str::UnattendedProductKey, !o.productKey.empty(), Str::PresetsValueSet);
         text(Str::UnattendedEdition, o.imageIndex > 0 ? std::to_wstring(o.imageIndex) : std::wstring());
-        flag(Str::UnattendedTpm, o.bypassTpm, Str::PresetsValueSkip);
-        flag(Str::UnattendedSecureBoot, o.bypassSecureBoot, Str::PresetsValueSkip);
-        flag(Str::UnattendedRam, o.bypassRam, Str::PresetsValueSkip);
+        flag(Str::UnattendedTpm, o.bypassTpm, Str::PresetsOn);
+        flag(Str::UnattendedSecureBoot, o.bypassSecureBoot, Str::PresetsOn);
+        flag(Str::UnattendedRam, o.bypassRam, Str::PresetsOn);
         flag(Str::UnattendedIncludeInIso, preset.unattend->includeInIso, Str::PresetsOn);
     }
     return result;

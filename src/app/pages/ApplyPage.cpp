@@ -133,6 +133,35 @@ std::vector<ApplyPage::Row> ApplyPage::rows() const {
     return result;
 }
 
+std::vector<ApplyPage::Row> ApplyPage::doneRows() const {
+    std::vector<Row> result = rows();
+    const auto& run = m_state.applyRun();
+    if (run && run->result) {
+        const auto& results = run->result->report.results;
+        for (std::size_t i = 0; i < results.size(); ++i) {
+            if (!results[i].outcome) {
+                result.push_back({std::nullopt, static_cast<int>(i)});
+            }
+        }
+    }
+    return result;
+}
+
+std::wstring ApplyPage::skipReason(const Error& error) const {
+    switch (static_cast<std::uint32_t>(error.hresult)) {
+    case 0x80073CFA: return m_strings.get(Str::ApplyReasonAppxProtected);
+    case 0x800F0825: return m_strings.get(Str::ApplyReasonPermanentPackage);
+    case 0x800F0806: return m_strings.get(Str::ApplyReasonPending);
+    default: break;
+    }
+    if (error.code == ErrorCode::Cancelled) {
+        return m_strings.get(Str::ApplyReasonCancelled);
+    }
+    // Whatever DISM said, with the code someone can search for.
+    return error.hresult != 0 ? std::format(L"{} (0x{:08X})", error.message, static_cast<std::uint32_t>(error.hresult))
+                              : error.message;
+}
+
 std::wstring ApplyPage::groupName(const Row& row) const {
     if (!row.group) {
         return m_strings.get(Str::ApplyOpsCommitUnmount);
@@ -274,7 +303,7 @@ void ApplyPage::buildSummary() {
             layout();
         };
     }
-    double seconds = core::ops::kCommitSeconds;
+    double seconds = core::ops::kCommitSeconds + core::ops::kOptimizeSeconds;
     for (const auto& g : m_groups) {
         seconds += g.estimateSeconds;
     }
@@ -378,7 +407,7 @@ void ApplyPage::buildDone() {
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState) {
         paintDoneCell(c, row, column, rect);
     };
-    m_table->setRowCount(static_cast<int>(rows().size()));
+    m_table->setRowCount(static_cast<int>(doneRows().size()));
 }
 
 void ApplyPage::poll() {
@@ -406,7 +435,7 @@ void ApplyPage::paintSummaryCell(ui::Canvas& canvas, int row, int column, RectF 
     }
     const Row& r = all[static_cast<std::size_t>(row)];
     const std::size_t steps = r.group ? r.group->count : 1;
-    const double seconds = r.group ? r.group->estimateSeconds : core::ops::kCommitSeconds;
+    const double seconds = r.group ? r.group->estimateSeconds : core::ops::kCommitSeconds + core::ops::kOptimizeSeconds;
     switch (column) {
     case 0: canvas.drawText(std::to_wstring(row + 1), rect, TypeStyle::Body, Color::TextPrimary); break;
     case 1: {
@@ -428,11 +457,43 @@ void ApplyPage::paintSummaryCell(ui::Canvas& canvas, int row, int column, RectF 
 
 void ApplyPage::paintDoneCell(ui::Canvas& canvas, int row, int column, RectF rect) {
     const auto& run = *m_state.applyRun();
-    const auto all = rows();
+    const auto all = doneRows();
     if (row < 0 || row >= static_cast<int>(all.size())) {
         return;
     }
     const Row& r = all[static_cast<std::size_t>(row)];
+    if (r.failedStep >= 0) {
+        // A skipped step: its name, then why, in the wide column.
+        const auto& step = run.result->report.results[static_cast<std::size_t>(r.failedStep)];
+        switch (column) {
+        case 0: canvas.drawIcon(ui::icons::Icon::WarningTriangle, {rect.x, rect.y + 4}, Color::StatusWarning); break;
+        case 1: {
+            const std::wstring name = displayName(m_state, step.step.operation);
+            const float width = std::min(std::ceil(canvas.text().measure(name, TypeStyle::Body)), rect.width);
+            canvas.drawText(name, {rect.x, rect.y, width, rect.height}, TypeStyle::Body, Color::TextPrimary);
+            const float x = rect.x + width + 12;
+            if (x < rect.right()) {
+                canvas.drawText(skipReason(step.outcome.error()), {x, rect.y, rect.right() - x, rect.height},
+                                TypeStyle::Caption, Color::TextSecondary);
+            }
+            break;
+        }
+        case 2:
+            canvas.drawText(m_strings.get(Str::ApplySkippedStep), {rect.x + ui::tokens::size::icon + 6, rect.y,
+                                                                    rect.width - ui::tokens::size::icon - 6, rect.height},
+                            TypeStyle::Caption, Color::StatusWarning);
+            break;
+        case 3:
+            if (static_cast<std::size_t>(r.failedStep) < run.result->stepTimes.size()) {
+                const double s = static_cast<double>(run.result->stepTimes[static_cast<std::size_t>(r.failedStep)].count()) / 1000.0;
+                canvas.drawText(formatDuration(s, m_language), rect, TypeStyle::Mono, Color::TextTertiary,
+                                ui::TextAlign::Trailing);
+            }
+            break;
+        default: break;
+        }
+        return;
+    }
     std::size_t ok = 0;
     std::size_t failed = 0;
     std::size_t total = 1;

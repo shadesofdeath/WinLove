@@ -467,6 +467,12 @@ int App::renderOffscreen() {
                     result.report.results.push_back({step, {}});
                     result.stepTimes.push_back(std::chrono::milliseconds(14'000));
                 }
+                if (m_options.demoApply == L"skipped" && !result.report.results.empty()) {
+                    // "--demo-apply=skipped": the first step refused as a permanent package.
+                    result.report.results.front().outcome = fail(ErrorCode::DismFailure, L"DISM error",
+                                                                 L"remove capability", static_cast<std::int32_t>(0x800F0825));
+                    run.stepState.front() = 3;
+                }
                 result.committed = true;
                 result.commitTime = std::chrono::milliseconds(81'000);
                 result.elapsed = std::chrono::milliseconds(112'000);

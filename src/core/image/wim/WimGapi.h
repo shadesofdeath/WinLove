@@ -15,6 +15,13 @@ namespace wl::core {
                                        const std::filesystem::path& destination, WimCompression compression,
                                        const TaskContext& task);
 
+// Rewrites `wim` without the streams no image refers to any more. A commit only appends: the old
+// versions of changed files (the registry hives, above all) stay in the file, and 7-Zip lists them
+// under "[DELETED]". Every image is exported in order, with the file's own compression, into a new
+// file that replaces the old one once it is complete. Not for ESD / split / bootable WIMs (those
+// are returned untouched).
+[[nodiscard]] Result<void> optimizeWim(const std::filesystem::path& wim, const TaskContext& task);
+
 // Removes edition `index` from a writable WIM (not an ESD, not a file inside an ISO).
 [[nodiscard]] Result<void> deleteImage(const std::filesystem::path& wim, int index);
 

@@ -15,7 +15,8 @@ class FeatureController {
 public:
     // What the "Durum" column shows.
     enum class Status : std::uint8_t {
-        Enabled, Disabled, Removed, Installed, Pending, WillEnable, WillDisable, WillRemove
+        Enabled, Disabled, Removed, Installed, Pending, WillEnable, WillDisable, WillRemove,
+        Permanent // an installed capability Windows does not let anyone remove
     };
 
     FeatureController(AppState& state, std::function<void(std::function<void()>)> postToUi);
