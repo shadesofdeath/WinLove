@@ -241,6 +241,25 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-039 — OOBE'de kendiliğinden kurulanlar: OneDrive (Windows 10) ve yeni Outlook (2026-09-30)
+Bağlam: Kullanıcının Windows 10 22H2 kurulumunda, internet varken OneDrive ve yeni Outlook yine kuruldu. İmaj
+incelendi (yönetici olmadan, 7-Zip + hive okuma): OneDrive bileşeni Windows 10'da hiç sunulmuyordu (kurulum dosyası
+`SysWOW64`'te, tarif yalnız `System32`'ye bakıyordu); Outlook imajda uygulama olarak yok, bir güncelleme
+zamanlayıcısı kaydıyla OOBE'de indiriliyor.
+Karar:
+- `onedrive` tarifine `SysWOW64\OneDriveSetup.exe` ve varsayılan profildeki `OneDrive.lnk` eklendi (olmayan yol hata değil).
+- Yeni bileşen `outlook-install`. Windows 11 ve 10 farklı yoldan kurduğu için tek tarif ikisini de kapatır:
+  `UScheduler_Oobe\OutlookUpdate` silinir + `UScheduler\OutlookUpdate\workCompleted = 1` (Windows 11);
+  `ExpeditedAppRegistrations\MS_Outlook` klasörü silinir + Microsoft'un belgelediği `BlockedOobeUpdaters = ["MS_Outlook"]`
+  + `Deprovisioned\<aile>` (kayıt dosyasında `HonorDeprovisioning: true`) (Windows 10).
+- Katalogda yeni alan **`always`**: bileşen, diskte yolu olmasa da her imajda sunulur (Windows 11'de bulunacak dosya
+  yok; ayrıca ileride gelecek bir güncellemenin kaydına karşı da önleyici). Boyutu 0 görünür; inspector'da kayıt
+  defteri değişiklikleri de listelenir.
+- İmajdaki "Outlook (yeni)" uygulaması (Windows 11) ayrı bir `RemoveAppx` seçimidir; not kullanıcıyı oraya yönlendirir.
+Kanıt durumu: tarif yürütücüsü ve kullandığı kayıt işlemleri gerçek imajda kanıtlı; **bu iki tarifin OOBE'deki etkisi
+henüz görülmedi** (kullanıcının VM kurulumu gösterecek). Windows 10'da OneDrive CBS paketini DISM'in kaldırıp
+kaldırmadığı da görülmedi (kaldırmazsa dosya + Run kaydı yine silinir).
+
 ## D-038 — DISM'in yapmadığını kendi kodumuzla: kilitli uygulamalar ve boot.wim (2026-09-30; ikisi de gerçek imajda kanıtlandı)
 Bağlam: `Microsoft.SecHealthUI` ve `Microsoft.DesktopAppInstaller` her Uygula'da `0x80073CFA` ile kalıyordu; gereksinim
 atlama yalnız yanıt dosyasına bağlıydı (dosya ISO'ya girmeyince Setup durdu); Setup'ın kendi imajına sürücü eklenemiyordu.

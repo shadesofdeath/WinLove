@@ -109,7 +109,7 @@ ComponentCatalog shippedComponents() {
 TEST_CASE("components catalog: the shipped file parses, every recipe is one the engine accepts") {
     const auto catalog = shippedComponents();
     REQUIRE(catalog.groups().size() == 2);
-    CHECK(catalog.components().size() == 6); // nothing skipped
+    CHECK(catalog.components().size() == 7); // nothing skipped
     for (const auto& entry : catalog.components()) {
         CAPTURE(entry.id);
         CHECK_FALSE(entry.notes.tr.empty());
@@ -128,6 +128,27 @@ TEST_CASE("components catalog: the shipped file parses, every recipe is one the 
     CHECK(onedrive->recipe.packages.size() == 2);
     CHECK(onedrive->recipe.registry.front().kind == core::RegistryWrite::Kind::DeleteValue);
     CHECK(onedrive->recipe.registry.front().key == L"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+    // Windows 10 keeps the setup file in SysWOW64: without that path the component was never offered there.
+    CHECK(std::ranges::find(onedrive->recipe.paths, L"Windows\\SysWOW64\\OneDriveSetup.exe") != onedrive->recipe.paths.end());
+    CHECK_FALSE(onedrive->always);
+
+    // The new Outlook installs itself during OOBE: Windows 11 through a scheduler key, Windows 10
+    // through a registration file that honours "deprovisioned" and Microsoft's documented block value.
+    const auto* outlook = catalog.find("outlook-install");
+    REQUIRE(outlook);
+    CHECK(outlook->always);
+    REQUIRE(outlook->recipe.registry.size() == 4);
+    CHECK(outlook->recipe.registry[0].kind == core::RegistryWrite::Kind::DeleteKey);
+    CHECK(outlook->recipe.registry[0].key.ends_with(L"\\UScheduler_Oobe\\OutlookUpdate"));
+    const auto& block = outlook->recipe.registry[1];
+    CHECK(block.kind == core::RegistryWrite::Kind::Set);
+    CHECK(block.name == L"BlockedOobeUpdaters");
+    CHECK(block.type == REG_SZ);
+    REQUIRE(block.data.size() >= 2);
+    CHECK(std::wstring(reinterpret_cast<const wchar_t*>(block.data.data()), block.data.size() / 2 - 1) ==
+          LR"(["MS_Outlook"])");
+    CHECK(outlook->recipe.registry[3].kind == core::RegistryWrite::Kind::CreateKey);
+    CHECK(outlook->recipe.registry[3].key.ends_with(L"\\Deprovisioned\\Microsoft.OutlookForWindows_8wekyb3d8bbwe"));
     const auto* update = catalog.find("edge-update");
     REQUIRE(update);
     CHECK(update->recipe.registry.front().kind == core::RegistryWrite::Kind::DeleteKey);
@@ -164,13 +185,17 @@ TEST_CASE("ComponentController: system components the image has, the cleanup, an
     REQUIRE(groups.size() == 3); // Sistem Bileşenleri, Temizlik, then the apps (xbox)
     const auto& system = groups[0];
     CHECK(system.name == L"Sistem Bileşenleri");
-    REQUIRE(system.items.size() == 2); // what is present, in catalog order
+    REQUIRE(system.items.size() == 3); // what is present, in catalog order, and what is always on offer
     CHECK(system.items[0].name == L"Microsoft Edge");
     CHECK(system.items[0].kind == ComponentController::Item::Kind::System);
     CHECK(system.items[0].size == 800);
     CHECK(system.size == 890);
-    CHECK(system.items[1].contents.size() == 3); // two packages and the setup file
+    CHECK(system.items[1].contents.size() == 5); // two packages, the setup file of either Windows, the shortcut
     CHECK_FALSE(system.items[1].notes.empty());
+    // Nothing of it on disk in this image, offered all the same; what it changes is listed.
+    CHECK(system.items[2].system->id == "outlook-install");
+    CHECK(system.items[2].size == 0);
+    CHECK(system.items[2].contents.size() == 5); // the registration folder and four registry changes
     const auto& cleanup = groups[1].items.front();
     CHECK(cleanup.kind == ComponentController::Item::Kind::Cleanup);
     CHECK(cleanup.size == 0);
@@ -188,7 +213,8 @@ TEST_CASE("ComponentController: system components the image has, the cleanup, an
     REQUIRE(recipe);
     CHECK(recipe->title == L"OneDrive kurulumu");
     CHECK(recipe->packages.size() == 2);
-    CHECK(recipe->paths == std::vector<std::wstring>{L"Windows\\System32\\OneDriveSetup.exe"});
+    CHECK(recipe->paths.size() == 3);
+    CHECK(recipe->paths.front() == L"Windows\\System32\\OneDriveSetup.exe");
     CHECK(ApplyPage::displayName(state, *op) == L"OneDrive kurulumu");
     CHECK(controller.queued(system.items[1]));
     CHECK_FALSE(controller.queued(system.items[0]));

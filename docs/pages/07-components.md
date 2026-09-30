@@ -23,7 +23,8 @@ Bağlı imajdan kaldırılacak bileşenleri seçmek; seçimler kuyruğa girer (P
   | Microsoft Edge | `Program Files (x86)\Microsoft\Edge` + EdgeUpdate istemci kaydı, kaldırma girdisi, Active Setup | Orta |
   | Edge WebView2 Çalışma Zamanı | `…\Microsoft\EdgeWebView` + istemci kaydı, kaldırma girdisi | Yüksek |
   | Edge Güncelleyici ve ortak dosyalar | `…\EdgeUpdate`, `…\EdgeCore` + `EdgeUpdate` anahtarı, `edgeupdate` / `edgeupdatem` servisleri | Yüksek |
-  | OneDrive kurulumu | gizli CBS paketi `Microsoft-Windows-OneDrive-Setup-(WOW64-)Package` + `System32\OneDriveSetup.exe` + varsayılan profilde `Run\OneDriveSetup` | Düşük |
+  | OneDrive kurulumu | gizli CBS paketi `Microsoft-Windows-OneDrive-Setup-(WOW64-)Package` + `System32\OneDriveSetup.exe` (Windows 10: `SysWOW64\OneDriveSetup.exe` + varsayılan profilin Başlat menüsündeki `OneDrive.lnk`) + varsayılan profilde `Run\OneDriveSetup` | Düşük |
+  | Yeni Outlook'un kendiliğinden kurulması (**her imajda sunulur**, D-039) | `UScheduler_Oobe\OutlookUpdate` anahtarı (Windows 11) + `ProgramData\USOPrivate\ExpeditedAppRegistrations\MS_Outlook` (Windows 10); `BlockedOobeUpdaters = ["MS_Outlook"]`, `UScheduler\OutlookUpdate\workCompleted = 1`, `Deprovisioned\Microsoft.OutlookForWindows_8wekyb3d8bbwe` | Düşük |
   | Windows Kurtarma Ortamı | `System32\Recovery\Winre.wim` | Yüksek |
 
   Yol ve adlar Windows 11 25H2 (26200.8037) imajında doğrulandı. Gizli paket önce kayıt defterinde açılır
@@ -80,6 +81,8 @@ Bağlı imajdan kaldırılacak bileşenleri seçmek; seçimler kuyruğa girer (P
       Temizlik; altında uygulama grupları, Türkçe adlar, boyutlar.
 - [ ] Grup kutusu → hepsi; tekil kutu → kısmi; rozet ve "Uygula · n" güncel.
 - [ ] Yüksek riskli seçimde uyarı; Uygula'da onay dialogunda adıyla listelenir.
+- [ ] Windows 10 imajında "OneDrive kurulumu" listeleniyor; o ve "Yeni Outlook'un kendiliğinden kurulması" seçili
+      Uygula → internetli VM kurulumunda (OOBE sonrası) OneDrive de Outlook da kurulmuyor.
 - [ ] Uygula → log'da `[cbs] … package(s) unlocked`, `removed Microsoft-Windows-OneDrive-Setup-Package…`; imajda
       `OneDriveSetup.exe` ve Edge klasörü yok.
 - [ ] Temizlik seçiliyse "Bileşen deposunu temizle" aşaması güncellemelerden sonra çalışır; bir toplu güncelleme

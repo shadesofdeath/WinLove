@@ -57,6 +57,7 @@ Result<ComponentCatalog> ComponentCatalog::parse(std::string_view json) {
             entry.notes = {wide(c, "notes_tr"), wide(c, "notes_en")};
             entry.risk = riskFrom(c.value("risk", std::string{"medium"}));
             entry.resetBase = c.value("resetBase", true);
+            entry.always = c.value("always", false);
             std::wstring why;
             if (entry.id.empty() || entry.name.tr.empty() || entry.name.en.empty()) {
                 why = L"needs an id and both names";

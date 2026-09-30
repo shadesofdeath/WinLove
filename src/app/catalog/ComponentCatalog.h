@@ -27,6 +27,9 @@ struct ComponentCatalogEntry {
     core::ops::Risk risk = core::ops::Risk::Medium;
     core::ComponentRecipe recipe; // Remove (title left empty: the queue operation gets the shown name)
     bool resetBase = true;        // Cleanup
+    // Remove: offered for every image, present or not — a preventive change (the new Outlook's
+    // automatic install leaves nothing on disk to find on Windows 11).
+    bool always = false;
 };
 
 class ComponentCatalog {
