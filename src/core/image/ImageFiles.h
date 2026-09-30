@@ -27,6 +27,11 @@ inline constexpr std::size_t kImageFileLimit = 1u << 20; // 1 MiB: these are con
 [[nodiscard]] Result<void> writeImageFile(const std::filesystem::path& mountDir, std::wstring_view relative,
                                           std::string_view content);
 
+// Is <mountDir>\<relative> there with exactly `content` (what writeImageFile would leave)?
+// Missing or different → false; errors only for a path the rules above refuse.
+[[nodiscard]] Result<bool> imageFileHas(const std::filesystem::path& mountDir, std::wstring_view relative,
+                                        std::string_view content);
+
 // A file of this PC copied into the image (a CopyFile operation: target = the path in the image,
 // value = the source here) — the default wallpaper, the lock screen picture. Same places and
 // rules as writeImageFile; the source must be a regular file of at most kImageCopyLimit bytes.

@@ -171,7 +171,7 @@ RegistryPage::RegistryPage(AppState& state, RegistryController& controller, cons
 
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Mount || change == AppState::Change::Queue ||
-            change == AppState::Change::Registry) {
+            change == AppState::Change::Registry || change == AppState::Change::ImageValues) {
             refresh();
         }
     });
@@ -265,8 +265,10 @@ void RegistryPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
     const std::vector<core::RegistryWrite>* writes = nullptr;
     auto kind = core::ops::OpKind::SetRegistryValue;
     bool firstLogon = false;
+    std::optional<bool> checked; // tweaks: queue + image (D-045); imports: the queue
     std::wstring name;
     std::wstring sub;
+    auto subColor = Color::TextTertiary;
     if (isCustom()) {
         const auto& import = m_state.regImports()[index];
         writes = &import.writes;
@@ -284,10 +286,20 @@ void RegistryPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
         name = tweak.name(m_language);
         kind = RegistryController::kindOf(tweak);
         firstLogon = tweak.firstLogon;
+        checked = m_controller.checked(tweak);
+        if (m_controller.inImage(tweak)) {
+            // The image has it: say so, and whether Uygula takes it back.
+            sub = m_strings.get(*checked ? Str::RegistryInImage : Str::RegistryRevert);
+            subColor = *checked ? Color::TextTertiary : Color::AccentBase;
+            if (*checked && !m_controller.canUncheck(tweak)) {
+                sub += L" · " + m_strings.get(Str::RegistryNoRevert);
+            }
+        }
     }
     switch (column) {
     case kTweak: {
-        const auto state = m_controller.checked(*writes, kind) ? ui::CheckState::On : ui::CheckState::Off;
+        const bool on = checked ? *checked : m_controller.checked(*writes, kind);
+        const auto state = on ? ui::CheckState::On : ui::CheckState::Off;
         ui::Checkbox::paintBox(canvas, {rect.x, rect.y + (rect.height - ui::Checkbox::kBox) / 2}, state,
                                cell.hoveredCell);
         const float x = rect.x + ui::Checkbox::kBox + 8;
@@ -298,7 +310,7 @@ void RegistryPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
         if (!sub.empty()) {
             const float sx = x + nameW + 8;
             canvas.drawText(sub, {sx, rect.y, std::max(rect.right() - sx, 0.0f), rect.height}, TypeStyle::Caption,
-                            Color::TextTertiary);
+                            subColor);
         }
         break;
     }

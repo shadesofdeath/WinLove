@@ -139,6 +139,8 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_presets = std::make_unique<PresetController>(m_state, m_imageSettings->catalog(), m_strings, m_language,
                                                    PresetController::defaultFolder());
     m_preload = std::make_unique<PreloadController>(m_state, m_services.postToUi);
+    m_imageValues = std::make_unique<ImageValuesController>(
+        m_state, ImageValueProbes::from(m_registry->catalog(), m_imageSettings->catalog()), m_services.postToUi);
     m_palette = std::make_unique<PaletteIndex>(PaletteIndex::Sources{
         m_state, m_strings, m_language, *m_imageSettings, *m_components, *m_features, *m_serviceCtl,
         [this](PaletteCommand command) { return paletteCommandAvailable(command); },
@@ -180,7 +182,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         [this](Str title) { showToast(ui::InfoKind::Warning, m_strings.get(title), L""); },
         [this](std::wstring args) { showAdminRequired(std::move(args)); },
         [this](std::filesystem::path source, MountedImage mounted) { restoreMount(source, std::move(mounted)); },
-        [this] { m_preload->start(); },
+        [this] { startPreload(); },
         [this](const core::WimVerifyReport& report, std::wstring file) { onImageVerified(report, file); },
     });
 
@@ -1365,7 +1367,7 @@ void Shell::restoreMount(const std::filesystem::path& source, MountedImage mount
         const std::wstring edition = mounted.edition;
         m_state.setMounted(std::move(mounted));
         showToast(ui::InfoKind::Info, m_strings.format(Str::ImagesMountRestored, {{L"edition", edition}}), L"");
-        m_preload->start();
+        startPreload();
         return;
     }
     openSource(source, [this, mounted = std::move(mounted)]() mutable {
@@ -1382,8 +1384,13 @@ void Shell::restoreMount(const std::filesystem::path& source, MountedImage mount
         m_state.setMounted(std::move(mounted));
         showToast(ui::InfoKind::Info, m_strings.format(Str::ImagesMountRestored, {{L"edition", edition}}),
                   m_state.mounted()->imagePath.wstring());
-        m_preload->start();
+        startPreload();
     });
+}
+
+void Shell::startPreload() {
+    m_imageValues->load(); // queued first on the engine thread: ~0.4 s, the lists take longer
+    m_preload->start();
 }
 
 void Shell::pickSourceFile() {

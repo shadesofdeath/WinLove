@@ -415,7 +415,10 @@
     "imported": "{n} kayıt defteri değeri kuyruğa eklendi",
     "importFailed": ".reg dosyası okunamadı",
     "filter": "Kayıt dosyaları",
-    "firstLogon": "İlk oturumda"
+    "firstLogon": "İlk oturumda",
+    "inImage": "imajda",
+    "revert": "imajdan geri alınacak",
+    "noRevert": "geri alınamaz"
   },
   "services": {
     "title": "Servisler",
@@ -456,7 +459,9 @@
     "noMountTitle": "Bağlı imaj yok",
     "noMountBody": "Ayarları değiştirmek için İmajlar sayfasından bir sürüm bağla.",
     "recommendedApplied": "{n} ayar önerilen değere alındı",
-    "recommendedNone": "Önerilen ayarların hepsi zaten seçili"
+    "recommendedNone": "Önerilen ayarların hepsi zaten seçili",
+    "inImage": "imajda",
+    "noRevert": "burada geri alınamaz"
   },
   "unattended": {
     "title": "Katılımsız Kurulum",

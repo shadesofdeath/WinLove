@@ -104,6 +104,25 @@ Result<void> writeImageFile(const std::filesystem::path& mountDir, std::wstring_
     return {};
 }
 
+Result<bool> imageFileHas(const std::filesystem::path& mountDir, std::wstring_view relative, std::string_view content) {
+    if (auto ok = validateImageFile(relative, content.size()); !ok) {
+        return std::unexpected(ok.error());
+    }
+    auto target = resolveImagePath(mountDir, relative);
+    if (!target) {
+        return std::unexpected(target.error());
+    }
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(*target, ec);
+    if (ec || size != content.size()) {
+        return false; // missing or different
+    }
+    std::ifstream in(*target, std::ios::binary);
+    std::string data(content.size(), '\0');
+    in.read(data.data(), static_cast<std::streamsize>(data.size()));
+    return static_cast<bool>(in) && data == content;
+}
+
 Result<void> copyImageFile(const std::filesystem::path& mountDir, std::wstring_view relative,
                            const std::filesystem::path& source) {
     if (auto ok = validateImageFile(relative, 0); !ok) {

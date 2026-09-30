@@ -1,5 +1,6 @@
 #include "app/controllers/ImageSettingsController.h"
 
+#include "app/controllers/ImageValuesController.h"
 #include "core/image/ImageFiles.h"
 
 #include <algorithm>
@@ -169,6 +170,117 @@ void ImageSettingsController::collectQueued(const ImageSetting& setting,
             }
         }
     }
+    for (auto& op : revertOperations(setting)) {
+        if (queued(m_state.changes(), op)) {
+            slots.emplace_back(op.kind, std::move(op.target));
+        }
+    }
+}
+
+namespace {
+
+std::optional<core::RegistryWrite> registryWriteOf(const Operation& op) {
+    if (op.kind != OpKind::SetRegistryValue && op.kind != OpKind::SetRegistryFirstLogon) {
+        return std::nullopt;
+    }
+    auto write = core::registryWriteFrom(op.target, op.value);
+    return write ? std::optional<core::RegistryWrite>(std::move(*write)) : std::nullopt;
+}
+
+std::optional<Operation> revertOf(const Operation& op) {
+    const auto write = registryWriteOf(op);
+    if (!write) {
+        return std::nullopt;
+    }
+    const auto back = revertWrite(*write);
+    if (!back) {
+        return std::nullopt;
+    }
+    Operation revert{op.kind, core::registryTarget(*back), core::formatRegValue(*back)};
+    revert.risk = op.risk;
+    return revert;
+}
+
+} // namespace
+
+int ImageSettingsController::holdingOption(const ImageSetting& setting, bool withQueue) const {
+    const auto& changes = m_state.changes();
+    // An operation holds when it is queued with its value, or — its slot and its way back not
+    // queued — the image already has it. Options of one setting may share slots with different
+    // values; when two hold anyway the one that says more wins.
+    auto holds = [&](const Operation& op, bool& asserts) {
+        if (withQueue) {
+            if (const auto* q = changes.find(op.kind, op.target)) {
+                asserts = true;
+                return q->value == op.value;
+            }
+            if (const auto revert = revertOf(op); revert && queued(changes, *revert)) {
+                return false;
+            }
+        }
+        if (!m_state.imageHas(op)) {
+            return false;
+        }
+        const auto write = registryWriteOf(op);
+        asserts = asserts || !write || assertsSomething(*write);
+        return true;
+    };
+    int best = setting.defaultOption;
+    std::size_t bestSize = 0;
+    for (int i = 0; i < static_cast<int>(setting.options.size()); ++i) {
+        if (i == setting.defaultOption) {
+            continue;
+        }
+        const auto ops = operationsFor(setting, i);
+        bool asserts = false;
+        if (ops.size() > bestSize && std::ranges::all_of(ops, [&](const Operation& op) { return holds(op, asserts); }) &&
+            asserts) {
+            best = i;
+            bestSize = ops.size();
+        }
+    }
+    return best;
+}
+
+int ImageSettingsController::current(const ImageSetting& setting) const {
+    if (takesValue(setting)) {
+        return optionIn(m_state.changes(), setting);
+    }
+    return holdingOption(setting, /*withQueue=*/true);
+}
+
+int ImageSettingsController::imageOption(const ImageSetting& setting) const {
+    if (takesValue(setting)) {
+        return setting.defaultOption;
+    }
+    return holdingOption(setting, /*withQueue=*/false);
+}
+
+std::vector<Operation> ImageSettingsController::revertOperations(const ImageSetting& setting) const {
+    const int image = imageOption(setting);
+    std::vector<Operation> ops;
+    if (image == setting.defaultOption) {
+        return ops;
+    }
+    for (const auto& op : operationsFor(setting, image)) {
+        auto revert = revertOf(op);
+        if (!revert) {
+            return {};
+        }
+        ops.push_back(std::move(*revert));
+    }
+    return ops;
+}
+
+std::wstring ImageSettingsController::imageValue(const ImageSetting& setting) const {
+    const auto& values = m_state.imageValues();
+    if (setting.control != ImageSetting::Control::Text || setting.options.size() < 2 ||
+        setting.options[1].writes.empty() || !values || !m_state.mounted() ||
+        values->mountDir != m_state.mounted()->mountDir) {
+        return {};
+    }
+    const auto it = values->texts.find(core::registryTarget(setting.options[1].writes.front()));
+    return it != values->texts.end() ? it->second : std::wstring();
 }
 
 void ImageSettingsController::select(const ImageSetting& setting, int option) {
@@ -177,8 +289,26 @@ void ImageSettingsController::select(const ImageSetting& setting, int option) {
     }
     std::vector<std::pair<OpKind, std::wstring>> slots;
     collectQueued(setting, slots);
+    const int image = imageOption(setting);
+    std::vector<Operation> ops;
+    if (option == image) {
+        // The image has it already: taking the queued edits back is all there is to do.
+    } else if (option == setting.defaultOption) {
+        ops = revertOperations(setting); // empty: no way back — the control returns to the image
+    } else {
+        ops = operationsFor(setting, option);
+        // What the image option wrote outside the new option's slots goes back to the default.
+        // (A value's way back has the value's own slot: "<key>::<name>".)
+        for (auto& revert : revertOperations(setting)) {
+            if (std::ranges::none_of(ops, [&](const Operation& op) {
+                    return op.kind == revert.kind && op.target == revert.target;
+                })) {
+                ops.push_back(std::move(revert));
+            }
+        }
+    }
     m_state.unqueueMany(slots);
-    m_state.queueMany(operationsFor(setting, option));
+    m_state.queueMany(std::move(ops));
 }
 
 int ImageSettingsController::applyRecommended() {
@@ -201,7 +331,7 @@ int ImageSettingsController::applyRecommended() {
 
 int ImageSettingsController::changedCount() const {
     return static_cast<int>(std::ranges::count_if(
-        m_catalog.settings(), [&](const ImageSetting& s) { return current(s) != s.defaultOption; }));
+        m_catalog.settings(), [&](const ImageSetting& s) { return current(s) != imageOption(s); }));
 }
 
 } // namespace wl::app

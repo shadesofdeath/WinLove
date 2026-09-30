@@ -37,7 +37,9 @@ Hazır tweak kategorilerini ve kullanıcının .reg dosyalarını bağlı imajı
 - Render: `--demo-registry`.
 
 ## 4. Sınırlar
-- İmajdaki mevcut değerler okunmuyor (tweak zaten uygulanmışsa bile işaretsiz görünür).
+- İmajdaki mevcut değerler okunur (D-045): imajda olan tweak işaretli ve "imajda" etiketli görünür; işareti
+  kaldırmak değerleri silen işlemleri kuyruğa koyar ("imajdan geri alınacak"). Yalnız silmelerden oluşan tweak
+  imajdan tanınmaz. İçe aktarılan .reg dosyaları imajla karşılaştırılmaz.
 - HKCU yalnız Default profile (yeni hesaplar); kurulumda oluşturulan ilk hesap da buradan türetilir.
 - OEM anahtarlı sürümlerde SetupComplete.cmd çalışmaz (D-026).
 - Kurulum sonrası içe aktarma normal yetkiyle çalışır: TrustedInstaller'a ait HKLM anahtarları ve (yükseltilmemiş

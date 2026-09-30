@@ -64,7 +64,8 @@ TweaksPage::TweaksPage(AppState& state, ImageSettingsController& controller, con
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Mount) {
             refresh();
-        } else if (change == AppState::Change::Queue) {
+        } else if (change == AppState::Change::Queue || change == AppState::Change::ImageValues ||
+                   change == AppState::Change::Services) {
             sync();
         }
     });
@@ -212,9 +213,20 @@ void TweaksPage::sync() {
     for (std::size_t i = 0; i < m_bindings.size(); ++i) {
         Binding& b = m_bindings[i];
         const int current = m_controller.current(*b.setting);
-        const bool changed = current != b.setting->defaultOption;
-        const std::wstring& mark = m_strings.get(changed ? Str::TweaksChanged : Str::TweaksIsDefault);
+        const int image = m_controller.imageOption(*b.setting); // D-045
+        const bool changed = current != image;
+        std::wstring mark = m_strings.get(changed                                ? Str::TweaksChanged
+                                          : image != b.setting->defaultOption ? Str::TweaksInImage
+                                                                               : Str::TweaksIsDefault);
+        if (!changed && image != b.setting->defaultOption && m_controller.revertOperations(*b.setting).empty()) {
+            mark += separator + m_strings.get(Str::TweaksNoRevert);
+        }
         const auto color = changed ? ui::tokens::Color::AccentBase : ui::tokens::Color::TextTertiary;
+        if (b.text) {
+            // What the image has, shown until something is typed over it.
+            const std::wstring inImage = m_controller.imageValue(*b.setting);
+            b.text->setPlaceholder(inImage.empty() ? std::wstring() : m_strings.get(Str::TweaksInImage) + L": " + inImage);
+        }
         if (b.text || b.file) {
             // The box follows the queue (a preset, undo) unless it is the one being typed into.
             const std::wstring value = m_controller.value(*b.setting);

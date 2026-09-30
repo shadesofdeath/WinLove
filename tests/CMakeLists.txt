@@ -10,6 +10,7 @@ add_executable(wl_tests
     core/DriverTests.cpp
     core/EngineTests.cpp
     core/RegistryTests.cpp
+    core/RegistryReadTests.cpp
     core/SystemComponentTests.cpp
     core/ImageEditionTests.cpp
     core/ImageFilesTests.cpp
@@ -30,6 +31,7 @@ add_executable(wl_tests
     app/EditionTests.cpp
     app/FeatureTests.cpp
     app/ImageSettingsTests.cpp
+    app/ImageValuesTests.cpp
     app/PostSetupControllerTests.cpp
     app/PreloadTests.cpp
     app/PresetTests.cpp

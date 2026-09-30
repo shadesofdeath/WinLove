@@ -69,8 +69,10 @@ Performans › **Oyun**: Xbox Game Bar, Oyun modu, donanım hızlandırmalı GPU
 pencereli oyun iyileştirmeleri.
 
 ## 4. Sınırlar
-- İmajdaki mevcut değer okunmuyor: form Windows varsayılanını gösterir (P11 ile aynı sınır). "Varsayılan" seçeneği
-  değeri değiştirmez, varsayılana *geri yazmaz*.
+- İmajdaki mevcut değer okunur (D-045): form imajın durumunu gösterir, ipucu "imajda" der. İmajdaki seçenekten
+  "Windows varsayılanı"na dönmek yazılan değerleri siler; servis / dosya / silme içeren seçeneklerde geri dönüş yok
+  ("burada geri alınamaz", denetim imajdaki konumda kalır). Yalnız silmelerden oluşan seçenek imajdan tanınmaz.
+  Metin ayarlarında imajdaki dize yer tutucu olarak görünür; resim ayarları imajdan okunmaz.
 - HKCU ayarları Default profile yazılır (kurulumdan sonra açılan hesaplar).
 - "Güvenlik" telemetri seviyesi yalnız Enterprise / Education'da etkilidir (diğerlerinde "Gerekli" gibi davranır).
 
