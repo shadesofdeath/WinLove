@@ -295,6 +295,73 @@ TEST_CASE("ISO: the requirement bypasses go into a patched copy of boot.wim, the
     std::filesystem::remove_all(dir, ec);
 }
 
+TEST_CASE("USB: the stick gets what the ISO would — answer file at the root, patched boot.wim — and its root is the result") {
+    const auto dir = scratch(L"usb-pipeline");
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    const auto media = dir / L"media";
+    std::filesystem::create_directories(media / L"sources");
+    std::ofstream(media / L"sources" / L"boot.wim", std::ios::binary) << "boot";
+
+    Fixture f;
+    AppSettings settings = f.state.settings();
+    settings.workRoot = dir / L"work-root";
+    f.state.setSettings(settings);
+    core::SourceInfo source = armSource();
+    source.path = media;
+    f.state.setSource(std::move(source));
+    f.controller.edit([](core::UnattendOptions& o) {
+        o.bypassTpm = true;
+        o.accountName = L"admin";
+    });
+    f.controller.setIncludeInIso(true);
+
+    std::filesystem::path finishedAt;
+    IsoController iso{f.state, IsoController::Events{[](std::function<void()> fn) { fn(); },
+                                                     {},
+                                                     [&](const core::IsoResult&, const std::filesystem::path& output,
+                                                         bool) { finishedAt = output; },
+                                                     {}}};
+    iso.setBootPatcher([](const std::filesystem::path& bootWim, const std::filesystem::path&, const core::BootPatch&,
+                          const core::TaskContext&) -> Result<core::BootPatchReport> {
+        std::ofstream(bootWim, std::ios::binary | std::ios::app) << " + LabConfig";
+        return core::BootPatchReport{2, 0, {}};
+    });
+    std::optional<core::UsbOptions> written;
+    std::string patchedBoot;
+    iso.setUsbWriter([&](const core::UsbOptions& options, const core::TaskContext&) -> Result<core::UsbResult> {
+        written = options;
+        REQUIRE(options.replacedFiles.size() == 1);
+        patchedBoot = readFile(options.replacedFiles.front().file); // read while the job runs, as writeUsb does
+        return core::UsbResult{L"E:\\", 1234, 2};
+    });
+
+    IsoController::Request request;
+    request.label = L"Win Love";
+    request.usb = IsoController::Request::UsbTarget{3, L"7|SanDisk|Ultra|42|32000000000", L"SanDisk Ultra",
+                                                    core::UsbScheme::GptUefi};
+    iso.start(request);
+    f.state.engine().drain();
+
+    REQUIRE(written.has_value());
+    CHECK(written->disk == 3);
+    CHECK(written->identity == L"7|SanDisk|Ultra|42|32000000000");
+    CHECK(written->scheme == core::UsbScheme::GptUefi);
+    CHECK(written->sourceFolder == media);
+    REQUIRE(written->rootFiles.size() == 1);
+    CHECK(written->rootFiles.front().name == L"autounattend.xml");
+    CHECK(written->replacedFiles.front().path == L"sources\\boot.wim");
+    CHECK(patchedBoot == "boot + LabConfig");
+    REQUIRE(f.state.isoRun().has_value());
+    CHECK(f.state.isoRun()->usb);
+    REQUIRE(f.state.isoRun()->result.has_value());
+    CHECK(f.state.isoRun()->result->bytes == 1234);
+    CHECK(f.state.isoRun()->output == std::filesystem::path(L"E:\\"));
+    CHECK(finishedAt == std::filesystem::path(L"E:\\"));
+    CHECK(readFile(media / L"sources" / L"boot.wim") == "boot"); // the setup folder is not touched
+    std::filesystem::remove_all(dir, ec);
+}
+
 TEST_CASE("unattend controller: the ISO never gets an invalid file") {
     Fixture f;
     f.state.setSource(armSource());

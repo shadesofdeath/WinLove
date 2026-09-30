@@ -1,6 +1,6 @@
 # P06 — ISO Oluştur / USB
 
-> Durum: 🟨 ISO sekmesi bitti, kullanıcı testi bekliyor (2026-09-28). USB sekmesi yer tutucu. Tasarım: 16.
+> Durum: 🟨 ISO sekmesi bitti, kullanıcı testi bekliyor (2026-09-28). USB sekmesi yazıldı (D-047, 2026-09-30), gerçek yazma lab testi bekliyor. Tasarım: 16.
 
 ## 1. Amaç
 Açık kaynaktan (kurulum klasörü veya ISO) önyüklenebilir Windows kurulum ISO'su üretmek.
@@ -32,6 +32,16 @@ Kurulum'da atlama seçili değilse pasif + ipucu. Özette "Kurulum ortamı: N ge
 Sapma: tasarımdaki "4 GB üstü WIM → ESD" satırı sıkıştırma listesindeki ESD seçeneğine taşındı; yerine önyükleme
 istemi seçeneği geldi (USB/FAT32 konusu USB sekmesiyle ele alınacak).
 
+## 3b. USB sekmesi (D-047)
+- Motor `core/usb/UsbMedia`: `listUsbDisks` (USB / SD / MMC; sistem diski asla), `planUsbCopy` (yer, 4 GB denetimi),
+  `writeUsb` (diskpart + bootsect + kopya + `splitWim`). CLI: `wlcli usb-list [--all]`, `wlcli usb-write <disk>
+  <klasör> --yes [--gpt] [--label=] [--unattend=]`. Lab: `tools\lab_usb.ps1` (VHDX, yönetici).
+- Ekran: USB BELLEK (disk açılır listesi + yenile, FAT32 etiketi ≤ 11), ÖNYÜKLEME (MBR — BIOS + UEFI / GPT — yalnız
+  UEFI, install.wim sıkıştırma, kurulum ortamı), BİTİNCE (sürücüyü aç). Uyarı bandı her zaman: "Seçilen USB
+  bellekteki her şey silinir"; sığmıyorsa hata bandı. Özet: kaynak, disk, bölüm düzeni, install.wim (olduğu gibi /
+  .swm), yanıt dosyası, kurulum ortamı, süre (~40 MB/sn). Başlık düğmesi "USB'ye yaz" → onay dialogu → aynı ilerleme
+  satırı ("USB belleğe yazılıyor"). Yönetici değilse UAC.
+
 ## 4. Kabul
 - [ ] Kaynak açıkken ISO Oluştur → ilerleme → ISO + .sha256; klasör açılır.
 - [ ] ISO'yu VM'de UEFI ve BIOS ile başlat → Windows kurulumu açılır.
@@ -39,3 +49,6 @@ istemi seçeneği geldi (USB/FAT32 konusu USB sekmesiyle ele alınacak).
 - [ ] Katılımsız Kurulum'da TPM / Secure Boot atlaması seçili, "ISO'ya ekle" kapalı → ISO üret → log'da
       `boot.wim index 2: N requirement check(s) switched off`; TPM'siz VM'de Setup gereksinim uyarısı vermez.
 - [ ] Aynı kaynakla kutu kapalı ISO → boot.wim özgün (kurulum klasöründeki dosyanın boyutu / tarihi hiç değişmedi).
+- [ ] `tools\lab_usb.ps1` (MBR) ve `-Gpt`: ALL PASSED.
+- [ ] Gerçek USB bellek: uygulamada yaz → aynı bellekten bir bilgisayar / VM UEFI ve BIOS ile kurulum başlatır;
+      install.swm'den sürüm listesi gelir.

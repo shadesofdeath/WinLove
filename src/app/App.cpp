@@ -4,6 +4,7 @@
 
 #include "core/image/DriverInf.h"
 
+#include "app/pages/IsoPage.h"
 #include "app/pages/UpdatesPage.h"
 
 #include "base/Log.h"
@@ -197,6 +198,9 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoDrivers = true;
         } else if (a == L"--demo-updates") {
             options.demoUpdates = true;
+        } else if (a == L"--demo-usb" || startsWith(a, L"--demo-usb=")) {
+            options.demoUsbGiven = true;
+            options.demoUsb = a == L"--demo-usb" ? std::wstring() : std::wstring(value(L"--demo-usb="));
         } else if (startsWith(a, L"--demo-catalog=")) {
             options.demoCatalog = std::wstring(value(L"--demo-catalog="));
         } else if (a == L"--demo-components") {
@@ -812,6 +816,24 @@ int App::renderOffscreen() {
                 {entry(L".NET", L"KB5126052", core::CatalogKind::DotNet, false, 9, 8, 96738688, 0), true, false},
             };
             m_shell->showUpdateOffers(core::catalogTarget(26200, 8037, L"x64"), std::move(offers));
+        }
+    }
+    if (m_options.demoUsbGiven && m_state->source()) {
+        m_shell->showPage(PageId::Iso);
+        if (auto* page = m_shell->isoPageForDemo()) {
+            core::UsbDisk disk;
+            disk.number = 2;
+            disk.vendor = L"SanDisk";
+            disk.model = L"Ultra USB 3.0";
+            disk.serial = L"4C530001";
+            disk.size = 30'752'636'928;
+            disk.busType = 7;
+            disk.letters = {L"E:\\"};
+            page->setDisks({disk});
+            page->showUsbTab();
+            if (m_options.demoUsb == L"confirm") {
+                m_shell->startIsoForDemo();
+            }
         }
     }
     if (m_options.fakeOperation && m_state->source()) {

@@ -65,6 +65,8 @@ struct LaunchOptions {
     std::optional<Language> switchLanguage; // render: rebuild the UI in this language after the demo setup (P16)
     bool demoDrivers = false;    // render: fake mount + sample driver INFs (07)
     bool demoUpdates = false;    // render: with a source path — fake mount + sample update packages (06)
+    std::wstring demoUsb;         // render (with a source): "" | "confirm" — the USB tab with a sample drive (D-047)
+    bool demoUsbGiven = false;
     std::wstring demoCatalog;     // render (with --demo-updates): "dialog" | "download" — the update catalog (D-046)
     std::wstring demoApply;    // render (with --demo-features): "running" | "done" | "skipped" — fake Uygula run // render: fill the log with the design's sample lines (screen 18)
     bool maximized = false;

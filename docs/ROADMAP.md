@@ -44,7 +44,7 @@ Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **
 | P03 | Loglar | 18 | `pages/03-logs.md` | ✅ | Sonraki sayfaların hata ayıklamasını kolaylaştırır |
 | P04 | Özellikler | 05 | `pages/04-features.md` | ✅ | İlk ChangeSet kullanan sayfa |
 | P05 | Uygula (özet, onay, çalışıyor, bitti) | 13, 13b, 14, 15 | `pages/05-apply.md` | 🟨 test | Planner/Applier burada tamamlanır |
-| P06 | ISO Oluştur / USB | 16 | `pages/06-iso.md` | 🟨 test (USB sonra) | Bittiğinde: uçtan uca VM kurulum testi |
+| P06 | ISO Oluştur / USB | 16 | `pages/06-iso.md` | 🟨 test | USB sekmesi D-047: `tools\lab_usb.ps1` (yönetici) bekliyor; bittiğinde uçtan uca VM kurulum testi |
 | P07 | Bileşenler (AppX + sistem bileşenleri + depo temizliği, katalog, arama) | 04, 04b | `pages/07-components.md` | 🟨 test | D-031: tarifle kaldırma; Defender kaldırma yok (25H2'de paket değil) |
 | P08 | Güncellemeler | 06 | `pages/08-updates.md` | 🟨 test | |
 | P09 | Sürücüler | 07 | `pages/09-drivers.md` | 🟨 test | |

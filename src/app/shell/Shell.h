@@ -88,6 +88,8 @@ public:
     ApplyController& apply() { return *m_apply; }
     ComponentController& components() { return *m_components; }
     ServiceController& services() { return *m_serviceCtl; }
+    IsoPage* isoPageForDemo() const { return isoPage(); } // render: --demo-usb
+    void startIsoForDemo() { startIso(); }
     // D-046: the catalog's offers as a check list (also the render demo).
     void showUpdateOffers(const core::CatalogTarget& target, std::vector<core::CatalogOffer> offers);
     RegistryController& registry() { return *m_registry; }
@@ -189,6 +191,7 @@ private:
     void scanDriverFolder();
     void updateIsoChrome();
     void startIso();
+    void confirmUsbWrite(IsoController::Request request); // D-047: "USB belleği sil ve yaz?"
     void updateApplyChrome();                         // CTA label, Apply page mode/header
     void savePreset(const core::ops::ChangeSet& changes);
     void saveApplyLog();

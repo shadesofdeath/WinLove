@@ -152,6 +152,15 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         m_services.postToUi,
         [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::IsoFailed), e.message); },
         [this](const core::IsoResult& result, const std::filesystem::path& output, bool openFolder) {
+            const bool usb = m_state.isoRun() && m_state.isoRun()->usb;
+            if (usb) { // D-047: the stick's drive
+                showToast(ui::InfoKind::Success, m_strings.get(Str::IsoUsbDone),
+                          output.wstring() + L" \u00b7 " + formatBytes(result.bytes, m_language));
+                if (openFolder) {
+                    ShellExecuteW(nullptr, L"open", output.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                }
+                return;
+            }
             showToast(ui::InfoKind::Success, m_strings.get(Str::IsoDone),
                       output.filename().wstring() + L" \u00b7 " + formatBytes(result.bytes, m_language));
             if (openFolder) {
@@ -163,6 +172,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
                 openSource(source->path);
             }
         },
+        [this](std::wstring args) { showAdminRequired(std::move(args)); },
     });
     m_updateCatalog = std::make_unique<UpdateCatalogController>(m_state, UpdateCatalogController::Events{
         m_services.postToUi,
@@ -675,8 +685,10 @@ void Shell::updateIsoChrome() {
         return;
     }
     const bool running = m_iso->running();
-    m_actionIso->setText(m_strings.get(running ? Str::IsoCancel : Str::IsoBuild));
     const auto* page = isoPage();
+    m_actionIso->setText(m_strings.get(running                   ? Str::IsoCancel
+                                       : page && page->usbTab() ? Str::IsoWriteUsb
+                                                                : Str::IsoBuild));
     m_actionIso->setEnabled(running || (!m_iso->blocker() && page && page->formValid()));
     if (m_pageView) {
         m_pageView->layout();
@@ -689,8 +701,40 @@ void Shell::startIso() {
         return;
     }
     const auto request = page->request();
+    if (request.usb) {
+        confirmUsbWrite(request);
+        return;
+    }
     m_state.setIsoFolder(request.output.parent_path());
     m_iso->start(request);
+}
+
+void Shell::confirmUsbWrite(IsoController::Request request) {
+    // D-047: the drive is named in full before anything on it is erased.
+    const auto* page = isoPage();
+    const auto* disk = page ? page->selectedDisk() : nullptr;
+    if (!disk || !host()) {
+        return;
+    }
+    std::wstring letters;
+    for (const auto& l : disk->letters) {
+        letters += L", " + l.substr(0, 2);
+    }
+    const std::wstring body = m_strings.format(
+        Str::IsoUsbConfirmBody,
+        {{L"disk", disk->name()}, {L"size", formatBytes(disk->size, m_language)}, {L"letters", letters}});
+    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::IsoUsbConfirmTitle), body, ui::icons::Icon::UsbDrive,
+                                               ui::tokens::Color::StatusWarning, 460.0f);
+    ui::Dialog* raw = dialog.get();
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
+    // Not the Enter button: erasing a drive takes a click on its own name.
+    raw->addButton(ui::ButtonKind::Danger, m_strings.get(Str::IsoUsbConfirmAction),
+                   [this, raw, request = std::move(request)] {
+                       host()->popModal(raw);
+                       m_iso->start(request);
+                   });
+    raw->onCancel = [this, raw] { host()->popModal(raw); };
+    pushDialog(std::move(dialog));
 }
 
 void Shell::updateApplyChrome() {
@@ -1309,7 +1353,8 @@ void Shell::showPage(PageId page) {
                                      const std::wstring args = L"/select,\"" + file.wstring() + L"\"";
                                      ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
                                  },
-                                 [this] { showPage(PageId::Source); }, m_services.postToUi});
+                                 [this] { showPage(PageId::Source); }, m_services.postToUi,
+                                 [this] { updateIsoChrome(); }});
         } else if (page == PageId::Logs) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::LogsClear)).onInvoke = [this] {
                 if (auto* logs = logsPage()) {
