@@ -213,3 +213,28 @@ TEST_CASE("unattend controller: the ISO never gets an invalid file") {
     f.controller.setIncludeInIso(false); // not going into the ISO: not the ISO's problem
     CHECK_FALSE(iso.blocker());
 }
+
+TEST_CASE("unattend controller: the file is built for the edition the image will install") {
+    Fixture f;
+    core::SourceInfo one = armSource(); // a single edition
+    one.install.images.front().editionId = L"CoreSingleLanguage";
+    f.state.setSource(one);
+    f.controller.edit([](core::UnattendOptions& o) { o.acceptEula = true; });
+    CHECK(f.controller.options().editionId == L"CoreSingleLanguage");
+    CHECK(f.controller.xml().find(L"<Key>BT79Q-G7N6G-PGBYW-4YWX6-6F4BT</Key>") != std::wstring::npos);
+    CHECK(f.state.unattend().options.editionId.empty()); // derived each time, not stored
+
+    // Two editions and none picked: nobody knows which → Setup asks.
+    core::SourceInfo two = one;
+    core::ImageInfo pro = two.install.images.front();
+    pro.index = 2;
+    pro.editionId = L"Professional";
+    two.install.images.push_back(pro);
+    f.state.setSource(two);
+    CHECK(f.controller.options().editionId.empty());
+    CHECK(f.controller.xml().find(L"<Key>00000-00000-00000-00000-00000</Key>") != std::wstring::npos);
+
+    // Picked on the form: that edition's key.
+    f.controller.edit([](core::UnattendOptions& o) { o.imageIndex = 2; });
+    CHECK(f.controller.xml().find(L"<Key>VK7JG-NPHTM-C97JM-9MPGT-3V66T</Key>") != std::wstring::npos);
+}

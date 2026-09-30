@@ -23,6 +23,33 @@ constexpr std::wstring_view kBypassNro =
     L"reg add HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OOBE /v BypassNRO /t REG_DWORD /d 1 /f";
 constexpr std::wstring_view kPasswordSuffix = L"Password";
 
+struct GenericKey {
+    std::wstring_view editionId;
+    std::wstring_view key;
+};
+constexpr GenericKey kGenericKeys[] = {
+    {L"Core", L"YTMG3-N6DKC-DKB77-7M9GH-8HVX7"},
+    {L"CoreN", L"4CPRK-NM3K3-X6XXQ-RXX86-WXCHW"},
+    {L"CoreSingleLanguage", L"BT79Q-G7N6G-PGBYW-4YWX6-6F4BT"},
+    {L"CoreCountrySpecific", L"N2434-X9D7W-8PF6X-8DV9T-8TYMD"},
+    {L"Professional", L"VK7JG-NPHTM-C97JM-9MPGT-3V66T"},
+    {L"ProfessionalN", L"2B87N-8KFHP-DKV6R-Y2C8J-PKCKT"},
+    {L"ProfessionalSingleLanguage", L"G3KNM-CHG6T-R36X3-9QDG6-8M8K9"},
+    {L"ProfessionalCountrySpecific", L"HNGCC-Y38KG-QVK8D-WMWRK-X86VK"},
+    {L"ProfessionalWorkstation", L"DXG7C-N36C4-C4HTG-X4T3X-2YV77"},
+    {L"ProfessionalWorkstationN", L"WYPNQ-8C467-V2W6J-TX4WX-WT2RQ"},
+    {L"ProfessionalEducation", L"8PTT6-RNW4C-6V7J2-C2D3X-MHBPB"},
+    {L"ProfessionalEducationN", L"GJTYN-HDMQY-FRR76-HVGC7-QPF8P"},
+    {L"Education", L"YNMGQ-8RYV3-4PGQ3-C8XTP-7CFBY"},
+    {L"EducationN", L"84NGF-MHBT6-FXBX8-QWJK7-DRR8H"},
+    {L"Enterprise", L"XGVPP-NMH47-7TTHJ-W3FW7-8HV2C"},
+    {L"EnterpriseN", L"WGGHN-J84D6-QYCPR-T7PJ7-X766F"},
+};
+
+bool isGenericProductKey(std::wstring_view key) {
+    return std::ranges::any_of(kGenericKeys, [&](const GenericKey& k) { return _wcsnicmp(k.key.data(), key.data(), k.key.size()) == 0 && key.size() == k.key.size(); });
+}
+
 const wchar_t* architectureAttribute(Architecture architecture) {
     switch (architecture) {
     case Architecture::X86: return L"x86";
@@ -203,6 +230,15 @@ constexpr std::string_view kBase64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop
 
 } // namespace
 
+std::wstring_view genericProductKey(std::wstring_view editionId) noexcept {
+    for (const auto& known : kGenericKeys) {
+        if (known.editionId == editionId) {
+            return known.key;
+        }
+    }
+    return {};
+}
+
 std::wstring encodeUnattendPassword(std::wstring_view value) {
     std::wstring text(value);
     text += kPasswordSuffix;
@@ -311,13 +347,15 @@ std::wstring buildUnattendXml(const UnattendOptions& o) {
             setup.close(L"ImageInstall");
         }
         if (!o.productKey.empty() || o.acceptEula) {
+            // Always with a key: the user's, else the generic one of the edition that will be
+            // installed, else the placeholder that makes Setup show its key page.
+            const std::wstring_view generic = genericProductKey(o.editionId);
+            const bool ask = o.productKey.empty() && generic.empty();
             setup.open(L"UserData");
-            if (!o.productKey.empty()) {
-                setup.open(L"ProductKey");
-                setup.leaf(L"Key", o.productKey);
-                setup.leaf(L"WillShowUI", L"OnError");
-                setup.close(L"ProductKey");
-            }
+            setup.open(L"ProductKey");
+            setup.leaf(L"Key", !o.productKey.empty() ? std::wstring_view(o.productKey) : ask ? kNoProductKey : generic);
+            setup.leaf(L"WillShowUI", ask ? L"Always" : L"OnError");
+            setup.close(L"ProductKey");
             if (o.acceptEula) {
                 setup.flag(L"AcceptEula", true);
             }
@@ -450,6 +488,11 @@ Result<UnattendOptions> parseUnattendXml(std::string_view utf8) {
                 }
                 const auto user = component.child("UserData");
                 o.productKey = childText(user.child("ProductKey"), "Key");
+                // A generic key or the placeholder is not an answer of the user's: it is written
+                // again for whatever edition the file is built for next.
+                if (o.productKey == kNoProductKey || isGenericProductKey(o.productKey)) {
+                    o.productKey.clear();
+                }
                 o.acceptEula = o.acceptEula || truthy(user.child("AcceptEula").text().as_string("false"));
             } else if (name == "Microsoft-Windows-Deployment") {
                 o.bypassNro = o.bypassNro || commands(component, "BypassNRO");

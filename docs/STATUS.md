@@ -23,6 +23,13 @@
 - **Kaynak sayfası (2026-09-30, kullanıcı isteği):** son kullanılanlardan kaldırma (satır sonunda ×, `Del`, sağ tık
   menüsü) + çalışma kopyasını silme dialogu; UI çatısına sağ tık yönlendirmesi eklendi (`Widget::onContextMenu`).
   Dialogun kendisi render'da görülmedi (diskte çalışma kopyası yoktu); liste girdisini kaldırma ve menü görüldü.
+- **Setup "<ProductKey> ayarını okuyamıyor" (2026-09-30, kullanıcı VM testi, Windows 10 22H2, D-036):** yanıt
+  dosyasında `UserData` (EULA kabulü) `ProductKey`'siz yazılıyordu. Artık her zaman anahtarla yazılır: kullanıcının
+  anahtarı / kurulacak sürümün genel anahtarı / sürüm belli değilse yer tutucu + "Setup sorsun". 16 genel anahtar
+  imajın kendi `pkeyconfig`'ine karşı doğrulandı. **VM'de yeniden denenmedi.** Aynı oturumun logundan: sürüm silme
+  (6 → 1 tek seferde), Uygula (132 / 134) ve ISO'ya `autounattend.xml` eklenmesi Windows 10'da da çalıştı;
+  `Microsoft.DesktopAppInstaller` Windows 10'da da kaldırılamıyor (`0x80073CFA`) — katalogda yalnız 26100+ için
+  kilitli, düzeltilmedi (kullanıcıya soruldu).
 - **İmajlar sayfası — dört yeni özellik (2026-09-30, kullanıcı isteği, D-035):**
   (1) **Yeniden adlandır** (kalem / `F2` / sağ tık): `core::setImageText`, gerçek imaj kopyasında denendi (Türkçe
   karakter, `&` `<`; yönetici gerekmez). (2) **Çoklu seçim**: onay kutusu, Ctrl / Shift, Ctrl+A; seçilenleri sil,
@@ -107,7 +114,7 @@
   (CreateKey), "sil + varsayılan değeri yaz" kalıbında silmenin kuyrukta ezilmesi, tekrarlanan değerde sıra, HKCC
   ve HKU\S-1-5-18/19/20 kökleri. `reg.exe import` davranışı yerelde doğrulandı (ENGINE saha notu). **Gerçek kurulumda
   (VM) doğrulanmadı:** SetupComplete / RunOnce içe aktarımının kurulum sonunda çalışması kullanıcı testi bekliyor.
-- **Build:** `./build.ps1 -Dist` yeşil, 188 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
+- **Build:** `./build.ps1 -Dist` yeşil, 191 unit test. Kullanıcıya her zaman `dist\WinLove.exe` verilir.
 - **Kurallar:** kullanıcının diskinde klasör açma (lab = `build\lab`, çalışma kökü `%LOCALAPPDATA%\WinLove`),
   "Son kullanılanlar"a test yolu yazma, DISM'e giden yolları `nativePath` ile ver, asla push etme.
 - **Açık konular / sonraya:** P06 USB sekmesi (bilerek yazılmadı: denenemeyen disk biçimlendirme kodu; ISO'yu
@@ -140,6 +147,7 @@ VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Too
 - 2026-09-30 — Sürüm silme: WIM kalanlarla yeniden yazılıyor, ISO kaynakta da çalışıyor, "yalnız bu sürümü tut" (D-033).
 - 2026-09-30 — Yanıt dosyası doldurulunca ISO'ya kendiliğinden giriyor; işlemci / disk denetimi atlama; imajda olmayan AppX başarı (D-034).
 - 2026-09-30 — İmajlar: çoklu seçim, yeniden adlandırma, WIM doğrulama (kendi LZX çözücümüz), sürüm yükseltme (D-035).
+- 2026-09-30 — Yanıt dosyası: `UserData` her zaman `ProductKey` ile (genel anahtar / yer tutucu) (D-036).
 - 2026-09-28 — Baştan sona inceleme (4 alan, paralel): ~35 hata düzeltildi. Öne çıkanlar: junction üzerinden ana
   makine ACL'si değişebilmesi (FileLocks), commit edilmeyen unmount'un başarılı raporlanması, DISM oturum yenileme,
   UDF çıkarmada yol dışına yazma + sınır dışı okuma, tıklamada yok edilen widget (use-after-free), Enter ile devre

@@ -494,7 +494,7 @@
     "diskWarning": "Disk 0'daki tüm veriler silinir",
     "acceptEula": "Lisans sözleşmesini kabul et",
     "productKey": "Ürün anahtarı",
-    "productKeyHint": "Boş: kurulum sorar",
+    "productKeyHint": "Boş: sürümün genel anahtarı yazılır (etkinleştirme kurulumdan sonra); sürüm belli değilse kurulum sorar",
     "edition": "Kurulacak sürüm",
     "includeInIso": "ISO'ya ekle",
     "includeInIsoHint": "ISO oluşturulurken köke autounattend.xml olarak yazılır",

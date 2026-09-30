@@ -29,7 +29,7 @@ UnattendOptions everything() {
     o.skipOnlineAccount = true;
     o.bypassNro = true;
     o.acceptEula = true;
-    o.productKey = L"VK7JG-NPHTM-C97JM-9MPGT-3V66T";
+    o.productKey = L"W269N-WFGWX-YVC9B-4J6C9-T83GX";
     o.imageIndex = 4;
     o.bypassTpm = true;
     o.bypassSecureBoot = true;
@@ -98,7 +98,7 @@ TEST_CASE("unattend: every option written, in its pass, and read back unchanged"
     CHECK(in(L"<Type>EFI</Type>", pe, specialize));
     CHECK(in(L"<PartitionID>3</PartitionID>", pe, specialize));
     CHECK(in(L"<Key>/IMAGE/INDEX</Key>", pe, specialize));
-    CHECK(in(L"<Key>VK7JG-NPHTM-C97JM-9MPGT-3V66T</Key>", pe, specialize));
+    CHECK(in(L"<Key>W269N-WFGWX-YVC9B-4J6C9-T83GX</Key>", pe, specialize));
     CHECK(in(L"<AcceptEula>true</AcceptEula>", pe, specialize));
     // Every Windows 11 hardware check has its LabConfig value, in windowsPE (read before the checks run).
     for (const wchar_t* check : {L"BypassTPMCheck", L"BypassSecureBootCheck", L"BypassRAMCheck", L"BypassCPUCheck",
@@ -208,4 +208,58 @@ TEST_CASE("unattend: validation") {
     o.accountName.clear();
     o.autoLogon = true;
     CHECK(validateUnattend(o) == std::vector{UnattendProblem::AutoLogonNeedsAccount});
+}
+
+TEST_CASE("unattend: <UserData> never goes out without a <ProductKey>") {
+    // What a user's first VM run hit: EULA accepted, no key → Setup stopped with "cannot read the
+    // <ProductKey> setting from the unattend answer file".
+    UnattendOptions o;
+    o.acceptEula = true;
+    o.editionId = L"CoreSingleLanguage"; // the image has this one edition
+    std::wstring xml = buildUnattendXml(o);
+    CHECK(has(xml, L"<UserData>\n        <ProductKey>\n          <Key>BT79Q-G7N6G-PGBYW-4YWX6-6F4BT</Key>\n"
+                   L"          <WillShowUI>OnError</WillShowUI>\n        </ProductKey>\n        <AcceptEula>true</AcceptEula>"));
+
+    // Several editions and none picked: Setup is to ask, which takes the placeholder key.
+    o.editionId.clear();
+    xml = buildUnattendXml(o);
+    CHECK(has(xml, L"<Key>00000-00000-00000-00000-00000</Key>"));
+    CHECK(has(xml, L"<WillShowUI>Always</WillShowUI>"));
+
+    // An edition without a generic key here is asked for as well.
+    o.editionId = L"IoTEnterprise";
+    CHECK(has(buildUnattendXml(o), L"<WillShowUI>Always</WillShowUI>"));
+
+    // The user's own key wins over the edition's.
+    o.editionId = L"Professional";
+    o.productKey = L"AAAAA-BBBBB-CCCCC-DDDDD-EEEEE";
+    xml = buildUnattendXml(o);
+    CHECK(has(xml, L"<Key>AAAAA-BBBBB-CCCCC-DDDDD-EEEEE</Key>"));
+    CHECK_FALSE(has(xml, L"VK7JG"));
+    CHECK(has(xml, L"<WillShowUI>OnError</WillShowUI>"));
+
+    // Nothing asked of <UserData>: it is not written at all.
+    UnattendOptions bare;
+    bare.editionId = L"Professional";
+    bare.bypassTpm = true;
+    CHECK_FALSE(has(buildUnattendXml(bare), L"UserData"));
+}
+
+TEST_CASE("unattend: a generic key or the placeholder read from a file is not the user's key") {
+    UnattendOptions o;
+    o.acceptEula = true;
+    o.editionId = L"Professional";
+    auto back = parseUnattendXml(utf8::fromWide(buildUnattendXml(o)));
+    REQUIRE(back);
+    CHECK(back->productKey.empty()); // else a preset made on Pro would force Pro's key onto a Home image
+    CHECK(back->acceptEula);
+
+    o.editionId.clear();
+    back = parseUnattendXml(utf8::fromWide(buildUnattendXml(o)));
+    REQUIRE(back);
+    CHECK(back->productKey.empty());
+
+    CHECK(genericProductKey(L"Core") == L"YTMG3-N6DKC-DKB77-7M9GH-8HVX7");
+    CHECK(genericProductKey(L"Professional") == L"VK7JG-NPHTM-C97JM-9MPGT-3V66T");
+    CHECK(genericProductKey(L"Nope").empty());
 }
