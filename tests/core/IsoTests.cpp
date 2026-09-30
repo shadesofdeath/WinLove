@@ -3,6 +3,7 @@
 #include "base/Utf8.h"
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
+#include "core/iso/IsoBuilder.h"
 
 #include <doctest.h>
 #include <json.hpp>
@@ -88,4 +89,52 @@ TEST_CASE("ISO: extraction honours cancellation and leaves no partial file" * do
     CHECK(result.error().code == ErrorCode::Cancelled);
     CHECK_FALSE(std::filesystem::exists(target));
     CHECK_FALSE(std::filesystem::exists(target.wstring() + L".partial"));
+}
+
+TEST_CASE("ISO build: root files from memory are in the image; the source folder is not touched") {
+    const auto dir = std::filesystem::temp_directory_path() / L"wl-tests" / L"iso-build";
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    const auto media = dir / L"media";
+    std::filesystem::create_directories(media / L"boot");
+    std::filesystem::create_directories(media / L"sources");
+    auto write = [](const std::filesystem::path& file, const std::string& content) {
+        std::ofstream out(file, std::ios::binary);
+        out.write(content.data(), static_cast<std::streamsize>(content.size()));
+    };
+    auto read = [](const std::filesystem::path& file) {
+        std::ifstream in(file, std::ios::binary);
+        return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    };
+    write(media / L"boot" / L"etfsboot.com", std::string(4096, '\0')); // stands in for the BIOS boot sector
+    write(media / L"sources" / L"marker.txt", "setup files");
+    write(media / L"autounattend.xml", "the folder's own answer file");
+
+    IsoOptions options;
+    options.sourceFolder = media;
+    options.output = dir / L"out.iso";
+    options.volumeLabel = L"WL_TEST";
+    options.boot = BootMode::BiosOnly;
+    const std::string answer = "<unattend>from memory</unattend>";
+    options.rootFiles = {{L"autounattend.xml", answer}, {L"extra.txt", "second"}};
+    const auto built = buildIso(options, TaskContext{});
+    REQUIRE_MESSAGE(built.has_value(), utf8::fromWide(describe(built.error())).c_str());
+    CHECK(built->bytes > 0);
+
+    auto iso = UdfImage::open(options.output);
+    REQUIRE_MESSAGE(iso.has_value(), utf8::fromWide(describe(iso.error())).c_str());
+    CHECK(iso->find(L"sources/marker.txt").has_value());
+    auto extracted = [&](const wchar_t* name) {
+        auto node = iso->find(name);
+        REQUIRE(node.has_value());
+        const auto target = dir / (std::wstring(L"out-") + name);
+        REQUIRE(iso->extract(*node, target, TaskContext{}).has_value());
+        return read(target);
+    };
+    CHECK(extracted(L"autounattend.xml") == answer);
+    CHECK(extracted(L"extra.txt") == "second");
+    CHECK(read(media / L"autounattend.xml") == "the folder's own answer file");
+    CHECK_FALSE(std::filesystem::exists(media / L"extra.txt"));
+    iso = std::unexpected(Error{}); // close the ISO before deleting it
+    std::filesystem::remove_all(dir, ec);
 }

@@ -9,6 +9,7 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace wl::core {
 
@@ -21,6 +22,13 @@ struct IsoOptions {
     BootMode boot = BootMode::UefiAndBios;
     bool noPrompt = false;               // efisys_noprompt.bin: no "Press any key to boot from CD"
     bool writeSha256 = false;            // <output>.sha256 next to the ISO
+    // Files written to the image root from memory (autounattend.xml, P13): the source folder is
+    // not touched; a file of the same name in it is replaced in the image.
+    struct RootFile {
+        std::wstring name;
+        std::string content;
+    };
+    std::vector<RootFile> rootFiles;
 };
 
 struct IsoResult {

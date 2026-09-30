@@ -54,11 +54,16 @@ RectF SearchBox::clearRect() const {
     return {b.right() - kPadding - kClearSize, b.y + (b.height - kClearSize) / 2, kClearSize, kClearSize};
 }
 
+std::wstring SearchBox::displayText() const {
+    return m_password ? std::wstring(m_text.size(), L'•') : m_text;
+}
+
 float SearchBox::offsetOf(std::size_t index) const {
     if (!host() || index == 0) {
         return 0.0f;
     }
-    return host()->text().measure(std::wstring_view(m_text).substr(0, index), TypeStyle::Body);
+    const std::wstring shown = displayText();
+    return host()->text().measure(std::wstring_view(shown).substr(0, index), TypeStyle::Body);
 }
 
 std::size_t SearchBox::indexAt(float x) const {
@@ -232,12 +237,12 @@ bool SearchBox::onKeyDown(const KeyEvent& key) {
             moveCaret(m_text.size(), true);
             return true;
         case 'C':
-            if (hasSelection()) {
+            if (hasSelection() && !m_password) {
                 setClipboardText(std::wstring_view(m_text).substr(from, to - from));
             }
             return true;
         case 'X':
-            if (hasSelection()) {
+            if (hasSelection() && !m_password) {
                 // Only cut what actually reached the clipboard (another app may hold it open).
                 if (setClipboardText(std::wstring_view(m_text).substr(from, to - from))) {
                     replaceSelection({});
@@ -283,7 +288,7 @@ void SearchBox::paint(Canvas& canvas) {
         canvas.fillRect({x0, b.y + 4, x1 - x0, b.height - 8}, Color::AccentSubtle);
     }
     if (!m_text.empty()) {
-        canvas.drawText(m_text, {area.x - m_scroll, b.y, offsetOf(m_text.size()) + 8, b.height}, TypeStyle::Body,
+        canvas.drawText(displayText(), {area.x - m_scroll, b.y, offsetOf(m_text.size()) + 8, b.height}, TypeStyle::Body,
                         Color::TextPrimary);
     }
     if (focused()) {

@@ -24,6 +24,7 @@ add_library(wl_ui STATIC
     widgets/DropZone.cpp
     widgets/Dropdown.cpp
     widgets/EmptyState.cpp
+    widgets/FormView.cpp
     widgets/InfoBar.cpp
     widgets/Kbd.cpp
     widgets/Label.cpp
