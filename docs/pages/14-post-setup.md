@@ -23,6 +23,10 @@ Geliştirme, İletişim, Oyun, Ofis) işaretleme listesi; işaretlenenler tek ku
 plandakiler "eklendi" diye pasif görünür. Kimlikler 2026-09-30'da `winget show --id … -e` ile winget deposunda
 doğrulandı. Uygulama Yükleyici (winget) kaldırma kuyruğundaysa dialog bunu söyler.
 
+**Hazır komutlar** (başlık düğmesi, D-044): güç (Yüksek / Nihai performans planı, uyku / ekran / disk süreleri, USB
+seçmeli askıya alma) ve ağ (ağ bulma, dosya ve yazıcı paylaşımı, Uzak Masaüstü, ping, ağları Özel yap) komutları; aynı
+işaretleme dialogu, komut adımı olarak eklenir, adı arayüz dilinde.
+
 ## 3. Model
 - Tüm plan kuyrukta **tek işlem**: `SetPostSetup`, hedef `post-setup`, değer = planın JSON'u (sıra + seçenekler).
   Durum ayrı tutulmaz (`PostSetupController::plan()` işlemi okur); preset planı taşır; Uygula tek adımda yazar.

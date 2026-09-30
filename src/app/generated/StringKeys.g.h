@@ -551,7 +551,9 @@ enum class Str : std::uint16_t {
     PostsetupCatDevelopment,
     PostsetupCatGames,
     PostsetupCatMedia,
+    PostsetupCatNetwork,
     PostsetupCatOffice,
+    PostsetupCatPower,
     PostsetupCatTools,
     PostsetupCatalog,
     PostsetupCatalogAdd,
@@ -563,6 +565,10 @@ enum class Str : std::uint16_t {
     PostsetupCatalogPresent,
     PostsetupCommand,
     PostsetupCommandHint,
+    PostsetupCommands,
+    PostsetupCommandsAdd,
+    PostsetupCommandsAdded,
+    PostsetupCommandsBody,
     PostsetupContinueOnError,
     PostsetupDesc,
     PostsetupDestination,
@@ -888,7 +894,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 878;
+inline constexpr std::size_t kStrCount = 884;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -1434,7 +1440,9 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "postsetup.catDevelopment",
     "postsetup.catGames",
     "postsetup.catMedia",
+    "postsetup.catNetwork",
     "postsetup.catOffice",
+    "postsetup.catPower",
     "postsetup.catTools",
     "postsetup.catalog",
     "postsetup.catalogAdd",
@@ -1446,6 +1454,10 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "postsetup.catalogPresent",
     "postsetup.command",
     "postsetup.commandHint",
+    "postsetup.commands",
+    "postsetup.commandsAdd",
+    "postsetup.commandsAdded",
+    "postsetup.commandsBody",
     "postsetup.continueOnError",
     "postsetup.desc",
     "postsetup.destination",

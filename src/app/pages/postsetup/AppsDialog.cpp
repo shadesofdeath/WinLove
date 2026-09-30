@@ -1,6 +1,5 @@
 #include "app/pages/postsetup/AppsDialog.h"
 
-#include "app/controllers/PostSetupController.h"
 #include "ui/widgets/Checkbox.h"
 #include "ui/widgets/TableView.h"
 
@@ -32,32 +31,58 @@ Str categoryName(PostSetupController::AppCategory category) {
     return Str::PostsetupCatTools;
 }
 
+Str commandCategoryName(PostSetupController::CommandCategory category) {
+    using Category = PostSetupController::CommandCategory;
+    switch (category) {
+    case Category::Power: return Str::PostsetupCatPower;
+    case Category::Network: return Str::PostsetupCatNetwork;
+    }
+    return Str::PostsetupCatPower;
+}
+
 } // namespace
 
-AppsDialog makeAppsDialog(const Localization& strings, std::wstring body, AppsDialogActions actions) {
+std::vector<CatalogRow> appRows(const Localization& strings) {
+    std::vector<CatalogRow> rows;
+    for (const auto& app : PostSetupController::popularApps()) {
+        rows.push_back({app.name, strings.get(categoryName(app.category)), app.id});
+    }
+    return rows;
+}
+
+std::vector<CatalogRow> commandRows(const Localization& strings, Language language) {
+    std::vector<CatalogRow> rows;
+    for (const auto& command : PostSetupController::readyCommands()) {
+        rows.push_back({command.name(language), strings.get(commandCategoryName(command.category)), command.command});
+    }
+    return rows;
+}
+
+AppsDialog makeCatalogDialog(const Localization& strings, CatalogDialogSpec spec, AppsDialogActions actions) {
     auto s = [&](Str key) { return strings.get(key); };
-    auto dialog = std::make_unique<ui::Dialog>(s(Str::PostsetupCatalog), std::move(body), std::nullopt, Color::TextSecondary, kWidth);
+    auto dialog = std::make_unique<ui::Dialog>(spec.title, std::move(spec.body), std::nullopt, Color::TextSecondary, kWidth);
     ui::Dialog* raw = dialog.get();
-    const auto* apps = &PostSetupController::popularApps(); // a static list
-    const Localization* text = &strings;                    // outlives every dialog
+    auto rows = std::make_shared<std::vector<CatalogRow>>(std::move(spec.rows));
+    const Localization* text = &strings; // outlives every dialog
+    const Str addFormat = spec.addFormat;
 
     auto present = std::make_shared<std::vector<bool>>();
-    for (std::size_t i = 0; i < apps->size(); ++i) {
+    for (std::size_t i = 0; i < rows->size(); ++i) {
         present->push_back(actions.present && actions.present(i));
     }
-    auto checked = std::make_shared<std::vector<bool>>(apps->size(), false);
+    auto checked = std::make_shared<std::vector<bool>>(rows->size(), false);
 
     auto* table = &raw->setContent<ui::TableView>(
         ui::TableView::kHeader + ui::TableView::kRow * kVisibleRows,
-        std::vector<ui::TableColumn>{{s(Str::PostsetupCatalogApp), 0}, {s(Str::PostsetupCatalogCategory), 120}, {s(Str::PostsetupWingetId), 250}});
-    table->setRowCount(static_cast<int>(apps->size()));
-    table->setAccessible(ui::AccessRole::Group, s(Str::PostsetupCatalog));
+        std::vector<ui::TableColumn>{{spec.nameColumn.empty() ? s(Str::PostsetupCatalogApp) : spec.nameColumn, 0}, {s(Str::PostsetupCatalogCategory), 110}, {spec.detailColumn, 260}});
+    table->setRowCount(static_cast<int>(rows->size()));
+    table->setAccessible(ui::AccessRole::Group, spec.title);
 
     auto primary = std::make_shared<ui::Button*>(nullptr);
-    auto update = [raw, checked, primary, text] {
+    auto update = [raw, checked, primary, text, addFormat] {
         const auto count = std::ranges::count(*checked, true);
         if (*primary) {
-            (*primary)->setText(text->format(Str::PostsetupCatalogAdd, {{L"n", std::to_wstring(count)}}));
+            (*primary)->setText(text->format(addFormat, {{L"n", std::to_wstring(count)}}));
             (*primary)->setEnabled(count > 0);
             raw->layout(); // the button's width follows its text
         }
@@ -78,13 +103,13 @@ AppsDialog makeAppsDialog(const Localization& strings, std::wstring body, AppsDi
         }
         return false;
     };
-    table->paintCell = [apps, present, checked, text](ui::Canvas& canvas, int row, int column, ui::RectF rect,
+    table->paintCell = [rows, present, checked, text](ui::Canvas& canvas, int row, int column, ui::RectF rect,
                                                       ui::TableView::CellState cell) {
-        if (row < 0 || row >= static_cast<int>(apps->size())) {
+        if (row < 0 || row >= static_cast<int>(rows->size())) {
             return;
         }
         const auto index = static_cast<std::size_t>(row);
-        const auto& app = (*apps)[index];
+        const auto& app = (*rows)[index];
         const bool has = (*present)[index];
         switch (column) {
         case kName: {
@@ -102,11 +127,11 @@ AppsDialog makeAppsDialog(const Localization& strings, std::wstring body, AppsDi
             break;
         }
         case kCategory:
-            canvas.drawText(text->get(categoryName(app.category)), rect, TypeStyle::Caption, Color::TextSecondary);
+            canvas.drawText(app.category, rect, TypeStyle::Caption, Color::TextSecondary);
             break;
         case kId:
-            canvas.drawText(has ? app.id + L" · " + text->get(Str::PostsetupCatalogPresent) : app.id, rect, TypeStyle::Mono,
-                            Color::TextTertiary);
+            canvas.drawText(has ? text->get(Str::PostsetupCatalogPresent) + L" \u00b7 " + app.detail : app.detail, rect,
+                            TypeStyle::Mono, Color::TextTertiary);
             break;
         default: break;
         }
