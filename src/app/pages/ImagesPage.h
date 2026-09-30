@@ -23,6 +23,10 @@ public:
 
     // "Devam et" on the mount-folder bar: restore the mount found there (Shell::continueFolderMount).
     std::function<void()> onContinueMount;
+    // Row menu / Del, on the selected edition (the Shell owns the dialogs).
+    std::function<void()> onExport;
+    std::function<void()> onDelete;
+    std::function<void()> onKeepOnly;
 
     [[nodiscard]] static Str remedyText(core::Remedy remedy) noexcept;
     [[nodiscard]] static Str folderStateText(core::MountState state) noexcept;
@@ -33,6 +37,7 @@ public:
 private:
     void refresh(AppState::Change change);
     void updateFolderBar();
+    bool showRowMenu(ui::PointF at); // Bağla / Dışa aktar / Sürümü sil… / Yalnız bu sürümü tut…
 
     AppState& m_state;
     ImageController& m_controller;

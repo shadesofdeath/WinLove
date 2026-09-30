@@ -1,6 +1,6 @@
 #pragma once
 // Image operations for P02 (docs/pages/02-images.md): prepare (ISO → work folder), mount,
-// unmount, export, ESD → WIM, delete index, clean up mounts, adopt an existing mount at startup.
+// unmount, export, ESD → WIM, delete editions, clean up mounts, adopt an existing mount at startup.
 // Lives on the UI thread; heavy work runs on AppState::engine(); results come back through
 // `postToUi`. Knows nothing about widgets: it reports through Events.
 #include "app/generated/StringKeys.g.h"
@@ -9,7 +9,9 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace wl::app {
 
@@ -37,7 +39,10 @@ public:
 
     [[nodiscard]] bool busy() const;
     [[nodiscard]] bool canMount() const;          // source mountable (not ESD), nothing mounted, idle
-    [[nodiscard]] bool canDelete() const;         // WIM file on disk (not inside an ISO)
+    // Why editions cannot be deleted now (busy, mounted, ESD / split image, one edition left);
+    // empty: they can.
+    [[nodiscard]] std::optional<Str> deleteRefusal() const;
+    [[nodiscard]] bool canDelete() const { return !deleteRefusal(); }
     [[nodiscard]] bool isEsdSource() const;
     [[nodiscard]] std::optional<int> failedIndex() const noexcept { return m_failedIndex; }
 
@@ -45,7 +50,10 @@ public:
     void unmount(bool commit);
     void exportIndex(int index, const std::filesystem::path& destination);
     void convertEsd(const std::filesystem::path& destination);
-    void deleteIndex(int index);
+    // Removes these editions; the WIM is rewritten with the ones that stay (core::removeImages),
+    // which are renumbered. An ISO is copied to the work folder first. `label` is what the strip
+    // and the toast call them: the edition's name, or "5 sürüm".
+    void removeEditions(std::vector<int> indexes, std::wstring label);
     // Repairs the WinLove mount folder whatever its state (MountHealth: remount / discard /
     // clear leftovers, Explorer windows moved away first) plus DISM's own mount point cleanup.
     void cleanupMounts();

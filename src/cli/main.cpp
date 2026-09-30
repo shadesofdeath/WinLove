@@ -763,11 +763,22 @@ int cmdExport(const std::wstring& source, const std::wstring& index, const std::
     return 0;
 }
 
-int cmdDeleteIndex(const std::wstring& wim, const std::wstring& index) {
-    if (auto r = core::deleteImage(wim, parseIndex(index)); !r) {
+// Removes editions and rewrites the WIM with the ones that stay (what the Images page does).
+int cmdDeleteIndex(const std::wstring& wim, const std::wstring& list) {
+    std::vector<int> indexes;
+    std::wstringstream parts(list);
+    for (std::wstring part; std::getline(parts, part, L',');) {
+        indexes.push_back(parseIndex(part));
+    }
+    std::error_code ec;
+    const auto before = std::filesystem::file_size(wim, ec);
+    const auto task = progressTask(L"remove");
+    if (auto r = core::removeImages(wim, indexes, task); !r) {
+        print(L"\n");
         return reportError(r.error());
     }
-    print(std::format(L"  deleted index {} from {}\n", index, wim));
+    const auto after = std::filesystem::file_size(wim, ec);
+    print(std::format(L"\n  removed index {} from {}: {} -> {} bytes\n", list, wim, before, after));
     return 0;
 }
 
@@ -814,7 +825,7 @@ void printUsage() {
           L"  wlcli plan <changeset.json>              Show the ordered apply plan\n"
           L"  wlcli extract-all <iso> <dir>             Copy the whole ISO into a folder (resumable)\n"
           L"  wlcli export <wim|esd> <index> <dst.wim> [--compress=max|fast|none|recovery]\n"
-          L"  wlcli delete-index <wim> <index>\n"
+          L"  wlcli delete-index <wim> <index>[,<index>...]   Remove editions; the WIM is rewritten with the rest\n"
           L"  wlcli optimize <wim>                      Rewrite a WIM without what commits left behind\n"
           L"  wlcli version | help\n"
           L"\n"

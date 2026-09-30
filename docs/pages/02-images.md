@@ -4,7 +4,7 @@
 
 ## 1. Amaç
 Açılan kaynaktaki (ISO / WIM / ESD / SWM / kurulum klasörü) sürümleri göstermek ve imaj seviyesindeki
-işlemleri yapmak: bağla (mount), çöz (commit / discard), dışa aktar, ESD → WIM, index sil.
+işlemleri yapmak: bağla (mount), çöz (commit / discard), dışa aktar, ESD → WIM, sürüm sil.
 
 ## 2. Ekran
 - **Başlık eylemleri:** ESD → WIM (yalnız ESD kaynak), Dışa aktar, Bağla/Çöz (birincil).
@@ -13,9 +13,10 @@ işlemleri yapmak: bağla (mount), çöz (commit / discard), dışa aktar, ESD �
 - **İşlem şeridi (03):** "Windows 11 Pro bağlanıyor", yol · % · kalan süre, İptal.
 - **Tablo:** Index · Ad | Sürüm ID | Mimari | Build | Dil | Değiştirilme | Boyut | Durum. Tek seçim.
   "Sürüm ID" ve "Değiştirilme" dar pencerede (ad sütunu < 260 px) gizlenir.
+  Satıra sağ tık: Bağla / Dışa aktar / Sürümü sil… / Yalnız bu sürümü tut… (yalnız o an yapılabilenler); `Del` = sil.
 - **Inspector (280):** sürüm, build, dal, mimari, dil (+n), kurulum tipi, Sysprep durumu, oluşturma,
   değiştirilme, boyut, içerik (dosya · klasör), WIMBoot; "WIM dosyası": sıkıştırma, dosya boyutu,
-  index sayısı, bölünmüş, önyükleme index'i. Altta Bağla/Çöz + "Index'i sil…".
+  index sayısı, bölünmüş, önyükleme index'i. Altta Bağla/Çöz + "Sürümü sil…" (kapalıysa tooltip nedenini söyler).
 - **Durum çubuğu:** mount segmenti (nokta + yol + imaj boyutu), görev segmenti, "Uygula" CTA (mount'ta görünür).
 
 ## 3. Akışlar
@@ -33,7 +34,12 @@ işlemleri yapmak: bağla (mount), çöz (commit / discard), dışa aktar, ESD �
 - **Açılışta geri yükleme:** mount klasörü incelenir; sağlam mount varsa kaynağı açılır, sürüm seçilir,
   "Bağlı" gösterilir. Olmazsa sayfada "Bağlı imaj bulundu: <sürüm> (index n)" + **Devam et**.
 - **Dışa aktar / ESD → WIM:** wimgapi `WIMExportImage` (LZX), kaydet dialogu.
-- **Index sil:** yalnız diskteki WIM ve > 1 index; onay dialogu.
+- **Sürüm sil (D-033):** onay dialogu → `core::removeImages`: WIM kalan sürümlerle yeniden yazılır (dosya küçülür,
+  ilerleme + iptal; bitene dek özgün dosya durur). "Yalnız bu sürümü tut…" diğerlerinin hepsini tek seferde siler.
+  ISO kaynakta önce çalışma klasörüne kopyalanır (ISO değişmez). Kapalı olduğu durumlar: bağlı imaj varken, ESD /
+  bölünmüş imajda, tek sürüm kaldığında. Kalanlar yeniden numaralanır; seçim ve yanıt dosyasındaki sürüm index'i
+  izler. Not: aynı ISO yeniden açılıp bağlanırsa çalışma kopyasındaki install.wim ISO'dakiyle değiştirilir —
+  silinen sürümlerle devam etmek için son kullanılanlardaki çalışma klasörü açılır.
 
 ## 4. Mount klasörü durumları
 `docs/ENGINE.md` "Mount durumları" ve "Hata kataloğu". Sayfa, klasör Free değilse ve uygulama o mount'u
@@ -52,3 +58,7 @@ Ertelenen: tasarımdaki arama kutusu ve mimari filtresi, çoklu seçim, birleşt
 - [ ] Uygulama kapat/aç → bağlı imaj geri gelir (düzeltme 2026-09-28 akşam, tekrar test edilecek).
 - [ ] Bağla → mount ilerlemesinden sonra "içeriği okunuyor" ilerlemesi; bitince Özellikler / Bileşenler /
       Servisler sayfaları beklemeden açılır (2026-09-30, D-027).
+- [ ] Sürüm silme (2026-09-30, D-033): ISO aç → bir sürüme sağ tık → "Yalnız bu sürümü tut…" → onay → kopyalama +
+      silme ilerlemesi → tabloda tek sürüm (index 1), özet satırında küçülmüş boyut. Ardından Bağla ve ISO Oluştur
+      çalışır; VM'de Setup sürüm sormadan kurar.
+- [ ] Tek sürüm silme: inspector'daki "Sürümü sil…" ve `Del`; silme sırasında Vazgeç → imaj değişmeden kalır.

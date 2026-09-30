@@ -745,10 +745,11 @@ void Shell::updateImagesChrome() {
         m_actionEsd->setTooltip(m_images->isEsdSource() ? std::wstring{} : m_strings.get(Str::ImagesEsdOnly));
     }
     if (m_inspector) {
+        const auto deleteRefusal = m_images->deleteRefusal(); // the disabled button's tooltip says why
         m_inspector->set(m_state.source() ? &*m_state.source() : nullptr, image, mountedHere,
-                         image && m_images->canMount(), image && m_images->canDelete(),
+                         image && m_images->canMount(), image && !deleteRefusal,
                          m_images->isEsdSource() ? m_strings.get(Str::ImagesEsdNoMount) : std::wstring{},
-                         m_images->canDelete() ? std::wstring{} : m_strings.get(Str::ImagesReadOnlySource));
+                         deleteRefusal ? m_strings.get(*deleteRefusal) : std::wstring{});
         m_inspector->setVisible(inspectorVisible());
     }
     layout();
@@ -819,7 +820,11 @@ void Shell::showPage(PageId page) {
             }
             m_pageBody = &m_pageView->setBody<ImagesPage>(m_state, *m_images, m_strings, m_language,
                                                           [this] { showPage(PageId::Source); });
-            static_cast<ImagesPage*>(m_pageBody)->onContinueMount = [this] { continueFolderMount(); };
+            auto& images = *static_cast<ImagesPage*>(m_pageBody);
+            images.onContinueMount = [this] { continueFolderMount(); };
+            images.onExport = [this] { exportSelected(); };
+            images.onDelete = [this] { askDeleteSelected(); };
+            images.onKeepOnly = [this] { askDeleteSelected(/*keepOnly=*/true); };
             m_inspector = &add<ImageInspector>(m_strings, m_language);
             m_inspector->onMount = [this] {
                 if (const auto index = m_state.selectedIndex()) {
@@ -1458,22 +1463,44 @@ void Shell::askUnmount() {
     pushDialog(std::move(dialog));
 }
 
-void Shell::askDeleteSelected() {
+void Shell::askDeleteSelected(bool keepOnly) {
     const auto* image = m_state.selectedImage();
     if (!host() || !image) {
         return;
     }
-    const int index = image->index;
-    auto dialog = std::make_unique<ui::Dialog>(
-        m_strings.get(Str::DialogsDeleteIndexTitle),
-        m_strings.format(Str::DialogsDeleteIndexBody, {{L"name", std::format(L"{} · {}", index, image->name)}}),
-        ui::icons::Icon::ErrorOctagon, ui::tokens::Color::StatusError);
+    if (const auto refusal = m_images->deleteRefusal()) {
+        showToast(ui::InfoKind::Warning, m_strings.get(*refusal), L"");
+        return;
+    }
+    const std::wstring name = std::format(L"{} · {}", image->index, image->name);
+    std::vector<int> doomed{image->index};
+    std::wstring label = image->name; // what the strip and the toast call them
+    Str title = Str::DialogsDeleteIndexTitle;
+    std::wstring body = m_strings.format(Str::DialogsDeleteIndexBody, {{L"name", name}});
+    if (keepOnly) {
+        doomed.clear();
+        for (const auto& other : m_state.source()->install.images) {
+            if (other.index != image->index) {
+                doomed.push_back(other.index);
+            }
+        }
+        const std::wstring count = std::to_wstring(doomed.size());
+        label = m_strings.format(Str::ImagesEditionCount, {{L"n", count}});
+        title = Str::DialogsKeepOnlyTitle;
+        body = m_strings.format(Str::DialogsKeepOnlyBody, {{L"name", name}, {L"n", count}});
+    }
+    if (m_state.source()->format == core::ImageFormat::Iso) {
+        body += L" " + m_strings.get(Str::DialogsDeleteIsoNote);
+    }
+    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(title), body, ui::icons::Icon::ErrorOctagon,
+                                               ui::tokens::Color::StatusError);
     ui::Dialog* raw = dialog.get();
     raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
-    raw->addButton(ui::ButtonKind::Danger, m_strings.get(Str::CommonDelete), [this, raw, index] {
-        host()->popModal(raw);
-        m_images->deleteIndex(index);
-    });
+    raw->addButton(ui::ButtonKind::Danger, m_strings.get(Str::CommonDelete),
+                   [this, raw, doomed = std::move(doomed), label = std::move(label)] {
+                       host()->popModal(raw);
+                       m_images->removeEditions(doomed, label);
+                   });
     pushDialog(std::move(dialog));
 }
 

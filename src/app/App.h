@@ -19,7 +19,7 @@
 //      --demo-<page>          (render: sample state for a page; see LaunchOptions)
 //      --switch-lang=tr|en    (render: rebuild the UI in another language, as the settings page does)
 //      --palette[=query]      (render: open the command palette, optionally with text typed)
-//      --keys=down,enter,…    (render: press these keys in order — up down left right enter esc)
+//      --keys=down,enter,…    (render: press these keys in order — up down left right enter esc del tab)
 #include "app/Localization.h"
 #include "app/pages/PageInfo.h"
 #include "app/shell/Shell.h"

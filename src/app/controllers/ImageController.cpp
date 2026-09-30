@@ -48,11 +48,29 @@ bool ImageController::canMount() const {
     return m_state.source() && !isEsdSource() && !m_state.mounted() && !busy();
 }
 
-bool ImageController::canDelete() const {
+std::optional<Str> ImageController::deleteRefusal() const {
     const auto& source = m_state.source();
-    return source && !busy() && !m_state.mounted() &&
-           (source->format == core::ImageFormat::Wim || source->format == core::ImageFormat::Folder) &&
-           source->install.images.size() > 1 && !isEsdSource();
+    if (!source) {
+        return Str::ImagesEmptyTitle;
+    }
+    if (busy()) {
+        return Str::ImagesBusy;
+    }
+    if (m_state.mounted()) {
+        return Str::ImagesUnmountFirst;
+    }
+    // The rewrite is an export: only a plain WIM comes out of it as what it was.
+    const auto& header = source->install.header;
+    const bool container = source->format == core::ImageFormat::Wim || source->format == core::ImageFormat::Folder ||
+                           source->format == core::ImageFormat::Iso;
+    if (!container || isEsdSource() || header.solid || header.totalParts > 1 ||
+        header.compression == core::WimCompression::Lzms) {
+        return Str::ImagesDeleteNeedsWim;
+    }
+    if (source->install.images.size() < 2) {
+        return Str::ImagesLastEdition;
+    }
+    return std::nullopt;
 }
 
 std::optional<std::filesystem::path> ImageController::installWimPath() const {
@@ -120,7 +138,9 @@ void ImageController::run(EngineOperation op, Work work, std::function<void()> o
                         m_events.refused(Str::ImagesCancelledToast);
                         return;
                     }
-                    m_failedIndex = index;
+                    if (failure != Failure::Delete) {
+                        m_failedIndex = index; // the row says "Bağlanamadı": not what a failed delete is
+                    }
                     m_events.failed(failure, result.error(), index);
                     inspectMountFolder(); // show what the failure left behind
                     return;
@@ -285,31 +305,53 @@ void ImageController::convertEsd(const std::filesystem::path& destination) {
     });
 }
 
-void ImageController::deleteIndex(int index) {
-    if (!canDelete()) {
-        m_events.refused(busy() ? Str::ImagesBusy : Str::ImagesReadOnlySource);
+void ImageController::removeEditions(std::vector<int> indexes, std::wstring label) {
+    if (const auto refusal = deleteRefusal()) {
+        m_events.refused(*refusal);
         return;
     }
-    const auto wim = installWimPath();
-    const std::filesystem::path sourcePath = m_state.source()->path;
-    auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
-    run(EngineOperation{EngineOperation::Kind::Deleting, editionName(index), *wim, index},
-        [wim = *wim, index, sourcePath, reopened](const core::TaskContext&) -> Result<void> {
-            if (auto r = core::deleteImage(wim, index); !r) {
-                return r;
-            }
-            auto info = core::openSource(sourcePath);
-            if (!info) {
-                return std::unexpected(info.error());
-            }
-            *reopened = std::move(*info);
-            return {};
-        },
-        [this, reopened] {
-            m_state.setSource(std::move(**reopened));
-            m_events.succeeded(Str::ImagesDeleteDone, L"");
-        },
-        Failure::Delete);
+    if (indexes.empty()) {
+        return;
+    }
+    if (indexes.size() >= m_state.source()->install.images.size()) {
+        m_events.refused(Str::ImagesLastEdition);
+        return;
+    }
+    // One edition: its row shows the work. Several: no single row does.
+    const int row = indexes.size() == 1 ? indexes.front() : 0;
+    const int selected = m_state.selectedIndex().value_or(indexes.front());
+    withWritableSource(selected, [this, indexes = std::move(indexes), label = std::move(label), row] {
+        const auto wim = installWimPath();
+        const std::filesystem::path sourcePath = m_state.source()->path;
+        auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
+        run(EngineOperation{EngineOperation::Kind::Deleting, label, *wim, row},
+            [wim = *wim, indexes, sourcePath, reopened](const core::TaskContext& task) -> Result<void> {
+                if (auto r = core::removeImages(wim, indexes, task); !r) {
+                    return r;
+                }
+                auto info = core::openSource(sourcePath);
+                if (!info) {
+                    return std::unexpected(info.error());
+                }
+                *reopened = std::move(*info);
+                return {};
+            },
+            [this, reopened, indexes, label] {
+                // What stays is renumbered: the selection and the answer file's edition follow it.
+                const auto selected = m_state.selectedIndex();
+                m_state.setSource(std::move(**reopened));
+                if (const auto now = selected ? core::indexAfterRemoval(*selected, indexes) : std::nullopt) {
+                    m_state.select(*now);
+                }
+                if (auto unattend = m_state.unattend(); unattend.options.imageIndex > 0) {
+                    // Its edition is gone: Setup asks again (0).
+                    unattend.options.imageIndex = core::indexAfterRemoval(unattend.options.imageIndex, indexes).value_or(0);
+                    m_state.setUnattend(std::move(unattend));
+                }
+                m_events.succeeded(Str::ImagesDeleteDone, label);
+            },
+            Failure::Delete);
+    });
 }
 
 void ImageController::cleanupMounts() {

@@ -127,7 +127,8 @@ public:
 
     // ---- images (P02) ---------------------------------------------------------------------
     void askUnmount();
-    void askDeleteSelected();
+    // Confirms, then deletes the selected edition — or, with `keepOnly`, every other one.
+    void askDeleteSelected(bool keepOnly = false);
     void exportSelected();
     void convertEsd();
     void exportLog();

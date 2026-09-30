@@ -157,8 +157,22 @@ bool EditionTable::onKeyDown(const ui::KeyEvent& key) {
             onActivate(*m_selected);
         }
         return true;
+    case VK_DELETE:
+        if (m_selected && onDelete) {
+            onDelete(*m_selected);
+        }
+        return true;
     default: return false;
     }
+}
+
+bool EditionTable::onContextMenu(ui::PointF p) {
+    const int row = rowAt(p);
+    if (row < 0 || !onMenu) {
+        return false;
+    }
+    selectRow(row);
+    return onMenu(m_images[static_cast<std::size_t>(row)].index, p);
 }
 
 RectF EditionTable::focusRect() const {

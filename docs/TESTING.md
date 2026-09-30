@@ -48,6 +48,7 @@ Integration testleri beklenen değerleri (index sayısı, sürüm adları, build
 |---|---|---|
 | `tools\lab_setup.ps1` | `build\lab` klasörlerini kurar, install.wim'i ISO'dan kopyalar (yönetici gerekmez) | — |
 | `tools\dism_smoke.ps1` | Salt okunur mount, özellik / paket / capability listeleri, discard | `build\lab\out\dism-smoke.json` |
+| `tools\lab_editions.ps1 [-Keep "Windows 11 Pro"]` | Lab WIM'inin kopyasında sürüm siler (`wlcli delete-index`): reddedilen istekler, tek sürüm, "yalnız bunu tut"; 7-Zip varsa akış testi. Kopyayı siler. **Yönetici gerekmez**, ~14 GB boş alan, ~3 dk | konsol (PASS / FAIL) |
 | `tools\lab_components.ps1 [-Cleanup]` | Kopya imajda OneDrive (gizli CBS paketi) ve Edge'i `wlcli component --remove` ile kaldırır, doğrular, discard. `-Cleanup`: depo temizliği de (5–20 dk) | `build\lab\out\components-test.log` |
 
 Hepsi `wlcli` üzerinden çalışır: bir adım başarısızsa aynı komut elle yinelenebilir (`--verbose` motor logunu da basar).
