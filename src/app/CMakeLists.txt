@@ -17,6 +17,7 @@ add_library(wl_app STATIC
     controllers/PreloadController.cpp
     controllers/PresetController.cpp
     controllers/UnattendController.cpp
+    ApplyReport.cpp
     Format.cpp
     Localization.cpp
     Resources.cpp

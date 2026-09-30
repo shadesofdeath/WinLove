@@ -75,6 +75,14 @@ enum class Str : std::uint16_t {
     ApplyReasonCancelled,
     ApplyReasonPending,
     ApplyReasonPermanentPackage,
+    ApplyReportCommitted,
+    ApplyReportFiles,
+    ApplyReportImage,
+    ApplyReportNotCommitted,
+    ApplyReportNotRun,
+    ApplyReportOk,
+    ApplyReportSaved,
+    ApplyReportTitle,
     ApplyResult,
     ApplyReview,
     ApplyRunning,
@@ -82,6 +90,7 @@ enum class Str : std::uint16_t {
     ApplySaveAsPreset,
     ApplySaveFailed,
     ApplySaveLog,
+    ApplySaveReport,
     ApplySaveToPreset,
     ApplySeeWarning,
     ApplySkipped,
@@ -871,7 +880,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 861;
+inline constexpr std::size_t kStrCount = 870;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -941,6 +950,14 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "apply.reason.cancelled",
     "apply.reason.pending",
     "apply.reason.permanentPackage",
+    "apply.reportCommitted",
+    "apply.reportFiles",
+    "apply.reportImage",
+    "apply.reportNotCommitted",
+    "apply.reportNotRun",
+    "apply.reportOk",
+    "apply.reportSaved",
+    "apply.reportTitle",
     "apply.result",
     "apply.review",
     "apply.running",
@@ -948,6 +965,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "apply.saveAsPreset",
     "apply.saveFailed",
     "apply.saveLog",
+    "apply.saveReport",
     "apply.saveToPreset",
     "apply.seeWarning",
     "apply.skipped",

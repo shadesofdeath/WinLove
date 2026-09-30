@@ -185,6 +185,7 @@ private:
     void updateApplyChrome();                         // CTA label, Apply page mode/header
     void savePreset(const core::ops::ChangeSet& changes);
     void saveApplyLog();
+    void saveApplyReport(); // the run as one HTML page (app/ApplyReport.h)
     void showApplyConfirm();
     void updateQueue(); // CTA count, nav badges, page actions that depend on the queue
     [[nodiscard]] bool inspectorVisible() const;

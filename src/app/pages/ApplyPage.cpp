@@ -1,5 +1,7 @@
 #include "app/pages/ApplyPage.h"
 
+#include "app/ApplyReport.h"
+
 #include "core/image/dism/Edition.h"
 
 #include "app/Format.h"
@@ -160,34 +162,14 @@ std::vector<ApplyPage::Row> ApplyPage::doneRows() const {
 }
 
 std::wstring ApplyPage::skipReason(const Error& error) const {
-    switch (static_cast<std::uint32_t>(error.hresult)) {
-    case 0x80073CFA: return m_strings.get(Str::ApplyReasonAppxProtected);
-    case 0x800F0825: return m_strings.get(Str::ApplyReasonPermanentPackage);
-    case 0x800F0806: return m_strings.get(Str::ApplyReasonPending);
-    default: break;
-    }
-    if (error.code == ErrorCode::Cancelled) {
-        return m_strings.get(Str::ApplyReasonCancelled);
-    }
-    // Whatever DISM said, with the code someone can search for.
-    return error.hresult != 0 ? std::format(L"{} (0x{:08X})", error.message, static_cast<std::uint32_t>(error.hresult))
-                              : error.message;
+    return applySkipReason(m_strings, error); // the report words it the same way
 }
 
 std::wstring ApplyPage::groupName(const Row& row) const {
     if (!row.group) {
         return m_strings.get(Str::ApplyOpsCommitUnmount);
     }
-    switch (row.group->phase) {
-    case Phase::Edition: return m_strings.get(Str::ApplyOpsEdition);
-    case Phase::Remove: return m_strings.get(Str::ApplyOpsComponents);
-    case Phase::Features: return m_strings.get(Str::ApplyOpsFeatures);
-    case Phase::Drivers: return m_strings.get(Str::ApplyOpsDrivers);
-    case Phase::Updates: return m_strings.get(Str::ApplyOpsUpdates);
-    case Phase::Cleanup: return m_strings.get(Str::ApplyOpsCleanup);
-    case Phase::Settings: return m_strings.get(Str::ApplyOpsSettings);
-    }
-    return {};
+    return applyPhaseName(m_strings, row.group->phase);
 }
 
 ui::icons::Icon ApplyPage::groupIcon(const Row& row) {
