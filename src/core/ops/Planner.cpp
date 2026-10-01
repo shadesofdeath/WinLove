@@ -30,6 +30,8 @@ Phase phaseOf(OpKind kind) noexcept {
     case OpKind::CopyTree:
     case OpKind::SetDefaultApps:
     case OpKind::SetIntl:
+    case OpKind::SetPicture:
+    case OpKind::AddFont:
     case OpKind::SetServiceStart: return Phase::Settings;
     }
     return Phase::Settings;
@@ -65,6 +67,8 @@ double estimateSeconds(OpKind kind) noexcept {
     case OpKind::AddAppx: return 30.0;
     case OpKind::SetDefaultApps: return 10.0;  // dism.exe
     case OpKind::SetIntl: return 15.0;         // dism.exe
+    case OpKind::SetPicture: return 3.0;       // a few encodes (WIC)
+    case OpKind::AddFont: return 0.5;
     }
     return 5.0;
 }

@@ -10,6 +10,7 @@
 #include "core/image/dism/Edition.h"
 #include "core/image/dism/StoreCleanup.h"
 #include "core/image/AppxInstall.h"
+#include "core/image/Branding.h"
 #include "core/image/HostsFile.h"
 #include "core/image/ScheduledTasks.h"
 #include "core/image/dism/DefaultApps.h"
@@ -156,6 +157,29 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
         }
         registry.reset(); // dism.exe loads the image's hives
         return provisionAppx(session, *install, task);
+    }
+    case OpKind::SetPicture: {
+        const auto slot = pictureSlotFromKey(op.target);
+        if (!slot) {
+            return fail(ErrorCode::InvalidArgument, L"unknown picture", op.target);
+        }
+        auto written = applyPicture(session.mountPath(), *slot, op.value, task);
+        if (!written) {
+            return std::unexpected(written.error());
+        }
+        for (const auto& write : written->registry) {
+            if (auto r = reg().apply(write); !r) {
+                return r;
+            }
+        }
+        return {};
+    }
+    case OpKind::AddFont: {
+        auto write = applyFont(session.mountPath(), op.value);
+        if (!write) {
+            return std::unexpected(write.error());
+        }
+        return reg().apply(*write);
     }
     case OpKind::SetDefaultApps: {
         registry.reset();

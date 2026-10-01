@@ -421,6 +421,9 @@ void UnattendedPage::buildForm() {
     m_disk->onChange = [this](int index) {
         m_controller.edit([index](Options& o) { o.disk = static_cast<core::UnattendDisk>(std::clamp(index, 0, 2)); });
     };
+    // D-056: Compact OS — Windows' own files stay compressed on the disk.
+    addSwitch(Str::UnattendedCompactOs, s(Str::UnattendedCompactOsHint), [](const Options& o) { return o.compactOs; },
+              [](Options& o, bool on) { o.compactOs = on; });
 
     m_form->addSection(s(Str::UnattendedStepsOobe));
     addSwitch(Str::UnattendedAcceptEula, {}, [](const Options& o) { return o.acceptEula; },

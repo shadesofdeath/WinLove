@@ -100,6 +100,7 @@ core::BootPatch IsoController::bootPatch(const AppState& state) {
     patch.bypassRam = answers.bypassRam;
     patch.bypassCpu = answers.bypassCpu;
     patch.bypassStorage = answers.bypassStorage;
+    patch.drivers = state.bootDrivers(); // D-056: Sürücüler › Kurulum ortamı
     return patch;
 }
 

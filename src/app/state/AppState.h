@@ -213,6 +213,11 @@ public:
     };
     [[nodiscard]] const DriverScan& driverScan() const noexcept { return m_drivers; }
     void addDriverScan(const std::filesystem::path& folder, std::vector<core::DriverInf> infs);
+    // D-056: INFs that also go into Setup's own image (boot.wim) when the ISO / USB is made —
+    // storage and network drivers Setup needs to see the disk / the network. Change::Drivers.
+    [[nodiscard]] const std::vector<std::filesystem::path>& bootDrivers() const noexcept { return m_bootDrivers; }
+    [[nodiscard]] bool isBootDriver(const std::filesystem::path& inf) const;
+    void setBootDriver(const std::filesystem::path& inf, bool on);
 
     // P13: the answer file being edited (kept across pages, sources and — with an answers file —
     // runs of the app); written to the root of the next ISO when `includeInIso` is on.
@@ -334,6 +339,7 @@ private:
     std::optional<ImageIntl> m_imageIntl;
     std::vector<RegImport> m_regImports;
     DriverScan m_drivers;
+    std::vector<std::filesystem::path> m_bootDrivers;
     Unattend m_unattend;
     std::optional<IsoRun> m_iso;
     std::optional<UpdateFetch> m_updateFetch;

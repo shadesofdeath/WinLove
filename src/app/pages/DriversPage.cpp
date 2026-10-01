@@ -85,12 +85,15 @@ std::wstring DriversPage::className(const std::wstring& cls, const Localization&
 DriversPage::DriversPage(AppState& state, ImageDriverController& images, const Localization& strings, Language language,
                          Intents intents)
     : m_state(state), m_images(images), m_strings(strings), m_language(language), m_intents(std::move(intents)) {
-    m_tabs = &add<ui::TabBar>(std::vector<std::wstring>{strings.get(Str::DriversTabAdd), strings.get(Str::DriversTabImage)}, 0);
+    m_tabs = &add<ui::TabBar>(std::vector<std::wstring>{strings.get(Str::DriversTabAdd), strings.get(Str::DriversTabImage),
+                                                        strings.get(Str::DriversTabBoot)},
+                              0);
     m_tabs->onChange = [this](int) {
         if (imageTab()) {
             m_images.load();
         }
         refresh();
+        layout(); // the boot tab keeps a detail line under the tree
     };
     m_imageTable = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::DriversDriver), 0},
@@ -213,6 +216,11 @@ void DriversPage::showImageTab() {
     refresh();
 }
 
+void DriversPage::showBootTab() {
+    m_tabs->setSelected(2);
+    refresh();
+}
+
 void DriversPage::focusSearch() {
     if (host()) {
         host()->setFocus(m_search, /*visible=*/true);
@@ -228,12 +236,19 @@ bool DriversPage::onChar(wchar_t ch) {
 }
 
 bool DriversPage::queued(int inf) const {
-    return m_state.changes().find(OpKind::AddDriver, m_state.driverScan().infs[static_cast<std::size_t>(inf)].path.wstring()) !=
-           nullptr;
+    const auto& path = m_state.driverScan().infs[static_cast<std::size_t>(inf)].path;
+    if (bootTab()) {
+        return m_state.isBootDriver(path);
+    }
+    return m_state.changes().find(OpKind::AddDriver, path.wstring()) != nullptr;
 }
 
 void DriversPage::toggle(int inf) {
     const auto& d = m_state.driverScan().infs[static_cast<std::size_t>(inf)];
+    if (bootTab()) {
+        m_state.setBootDriver(d.path, !m_state.isBootDriver(d.path));
+        return;
+    }
     if (!m_state.unqueue(OpKind::AddDriver, d.path.wstring())) {
         core::ops::Operation op{OpKind::AddDriver, d.path.wstring(), d.className};
         op.risk = core::ops::Risk::Low;
@@ -252,9 +267,10 @@ void DriversPage::toggleGroup(const Group& group) {
 }
 
 void DriversPage::refresh() {
-    const bool mounted = m_state.mounted().has_value();
+    // The boot tab needs no mounted image: boot.wim is patched when the ISO / USB is made.
+    const bool mounted = m_state.mounted().has_value() || bootTab();
     const bool any = !m_state.driverScan().infs.empty();
-    m_tabs->setVisible(mounted);
+    m_tabs->setVisible(true);
     if (mounted && imageTab()) {
         // The image's own drivers.
         for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_search, m_class, m_arch, m_table}) {
@@ -411,7 +427,7 @@ void DriversPage::layout() {
     const RectF b = bounds();
     m_tabs->setBounds({b.x, b.y + kTabsTop, b.width, kTabsHeight});
     const float below = b.y + kTabsTop + kTabsHeight + 11.0f;
-    m_empty->setBounds(m_state.mounted() ? RectF{b.x, below, b.width, std::max(b.bottom() - below, 0.0f)} : b);
+    m_empty->setBounds({b.x, below, b.width, std::max(b.bottom() - below, 0.0f)});
     {
         const float top = below + kToolbar + 12;
         m_imageTable->setBounds({b.x, top, b.width, std::max(b.bottom() - top - kDetailLine, 0.0f)});
@@ -426,7 +442,8 @@ void DriversPage::layout() {
         x += width + kGap;
     }
     const float top = y + kToolbar + 12;
-    m_table->setBounds({b.x, top, b.width, std::max(b.bottom() - top, 0.0f)});
+    const float detail = bootTab() ? kDetailLine : 0.0f;
+    m_table->setBounds({b.x, top, b.width, std::max(b.bottom() - top - detail, 0.0f)});
 }
 
 void DriversPage::paintImageCell(ui::Canvas& canvas, int row, int column, RectF rect, ui::TableView::CellState cell) {
@@ -486,9 +503,14 @@ void DriversPage::paint(ui::Canvas& canvas) {
     for (const auto& inf : scan.infs) {
         total += inf.size;
     }
-    const std::wstring text = m_strings.format(Str::DriversSummary, {{L"f", std::to_wstring(scan.folders.size())},
-                                                                     {L"n", std::to_wstring(scan.infs.size())},
-                                                                     {L"size", formatBytes(total, m_language)}});
+    const std::wstring text =
+        bootTab() ? m_strings.format(Str::DriversBootSummary, {{L"n", std::to_wstring(m_state.bootDrivers().size())}})
+                  : m_strings.format(Str::DriversSummary, {{L"f", std::to_wstring(scan.folders.size())},
+                                                           {L"n", std::to_wstring(scan.infs.size())},
+                                                           {L"size", formatBytes(total, m_language)}});
+    if (bootTab()) {
+        paintDetail(canvas, {b.x, m_table->bounds().bottom(), b.width, kDetailLine}, L"", m_strings.get(Str::DriversBootHint));
+    }
     const float left = m_arch->bounds().right() + kGap;
     canvas.drawText(text, {left, b.y + kToolbarTop, std::max(b.right() - left, 0.0f), kToolbar}, TypeStyle::Caption,
                     Color::TextSecondary, ui::TextAlign::Trailing);

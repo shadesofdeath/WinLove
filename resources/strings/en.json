@@ -430,7 +430,10 @@
     "hostExporting": "Exporting this PC's drivers…",
     "hostExported": "{n} driver packages taken — pick them on the first tab",
     "hostFailed": "Could not take this PC's drivers",
-    "providerName": "Provider"
+    "providerName": "Provider",
+    "tabBoot": "Setup media (boot.wim)",
+    "bootSummary": "Into the setup media: {n} driver(s)",
+    "bootHint": "Added to boot.wim when the ISO / USB is made: so Setup sees the disk (RAID / VMD) or the network"
   },
   "registry": {
     "title": "Registry",
@@ -565,7 +568,9 @@
     "saved": "Answer file saved",
     "saveFailed": "Could not save the answer file",
     "imported": "Answer file imported",
-    "importFailed": "Could not read the answer file"
+    "importFailed": "Could not read the answer file",
+    "compactOs": "Compact OS",
+    "compactOsHint": "Windows files stay compressed on the disk: saves a few GB"
   },
   "postsetup": {
     "title": "Post-Setup",
@@ -628,7 +633,19 @@
       "winget": "winget",
       "command": "command",
       "copy": "copy"
-    }
+    },
+    "addWifi": "Add Wi-Fi network",
+    "typesWifi": "Wi-Fi",
+    "wifiFromPc": "From this PC",
+    "wifiManual": "Type it in",
+    "wifiProtected": "key protected (run as administrator)",
+    "wifiSsid": "Network name (SSID)",
+    "wifiPassword": "Password",
+    "wifiKeyHint": "Plain text in the preset and on the setup media; deleted from the disk after setup",
+    "wifiSecurity": "Security",
+    "wifiOpen": "Open (no password)",
+    "wifiHidden": "Hidden network",
+    "wifiHiddenHint": "Does not broadcast its name"
   },
   "apply": {
     "title": "Apply",

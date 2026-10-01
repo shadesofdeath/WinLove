@@ -20,6 +20,17 @@ namespace wl::core {
 
 inline constexpr std::size_t kImageFileLimit = 1u << 20; // 1 MiB: these are configuration files
 
+// `bytes` at <mountDir>\<relative> as a NEW file. What is there is unlinked first: many of
+// Windows' own files are hard links into WinSxS, and writing through one would change the
+// component store's copy too (DISM / sfc then report it corrupt). Writes whatever the folder's
+// ACL (TrustedInstaller) says, through SeRestorePrivilege + backup semantics — so only for paths
+// WinLove itself names, never for user input (writeImageFile / copyImageFile check those first).
+// The folder must exist; the new file inherits its ACL.
+[[nodiscard]] Result<void> replaceImageFile(const std::filesystem::path& mountDir, std::wstring_view relative,
+                                            std::string_view bytes);
+// Removes <mountDir>\<relative> (only this name: a hard link's other names stay). Missing = success.
+[[nodiscard]] Result<void> unlinkImageFile(const std::filesystem::path& mountDir, std::wstring_view relative);
+
 [[nodiscard]] Result<void> validateImageFile(std::wstring_view relative, std::size_t bytes);
 
 // Writes `content` as it is (UTF-8 from the caller) to <mountDir>\<relative>, replacing a file

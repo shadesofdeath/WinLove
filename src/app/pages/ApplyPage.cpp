@@ -60,6 +60,8 @@ Category categoryOf(OpKind kind) {
     case OpKind::CopyTree:
     case OpKind::SetDefaultApps:
     case OpKind::SetIntl:
+    case OpKind::SetPicture:
+    case OpKind::AddFont:
     case OpKind::SetPostSetup: return kTweaks;
     }
     return kTweaks;

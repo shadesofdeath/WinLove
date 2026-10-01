@@ -30,6 +30,7 @@ const char* typeKey(Step::Type type) {
     switch (type) {
     case Step::Type::Winget: return "winget";
     case Step::Type::Copy: return "copy";
+    case Step::Type::Wifi: return "wifi";
     default: return "command";
     }
 }
@@ -117,6 +118,12 @@ void emitStep(Script& s, const Step& step, std::size_t number, std::size_t total
                            trimmedDestination(step)));
         afterStep(s, tag, 8, continueOnError);
         break;
+    case Step::Type::Wifi:
+        // The profile holds the key in clear text: gone from the disk as soon as WLAN has it.
+        s.line(std::format(L"netsh wlan add profile filename=\"%WL%\\files\\{}\\wifi.xml\" user=all >>\"%LOG%\" 2>&1", number));
+        afterStep(s, tag, 1, continueOnError);
+        s.line(std::format(L"del /f /q \"%WL%\\files\\{}\\wifi.xml\" >nul 2>&1", number));
+        break;
     case Step::Type::Command:
         if (step.wait) {
             // /s: only the outer quotes are stripped, the command keeps its own.
@@ -142,6 +149,9 @@ void waitForWinget(Script& s) {
 }
 
 bool runsAtLogon(const PostSetupPlan& plan, const Step& step) {
+    if (step.type == Step::Type::Wifi) {
+        return false; // WLAN profiles for all users: SYSTEM, before the first logon
+    }
     return plan.when == PostSetupPlan::When::FirstLogon || step.type == Step::Type::Winget;
 }
 
@@ -235,7 +245,10 @@ Result<PostSetupPlan> postSetupFromJson(std::string_view json) {
         for (const auto& entry : doc.value("steps", Json::array())) {
             Step step;
             const std::string type = entry.value("type", std::string{"command"});
-            step.type = type == "winget" ? Step::Type::Winget : type == "copy" ? Step::Type::Copy : Step::Type::Command;
+            step.type = type == "winget" ? Step::Type::Winget
+                        : type == "copy"   ? Step::Type::Copy
+                        : type == "wifi"   ? Step::Type::Wifi
+                                           : Step::Type::Command;
             step.name = utf8::toWide(entry.value("name", std::string{}));
             step.source = utf8::toWide(entry.value("source", std::string{}));
             step.destination = utf8::toWide(entry.value("destination", std::string{}));
@@ -263,6 +276,10 @@ std::vector<std::pair<std::size_t, PostSetupProblem>> validatePostSetup(const Po
             });
             if (!valid) {
                 problems.emplace_back(i, PostSetupProblem::BadWingetId);
+            }
+        } else if (step.type == Step::Type::Wifi) {
+            if (step.source.find(L"<WLANProfile") == std::wstring::npos) {
+                problems.emplace_back(i, PostSetupProblem::BadWifiProfile);
             }
         } else if (step.type == Step::Type::Copy) {
             if (step.destination.empty()) {
@@ -365,6 +382,7 @@ double estimatePostSetupSeconds(const PostSetupPlan& plan) {
         case Step::Type::Winget: seconds += 45; break;
         case Step::Type::Copy: seconds += 5; break;
         case Step::Type::Command: seconds += step.wait ? 10 : 1; break;
+        case Step::Type::Wifi: seconds += 2; break;
         }
     }
     return seconds;
@@ -402,6 +420,14 @@ Result<void> applyPostSetup(const std::filesystem::path& mountDir, const PostSet
     std::uint64_t done = 0;
     for (std::size_t i = 0; i < plan.steps.size(); ++i) {
         const Step& step = plan.steps[i];
+        if (step.type == Step::Type::Wifi) {
+            const auto target = folder / L"files" / std::to_wstring(i + 1);
+            std::filesystem::create_directories(target, ec);
+            if (auto r = writeBytes(target / L"wifi.xml", utf8::fromWide(step.source)); !r) {
+                return r;
+            }
+            continue;
+        }
         if (step.type != Step::Type::Copy) {
             continue;
         }

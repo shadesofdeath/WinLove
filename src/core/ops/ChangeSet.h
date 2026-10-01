@@ -44,6 +44,9 @@ enum class OpKind : std::uint8_t {
     AddAppx,               // provision an .appx / .msix (bundle): target = package file, value = JSON (dependencies, license)
     SetDefaultApps,        // default app associations: target "associations" (one slot), value = the XML
     SetIntl,               // UI language, locales, keyboard, time zone: target "intl" (one slot), value = JSON
+    // 2026-10-01 (D-056):
+    SetPicture,            // default picture: target = "wallpaper" | "lockscreen" | "account" | "oemlogo", value = source file
+    AddFont,               // font: target = file name in Windows\Fonts, value = source file
 };
 
 enum class Risk : std::uint8_t { Low, Medium, High };
