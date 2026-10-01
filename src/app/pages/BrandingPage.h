@@ -25,7 +25,6 @@ class BrandingPage : public ui::Widget {
 public:
     struct Intents {
         std::function<std::optional<std::filesystem::path>()> pickPicture;
-        std::function<void()> addFonts;
         std::function<void(const std::wstring& error)> refused; // a file that is not a picture
         std::function<void()> goImages;
     };

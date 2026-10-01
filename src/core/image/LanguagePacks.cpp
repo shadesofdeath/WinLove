@@ -1,5 +1,7 @@
 #include "core/image/LanguagePacks.h"
 
+#include "base/Text.h"
+
 #include <algorithm>
 #include <cwctype>
 
@@ -7,16 +9,8 @@ namespace wl::core {
 
 namespace {
 
-std::wstring lower(std::wstring_view text) {
-    std::wstring out(text);
-    for (auto& c : out) {
-        c = static_cast<wchar_t>(std::towlower(c));
-    }
-    return out;
-}
-
 std::wstring archFrom(std::wstring_view token) {
-    const std::wstring t = lower(token);
+    const std::wstring t = text::lower(token);
     if (t == L"amd64" || t == L"x64") {
         return L"x64";
     }
@@ -45,9 +39,9 @@ std::wstring canonicalLanguageTag(std::wstring_view tag) {
         const std::size_t end = std::min(tag.find(L'-', start), tag.size());
         std::wstring p(tag.substr(start, end - start));
         if (part == 0) {
-            p = lower(p);
+            p = text::lower(p);
         } else if (p.size() == 4) { // script: "Latn"
-            p = lower(p);
+            p = text::lower(p);
             if (!p.empty()) {
                 p[0] = static_cast<wchar_t>(std::towupper(p[0]));
             }
@@ -71,10 +65,10 @@ LanguagePackFile classifyLanguageFile(const std::filesystem::path& file) {
     if (ec) {
         f.size = 0; // file_size gives -1 on failure
     }
-    if (lower(file.extension().wstring()) != L".cab") {
+    if (text::lower(file.extension().wstring()) != L".cab") {
         return f;
     }
-    const std::wstring name = lower(file.stem().wstring());
+    const std::wstring name = text::lower(file.stem().wstring());
     constexpr std::wstring_view lp = L"microsoft-windows-client-language-pack_";
     constexpr std::wstring_view feature = L"microsoft-windows-languagefeatures-";
     if (name.starts_with(lp)) {

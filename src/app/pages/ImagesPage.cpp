@@ -1,6 +1,7 @@
 #include "app/pages/ImagesPage.h"
 
 #include "app/Format.h"
+#include "app/pages/PageBits.h"
 #include "ui/widget/Host.h"
 #include "ui/widgets/Dropdown.h"
 
@@ -19,8 +20,6 @@ constexpr float kToolbar = 24.0f;
 constexpr float kGap = 12.0f;
 constexpr float kInfoBar = 32.0f;
 constexpr float kSearchWidth = 240.0f;
-constexpr const wchar_t* kArchKeys[] = {L"", L"x64", L"arm64", L"x86"};
-
 } // namespace
 
 ImagesPage::ImagesPage(AppState& state, ImageController& controller, const Localization& strings, Language language,
@@ -57,8 +56,7 @@ ImagesPage::ImagesPage(AppState& state, ImageController& controller, const Local
         layout();
         invalidate();
     };
-    m_arch = &add<ui::Dropdown>(strings.get(Str::ImagesArch),
-                                std::vector<std::wstring>{strings.get(Str::CommonAll), L"x64", L"arm64", L"x86"}, 0);
+    m_arch = &add<ui::Dropdown>(strings.get(Str::ImagesArch), archFilterItems(strings), 0);
     m_arch->onChange = [this](int index) {
         m_archFilter = index;
         m_table->setImages(visibleImages());
@@ -278,7 +276,7 @@ std::vector<core::ImageInfo> ImagesPage::visibleImages() const {
     if (!source) {
         return out;
     }
-    const EditionFilter filter{m_needle, kArchKeys[std::clamp(m_archFilter, 0, 3)]};
+    const EditionFilter filter{m_needle, kArchFilterKeys[std::clamp(m_archFilter, 0, 3)]};
     std::ranges::copy_if(source->install.images, std::back_inserter(out), [&](const auto& image) { return filter.matches(image); });
     return out;
 }

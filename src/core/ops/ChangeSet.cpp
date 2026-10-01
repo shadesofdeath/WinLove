@@ -1,5 +1,6 @@
 #include "core/ops/ChangeSet.h"
 
+#include "base/Text.h"
 #include "base/Utf8.h"
 
 #include <json.hpp>
@@ -51,16 +52,10 @@ bool inverse(OpKind a, OpKind b) {
            (a == OpKind::EnableFeature && b == OpKind::DisableFeature);
 }
 
-bool sameTarget(std::wstring_view a, std::wstring_view b) {
-    return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](wchar_t x, wchar_t y) {
-               return std::towlower(x) == std::towlower(y);
-           });
-}
-
 } // namespace
 
 bool Operation::sameSlot(const Operation& other) const noexcept {
-    return kind == other.kind && sameTarget(target, other.target);
+    return kind == other.kind && text::iequals(target, other.target);
 }
 
 const char* opKindKey(OpKind kind) noexcept {
@@ -120,7 +115,7 @@ std::size_t ChangeSet::removeAll(const std::vector<std::pair<OpKind, std::wstrin
 
 void ChangeSet::addOne(Operation op) {
     const auto opposite = std::ranges::find_if(m_ops, [&](const Operation& o) {
-        return inverse(o.kind, op.kind) && sameTarget(o.target, op.target);
+        return inverse(o.kind, op.kind) && text::iequals(o.target, op.target);
     });
     if (opposite != m_ops.end()) {
         m_ops.erase(opposite);
@@ -144,7 +139,7 @@ bool ChangeSet::remove(OpKind kind, std::wstring_view target) {
 
 bool ChangeSet::removeOne(OpKind kind, std::wstring_view target) {
     const auto it = std::ranges::find_if(m_ops, [&](const Operation& o) {
-        return o.kind == kind && sameTarget(o.target, target);
+        return o.kind == kind && text::iequals(o.target, target);
     });
     if (it == m_ops.end()) {
         return false;
@@ -162,7 +157,7 @@ void ChangeSet::clear() {
 
 const Operation* ChangeSet::find(OpKind kind, std::wstring_view target) const {
     const auto it = std::ranges::find_if(m_ops, [&](const Operation& o) {
-        return o.kind == kind && sameTarget(o.target, target);
+        return o.kind == kind && text::iequals(o.target, target);
     });
     return it == m_ops.end() ? nullptr : &*it;
 }

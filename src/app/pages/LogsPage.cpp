@@ -1,11 +1,11 @@
 #include "app/pages/LogsPage.h"
 
 #include "app/Format.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 #include "ui/widget/Host.h"
 
 #include <algorithm>
-#include <cwctype>
 #include <format>
 
 namespace wl::app {
@@ -20,13 +20,6 @@ constexpr float kToolbar = 24.0f;
 constexpr float kGap = 8.0f;
 constexpr float kConsoleGap = 12.0f;
 
-std::wstring lowered(std::wstring text) {
-    for (auto& c : text) {
-        c = static_cast<wchar_t>(std::towlower(c));
-    }
-    return text;
-}
-
 std::wstring clockTime(std::chrono::system_clock::time_point t) {
     const auto local = std::chrono::zoned_time(std::chrono::current_zone(), t).get_local_time();
     return std::format(L"{:%H:%M:%S}", std::chrono::floor<std::chrono::seconds>(local));
@@ -37,7 +30,7 @@ LogsPage::LogsPage(AppState& state, const Localization& strings, Language langua
     : m_state(state), m_strings(strings), m_language(language) {
     m_search = &add<ui::SearchBox>(strings.get(Str::LogsSearchLog), std::vector<std::wstring>{L"Ctrl", L"F"});
     m_search->onChange = [this](const std::wstring& text) {
-        m_needle = lowered(text);
+        m_needle = wl::text::lower(text);
         m_console->setHighlight(text);
         rebuild();
     };
@@ -111,7 +104,7 @@ bool LogsPage::passes(const log::Entry& entry) const {
     if (!m_source.empty() && entry.source != m_source) {
         return false;
     }
-    return m_needle.empty() || lowered(entry.message).find(m_needle) != std::wstring::npos;
+    return m_needle.empty() || wl::text::lower(entry.message).find(m_needle) != std::wstring::npos;
 }
 
 void LogsPage::updateSources() {

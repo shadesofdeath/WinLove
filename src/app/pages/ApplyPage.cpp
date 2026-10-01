@@ -5,7 +5,7 @@
 #include "core/image/dism/Edition.h"
 
 #include "app/Format.h"
-#include "base/Utf8.h"
+#include "app/pages/LogsPage.h"
 #include "ui/anim/Tween.h"
 
 #include <algorithm>
@@ -65,20 +65,6 @@ Category categoryOf(OpKind kind) {
     case OpKind::SetPostSetup: return kTweaks;
     }
     return kTweaks;
-}
-
-ui::LogLine toLine(const log::Entry& e) {
-    ui::LogLevel level = ui::LogLevel::Info;
-    if (e.level == log::Level::Warn) {
-        level = ui::LogLevel::Warn;
-    } else if (e.level == log::Level::Error) {
-        level = ui::LogLevel::Error;
-    } else if (e.level == log::Level::Debug || e.level == log::Level::Trace) {
-        level = ui::LogLevel::Debug;
-    }
-    const auto local = std::chrono::zoned_time(std::chrono::current_zone(), e.time).get_local_time();
-    return {std::format(L"{:%H:%M:%S}", std::chrono::floor<std::chrono::seconds>(local)), level,
-            utf8::toWide(e.source), e.message};
 }
 
 } // namespace
@@ -196,6 +182,7 @@ ui::icons::Icon ApplyPage::groupIcon(const Row& row) {
     case Phase::Drivers: return ui::icons::Icon::DriverChip;
     case Phase::Updates: return ui::icons::Icon::UpdateDownload;
     case Phase::Apps: return ui::icons::Icon::AppxPackage;
+    case Phase::DeepRemove: return ui::icons::Icon::DriverChip;
     case Phase::Cleanup: return ui::icons::Icon::SizeSaved;
     case Phase::Settings: return ui::icons::Icon::Registry;
     }
@@ -256,7 +243,7 @@ void ApplyPage::buildEmpty() {
     if (m_mode == Mode::NoMount) {
         m_empty = &add<ui::EmptyState>(ui::icons::Icon::ApplyPlay, m_strings.get(Str::ApplyNoMountTitle),
                                        m_strings.get(Str::ApplyNoMountBody));
-        m_empty->setAction(m_strings.get(Str::ApplyGoImages)).onInvoke = m_intents.goImages;
+        m_empty->setAction(m_strings.get(Str::CommonGoImages)).onInvoke = m_intents.goImages;
     } else {
         m_empty = &add<ui::EmptyState>(ui::icons::Icon::ApplyPlay, m_strings.get(Str::ApplyEmptyTitle),
                                        m_strings.get(Str::ApplyEmptyBody));
@@ -416,7 +403,8 @@ void ApplyPage::buildDone() {
     if (haveAfter && run.sizeBefore > run.sizeAfter) {
         const auto gain = run.sizeBefore - run.sizeAfter;
         const int pct = static_cast<int>(std::lround(100.0 * static_cast<double>(gain) / static_cast<double>(run.sizeBefore)));
-        stats.push_back({m_strings.get(Str::ApplyGain), formatBytes(gain, m_language) + std::format(L" · %{}", pct),
+        stats.push_back({m_strings.get(Str::ApplyGain),
+                         m_strings.format(Str::ApplyGainValue, {{L"size", formatBytes(gain, m_language)}, {L"pct", std::to_wstring(pct)}}),
                          {}, Color::StatusSuccess});
     } else {
         stats.push_back({m_strings.get(Str::ApplyGain), L"—"});
@@ -455,7 +443,7 @@ void ApplyPage::poll() {
     auto fresh = buffer->since(m_logVersion);
     std::vector<ui::LogLine> lines;
     for (const auto& e : fresh) {
-        lines.push_back(toLine(e));
+        lines.push_back(LogsPage::toLine(e)); // the same line as on the Logs page
     }
     m_log->append(lines);
 }

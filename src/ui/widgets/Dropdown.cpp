@@ -306,9 +306,7 @@ bool MenuPopup::onKeyDown(const KeyEvent& key) {
 }
 
 void MenuPopup::paint(Canvas& canvas) {
-    canvas.dropShadow(m_panel, tokens::radius::r3, tokens::elevation::menu);
-    canvas.fillRoundRect(m_panel, tokens::radius::r3, Color::BgOverlay);
-    canvas.strokeRoundRect(m_panel, tokens::radius::r3, Color::LineStrong);
+    canvas.panel(m_panel, tokens::radius::r3, tokens::elevation::menu);
     const int count = static_cast<int>(m_items.size());
     const bool scrolls = m_visible < count;
     for (int i = m_first; i < std::min(m_first + m_visible, count); ++i) {

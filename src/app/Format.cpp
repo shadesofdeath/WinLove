@@ -107,7 +107,6 @@ std::wstring formatDuration(double seconds, Language language, bool approx) {
     const wchar_t* m = tr ? L"dk" : L"min";
     const wchar_t* sec = tr ? L"sn" : L"s";
     const auto total = static_cast<long long>(std::llround(std::max(seconds, 0.0)));
-    const std::wstring prefix = approx ? L"~" : L"";
     if (approx) {
         if (total >= 3600) {
             return std::format(L"~{} {}", (total + 1800) / 3600, h);

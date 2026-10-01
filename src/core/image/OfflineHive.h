@@ -37,7 +37,6 @@ public:
     [[nodiscard]] std::optional<std::wstring> string(const wchar_t* name) const;
     [[nodiscard]] std::vector<std::wstring> multiString(const wchar_t* name) const;
     [[nodiscard]] Result<void> setDword(const wchar_t* name, std::uint32_t value);
-    [[nodiscard]] Result<void> deleteValue(const wchar_t* name); // missing value = success
 
 private:
     HKEY m_key = nullptr;

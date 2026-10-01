@@ -1,8 +1,11 @@
 #include "core/usb/UsbMedia.h"
 
 #include "base/Log.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 #include "core/image/wim/WimGapi.h"
+#include "core/system/Files.h"
+#include "core/system/Handle.h"
 #include "core/system/Process.h"
 
 #include <windows.h>
@@ -20,28 +23,8 @@ namespace wl::core {
 
 namespace {
 
-struct FileHandle {
-    HANDLE h = INVALID_HANDLE_VALUE;
-    explicit FileHandle(HANDLE handle) : h(handle) {}
-    FileHandle(const FileHandle&) = delete;
-    FileHandle& operator=(const FileHandle&) = delete;
-    ~FileHandle() {
-        if (h != INVALID_HANDLE_VALUE) {
-            CloseHandle(h);
-        }
-    }
-    explicit operator bool() const noexcept { return h != INVALID_HANDLE_VALUE; }
-};
-
-std::wstring trimmed(std::wstring text) {
-    while (!text.empty() && std::iswspace(text.back())) {
-        text.pop_back();
-    }
-    std::size_t start = 0;
-    while (start < text.size() && std::iswspace(text[start])) {
-        ++start;
-    }
-    return text.substr(start);
+std::wstring trimmed(std::wstring_view text) {
+    return std::wstring(wl::text::trim(text));
 }
 
 // A string of a STORAGE_DEVICE_DESCRIPTOR (ASCII at an offset; 0 = none).
@@ -62,14 +45,14 @@ std::vector<int> volumeDisks(const std::wstring& volume) {
     if (!path.empty() && path.back() == L'\\') {
         path.pop_back();
     }
-    FileHandle h(CreateFileW(path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr));
+    UniqueHandle h(CreateFileW(path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr));
     std::vector<int> disks;
     if (!h) {
         return disks;
     }
     std::vector<std::uint8_t> buffer(sizeof(VOLUME_DISK_EXTENTS) + 16 * sizeof(DISK_EXTENT));
     DWORD returned = 0;
-    if (DeviceIoControl(h.h, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, nullptr, 0, buffer.data(),
+    if (DeviceIoControl(h.get(), IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, nullptr, 0, buffer.data(),
                         static_cast<DWORD>(buffer.size()), &returned, nullptr)) {
         const auto* extents = reinterpret_cast<const VOLUME_DISK_EXTENTS*>(buffer.data());
         for (DWORD i = 0; i < extents->NumberOfDiskExtents && i < 16; ++i) {
@@ -118,8 +101,7 @@ std::set<int> systemDisks(const std::vector<VolumeInfo>& all) {
         wchar_t root[MAX_PATH];
         if (GetVolumePathNameW(path, root, MAX_PATH)) {
             std::wstring r = root;
-            std::ranges::transform(r, r.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towupper(c)); });
-            roots.insert(r);
+            roots.insert(wl::text::upper(r));
         }
     };
     if (GetWindowsDirectoryW(buffer, MAX_PATH)) {
@@ -154,9 +136,7 @@ std::set<int> systemDisks(const std::vector<VolumeInfo>& all) {
     std::set<int> disks;
     for (const auto& v : all) {
         for (const auto& letter : v.letters) {
-            std::wstring l = letter;
-            std::ranges::transform(l, l.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towupper(c)); });
-            if (roots.contains(l)) {
+            if (roots.contains(wl::text::upper(letter))) {
                 disks.insert(v.disks.begin(), v.disks.end());
             }
         }
@@ -171,23 +151,8 @@ bool offeredBus(std::uint32_t bus, bool includeVirtual) {
     return includeVirtual && (bus == BusTypeFileBackedVirtual || bus == BusTypeVirtual);
 }
 
-std::wstring upper(std::wstring text) {
-    std::ranges::transform(text, text.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towupper(c)); });
-    return text;
-}
-
 bool samePath(std::wstring_view a, std::wstring_view b) {
-    return a.size() == b.size() && _wcsnicmp(a.data(), b.data(), a.size()) == 0;
-}
-
-std::wstring oemText(std::string_view bytes) {
-    if (bytes.empty()) {
-        return {};
-    }
-    const int n = MultiByteToWideChar(CP_OEMCP, 0, bytes.data(), static_cast<int>(bytes.size()), nullptr, 0);
-    std::wstring out(static_cast<std::size_t>(std::max(n, 0)), L'\0');
-    MultiByteToWideChar(CP_OEMCP, 0, bytes.data(), static_cast<int>(bytes.size()), out.data(), n);
-    return out;
+    return wl::text::iequals(a, b);
 }
 
 // Runs a tool; its output (OEM code page, localised) goes to the log line by line.
@@ -200,7 +165,7 @@ Result<std::uint32_t> runLogged(const std::wstring& commandLine, std::wstring& t
             output.erase(0, output.size() - 32768);
         }
     });
-    const std::wstring text = oemText(output);
+    const std::wstring text = utf8::fromCodePage(output, CP_OEMCP);
     std::size_t start = 0;
     tail.clear();
     while (start < text.size()) {
@@ -237,7 +202,7 @@ std::vector<UsbDisk> listDisks(bool includeVirtual, bool everything) {
     std::vector<UsbDisk> disks;
     for (int n = 0; n < 64; ++n) {
         const std::wstring device = std::format(L"\\\\.\\PhysicalDrive{}", n);
-        FileHandle h(CreateFileW(device.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr));
+        UniqueHandle h(CreateFileW(device.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr));
         if (!h) {
             continue;
         }
@@ -246,7 +211,7 @@ std::vector<UsbDisk> listDisks(bool includeVirtual, bool everything) {
         query.QueryType = PropertyStandardQuery;
         std::vector<std::uint8_t> buffer(4096);
         DWORD returned = 0;
-        if (!DeviceIoControl(h.h, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), buffer.data(),
+        if (!DeviceIoControl(h.get(), IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), buffer.data(),
                              static_cast<DWORD>(buffer.size()), &returned, nullptr) ||
             returned < sizeof(STORAGE_DEVICE_DESCRIPTOR)) {
             continue;
@@ -264,7 +229,7 @@ std::vector<UsbDisk> listDisks(bool includeVirtual, bool everything) {
             continue;
         }
         DISK_GEOMETRY_EX geometry{};
-        if (DeviceIoControl(h.h, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, nullptr, 0, &geometry, sizeof(geometry), &returned,
+        if (DeviceIoControl(h.get(), IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, nullptr, 0, &geometry, sizeof(geometry), &returned,
                             nullptr)) {
             disk.size = static_cast<std::uint64_t>(geometry.DiskSize.QuadPart);
         }
@@ -353,16 +318,21 @@ Result<UsbPlan> planUsbCopy(const UsbOptions& options) {
     UsbPlan plan;
     for (auto it = std::filesystem::recursive_directory_iterator(folder, ec); !ec && it != std::filesystem::end(it);
          it.increment(ec)) {
-        if (!it->is_regular_file(ec)) {
+        std::error_code entry; // the walk's own `ec` only says whether the walk failed
+        if (!it->is_regular_file(entry)) {
             continue;
         }
-        const std::wstring relative = std::filesystem::relative(it->path(), folder, ec).wstring();
-        std::uint64_t size = it->file_size(ec);
+        const std::wstring relative = std::filesystem::relative(it->path(), folder, entry).wstring();
+        std::uint64_t size = treeBytes(it->path());
         const auto replaced = std::ranges::find_if(options.replacedFiles, [&](const IsoOptions::ReplacedFile& r) {
             return samePath(r.path, relative);
         });
         if (replaced != options.replacedFiles.end()) {
-            size = std::filesystem::file_size(replaced->file, ec);
+            std::error_code missing;
+            if (!std::filesystem::is_regular_file(replaced->file, missing)) {
+                return fail(ErrorCode::NotFound, L"a file that replaces one of the setup folder is missing", replaced->file.wstring());
+            }
+            size = treeBytes(replaced->file);
         }
         if (std::ranges::any_of(options.rootFiles, [&](const IsoOptions::RootFile& r) { return samePath(r.name, relative); })) {
             continue;
@@ -464,9 +434,7 @@ Result<UsbResult> writeUsb(const UsbOptions& options, const TaskContext& task) {
     if (!diskpart) {
         return std::unexpected(diskpart.error());
     }
-    wchar_t temp[MAX_PATH];
-    GetTempPathW(MAX_PATH, temp);
-    const std::filesystem::path script = std::filesystem::path(temp) / std::format(L"winlove-usb-{}.txt", GetCurrentProcessId());
+    const std::filesystem::path script = tempFolder() / std::format(L"winlove-usb-{}.txt", GetCurrentProcessId());
     {
         std::ofstream out(script, std::ios::binary | std::ios::trunc);
         out << diskpartScript(disk->number, options.scheme, partitionMb, options.label);
@@ -528,7 +496,7 @@ Result<UsbResult> writeUsb(const UsbOptions& options, const TaskContext& task) {
                         static_cast<std::int32_t>(HRESULT_FROM_WIN32(error)));
         }
         SetFileAttributesW(to.c_str(), FILE_ATTRIBUTE_NORMAL); // read-only files of an extracted ISO
-        done += std::filesystem::file_size(from, ec);
+        done += treeBytes(from);
         return {};
     };
     for (auto it = std::filesystem::recursive_directory_iterator(options.sourceFolder, ec);
@@ -567,7 +535,7 @@ Result<UsbResult> writeUsb(const UsbOptions& options, const TaskContext& task) {
         log::info("usb", std::format(L"{} ({} bytes) written to the stick's root", file.name, file.content.size()));
     }
     if (plan->splitInstall) {
-        const std::uint64_t wimSize = std::filesystem::file_size(plan->installWim, ec);
+        const std::uint64_t wimSize = treeBytes(plan->installWim);
         const std::uint64_t base = done;
         const TaskContext split{task.cancel, [&](double fraction, std::wstring_view) {
                                     const double at = static_cast<double>(base) + fraction * static_cast<double>(wimSize);
@@ -589,10 +557,10 @@ Result<UsbResult> writeUsb(const UsbOptions& options, const TaskContext& task) {
     while (!device.empty() && device.back() == L'\\') {
         device.pop_back();
     }
-    if (FileHandle volume(CreateFileW(device.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+    if (UniqueHandle volume(CreateFileW(device.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
                                       nullptr, OPEN_EXISTING, 0, nullptr));
         volume) {
-        FlushFileBuffers(volume.h);
+        FlushFileBuffers(volume.get());
     }
     task.report(1.0, L"done");
     const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - started);

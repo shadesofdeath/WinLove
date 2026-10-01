@@ -164,7 +164,7 @@ void ImageController::run(EngineOperation op, Work work, std::function<void()> o
                         failure == Failure::Cleanup) {
                         m_failedIndex = index; // the row says "Bağlanamadı": only a mount's failure is that
                     }
-                    m_events.failed(failure, result.error(), index);
+                    m_events.failed(failure, result.error());
                     inspectMountFolder(); // show what the failure left behind
                     return;
                 }
@@ -849,7 +849,7 @@ void ImageController::adoptExistingMount() {
                 }
                 if (!result) {
                     log::warn("app", describe(result.error()));
-                    m_events.failed(Failure::Cleanup, result.error(), 0);
+                    m_events.failed(Failure::Cleanup, result.error());
                     return;
                 }
                 const auto& [before, after] = *result;

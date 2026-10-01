@@ -14,12 +14,11 @@
 namespace wl::core {
 
 Result<std::filesystem::path> dismExePath() {
-    wchar_t system[MAX_PATH];
-    const UINT length = GetSystemDirectoryW(system, MAX_PATH);
-    if (length == 0 || length >= MAX_PATH) {
-        return fail(ErrorCode::IoError, L"could not find the system folder");
+    auto exe = systemTool(L"dism.exe");
+    if (!exe) {
+        return std::unexpected(exe.error());
     }
-    return std::filesystem::path(system) / L"dism.exe";
+    return std::filesystem::path(*exe);
 }
 
 std::wstring dismExeCommandLine(const std::filesystem::path& dismExe, const std::filesystem::path& mountDir,

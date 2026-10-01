@@ -10,5 +10,7 @@ namespace wl::utf8 {
 // Text file bytes → UTF-16: UTF-16 LE BOM, UTF-8 (BOM optional, strict), else the ANSI code page
 // (classic .inf / REGEDIT4 files).
 [[nodiscard]] std::wstring decodeText(std::string_view bytes);
+// Bytes in a Windows code page (CP_ACP, CP_OEMCP, …) → UTF-16.
+[[nodiscard]] std::wstring fromCodePage(std::string_view bytes, unsigned codePage);
 
 } // namespace wl::utf8

@@ -40,7 +40,6 @@ public:
     // Merges `list` into the queued associations (an identifier already there is replaced).
     void mergeAssociations(const std::vector<core::AppAssociation>& list);
     void removeAssociation(std::wstring_view identifier);
-    void clearAssociations();
     [[nodiscard]] Result<int> importAssociationsFile(const std::filesystem::path& file);
     void importHostAssociations(); // background: dism /Online /Export-DefaultAppAssociations
     [[nodiscard]] bool importingHost() const noexcept { return m_importingHost; }

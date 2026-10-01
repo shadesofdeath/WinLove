@@ -1,12 +1,14 @@
 #include "core/image/SystemComponents.h"
 
 #include "base/Log.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 #include "core/image/ComponentStore.h"
 #include "core/image/DeepRemoval.h"
 #include "core/image/dism/Appx.h"
 #include "core/system/BackupFiles.h"
 #include "core/system/FileLocks.h"
+#include "core/system/Files.h"
 #include "core/system/Privileges.h"
 
 #include <json.hpp>
@@ -31,14 +33,6 @@ constexpr std::array<std::wstring_view, 14> kProtected = {
     L"windows\\fonts",            L"windows\\inf",               L"windows\\systemapps",
     L"program files\\windowsapps", L"users\\default",
 };
-
-std::wstring lowered(std::wstring_view text) {
-    std::wstring out(text);
-    for (auto& c : out) {
-        c = static_cast<wchar_t>(std::towlower(c));
-    }
-    return out;
-}
 
 // "a\b/c" → {"a","b","c"}; an empty part (leading, trailing or doubled separator) is kept so the
 // caller can refuse it.
@@ -71,7 +65,7 @@ Result<void> validatePath(std::wstring_view path) {
         if (!normalized.empty()) {
             normalized += L'\\';
         }
-        normalized += lowered(part);
+        normalized += text::lower(part);
     }
     if (parts.size() < 2) {
         return refuse(L"component path is too close to the image root");
@@ -80,11 +74,6 @@ Result<void> validatePath(std::wstring_view path) {
         return refuse(L"component path is a folder Windows needs");
     }
     return {};
-}
-
-bool isReparse(const std::filesystem::path& path) {
-    const DWORD attributes = GetFileAttributesW(path.c_str());
-    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
 }
 
 } // namespace
@@ -200,7 +189,7 @@ Result<std::filesystem::path> resolveImagePath(const std::filesystem::path& moun
     std::filesystem::path current = mountDir;
     for (std::size_t i = 0; i < parts.size(); ++i) {
         current /= std::wstring(parts[i]);
-        if (i + 1 < parts.size() && isReparse(current)) {
+        if (i + 1 < parts.size() && isReparsePoint(current)) {
             return fail(ErrorCode::InvalidArgument, L"component path goes through a link (it may leave the image)",
                         current.wstring());
         }
@@ -235,7 +224,7 @@ std::vector<CbsPackage> cbsRemovalOrder(const std::vector<std::wstring>& familie
         }
         const std::wstring_view family = cbsPackageFamily(package.identity);
         const bool wanted = std::ranges::any_of(families, [&](const std::wstring& f) {
-            return f.size() == family.size() && _wcsnicmp(f.c_str(), family.data(), family.size()) == 0;
+            return text::iequals(f, family);
         });
         if (wanted) {
             order.push_back(package);
@@ -254,23 +243,15 @@ std::vector<CbsPackage> cbsRemovalOrder(const std::vector<std::wstring>& familie
 
 std::vector<CbsPackage> readCbsPackages(HKEY packagesKey) {
     std::vector<CbsPackage> packages;
-    wchar_t name[512];
-    for (DWORD i = 0;; ++i) {
-        DWORD length = static_cast<DWORD>(std::size(name));
-        const LSTATUS status = RegEnumKeyExW(packagesKey, i, name, &length, nullptr, nullptr, nullptr, nullptr);
-        if (status == ERROR_NO_MORE_ITEMS) {
-            break;
-        }
-        if (status != ERROR_SUCCESS) {
-            continue;
-        }
+    for (auto& name : subkeyNames(packagesKey)) {
         HKEY raw = nullptr;
-        if (RegOpenKeyExW(packagesKey, name, 0, KEY_QUERY_VALUE, &raw) != ERROR_SUCCESS) {
+        if (RegOpenKeyExW(packagesKey, name.c_str(), 0, KEY_QUERY_VALUE, &raw) != ERROR_SUCCESS) {
             continue;
         }
         const RegKey key(raw);
-        packages.push_back({std::wstring(name, length), key.dword(L"Visibility").value_or(0),
-                            key.dword(L"CurrentState").value_or(0)});
+        const auto visibility = key.dword(L"Visibility").value_or(0);
+        const auto state = key.dword(L"CurrentState").value_or(0);
+        packages.push_back({std::move(name), visibility, state});
     }
     return packages;
 }

@@ -103,6 +103,12 @@ public:
     [[nodiscard]] virtual Cursor cursor() const { return Cursor::Arrow; }
 
     // ---- events (called by Host) ---------------------------------------------------------------
+    // Width of one line of text, rounded up; `fallback` before the widget has a host (measure()
+    // may run while a page is being built).
+    [[nodiscard]] float textWidth(std::wstring_view text, tokens::TypeStyle style, float fallback = 0.0f) const;
+    // Space / Enter on a focused control: onClick() once (held keys do not repeat, Host).
+    [[nodiscard]] bool activateOnKey(const KeyEvent& key, bool enterToo = true);
+
     virtual void onHoverChanged(bool /*hovered*/) { invalidate(); }
     virtual void onPressedChanged(bool /*pressed*/) { invalidate(); }
     virtual void onPointerDown(PointF /*p*/) {}

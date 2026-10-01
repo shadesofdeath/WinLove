@@ -5,7 +5,7 @@
 |---|---|---|---|
 | Unit (core) | `tests/core` — doctest | Hayır | Her build (`./build.ps1 -Test`) |
 | Unit (ui) | `tests/ui` — layout hesapları, hit-test, text ölçüm, tema | Hayır | Her build |
-| Render | `tests/render` — `--render-page` çıktısının referans PNG'ye piksel farkı (eşik) | Hayır | Her build (referans onaylandıktan sonra) |
+| Render | `WinLove.exe --render=<png> --page=<anahtar>` ile tek kare + `tools/compare_design.py` (tasarım \| render \| fark); otomatik piksel eşiği yok, gözle onaylanır | Hayır | Her UI değişikliğinde |
 | Integration | `tests/integration` — gerçek imajda `wl::image` + `wlcli --json` | **Evet** | `./build.ps1 -Test -Integration`, sayfa kapanışında zorunlu |
 | Uçtan uca | Oluşturulan ISO'nun VM'de kurulması (Hyper-V) | Evet | P06'dan itibaren her motor değişikliğinde |
 | Manuel | Sayfa spec'indeki "Kullanıcı test senaryosu" | Kullanıcı | Sayfa kapanışı |
@@ -29,7 +29,7 @@ build\lab\
 - Disk: tam ISO çıkarımı + golden + work ≈ 25–30 GB. (Şu an C: üzerinde ~330 GB boş.)
 
 ## Görsel doğrulama
-1. `WinLove.exe --render=out.png --theme=dark --scale=1.5 [--lang=en] [--hover=close] [--maximized]`: pencere açmadan tek kare. Hata olursa diyalog açmaz, konsola yazar ve 1 ile çıkar.
+1. `WinLove.exe --render=out.png --theme=dark --scale=1.5 [--lang=en] [--page=<anahtar>] [--hover-at=x,y] [--click-at=x,y] [--maximized]`: pencere açmadan tek kare (bayrakların tam listesi: `src/app/App.h`). Hata olursa diyalog açmaz, konsola yazar ve 1 ile çıkar.
 2. `python tools/compare_design.py 01-welcome-source --theme=dark [--crop=x,y,w,h] [--zoom=2]`: tasarım SVG'si ve WinLove render'ı alt alta + fark satırı → `build/visual/<ekran>-<tema>.png`.
 3. `python tools/capture_window.py out.png [--maximized] [-- <uygulama argümanları>]`: gerçek HWND'yi açar, **yalnızca kendi penceresini** `PrintWindow` ile yakalar (üstünde başka pencere olsa bile), `WM_CLOSE` ile kapatır ve çıkış kodunu yazar. Özel çerçeve, DPI ve ekranı kaplama davranışı bununla doğrulanır.
 4. **Yasak:** tüm ekranı yakalamak (`ImageGrab`, ekran görüntüsü). Kullanıcının diğer pencereleri görüntüye girer (D-013).
@@ -58,6 +58,7 @@ Integration testleri beklenen değerleri (index sayısı, sürüm adları, build
 | `tools\lab_imagetools.ps1 [-Iso <test.iso>]` | Yönetici (yalnız yakalama için; gerisi gerekmez). ISO SHA-256 (eşleşme / büyük harf + önek / eşleşmeme exit 3); lab WIM'inden iki sürümlük kopyada sürüm çoğaltma (akışlar ortak), XPRESS → ESD → LZX yeniden sıkıştırma, SWM'e bölme ve geri birleştirme + verify, ISO'dan ve SWM'den sürüm ekleme + verify, klasör yakalama (ikinci yakalama yeni sürüm) + verify; siler. ~25 dk (2026-10-01: ALL PASSED) | `build\lab\out\imagetools-test.log` |
 | `tools\lab_scan_components.ps1 [-Index 4]` | **Yönetici.** Lab WIM'ini salt okunur bağlar; CBS paket listesi, özellikler, servisler, hive kopyaları, .mum dosyaları, klasör ağacı / WinSxS / büyük dosya / sürücü deposu / yazı tipi boyutları (`tools\scan_image_tree.py`); discard. Sonra `python tools\analyze_cbs.py <çıktı> [--json] [--files] [--groups]`: paket başına tek sahipli bayt (D-059). ~3 dk | `build\lab\out\scan\index<N>\` |
 | `tools\lab_cbs_removal.ps1 [-Recipes <klasör>] [-SkipScanHealth]` | **Yönetici.** Lab WIM'inden tek sürüm kopyası; katalogdaki paketli her girdi (ya da klasördeki tarifler) `wlcli component --remove` ile tek tek kaldırılır, her paket ailesinin CBS listesinden gittiği denetlenir; DISM `/ScanHealth`, commit, yeni export ile kazanç, verify; siler. ~25 dk (2026-10-02: ALL PASSED, 30 girdi, −844 MB) | `build\lab\out\cbs-removal-test.log` |
+| `tools\lab_deep_removal.ps1 [-Lcu <msu> [-LcuFirst]]` | **Yönetici.** Lab WIM'inden tek sürüm kopyası; katalogdaki her derin girdi (driverClasses) `wlcli component --remove` ile kaldırılır, sonra hiç sürücü kalmadığı, WinSxS / DriverStore'da modem izi olmadığı, `/ScanHealth` temizliği; `-Lcu` ile bir toplu güncelleme (sonra ya da `-LcuFirst` ile önce) + ScanHealth; commit, export, verify; siler. ~10 dk, `-Lcu` ile ~25 dk (2026-10-02: önce LCU → ALL PASSED; sonra LCU → 0x80070002, D-060) | `build\lab\out\deep-removal-test.log` |
 | `tools\lab_components.ps1 [-Cleanup]` | Kopya imajda OneDrive (gizli CBS paketi) ve Edge'i `wlcli component --remove` ile kaldırır, doğrular, discard. `-Cleanup`: depo temizliği de (5–20 dk) | `build\lab\out\components-test.log` |
 
 Hepsi `wlcli` üzerinden çalışır: bir adım başarısızsa aynı komut elle yinelenebilir (`--verbose` motor logunu da basar).

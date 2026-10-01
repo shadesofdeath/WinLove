@@ -26,7 +26,6 @@ struct Insets {
     float top = 0;
     float right = 0;
     float bottom = 0;
-    static Insets all(float v) { return {v, v, v, v}; }
     static Insets xy(float x, float y) { return {x, y, x, y}; }
 };
 

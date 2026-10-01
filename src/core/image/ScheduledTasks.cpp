@@ -1,5 +1,6 @@
 #include "core/image/ScheduledTasks.h"
 
+#include "base/Text.h"
 #include "core/postsetup/SetupScripts.h"
 
 #include <algorithm>
@@ -11,10 +12,6 @@ namespace {
 
 constexpr std::wstring_view kPrefix = L"schtasks /Change /TN \"";
 constexpr std::wstring_view kSuffix = L"\" /Disable";
-
-bool sameTask(std::wstring_view a, std::wstring_view b) {
-    return a.size() == b.size() && _wcsnicmp(a.data(), b.data(), a.size()) == 0;
-}
 
 } // namespace
 
@@ -79,7 +76,7 @@ Result<void> setTaskDisabled(const std::filesystem::path& mountDir, std::wstring
         return fail(ErrorCode::InvalidArgument, L"not a scheduled task path", std::wstring(path));
     }
     auto tasks = readDisabledTasks(mountDir);
-    const auto it = std::ranges::find_if(tasks, [&](const std::wstring& t) { return sameTask(t, path); });
+    const auto it = std::ranges::find_if(tasks, [&](const std::wstring& t) { return text::iequals(t, path); });
     if (disabled == (it != tasks.end())) {
         return {}; // already so
     }

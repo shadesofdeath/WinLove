@@ -27,7 +27,7 @@ void Label::setColor(tokens::Color color) {
 
 SizeF Label::measure(SizeF /*available*/) {
     if (m_textWidth < 0 && host()) {
-        m_textWidth = std::ceil(host()->text().measure(m_text, m_style));
+        m_textWidth = textWidth(m_text, m_style);
     }
     return {std::max(m_textWidth, 0.0f), TextStyles::spec(m_style).lineHeight};
 }

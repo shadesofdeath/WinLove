@@ -23,7 +23,6 @@ public:
     struct Intents {
         std::function<std::optional<std::filesystem::path>()> pickFolder;
         std::function<void(const std::filesystem::path&)> openFolder; // Explorer, file selected
-        std::function<void()> goSource;
         std::function<void(std::function<void()>)> postToUi;
         std::function<void()> changed; // tab / drive / form: the header button follows
     };

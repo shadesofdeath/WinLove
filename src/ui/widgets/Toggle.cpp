@@ -30,7 +30,7 @@ void Toggle::setOn(bool on, bool animated) {
 }
 
 SizeF Toggle::measure(SizeF /*available*/) {
-    const float label = host() && !m_label.empty() ? std::ceil(host()->text().measure(m_label, tokens::TypeStyle::Body)) : 0;
+    const float label = m_label.empty() ? 0.0f : textWidth(m_label, tokens::TypeStyle::Body);
     return {tokens::size::toggleW + (label > 0 ? kGap + label : 0), tokens::size::control};
 }
 
@@ -69,11 +69,7 @@ void Toggle::onClick() {
 }
 
 bool Toggle::onKeyDown(const KeyEvent& key) {
-    if (key.virtualKey == VK_SPACE) {
-        onClick();
-        return true;
-    }
-    return false;
+    return activateOnKey(key, /*enterToo=*/false);
 }
 
 bool Toggle::tick(double now) {

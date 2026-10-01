@@ -9,30 +9,24 @@ namespace {
 
 using Microsoft::WRL::ComPtr;
 
-std::optional<std::filesystem::path> show(HWND owner, const std::wstring& title, const std::vector<FileFilter>& filters,
-                                          bool folders) {
-    ComPtr<IFileOpenDialog> dialog;
-    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) {
-        return std::nullopt;
-    }
-    DWORD options = 0;
+// Title, options and file types every picker sets the same way.
+void prepare(IFileDialog* dialog, const std::wstring& title, FILEOPENDIALOGOPTIONS add, const std::vector<FileFilter>& filters) {
+    FILEOPENDIALOGOPTIONS options = 0;
     dialog->GetOptions(&options);
-    options |= FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | (folders ? FOS_PICKFOLDERS : FOS_FILEMUSTEXIST);
-    dialog->SetOptions(options);
+    dialog->SetOptions(options | FOS_FORCEFILESYSTEM | add);
     dialog->SetTitle(title.c_str());
     std::vector<COMDLG_FILTERSPEC> specs;
     for (const auto& f : filters) {
         specs.push_back({f.label.c_str(), f.pattern.c_str()});
     }
-    if (!folders && !specs.empty()) {
+    if (!specs.empty()) {
         dialog->SetFileTypes(static_cast<UINT>(specs.size()), specs.data());
     }
-    if (FAILED(dialog->Show(owner))) {
-        return std::nullopt; // cancelled
-    }
-    ComPtr<IShellItem> item;
+}
+
+std::optional<std::filesystem::path> fileSystemPath(IShellItem* item) {
     PWSTR path = nullptr;
-    if (FAILED(dialog->GetResult(&item)) || FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
+    if (!item || FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
         return std::nullopt;
     }
     std::filesystem::path result(path);
@@ -40,10 +34,24 @@ std::optional<std::filesystem::path> show(HWND owner, const std::wstring& title,
     return result;
 }
 
+std::optional<std::filesystem::path> showOpen(HWND owner, const std::wstring& title, const std::vector<FileFilter>& filters,
+                                              bool folders) {
+    ComPtr<IFileOpenDialog> dialog;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) {
+        return std::nullopt;
+    }
+    prepare(dialog.Get(), title, FOS_PATHMUSTEXIST | (folders ? FOS_PICKFOLDERS : FOS_FILEMUSTEXIST), folders ? std::vector<FileFilter>{} : filters);
+    ComPtr<IShellItem> item;
+    if (FAILED(dialog->Show(owner)) || FAILED(dialog->GetResult(&item))) {
+        return std::nullopt; // cancelled
+    }
+    return fileSystemPath(item.Get());
+}
+
 } // namespace
 
 std::optional<std::filesystem::path> pickFile(HWND owner, const std::wstring& title, const std::vector<FileFilter>& filters) {
-    return show(owner, title, filters, false);
+    return showOpen(owner, title, filters, false);
 }
 
 std::vector<std::filesystem::path> pickFiles(HWND owner, const std::wstring& title, const std::vector<FileFilter>& filters) {
@@ -52,17 +60,7 @@ std::vector<std::filesystem::path> pickFiles(HWND owner, const std::wstring& tit
     if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) {
         return result;
     }
-    DWORD options = 0;
-    dialog->GetOptions(&options);
-    dialog->SetOptions(options | FOS_FORCEFILESYSTEM | FOS_ALLOWMULTISELECT | FOS_FILEMUSTEXIST);
-    dialog->SetTitle(title.c_str());
-    std::vector<COMDLG_FILTERSPEC> specs;
-    for (const auto& f : filters) {
-        specs.push_back({f.label.c_str(), f.pattern.c_str()});
-    }
-    if (!specs.empty()) {
-        dialog->SetFileTypes(static_cast<UINT>(specs.size()), specs.data());
-    }
+    prepare(dialog.Get(), title, FOS_ALLOWMULTISELECT | FOS_FILEMUSTEXIST, filters);
     ComPtr<IShellItemArray> items;
     if (FAILED(dialog->Show(owner)) || FAILED(dialog->GetResults(&items))) {
         return result;
@@ -71,17 +69,17 @@ std::vector<std::filesystem::path> pickFiles(HWND owner, const std::wstring& tit
     items->GetCount(&count);
     for (DWORD i = 0; i < count; ++i) {
         ComPtr<IShellItem> item;
-        PWSTR path = nullptr;
-        if (SUCCEEDED(items->GetItemAt(i, &item)) && SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
-            result.emplace_back(path);
-            CoTaskMemFree(path);
+        if (SUCCEEDED(items->GetItemAt(i, &item))) {
+            if (auto path = fileSystemPath(item.Get())) {
+                result.push_back(std::move(*path));
+            }
         }
     }
     return result;
 }
 
 std::optional<std::filesystem::path> pickFolder(HWND owner, const std::wstring& title) {
-    return show(owner, title, {}, true);
+    return showOpen(owner, title, {}, true);
 }
 
 std::optional<std::filesystem::path> pickSaveFile(HWND owner, const std::wstring& title, const std::vector<FileFilter>& filters,
@@ -90,30 +88,14 @@ std::optional<std::filesystem::path> pickSaveFile(HWND owner, const std::wstring
     if (FAILED(CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) {
         return std::nullopt;
     }
-    DWORD options = 0;
-    dialog->GetOptions(&options);
-    dialog->SetOptions(options | FOS_FORCEFILESYSTEM | FOS_OVERWRITEPROMPT);
-    dialog->SetTitle(title.c_str());
-    std::vector<COMDLG_FILTERSPEC> specs;
-    for (const auto& f : filters) {
-        specs.push_back({f.label.c_str(), f.pattern.c_str()});
-    }
-    if (!specs.empty()) {
-        dialog->SetFileTypes(static_cast<UINT>(specs.size()), specs.data());
-    }
+    prepare(dialog.Get(), title, FOS_OVERWRITEPROMPT, filters);
     dialog->SetFileName(defaultName.c_str());
     dialog->SetDefaultExtension(extension.c_str());
-    if (FAILED(dialog->Show(owner))) {
-        return std::nullopt;
-    }
     ComPtr<IShellItem> item;
-    PWSTR path = nullptr;
-    if (FAILED(dialog->GetResult(&item)) || FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
+    if (FAILED(dialog->Show(owner)) || FAILED(dialog->GetResult(&item))) {
         return std::nullopt;
     }
-    std::filesystem::path result(path);
-    CoTaskMemFree(path);
-    return result;
+    return fileSystemPath(item.Get());
 }
 
 } // namespace wl::ui

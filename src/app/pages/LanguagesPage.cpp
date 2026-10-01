@@ -1,6 +1,7 @@
 #include "app/pages/LanguagesPage.h"
 
 #include "app/Format.h"
+#include "app/pages/PageBits.h"
 
 #include <algorithm>
 
@@ -50,7 +51,7 @@ LanguagesPage::LanguagesPage(AppState& state, LanguageController& controller, co
     }
     m_empty = &add<ui::EmptyState>(ui::icons::Icon::LanguageGlobe, strings.get(Str::LanguagesNoMountTitle),
                                    strings.get(Str::LanguagesNoMountBody));
-    m_empty->setAction(strings.get(Str::FeaturesGoImages)).onInvoke = std::move(goImages);
+    m_empty->setAction(strings.get(Str::CommonGoImages)).onInvoke = std::move(goImages);
     setAccessible(ui::AccessRole::Group, strings.get(Str::LanguagesTitle));
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Mount || change == AppState::Change::Intl || change == AppState::Change::Queue) {
@@ -202,8 +203,7 @@ void LanguagesPage::paint(ui::Canvas& canvas) {
     const RectF b = bounds();
     float y = b.y + kTop;
     auto section = [&](Str title) {
-        canvas.drawText(m_strings.get(title), {b.x, y + 8, 400, 20}, TypeStyle::Section, Color::TextSecondary);
-        canvas.hairlineH(b.x, y + kSection - 6, b.width, Color::LineSubtle);
+        paintFormSection(canvas, {b.x, y, b.width, kSection}, m_strings.get(title));
         y += kSection;
     };
     section(Str::LanguagesInImage);

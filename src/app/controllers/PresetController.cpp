@@ -4,11 +4,11 @@
 
 #include "app/controllers/ImageSettingsController.h"
 #include "base/Log.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 #include "core/postsetup/PostSetup.h"
 
 #include <algorithm>
-#include <cwctype>
 #include <format>
 #include <set>
 
@@ -25,18 +25,13 @@ enum Category : int { kComponents, kFeatures, kUpdates, kDrivers, kRegistry, kSe
 constexpr Str kCategoryNames[] = {Str::NavComponents, Str::NavFeatures, Str::NavUpdates,    Str::NavDrivers, Str::NavRegistry,
                                   Str::NavServices,   Str::NavTweaks,   Str::NavUnattended, Str::NavPostsetup};
 
-std::wstring lowered(std::wstring text) {
-    std::ranges::transform(text, text.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
-    return text;
-}
-
 std::wstring slotKey(OpKind kind, const std::wstring& target) {
-    return std::to_wstring(static_cast<int>(kind)) + L'|' + lowered(target);
+    return std::to_wstring(static_cast<int>(kind)) + L'|' + wl::text::lower(target);
 }
 
 // The key a registry / service operation has when it is listed on its own.
 std::wstring plainKey(const Operation& op) {
-    return (op.kind == OpKind::SetServiceStart ? L"service|" : L"registry|") + lowered(op.target);
+    return (op.kind == OpKind::SetServiceStart ? L"service|" : L"registry|") + wl::text::lower(op.target);
 }
 
 Str startLabel(core::StartType start) {
@@ -135,19 +130,19 @@ Result<void> PresetController::importFile(const std::filesystem::path& file) {
 
 Result<void> PresetController::exportTo(std::size_t index, const std::filesystem::path& target) const {
     if (index >= m_presets.size()) {
-        return fail(ErrorCode::InvalidArgument, L"no such preset");
+        return fail(ErrorCode::InvalidArgument, m_strings.get(Str::PresetsNoSuch));
     }
     return writePreset(target, m_presets[index]);
 }
 
 Result<void> PresetController::remove(std::size_t index) {
     if (index >= m_presets.size()) {
-        return fail(ErrorCode::InvalidArgument, L"no such preset");
+        return fail(ErrorCode::InvalidArgument, m_strings.get(Str::PresetsNoSuch));
     }
     std::error_code ec;
     const auto file = m_presets[index].file;
     if (!file.empty() && !std::filesystem::remove(file, ec)) {
-        return fail(ErrorCode::IoError, L"could not delete the preset", file.wstring());
+        return fail(ErrorCode::IoError, m_strings.get(Str::PresetsDeleteFailed), file.wstring());
     }
     reload();
     return {};
@@ -206,13 +201,13 @@ std::vector<PresetController::Item> PresetController::items(const Preset& preset
         case OpKind::RemoveAppx: {
             // "Microsoft.GamingApp_2410.1001.4.0_neutral_~_8wekyb3d8bbwe" → the identity.
             const std::wstring identity = op.target.substr(0, op.target.find(L'_'));
-            result.push_back({kComponents, L"component|" + lowered(identity), identity, s(Str::PresetsValueRemove), {}});
+            result.push_back({kComponents, L"component|" + wl::text::lower(identity), identity, s(Str::PresetsValueRemove), {}});
             break;
         }
         case OpKind::RemoveComponent:
         case OpKind::CleanupImage: {
             const std::wstring title = core::componentTitle(op.value);
-            result.push_back({kComponents, L"system|" + lowered(op.target), title.empty() ? op.target : title,
+            result.push_back({kComponents, L"system|" + wl::text::lower(op.target), title.empty() ? op.target : title,
                               s(op.kind == OpKind::CleanupImage ? Str::PresetsValueRun : Str::PresetsValueRemove), {}});
             break;
         }
@@ -222,17 +217,17 @@ std::vector<PresetController::Item> PresetController::items(const Preset& preset
         case OpKind::DisableFeature:
         case OpKind::EnableFeature:
         case OpKind::RemoveCapability:
-            result.push_back({kFeatures, L"feature|" + lowered(op.target), op.target,
+            result.push_back({kFeatures, L"feature|" + wl::text::lower(op.target), op.target,
                               s(op.kind == OpKind::EnableFeature    ? Str::PresetsValueEnable
                                 : op.kind == OpKind::DisableFeature ? Str::PresetsValueDisable
                                                                     : Str::PresetsValueRemove),
                               {}});
             break;
         case OpKind::AddPackage:
-            result.push_back({kUpdates, L"update|" + lowered(file), file, s(Str::PresetsValueAdd), {}});
+            result.push_back({kUpdates, L"update|" + wl::text::lower(file), file, s(Str::PresetsValueAdd), {}});
             break;
         case OpKind::AddDriver:
-            result.push_back({kDrivers, L"driver|" + lowered(op.target), file, s(Str::PresetsValueAdd), {}});
+            result.push_back({kDrivers, L"driver|" + wl::text::lower(op.target), file, s(Str::PresetsValueAdd), {}});
             break;
         case OpKind::SetRegistryValue:
         case OpKind::SetRegistryFirstLogon:
@@ -245,12 +240,12 @@ std::vector<PresetController::Item> PresetController::items(const Preset& preset
         }
         case OpKind::CopyFile:
         case OpKind::WriteFile: // one that no known setting owns (a preset written by hand)
-            result.push_back({kTweaks, L"file|" + lowered(op.target), file, s(Str::PresetsValueAdd), {}});
+            result.push_back({kTweaks, L"file|" + wl::text::lower(op.target), file, s(Str::PresetsValueAdd), {}});
             break;
         case OpKind::SetPostSetup:
             if (const auto plan = core::postSetupFromJson(utf8::fromWide(op.value))) {
                 for (const auto& step : plan->steps) {
-                    result.push_back({kPostSetup, L"step|" + lowered(step.source),
+                    result.push_back({kPostSetup, L"step|" + wl::text::lower(step.source),
                                       step.name.empty() ? step.source : step.name, s(stepTypeName(step.type)), {}});
                 }
             }

@@ -3,6 +3,7 @@
 #include "ui/widget/Host.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace wl::ui {
 
@@ -98,6 +99,18 @@ void Widget::invalidate() {
     if (m_host) {
         m_host->requestFrame();
     }
+}
+
+float Widget::textWidth(std::wstring_view text, tokens::TypeStyle style, float fallback) const {
+    return m_host ? std::ceil(m_host->text().measure(text, style)) : fallback;
+}
+
+bool Widget::activateOnKey(const KeyEvent& key, bool enterToo) {
+    if (key.virtualKey == VK_SPACE || (enterToo && key.virtualKey == VK_RETURN)) {
+        onClick();
+        return true;
+    }
+    return false;
 }
 
 void Widget::animate() {

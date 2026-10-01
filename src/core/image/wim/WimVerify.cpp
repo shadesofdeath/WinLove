@@ -121,25 +121,8 @@ struct Worker {
     std::vector<std::byte> plain;    // one chunk, uncompressed
     std::vector<std::byte> table;    // chunk table of the stream
     std::vector<std::byte> workspace;
-    std::function<bool(std::span<const std::byte>)> sink; // optional: the plain bytes, in order
-    bool sinkFailed = false;
-    std::uint64_t limit = UINT64_MAX; // WimStreamReader::read maxBytes
-    std::uint64_t produced = 0;
-    [[nodiscard]] bool full() const noexcept { return produced >= limit; }
 
-    void consume(std::span<const std::byte> data) noexcept {
-        if (full()) {
-            return;
-        }
-        if (data.size() > limit - produced) {
-            data = data.first(static_cast<std::size_t>(limit - produced));
-        }
-        produced += data.size();
-        sha.update(data);
-        if (sink && !sinkFailed && !sink(data)) {
-            sinkFailed = true;
-        }
-    }
+    void consume(std::span<const std::byte> data) noexcept { sha.update(data); }
 
     Worker(const ByteSource& s, WimCompression c, std::uint32_t chunk)
         : source(s), compression(c), chunkSize(chunk), plain(chunk), workspace(xpress().workspace) {}
@@ -166,7 +149,7 @@ struct Worker {
                 return L"stored size does not match its size";
             }
             stored.resize(static_cast<std::size_t>(std::min<std::uint64_t>(entry.size, kReadAhead)));
-            for (std::uint64_t done = 0; done < entry.size && !stop && !full() && !sinkFailed;) {
+            for (std::uint64_t done = 0; done < entry.size && !stop;) {
                 const auto count = static_cast<std::size_t>(std::min<std::uint64_t>(entry.size - done, stored.size()));
                 if (!source.read(entry.offset + done, std::span(stored.data(), count))) {
                     (void)sha.finish();
@@ -181,8 +164,8 @@ struct Worker {
         }
         const auto digest = sha.finish();
         static constexpr std::array<std::uint8_t, 20> kNoHash{};
-        if (stop || entry.hash == kNoHash || produced < entry.original) {
-            return {}; // cut short on purpose (limit) or by the caller: nothing to compare
+        if (stop || entry.hash == kNoHash) {
+            return {}; // stopped by the caller, or nothing to compare against
         }
         return digest == entry.hash ? std::wstring() : std::wstring(L"content does not match its SHA-1");
     }
@@ -214,7 +197,7 @@ struct Worker {
             return width == 8 ? le<std::uint64_t>(at) : le<std::uint32_t>(at);
         };
         const std::uint64_t dataOffset = entry.offset + tableBytes;
-        for (std::uint64_t i = 0; i < chunks && !stop && !full() && !sinkFailed;) {
+        for (std::uint64_t i = 0; i < chunks && !stop;) {
             // A run of whole chunks of up to kReadAhead bytes, at least one.
             const std::uint64_t runStart = startOf(i);
             std::uint64_t end = i + 1;
@@ -229,7 +212,7 @@ struct Worker {
             if (!stored.empty() && !source.read(dataOffset + runStart, stored)) {
                 return L"cannot be read";
             }
-            for (; i < end && !full(); ++i) {
+            for (; i < end; ++i) {
                 const std::uint64_t from = startOf(i);
                 const std::uint64_t to = startOf(i + 1);
                 const auto plainSize = static_cast<std::size_t>(

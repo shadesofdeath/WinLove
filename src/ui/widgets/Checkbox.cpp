@@ -40,7 +40,7 @@ void CheckField::setChecked(bool checked) {
 }
 
 SizeF CheckField::measure(SizeF /*available*/) {
-    const float label = host() ? std::ceil(host()->text().measure(m_label, tokens::TypeStyle::Body)) : 0.0f;
+    const float label = textWidth(m_label, tokens::TypeStyle::Body);
     return {Checkbox::kBox + 8 + label, tokens::size::control};
 }
 
@@ -61,11 +61,7 @@ void CheckField::onClick() {
 }
 
 bool CheckField::onKeyDown(const KeyEvent& key) {
-    if (key.virtualKey == VK_SPACE) {
-        onClick();
-        return true;
-    }
-    return false;
+    return activateOnKey(key, /*enterToo=*/false);
 }
 
 } // namespace wl::ui

@@ -19,7 +19,6 @@ public:
 
     void setRange(float content, float viewport);
     void setOffset(float offset);
-    [[nodiscard]] float offset() const noexcept { return m_offset; }
     [[nodiscard]] float maxOffset() const noexcept;
     [[nodiscard]] bool needed() const noexcept { return m_content > m_viewport + 0.5f; }
 

@@ -28,10 +28,12 @@ struct HttpResponse {
 // the file is renamed to `target` when complete. Progress: fraction of `expectedSize` (or of the
 // Content-Length when 0). An existing `target` is replaced.
 // `bytes` (optional): bytes in the file so far and the total (0 = unknown), for progress over
-// several files.
+// several files. `acceptFinalUrl` (optional): the address the request ended at after redirects;
+// false refuses the download before a byte is written.
 [[nodiscard]] Result<std::uint64_t> httpDownload(std::wstring_view url, const std::filesystem::path& target,
                                                  std::uint64_t expectedSize, const TaskContext& task,
-                                                 const std::function<void(std::uint64_t, std::uint64_t)>& bytes = {});
+                                                 const std::function<void(std::uint64_t, std::uint64_t)>& bytes = {},
+                                                 const std::function<bool(std::wstring_view)>& acceptFinalUrl = {});
 
 // "a=1&b=x%20y": percent-encoding of UTF-8 text for a form body or a query string.
 [[nodiscard]] std::string urlEncode(std::string_view text);

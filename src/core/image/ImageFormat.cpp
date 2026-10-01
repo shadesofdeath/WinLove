@@ -1,5 +1,7 @@
 #include "core/image/ImageFormat.h"
 
+#include "base/Text.h"
+
 #include <array>
 #include <cwctype>
 #include <utility>
@@ -7,19 +9,6 @@
 namespace wl::core {
 
 namespace {
-
-bool endsWithNoCase(std::wstring_view text, std::wstring_view suffix) noexcept {
-    if (text.size() < suffix.size()) {
-        return false;
-    }
-    const auto tail = text.substr(text.size() - suffix.size());
-    for (std::size_t i = 0; i < suffix.size(); ++i) {
-        if (std::towlower(tail[i]) != std::towlower(suffix[i])) {
-            return false;
-        }
-    }
-    return true;
-}
 
 } // namespace
 
@@ -33,7 +22,7 @@ ImageFormat formatFromPath(std::wstring_view path) noexcept {
         {L".vhd", ImageFormat::Vhd},
     }};
     for (const auto& [extension, format] : kExtensions) {
-        if (endsWithNoCase(path, extension)) {
+        if (text::iendsWith(path, extension)) {
             return format;
         }
     }

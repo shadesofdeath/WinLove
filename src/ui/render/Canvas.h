@@ -22,7 +22,6 @@ struct Ink {
     Ink(tokens::Color color) noexcept : from(color), to(color) {} // implicit on purpose: Color -> Ink
     Ink(tokens::Color a, tokens::Color b, float mix, float alpha = 1.0f) noexcept
         : from(a), to(b), t(mix), opacity(alpha) {}
-    [[nodiscard]] Ink withOpacity(float alpha) const noexcept { return {from, to, t, opacity * alpha}; }
 };
 
 class Canvas {
@@ -48,6 +47,8 @@ public:
     void fillEllipse(PointF center, float radius, Ink ink);
     // Elevation shadow (tokens::elevation::menu/dialog/toast) under a rounded rect.
     void dropShadow(RectF rect, float radius, std::span<const tokens::Shadow> layers);
+    // A floating surface (dialog, menu, toast, tooltip, chip): shadow, overlay fill, strong line.
+    void panel(RectF rect, float radius, std::span<const tokens::Shadow> elevation);
 
     void drawText(std::wstring_view text, RectF rect, tokens::TypeStyle style, Ink ink,
                   TextAlign align = TextAlign::Leading);

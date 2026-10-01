@@ -1,5 +1,7 @@
 #include "core/unattend/Unattend.h"
 
+#include "base/Encoding.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 
 #include <pugixml.hpp>
@@ -60,18 +62,7 @@ const wchar_t* architectureAttribute(Architecture architecture) {
 }
 
 std::wstring escape(std::wstring_view text) {
-    std::wstring out;
-    out.reserve(text.size());
-    for (const wchar_t c : text) {
-        switch (c) {
-        case L'&': out += L"&amp;"; break;
-        case L'<': out += L"&lt;"; break;
-        case L'>': out += L"&gt;"; break;
-        case L'"': out += L"&quot;"; break;
-        default: out.push_back(c); break;
-        }
-    }
-    return out;
+    return xmlEscape(text, /*apostrophe=*/false);
 }
 
 // Indented element writer; `depth` starts inside <unattend><settings><component>.
@@ -258,21 +249,13 @@ std::wstring encodeUnattendPassword(std::wstring_view value) {
 }
 
 std::wstring decodeUnattendPassword(std::wstring_view encoded) {
-    std::vector<unsigned char> bytes;
-    unsigned buffer = 0;
-    int bits = 0;
+    std::string digits; // the alphabet only: padding and line breaks are skipped
     for (const wchar_t c : encoded) {
-        const auto at = c < 128 ? kBase64.find(static_cast<char>(c)) : std::string_view::npos;
-        if (at == std::string_view::npos) {
-            continue; // padding, line breaks
-        }
-        buffer = (buffer << 6) | static_cast<unsigned>(at);
-        bits += 6;
-        if (bits >= 8) {
-            bits -= 8;
-            bytes.push_back(static_cast<unsigned char>((buffer >> bits) & 0xFF));
+        if (c < 128 && kBase64.find(static_cast<char>(c)) != std::string_view::npos) {
+            digits.push_back(static_cast<char>(c));
         }
     }
+    const auto bytes = base64Decode(digits);
     std::wstring text(bytes.size() / sizeof(wchar_t), L'\0');
     std::memcpy(text.data(), bytes.data(), text.size() * sizeof(wchar_t));
     if (text.ends_with(kPasswordSuffix)) {
@@ -539,8 +522,7 @@ std::vector<UnattendProblem> validateUnattend(const UnattendOptions& o) {
     if (!o.accountName.empty()) {
         static constexpr std::wstring_view kReserved[] = {L"administrator", L"guest", L"defaultaccount", L"system",
                                                           L"wdagutilityaccount"};
-        std::wstring lower = o.accountName;
-        std::ranges::transform(lower, lower.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+        const std::wstring lower = text::lower(o.accountName);
         if (o.accountName.size() > 20 || hasAny(o.accountName, L"\"/\\[]:;|=,+*?<>@") || o.accountName.ends_with(L'.') ||
             std::ranges::find(kReserved, lower) != std::end(kReserved)) {
             problems.push_back(UnattendProblem::AccountName);

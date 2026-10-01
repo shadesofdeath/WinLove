@@ -21,7 +21,6 @@ public:
     std::function<void()> onInvoke;
 
     void setText(std::wstring text);
-    void setHeight(float height) noexcept { m_height = height; }
 
     [[nodiscard]] SizeF measure(SizeF available) override;
     void paint(Canvas& canvas) override;
@@ -39,7 +38,6 @@ private:
     ButtonKind m_kind;
     std::wstring m_text;
     std::optional<icons::Icon> m_icon;
-    float m_height = tokens::size::control;
     float m_textWidth = -1;
     Tween m_hover;
     Tween m_press;

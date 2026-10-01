@@ -27,7 +27,6 @@ public:
     [[nodiscard]] ID2D1Device2* d2dDevice() const noexcept { return m_d2dDevice.Get(); }
     [[nodiscard]] IDWriteFactory6* dwrite() const noexcept { return m_dwrite.Get(); }
     [[nodiscard]] IWICImagingFactory* wic() const noexcept { return m_wic.Get(); }
-    [[nodiscard]] bool isSoftware() const noexcept { return m_software; }
 
     [[nodiscard]] Result<ComPtr<ID2D1DeviceContext2>> createContext() const;
 
@@ -38,7 +37,6 @@ private:
     ComPtr<ID2D1Device2> m_d2dDevice;
     ComPtr<IDWriteFactory6> m_dwrite;
     ComPtr<IWICImagingFactory> m_wic;
-    bool m_software = false;
 };
 
 } // namespace wl::ui

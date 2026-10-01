@@ -1,5 +1,6 @@
 #include "app/pages/RegistryPage.h"
 
+#include "app/pages/PageBits.h"
 #include "ui/widget/Host.h"
 #include "ui/widgets/Checkbox.h"
 
@@ -217,7 +218,7 @@ void RegistryPage::refresh() {
     if (!mounted) {
         m_empty->setContent(ui::icons::Icon::Registry, m_strings.get(Str::RegistryNoMountTitle),
                             m_strings.get(Str::RegistryNoMountBody));
-        m_empty->setAction(m_strings.get(Str::FeaturesGoImages)).onInvoke = m_intents.goImages;
+        m_empty->setAction(m_strings.get(Str::CommonGoImages)).onInvoke = m_intents.goImages;
     }
     m_empty->setVisible(!mounted);
     m_grid->setVisible(mounted);
@@ -376,9 +377,8 @@ void RegistryPage::paint(ui::Canvas& canvas) {
                     TypeStyle::Section, Color::TextSecondary);
     if (m_rows.empty()) {
         const bool custom = isCustom();
-        canvas.drawText(m_strings.get(custom ? Str::RegistryNoImports : Str::FeaturesNoResults),
-                        {b.x, m_table->bounds().y + ui::TableView::kHeader + 12, b.width, 20}, TypeStyle::Body,
-                        Color::TextTertiary, ui::TextAlign::Center);
+        paintTableEmpty(canvas, {b.x, m_table->bounds().y, b.width, 0},
+                        m_strings.get(custom ? Str::RegistryNoImports : Str::FeaturesNoResults));
     }
 }
 

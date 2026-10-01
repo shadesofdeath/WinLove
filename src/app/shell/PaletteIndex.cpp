@@ -2,6 +2,7 @@
 
 #include "app/Format.h"
 #include "app/pages/FeaturesPage.h"
+#include "app/pages/PageBits.h"
 #include "app/pages/ServicesPage.h"
 
 #include <windows.h>
@@ -34,15 +35,6 @@ bool isWordChar(wchar_t c) {
 // 0 at the start, 1 at the start of a word, 2 inside one.
 int positionRank(std::wstring_view text, std::size_t at) {
     return at == 0 ? 0 : !isWordChar(text[at - 1]) ? 1 : 2;
-}
-
-Str riskText(core::ops::Risk risk) {
-    switch (risk) {
-    case core::ops::Risk::Low: return Str::RiskLow;
-    case core::ops::Risk::Medium: return Str::RiskMedium;
-    case core::ops::Risk::High: return Str::RiskHigh;
-    }
-    return Str::RiskMedium;
 }
 
 std::wstring widen(std::string_view text) {

@@ -26,8 +26,16 @@
   anı boyutları gerçek imajda Python analiziyle aynı; render `--demo-components`. **Düzeltilen:** offreg değer adı hatası,
   WinSxS listesinin yarıda kesilmesi, paket-yalnız tarifte çökme (`paths.front()`). **Görülmeyen:** kaldırılmış imaja
   sonradan toplu güncelleme, kurulan sistemde etki (VM).
-- **Bir sonraki somut adım (2026-10-02):** kullanıcı yeni bileşenleri dener. Windows'la gelen sürücülerin kaldırılması
-  ölçülüp bırakıldı: yükü silmek bileşen deposunu bozuyor (ScanHealth "repairable"), kazanç ~85 MB (D-059).
+- **Derin kaldırma + kod incelemesi (2026-10-02, D-060):** eski donanım sürücüleri (modem, teyp, disket, FireWire, PCMCIA, POS)
+  imajdan ve bileşen deposundan tutarlı biçimde çıkıyor (ScanHealth temiz). Ölçüldü: sonradan eklenen toplu güncelleme
+  kurulamıyor → Uygula'da yeni DeepRemove aşaması güncellemelerden sonra; sayfa kırmızı uyarı gösteriyor. `lab_deep_removal`
+  (-LcuFirst, KB5129195) ALL PASSED. Ardından dört katmanlı kod incelemesi (çekirdek, UI, sayfalar, shell/CLI) ve düzeltmeleri:
+  ~40 gerçek hata (ör. junction üzerinden host'a yazma, ISO yeniden paketlemede önce silme, indirme adresinde kullanıcı-bilgisi
+  hilesi, gizlenen widget'ın odak / hover durumu, basılı Enter tekrarı, açık listeyle değişen Dropdown, Uygula'da yarım preset),
+  ortak yardımcılar (`base/Text`, `base/File`, `base/Encoding`, `core/system/Files|Com|Handle|BackupFiles`, Shell modal /
+  okuyucu yardımcıları, `PageBits`), ~85 kullanılmayan metin anahtarı ve ölü kod silindi. 271 test.
+- **Bir sonraki somut adım (2026-10-02):** kullanıcı yeni bileşenleri ve derin kaldırmayı dener; VM'de derin kaldırılmış imajın
+  kurulumu ve Windows Update davranışı görülmeli.
 - **Önceki adım (2026-10-01 gece):** kullanıcı yeni araçları uygulamada dener. Sonra ertelenen öneriler (`deferred-suggestions`).
 - **Önceki adım (2026-10-01 akşam):** kullanıcı yeni sayfaları uygulamada dener (Kişiselleştirme, Wi-Fi, Compact OS, boot.wim sekmesi). WLM için karar bekleniyor: açma hızı ölçümü + kurucu prototipi (D-057). Önerilen küçük işler: ISO seçeneklerini presete eklemek, taşınabilir preset (dosyalar yanında).
 - **Önceki adım (2026-09-30 akşam):** (`tools\lab_usb.ps1` MBR geçti; kalan `-Gpt` ve gerçek bellek) uygulamada P11 / P12 "imajda" gösterimini önceden Uygula'lanmış bir imajla ve

@@ -1,9 +1,10 @@
 #include "app/pages/ServicesPage.h"
 
+#include "app/pages/PageBits.h"
+#include "base/Text.h"
 #include "ui/widget/Host.h"
 
 #include <algorithm>
-#include <cwctype>
 
 namespace wl::app {
 
@@ -23,13 +24,6 @@ constexpr float kChoiceH = 20.0f;
 enum Column : int { kService, kName, kDefault, kNew, kRisk };
 
 constexpr StartType kChoices[] = {StartType::Auto, StartType::AutoDelayed, StartType::Manual, StartType::Disabled};
-
-std::wstring lowered(std::wstring text) {
-    for (auto& c : text) {
-        c = static_cast<wchar_t>(std::towlower(c));
-    }
-    return text;
-}
 
 // Boot/System services are listed under "Otomatik" in the filter (they start with Windows).
 bool matchesFilter(StartType start, int filter) {
@@ -62,7 +56,7 @@ ServicesPage::ServicesPage(AppState& state, ServiceController& controller, const
       m_intents(std::move(intents)) {
     m_search = &add<ui::SearchBox>(strings.get(Str::ServicesSearch), std::vector<std::wstring>{L"/"});
     m_search->onChange = [this](const std::wstring& text) {
-        m_needle = lowered(text);
+        m_needle = wl::text::lower(text);
         refilter();
     };
     std::vector<std::wstring> filters{strings.get(Str::CommonAll)};
@@ -175,7 +169,7 @@ void ServicesPage::refresh() {
     const bool ready = list && list->status == AppState::ServiceList::Status::Ready;
     if (!m_state.mounted()) {
         showEmpty(ui::icons::Icon::ServicesGear, Str::ServicesNoMountTitle, m_strings.get(Str::ServicesNoMountBody),
-                  Str::FeaturesGoImages, m_intents.goImages);
+                  Str::CommonGoImages, m_intents.goImages);
     } else if (!list || list->status == AppState::ServiceList::Status::Loading) {
         m_controller.load();
         showEmpty(ui::icons::Icon::Spinner, Str::ServicesLoadingTitle, m_strings.get(Str::ServicesLoadingBody),
@@ -207,8 +201,8 @@ void ServicesPage::refilter() {
             if (!matchesFilter(m_controller.target(s), m_startFilter)) {
                 continue;
             }
-            if (!m_needle.empty() && lowered(s.displayName).find(m_needle) == std::wstring::npos &&
-                lowered(s.name).find(m_needle) == std::wstring::npos) {
+            if (!m_needle.empty() && wl::text::lower(s.displayName).find(m_needle) == std::wstring::npos &&
+                wl::text::lower(s.name).find(m_needle) == std::wstring::npos) {
                 continue;
             }
             m_rows.push_back(static_cast<int>(i));
@@ -306,16 +300,7 @@ void ServicesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
         break;
     }
     case kRisk: {
-        const auto risk = m_controller.risk(*item);
-        const Color ink = risk == core::ops::Risk::Low    ? Color::StatusSuccess
-                          : risk == core::ops::Risk::High ? Color::StatusError
-                                                          : Color::StatusWarning;
-        canvas.fillRect({rect.x, rect.y + (rect.height - 6) / 2, 6, 6}, ink);
-        const Str text = risk == core::ops::Risk::Low    ? Str::RiskLow
-                         : risk == core::ops::Risk::High ? Str::RiskHigh
-                                                         : Str::RiskMedium;
-        canvas.drawText(m_strings.get(text), {rect.x + 12, rect.y, rect.width - 12, rect.height}, TypeStyle::Caption,
-                        Color::TextSecondary);
+        paintRisk(canvas, rect, m_controller.risk(*item), m_strings);
         break;
     }
     default: break;
@@ -351,9 +336,7 @@ void ServicesPage::paint(ui::Canvas& canvas) {
     canvas.drawText(summary, {left, b.y + kToolbarTop, std::max(b.right() - left, 0.0f), kToolbar}, TypeStyle::Caption,
                     Color::TextSecondary, ui::TextAlign::Trailing);
     if (m_rows.empty()) {
-        canvas.drawText(m_strings.get(Str::ServicesNoResults),
-                        {b.x, m_table->bounds().y + ui::TableView::kHeader + 12, b.width, 20}, TypeStyle::Body,
-                        Color::TextTertiary, ui::TextAlign::Center);
+        paintTableEmpty(canvas, {b.x, m_table->bounds().y, b.width, 0}, m_strings.get(Str::ServicesNoResults));
     }
 }
 

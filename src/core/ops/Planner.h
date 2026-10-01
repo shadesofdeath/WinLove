@@ -15,7 +15,9 @@
 namespace wl::core::ops {
 
 // Apps: provisioned .appx / .msix (D-050) — after the updates, whose servicing stack may be needed.
-enum class Phase : std::uint8_t { Edition, Remove, Features, Drivers, Updates, Apps, Cleanup, Settings };
+// DeepRemove: deep removal (D-060) — after the updates: a cumulative update added to an image whose
+// inbox drivers are already gone fails (0x80070002, measured), the other way round works.
+enum class Phase : std::uint8_t { Edition, Remove, Features, Drivers, Updates, Apps, DeepRemove, Cleanup, Settings };
 
 struct PlanStep {
     Phase phase;
@@ -29,6 +31,8 @@ struct ApplyPlan {
 };
 
 [[nodiscard]] Phase phaseOf(OpKind kind) noexcept;
+// The phase of one operation: a RemoveComponent whose recipe has driverClasses is deep removal.
+[[nodiscard]] Phase phaseOf(const Operation& op);
 [[nodiscard]] ApplyPlan plan(const ChangeSet& changes);
 
 // Consecutive steps of one phase, as the Apply screens list them.

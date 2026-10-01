@@ -40,18 +40,18 @@ void Button::setText(std::wstring text) {
 
 SizeF Button::measure(SizeF /*available*/) {
     if (isIconOnly()) {
-        return {m_height, m_height};
+        return {tokens::size::control, tokens::size::control};
     }
     const auto style = m_kind == ButtonKind::Primary || m_kind == ButtonKind::Danger ? tokens::TypeStyle::BodyStrong
                                                                                       : tokens::TypeStyle::Body;
     if (m_textWidth < 0 && host()) {
-        m_textWidth = std::ceil(host()->text().measure(m_text, style));
+        m_textWidth = textWidth(m_text, style);
     }
     float width = kPaddingX * 2 + std::max(m_textWidth, 0.0f);
     if (m_icon) {
         width += tokens::size::icon + kIconGap;
     }
-    return {std::max(width, kMinWidth), m_height};
+    return {std::max(width, kMinWidth), tokens::size::control};
 }
 
 void Button::onHoverChanged(bool hovered) {
@@ -87,11 +87,7 @@ void Button::onClick() {
 }
 
 bool Button::onKeyDown(const KeyEvent& key) {
-    if (key.virtualKey == VK_SPACE || key.virtualKey == VK_RETURN) {
-        onClick();
-        return true;
-    }
-    return false;
+    return activateOnKey(key);
 }
 
 void Button::paint(Canvas& canvas) {

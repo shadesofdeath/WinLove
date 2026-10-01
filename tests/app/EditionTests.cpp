@@ -54,7 +54,7 @@ struct Fixture {
                                        std::scoped_lock lock(mutex);
                                        posted.push_back(std::move(fn));
                                    },
-                                   [this](ImageController::Failure f, const Error&, int) { failed.push_back(f); },
+                                   [this](ImageController::Failure f, const Error&) { failed.push_back(f); },
                                    [this](Str, std::wstring detail) { succeeded.push_back(std::move(detail)); },
                                    [this](Str why) { refused.push_back(why); },
                                    [](std::wstring) {},

@@ -195,7 +195,7 @@ void ImageInspector::paint(ui::Canvas& canvas) {
     const std::wstring container = m_source->installImage.ends_with(L".esd") ? L"ESD" : L"WIM";
     std::wstring compression = std::format(L"{} ({})", upper(core::compressionName(header.compression)), container);
     if (header.solid) {
-        compression += L" · solid";
+        compression += L" · " + m_strings.get(Str::ImagesSolid);
     }
     row(Str::ImagesCompression, compression);
     row(Str::ImagesFileSize, formatBytes(m_source->installImageSize, m_language), true);

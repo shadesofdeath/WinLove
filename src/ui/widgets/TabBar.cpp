@@ -16,9 +16,7 @@ constexpr float kRadio = 12.0f;
 constexpr float kRadioGap = 8.0f;
 constexpr float kOptionGap = 16.0f;
 
-float textWidth(const Widget& w, const std::wstring& text, TypeStyle style) {
-    return w.host() ? std::ceil(w.host()->text().measure(text, style)) : 60.0f;
-}
+constexpr float kTextFallback = 60.0f; // a plausible tab width before the bar has a host
 } // namespace
 
 // ---- TabBar ---------------------------------------------------------------------------------
@@ -42,7 +40,7 @@ std::vector<RectF> TabBar::tabRects() const {
     const RectF b = bounds();
     float x = b.x;
     for (const auto& tab : m_tabs) {
-        const float w = textWidth(*this, tab, TypeStyle::BodyStrong) + 2 * kTabPadding;
+        const float w = textWidth(tab, TypeStyle::BodyStrong, kTextFallback) + 2 * kTabPadding;
         rects.push_back({x, b.y, w, b.height});
         x += w + kTabGap;
     }
@@ -122,7 +120,7 @@ bool TabBar::onKeyDown(const KeyEvent& key) {
 // ---- RadioGroup -------------------------------------------------------------------------------
 
 RadioGroup::RadioGroup(std::vector<std::wstring> options, int selected)
-    : m_options(std::move(options)), m_enabled(m_options.size(), true), m_selected(selected) {
+    : m_options(std::move(options)), m_selected(selected) {
     setFocusable(true);
     setAccessible(AccessRole::Group, L"");
 }
@@ -132,19 +130,12 @@ void RadioGroup::setSelected(int index) {
     invalidate();
 }
 
-void RadioGroup::setOptionEnabled(int index, bool enabled) {
-    if (index >= 0 && index < static_cast<int>(m_enabled.size())) {
-        m_enabled[static_cast<std::size_t>(index)] = enabled;
-        invalidate();
-    }
-}
-
 std::vector<RectF> RadioGroup::optionRects() const {
     std::vector<RectF> rects;
     const RectF b = bounds();
     float x = b.x;
     for (const auto& option : m_options) {
-        const float w = kRadio + kRadioGap + textWidth(*this, option, TypeStyle::Body);
+        const float w = kRadio + kRadioGap + textWidth(option, TypeStyle::Body, kTextFallback);
         rects.push_back({x, b.y, w, b.height});
         x += w + kOptionGap;
     }
@@ -161,10 +152,6 @@ void RadioGroup::paint(Canvas& canvas) {
     for (std::size_t i = 0; i < rects.size(); ++i) {
         const RectF r = rects[i];
         const bool selected = static_cast<int>(i) == m_selected;
-        const bool enabled = m_enabled[i];
-        if (!enabled) {
-            canvas.pushOpacity(tokens::opacity::disabled);
-        }
         const PointF center{r.x + kRadio / 2, r.y + r.height / 2};
         canvas.fillEllipse(center, kRadio / 2, Color::BgInput);
         canvas.strokeRoundRect({r.x, center.y - kRadio / 2, kRadio, kRadio}, kRadio / 2,
@@ -174,15 +161,11 @@ void RadioGroup::paint(Canvas& canvas) {
         }
         const float x = r.x + kRadio + kRadioGap;
         canvas.drawText(m_options[i], {x, r.y, r.right() - x + 2, r.height}, TypeStyle::Body, Color::TextPrimary);
-        if (!enabled) {
-            canvas.popOpacity();
-        }
     }
 }
 
 void RadioGroup::choose(int index) {
-    if (index < 0 || index >= static_cast<int>(m_options.size()) || !m_enabled[static_cast<std::size_t>(index)] ||
-        index == m_selected) {
+    if (index < 0 || index >= static_cast<int>(m_options.size()) || index == m_selected) {
         return;
     }
     m_selected = index;
@@ -203,12 +186,7 @@ void RadioGroup::onPointerDown(PointF p) {
 
 bool RadioGroup::onKeyDown(const KeyEvent& key) {
     if (key.virtualKey == VK_LEFT || key.virtualKey == VK_RIGHT) {
-        int next = m_selected;
-        const int step = key.virtualKey == VK_RIGHT ? 1 : -1;
-        do {
-            next += step;
-        } while (next >= 0 && next < static_cast<int>(m_options.size()) && !m_enabled[static_cast<std::size_t>(next)]);
-        choose(next);
+        choose(m_selected + (key.virtualKey == VK_RIGHT ? 1 : -1));
         return true;
     }
     return false;

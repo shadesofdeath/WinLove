@@ -4,6 +4,7 @@ add_library(wl_base STATIC
     Result.cpp
     Text.cpp
     File.cpp
+    Encoding.cpp
     Utf8.cpp)
 wl_configure_target(wl_base)
 target_link_libraries(wl_base PRIVATE shell32 ole32)

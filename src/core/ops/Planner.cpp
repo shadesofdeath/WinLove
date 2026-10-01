@@ -1,5 +1,9 @@
 #include "core/ops/Planner.h"
 
+#include "base/Utf8.h"
+
+#include <json.hpp>
+
 #include <algorithm>
 #include <format>
 
@@ -35,6 +39,18 @@ Phase phaseOf(OpKind kind) noexcept {
     case OpKind::SetServiceStart: return Phase::Settings;
     }
     return Phase::Settings;
+}
+
+Phase phaseOf(const Operation& op) {
+    if (op.kind == OpKind::RemoveComponent) {
+        // The recipe's JSON (SystemComponents.h: componentRecipeToJson) — read here without that
+        // header, which brings <windows.h> and its CopyFile macro into OpKind::CopyFile.
+        const auto doc = nlohmann::json::parse(utf8::fromWide(op.value), nullptr, /*allow_exceptions=*/false);
+        if (doc.is_object() && doc.contains("driverClasses") && doc["driverClasses"].is_array() && !doc["driverClasses"].empty()) {
+            return Phase::DeepRemove;
+        }
+    }
+    return phaseOf(op.kind);
 }
 
 bool ApplyPlan::hasHighRisk() const {
@@ -98,7 +114,7 @@ std::vector<PlanGroup> groups(const ApplyPlan& plan) {
 ApplyPlan plan(const ChangeSet& changes) {
     ApplyPlan result;
     for (const auto& op : changes.operations()) {
-        result.steps.push_back({phaseOf(op.kind), op});
+        result.steps.push_back({phaseOf(op), op});
     }
     // stable: keeps the user's order inside each phase; updates go SSU → language packs → LCU → .NET → other
     // (op.value holds the kind from UpdatePackage.h).

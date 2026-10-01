@@ -43,6 +43,7 @@
 #include "app/pages/UpdatesPage.h"
 #include "app/pages/images/ImageInspector.h"
 #include "app/shell/CommandPalette.h"
+#include "base/File.h"
 #include "base/Log.h"
 #include "base/Path.h"
 #include "base/Utf8.h"
@@ -62,8 +63,6 @@
 #include <atomic>
 #include <cmath>
 #include <format>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <utility>
 
@@ -72,6 +71,12 @@ namespace wl::app {
 namespace size = ui::tokens::size;
 
 namespace {
+
+// Explorer, with the file selected.
+void revealInExplorer(const std::filesystem::path& file) {
+    const std::wstring args = L"/select,\"" + file.wstring() + L"\"";
+    ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+}
 
 bool isSourceCandidate(const std::filesystem::path& path) {
     std::error_code ec;
@@ -94,8 +99,8 @@ constexpr float kToastMargin = 16.0f;
 Shell::Shell(const Localization& strings, Language language, AppState& state, Services services)
     : m_strings(strings), m_language(language), m_state(state), m_services(std::move(services)) {
     auto s = [&](Str key) { return strings.get(key); };
-    m_titleBar = &add<TitleBar>(TitleBar::Labels{s(Str::AppName), s(Str::TitleCmdk), s(Str::KbdCtrl),
-                                                 s(Str::TitleMinimize), s(Str::TitleClose)});
+    m_titleBar = &add<TitleBar>(TitleBar::Labels{s(Str::AppName), s(Str::TitleCmdk), s(Str::KbdCtrl), s(Str::TitleMinimize),
+                                                 s(Str::TitleClose), s(Str::TitleMaximize), s(Str::TitleRestore)});
     m_nav = &add<NavRail>(NavRail::Labels{s(Str::NavCollapse), s(Str::NavExpand), s(Str::KbdCtrl),
                                           s(Str::TooltipsCollapseNav)},
                           [&](Str key) { return strings.get(key); });
@@ -161,7 +166,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
             }
         },
         [this](int n) { showToast(ui::InfoKind::Success, m_strings.format(Str::AppsImported, {{L"n", std::to_wstring(n)}}), L""); },
-        [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::AppsHostFailed), e.message); },
+        [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::AppsHostFailed), errorText(e)); },
     });
     m_imageDriverCtl = std::make_unique<ImageDriverController>(m_state, ImageDriverController::Events{
         m_services.postToUi,
@@ -169,7 +174,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
             showToast(ui::InfoKind::Success, m_strings.format(Str::DriversHostExported, {{L"n", std::to_wstring(packages)}}),
                       folder.wstring());
         },
-        [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::DriversHostFailed), e.message); },
+        [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::DriversHostFailed), errorText(e)); },
     });
     m_unattend = std::make_unique<UnattendController>(m_state);
     m_postSetup = std::make_unique<PostSetupController>(m_state);
@@ -186,7 +191,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_preload->onCancelled = [this] { showToast(ui::InfoKind::Warning, m_strings.get(Str::ImagesCancelledToast), L""); };
     m_iso =std::make_unique<IsoController>(m_state, IsoController::Events{
         m_services.postToUi,
-        [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::IsoFailed), e.message); },
+        [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::IsoFailed), errorText(e)); },
         [this](const core::IsoResult& result, const std::filesystem::path& output, bool openFolder) {
             const bool usb = m_state.isoRun() && m_state.isoRun()->usb;
             if (usb) { // D-047: the stick's drive
@@ -200,8 +205,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
             showToast(ui::InfoKind::Success, m_strings.get(Str::IsoDone),
                       output.filename().wstring() + L" \u00b7 " + formatBytes(result.bytes, m_language));
             if (openFolder) {
-                const std::wstring args = L"/select,\"" + output.wstring() + L"\"";
-                ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+                revealInExplorer(output);
             }
             // A repack rewrote the setup folder: re-read sizes when it is the open source.
             if (const auto& source = m_state.source(); source && source->format == core::ImageFormat::Folder) {
@@ -217,7 +221,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         },
         [this](const Error& e, bool download) {
             showToast(ui::InfoKind::Error, m_strings.get(download ? Str::UpdatesDownloadFailed : Str::UpdatesCatalogFailed),
-                      e.message);
+                      errorText(e));
         },
         [this](std::vector<core::DownloadedUpdate> downloaded) {
             std::vector<std::filesystem::path> packages;
@@ -243,12 +247,12 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
             m_state.setSource(std::move(source)); // new sizes after the commit
             m_state.select(index);
         },
-        [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::ApplyFailedTitle), e.message); },
+        [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::ApplyFailedTitle), errorText(e)); },
         {},
     });
     m_images = std::make_unique<ImageController>(m_state, ImageController::Events{
         m_services.postToUi,
-        [this](ImageController::Failure f, const Error& e, int index) { onImageFailure(f, e, index); },
+        [this](ImageController::Failure f, const Error& e) { onImageFailure(f, e); },
         [this](Str title, std::wstring detail) {
             showToast(ui::InfoKind::Success, m_strings.format(title, {{L"edition", detail}, {L"file", detail}}), L"");
         },
@@ -289,6 +293,14 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     });
     showPage(PageId::Source);
     updateStatus();
+}
+
+bool Shell::requireMount(Str title, Str body) {
+    if (m_state.mounted()) {
+        return true;
+    }
+    showToast(ui::InfoKind::Warning, m_strings.get(title), m_strings.get(body));
+    return false;
 }
 
 Shell::~Shell() {
@@ -336,8 +348,7 @@ void Shell::importRegFiles(const std::vector<std::filesystem::path>& files) {
     if (files.empty()) {
         return;
     }
-    if (!m_state.mounted()) {
-        showToast(ui::InfoKind::Warning, m_strings.get(Str::RegistryNoMountTitle), m_strings.get(Str::RegistryNoMountBody));
+    if (!requireMount(Str::RegistryNoMountTitle, Str::RegistryNoMountBody)) {
         return;
     }
     struct Parsed {
@@ -345,36 +356,31 @@ void Shell::importRegFiles(const std::vector<std::filesystem::path>& files) {
         Result<std::vector<core::RegistryWrite>> writes;
     };
     auto parsed = std::make_shared<std::vector<Parsed>>();
-    m_state.reader().run<bool>(
+    readThenUi<bool>(
         [files, parsed](const core::TaskContext&) -> Result<bool> {
             for (const auto& f : files) {
                 parsed->push_back({f, core::readRegFile(f)});
             }
             return true;
         },
-        [this, post = m_services.postToUi, alive = std::weak_ptr<bool>(m_alive), parsed](Result<bool>) {
-            post([this, alive, parsed] {
-                if (const auto a = alive.lock(); !a || !*a) {
-                    return;
+        [this, parsed](Result<bool>) {
+            std::size_t values = 0;
+            for (auto& p : *parsed) {
+                if (!p.writes) {
+                    showToast(ui::InfoKind::Error, m_strings.get(Str::RegistryImportFailed),
+                              p.writes.error().message + L" \u2014 " + p.writes.error().context);
+                    continue;
                 }
-                std::size_t values = 0;
-                for (auto& p : *parsed) {
-                    if (!p.writes) {
-                        showToast(ui::InfoKind::Error, m_strings.get(Str::RegistryImportFailed),
-                                  p.writes.error().message + L" \u2014 " + p.writes.error().context);
-                        continue;
-                    }
-                    values += p.writes->size();
-                    m_registry->addImport(p.file, std::move(*p.writes));
-                }
-                if (values > 0) {
-                    showToast(ui::InfoKind::Success,
-                              m_strings.format(Str::RegistryImported, {{L"n", std::to_wstring(values)}}), L"");
-                }
-                if (auto* page = registryPage()) {
-                    page->showCustom();
-                }
-            });
+                values += p.writes->size();
+                m_registry->addImport(p.file, std::move(*p.writes));
+            }
+            if (values > 0) {
+                showToast(ui::InfoKind::Success,
+                          m_strings.format(Str::RegistryImported, {{L"n", std::to_wstring(values)}}), L"");
+            }
+            if (auto* page = registryPage()) {
+                page->showCustom();
+            }
         });
 }
 
@@ -382,9 +388,8 @@ void Shell::editPostSetupStep(core::PostSetupStep::Type type, std::optional<std:
     if (!host()) {
         return;
     }
-    if (!m_state.mounted()) {
-        // The queue belongs to a mounted image (the next mount would silently clear it).
-        showToast(ui::InfoKind::Warning, m_strings.get(Str::PostsetupNoMountTitle), m_strings.get(Str::PostsetupNoMountBody));
+    // The queue belongs to a mounted image (the next mount would silently clear it).
+    if (!requireMount(Str::PostsetupNoMountTitle, Str::PostsetupNoMountBody)) {
         return;
     }
     core::PostSetupStep step;
@@ -392,22 +397,15 @@ void Shell::editPostSetupStep(core::PostSetupStep::Type type, std::optional<std:
     if (index) {
         step = m_postSetup->plan().steps[*index];
     }
-    auto raw = std::make_shared<ui::Dialog*>(nullptr);
+    const ModalSlot slot = modalSlot();
     StepDialogActions actions;
     actions.pickFile = [this]() -> std::optional<std::filesystem::path> {
-        const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-        return ui::pickFile(owner, m_strings.get(Str::PostsetupPickTitle), {{m_strings.get(Str::SourceFilterAll), L"*.*"}});
+        return ui::pickFile(owner(), m_strings.get(Str::PostsetupPickTitle), {{m_strings.get(Str::SourceFilterAll), L"*.*"}});
     };
     actions.pickFolder = [this]() -> std::optional<std::filesystem::path> {
-        const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-        return ui::pickFolder(owner, m_strings.get(Str::PostsetupPickTitle));
+        return ui::pickFolder(owner(), m_strings.get(Str::PostsetupPickTitle));
     };
-    actions.close = [this, raw] {
-        if (*raw) {
-            ui::Dialog* dialog = std::exchange(*raw, nullptr);
-            host()->popModal(dialog);
-        }
-    };
+    actions.close = slot.close;
     actions.accept = [this, index](core::PostSetupStep done) {
         if (index) {
             m_postSetup->replace(*index, std::move(done));
@@ -416,16 +414,14 @@ void Shell::editPostSetupStep(core::PostSetupStep::Type type, std::optional<std:
         }
     };
     StepDialog built = makeStepDialog(m_strings, std::move(step), index.has_value(), std::move(actions));
-    *raw = built.dialog.get();
-    host()->pushModal(std::move(built.dialog), built.initialFocus);
+    showModal(slot, std::move(built.dialog), built.initialFocus);
 }
 
 void Shell::pickPostSetupApps() {
     if (!host()) {
         return;
     }
-    if (!m_state.mounted()) {
-        showToast(ui::InfoKind::Warning, m_strings.get(Str::PostsetupNoMountTitle), m_strings.get(Str::PostsetupNoMountBody));
+    if (!requireMount(Str::PostsetupNoMountTitle, Str::PostsetupNoMountBody)) {
         return;
     }
     std::wstring body = m_strings.get(Str::PostsetupCatalogBody);
@@ -436,15 +432,10 @@ void Shell::pickPostSetupApps() {
     if (noWinget) {
         body += L" " + m_strings.get(Str::PostsetupCatalogNoWinget);
     }
-    auto raw = std::make_shared<ui::Dialog*>(nullptr);
+    const ModalSlot slot = modalSlot();
     AppsDialogActions actions;
     actions.present = [this](std::size_t index) { return m_postSetup->hasApp(index); };
-    actions.close = [this, raw] {
-        if (*raw) {
-            ui::Dialog* dialog = std::exchange(*raw, nullptr);
-            host()->popModal(dialog);
-        }
-    };
+    actions.close = slot.close;
     actions.accept = [this](std::vector<std::size_t> picked) {
         const std::size_t added = m_postSetup->addApps(picked);
         showToast(ui::InfoKind::Success, m_strings.format(Str::PostsetupCatalogAdded, {{L"n", std::to_wstring(added)}}), L"");
@@ -452,27 +443,20 @@ void Shell::pickPostSetupApps() {
     CatalogDialogSpec spec{m_strings.get(Str::PostsetupCatalog), std::move(body), m_strings.get(Str::PostsetupWingetId),
                            Str::PostsetupCatalogAdd, appRows(m_strings)};
     AppsDialog built = makeCatalogDialog(m_strings, std::move(spec), std::move(actions));
-    *raw = built.dialog.get();
-    host()->pushModal(std::move(built.dialog), built.initialFocus);
+    showModal(slot, std::move(built.dialog), built.initialFocus);
 }
 
 void Shell::pickPostSetupCommands() {
     if (!host()) {
         return;
     }
-    if (!m_state.mounted()) {
-        showToast(ui::InfoKind::Warning, m_strings.get(Str::PostsetupNoMountTitle), m_strings.get(Str::PostsetupNoMountBody));
+    if (!requireMount(Str::PostsetupNoMountTitle, Str::PostsetupNoMountBody)) {
         return;
     }
-    auto raw = std::make_shared<ui::Dialog*>(nullptr);
+    const ModalSlot slot = modalSlot();
     AppsDialogActions actions;
     actions.present = [this](std::size_t index) { return m_postSetup->hasCommand(index); };
-    actions.close = [this, raw] {
-        if (*raw) {
-            ui::Dialog* dialog = std::exchange(*raw, nullptr);
-            host()->popModal(dialog);
-        }
-    };
+    actions.close = slot.close;
     actions.accept = [this](std::vector<std::size_t> picked) {
         const std::size_t added = m_postSetup->addCommands(picked, m_language);
         showToast(ui::InfoKind::Success, m_strings.format(Str::PostsetupCommandsAdded, {{L"n", std::to_wstring(added)}}), L"");
@@ -481,13 +465,11 @@ void Shell::pickPostSetupCommands() {
                            m_strings.get(Str::PostsetupCommand), Str::PostsetupCommandsAdd, commandRows(m_strings, m_language),
                            m_strings.get(Str::PostsetupName)};
     AppsDialog built = makeCatalogDialog(m_strings, std::move(spec), std::move(actions));
-    *raw = built.dialog.get();
-    host()->pushModal(std::move(built.dialog), built.initialFocus);
+    showModal(slot, std::move(built.dialog), built.initialFocus);
 }
 
 void Shell::importAnswerFile() {
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto file = ui::pickFile(owner, m_strings.get(Str::UnattendedImportXml),
+    const auto file = ui::pickFile(owner(), m_strings.get(Str::UnattendedImportXml),
                                    {{m_strings.get(Str::UnattendedXmlFiles), L"*.xml"}});
     if (!file) {
         return;
@@ -502,8 +484,7 @@ void Shell::importAnswerFile() {
 }
 
 void Shell::saveAnswerFile() {
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto target = ui::pickSaveFile(owner, m_strings.get(Str::UnattendedSaveXml),
+    const auto target = ui::pickSaveFile(owner(), m_strings.get(Str::UnattendedSaveXml),
                                          {{m_strings.get(Str::UnattendedXmlFiles), L"*.xml"}}, L"autounattend.xml", L"xml");
     if (!target) {
         return;
@@ -522,32 +503,26 @@ DriversPage* Shell::driversPage() const {
 }
 
 void Shell::scanDriverFolder() {
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto folder = ui::pickFolder(owner, m_strings.get(Str::UpdatesScanFolder));
+    const auto folder = ui::pickFolder(owner(), m_strings.get(Str::UpdatesScanFolder));
     if (!folder) {
         return;
     }
     showToast(ui::InfoKind::Info, m_strings.get(Str::DriversScanning), folder->wstring());
     auto infs = std::make_shared<std::vector<core::DriverInf>>();
-    m_state.reader().run<bool>(
+    readThenUi<bool>(
         [path = *folder, infs](const core::TaskContext&) -> Result<bool> {
             *infs = core::scanDrivers(path);
             return true;
         },
-        [this, post = m_services.postToUi, alive = std::weak_ptr<bool>(m_alive), path = *folder, infs](Result<bool>) {
-            post([this, alive, path, infs] {
-                if (const auto a = alive.lock(); !a || !*a) {
-                    return;
-                }
-                if (infs->empty()) {
-                    showToast(ui::InfoKind::Warning, m_strings.get(Str::DriversNoneFound), path.wstring());
-                    return;
-                }
-                const std::size_t n = infs->size();
-                m_state.addDriverScan(path, std::move(*infs));
-                showToast(ui::InfoKind::Success, m_strings.format(Str::DriversScanned, {{L"n", std::to_wstring(n)}}),
-                          path.wstring());
-            });
+        [this, path = *folder, infs](Result<bool>) {
+            if (infs->empty()) {
+                showToast(ui::InfoKind::Warning, m_strings.get(Str::DriversNoneFound), path.wstring());
+                return;
+            }
+            const std::size_t n = infs->size();
+            m_state.addDriverScan(path, std::move(*infs));
+            showToast(ui::InfoKind::Success, m_strings.format(Str::DriversScanned, {{L"n", std::to_wstring(n)}}),
+                      path.wstring());
         });
 }
 
@@ -555,9 +530,8 @@ void Shell::addUpdates(const std::vector<std::filesystem::path>& files) {
     if (files.empty()) {
         return;
     }
-    if (!m_state.mounted()) {
-        // The queue belongs to a mounted image (the next mount would silently clear it).
-        showToast(ui::InfoKind::Warning, m_strings.get(Str::UpdatesNoMountTitle), m_strings.get(Str::UpdatesNoMountBody));
+    // The queue belongs to a mounted image (the next mount would silently clear it).
+    if (!requireMount(Str::UpdatesNoMountTitle, Str::UpdatesNoMountBody)) {
         return;
     }
     const std::size_t added = UpdatesPage::queuePackages(m_state, files);
@@ -567,9 +541,8 @@ void Shell::addUpdates(const std::vector<std::filesystem::path>& files) {
 }
 
 void Shell::findUpdates() {
-    if (!m_state.mounted()) {
-        // The queue belongs to a mounted image, and the image says which updates fit.
-        showToast(ui::InfoKind::Warning, m_strings.get(Str::UpdatesNoMountTitle), m_strings.get(Str::UpdatesNoMountBody));
+    // The queue belongs to a mounted image, and the image says which updates fit.
+    if (!requireMount(Str::UpdatesNoMountTitle, Str::UpdatesNoMountBody)) {
         return;
     }
     if (m_updateCatalog->busy()) {
@@ -593,18 +566,12 @@ void Shell::showUpdateOffers(const core::CatalogTarget& target, std::vector<core
     if (!host()) {
         return;
     }
-    auto raw = std::make_shared<ui::Dialog*>(nullptr);
+    const ModalSlot slot = modalSlot();
     UpdateCatalogActions actions;
-    actions.close = [this, raw] {
-        if (*raw) {
-            ui::Dialog* dialog = std::exchange(*raw, nullptr);
-            host()->popModal(dialog);
-        }
-    };
+    actions.close = slot.close;
     actions.download = [this](std::vector<core::CatalogEntry> entries) { m_updateCatalog->download(std::move(entries)); };
     UpdateCatalogDialog built = makeUpdateCatalogDialog(m_strings, m_language, target, std::move(offers), std::move(actions));
-    *raw = built.dialog.get();
-    host()->pushModal(std::move(built.dialog), built.initialFocus);
+    showModal(slot, std::move(built.dialog), built.initialFocus);
 }
 
 void Shell::updateComponentInspector() {
@@ -625,24 +592,18 @@ void Shell::updateComponentInspector() {
 }
 
 void Shell::loadPreset() {
-    if (!m_state.mounted()) {
-        showToast(ui::InfoKind::Warning, m_strings.get(Str::ComponentsPresetNeedsMount), L"");
-        return;
-    }
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto file = ui::pickFile(owner, m_strings.get(Str::ComponentsLoadPreset),
+    const auto file = ui::pickFile(owner(), m_strings.get(Str::ComponentsLoadPreset),
                                    {{m_strings.get(Str::ApplyPresetFiles), L"*.wlpreset;*.json"}});
     if (!file) {
         return;
     }
     const auto preset = readPreset(*file);
     if (!preset) {
-        showToast(ui::InfoKind::Error, m_strings.get(Str::ComponentsPresetFailed), preset.error().message);
+        showToast(ui::InfoKind::Error, m_strings.get(Str::ComponentsPresetFailed), errorText(preset.error()));
         return;
     }
-    const std::size_t queued = m_presets->apply(*preset);
-    showToast(ui::InfoKind::Success, m_strings.format(Str::ComponentsPresetLoaded, {{L"n", std::to_wstring(queued)}}),
-              file->wstring());
+    // The same path as the Presets page: a preset that only carries answers needs no mount.
+    applyPreset(*preset);
 }
 
 PresetsPage* Shell::presetsPage() const {
@@ -660,15 +621,14 @@ void Shell::applyPreset(const Preset& preset) {
 }
 
 void Shell::importPreset() {
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto file = ui::pickFile(owner, m_strings.get(Str::CommonImport),
+    const auto file = ui::pickFile(owner(), m_strings.get(Str::CommonImport),
                                    {{m_strings.get(Str::ApplyPresetFiles), L"*.wlpreset;*.json"}});
     if (!file) {
         return;
     }
     if (auto r = m_presets->importFile(*file); !r) {
         log::error("app", describe(r.error()));
-        showToast(ui::InfoKind::Error, m_strings.get(Str::PresetsFailed), r.error().message);
+        showToast(ui::InfoKind::Error, m_strings.get(Str::PresetsFailed), errorText(r.error()));
         return;
     }
     showToast(ui::InfoKind::Success, m_strings.get(Str::PresetsImported), file->filename().wstring());
@@ -681,8 +641,7 @@ void Shell::addTaskDialog() {
     if (!host()) {
         return;
     }
-    if (!m_state.mounted()) {
-        showToast(ui::InfoKind::Warning, m_strings.get(Str::TasksNoMountTitle), m_strings.get(Str::TasksNoMountBody));
+    if (!requireMount(Str::TasksNoMountTitle, Str::TasksNoMountBody)) {
         return;
     }
     auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::TasksAddTitle), m_strings.get(Str::TasksAddBody),
@@ -700,8 +659,8 @@ void Shell::addTaskDialog() {
         host()->popModal(raw);
     };
     path.onSubmit = add;
-    raw->onCancel = [this, raw] { host()->popModal(raw); };
-    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
+    raw->onCancel = closer(raw);
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
     raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::CommonAdd), add, /*primary=*/true);
     host()->pushModal(std::move(dialog), &path);
 }
@@ -710,8 +669,7 @@ void Shell::addFonts(std::vector<std::filesystem::path> files) {
     if (files.empty()) {
         return;
     }
-    if (!m_state.mounted()) {
-        showToast(ui::InfoKind::Warning, m_strings.get(Str::BrandingNoMountTitle), m_strings.get(Str::BrandingNoMountBody));
+    if (!requireMount(Str::BrandingNoMountTitle, Str::BrandingNoMountBody)) {
         return;
     }
     std::vector<std::wstring> refused;
@@ -726,20 +684,20 @@ void Shell::addFonts(std::vector<std::filesystem::path> files) {
 }
 
 void Shell::importHostsFile() {
-    if (!m_state.mounted()) {
-        showToast(ui::InfoKind::Warning, m_strings.get(Str::HostsNoMountTitle), m_strings.get(Str::HostsNoMountBody));
+    if (!requireMount(Str::HostsNoMountTitle, Str::HostsNoMountBody)) {
         return;
     }
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto file = ui::pickFile(owner, m_strings.get(Str::HostsImport),
+    const auto file = ui::pickFile(owner(), m_strings.get(Str::HostsImport),
                                    {{m_strings.get(Str::HostsFilter), L"hosts;*.txt;*.hosts;*"}});
     if (!file) {
         return;
     }
-    std::ifstream in(*file, std::ios::binary);
-    std::stringstream buffer;
-    buffer << in.rdbuf();
-    std::string bytes = buffer.str();
+    auto read = readFileBytes(*file);
+    if (!read) {
+        showToast(ui::InfoKind::Error, m_strings.get(Str::HostsImport), errorText(read.error()));
+        return;
+    }
+    std::string bytes = std::move(*read);
     if (bytes.size() > (64u << 20)) {
         bytes.resize(64u << 20);
     }
@@ -751,63 +709,53 @@ void Shell::importHostsFile() {
 }
 
 void Shell::scanLanguageFolder() {
-    if (!m_state.mounted()) {
-        showToast(ui::InfoKind::Warning, m_strings.get(Str::LanguagesNoMountTitle), m_strings.get(Str::LanguagesNoMountBody));
+    if (!requireMount(Str::LanguagesNoMountTitle, Str::LanguagesNoMountBody)) {
         return;
     }
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto folder = ui::pickFolder(owner, m_strings.get(Str::LanguagesScan));
+    const auto folder = ui::pickFolder(owner(), m_strings.get(Str::LanguagesScan));
     if (!folder) {
         return;
     }
     auto found = std::make_shared<std::vector<core::LanguagePackFile>>();
-    m_state.reader().run<bool>(
+    readThenUi<bool>(
         [path = *folder, found](const core::TaskContext&) -> Result<bool> {
             *found = core::scanLanguageFiles(path);
             return true;
         },
-        [this, post = m_services.postToUi, alive = std::weak_ptr<bool>(m_alive), found, path = *folder](Result<bool>) {
-            post([this, alive, found, path] {
-                if (const auto a = alive.lock(); !a || !*a || !host()) {
-                    return;
+        [this, found, path = *folder](Result<bool>) {
+            if (!host()) {
+                return;
+            }
+            auto files = std::make_shared<std::vector<core::LanguagePackFile>>(m_languages->fitting(*found));
+            if (files->empty()) {
+                showToast(ui::InfoKind::Warning, m_strings.get(Str::LanguagesScanNone), path.wstring());
+                return;
+            }
+            auto page = LanguagesPage::kindLabel; // kind names as the page shows them
+            std::vector<CatalogRow> rows;
+            for (const auto& f : *files) {
+                rows.push_back({f.language.empty() ? std::wstring(L"—")
+                                                   : LanguageController::localeName(f.language) + L"  \u00b7  " + f.language,
+                                page(m_strings, f.kind), f.path.filename().wstring()});
+            }
+            const ModalSlot slot = modalSlot();
+            AppsDialogActions actions;
+            actions.present = [this, files](std::size_t i) { return m_languages->queued((*files)[i]); };
+            actions.close = slot.close;
+            actions.accept = [this, files](std::vector<std::size_t> picked) {
+                std::vector<core::LanguagePackFile> chosen;
+                for (const auto i : picked) {
+                    chosen.push_back((*files)[i]);
                 }
-                auto files = std::make_shared<std::vector<core::LanguagePackFile>>(m_languages->fitting(*found));
-                if (files->empty()) {
-                    showToast(ui::InfoKind::Warning, m_strings.get(Str::LanguagesScanNone), path.wstring());
-                    return;
-                }
-                auto page = LanguagesPage::kindLabel; // kind names as the page shows them
-                std::vector<CatalogRow> rows;
-                for (const auto& f : *files) {
-                    rows.push_back({f.language.empty() ? std::wstring(L"—")
-                                                       : LanguageController::localeName(f.language) + L"  \u00b7  " + f.language,
-                                    page(m_strings, f.kind), f.path.filename().wstring()});
-                }
-                auto raw = std::make_shared<ui::Dialog*>(nullptr);
-                AppsDialogActions actions;
-                actions.present = [this, files](std::size_t i) { return m_languages->queued((*files)[i]); };
-                actions.close = [this, raw] {
-                    if (*raw) {
-                        ui::Dialog* dialog = std::exchange(*raw, nullptr);
-                        host()->popModal(dialog);
-                    }
-                };
-                actions.accept = [this, files](std::vector<std::size_t> picked) {
-                    std::vector<core::LanguagePackFile> chosen;
-                    for (const auto i : picked) {
-                        chosen.push_back((*files)[i]);
-                    }
-                    m_languages->queuePacks(chosen);
-                    showToast(ui::InfoKind::Success, m_strings.format(Str::LanguagesAdded, {{L"n", std::to_wstring(chosen.size())}}), L"");
-                };
-                CatalogDialogSpec spec{m_strings.get(Str::LanguagesPickTitle),
-                                       m_strings.format(Str::LanguagesPickBody, {{L"arch", m_languages->imageArchitecture()}}),
-                                       m_strings.get(Str::LanguagesPickFile), Str::LanguagesPickAdd, std::move(rows),
-                                       m_strings.get(Str::LanguagesPickName)};
-                AppsDialog built = makeCatalogDialog(m_strings, std::move(spec), std::move(actions));
-                *raw = built.dialog.get();
-                host()->pushModal(std::move(built.dialog), built.initialFocus);
-            });
+                m_languages->queuePacks(chosen);
+                showToast(ui::InfoKind::Success, m_strings.format(Str::LanguagesAdded, {{L"n", std::to_wstring(chosen.size())}}), L"");
+            };
+            CatalogDialogSpec spec{m_strings.get(Str::LanguagesPickTitle),
+                                   m_strings.format(Str::LanguagesPickBody, {{L"arch", m_languages->imageArchitecture()}}),
+                                   m_strings.get(Str::LanguagesPickFile), Str::LanguagesPickAdd, std::move(rows),
+                                   m_strings.get(Str::LanguagesPickName)};
+            AppsDialog built = makeCatalogDialog(m_strings, std::move(spec), std::move(actions));
+            showModal(slot, std::move(built.dialog), built.initialFocus);
         });
 }
 
@@ -816,12 +764,10 @@ AppsPage* Shell::appsPage() const {
 }
 
 void Shell::pickAppPackages() {
-    if (!m_state.mounted()) {
-        showToast(ui::InfoKind::Warning, m_strings.get(Str::AppsNoMountTitle), m_strings.get(Str::AppsNoMountBody));
+    if (!requireMount(Str::AppsNoMountTitle, Str::AppsNoMountBody)) {
         return;
     }
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    auto files = ui::pickFiles(owner, m_strings.get(Str::AppsAddPackage),
+    auto files = ui::pickFiles(owner(), m_strings.get(Str::AppsAddPackage),
                                {{m_strings.get(Str::AppsPackageFiles), L"*.appx;*.msix;*.appxbundle;*.msixbundle"}});
     if (!files.empty()) {
         m_apps->addPackages(std::move(files));
@@ -836,8 +782,7 @@ void Shell::addFilesTo(std::vector<std::filesystem::path> sources) {
     if (!host() || sources.empty()) {
         return;
     }
-    if (!m_state.mounted()) {
-        showToast(ui::InfoKind::Warning, m_strings.get(Str::FilesNoMountTitle), m_strings.get(Str::FilesNoMountBody));
+    if (!requireMount(Str::FilesNoMountTitle, Str::FilesNoMountBody)) {
         return;
     }
     std::wstring what = sources.size() == 1 ? sources.front().filename().wstring()
@@ -879,8 +824,8 @@ void Shell::addFilesTo(std::vector<std::filesystem::path> sources) {
         }
     };
     path.onSubmit = add;
-    raw->onCancel = [this, raw] { host()->popModal(raw); };
-    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
+    raw->onCancel = closer(raw);
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
     raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::CommonAdd), add, /*primary=*/true);
     host()->pushModal(std::move(dialog), &path);
 }
@@ -909,7 +854,7 @@ void Shell::newPreset() {
         host()->popModal(raw); // `name` is gone from here on
         if (auto r = m_presets->saveCurrent(chosen); !r) {
             log::error("app", describe(r.error()));
-            showToast(ui::InfoKind::Error, m_strings.get(Str::PresetsFailed), r.error().message);
+            showToast(ui::InfoKind::Error, m_strings.get(Str::PresetsFailed), errorText(r.error()));
             return;
         }
         showToast(ui::InfoKind::Success, m_strings.get(Str::PresetsSaved), chosen);
@@ -918,8 +863,8 @@ void Shell::newPreset() {
         }
     };
     name.onSubmit = save;
-    raw->onCancel = [this, raw] { host()->popModal(raw); };
-    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
+    raw->onCancel = closer(raw);
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
     raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::CommonSave), save, /*primary=*/true);
     host()->pushModal(std::move(dialog), &name);
 }
@@ -970,14 +915,13 @@ void Shell::confirmUsbWrite(IsoController::Request request) {
     auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::IsoUsbConfirmTitle), body, ui::icons::Icon::UsbDrive,
                                                ui::tokens::Color::StatusWarning, 460.0f);
     ui::Dialog* raw = dialog.get();
-    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
     // Not the Enter button: erasing a drive takes a click on its own name.
     raw->addButton(ui::ButtonKind::Danger, m_strings.get(Str::IsoUsbConfirmAction),
                    [this, raw, request = std::move(request)] {
                        host()->popModal(raw);
                        m_iso->start(request);
                    });
-    raw->onCancel = [this, raw] { host()->popModal(raw); };
     pushDialog(std::move(dialog));
 }
 
@@ -1029,8 +973,7 @@ void Shell::showApplyConfirm() {
     const std::size_t count = items.size();
     auto& content = raw->setContent<RiskConfirm>(RiskConfirm::heightFor(count), std::move(items),
                                                  m_strings.get(Str::ApplyConfirmAck));
-    raw->onCancel = [this, raw] { host()->popModal(raw); };
-    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
     ui::Button& go = raw->addButton(ui::ButtonKind::Danger, m_strings.get(Str::ApplyConfirmGo),
                                     [this, raw] {
                                         host()->popModal(raw);
@@ -1043,18 +986,20 @@ void Shell::showApplyConfirm() {
 }
 
 void Shell::savePreset(const core::ops::ChangeSet& changes) {
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto target = ui::pickSaveFile(owner, m_strings.get(Str::ApplyPresetTitle),
+    const auto target = ui::pickSaveFile(owner(), m_strings.get(Str::ApplyPresetTitle),
                                          {{m_strings.get(Str::ApplyPresetFiles), L"*.wlpreset;*.json"}},
                                          L"WinLove.wlpreset", L"wlpreset");
     if (!target) {
         return;
     }
-    std::ofstream out(*target, std::ios::binary | std::ios::trunc);
-    const std::string json = changes.toJson();
-    out.write(json.data(), static_cast<std::streamsize>(json.size()));
-    showToast(out ? ui::InfoKind::Success : ui::InfoKind::Error,
-              m_strings.get(out ? Str::ApplyPresetSaved : Str::ApplySaveFailed), target->wstring());
+    // A whole preset, like the library's: the answer file and the boot.wim drivers go with the
+    // queue (a bare ChangeSet file lost them). `changes`: the queue, or the finished run's.
+    Preset preset = presetFromState(m_state, target->stem().wstring());
+    preset.changes = changes;
+    const auto written = writePreset(*target, preset);
+    showToast(written ? ui::InfoKind::Success : ui::InfoKind::Error,
+              m_strings.get(written ? Str::ApplyPresetSaved : Str::ApplySaveFailed),
+              written ? target->wstring() : written.error().message);
 }
 
 void Shell::saveApplyLog() {
@@ -1063,8 +1008,7 @@ void Shell::saveApplyLog() {
     if (!run || !buffer) {
         return;
     }
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto target = ui::pickSaveFile(owner, m_strings.get(Str::ApplySaveLog),
+    const auto target = ui::pickSaveFile(owner(), m_strings.get(Str::ApplySaveLog),
                                          {{m_strings.get(Str::LogsLogFiles), L"*.log;*.txt"}}, L"WinLove-apply.log", L"log");
     if (!target) {
         return;
@@ -1074,11 +1018,9 @@ void Shell::saveApplyLog() {
     for (const auto& e : buffer->since(version)) {
         text += log::formatLine(e) + L"\r\n";
     }
-    std::ofstream out(*target, std::ios::binary | std::ios::trunc);
-    const std::string bytes = utf8::fromWide(text);
-    out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-    showToast(out ? ui::InfoKind::Success : ui::InfoKind::Error,
-              m_strings.get(out ? Str::ApplyLogSaved : Str::ApplySaveFailed), target->wstring());
+    const bool saved = writeFileAtomic(*target, utf8::fromWide(text)).has_value();
+    showToast(saved ? ui::InfoKind::Success : ui::InfoKind::Error,
+              m_strings.get(saved ? Str::ApplyLogSaved : Str::ApplySaveFailed), target->wstring());
 }
 
 void Shell::saveApplyReport() {
@@ -1087,18 +1029,14 @@ void Shell::saveApplyReport() {
         return;
     }
     const auto now = std::chrono::system_clock::now();
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto target = ui::pickSaveFile(owner, m_strings.get(Str::ApplySaveReport),
+    const auto target = ui::pickSaveFile(owner(), m_strings.get(Str::ApplySaveReport),
                                          {{m_strings.get(Str::ApplyReportFiles), L"*.html"}}, applyReportFileName(now), L"html");
     if (!target) {
         return;
     }
-    const std::string bytes = applyReportHtml(m_state, *run, m_strings, m_language, now);
-    std::ofstream out(*target, std::ios::binary | std::ios::trunc);
-    out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-    out.flush();
-    showToast(out ? ui::InfoKind::Success : ui::InfoKind::Error,
-              m_strings.get(out ? Str::ApplyReportSaved : Str::ApplySaveFailed), target->wstring());
+    const bool saved = writeFileAtomic(*target, applyReportHtml(m_state, *run, m_strings, m_language, now)).has_value();
+    showToast(saved ? ui::InfoKind::Success : ui::InfoKind::Error,
+              m_strings.get(saved ? Str::ApplyReportSaved : Str::ApplySaveFailed), target->wstring());
 }
 
 bool Shell::inspectorVisible() const {
@@ -1247,7 +1185,9 @@ void Shell::updateImagesChrome() {
 }
 
 void Shell::showPage(PageId page) {
-    if ((m_page == PageId::Logs || m_page == PageId::Apply) && page != m_page && m_services.stopTimer) {
+    // Every rebuild stops it; the Logs page and a running Apply page start it again below. (An Apply
+    // page rebuilt from Running to Done is the same page and must stop polling too.)
+    if (m_services.stopTimer) {
         m_services.stopTimer(kLogTimer);
     }
     m_page = page;
@@ -1292,8 +1232,7 @@ void Shell::showPage(PageId page) {
                                     [this](const std::filesystem::path& p) { openSource(p); },
                                     [this](const std::filesystem::path& p) { removeSource(p); },
                                     [](const std::filesystem::path& p) {
-                                        const std::wstring args = L"/select,\"" + p.wstring() + L"\"";
-                                        ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+                                        revealInExplorer(p);
                                     },
                                     [this](const std::filesystem::path& p) { verifyHash(p); }});
         } else if (page == PageId::Images) {
@@ -1371,15 +1310,14 @@ void Shell::showPage(PageId page) {
             body.onSelectionChanged = [this] { updateComponentInspector(); };
         } else if (page == PageId::Registry) {
             auto pick = [this] {
-                const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-                importRegFiles(ui::pickFiles(owner, m_strings.get(Str::RegistryImportReg),
+                importRegFiles(ui::pickFiles(owner(), m_strings.get(Str::RegistryImportReg),
                                              {{m_strings.get(Str::RegistryFilter), L"*.reg"}}));
             };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::RegistryImportReg), ui::icons::Icon::RegFile)
-                .onInvoke = pick;
+                .onInvoke = std::move(pick);
             m_pageBody = &m_pageView->setBody<RegistryPage>(
                 m_state, *m_registry, m_strings, m_language,
-                RegistryPage::Intents{pick, [this] { showPage(PageId::Images); }});
+                RegistryPage::Intents{[this] { showPage(PageId::Images); }});
         } else if (page == PageId::About) {
             m_pageBody = &m_pageView->setBody<AboutPage>(
                 m_state, m_strings,
@@ -1392,7 +1330,7 @@ void Shell::showPage(PageId page) {
                                            ui::icons::Icon::InfoCircle, ui::tokens::Color::TextSecondary);
                                        ui::Dialog* raw = dialog.get();
                                        raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::CommonOk),
-                                                      [this, raw] { host()->popModal(raw); }, /*primary=*/true);
+                                                      closer(raw), /*primary=*/true);
                                        pushDialog(std::move(dialog));
                                    },
                                    [this] { openLogFolder(); }});
@@ -1400,8 +1338,7 @@ void Shell::showPage(PageId page) {
             auto& body = m_pageView->setBody<SettingsPage>(
                 m_state, m_strings,
                 SettingsPage::Intents{[this]() -> std::optional<std::filesystem::path> {
-                                          const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-                                          return ui::pickFolder(owner, m_strings.get(Str::SettingsWorkDir));
+                                          return ui::pickFolder(owner(), m_strings.get(Str::SettingsWorkDir));
                                       },
                                       [this] { return m_images->busy() || m_apply->running() || m_iso->running(); }});
             m_pageBody = &body;
@@ -1433,8 +1370,7 @@ void Shell::showPage(PageId page) {
                         if (!preset) {
                             return;
                         }
-                        const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-                        const auto target = ui::pickSaveFile(owner, m_strings.get(Str::CommonExport),
+                        const auto target = ui::pickSaveFile(owner(), m_strings.get(Str::CommonExport),
                                                              {{m_strings.get(Str::ApplyPresetFiles), L"*.wlpreset;*.json"}},
                                                              PresetController::fileNameFor(preset->name) + L".wlpreset",
                                                              L"wlpreset");
@@ -1456,7 +1392,7 @@ void Shell::showPage(PageId page) {
                             ui::tokens::Color::StatusError);
                         ui::Dialog* raw = dialog.get();
                         raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel),
-                                       [this, raw] { host()->popModal(raw); });
+                                       closer(raw));
                         raw->addButton(ui::ButtonKind::Danger, m_strings.get(Str::CommonDelete), [this, raw, index] {
                             host()->popModal(raw);
                             const auto removed = m_presets->remove(index);
@@ -1499,9 +1435,7 @@ void Shell::showPage(PageId page) {
             m_pageBody = &m_pageView->setBody<UnattendedPage>(m_state, *m_unattend, m_strings);
         } else if (page == PageId::Tweaks) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TweaksApplyRecommended)).onInvoke = [this] {
-                if (!m_state.mounted()) {
-                    showToast(ui::InfoKind::Warning, m_strings.get(Str::TweaksNoMountTitle),
-                              m_strings.get(Str::TweaksNoMountBody));
+                if (!requireMount(Str::TweaksNoMountTitle, Str::TweaksNoMountBody)) {
                     return;
                 }
                 const int changed = m_imageSettings->applyRecommended();
@@ -1513,16 +1447,14 @@ void Shell::showPage(PageId page) {
             m_pageBody = &m_pageView->setBody<TweaksPage>(
                 m_state, *m_imageSettings, m_strings, m_language, [this] { showPage(PageId::Images); },
                 [this]() -> std::optional<std::filesystem::path> {
-                    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-                    return ui::pickFile(owner, m_strings.get(Str::TweaksPickImage),
+                    return ui::pickFile(owner(), m_strings.get(Str::TweaksPickImage),
                                         {{m_strings.get(Str::TweaksJpegFiles), L"*.jpg;*.jpeg"}});
                 });
         } else if (page == PageId::Tasks) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TasksAdd), ui::icons::Icon::Add).onInvoke =
                 [this] { addTaskDialog(); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TasksApplyRecommended)).onInvoke = [this] {
-                if (!m_state.mounted()) {
-                    showToast(ui::InfoKind::Warning, m_strings.get(Str::TasksNoMountTitle), m_strings.get(Str::TasksNoMountBody));
+                if (!requireMount(Str::TasksNoMountTitle, Str::TasksNoMountBody)) {
                     return;
                 }
                 const int n = m_tasks->applyRecommended();
@@ -1559,14 +1491,13 @@ void Shell::showPage(PageId page) {
                     if (!m_state.mounted()) {
                         return;
                     }
-                    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-                    const auto file = ui::pickFile(owner, m_strings.get(Str::AppsImportXml), {{m_strings.get(Str::AppsXmlFiles), L"*.xml"}});
+                    const auto file = ui::pickFile(owner(), m_strings.get(Str::AppsImportXml), {{m_strings.get(Str::AppsXmlFiles), L"*.xml"}});
                     if (!file) {
                         return;
                     }
                     auto n = m_apps->importAssociationsFile(*file);
                     if (!n) {
-                        showToast(ui::InfoKind::Error, m_strings.get(Str::AppsImportFailed), n.error().message);
+                        showToast(ui::InfoKind::Error, m_strings.get(Str::AppsImportFailed), errorText(n.error()));
                         return;
                     }
                     showToast(ui::InfoKind::Success, m_strings.format(Str::AppsImported, {{L"n", std::to_wstring(*n)}}),
@@ -1581,16 +1512,14 @@ void Shell::showPage(PageId page) {
                                                         [this] { showPage(PageId::Images); });
         } else if (page == PageId::Files) {
             auto pickFiles = [this] {
-                const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-                auto files = ui::pickFiles(owner, m_strings.get(Str::FilesAddFiles), {{m_strings.get(Str::FilesAllFiles), L"*.*"}});
+                auto files = ui::pickFiles(owner(), m_strings.get(Str::FilesAddFiles), {{m_strings.get(Str::FilesAllFiles), L"*.*"}});
                 if (!files.empty()) {
                     addFilesTo(std::move(files));
                 }
             };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::FilesAddFolder), ui::icons::Icon::Folder).onInvoke =
                 [this] {
-                    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-                    if (const auto folder = ui::pickFolder(owner, m_strings.get(Str::FilesAddFolder))) {
+                    if (const auto folder = ui::pickFolder(owner(), m_strings.get(Str::FilesAddFolder))) {
                         addFilesTo({*folder});
                     }
                 };
@@ -1610,19 +1539,16 @@ void Shell::showPage(PageId page) {
                                                          [this] { showPage(PageId::Images); }, [this] { importHostsFile(); });
         } else if (page == PageId::Branding) {
             auto pickFonts = [this] {
-                const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-                addFonts(ui::pickFiles(owner, m_strings.get(Str::BrandingAddFonts),
+                addFonts(ui::pickFiles(owner(), m_strings.get(Str::BrandingAddFonts),
                                        {{m_strings.get(Str::BrandingFontFiles), L"*.ttf;*.otf;*.ttc"}}));
             };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::BrandingAddFonts), ui::icons::Icon::Add).onInvoke =
-                pickFonts;
+                std::move(pickFonts);
             BrandingPage::Intents intents;
             intents.pickPicture = [this]() -> std::optional<std::filesystem::path> {
-                const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-                return ui::pickFile(owner, m_strings.get(Str::BrandingChoosePicture),
+                return ui::pickFile(owner(), m_strings.get(Str::BrandingChoosePicture),
                                     {{m_strings.get(Str::BrandingPictureFiles), L"*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.tif;*.tiff;*.heic;*.webp"}});
             };
-            intents.addFonts = pickFonts;
             intents.refused = [this](const std::wstring& file) {
                 showToast(ui::InfoKind::Warning, m_strings.get(Str::BrandingNotPicture), file);
             };
@@ -1661,8 +1587,7 @@ void Shell::showPage(PageId page) {
                 .onInvoke = [this] { findUpdates(); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesScanFolder), ui::icons::Icon::OpenFolder)
                 .onInvoke = [this] {
-                    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-                    if (const auto folder = ui::pickFolder(owner, m_strings.get(Str::UpdatesScanFolder))) {
+                    if (const auto folder = ui::pickFolder(owner(), m_strings.get(Str::UpdatesScanFolder))) {
                         const auto files = core::scanUpdates(*folder);
                         if (files.empty()) {
                             showToast(ui::InfoKind::Warning, m_strings.get(Str::UpdatesNoneFound), folder->wstring());
@@ -1672,8 +1597,7 @@ void Shell::showPage(PageId page) {
                     }
                 };
             auto pick = [this] {
-                const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-                addUpdates(ui::pickFiles(owner, m_strings.get(Str::UpdatesPickTitle),
+                addUpdates(ui::pickFiles(owner(), m_strings.get(Str::UpdatesPickTitle),
                                          {{m_strings.get(Str::UpdatesFilter), L"*.msu;*.cab"}}));
             };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesAddPackage), ui::icons::Icon::Add)
@@ -1737,14 +1661,12 @@ void Shell::showPage(PageId page) {
             m_pageBody = &m_pageView->setBody<IsoPage>(
                 m_state, *m_iso, m_strings, m_language,
                 IsoPage::Intents{[this]() -> std::optional<std::filesystem::path> {
-                                     const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-                                     return ui::pickFolder(owner, m_strings.get(Str::IsoFolder));
+                                     return ui::pickFolder(owner(), m_strings.get(Str::IsoFolder));
                                  },
                                  [](const std::filesystem::path& file) {
-                                     const std::wstring args = L"/select,\"" + file.wstring() + L"\"";
-                                     ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+                                     revealInExplorer(file);
                                  },
-                                 [this] { showPage(PageId::Source); }, m_services.postToUi,
+                                 m_services.postToUi,
                                  [this] { updateIsoChrome(); }});
         } else if (page == PageId::Logs) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::LogsClear)).onInvoke = [this] {
@@ -1826,33 +1748,29 @@ void Shell::openSource(const std::filesystem::path& path, std::function<void()> 
     }
     log::info("app", L"opening source " + path.wstring());
     // Reader thread (not the DISM engine: a mount inspection or feature read must not delay this).
-    m_state.reader().run<core::SourceInfo>(
+    readThenUi<core::SourceInfo>(
         [path](const core::TaskContext&) { return core::openSource(path); },
-        [this, post = m_services.postToUi, alive = std::weak_ptr<bool>(m_alive), serial,
-         then = std::move(then)](Result<core::SourceInfo> result) {
-            post([this, alive, then, serial, result = std::move(result)]() mutable {
-                const auto stillAlive = alive.lock();
-                if (!stillAlive || !*stillAlive || serial != m_openSerial) {
-                    return;
-                }
+        [this, serial, then = std::move(then)](Result<core::SourceInfo> result) mutable {
+            if (serial != m_openSerial) {
+                return;
+            }
+            if (auto* page = sourcePage()) {
+                page->setLoading(false);
+            }
+            if (!result) {
+                log::error("app", describe(result.error()));
                 if (auto* page = sourcePage()) {
-                    page->setLoading(false);
+                    page->showError(result.error().message + L" — " + result.error().context);
+                } else {
+                    showToast(ui::InfoKind::Error, m_strings.get(Str::SourceOpenFailed), errorText(result.error()));
                 }
-                if (!result) {
-                    log::error("app", describe(result.error()));
-                    if (auto* page = sourcePage()) {
-                        page->showError(result.error().message + L" — " + result.error().context);
-                    } else {
-                        showToast(ui::InfoKind::Error, m_strings.get(Str::SourceOpenFailed), result.error().message);
-                    }
-                    return;
-                }
-                m_state.setSource(std::move(*result));
-                showPage(PageId::Images);
-                if (then) {
-                    then();
-                }
-            });
+                return;
+            }
+            m_state.setSource(std::move(*result));
+            showPage(PageId::Images);
+            if (then) {
+                then();
+            }
         });
 }
 
@@ -1901,8 +1819,7 @@ void Shell::startPreload() {
 }
 
 void Shell::pickSourceFile() {
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto file = ui::pickFile(owner, m_strings.get(Str::SourceOpenFile),
+    const auto file = ui::pickFile(owner(), m_strings.get(Str::SourceOpenFile),
                                    {{m_strings.get(Str::SourceFilterImages), L"*.iso;*.wim;*.esd;*.swm"},
                                     {m_strings.get(Str::SourceFilterAll), L"*.*"}});
     if (file) {
@@ -1944,7 +1861,7 @@ void Shell::removeSource(const std::filesystem::path& path) {
         m_strings.format(Str::SourceRemoveBody, {{L"name", path.filename().wstring()}, {L"path", path.wstring()}}),
         ui::icons::Icon::Delete, ui::tokens::Color::TextSecondary);
     ui::Dialog* raw = dialog.get();
-    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
     raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::SourceRemoveKeep), [this, raw, forget] {
         host()->popModal(raw);
         forget();
@@ -1967,8 +1884,7 @@ void Shell::removeSource(const std::filesystem::path& path) {
 }
 
 void Shell::pickSourceFolder() {
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    if (const auto folder = ui::pickFolder(owner, m_strings.get(Str::SourcePickFolder))) {
+    if (const auto folder = ui::pickFolder(owner(), m_strings.get(Str::SourcePickFolder))) {
         openSource(*folder);
     }
 }
@@ -1976,7 +1892,7 @@ void Shell::pickSourceFolder() {
 ui::Dialog& Shell::pushDialog(std::unique_ptr<ui::Dialog> dialog) {
     // Push after the buttons exist: the modal focuses its first focusable (the cancel button).
     ui::Dialog* raw = dialog.get();
-    raw->onCancel = [this, raw] { host()->popModal(raw); };
+    raw->onCancel = closer(raw);
     host()->pushModal(std::move(dialog));
     return *raw;
 }
@@ -1989,7 +1905,7 @@ void Shell::showAdminRequired(std::wstring relaunchArgs) {
                                                            m_strings.get(Str::DialogsAdminBody), ui::icons::Icon::ShieldWarning,
                                                            ui::tokens::Color::StatusWarning, 440.0f);
     ui::Dialog* raw = dialog.get();
-    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
     raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::DialogsAdminGo),
                    [this, raw, args = std::move(relaunchArgs)] {
                        host()->popModal(raw);
@@ -2074,20 +1990,14 @@ void Shell::drop(const std::vector<std::filesystem::path>& files) {
         showPage(PageId::Source);
     }
     for (std::size_t i = 1; i < sources.size(); ++i) {
-        m_state.reader().run<core::SourceInfo>(
+        readThenUi<core::SourceInfo>(
             [path = sources[i]](const core::TaskContext&) { return core::openSource(path); },
-            [this, post = m_services.postToUi, alive = std::weak_ptr<bool>(m_alive)](Result<core::SourceInfo> result) {
-                post([this, alive, result = std::move(result)] {
-                    const auto stillAlive = alive.lock();
-                    if (!stillAlive || !*stillAlive) {
-                        return;
-                    }
-                    if (result) {
-                        m_state.rememberSource(*result);
-                    } else {
-                        log::warn("app", L"dropped file not added: " + describe(result.error()));
-                    }
-                });
+            [this](Result<core::SourceInfo> result) {
+                if (result) {
+                    m_state.rememberSource(*result);
+                } else {
+                    log::warn("app", L"dropped file not added: " + describe(result.error()));
+                }
             });
     }
     if (sources.size() > 1) {
@@ -2098,7 +2008,7 @@ void Shell::drop(const std::vector<std::filesystem::path>& files) {
 
 // ---- images (P02) ----------------------------------------------------------------------------
 
-void Shell::onImageFailure(ImageController::Failure failure, const Error& error, int /*index*/) {
+void Shell::onImageFailure(ImageController::Failure failure, const Error& error) {
     const std::wstring code = std::format(L"0x{:08X}", static_cast<unsigned>(error.hresult));
     const bool mountFailure = failure == ImageController::Failure::Mount;
     const std::wstring title = mountFailure ? m_strings.format(Str::ImagesMountFailed, {{L"code", code}})
@@ -2134,7 +2044,7 @@ bool Shell::confirmClose() {
                                                m_strings.get(Str::DialogsBusyCloseBody), ui::icons::Icon::WarningTriangle,
                                                ui::tokens::Color::StatusWarning);
     ui::Dialog* raw = dialog.get();
-    raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::CommonOk), [this, raw] { host()->popModal(raw); },
+    raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::CommonOk), closer(raw),
                    /*primary=*/true);
     pushDialog(std::move(dialog));
     return false;
@@ -2148,7 +2058,7 @@ void Shell::askUnmount() {
                                                            m_strings.get(Str::ImagesUnmountBody), ui::icons::Icon::Unmount,
                                                            ui::tokens::Color::TextSecondary);
     ui::Dialog* raw = dialog.get();
-    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
     raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesUnmountDiscard), [this, raw] {
         host()->popModal(raw);
         m_images->unmount(/*commit=*/false);
@@ -2218,7 +2128,7 @@ void Shell::askDeleteSelected(bool keepOnly) {
     }
     auto dialog = std::make_unique<ui::Dialog>(title, body, ui::icons::Icon::ErrorOctagon, ui::tokens::Color::StatusError);
     ui::Dialog* raw = dialog.get();
-    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), [this, raw] { host()->popModal(raw); });
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
     raw->addButton(ui::ButtonKind::Danger, m_strings.get(Str::CommonDelete),
                    [this, raw, indexes = std::move(indexes), label = std::move(label)] {
                        host()->popModal(raw);
@@ -2241,14 +2151,9 @@ void Shell::askRenameSelected() {
         note += L" " + m_strings.get(Str::DialogsDeleteIsoNote);
     }
     const int index = image->index;
-    auto raw = std::make_shared<ui::Dialog*>(nullptr);
+    const ModalSlot slot = modalSlot();
     RenameDialogActions actions;
-    actions.close = [this, raw] {
-        if (*raw) {
-            ui::Dialog* dialog = std::exchange(*raw, nullptr);
-            host()->popModal(dialog);
-        }
-    };
+    actions.close = slot.close;
     actions.accept = [this, index](std::wstring name, std::wstring description) {
         m_images->renameEdition(index, std::move(name), std::move(description));
     };
@@ -2256,8 +2161,7 @@ void Shell::askRenameSelected() {
     RenameDialog built = makeRenameDialog(m_strings, image->displayName.empty() ? image->name : image->displayName,
                                           image->displayDescription.empty() ? image->description : image->displayDescription,
                                           std::move(note), std::move(actions));
-    *raw = built.dialog.get();
-    host()->pushModal(std::move(built.dialog), built.initialFocus);
+    showModal(slot, std::move(built.dialog), built.initialFocus);
 }
 
 void Shell::exploreMount() {
@@ -2289,8 +2193,7 @@ void Shell::revealImageFile() {
     // The install image itself where it is a file on disk; for an ISO, the ISO.
     const std::filesystem::path file =
         source->format == core::ImageFormat::Folder ? source->path / source->installImage : source->path;
-    const std::wstring args = L"/select,\"" + file.lexically_normal().wstring() + L"\"";
-    ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+    revealInExplorer(file.lexically_normal());
 }
 
 void Shell::copyEditionInfo() {
@@ -2380,14 +2283,9 @@ void Shell::askUpgradeEdition() {
             choices.push_back({id, core::editionDisplayName(id, build)});
         }
         const auto* queued = m_state.changes().find(core::ops::OpKind::SetEdition, L"edition");
-        auto raw = std::make_shared<ui::Dialog*>(nullptr);
+        const ModalSlot slot = modalSlot();
         EditionDialogActions actions;
-        actions.close = [this, raw] {
-            if (*raw) {
-                ui::Dialog* dialog = std::exchange(*raw, nullptr);
-                host()->popModal(dialog);
-            }
-        };
+        actions.close = slot.close;
         actions.accept = [this, build](std::wstring id) {
             // Medium, not High: the Apply summary words its high-risk warning for removals, and
             // the dialog this comes from has just said that the change is one-way.
@@ -2404,8 +2302,7 @@ void Shell::askUpgradeEdition() {
             m_strings,
             m_strings.format(Str::DialogsUpgradeBody, {{L"name", name}}),
             std::move(choices), queued ? queued->value : std::wstring(), std::move(actions));
-        *raw = built.dialog.get();
-        host()->pushModal(std::move(built.dialog), built.initialFocus);
+        showModal(slot, std::move(built.dialog), built.initialFocus);
     });
 }
 
@@ -2428,11 +2325,10 @@ void Shell::exportSelected() {
         return;
     }
     const std::vector<int> marked = m_state.selection();
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
     // Several editions go into one file, named after the image they come from.
     const std::wstring suggested = marked.size() > 1 ? std::filesystem::path(m_state.source()->installImage).stem().wstring() + L".wim"
                                                      : image->name + L".wim";
-    const auto target = ui::pickSaveFile(owner, m_strings.get(Str::ImagesExport), {{m_strings.get(Str::ImagesSaveWim), L"*.wim"}},
+    const auto target = ui::pickSaveFile(owner(), m_strings.get(Str::ImagesExport), {{m_strings.get(Str::ImagesSaveWim), L"*.wim"}},
                                          suggested, L"wim");
     if (!target) {
         return;
@@ -2449,16 +2345,12 @@ void Shell::exportLog() {
     if (!logs) {
         return;
     }
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto target = ui::pickSaveFile(owner, m_strings.get(Str::LogsExportTitle),
+    const auto target = ui::pickSaveFile(owner(), m_strings.get(Str::LogsExportTitle),
                                          {{m_strings.get(Str::LogsLogFiles), L"*.log;*.txt"}}, L"WinLove.log", L"log");
     if (!target) {
         return;
     }
-    std::ofstream out(*target, std::ios::binary | std::ios::trunc);
-    const std::string utf8 = utf8::fromWide(logs->exportText());
-    out.write(utf8.data(), static_cast<std::streamsize>(utf8.size()));
-    if (out) {
+    if (writeFileAtomic(*target, utf8::fromWide(logs->exportText()))) {
         showToast(ui::InfoKind::Success, m_strings.get(Str::LogsExported), target->wstring());
     } else {
         showToast(ui::InfoKind::Error, m_strings.get(Str::LogsExportFailed), target->wstring());
@@ -2467,9 +2359,39 @@ void Shell::exportLog() {
 
 // ---- D-058 tools ------------------------------------------------------------------------------
 
-void Shell::pushToolDialog(std::unique_ptr<ui::Dialog> dialog, ui::Widget* focus, std::shared_ptr<ui::Dialog*> raw) {
-    *raw = dialog.get();
+Shell::ModalSlot Shell::modalSlot() {
+    ModalSlot slot;
+    slot.close = [this, dialog = slot.dialog] {
+        if (*dialog) {
+            host()->popModal(std::exchange(*dialog, nullptr)); // once, whichever handler gets there first
+        }
+    };
+    return slot;
+}
+
+void Shell::showModal(const ModalSlot& slot, std::unique_ptr<ui::Dialog> dialog, ui::Widget* focus) {
+    *slot.dialog = dialog.get();
     host()->pushModal(std::move(dialog), focus);
+}
+
+std::wstring Shell::errorText(const Error& error) const {
+    // The engine's messages are English and technical; the common kinds get a localized line
+    // (the full text stays in the log).
+    const std::wstring what = error.context.empty() ? error.message : error.context;
+    switch (error.code) {
+    case ErrorCode::AccessDenied: return m_strings.format(Str::ErrorsAccessDenied, {{L"what", what}});
+    case ErrorCode::NotFound: return m_strings.format(Str::ErrorsNotFound, {{L"what", what}});
+    case ErrorCode::IoError: return m_strings.format(Str::ErrorsIoError, {{L"what", what}});
+    default: return error.message;
+    }
+}
+
+std::function<void()> Shell::closer(ui::Widget* modal) {
+    return [this, modal] { host()->popModal(modal); };
+}
+
+HWND Shell::owner() const {
+    return m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
 }
 
 void Shell::showImageTools() {
@@ -2509,17 +2431,17 @@ void Shell::toolDialogForDemo(const std::wstring& which, const std::filesystem::
     } else if (which == L"hash") {
         verifyHash(file);
     } else if (which == L"capture") {
-        auto raw = std::make_shared<ui::Dialog*>(nullptr);
+        const ModalSlot slot = modalSlot();
         ToolDialog built = makeCaptureDialog(
             m_strings, m_strings.format(Str::SourceCaptureNote, {{L"folder", L"D:\\Kurulum\\Ofis"}, {L"wim", L"Ofis.wim"}}),
             L"Ofis", [](CaptureAnswers) {}, [] {});
-        pushToolDialog(std::move(built.dialog), built.initialFocus, raw);
+        showModal(slot, std::move(built.dialog), built.initialFocus);
     } else if (which == L"append" && m_state.source()) {
-        auto raw = std::make_shared<ui::Dialog*>(nullptr);
+        const ModalSlot slot = modalSlot();
         ToolDialog built = makeEditionsDialog(m_strings, m_strings.get(Str::ImagesAppend),
                                               m_strings.format(Str::ImagesAppendNote, {{L"file", file.filename().wstring()}}),
                                               m_state.source()->install.images, m_strings.get(Str::CommonAdd), [](std::vector<int>) {}, [] {});
-        pushToolDialog(std::move(built.dialog), built.initialFocus, raw);
+        showModal(slot, std::move(built.dialog), built.initialFocus);
     }
 }
 
@@ -2550,45 +2472,35 @@ void Shell::askRecompress() {
     if (source->format == core::ImageFormat::Iso) {
         note += L" " + m_strings.get(Str::DialogsDeleteIsoNote);
     }
-    auto raw = std::make_shared<ui::Dialog*>(nullptr);
-    auto close = [this, raw] {
-        if (*raw) {
-            host()->popModal(std::exchange(*raw, nullptr));
-        }
-    };
+    const ModalSlot slot = modalSlot();
+    auto close = slot.close;
     ToolDialog built = makeChoiceDialog(m_strings, m_strings.get(Str::ImagesRecompress), note, m_strings.get(Str::ImagesCompression),
                                         std::move(labels), 0, m_strings.get(Str::ImagesConvert),
                                         [this, targets](int picked) { m_images->recompress((*targets)[static_cast<std::size_t>(picked)]); },
                                         close);
-    pushToolDialog(std::move(built.dialog), built.initialFocus, raw);
+    showModal(slot, std::move(built.dialog), built.initialFocus);
 }
 
 void Shell::askSplitSwm() {
     static constexpr std::uint64_t kSizes[] = {3800, 2000, 1000, 650};
-    auto raw = std::make_shared<ui::Dialog*>(nullptr);
-    auto close = [this, raw] {
-        if (*raw) {
-            host()->popModal(std::exchange(*raw, nullptr));
-        }
-    };
+    const ModalSlot slot = modalSlot();
+    auto close = slot.close;
     ToolDialog built = makeChoiceDialog(
         m_strings, m_strings.get(Str::ImagesSplitSwm), m_strings.get(Str::ImagesSplitNote), m_strings.get(Str::ImagesPartSize),
         {m_strings.get(Str::ImagesPartFat32), L"2000 MB", L"1000 MB", m_strings.get(Str::ImagesPartCd)}, 0,
         m_strings.get(Str::ImagesSplitGo),
         [this](int picked) {
-            const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-            const auto target = ui::pickSaveFile(owner, m_strings.get(Str::ImagesSplitSwm), {{L"SWM", L"*.swm"}}, L"install.swm", L"swm");
+            const auto target = ui::pickSaveFile(owner(), m_strings.get(Str::ImagesSplitSwm), {{L"SWM", L"*.swm"}}, L"install.swm", L"swm");
             if (target) {
                 m_images->splitSwm(*target, kSizes[std::clamp(picked, 0, 3)]);
             }
         },
         close);
-    pushToolDialog(std::move(built.dialog), built.initialFocus, raw);
+    showModal(slot, std::move(built.dialog), built.initialFocus);
 }
 
 void Shell::askMergeSwm() {
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto target = ui::pickSaveFile(owner, m_strings.get(Str::ImagesSwmToWim), {{m_strings.get(Str::ImagesSaveWim), L"*.wim"}},
+    const auto target = ui::pickSaveFile(owner(), m_strings.get(Str::ImagesSwmToWim), {{m_strings.get(Str::ImagesSaveWim), L"*.wim"}},
                                          L"install.wim", L"wim");
     if (target) {
         m_images->mergeSwm(*target);
@@ -2596,41 +2508,33 @@ void Shell::askMergeSwm() {
 }
 
 void Shell::askAppendEditions() {
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto file = ui::pickFile(owner, m_strings.get(Str::ImagesAppend),
+    const auto file = ui::pickFile(owner(), m_strings.get(Str::ImagesAppend),
                                    {{m_strings.get(Str::SourceFilterImages), L"*.iso;*.wim;*.esd;*.swm"}});
     if (!file) {
         return;
     }
     // The other image's editions are read on the reader thread, then offered as check boxes.
-    m_state.reader().run<core::SourceInfo>(
+    readThenUi<core::SourceInfo>(
         [path = *file](const core::TaskContext&) { return core::openSource(path); },
-        [this, post = m_services.postToUi, alive = std::weak_ptr<bool>(m_alive), path = *file](Result<core::SourceInfo> result) {
-            post([this, alive, path, result = std::move(result)] {
-                const auto stillAlive = alive.lock();
-                if (!stillAlive || !*stillAlive || !host()) {
-                    return;
-                }
-                if (!result) {
-                    showToast(ui::InfoKind::Error, m_strings.get(Str::ImagesAppend), result.error().message);
-                    return;
-                }
-                auto raw = std::make_shared<ui::Dialog*>(nullptr);
-                auto close = [this, raw] {
-                    if (*raw) {
-                        host()->popModal(std::exchange(*raw, nullptr));
-                    }
-                };
-                std::wstring note = m_strings.format(Str::ImagesAppendNote, {{L"file", path.filename().wstring()}});
-                if (m_state.source() && m_state.source()->format == core::ImageFormat::Iso) {
-                    note += L" " + m_strings.get(Str::DialogsDeleteIsoNote);
-                }
-                ToolDialog built = makeEditionsDialog(m_strings, m_strings.get(Str::ImagesAppend), note, result->install.images,
-                                                      m_strings.get(Str::CommonAdd),
-                                                      [this, path](std::vector<int> picked) { m_images->appendFrom(path, std::move(picked)); },
-                                                      close);
-                pushToolDialog(std::move(built.dialog), built.initialFocus, raw);
-            });
+        [this, path = *file](Result<core::SourceInfo> result) {
+            if (!host()) {
+                return;
+            }
+            if (!result) {
+                showToast(ui::InfoKind::Error, m_strings.get(Str::ImagesAppend), errorText(result.error()));
+                return;
+            }
+            const ModalSlot slot = modalSlot();
+            auto close = slot.close;
+            std::wstring note = m_strings.format(Str::ImagesAppendNote, {{L"file", path.filename().wstring()}});
+            if (m_state.source() && m_state.source()->format == core::ImageFormat::Iso) {
+                note += L" " + m_strings.get(Str::DialogsDeleteIsoNote);
+            }
+            ToolDialog built = makeEditionsDialog(m_strings, m_strings.get(Str::ImagesAppend), note, result->install.images,
+                                                  m_strings.get(Str::CommonAdd),
+                                                  [this, path](std::vector<int> picked) { m_images->appendFrom(path, std::move(picked)); },
+                                                  close);
+            showModal(slot, std::move(built.dialog), built.initialFocus);
         });
 }
 
@@ -2650,22 +2554,17 @@ void Shell::askDuplicateEdition() {
     if (source->format == core::ImageFormat::Iso) {
         note += L" " + m_strings.get(Str::DialogsDeleteIsoNote);
     }
-    auto raw = std::make_shared<ui::Dialog*>(nullptr);
-    auto close = [this, raw] {
-        if (*raw) {
-            host()->popModal(std::exchange(*raw, nullptr));
-        }
-    };
+    const ModalSlot slot = modalSlot();
+    auto close = slot.close;
     ToolDialog built = makeTextDialog(m_strings, m_strings.get(Str::ImagesDuplicate), note, m_strings.get(Str::CommonName),
                                       m_strings.format(Str::ImagesDuplicateName, {{L"name", name}}), m_strings.get(Str::ImagesDuplicateGo),
                                       [this, i = *index](std::wstring newName) { m_images->duplicateEdition(i, std::move(newName)); },
                                       close);
-    pushToolDialog(std::move(built.dialog), built.initialFocus, raw);
+    showModal(slot, std::move(built.dialog), built.initialFocus);
 }
 
 void Shell::askCapture() {
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto folder = ui::pickFolder(owner, m_strings.get(Str::SourceCaptureFolder));
+    const auto folder = ui::pickFolder(owner(), m_strings.get(Str::SourceCaptureFolder));
     if (!folder) {
         return;
     }
@@ -2674,17 +2573,13 @@ void Shell::askCapture() {
         stem = folder->root_name().wstring(); // a drive
         std::erase(stem, L':');
     }
-    const auto wim = ui::pickSaveFile(owner, m_strings.get(Str::SourceCaptureTitle), {{m_strings.get(Str::ImagesSaveWim), L"*.wim"}},
+    const auto wim = ui::pickSaveFile(owner(), m_strings.get(Str::SourceCaptureTitle), {{m_strings.get(Str::ImagesSaveWim), L"*.wim"}},
                                       (stem.empty() ? std::wstring(L"capture") : stem) + L".wim", L"wim");
     if (!wim) {
         return;
     }
-    auto raw = std::make_shared<ui::Dialog*>(nullptr);
-    auto close = [this, raw] {
-        if (*raw) {
-            host()->popModal(std::exchange(*raw, nullptr));
-        }
-    };
+    const ModalSlot slot = modalSlot();
+    auto close = slot.close;
     const std::wstring note = m_strings.format(Str::SourceCaptureNote, {{L"folder", folder->wstring()}, {L"wim", wim->filename().wstring()}});
     ToolDialog built = makeCaptureDialog(
         m_strings, note, stem.empty() ? std::wstring(L"Capture") : stem,
@@ -2696,22 +2591,20 @@ void Shell::askCapture() {
                               a.compression == 1 ? core::WimCompression::Xpress : core::WimCompression::Lzx);
         },
         close);
-    pushToolDialog(std::move(built.dialog), built.initialFocus, raw);
+    showModal(slot, std::move(built.dialog), built.initialFocus);
 }
 
 void Shell::verifyHash(const std::filesystem::path& file) {
     if (!host()) {
         return;
     }
-    auto raw = std::make_shared<ui::Dialog*>(nullptr);
+    const ModalSlot slot = modalSlot();
     auto open = std::make_shared<bool>(true);
     auto cancel = std::make_shared<core::CancelToken>();
-    auto close = [this, raw, open, cancel] {
+    auto close = [pop = slot.close, open, cancel] {
         *open = false;
         cancel->cancel();
-        if (*raw) {
-            host()->popModal(std::exchange(*raw, nullptr));
-        }
+        pop();
     };
     HashDialog built = makeHashDialog(m_strings, file.wstring(), [this](std::wstring hash) {
         if (ui::setClipboardText(hash)) {
@@ -2721,7 +2614,7 @@ void Shell::verifyHash(const std::filesystem::path& file) {
     auto progress = built.progress;
     auto done = built.done;
     auto failed = built.failed;
-    pushToolDialog(std::move(built.dialog), built.initialFocus, raw);
+    showModal(slot, std::move(built.dialog), built.initialFocus);
     // Reader thread; progress at whole percents only, and nothing once the dialog (or the shell) is gone.
     // The reader's own cancel (app closing) stops the hash too.
     auto post = m_services.postToUi;
@@ -2763,8 +2656,7 @@ void Shell::verifyHash(const std::filesystem::path& file) {
 }
 
 void Shell::convertEsd() {
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto target = ui::pickSaveFile(owner, m_strings.get(Str::ImagesEsdToWim), {{m_strings.get(Str::ImagesSaveWim), L"*.wim"}},
+    const auto target = ui::pickSaveFile(owner(), m_strings.get(Str::ImagesEsdToWim), {{m_strings.get(Str::ImagesSaveWim), L"*.wim"}},
                                          L"install.wim", L"wim");
     if (target) {
         m_images->convertEsd(*target);
@@ -2818,7 +2710,7 @@ void Shell::openPalette(std::wstring query) {
                                s(Str::PaletteCommands), s(Str::PaletteNoResults), s(Str::PaletteNoResultsHint)},
         [this](const std::wstring& text) { return m_palette->search(text); });
     CommandPalette* raw = palette.get();
-    raw->onClose = [this, raw] { host()->popModal(raw); };
+    raw->onClose = closer(raw);
     raw->onRun = [this](const PaletteItem& item) { runPaletteItem(item); };
     host()->pushModal(std::move(palette), &raw->input());
     if (!query.empty()) {
@@ -2959,10 +2851,12 @@ bool Shell::handleShortcut(const ui::KeyEvent& key) {
         }
         return true;
     }
-    if (key.ctrl && key.shift && key.virtualKey == 'G') {
+#ifndef NDEBUG
+    if (key.ctrl && key.shift && key.virtualKey == 'G') { // the developer widget gallery
         showPage(PageId::Gallery);
         return true;
     }
+#endif
     if (key.ctrl && !key.shift && key.virtualKey == VK_OEM_COMMA) {
         showPage(PageId::Settings);
         return true;

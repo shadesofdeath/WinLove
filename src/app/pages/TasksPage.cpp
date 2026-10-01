@@ -1,12 +1,12 @@
 #include "app/pages/TasksPage.h"
 
 #include "app/pages/PageBits.h"
+#include "base/Text.h"
 #include "ui/widget/Host.h"
 #include "ui/widgets/Checkbox.h"
 
 #include <algorithm>
 #include <cmath>
-#include <cwctype>
 
 namespace wl::app {
 
@@ -19,13 +19,6 @@ constexpr float kToolbarTop = 12.0f;
 constexpr float kToolbar = 24.0f;
 constexpr float kGap = 8.0f;
 enum Column : int { kTask, kCategory, kRisk, kState };
-
-std::wstring lowered(std::wstring text) {
-    for (auto& c : text) {
-        c = static_cast<wchar_t>(std::towlower(c));
-    }
-    return text;
-}
 } // namespace
 
 TasksPage::TasksPage(AppState& state, TaskController& controller, const Localization& strings, Language language,
@@ -33,7 +26,7 @@ TasksPage::TasksPage(AppState& state, TaskController& controller, const Localiza
     : m_state(state), m_controller(controller), m_strings(strings), m_language(language) {
     m_search = &add<ui::SearchBox>(strings.get(Str::TasksSearch), std::vector<std::wstring>{L"/"});
     m_search->onChange = [this](const std::wstring& text) {
-        m_needle = lowered(text);
+        m_needle = wl::text::lower(text);
         rebuild();
     };
     std::vector<std::wstring> filters{strings.get(Str::CommonAll)};
@@ -64,7 +57,7 @@ TasksPage::TasksPage(AppState& state, TaskController& controller, const Localiza
     m_table->onSelect = [this](int) { invalidate(); };
     m_empty = &add<ui::EmptyState>(ui::icons::Icon::QueueClock, strings.get(Str::TasksNoMountTitle),
                                    strings.get(Str::TasksNoMountBody));
-    m_empty->setAction(strings.get(Str::FeaturesGoImages)).onInvoke = std::move(goImages);
+    m_empty->setAction(strings.get(Str::CommonGoImages)).onInvoke = std::move(goImages);
     setAccessible(ui::AccessRole::Group, strings.get(Str::TasksTitle));
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Mount || change == AppState::Change::ImageValues) {
@@ -126,8 +119,8 @@ void TasksPage::rebuild() {
                 continue;
             }
         }
-        if (!m_needle.empty() && lowered(t.name.get(m_language)).find(m_needle) == std::wstring::npos &&
-            lowered(t.path).find(m_needle) == std::wstring::npos) {
+        if (!m_needle.empty() && wl::text::lower(t.name.get(m_language)).find(m_needle) == std::wstring::npos &&
+            wl::text::lower(t.path).find(m_needle) == std::wstring::npos) {
             continue;
         }
         m_rows.push_back(static_cast<int>(i));

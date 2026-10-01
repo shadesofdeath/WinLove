@@ -1,5 +1,8 @@
 #include "core/image/Fonts.h"
 
+#include "base/File.h"
+#include "base/Text.h"
+
 #include <algorithm>
 #include <cwctype>
 #include <fstream>
@@ -96,8 +99,7 @@ std::wstring FontInfo::registryName() const {
 }
 
 bool isFontFile(const std::filesystem::path& file) {
-    std::wstring ext = file.extension().wstring();
-    std::ranges::transform(ext, ext.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+    const std::wstring ext = text::lower(file.extension().wstring());
     return ext == L".ttf" || ext == L".otf" || ext == L".ttc";
 }
 
@@ -134,12 +136,11 @@ Result<FontInfo> parseFont(std::string_view bytes) {
 }
 
 Result<FontInfo> readFontInfo(const std::filesystem::path& file) {
-    std::ifstream in(file, std::ios::binary);
-    if (!in) {
+    const auto bytes = readFileBytes(file);
+    if (!bytes) {
         return fail(ErrorCode::NotFound, L"font file not found", file.wstring());
     }
-    std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    auto info = parseFont(bytes);
+    auto info = parseFont(*bytes);
     if (!info) {
         Error e = info.error();
         e.context = file.wstring();

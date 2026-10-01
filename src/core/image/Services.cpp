@@ -1,7 +1,9 @@
 #include "core/image/Services.h"
 
 #include "base/Log.h"
+#include "base/Text.h"
 #include "core/image/OfflineHive.h"
+#include "core/image/RegistryEdit.h"
 
 #include <windows.h>
 #include <shlwapi.h>
@@ -17,22 +19,7 @@ namespace {
 
 constexpr std::uint32_t kWin32Service = 0x10 | 0x20; // own / share process (templates 0x50/0x60 included)
 
-bool iequals(std::wstring_view a, std::wstring_view b) {
-    return a.size() == b.size() && CompareStringOrdinal(a.data(), static_cast<int>(a.size()), b.data(),
-                                                        static_cast<int>(b.size()), TRUE) == CSTR_EQUAL;
-}
 
-std::wstring hivePath(const std::filesystem::path& mountDir) {
-    return (mountDir / L"Windows" / L"System32" / L"config" / L"SYSTEM").wstring();
-}
-
-std::wstring controlSet(const OfflineHive& hive) {
-    std::uint32_t current = 1;
-    if (auto select = RegKey::open(hive.root(), L"Select")) {
-        current = select->dword(L"Current").value_or(1);
-    }
-    return std::format(L"ControlSet{:03}\\Services", current);
-}
 
 // Resolves "@file,-id" against the image's files; plain names pass through.
 std::wstring resolveText(const std::wstring& value, const std::filesystem::path& mountDir) {
@@ -130,7 +117,7 @@ std::wstring offlineResourcePath(std::wstring_view value, const std::filesystem:
     };
     for (const auto& [name, path] : vars) {
         for (std::size_t i = 0; i + name.size() <= out.size(); ++i) {
-            if (iequals(std::wstring_view(out).substr(i, name.size()), name)) {
+            if (wl::text::iequals(std::wstring_view(out).substr(i, name.size()), name)) {
                 std::wstring target = path.wstring();
                 if (!target.empty() && target.back() == L'\\') {
                     target.pop_back();
@@ -150,13 +137,13 @@ std::wstring offlineResourcePath(std::wstring_view value, const std::filesystem:
 Result<std::vector<ServiceEntry>> readServices(const std::filesystem::path& mountDir) {
     // A Turkish image on an English host: resolve names from the image's tr-TR .mui files.
     const PreferredUiLanguage language(imageLanguage(mountDir));
-    auto hive = OfflineHive::load(hivePath(mountDir));
+    auto hive = OfflineHive::load(hiveFilePath(mountDir, OfflineHiveFile::System));
     if (!hive) {
         return std::unexpected(hive.error());
     }
     std::vector<ServiceEntry> services;
     {
-        auto root = RegKey::open(hive->root(), controlSet(*hive));
+        auto root = RegKey::open(hive->root(), currentControlSet(hive->root()) + L"\\Services");
         if (!root) {
             return std::unexpected(root.error());
         }
@@ -192,6 +179,10 @@ Result<std::vector<ServiceEntry>> readServices(const std::filesystem::path& moun
     return services;
 }
 
+bool validServiceName(std::wstring_view name) noexcept {
+    return !name.empty() && name != L"." && name != L".." && name.find_first_of(L"\\/") == std::wstring_view::npos;
+}
+
 std::vector<RegistryWrite> serviceStartWrites(const std::wstring& name, StartType start) {
     std::uint32_t value = 3;
     switch (start) {
@@ -215,7 +206,7 @@ std::vector<RegistryWrite> serviceStartWrites(const std::wstring& name, StartTyp
 }
 
 Result<void> setServiceStart(const std::filesystem::path& mountDir, const std::wstring& name, StartType start) {
-    if (name.empty() || name.find(L'\\') != std::wstring::npos) {
+    if (!validServiceName(name)) {
         return fail(ErrorCode::InvalidArgument, L"bad service name", name);
     }
     {
@@ -245,7 +236,7 @@ std::vector<std::wstring> dependentsOf(const std::vector<ServiceEntry>& services
         const std::wstring current = std::move(frontier.back());
         frontier.pop_back();
         for (const auto& s : services) {
-            const bool depends = std::ranges::any_of(s.dependsOn, [&](const std::wstring& d) { return iequals(d, current); });
+            const bool depends = std::ranges::any_of(s.dependsOn, [&](const std::wstring& d) { return wl::text::iequals(d, current); });
             if (depends && seen.insert(s.name).second) {
                 result.push_back(s.name);
                 frontier.push_back(s.name);

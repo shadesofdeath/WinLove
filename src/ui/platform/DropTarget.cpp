@@ -105,8 +105,8 @@ std::vector<std::filesystem::path> DropTarget::filesOf(IDataObject* data) {
 }
 
 HRESULT DropTarget::DragEnter(IDataObject* data, DWORD /*keys*/, POINTL point, DWORD* effect) {
-    m_files = filesOf(data);
-    m_accepted = !m_files.empty() && m_callbacks.enter && m_callbacks.enter(m_files, toClient(point));
+    const auto files = filesOf(data);
+    m_accepted = !files.empty() && m_callbacks.enter && m_callbacks.enter(files, toClient(point));
     *effect = m_accepted ? DROPEFFECT_COPY : DROPEFFECT_NONE;
     return S_OK;
 }
@@ -120,7 +120,6 @@ HRESULT DropTarget::DragOver(DWORD /*keys*/, POINTL point, DWORD* effect) {
 }
 
 HRESULT DropTarget::DragLeave() {
-    m_files.clear();
     if (m_callbacks.leave) {
         m_callbacks.leave();
     }
@@ -136,7 +135,6 @@ HRESULT DropTarget::Drop(IDataObject* data, DWORD /*keys*/, POINTL point, DWORD*
     if (m_accepted && m_callbacks.drop) {
         m_callbacks.drop(files, toClient(point));
     }
-    m_files.clear();
     return S_OK;
 }
 

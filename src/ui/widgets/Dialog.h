@@ -31,7 +31,6 @@ public:
     }
     std::function<void()> onCancel;
 
-    [[nodiscard]] RectF box() const noexcept { return m_box; }
 
     void layout() override;
     void paint(Canvas& canvas) override;

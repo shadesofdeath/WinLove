@@ -20,13 +20,12 @@ public:
 
     void paint(Canvas& canvas) override;
     void onHoverChanged(bool hovered) override;
-    [[nodiscard]] bool hoveredNow() const noexcept { return m_hovered; }
+    [[nodiscard]] bool hoveredNow() const noexcept { return hovered(); }
 
 private:
     InfoKind m_kind = InfoKind::Info;
     std::wstring m_title;
     std::wstring m_message;
-    bool m_hovered = false;
 };
 
 } // namespace wl::ui

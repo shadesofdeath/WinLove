@@ -1,6 +1,7 @@
 #include "app/pages/components/ComponentInspector.h"
 
 #include "app/Format.h"
+#include "app/pages/PageBits.h"
 #include "ui/widget/Host.h"
 
 #include <cmath>
@@ -16,24 +17,6 @@ constexpr float kPadding = 16.0f;
 constexpr float kKeyWidth = 96.0f;
 constexpr float kRow = 24.0f;
 constexpr float kLine = 16.0f;
-
-Color riskInk(core::ops::Risk risk) {
-    switch (risk) {
-    case core::ops::Risk::Low: return Color::StatusSuccess;
-    case core::ops::Risk::Medium: return Color::StatusWarning;
-    case core::ops::Risk::High: return Color::StatusError;
-    }
-    return Color::TextSecondary;
-}
-
-Str riskText(core::ops::Risk risk) {
-    switch (risk) {
-    case core::ops::Risk::Low: return Str::RiskLow;
-    case core::ops::Risk::Medium: return Str::RiskMedium;
-    case core::ops::Risk::High: return Str::RiskHigh;
-    }
-    return Str::RiskMedium;
-}
 } // namespace
 
 ui::icons::Icon ComponentInspector::iconOf(ComponentController::Item::Kind kind) noexcept {

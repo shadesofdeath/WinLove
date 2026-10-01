@@ -22,7 +22,6 @@ Result<std::unique_ptr<RenderDevice>> RenderDevice::create() {
 
     if (FAILED(createD3D(D3D_DRIVER_TYPE_HARDWARE, device->m_d3d))) {
         WL_TRY_HR(createD3D(D3D_DRIVER_TYPE_WARP, device->m_d3d), code, L"creating D3D11 device");
-        device->m_software = true;
     }
 
     ComPtr<IDXGIDevice1> dxgiDevice;

@@ -1,12 +1,10 @@
 #include "app/state/AppSettings.h"
 
+#include "base/File.h"
 #include "base/Log.h"
 #include "base/Utf8.h"
 
 #include <json.hpp>
-
-#include <fstream>
-#include <sstream>
 
 namespace wl::app {
 
@@ -36,13 +34,11 @@ bool AppSettings::isWorkCopy(const std::filesystem::path& folder) const {
 
 AppSettings AppSettings::load(const std::filesystem::path& file) {
     AppSettings settings;
-    std::ifstream in(file, std::ios::binary);
-    if (!in) {
+    const auto bytes = readFileBytes(file);
+    if (!bytes) {
         return settings;
     }
-    std::stringstream buffer;
-    buffer << in.rdbuf();
-    const auto doc = nlohmann::json::parse(buffer.str(), nullptr, /*allow_exceptions=*/false);
+    const auto doc = nlohmann::json::parse(*bytes, nullptr, /*allow_exceptions=*/false);
     if (doc.is_discarded() || !doc.is_object()) {
         log::warn("app", L"settings.json is corrupt; using defaults");
         return settings;
@@ -82,10 +78,10 @@ AppSettings AppSettings::load(const std::filesystem::path& file) {
 void AppSettings::save(const std::filesystem::path& file) const {
     std::error_code ec;
     std::filesystem::create_directories(file.parent_path(), ec);
-    std::ofstream out(file, std::ios::binary | std::ios::trunc);
     static constexpr const char* kThemes[] = {"dark", "light", "hc", "system"};
     static constexpr const char* kAccents[] = {"copper", "sea", "pomegranate", "sky", "olive"};
-    out << nlohmann::json{{"version", 1},
+    // Through a temporary file: a crash mid-write must not reset every setting to its default.
+    const std::string json = nlohmann::json{{"version", 1},
                           {"theme", kThemes[static_cast<std::size_t>(theme)]},
                           {"accent", kAccents[static_cast<std::size_t>(accent)]},
                           {"reduceMotion", reduceMotion},
@@ -93,7 +89,10 @@ void AppSettings::save(const std::filesystem::path& file) const {
                           {"workRoot", utf8::fromWide(workRoot.wstring())},
                           {"mountFolder", utf8::fromWide(mountFolder.wstring())},
                           {"isoFolder", utf8::fromWide(isoFolder.wstring())}}
-               .dump(2);
+                                 .dump(2);
+    if (auto written = writeFileAtomic(file, json); !written) {
+        log::warn("app", L"settings not saved: " + describe(written.error()));
+    }
 }
 
 } // namespace wl::app

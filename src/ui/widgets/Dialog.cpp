@@ -59,9 +59,7 @@ void Dialog::layout() {
 
 void Dialog::paint(Canvas& canvas) {
     const float radius = tokens::radius::r3;
-    canvas.dropShadow(m_box, radius, tokens::elevation::dialog);
-    canvas.fillRoundRect(m_box, radius, tokens::Color::BgOverlay);
-    canvas.strokeRoundRect(m_box, radius, tokens::Color::LineStrong);
+    canvas.panel(m_box, radius, tokens::elevation::dialog);
 
     float x = m_box.x + kPadding;
     const float y = m_box.y + kPadding;

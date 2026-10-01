@@ -2,6 +2,7 @@
 
 #include "base/Log.h"
 #include "core/image/OffReg.h"
+#include "core/image/OfflineHive.h"
 
 #include <windows.h>
 
@@ -14,11 +15,6 @@ namespace {
 
 const OffRegApi& offreg() {
     return offregApi();
-}
-
-Error readError(DWORD status, std::wstring what, std::wstring context) {
-    const auto code = status == ERROR_ACCESS_DENIED ? ErrorCode::AccessDenied : ErrorCode::IoError;
-    return Error{code, std::move(what), std::move(context), static_cast<std::int32_t>(HRESULT_FROM_WIN32(status))};
 }
 
 bool isStringType(std::uint32_t type) noexcept {
@@ -79,7 +75,7 @@ Result<OfflineRegistryReader::Hive*> OfflineRegistryReader::hive(OfflineHiveFile
     auto opened = std::make_unique<Hive>();
     if (const DWORD status = api.openHive(path.c_str(), &opened->handle); status != ERROR_SUCCESS) {
         opened->handle = nullptr;
-        return std::unexpected(readError(status, L"could not open the hive file", path.wstring()));
+        return std::unexpected(registryError(status, L"could not open the hive file", path.wstring()));
     }
     if (file == OfflineHiveFile::System) {
         DWORD current = 1;
@@ -122,7 +118,7 @@ Result<void*> OfflineRegistryReader::openKey(std::wstring_view key) {
         return static_cast<void*>(nullptr);
     }
     if (status != ERROR_SUCCESS) {
-        return std::unexpected(readError(status, L"could not open registry key", std::wstring(key)));
+        return std::unexpected(registryError(status, L"could not open registry key", std::wstring(key)));
     }
     return opened;
 }
@@ -165,7 +161,7 @@ Result<std::optional<RegistryData>> OfflineRegistryReader::value(std::wstring_vi
     if (status == ERROR_FILE_NOT_FOUND) {
         return std::optional<RegistryData>{};
     }
-    return std::unexpected(readError(status, L"could not read registry value", std::format(L"{}::{}", key, name)));
+    return std::unexpected(registryError(status, L"could not read registry value", std::format(L"{}::{}", key, name)));
 }
 
 Result<bool> OfflineRegistryReader::keyExists(std::wstring_view key) {

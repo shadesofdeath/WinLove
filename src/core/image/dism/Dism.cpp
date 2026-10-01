@@ -3,7 +3,9 @@
 #include "base/Log.h"
 #include "base/Path.h"
 #include "core/image/dism/DismApi.h"
+#include "core/system/Files.h"
 #include "core/system/Privileges.h"
+#include "core/system/Process.h"
 
 #include <format>
 #include <mutex>
@@ -33,9 +35,7 @@ void CALLBACK onProgress(UINT current, UINT total, PVOID user) {
 }
 
 std::filesystem::path scratchDirectory() {
-    wchar_t temp[MAX_PATH]{};
-    GetTempPathW(MAX_PATH, temp);
-    return std::filesystem::path(temp) / L"WinLove" / L"scratch";
+    return tempFolder() / L"WinLove" / L"scratch";
 }
 
 template <class F>
@@ -77,9 +77,11 @@ Result<Dism*> Dism::instance() {
         return dism.get();
     }
     auto created = std::unique_ptr<Dism>(new Dism());
-    wchar_t system[MAX_PATH]{};
-    GetSystemDirectoryW(system, MAX_PATH);
-    const auto dllPath = std::filesystem::path(system) / L"dismapi.dll";
+    const auto dll = systemTool(L"dismapi.dll");
+    if (!dll) {
+        return std::unexpected(dll.error());
+    }
+    const std::filesystem::path dllPath = *dll;
     created->m_module = LoadLibraryExW(dllPath.c_str(), nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (!created->m_module) {
         return fail(ErrorCode::NotFound, L"dismapi.dll not found", dllPath.wstring(),

@@ -5,6 +5,8 @@
 #include "base/Utf8.h"
 #include "core/image/WimFile.h"
 #include "core/io/ByteSource.h"
+#include "core/system/Files.h"
+#include "core/system/Process.h"
 
 #include <pugixml.hpp>
 
@@ -72,9 +74,11 @@ bool load(HMODULE module, const char* name, F& target) {
 Result<const Api*> api() {
     static Api instance;
     static Result<void> status = [] () -> Result<void> {
-        wchar_t system[MAX_PATH]{};
-        GetSystemDirectoryW(system, MAX_PATH);
-        const auto path = std::filesystem::path(system) / L"wimgapi.dll";
+        const auto dll = systemTool(L"wimgapi.dll");
+        if (!dll) {
+            return std::unexpected(dll.error());
+        }
+        const std::filesystem::path path = *dll;
         const HMODULE m = LoadLibraryExW(path.c_str(), nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
         if (!m) {
             return fail(ErrorCode::NotFound, L"wimgapi.dll not found", path.wstring());
@@ -299,24 +303,10 @@ Result<void> rewriteWith(const std::filesystem::path& wim, WimCompression compre
             return std::unexpected(exported.error());
         }
     }
-    const std::filesystem::path old = wim.wstring() + L".old";
-    std::filesystem::remove(old, ec);
     // Swap through a rename: the original is only deleted once the new file is in its place.
-    std::filesystem::rename(wim, old, ec);
-    if (ec) {
-        std::filesystem::remove(fresh, ec);
-        return fail(ErrorCode::IoError, L"cannot replace the image file (in use?)", wim.wstring(),
-                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(ec.value())));
+    if (auto swapped = swapIntoPlace(wim, fresh, wim); !swapped) {
+        return swapped;
     }
-    std::filesystem::rename(fresh, wim, ec);
-    if (ec) {
-        const auto code = ec.value();
-        std::filesystem::rename(old, wim, ec); // put the original back
-        std::filesystem::remove(fresh, ec);
-        return fail(ErrorCode::IoError, L"cannot move the rewritten image into place", wim.wstring(),
-                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(code)));
-    }
-    std::filesystem::remove(old, ec);
     task.report(1.0, stage);
     return {};
 }
@@ -615,20 +605,9 @@ Result<std::filesystem::path> recompressWim(const std::filesystem::path& wimInpu
         }
     }
     // Swap: the original goes only once the new file is in its place.
-    const std::filesystem::path old = wim.wstring() + L".old";
-    std::filesystem::remove(old, ec);
-    std::filesystem::rename(wim, old, ec);
-    if (ec) {
-        std::filesystem::remove(fresh, ec);
-        return fail(ErrorCode::IoError, L"cannot replace the image file (in use?)", wim.wstring());
+    if (auto swapped = swapIntoPlace(wim, fresh, result); !swapped) {
+        return std::unexpected(swapped.error());
     }
-    std::filesystem::rename(fresh, result, ec);
-    if (ec) {
-        std::filesystem::rename(old, wim, ec);
-        std::filesystem::remove(fresh, ec);
-        return fail(ErrorCode::IoError, L"cannot move the new image into place", result.wstring());
-    }
-    std::filesystem::remove(old, ec);
     log::info("wim", std::format(L"recompressed {} -> {} ({})", wim.wstring(), result.wstring(), compressionName(target)));
     return result;
 }

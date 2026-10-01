@@ -8,12 +8,14 @@
 //      --page=<key>           (source, images, …, settings, about, gallery)
 //      --nav-collapsed        --maximized (restore glyph)
 //      --hover-at=x,y         --press-at=x,y   --tooltip-at=x,y   (DIPs; simulate the pointer)
+//      --click-at=x,y         (repeatable: a full click, e.g. open a dropdown or tick a row)
 //      --context-at=x,y       (right click: context menu)
 //      --tab=N                (press Tab N times: keyboard focus ring)
 //      --recent-file=<json>   (recent-sources file to show; default %LOCALAPPDATA%\WinLove\recent.json)
 //      --dialog=admin         (open the administrator dialog, s4)
 //      --drag=valid|invalid   (Source page drop zone drag state)
 //      --mount=N              (windowed: after opening the source, mount edition N — UAC relaunch)
+//      --no-elevate           (windowed: skip the elevated relaunch at startup; main.cpp)
 //      --select=N[,M…]        (select edition N on the Images page; more: marked as well)
 //      --operation=mount|prepare|read|verify --progress=0.38   (render: show the operation strip)
 //      --verified=sound|damaged   (render: the result of "Doğrula" on the Images page)
@@ -34,10 +36,13 @@
 #include "ui/widget/Host.h"
 
 #include <filesystem>
+#include <functional>
+#include <mutex>
 #include <optional>
-#include <vector>
 #include <span>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace wl::app {
 
@@ -52,22 +57,22 @@ struct LaunchOptions {
     ui::SizeF size{1440, 900};
     std::optional<PageId> page;
     bool navCollapsed = false;
-    bool demoLogs = false;
+    bool demoLogs = false;     // render: fill the log with the design's sample lines (screen 18)
     bool demoFeatures = false; // render: fake mount + screen 05 sample features
     bool demoComponents = false; // render: fake mount + sample provisioned apps (screen 04)
     bool demoRegistry = false;   // render: fake mount + checked tweaks (08)
     bool demoServices = false;   // render: fake mount + sample services (09)
     bool demoTasks = false;      // render: fake mount, two tasks off in the image, the recommended queued (D-048)
     std::optional<std::wstring> demoFiles; // render: fake mount + queued files ("where": the destination dialog) (D-051)
-    bool demoHosts = false;
-    bool demoBranding = false;
+    bool demoHosts = false;    // render: fake mount, telemetry list in the image, ads queued, imported entries (D-049)
+    bool demoBranding = false; // render: Kişiselleştirme with OEM text, pictures and fonts queued (D-056)
     std::wstring demoTool; // render, with a source: recompress | split | duplicate | capture | hash | append (D-058)
-    bool demoWifi = false; // render: Kurulum Sonrası › Wi-Fi ağı ekle dialog (D-056) // render: Kişiselleştirme with OEM text, pictures and fonts queued (D-056)
-    bool demoBootDrivers = false; // render, with --demo-drivers=<folder>: Sürücüler › Kurulum ortamı
+    bool demoWifi = false; // render: Kurulum Sonrası › Wi-Fi ağı ekle dialog (D-056)
+    bool demoBootDrivers = false; // render, with --demo-drivers: Sürücüler › Kurulum ortamı
     bool demoEditions = false; // render, with a source: Apply summary with two other editions ticked (D-055)
     bool demoLanguages = false; // render: fake mount, the image's languages, two packs and a display language queued (D-053)
     std::optional<std::wstring> demoApps; // render: fake mount + the lab's Terminal package ("defaults": second tab) (D-050)
-    bool demoImageDrivers = false; // render: fake mount + the image's third-party drivers, one queued for removal (D-052)      // render: fake mount, telemetry list in the image, ads queued, imported entries (D-049)
+    bool demoImageDrivers = false; // render: fake mount + the image's third-party drivers, one queued for removal (D-052)
     bool demoTweaks = false;     // render: fake mount + the selections of screen 10
     bool demoImageValues = false; // render (with --demo-tweaks / --demo-registry): the image already has a few (D-045)
     bool demoUnattended = false; // render: the answers of screen 11
@@ -79,7 +84,7 @@ struct LaunchOptions {
     std::wstring demoUsb;         // render (with a source): "" | "confirm" — the USB tab with a sample drive (D-047)
     bool demoUsbGiven = false;
     std::wstring demoCatalog;     // render (with --demo-updates): "dialog" | "download" — the update catalog (D-046)
-    std::wstring demoApply;    // render (with --demo-features): "running" | "done" | "skipped" — fake Uygula run // render: fill the log with the design's sample lines (screen 18)
+    std::wstring demoApply;    // render (with --demo-features): "running" | "done" | "skipped" — fake Uygula run
     bool maximized = false;
     std::optional<ui::PointF> hoverAt;
     std::optional<ui::PointF> contextAt; // --context-at=x,y: right click (context menu)
@@ -123,13 +128,24 @@ private:
     // P16: settings.json changed (or Windows' own theme did): theme, motion, language.
     void applySettings();
     void rebuildUi(); // a new language: strings and every widget again; AppState stays
+    // Keeps the page and the nav state in m_options, then destroys the widget tree (it measures with
+    // the current graphics / strings, which the caller is about to replace).
+    void releaseShell();
     [[nodiscard]] ui::HostServices windowHostServices();
     [[nodiscard]] Result<void> recreateGraphics();
+    // Headless: functions posted from another thread wait here and run on the main thread before
+    // the frame is drawn (a worker must never touch widgets the main thread is laying out).
+    void post(std::function<void()> fn);
+    void drainPosted();
 
     LaunchOptions m_options;
     std::unique_ptr<ui::Graphics> m_graphics;
     std::optional<Localization> m_strings;
     ui::Window m_window;
+    // Before m_state: its worker threads may still post while it shuts down.
+    const std::thread::id m_mainThread = std::this_thread::get_id();
+    std::mutex m_postedMutex;
+    std::vector<std::function<void()>> m_posted;
     // After m_window: destroyed first, so the engine thread's last posts still find the window.
     std::unique_ptr<AppState> m_state;
     ui::DropTarget* m_dropTarget = nullptr;

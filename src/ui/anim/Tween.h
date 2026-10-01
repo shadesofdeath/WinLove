@@ -31,7 +31,6 @@ public:
     bool tick(double now) noexcept;
 
     [[nodiscard]] float value() const noexcept { return m_value; }
-    [[nodiscard]] float target() const noexcept { return m_to; }
     [[nodiscard]] bool running() const noexcept { return m_running; }
 
 private:

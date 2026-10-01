@@ -3,6 +3,7 @@
 #include "base/Log.h"
 #include "base/Utf8.h"
 #include "core/image/RegistryEdit.h"
+#include "core/system/Files.h"
 
 #include <json.hpp>
 
@@ -162,36 +163,23 @@ Result<void> writeBytes(const std::filesystem::path& file, std::string_view byte
     return out ? Result<void>{} : fail(ErrorCode::IoError, L"could not write post-setup file", file.wstring());
 }
 
-std::uint64_t sizeOf(const std::filesystem::path& path) {
-    std::error_code ec;
-    if (std::filesystem::is_regular_file(path, ec)) {
-        return std::filesystem::file_size(path, ec);
-    }
-    std::uint64_t total = 0;
-    for (auto it = std::filesystem::recursive_directory_iterator(path, ec);
-         !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
-        if (it->is_regular_file(ec)) {
-            total += it->file_size(ec);
-        }
-    }
-    return total;
-}
-
 // Copies a file, or a folder's contents, into `target` (created). Reports bytes through `copied`.
 Result<void> stage(const std::filesystem::path& source, const std::filesystem::path& target, const TaskContext& task,
                    const std::function<void(std::uint64_t)>& copied) {
     std::error_code ec;
     std::filesystem::create_directories(target, ec);
+    // Each copy has its own error code: the walk's own must only say whether the walk failed.
     auto copyFile = [&](const std::filesystem::path& from, const std::filesystem::path& to) -> Result<void> {
         if (auto cancelled = task.cancel.check(L"post-setup files"); !cancelled) {
             return cancelled;
         }
-        std::filesystem::create_directories(to.parent_path(), ec);
-        if (!std::filesystem::copy_file(from, to, std::filesystem::copy_options::overwrite_existing, ec) || ec) {
+        std::error_code copyEc;
+        std::filesystem::create_directories(to.parent_path(), copyEc);
+        if (!std::filesystem::copy_file(from, to, std::filesystem::copy_options::overwrite_existing, copyEc) || copyEc) {
             return fail(ErrorCode::IoError, L"could not copy into the image", from.wstring(),
-                        static_cast<std::int32_t>(HRESULT_FROM_WIN32(static_cast<unsigned long>(ec.value()))));
+                        static_cast<std::int32_t>(HRESULT_FROM_WIN32(static_cast<unsigned long>(copyEc.value()))));
         }
-        copied(std::filesystem::file_size(to, ec));
+        copied(treeBytes(to));
         return {};
     };
     if (std::filesystem::is_regular_file(source, ec)) {
@@ -202,12 +190,18 @@ Result<void> stage(const std::filesystem::path& source, const std::filesystem::p
     }
     for (auto it = std::filesystem::recursive_directory_iterator(source, ec);
          !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
-        if (!it->is_regular_file(ec)) {
+        std::error_code entry;
+        if (!it->is_regular_file(entry)) {
             continue;
         }
-        if (auto r = copyFile(it->path(), target / std::filesystem::relative(it->path(), source, ec)); !r) {
+        if (auto r = copyFile(it->path(), target / std::filesystem::relative(it->path(), source, entry)); !r) {
             return r;
         }
+    }
+    // A walk that stopped half way must not report a partial payload as staged.
+    if (ec) {
+        return fail(ErrorCode::IoError, L"could not read the post-setup folder", source.wstring(),
+                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(static_cast<unsigned long>(ec.value()))));
     }
     return {};
 }
@@ -392,7 +386,7 @@ std::uint64_t postSetupPayloadBytes(const PostSetupPlan& plan) {
     std::uint64_t total = 0;
     for (const auto& step : plan.steps) {
         if (step.type == Step::Type::Copy && !step.source.empty()) {
-            total += sizeOf(step.source);
+            total += treeBytes(step.source);
         }
     }
     return total;

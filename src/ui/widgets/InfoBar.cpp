@@ -12,13 +12,9 @@ using tokens::Color;
 constexpr float kPaddingLeft = 16.0f;
 constexpr float kGap = 8.0f;
 
-struct Style {
-    Color background;
-    Color ink;
-    icons::Icon icon;
-};
+} // namespace
 
-Style styleFor(InfoKind kind) {
+InfoStyle infoStyle(InfoKind kind) noexcept {
     switch (kind) {
     case InfoKind::Success: return {Color::StatusSuccessSubtle, Color::StatusSuccess, icons::Icon::SuccessCircle};
     case InfoKind::Warning: return {Color::StatusWarningSubtle, Color::StatusWarning, icons::Icon::WarningTriangle};
@@ -27,8 +23,6 @@ Style styleFor(InfoKind kind) {
     }
     return {Color::StatusInfoSubtle, Color::StatusInfo, icons::Icon::InfoCircle};
 }
-
-} // namespace
 
 InfoBar::InfoBar(InfoKind kind, std::wstring title, std::wstring message, std::wstring closeTooltip)
     : m_kind(kind), m_title(std::move(title)), m_message(std::move(message)) {
@@ -73,7 +67,7 @@ void InfoBar::layout() {
 
 void InfoBar::paint(Canvas& canvas) {
     const RectF b = bounds();
-    const Style style = styleFor(m_kind);
+    const InfoStyle style = infoStyle(m_kind);
     canvas.fillRect(b, style.background);
     canvas.hairlineH(b.x, b.y, b.width, Color::LineSubtle);
     canvas.hairlineH(b.x, b.bottom() - 1.0f / canvas.scale(), b.width, Color::LineSubtle);

@@ -1,6 +1,8 @@
 #include "core/image/dism/OptionalFeatures.h"
 
+#include "base/File.h"
 #include "base/Log.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 #include "core/image/SystemComponents.h"
 
@@ -52,12 +54,11 @@ std::vector<std::wstring> readPermanentCapabilities(const std::filesystem::path&
         if (package.visibility != 1 || package.state < kCbsInstalled) {
             continue;
         }
-        std::ifstream in(folder / (package.identity + L".mum"), std::ios::binary);
-        if (!in) {
+        const auto mum = readFileBytes(folder / (package.identity + L".mum"));
+        if (!mum) {
             continue;
         }
-        const std::string mum((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        for (auto& name : permanentCapabilitiesIn(mum)) {
+        for (auto& name : permanentCapabilitiesIn(*mum)) {
             names.push_back(std::move(name));
         }
     }
@@ -119,7 +120,7 @@ Result<std::vector<OptionalFeature>> readOptionalFeatures(Dism& dism, const std:
         // "Microsoft.Windows.Sense.Client~~~~" → the identity name the manifest declares.
         const std::wstring_view identity = std::wstring_view(c.name).substr(0, c.name.find(L'~'));
         item.permanent = std::ranges::any_of(permanent, [&](const std::wstring& name) {
-            return name.size() == identity.size() && _wcsnicmp(name.c_str(), identity.data(), identity.size()) == 0;
+            return text::iequals(name, identity);
         });
         result.push_back(std::move(item));
         task.report(++done / total, L"capabilities");

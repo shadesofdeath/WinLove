@@ -16,6 +16,7 @@
 #include "core/image/dism/DefaultApps.h"
 #include "core/image/dism/Intl.h"
 #include "core/postsetup/PostSetup.h"
+#include "core/system/Files.h"
 
 #include <windows.h>
 
@@ -70,6 +71,10 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
     case OpKind::AddPackage: return session.addPackage(op.target, task);
     case OpKind::AddDriver: return session.addDriver(op.target);
     case OpKind::SetServiceStart: {
+        // The name comes from a preset file: it must stay one key under Services.
+        if (!validServiceName(op.target)) {
+            return fail(ErrorCode::InvalidArgument, L"bad service name", op.target);
+        }
         const auto start = startTypeFromKey(op.value);
         if (!start) {
             return fail(ErrorCode::InvalidArgument, L"unknown service start type", op.value);
@@ -183,9 +188,7 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
     }
     case OpKind::SetDefaultApps: {
         registry.reset();
-        wchar_t temp[MAX_PATH];
-        GetTempPathW(MAX_PATH, temp);
-        return importAssociations(session, utf8::fromWide(op.value), std::filesystem::path(temp) / L"WinLove", task);
+        return importAssociations(session, utf8::fromWide(op.value), tempFolder() / L"WinLove", task);
     }
     case OpKind::SetIntl: {
         auto intl = intlFromJson(utf8::fromWide(op.value));

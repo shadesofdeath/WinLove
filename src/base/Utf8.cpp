@@ -40,12 +40,20 @@ std::wstring decodeText(std::string_view bytes) {
     if (body.empty()) {
         return {};
     }
-    const int size = static_cast<int>(body.size());
-    int n = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, body.data(), size, nullptr, 0);
-    const UINT cp = n > 0 ? CP_UTF8 : CP_ACP;
-    n = ::MultiByteToWideChar(cp, 0, body.data(), size, nullptr, 0);
+    const int n = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, body.data(), static_cast<int>(body.size()), nullptr, 0);
+    return fromCodePage(body, n > 0 ? CP_UTF8 : CP_ACP);
+}
+
+std::wstring fromCodePage(std::string_view bytes, unsigned codePage) {
+    if (bytes.empty()) {
+        return {};
+    }
+    const int size = static_cast<int>(bytes.size());
+    const int n = ::MultiByteToWideChar(codePage, 0, bytes.data(), size, nullptr, 0);
     std::wstring text(static_cast<std::size_t>(n > 0 ? n : 0), L'\0');
-    ::MultiByteToWideChar(cp, 0, body.data(), size, text.data(), n);
+    if (n > 0) {
+        ::MultiByteToWideChar(codePage, 0, bytes.data(), size, text.data(), n);
+    }
     return text;
 }
 

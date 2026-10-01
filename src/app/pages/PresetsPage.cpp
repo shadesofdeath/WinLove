@@ -1,5 +1,7 @@
 #include "app/pages/PresetsPage.h"
 
+#include "app/pages/PageBits.h"
+
 #include <algorithm>
 #include <cmath>
 #include <optional>
@@ -271,8 +273,7 @@ void PresetsPage::paint(ui::Canvas& canvas) {
     }
     if (m_rows.empty()) {
         const RectF diff = m_diff->bounds();
-        canvas.drawText(m_strings.get(Str::PresetsNoDiff), {diff.x, diff.y + ui::TableView::kHeader + 12, diff.width, 20},
-                        TypeStyle::Body, Color::TextTertiary, ui::TextAlign::Center);
+        paintTableEmpty(canvas, diff, m_strings.get(Str::PresetsNoDiff));
     }
 }
 

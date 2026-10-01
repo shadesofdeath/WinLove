@@ -161,7 +161,8 @@ void CaptionButton::paint(ui::Canvas& canvas) {
 
 // ---- TitleBar ----------------------------------------------------------------------------------
 
-TitleBar::TitleBar(const Labels& labels) : m_appName(labels.appName) {
+TitleBar::TitleBar(const Labels& labels)
+    : m_appName(labels.appName), m_maximizeName(labels.maximize), m_restoreName(labels.restore) {
     m_palette = &add<PaletteTrigger>(labels.paletteHint, std::vector<std::wstring>{labels.ctrlKey, L"K"});
     m_minimize = &add<CaptionButton>(CaptionButton::Kind::Minimize);
     m_maximize = &add<CaptionButton>(CaptionButton::Kind::Maximize);
@@ -171,6 +172,7 @@ TitleBar::TitleBar(const Labels& labels) : m_appName(labels.appName) {
     m_close->setTooltip(labels.close);
     m_minimize->setAccessible(ui::AccessRole::Button, labels.minimize);
     m_close->setAccessible(ui::AccessRole::Button, labels.close);
+    m_maximize->setAccessible(ui::AccessRole::Button, labels.maximize);
 }
 
 void TitleBar::setBreadcrumb(std::vector<std::wstring> parts) {
@@ -188,6 +190,7 @@ void TitleBar::setWindowActive(bool active) {
 
 void TitleBar::setMaximized(bool maximized) {
     m_maximize->setMaximized(maximized);
+    m_maximize->setAccessible(ui::AccessRole::Button, maximized ? m_restoreName : m_maximizeName);
 }
 
 void TitleBar::layout() {

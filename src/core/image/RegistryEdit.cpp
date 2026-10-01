@@ -1,6 +1,8 @@
 #include "core/image/RegistryEdit.h"
 
+#include "base/File.h"
 #include "base/Log.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 
 #include <windows.h>
@@ -18,36 +20,19 @@ namespace wl::core {
 
 namespace {
 
-bool iequals(std::wstring_view a, std::wstring_view b) {
-    return a.size() == b.size() && (a.empty() || CompareStringOrdinal(a.data(), static_cast<int>(a.size()), b.data(),
-                                                                     static_cast<int>(b.size()), TRUE) == CSTR_EQUAL);
-}
-
-bool istartsWith(std::wstring_view text, std::wstring_view prefix) {
-    return text.size() >= prefix.size() && iequals(text.substr(0, prefix.size()), prefix);
-}
-
 // "Software\Classes\X" with prefix "Software\Classes" → "X" (only on a whole path segment).
 std::optional<std::wstring> stripSegmentPrefix(std::wstring_view path, std::wstring_view prefix) {
-    if (iequals(path, prefix)) {
+    if (text::iequals(path, prefix)) {
         return std::wstring();
     }
-    if (path.size() > prefix.size() && istartsWith(path, prefix) && path[prefix.size()] == L'\\') {
+    if (path.size() > prefix.size() && text::istartsWith(path, prefix) && path[prefix.size()] == L'\\') {
         return std::wstring(path.substr(prefix.size() + 1));
     }
     return std::nullopt;
 }
 
-std::wstring trim(std::wstring_view text) {
-    std::size_t a = 0;
-    std::size_t b = text.size();
-    while (a < b && std::iswspace(text[a])) {
-        ++a;
-    }
-    while (b > a && std::iswspace(text[b - 1])) {
-        --b;
-    }
-    return std::wstring(text.substr(a, b - a));
+std::wstring trim(std::wstring_view s) {
+    return std::wstring(text::trim(s));
 }
 
 Error lineError(std::size_t line, std::wstring what) {
@@ -121,10 +106,8 @@ std::vector<std::uint8_t> ansiToUtf16Bytes(const std::vector<std::uint8_t>& ansi
     if (ansi.empty()) {
         return {};
     }
-    const auto* src = reinterpret_cast<const char*>(ansi.data());
-    const int n = MultiByteToWideChar(CP_ACP, 0, src, static_cast<int>(ansi.size()), nullptr, 0);
-    std::wstring wide(static_cast<std::size_t>(std::max(n, 0)), L'\0');
-    MultiByteToWideChar(CP_ACP, 0, src, static_cast<int>(ansi.size()), wide.data(), n);
+    const std::wstring wide =
+        utf8::fromCodePage(std::string_view(reinterpret_cast<const char*>(ansi.data()), ansi.size()), CP_ACP);
     std::vector<std::uint8_t> out(wide.size() * sizeof(wchar_t));
     std::memcpy(out.data(), wide.data(), out.size());
     return out;
@@ -163,7 +146,7 @@ std::wstring normalizeRegistryKey(std::wstring_view key) {
 }
 
 bool isUserKey(std::wstring_view key) {
-    return istartsWith(normalizeRegistryKey(key), L"HKCU");
+    return text::istartsWith(normalizeRegistryKey(key), L"HKCU");
 }
 
 bool isPostSetupOnlyKey(std::wstring_view rawKey) {
@@ -197,6 +180,14 @@ Result<OfflineKey> mapOfflineKey(std::wstring_view rawKey) {
         return OfflineKey{OfflineHiveFile::DotDefault, *rest};
     }
     return fail(ErrorCode::Unsupported, L"registry root not available in an offline image", std::wstring(rawKey));
+}
+
+std::wstring currentControlSet(HKEY systemRoot) {
+    std::uint32_t current = 1;
+    if (auto select = RegKey::open(systemRoot, L"Select")) {
+        current = select->dword(L"Current").value_or(1);
+    }
+    return std::format(L"ControlSet{:03}", current);
 }
 
 std::filesystem::path hiveFilePath(const std::filesystem::path& mountDir, OfflineHiveFile hive) {
@@ -244,7 +235,7 @@ Result<RegistryWrite> parseRegValue(std::wstring key, std::wstring name, std::ws
         w.data = wideBytes(*text, true);
         return w;
     }
-    if (istartsWith(value, L"dword:")) {
+    if (text::istartsWith(value, L"dword:")) {
         const std::wstring digits = trim(std::wstring_view(value).substr(6));
         wchar_t* end = nullptr;
         const unsigned long long v = std::wcstoull(digits.c_str(), &end, 16);
@@ -257,7 +248,7 @@ Result<RegistryWrite> parseRegValue(std::wstring key, std::wstring name, std::ws
         std::memcpy(w.data.data(), &d, 4);
         return w;
     }
-    if (istartsWith(value, L"hex")) {
+    if (text::istartsWith(value, L"hex")) {
         std::size_t colon = value.find(L':');
         if (colon == std::wstring::npos) {
             return fail(ErrorCode::ParseError, L"bad hex value", value);
@@ -450,13 +441,11 @@ Result<std::vector<RegistryWrite>> parseRegText(std::wstring_view text) {
 }
 
 Result<std::vector<RegistryWrite>> readRegFile(const std::filesystem::path& file) {
-    std::ifstream in(file, std::ios::binary);
-    if (!in) {
+    const auto bytes = readFileBytes(file);
+    if (!bytes) {
         return fail(ErrorCode::NotFound, L"could not open .reg file", file.wstring());
     }
-    std::stringstream buffer;
-    buffer << in.rdbuf();
-    auto writes = parseRegText(utf8::decodeText(buffer.str()));
+    auto writes = parseRegText(utf8::decodeText(*bytes));
     if (!writes) {
         auto e = writes.error();
         e.context = file.filename().wstring() + L" · " + e.context;
@@ -532,7 +521,7 @@ namespace {
 bool replaceSlot(std::vector<RegistryWrite>& writes, const RegistryWrite& write) {
     const bool creates = write.kind == RegistryWrite::Kind::CreateKey;
     const auto dropped = std::erase_if(writes, [&](const RegistryWrite& w) {
-        if (!iequals(w.key, write.key)) {
+        if (!text::iequals(w.key, write.key)) {
             return false;
         }
         if (write.kind == RegistryWrite::Kind::DeleteKey) {
@@ -540,7 +529,7 @@ bool replaceSlot(std::vector<RegistryWrite>& writes, const RegistryWrite& write)
         }
         // A created key and the key's default value both have an empty name: different slots.
         return w.kind != RegistryWrite::Kind::DeleteKey && (w.kind == RegistryWrite::Kind::CreateKey) == creates &&
-               iequals(w.name, write.name);
+               text::iequals(w.name, write.name);
     });
     writes.push_back(write);
     return dropped > 0;
@@ -638,10 +627,7 @@ Result<void> ensureSetupCompleteLine(const std::filesystem::path& setupComplete,
     std::string existing;
     std::error_code ec;
     if (std::filesystem::exists(setupComplete, ec)) {
-        std::ifstream in(setupComplete, std::ios::binary);
-        std::stringstream buffer;
-        buffer << in.rdbuf();
-        existing = buffer.str();
+        existing = readFileBytes(setupComplete).value_or(std::string());
     }
     const std::string line(wanted);
     if (existing.find(line) != std::string::npos) {
@@ -721,11 +707,7 @@ Result<std::wstring> OfflineRegistry::resolve(const OfflineKey& key) {
     std::wstring path = key.path;
     if (key.hive == OfflineHiveFile::System) {
         if (auto rest = stripSegmentPrefix(path, L"CurrentControlSet")) {
-            std::uint32_t current = 1;
-            if (auto select = RegKey::open(hive->root(), L"Select")) {
-                current = select->dword(L"Current").value_or(1);
-            }
-            path = std::format(L"ControlSet{:03}", current) + (rest->empty() ? L"" : L"\\" + *rest);
+            path = currentControlSet(hive->root()) + (rest->empty() ? L"" : L"\\" + *rest);
         }
     }
     return hive->keyName() + (path.empty() ? L"" : L"\\" + path);
@@ -745,8 +727,7 @@ Result<void> OfflineRegistry::apply(const RegistryWrite& write) {
         if (status == ERROR_SUCCESS) {
             return {};
         }
-        return fail(status == ERROR_ACCESS_DENIED ? ErrorCode::AccessDenied : ErrorCode::IoError, what, context,
-                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(status)));
+        return std::unexpected(registryError(status, what, context));
     };
     if (write.kind == RegistryWrite::Kind::CreateKey) {
         HKEY created = nullptr;

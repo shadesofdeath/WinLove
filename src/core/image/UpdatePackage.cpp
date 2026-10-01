@@ -1,5 +1,7 @@
 #include "core/image/UpdatePackage.h"
 
+#include "base/Text.h"
+
 #include <algorithm>
 #include <cwctype>
 #include <regex>
@@ -7,16 +9,10 @@
 namespace wl::core {
 
 namespace {
-std::wstring lowered(std::wstring text) {
-    for (auto& c : text) {
-        c = static_cast<wchar_t>(std::towlower(c));
-    }
-    return text;
-}
 } // namespace
 
 bool isUpdateFile(const std::filesystem::path& file) {
-    const std::wstring ext = lowered(file.extension().wstring());
+    const std::wstring ext = text::lower(file.extension().wstring());
     return ext == L".msu" || ext == L".cab";
 }
 
@@ -28,7 +24,7 @@ UpdateInfo analyzeUpdate(const std::filesystem::path& file) {
     if (ec) {
         info.size = 0; // missing / unreadable: file_size returns (uintmax_t)-1
     }
-    const std::wstring name = lowered(file.filename().wstring());
+    const std::wstring name = text::lower(file.filename().wstring());
 
     static const std::wregex kb(LR"(kb(\d{6,8}))");
     std::wsmatch m;

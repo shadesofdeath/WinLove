@@ -1,5 +1,6 @@
 #include "app/state/AnswerStore.h"
 
+#include "base/File.h"
 #include "base/Log.h"
 #include "base/Utf8.h"
 
@@ -8,9 +9,6 @@
 #include <windows.h>
 
 #include <dpapi.h>
-
-#include <fstream>
-#include <iterator>
 
 namespace wl::app {
 
@@ -72,12 +70,11 @@ std::optional<StoredAnswers> answersFromJson(std::string_view json) {
 }
 
 std::optional<StoredAnswers> loadAnswers(const std::filesystem::path& file) {
-    std::ifstream in(file, std::ios::binary);
-    if (!in) {
+    const auto stored = readFileBytes(file);
+    if (!stored) {
         return std::nullopt;
     }
-    const std::string stored((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    const auto plain = unprotect(stored);
+    const auto plain = unprotect(*stored);
     if (!plain) {
         log::warn("app", L"saved answers cannot be read (another user's file?): " + file.wstring());
         return std::nullopt;
@@ -101,19 +98,8 @@ void saveAnswers(const std::filesystem::path& file, const StoredAnswers& answers
     }
     std::filesystem::create_directories(file.parent_path(), ec);
     // Through a temporary file: a crash mid-write must not cost the answers saved before.
-    const std::filesystem::path fresh = file.wstring() + L".new";
-    {
-        std::ofstream out(fresh, std::ios::binary | std::ios::trunc);
-        out.write(stored.data(), static_cast<std::streamsize>(stored.size()));
-        out.flush();
-        if (!out) {
-            std::filesystem::remove(fresh, ec);
-            return;
-        }
-    }
-    std::filesystem::rename(fresh, file, ec);
-    if (ec) {
-        std::filesystem::remove(fresh, ec);
+    if (auto written = writeFileAtomic(file, stored); !written) {
+        log::warn("app", L"answers not saved: " + describe(written.error()));
     }
 }
 
