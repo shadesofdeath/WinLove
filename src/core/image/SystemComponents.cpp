@@ -3,7 +3,9 @@
 #include "base/Log.h"
 #include "base/Utf8.h"
 #include "core/image/ComponentStore.h"
+#include "core/image/DeepRemoval.h"
 #include "core/image/dism/Appx.h"
+#include "core/system/BackupFiles.h"
 #include "core/system/FileLocks.h"
 #include "core/system/Privileges.h"
 
@@ -85,22 +87,6 @@ bool isReparse(const std::filesystem::path& path) {
     return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
 }
 
-Error regError(LSTATUS status, const wchar_t* what, std::wstring detail) {
-    return Error{status == ERROR_ACCESS_DENIED || status == ERROR_PRIVILEGE_NOT_HELD ? ErrorCode::AccessDenied
-                                                                                   : ErrorCode::IoError,
-                 what, std::move(detail), static_cast<std::int32_t>(HRESULT_FROM_WIN32(status))};
-}
-
-// Opens an existing key for writing. TrustedInstaller owns the servicing keys: on access denied
-// the key is opened with backup / restore semantics (SeRestore), which ignores the ACL.
-LSTATUS openForWrite(HKEY parent, const wchar_t* name, REGSAM access, HKEY& out) {
-    LSTATUS status = RegOpenKeyExW(parent, name, 0, access, &out);
-    if (status == ERROR_ACCESS_DENIED) {
-        status = RegCreateKeyExW(parent, name, 0, nullptr, REG_OPTION_BACKUP_RESTORE, access, nullptr, &out, nullptr);
-    }
-    return status;
-}
-
 } // namespace
 
 // ---- recipe ------------------------------------------------------------------------------------
@@ -119,6 +105,9 @@ std::string componentRecipeToJson(const ComponentRecipe& recipe) {
     }
     if (!recipe.paths.empty()) {
         doc["paths"] = list(recipe.paths);
+    }
+    if (!recipe.driverClasses.empty()) {
+        doc["driverClasses"] = list(recipe.driverClasses);
     }
     if (!recipe.registry.empty()) {
         Json writes = Json::array();
@@ -145,6 +134,9 @@ Result<ComponentRecipe> componentRecipeFromJson(std::string_view json) {
         for (const auto& item : doc.value("paths", Json::array())) {
             recipe.paths.push_back(utf8::toWide(item.get<std::string>()));
         }
+        for (const auto& item : doc.value("driverClasses", Json::array())) {
+            recipe.driverClasses.push_back(utf8::toWide(item.get<std::string>()));
+        }
         for (const auto& item : doc.value("registry", Json::array())) {
             auto write = registryWriteFrom(utf8::toWide(item.value("target", std::string{})),
                                            utf8::toWide(item.value("value", std::string{})));
@@ -169,7 +161,7 @@ std::wstring componentTitle(std::wstring_view operationValue) {
 }
 
 Result<void> validateComponentRecipe(const ComponentRecipe& recipe) {
-    if (recipe.packages.empty() && recipe.paths.empty() && recipe.registry.empty()) {
+    if (recipe.packages.empty() && recipe.paths.empty() && recipe.registry.empty() && recipe.driverClasses.empty()) {
         return fail(ErrorCode::InvalidArgument, L"component recipe does nothing", recipe.title);
     }
     for (const auto& path : recipe.paths) {
@@ -189,6 +181,12 @@ Result<void> validateComponentRecipe(const ComponentRecipe& recipe) {
     for (const auto& write : recipe.registry) {
         if (auto mapped = mapOfflineKey(write.key); !mapped) {
             return std::unexpected(mapped.error());
+        }
+    }
+    // Deep removal never reaches beyond the legacy device classes, whatever a preset asks for.
+    for (const auto& guid : recipe.driverClasses) {
+        if (!isDeepRemovableClass(guid)) {
+            return fail(ErrorCode::InvalidArgument, L"not a device class deep removal may take", guid);
         }
     }
     return {};
@@ -279,9 +277,9 @@ std::vector<CbsPackage> readCbsPackages(HKEY packagesKey) {
 
 Result<void> unlockCbsPackage(HKEY packagesKey, const std::wstring& identity) {
     HKEY raw = nullptr;
-    if (const LSTATUS status = openForWrite(packagesKey, identity.c_str(), KEY_SET_VALUE | KEY_QUERY_VALUE, raw);
+    if (const LSTATUS status = openKeyForWrite(packagesKey, identity.c_str(), KEY_SET_VALUE | KEY_QUERY_VALUE, raw);
         status != ERROR_SUCCESS) {
-        return std::unexpected(regError(status, L"could not open the package's servicing key", identity));
+        return std::unexpected(registryError(status, L"could not open the package's servicing key", identity));
     }
     RegKey key(raw);
     if (key.dword(L"Visibility") != 1u) {
@@ -289,21 +287,21 @@ Result<void> unlockCbsPackage(HKEY packagesKey, const std::wstring& identity) {
         if (const LSTATUS status = RegSetValueExW(key.get(), L"Visibility", 0, REG_DWORD,
                                                   reinterpret_cast<const BYTE*>(&visible), sizeof(visible));
             status != ERROR_SUCCESS) {
-            return std::unexpected(regError(status, L"could not make the package visible", identity));
+            return std::unexpected(registryError(status, L"could not make the package visible", identity));
         }
     }
     HKEY ownersRaw = nullptr;
-    const LSTATUS opened = openForWrite(
+    const LSTATUS opened = openKeyForWrite(
         key.get(), L"Owners", DELETE | KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE | KEY_SET_VALUE, ownersRaw);
     if (opened == ERROR_FILE_NOT_FOUND) {
         return {};
     }
     if (opened != ERROR_SUCCESS) {
-        return std::unexpected(regError(opened, L"could not open the package's Owners key", identity));
+        return std::unexpected(registryError(opened, L"could not open the package's Owners key", identity));
     }
     const RegKey owners(ownersRaw);
     if (const LSTATUS status = RegDeleteTreeW(owners.get(), nullptr); status != ERROR_SUCCESS) {
-        return std::unexpected(regError(status, L"could not clear the package's Owners key", identity));
+        return std::unexpected(registryError(status, L"could not clear the package's Owners key", identity));
     }
     if (!deleteKeyByHandle(owners.get())) {
         // Emptied is enough: a package with no owner listed is nobody's child.
@@ -354,6 +352,12 @@ ComponentPresence probeComponent(const std::filesystem::path& mountDir, const Co
             presence.size += backupFolderSize(*path);
         } else {
             presence.size += (static_cast<std::uint64_t>(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
+        }
+    }
+    if (store && !recipe.driverClasses.empty()) {
+        if (const auto drivers = store->drivers(recipe.driverClasses); !drivers.empty()) {
+            presence.present = true;
+            presence.size += store->driverBytes(drivers);
         }
     }
     if (store && !recipe.packages.empty()) {
@@ -442,6 +446,31 @@ Result<void> removeComponent(DismSession& session, const ComponentRecipe& recipe
             return std::unexpected(edited.error());
         }
         packages = std::move(*edited);
+    }
+    if (!recipe.driverClasses.empty()) {
+        // Deep removal edits COMPONENTS / DRIVERS / SYSTEM and the store's files: DISM must let go.
+        session.suspend();
+        const auto deep = [&]() -> Result<void> {
+            auto drivers = findInboxDrivers(mountDir, recipe.driverClasses);
+            if (!drivers) {
+                return std::unexpected(drivers.error());
+            }
+            if (drivers->empty()) {
+                log::info("cbs", recipe.title + L": no inbox driver of these classes in the image");
+                return {};
+            }
+            auto removedDrivers = deepRemoveDrivers(mountDir, *drivers, task);
+            if (!removedDrivers) {
+                return std::unexpected(removedDrivers.error());
+            }
+            return {};
+        }();
+        if (auto reopened = session.reload(); !reopened) {
+            return reopened;
+        }
+        if (!deep) {
+            return deep;
+        }
     }
     task.report(0.05, recipe.title);
 

@@ -17,6 +17,7 @@
 // Everything is read through offreg.dll and directory listings: no hive is loaded, DISM may keep
 // its session open.
 #include "base/Result.h"
+#include "core/image/DeepRemoval.h"
 #include "core/tasks/Task.h"
 
 #include <cstdint>
@@ -39,6 +40,9 @@ public:
     [[nodiscard]] bool installed(std::wstring_view family) const;
     // Bytes only the union of these families' package trees owns.
     [[nodiscard]] std::uint64_t exclusiveBytes(const std::vector<std::wstring>& families) const;
+    // Inbox driver packages of these device classes (deep removal, D-060), and their WinSxS payload.
+    [[nodiscard]] std::vector<InboxDriver> drivers(const std::vector<std::wstring>& classGuids) const;
+    [[nodiscard]] std::uint64_t driverBytes(const std::vector<InboxDriver>& drivers) const;
 
     // ---- building blocks, public for tests ---------------------------------------------------
     // "amd64_microsoft-windows-foo_31bf3856ad364e35_10.0.26100.1_none_0123abcd" → "amd64_microsoft-windows-foo"
@@ -55,6 +59,7 @@ public:
     void addChild(std::wstring parent, std::wstring child);
     void addOwner(std::wstring component, std::wstring family);
     void addBytes(std::wstring component, std::uint64_t bytes);
+    void addDriver(InboxDriver driver);
 
 private:
     [[nodiscard]] std::set<std::wstring> tree(const std::vector<std::wstring>& families) const;
@@ -64,6 +69,7 @@ private:
     std::unordered_map<std::wstring, std::set<std::wstring>> m_owners; // component -> families
     std::unordered_map<std::wstring, std::vector<std::wstring>> m_owned; // family -> components
     std::unordered_map<std::wstring, std::uint64_t> m_bytes;
+    std::vector<InboxDriver> m_drivers;
 };
 
 } // namespace wl::core

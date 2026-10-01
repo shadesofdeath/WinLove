@@ -30,7 +30,25 @@ Dropdown::Dropdown(std::wstring label, std::vector<std::wstring> items, int sele
     setAccessible(AccessRole::Button, m_label);
 }
 
+Dropdown::~Dropdown() {
+    closePopup();
+}
+
+void Dropdown::popupClosed() noexcept {
+    m_open = false;
+    m_popup = nullptr;
+    invalidate();
+}
+
+void Dropdown::closePopup() {
+    if (m_popup) {
+        m_popup->close(); // pops it; its closed callback clears m_popup
+    }
+}
+
 void Dropdown::setItems(std::vector<std::wstring> items, int selected) {
+    // An open list would pick from the old items (a scan finished while it was open).
+    closePopup();
     m_items = std::move(items);
     m_selected = std::clamp(selected, 0, std::max(static_cast<int>(m_items.size()) - 1, 0));
     invalidate();
@@ -82,6 +100,9 @@ void Dropdown::open() {
     auto popup = std::make_unique<MenuPopup>(
         bounds(), m_items, m_selected,
         [this](int index) {
+            if (index < 0 || index >= static_cast<int>(m_items.size())) {
+                return;
+            }
             const bool changed = index != m_selected;
             m_selected = index;
             invalidate();
@@ -90,8 +111,8 @@ void Dropdown::open() {
             }
         },
         [this] { popupClosed(); });
-    Widget* raw = popup.get();
-    host()->pushModal(std::move(popup), raw, /*scrim=*/false);
+    m_popup = popup.get();
+    host()->pushModal(std::move(popup), m_popup, /*scrim=*/false);
 }
 
 void Dropdown::onClick() {
@@ -163,7 +184,11 @@ int MenuPopup::itemAt(PointF p) const {
     if (!m_panel.contains(p)) {
         return -1;
     }
-    const int row = static_cast<int>((p.y - m_panel.y - kMenuPadding) / kItem);
+    const float offset = p.y - m_panel.y - kMenuPadding;
+    if (offset < 0) {
+        return -1; // the top padding (truncation would make it row 0)
+    }
+    const int row = static_cast<int>(offset / kItem);
     const int index = m_first + row;
     return row >= 0 && row < m_visible && index < static_cast<int>(m_items.size()) ? index : -1;
 }

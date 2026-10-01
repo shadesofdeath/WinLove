@@ -194,6 +194,7 @@ std::vector<ComponentController::Group> ComponentController::groups() const {
         item.name = entry.name.get(m_language);
         item.risk = entry.risk;
         item.notes = entry.notes.get(m_language);
+        item.deep = entry.deep;
         item.packageName = utf8::toWide(entry.id);
         if (entry.kind == ComponentCatalogEntry::Kind::Cleanup) {
             item.kind = Item::Kind::Cleanup;
@@ -215,6 +216,7 @@ std::vector<ComponentController::Group> ComponentController::groups() const {
                             : !entry.recipe.packages.empty() ? entry.recipe.packages.front()
                                                              : utf8::toWide(entry.id);
             item.contents = entry.recipe.packages;
+            item.contents.insert(item.contents.end(), entry.recipe.driverClasses.begin(), entry.recipe.driverClasses.end());
             item.contents.insert(item.contents.end(), entry.recipe.paths.begin(), entry.recipe.paths.end());
             if (entry.always) { // mostly registry: what it changes is what there is to show
                 for (const auto& write : entry.recipe.registry) {

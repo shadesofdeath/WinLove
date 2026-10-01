@@ -9,6 +9,8 @@
 //   paths     files / folders relative to the image root, removed whole (TrustedInstaller ACLs
 //             are taken over entry by entry; never through a reparse point).
 //   registry  offline writes (delete the Run value, the uninstall entry, the service key…).
+//   driverClasses  device class GUIDs whose inbox drivers are taken out of the image and its
+//             component store (deep removal, D-060: DeepRemoval.h; legacy classes only).
 // In the queue a recipe is the value of one RemoveComponent operation (target = the catalog id),
 // so a preset carries what it does and the Applier needs no catalog.
 #include "core/image/RegistryEdit.h"
@@ -27,6 +29,7 @@ struct ComponentRecipe {
     std::vector<std::wstring> packages;
     std::vector<std::wstring> paths;
     std::vector<RegistryWrite> registry;
+    std::vector<std::wstring> driverClasses;
 
     [[nodiscard]] bool operator==(const ComponentRecipe&) const = default;
 };

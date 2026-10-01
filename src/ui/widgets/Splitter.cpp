@@ -34,6 +34,13 @@ void Splitter::onPointerUp(PointF /*p*/) {
     invalidate();
 }
 
+void Splitter::onPressedChanged(bool pressed) {
+    if (!pressed) {
+        m_dragging = false; // also when the press is dropped without an Up (a modal opened)
+    }
+    invalidate();
+}
+
 void Splitter::onDoubleClick() {
     if (onReset) {
         onReset();

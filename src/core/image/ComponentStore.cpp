@@ -3,7 +3,10 @@
 #include "base/Log.h"
 #include "base/Utf8.h"
 #include "core/image/OffReg.h"
+#include "core/image/DeepRemoval.h"
 #include "core/image/SystemComponents.h"
+#include "core/system/BackupFiles.h"
+#include "core/system/Privileges.h"
 
 #include <pugixml.hpp>
 
@@ -30,39 +33,6 @@ std::wstring lower(std::wstring_view text) {
 
 bool isHex(std::wstring_view s) {
     return !s.empty() && std::ranges::all_of(s, [](wchar_t c) { return std::iswxdigit(c) != 0; });
-}
-
-// Bytes under one folder (recursive). Junctions / symlinks are not followed; a mounted WIM's own
-// reparse points are its files and are counted (SystemComponents.cpp: probeComponent).
-std::uint64_t folderBytes(const std::wstring& folder) {
-    std::uint64_t total = 0;
-    std::vector<std::wstring> stack{folder};
-    while (!stack.empty()) {
-        const std::wstring dir = std::move(stack.back());
-        stack.pop_back();
-        WIN32_FIND_DATAW data{};
-        const HANDLE find = FindFirstFileExW((dir + L"\\*").c_str(), FindExInfoBasic, &data, FindExSearchNameMatch, nullptr,
-                                             FIND_FIRST_EX_LARGE_FETCH);
-        if (find == INVALID_HANDLE_VALUE) {
-            continue;
-        }
-        do {
-            const std::wstring_view name = data.cFileName;
-            if (name == L"." || name == L"..") {
-                continue;
-            }
-            if ((data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) && IsReparseTagNameSurrogate(data.dwReserved0)) {
-                continue;
-            }
-            if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-                stack.push_back(dir + L"\\" + data.cFileName);
-            } else {
-                total += (static_cast<std::uint64_t>(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
-            }
-        } while (FindNextFileW(find, &data));
-        FindClose(find);
-    }
-    return total;
 }
 
 std::string readFile(const std::filesystem::path& file) {
@@ -158,6 +128,32 @@ void ComponentStoreIndex::addBytes(std::wstring component, std::uint64_t bytes) 
     m_bytes[lower(component)] += bytes;
 }
 
+std::vector<InboxDriver> ComponentStoreIndex::drivers(const std::vector<std::wstring>& classGuids) const {
+    std::vector<InboxDriver> out;
+    for (const auto& driver : m_drivers) {
+        if (std::ranges::any_of(classGuids, [&](const std::wstring& g) { return normalizeClassGuid(g) == driver.classGuid; })) {
+            out.push_back(driver);
+        }
+    }
+    return out;
+}
+
+std::uint64_t ComponentStoreIndex::driverBytes(const std::vector<InboxDriver>& drivers) const {
+    std::uint64_t total = 0;
+    for (const auto& driver : drivers) {
+        for (const wchar_t* arch : {L"amd64", L"wow64", L"x86", L"arm64"}) {
+            if (const auto b = m_bytes.find(std::wstring(arch) + L"_dual_" + lower(driver.inf)); b != m_bytes.end()) {
+                total += b->second;
+            }
+        }
+    }
+    return total;
+}
+
+void ComponentStoreIndex::addDriver(InboxDriver driver) {
+    m_drivers.push_back(std::move(driver));
+}
+
 bool ComponentStoreIndex::installed(std::wstring_view family) const {
     return m_installed.contains(lower(family));
 }
@@ -229,23 +225,20 @@ Result<ComponentStoreIndex> ComponentStoreIndex::build(const std::filesystem::pa
     }
 
     // 2. Package tree (.mum of installed identities).
+    (void)enablePrivilege(SE_BACKUP_NAME); // WinSxS and servicing are closed to administrators
     const auto servicing = mountDir / L"Windows" / L"servicing" / L"Packages";
-    WIN32_FIND_DATAW mum{};
-    if (const HANDLE find = FindFirstFileExW((servicing / L"*.mum").c_str(), FindExInfoBasic, &mum, FindExSearchNameMatch, nullptr,
-                                             FIND_FIRST_EX_LARGE_FETCH);
-        find != INVALID_HANDLE_VALUE) {
-        do {
-            const std::filesystem::path file = servicing / mum.cFileName;
-            const std::wstring identity = file.stem().wstring();
-            const std::wstring family(cbsPackageFamily(identity));
-            if (!index.installed(family)) {
-                continue;
-            }
-            for (auto& child : manifestChildren(readFile(file))) {
-                index.addChild(family, std::move(child));
-            }
-        } while (FindNextFileW(find, &mum));
-        FindClose(find);
+    for (const auto& name : backupListFiles(servicing)) {
+        const std::filesystem::path file = servicing / name;
+        if (_wcsicmp(file.extension().c_str(), L".mum") != 0) {
+            continue;
+        }
+        const std::wstring family(cbsPackageFamily(file.stem().wstring()));
+        if (!index.installed(family)) {
+            continue;
+        }
+        for (auto& child : manifestChildren(readFile(file))) {
+            index.addChild(family, std::move(child));
+        }
     }
     task.report(0.25, L"manifests");
 
@@ -294,27 +287,25 @@ Result<ComponentStoreIndex> ComponentStoreIndex::build(const std::filesystem::pa
         return std::unexpected(go.error());
     }
 
-    // 4. Payload bytes (WinSxS folders of owned components only).
-    // FindFirstFile, not directory_iterator: that one ends the whole listing at the first entry it
-    // cannot stat, and WinSxS of a mounted image has such entries (2026-10-02: only the folders
-    // before "amd64_microsoft-onecore-m…" were counted).
-    const std::wstring sxs = (mountDir / L"Windows" / L"WinSxS").wstring();
-    WIN32_FIND_DATAW data{};
-    const HANDLE find =
-        FindFirstFileExW((sxs + L"\\*").c_str(), FindExInfoBasic, &data, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH);
-    if (find != INVALID_HANDLE_VALUE) {
-        do {
-            if (!(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || data.cFileName[0] == L'.') {
-                continue;
-            }
-            const std::wstring name = componentName(data.cFileName);
-            if (index.m_owners.contains(name)) {
-                index.addBytes(name, folderBytes(sxs + L"\\" + data.cFileName));
-            }
-        } while (FindNextFileW(find, &data));
-        FindClose(find);
+    // 4. Payload bytes (WinSxS folders of owned components only). Listed through BackupFiles:
+    // directory_iterator ends the whole listing at the first entry it cannot stat, and WinSxS of a
+    // mounted image has such entries (2026-10-02: only folders before "amd64_microsoft-onecore-m…").
+    const auto sxs = mountDir / L"Windows" / L"WinSxS";
+    for (const auto& folder : backupListFolders(sxs)) {
+        const std::wstring name = componentName(folder);
+        if (index.m_owners.contains(name)) {
+            index.addBytes(name, backupFolderSize(sxs / folder));
+        }
     }
-    task.report(1.0, L"WinSxS");
+    task.report(0.95, L"WinSxS");
+
+    // 5. Inbox drivers of the classes deep removal may take (D-060).
+    if (auto drivers = findInboxDrivers(mountDir, {}); drivers) {
+        index.m_drivers = std::move(*drivers);
+    } else {
+        log::warn("cbs", L"inbox drivers not read: " + describe(drivers.error()));
+    }
+    task.report(1.0, L"drivers");
     log::info("cbs", std::format(L"component store index: {} installed families, {} owned components", index.m_installed.size(),
                                  index.m_owners.size()));
     return index;

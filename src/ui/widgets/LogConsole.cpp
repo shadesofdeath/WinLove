@@ -196,7 +196,7 @@ void LogConsole::onPointerDown(PointF p) {
 }
 
 void LogConsole::onPointerMove(PointF p) {
-    if (m_dragging && pressed() && m_anchor >= 0) {
+    if (m_dragging && captured() && m_anchor >= 0) {
         select(m_anchor, rowAt(p));
     } else {
         m_dragging = false;

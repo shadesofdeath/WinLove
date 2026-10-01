@@ -21,6 +21,7 @@ public:
     void onPointerMove(PointF p) override;
     void onPointerUp(PointF p) override;
     void onDoubleClick() override;
+    void onPressedChanged(bool pressed) override;
 
 private:
     float m_dragStartX = 0;

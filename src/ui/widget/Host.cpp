@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace wl::ui {
 
@@ -28,8 +29,11 @@ bool isAncestor(const Widget* ancestor, const Widget* widget) {
 } // namespace
 
 Host::~Host() {
-    // Children unregister in their destructors; make that a no-op while tearing down.
+    // Widgets call forget() from their destructors, which walks m_modals: move the modals out first
+    // (as popModal does) so it never sees a half-destroyed vector.
+    auto modals = std::move(m_modals);
     m_modals.clear();
+    modals.clear();
     m_root.reset();
 }
 
@@ -107,7 +111,30 @@ void Host::startAnimating(Widget* widget) {
     requestFrame();
 }
 
+void Host::release(Widget* widget) {
+    // Through the setters, so the widget (still alive) sees its hover / press / focus end — a
+    // search box hidden while focused would otherwise keep drawing its caret.
+    if (m_hovered && isAncestor(widget, m_hovered)) {
+        setHovered(nullptr);
+    }
+    if (m_pressed && isAncestor(widget, m_pressed)) {
+        setPressed(nullptr);
+    }
+    if (m_focused && isAncestor(widget, m_focused)) {
+        Widget* previous = std::exchange(m_focused, nullptr);
+        previous->m_focused = false;
+        previous->onFocusChanged(false);
+    }
+    // Its running tweens keep ticking: shown again, the widget is where it should be.
+    clearSlots(widget);
+}
+
 void Host::forget(Widget* widget) {
+    clearSlots(widget);
+    std::erase_if(m_animating, [widget](Widget* w) { return isAncestor(widget, w); });
+}
+
+void Host::clearSlots(Widget* widget) {
     auto clearIfInside = [widget](Widget*& slot) {
         if (slot && isAncestor(widget, slot)) {
             slot = nullptr;
@@ -123,7 +150,6 @@ void Host::forget(Widget* widget) {
     if (m_tooltipOwner && isAncestor(widget, m_tooltipOwner)) {
         hideTooltip();
     }
-    std::erase_if(m_animating, [widget](Widget* w) { return isAncestor(widget, w); });
 }
 
 void Host::paint(Canvas& canvas) {
@@ -151,8 +177,22 @@ void Host::paint(Canvas& canvas) {
     if (m_focused && m_focusVisible && m_focused->visible() && m_focused->focusRect().width > 0) {
         const RectF r = m_focused->focusRect();
         const float offset = tokens::radius::focusOffset;
+        // Clipped like the control itself: scrolled out of a table / form, its ring must not float
+        // over the header around it.
+        std::vector<const Widget*> clips;
+        for (const Widget* w = m_focused->parent(); w; w = w->parent()) {
+            if (w->clipsChildren()) {
+                clips.push_back(w);
+            }
+        }
+        for (auto it = clips.rbegin(); it != clips.rend(); ++it) {
+            canvas.pushClip((*it)->bounds());
+        }
         canvas.strokeRoundRect({r.x - offset - 1, r.y - offset - 1, r.width + 2 * (offset + 1), r.height + 2 * (offset + 1)},
                                m_focused->focusRadius() + offset + 1, tokens::Color::AccentFocus);
+        for (std::size_t i = 0; i < clips.size(); ++i) {
+            canvas.popClip();
+        }
     }
     if (m_tooltipVisible) {
         paintTooltip(canvas);
@@ -309,6 +349,11 @@ void Host::onPointer(const PointerEvent& event) {
 
 bool Host::onKeyDown(const KeyEvent& key) {
     hideTooltip();
+    // A held Enter / Space activates once: repeats would click a button again, or close a dialog
+    // and then activate whatever gets focus back. Held arrows still repeat.
+    if (key.repeat && (key.virtualKey == VK_RETURN || key.virtualKey == VK_SPACE)) {
+        return true;
+    }
     if (key.virtualKey == VK_TAB && !key.ctrl && !key.alt) {
         focusNext(key.shift);
         return true;

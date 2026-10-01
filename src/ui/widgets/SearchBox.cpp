@@ -160,7 +160,7 @@ void SearchBox::onPointerDown(PointF p) {
 }
 
 void SearchBox::onPointerMove(PointF p) {
-    if (m_dragging && pressed()) {
+    if (m_dragging && captured()) {
         moveCaret(indexAt(p.x), /*extend=*/true);
     } else {
         m_dragging = false;
@@ -260,8 +260,9 @@ bool SearchBox::onKeyDown(const KeyEvent& key) {
         // A copy: the handler may close the dialog this box lives in (and destroy the box).
         if (const auto submit = onSubmit) {
             submit();
+            return true;
         }
-        return true;
+        return false; // nothing to submit: the dialog's primary button takes Enter
     default: break;
     }
     if (key.ctrl && !key.alt) {

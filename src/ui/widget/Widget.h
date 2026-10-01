@@ -71,6 +71,8 @@ public:
 
     [[nodiscard]] bool hovered() const noexcept { return m_hovered || m_forcedHover; }
     [[nodiscard]] bool pressed() const noexcept { return (m_pressed && m_hovered) || m_forcedPress; }
+    // The pointer went down on this widget and is still down, wherever it is now (drags).
+    [[nodiscard]] bool captured() const noexcept { return m_pressed; }
     [[nodiscard]] bool focused() const noexcept { return m_focused; }
     // Gallery / --render state checks: show hover/press without a pointer.
     void forceVisualState(bool hover, bool press) noexcept;
@@ -140,6 +142,7 @@ private:
     bool m_focusable = false;
     bool m_tabStop = true;
     bool m_hitTestVisible = true;
+    bool m_animationPending = false; // animate() before there was a host to tick it
     bool m_hovered = false;
     bool m_pressed = false;
     bool m_focused = false;

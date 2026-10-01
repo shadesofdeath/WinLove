@@ -343,7 +343,9 @@
     "failedTitle": "Bileşenler okunamadı",
     "presetLoaded": "{n} değişiklik kuyruğa eklendi",
     "presetFailed": "Preset okunamadı",
-    "presetNeedsMount": "Preset yüklemek için önce bir sürüm bağla"
+    "presetNeedsMount": "Preset yüklemek için önce bir sürüm bağla",
+    "deepTitle": "Derin kaldırma seçildi ({n} öğe):",
+    "deepWarning": "Sürücüler imajdan ve bileşen deposundan tamamen silinir; geri alınamaz ve bu donanımlar kurulan sistemde tanınmaz. Depo tutarlı kalır, ancak Microsoft bunu desteklemez: ileride bir güncelleme ya da DISM /RestoreHealth bazılarını geri getirebilir."
   },
   "features": {
     "title": "Windows Özellikleri",

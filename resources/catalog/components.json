@@ -1,7 +1,7 @@
 {
   "format": "winlove.catalog.components",
   "version": 1,
-  "comment": "System components outside the provisioned-app list (docs/pages/07-components.md, D-031). packages: CBS package families (unlocked in the offline registry, then DismRemovePackage; best effort when the component also has paths). paths: relative to the image root, removed whole. registry: offline writes; {key, delete:true} removes a key, value \"-\" removes a value, \"[+]\" creates the key. always: offered whether or not a path is present (a preventive change: on some Windows versions there is nothing on disk to find). Paths and names checked against Windows 11 25H2 (26200.8037) and Windows 10 22H2 (19045.6456).",
+  "comment": "System components outside the provisioned-app list (docs/pages/07-components.md, D-031, D-059, D-060). driverClasses: device class GUIDs whose inbox drivers are deep-removed (image and component store; legacy classes only, the engine refuses others); deep: shown with the deep-removal warning. packages: CBS package families (unlocked in the offline registry, then DismRemovePackage; best effort when the component also has paths). paths: relative to the image root, removed whole. registry: offline writes; {key, delete:true} removes a key, value \"-\" removes a value, \"[+]\" creates the key. always: offered whether or not a path is present (a preventive change: on some Windows versions there is nothing on disk to find). Paths and names checked against Windows 11 25H2 (26200.8037) and Windows 10 22H2 (19045.6456).",
   "groups": [
     { "id": "components", "tr": "Sistem Bileşenleri", "en": "System Components" },
     { "id": "privacy", "tr": "Gizlilik", "en": "Privacy" },
@@ -10,6 +10,7 @@
     { "id": "fonts", "tr": "Yazı Tipleri", "en": "Fonts" },
     { "id": "enterprise", "tr": "Kurumsal ve Uzaktan Yönetim", "en": "Enterprise and Remote Management" },
     { "id": "extras", "tr": "Diğer Bileşenler", "en": "Other Components" },
+    { "id": "legacy-drivers", "tr": "Eski Donanım Sürücüleri (derin kaldırma)", "en": "Legacy Hardware Drivers (deep removal)" },
     { "id": "cleanup", "tr": "Temizlik", "en": "Cleanup" }
   ],
   "components": [
@@ -216,6 +217,36 @@
       "notes_tr": "Windows Hello parmak izi / yüz kaydı ekranı. Biyometrik giriş kurulamaz; PIN ve parola etkilenmez. Parmak izi okuyucusu olan bilgisayarlarda seçme.",
       "notes_en": "The Windows Hello fingerprint / face enrollment screen. Biometric sign-in cannot be set up; PIN and password are not affected. Do not pick this on PCs with a fingerprint reader.",
       "packages": [ "Microsoft-Windows-BioEnrollment-UX-Package" ] },
+
+    { "id": "deep-modem", "group": "legacy-drivers", "tr": "Modem sürücüleri", "en": "Modem drivers", "risk": "high", "deep": true,
+      "notes_tr": "Çevirmeli ve GSM modemlerin Windows'la gelen ~150 sürücüsü. Telefon hattı modemi kullanılmıyorsa gereksiz; mobil geniş bant (LTE kartları) bunlardan bağımsızdır. Derin kaldırma: imajdan ve bileşen deposundan silinir, geri alınamaz; bu donanım kurulan sistemde tanınmaz.",
+      "notes_en": "The ~150 inbox drivers of dial-up and GSM modems. Not needed without a phone-line modem; mobile broadband (LTE cards) does not use them. Deep removal: taken out of the image and its component store, cannot be undone; this hardware is not recognised on the installed system.",
+      "driverClasses": [ "{4D36E96D-E325-11CE-BFC1-08002BE10318}" ] },
+
+    { "id": "deep-tape", "group": "legacy-drivers", "tr": "Teyp sürücüleri ve ortam değiştiriciler", "en": "Tape drives and media changers", "risk": "high", "deep": true,
+      "notes_tr": "Yedekleme teyp sürücüleri ve teyp / disk kütüphanesi değiştiricileri. Derin kaldırma: imajdan ve bileşen deposundan silinir, geri alınamaz; bu donanım kurulan sistemde tanınmaz.",
+      "notes_en": "Backup tape drives and tape / disc library changers. Deep removal: taken out of the image and its component store, cannot be undone; this hardware is not recognised on the installed system.",
+      "driverClasses": [ "{6D807884-7D21-11CF-801C-08002BE10318}", "{CE5939AE-EBDE-11D0-B181-0000F8753EC4}" ] },
+
+    { "id": "deep-floppy", "group": "legacy-drivers", "tr": "Disket sürücüsü ve denetleyicisi", "en": "Floppy drive and controller", "risk": "high", "deep": true,
+      "notes_tr": "Dahili disket sürücüsü ve denetleyicisi. USB disket sürücüleri USB depolama sürücüsünü kullanır, etkilenmez. Derin kaldırma: imajdan ve bileşen deposundan silinir, geri alınamaz; bu donanım kurulan sistemde tanınmaz.",
+      "notes_en": "The internal floppy drive and its controller. USB floppy drives use the USB storage driver and are not affected. Deep removal: taken out of the image and its component store, cannot be undone; this hardware is not recognised on the installed system.",
+      "driverClasses": [ "{4D36E980-E325-11CE-BFC1-08002BE10318}", "{4D36E969-E325-11CE-BFC1-08002BE10318}" ] },
+
+    { "id": "deep-firewire", "group": "legacy-drivers", "tr": "FireWire (IEEE 1394)", "en": "FireWire (IEEE 1394)", "risk": "high", "deep": true,
+      "notes_tr": "FireWire denetleyicileri, FireWire video kameralar (DV) ve FireWire diskler. Eski profesyonel ses kartları ve kameralar FireWire kullanır: bunlardan biri varsa seçme. Derin kaldırma: imajdan ve bileşen deposundan silinir, geri alınamaz; bu donanım kurulan sistemde tanınmaz.",
+      "notes_en": "FireWire controllers, FireWire camcorders (DV) and FireWire disks. Older pro audio interfaces and cameras use FireWire: do not pick this if you have one. Deep removal: taken out of the image and its component store, cannot be undone; this hardware is not recognised on the installed system.",
+      "driverClasses": [ "{6BDD1FC1-810F-11D0-BEC7-08002BE2092F}", "{7EBEFBC0-3200-11D2-B4C2-00A0C9697D07}", "{C06FF265-AE09-48F0-812C-16753D7CBA83}", "{D48179BE-EC20-11D1-B6B8-00C04FA372A7}" ] },
+
+    { "id": "deep-pcmcia", "group": "legacy-drivers", "tr": "PCMCIA / CardBus kart yuvası", "en": "PCMCIA / CardBus slot", "risk": "high", "deep": true,
+      "notes_tr": "Eski dizüstülerin PCMCIA / CardBus kart yuvası. ExpressCard ve günümüz dizüstüleri etkilenmez. Derin kaldırma: imajdan ve bileşen deposundan silinir, geri alınamaz; bu donanım kurulan sistemde tanınmaz.",
+      "notes_en": "The PCMCIA / CardBus slot of older laptops. ExpressCard and current laptops are not affected. Deep removal: taken out of the image and its component store, cannot be undone; this hardware is not recognised on the installed system.",
+      "driverClasses": [ "{4D36E977-E325-11CE-BFC1-08002BE10318}" ] },
+
+    { "id": "deep-pos", "group": "legacy-drivers", "tr": "Satış noktası sürücüleri (barkod, OPOS)", "en": "Point-of-service drivers (barcode, OPOS)", "risk": "high", "deep": true,
+      "notes_tr": "HID barkod okuyucuları, eski OPOS ve uzak satış noktası cihazları. Mağaza / kasa sistemleri için gerekli olabilir. Derin kaldırma: imajdan ve bileşen deposundan silinir, geri alınamaz; bu donanım kurulan sistemde tanınmaz.",
+      "notes_en": "HID barcode scanners, legacy OPOS and remote point-of-service devices. Shops' till systems may need them. Deep removal: taken out of the image and its component store, cannot be undone; this hardware is not recognised on the installed system.",
+      "driverClasses": [ "{C243FFBD-3AFC-45E9-B3D3-2BA18BC7EBC5}", "{5AEA001D-9372-4ED7-97F3-B79BF15A53C5}", "{13E42DFA-85D9-424D-8646-28A70F864F9C}" ] },
 
     { "id": "component-store", "group": "cleanup", "kind": "cleanup", "resetBase": true,
       "tr": "Bileşen deposu temizliği (ResetBase)", "en": "Component store cleanup (ResetBase)", "risk": "medium",

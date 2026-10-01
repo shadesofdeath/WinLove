@@ -43,9 +43,22 @@ private:
     HKEY m_key = nullptr;
 };
 
+// A registry status as an Error (access denied / missing / other).
+[[nodiscard]] Error registryError(LSTATUS status, std::wstring what, std::wstring detail);
+// Names of the subkeys of an open key (not owned: nothing is closed).
+[[nodiscard]] std::vector<std::wstring> subkeyNames(HKEY key);
+
 // Deletes the (empty) key behind an open handle that has DELETE access. RegDeleteKey would open
 // the key again by name and run into the ACL a backup / restore open went around.
 [[nodiscard]] bool deleteKeyByHandle(HKEY key) noexcept;
+
+// The servicing / driver keys of an image belong to TrustedInstaller. These open with the ACL
+// first and, on access denied, with backup / restore semantics (SeRestore, enabled by
+// OfflineHive::load), which ignores it.
+// Opens `name` under `parent`; `create` makes it when it is missing.
+[[nodiscard]] LSTATUS openKeyForWrite(HKEY parent, const wchar_t* name, REGSAM access, HKEY& out, bool create = false);
+// Deletes `name` with everything under it. A missing key is ERROR_SUCCESS.
+[[nodiscard]] LSTATUS deleteKeyTree(HKEY parent, const wchar_t* name);
 
 class OfflineHive {
 public:
