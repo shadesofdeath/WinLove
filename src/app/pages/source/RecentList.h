@@ -20,6 +20,7 @@ public:
     // The x at the end of the hovered / selected row, or Delete on the selected row.
     std::function<void(const std::filesystem::path&)> onRemove;
     std::function<void(const std::filesystem::path&)> onShowInFolder; // context menu
+    std::function<void(const std::filesystem::path&)> onVerifyHash;   // context menu, files only (D-058)
 
     void setEntries(std::vector<RecentSource> entries);
     [[nodiscard]] bool empty() const noexcept { return m_entries.empty(); }

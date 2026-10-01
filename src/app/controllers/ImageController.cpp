@@ -464,6 +464,240 @@ void ImageController::convertEsd(const std::filesystem::path& destination) {
     });
 }
 
+// ---- D-058 tools ----------------------------------------------------------------------------
+
+bool ImageController::isSwmSource() const {
+    return m_state.source() && m_state.source()->install.header.totalParts > 1;
+}
+
+std::optional<Str> ImageController::toolsRefusal() const {
+    if (!m_state.source()) {
+        return Str::ImagesEmptyTitle;
+    }
+    if (busy()) {
+        return Str::ImagesBusy;
+    }
+    if (m_state.mounted()) {
+        return Str::ImagesUnmountFirst;
+    }
+    return std::nullopt;
+}
+
+void ImageController::recompress(core::WimCompression target) {
+    if (const auto refusal = toolsRefusal()) {
+        m_events.refused(*refusal);
+        return;
+    }
+    if (isSwmSource()) {
+        m_events.refused(Str::ImagesSwmJoinFirst);
+        return;
+    }
+    withWritableSource(m_state.selectedIndex().value_or(1), [this, target] {
+        const auto wim = installWimPath();
+        const auto source = *m_state.source();
+        auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
+        run(EngineOperation{EngineOperation::Kind::Exporting, wim->filename().wstring(), *wim, 0},
+            [wim = *wim, target, source, reopened](const core::TaskContext& task) -> Result<void> {
+                auto result = core::recompressWim(wim, target, task);
+                if (!result) {
+                    return std::unexpected(result.error());
+                }
+                // A file source is the file (maybe renamed .wim <-> .esd); a setup folder stays the folder.
+                const std::filesystem::path reopen = source.format == core::ImageFormat::Folder ? source.path : *result;
+                auto info = core::openSource(reopen);
+                if (!info) {
+                    return std::unexpected(info.error());
+                }
+                *reopened = std::move(*info);
+                return {};
+            },
+            [this, reopened] {
+                const std::wstring name = std::filesystem::path((*reopened)->installImage).filename().wstring();
+                m_state.setSource(std::move(**reopened));
+                m_events.succeeded(Str::ImagesRecompressedToast, name);
+            },
+            Failure::Export);
+    });
+}
+
+void ImageController::splitSwm(const std::filesystem::path& firstPart, std::uint64_t partMiB) {
+    if (const auto refusal = toolsRefusal()) {
+        m_events.refused(*refusal);
+        return;
+    }
+    if (isEsdSource() || isSwmSource()) {
+        m_events.refused(isEsdSource() ? Str::ImagesSplitNeedsWim : Str::ImagesSwmJoinFirst);
+        return;
+    }
+    withWritableSource(m_state.selectedIndex().value_or(1), [this, firstPart, partMiB] {
+        const auto wim = installWimPath();
+        auto parts = std::make_shared<int>(0);
+        run(EngineOperation{EngineOperation::Kind::Exporting, wim->filename().wstring(), firstPart, 0},
+            [wim = *wim, firstPart, partMiB, parts](const core::TaskContext& task) -> Result<void> {
+                std::error_code ec;
+                std::filesystem::create_directories(firstPart.parent_path(), ec);
+                auto split = core::splitWim(wim, firstPart, partMiB << 20, task);
+                if (!split) {
+                    return std::unexpected(split.error());
+                }
+                *parts = *split;
+                return {};
+            },
+            [this, parts, firstPart] {
+                m_events.succeeded(Str::ImagesSplitToast,
+                                   std::format(L"{} · {}", firstPart.filename().wstring(), *parts));
+            },
+            Failure::Export);
+    });
+}
+
+void ImageController::mergeSwm(const std::filesystem::path& destination) {
+    if (const auto refusal = toolsRefusal()) {
+        m_events.refused(*refusal);
+        return;
+    }
+    if (!isSwmSource() || m_state.source()->format == core::ImageFormat::Iso) {
+        m_events.refused(Str::ImagesSwmOnly);
+        return;
+    }
+    const auto first = installWimPath();
+    auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
+    run(EngineOperation{EngineOperation::Kind::Exporting, first->filename().wstring(), destination, 0},
+        [first = *first, destination, reopened](const core::TaskContext& task) -> Result<void> {
+            if (auto r = core::mergeSplitWim(first, destination, task); !r) {
+                return r;
+            }
+            auto info = core::openSource(destination);
+            if (!info) {
+                return std::unexpected(info.error());
+            }
+            *reopened = std::move(*info);
+            return {};
+        },
+        [this, reopened, destination] {
+            m_state.setSource(std::move(**reopened));
+            m_events.succeeded(Str::ImagesExportedToast, destination.filename().wstring());
+        },
+        Failure::Export);
+}
+
+void ImageController::duplicateEdition(int index, std::wstring name) {
+    if (const auto refusal = editRefusal()) {
+        m_events.refused(*refusal);
+        return;
+    }
+    withWritableSource(index, [this, index, name = std::move(name)] {
+        const auto wim = installWimPath();
+        const std::filesystem::path sourcePath = m_state.source()->path;
+        auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
+        auto added = std::make_shared<int>(0);
+        run(EngineOperation{EngineOperation::Kind::Exporting, editionName(index), *wim, index},
+            [wim = *wim, index, name, sourcePath, reopened, added](const core::TaskContext& task) -> Result<void> {
+                auto copy = core::duplicateEdition(wim, index, name, task);
+                if (!copy) {
+                    return std::unexpected(copy.error());
+                }
+                *added = *copy;
+                auto info = core::openSource(sourcePath);
+                if (!info) {
+                    return std::unexpected(info.error());
+                }
+                *reopened = std::move(*info);
+                return {};
+            },
+            [this, reopened, added, name] {
+                m_state.setSource(std::move(**reopened));
+                m_state.selectMany({*added}, *added);
+                m_events.succeeded(Str::ImagesDuplicatedToast, name);
+            },
+            Failure::Export);
+    });
+}
+
+void ImageController::appendFrom(const std::filesystem::path& other, std::vector<int> indexes) {
+    if (const auto refusal = editRefusal()) {
+        m_events.refused(*refusal);
+        return;
+    }
+    if (indexes.empty()) {
+        return;
+    }
+    withWritableSource(m_state.selectedIndex().value_or(1), [this, other, indexes = std::move(indexes)] {
+        const auto wim = installWimPath();
+        const std::filesystem::path sourcePath = m_state.source()->path;
+        const core::WimCompression compression = m_state.source()->install.header.compression;
+        const std::filesystem::path scratch = m_state.settings().workDirectoryFor(sourcePath) / L"append";
+        auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
+        const std::size_t count = indexes.size();
+        run(EngineOperation{EngineOperation::Kind::Exporting, other.filename().wstring(), *wim, 0},
+            [wim = *wim, other, indexes, compression, scratch, sourcePath, reopened](const core::TaskContext& task) -> Result<void> {
+                auto from = core::openSource(other);
+                if (!from) {
+                    return std::unexpected(from.error());
+                }
+                bool extracted = false;
+                const core::TaskContext extract{task.cancel, [&](double f, std::wstring_view s) { task.report(f * 0.3, s); }};
+                auto file = core::installImageFile(*from, scratch, extracted, extract);
+                if (!file) {
+                    return std::unexpected(file.error());
+                }
+                const core::TaskContext add{task.cancel, [&](double f, std::wstring_view s) {
+                                                task.report((extracted ? 0.3 : 0.0) + f * (extracted ? 0.7 : 1.0), s);
+                                            }};
+                auto added = core::exportImages(*file, indexes, wim, compression, add);
+                std::error_code ec;
+                if (extracted) {
+                    std::filesystem::remove_all(scratch, ec);
+                }
+                if (!added) {
+                    return added;
+                }
+                auto info = core::openSource(sourcePath);
+                if (!info) {
+                    return std::unexpected(info.error());
+                }
+                *reopened = std::move(*info);
+                return {};
+            },
+            [this, reopened, count] {
+                m_state.setSource(std::move(**reopened));
+                m_events.succeeded(Str::ImagesAppendedToast, std::to_wstring(count));
+            },
+            Failure::Export);
+    });
+}
+
+void ImageController::capture(const std::filesystem::path& folder, const std::filesystem::path& wim, core::ImageText text,
+                              core::WimCompression compression) {
+    if (busy()) {
+        m_events.refused(Str::ImagesBusy);
+        return;
+    }
+    if (!core::isElevated()) {
+        m_events.needsAdmin(L"--page=source");
+        return;
+    }
+    auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
+    run(EngineOperation{EngineOperation::Kind::Exporting, folder.filename().wstring(), wim, 0},
+        [folder, wim, text = std::move(text), compression, reopened](const core::TaskContext& task) -> Result<void> {
+            auto added = core::captureImage(folder, wim, text, compression, task);
+            if (!added) {
+                return std::unexpected(added.error());
+            }
+            auto info = core::openSource(wim);
+            if (!info) {
+                return std::unexpected(info.error());
+            }
+            *reopened = std::move(*info);
+            return {};
+        },
+        [this, reopened, wim] {
+            m_state.setSource(std::move(**reopened));
+            m_events.succeeded(Str::ImagesCapturedToast, wim.filename().wstring());
+        },
+        Failure::Export);
+}
+
 void ImageController::removeEditions(std::vector<int> indexes, std::wstring label) {
     if (const auto refusal = deleteRefusal()) {
         m_events.refused(*refusal);

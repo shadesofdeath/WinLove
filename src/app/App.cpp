@@ -193,6 +193,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoEditions = true;
         } else if (a == L"--demo-wifi") {
             options.demoWifi = true;
+        } else if (startsWith(a, L"--demo-tool=")) {
+            options.demoTool = std::wstring(value(L"--demo-tool="));
         } else if (a == L"--demo-branding") {
             options.demoBranding = true;
         } else if (a == L"--demo-boot-drivers") {
@@ -956,6 +958,9 @@ int App::renderOffscreen() {
                 m_state->selectMany(m_options.selectMarked, *m_options.selectIndex);
             }
             m_shell->showPage(m_options.page.value_or(PageId::Images));
+            if (!m_options.demoTool.empty()) {
+                m_shell->toolDialogForDemo(m_options.demoTool, *m_options.openPath);
+            }
         }
     }
     if (m_options.demoUpdates && m_state->source()) {

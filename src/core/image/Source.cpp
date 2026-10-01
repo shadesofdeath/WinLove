@@ -131,4 +131,37 @@ Result<std::shared_ptr<const ByteSource>> openInstallImage(const SourceInfo& sou
     return std::shared_ptr<const ByteSource>(std::move(*file));
 }
 
+Result<std::filesystem::path> installImageFile(const SourceInfo& source, const std::filesystem::path& scratch, bool& extracted,
+                                               const TaskContext& task) {
+    extracted = false;
+    switch (source.format) {
+    case ImageFormat::Wim:
+    case ImageFormat::Esd:
+    case ImageFormat::Swm: return nativePath(source.path);
+    case ImageFormat::Folder: return nativePath(source.path / source.installImage);
+    case ImageFormat::Iso: {
+        auto iso = UdfImage::open(source.path);
+        if (!iso) {
+            return std::unexpected(iso.error());
+        }
+        auto node = iso->find(source.installImage);
+        if (!node) {
+            return std::unexpected(node.error());
+        }
+        if (source.install.header.totalParts > 1) {
+            return fail(ErrorCode::Unsupported, L"a split image inside an ISO: extract the ISO first", source.path.wstring());
+        }
+        std::error_code ec;
+        std::filesystem::create_directories(scratch, ec);
+        const auto file = scratch / std::filesystem::path(source.installImage).filename();
+        if (auto r = iso->extract(*node, file, task); !r) {
+            return std::unexpected(r.error());
+        }
+        extracted = true;
+        return file;
+    }
+    default: return fail(ErrorCode::Unsupported, L"no install image to read", source.path.wstring());
+    }
+}
+
 } // namespace wl::core

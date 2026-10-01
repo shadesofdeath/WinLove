@@ -14,6 +14,7 @@
 #include "core/image/dism/DefaultApps.h"
 #include "core/image/dism/Intl.h"
 #include "core/image/Fonts.h"
+#include "core/system/Hash.h"
 #include "core/postsetup/Wifi.h"
 #include "core/system/Picture.h"
 #include "core/system/HostExport.h"
@@ -674,6 +675,125 @@ int cmdVerify(const std::wstring& path) {
                           damage.metadata ? L", metadata" : L"", damage.reason));
     }
     return report->sound() ? 0 : 3;
+}
+
+// D-058: Images page tools (no admin except capture).
+core::WimCompression compressionArg(const std::wstring& text) {
+    if (text == L"recovery" || text == L"lzms" || text == L"esd") {
+        return core::WimCompression::Lzms;
+    }
+    if (text == L"fast" || text == L"xpress") {
+        return core::WimCompression::Xpress;
+    }
+    if (text == L"none") {
+        return core::WimCompression::None;
+    }
+    return core::WimCompression::Lzx;
+}
+
+int cmdHash(const std::wstring& file, const std::wstring& expect) {
+    const auto started = GetTickCount64();
+    auto hash = core::sha256File(file, progressTask(L"sha256"));
+    print(L"\n");
+    if (!hash) {
+        return reportError(hash.error());
+    }
+    print(std::format(L"  SHA-256 {}  ({:.1f} s)\n", *hash, static_cast<double>(GetTickCount64() - started) / 1000.0));
+    if (!expect.empty()) {
+        const std::wstring want = core::normalizeSha256(expect);
+        print(want.empty() ? L"  expected: not a SHA-256\n" : want == *hash ? L"  matches\n" : L"  DOES NOT MATCH\n");
+        return want == *hash ? 0 : 3;
+    }
+    return 0;
+}
+
+int cmdRecompress(const std::wstring& wim, const std::wstring& compress) {
+    auto result = core::recompressWim(wim, compressionArg(compress), progressTask(L"recompress"));
+    print(L"\n");
+    if (!result) {
+        return reportError(result.error());
+    }
+    print(std::format(L"  -> {} ({} bytes)\n", result->wstring(), std::filesystem::file_size(*result)));
+    return 0;
+}
+
+int cmdSwmMerge(const std::wstring& first, const std::wstring& out) {
+    auto r = core::mergeSplitWim(first, out, progressTask(L"merge"));
+    print(L"\n");
+    if (!r) {
+        return reportError(r.error());
+    }
+    print(std::format(L"  -> {} ({} bytes)\n", out, std::filesystem::file_size(out)));
+    return 0;
+}
+
+int cmdSwmSplit(const std::wstring& wim, const std::wstring& first, const std::wstring& sizeMb) {
+    const std::uint64_t mb = sizeMb.empty() ? 3800 : static_cast<std::uint64_t>(_wtoi64(sizeMb.c_str()));
+    auto parts = core::splitWim(wim, first, mb << 20, progressTask(L"split"));
+    print(L"\n");
+    if (!parts) {
+        return reportError(parts.error());
+    }
+    print(std::format(L"  {} part(s) next to {}\n", *parts, first));
+    return 0;
+}
+
+int cmdDuplicate(const std::wstring& wim, const std::wstring& index, const std::wstring& name) {
+    auto added = core::duplicateEdition(wim, parseIndex(index), name, progressTask(L"copy"));
+    print(L"\n");
+    if (!added) {
+        return reportError(added.error());
+    }
+    print(std::format(L"  copied as index {}\n", *added));
+    return 0;
+}
+
+int cmdAppend(const std::wstring& sourcePath, const std::wstring& destination, const std::wstring& indexes, const std::wstring& compress) {
+    auto source = core::openSource(sourcePath);
+    if (!source) {
+        return reportError(source.error());
+    }
+    std::vector<int> list;
+    for (std::wstring_view rest = indexes; !rest.empty();) {
+        const auto comma = rest.find(L',');
+        if (const int i = parseIndex(std::wstring(rest.substr(0, comma))); i > 0) {
+            list.push_back(i);
+        }
+        rest = comma == std::wstring_view::npos ? std::wstring_view{} : rest.substr(comma + 1);
+    }
+    if (list.empty()) {
+        for (const auto& image : source->install.images) {
+            list.push_back(image.index);
+        }
+    }
+    bool extracted = false;
+    const auto scratch = std::filesystem::path(destination).parent_path() / L"append.tmp";
+    auto file = core::installImageFile(*source, scratch, extracted, progressTask(L"extract"));
+    if (!file) {
+        return reportError(file.error());
+    }
+    auto r = core::exportImages(*file, list, destination, compressionArg(compress), progressTask(L"append"));
+    std::error_code ec;
+    if (extracted) {
+        std::filesystem::remove_all(scratch, ec);
+    }
+    print(L"\n");
+    if (!r) {
+        return reportError(r.error());
+    }
+    print(std::format(L"  {} edition(s) added to {}\n", list.size(), destination));
+    return 0;
+}
+
+int cmdCapture(const std::wstring& folder, const std::wstring& wim, const std::wstring& name, const std::wstring& compress) {
+    auto added = core::captureImage(folder, wim, core::ImageText{name, std::wstring(), std::nullopt}, compressionArg(compress),
+                                    progressTask(L"capture"));
+    print(L"\n");
+    if (!added) {
+        return reportError(added.error());
+    }
+    print(std::format(L"  captured as index {} of {}\n", *added, wim));
+    return 0;
 }
 
 // D-056: Kişiselleştirme helpers (no admin).
@@ -1502,6 +1622,12 @@ void printUsage() {
           L"  wlcli export-host-associations <file.xml>  (this PC's default app associations; admin)\n"
           L"  wlcli appx-info <package> [--arch=x64]      (manifest, dependencies found next to it; no admin)\n"
           L"  wlcli font-info <font>                     (registry name Windows gives it; no admin)\n"
+          L"  wlcli hash <file> [--expect=<sha256>]      (SHA-256; exit 3 when it does not match)\n"
+          L"  wlcli recompress <wim|esd> --compress=lzx|xpress|none|esd   (every edition, the file replaced)\n"
+          L"  wlcli swm-split <wim> <first.swm> [--size-mb=3800]  ·  wlcli swm-merge <first.swm> <out.wim>\n"
+          L"  wlcli duplicate <wim> <index> <name>       (a copy of an edition in the same WIM)\n"
+          L"  wlcli append <iso|wim|esd|swm> <dest.wim> [--index=1,3] [--compress=lzx]   (editions added)\n"
+          L"  wlcli capture <folder> <wim> <name> [--compress=lzx|xpress]   (admin; new or appended edition)\n"
           L"  wlcli picture <src> <dst> [--size=WxH] [--format=jpg|png|bmp]   (WIC: cover-scale + encode)\n"
           L"  wlcli wifi-list                            (this PC's Wi-Fi profiles; keys readable when elevated)\n"
           L"  wlcli wifi-xml --ssid=<name> [--password=<key>] [--wpa3|--open] [--hidden]   (WLAN profile XML)\n"
@@ -1581,6 +1707,9 @@ int wmain(int argc, wchar_t** argv) {
     bool wpa3 = false;
     bool openNetwork = false;
     bool hidden = false;
+    std::wstring expectHash;
+    std::wstring sizeMb;
+    std::wstring indexList;
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
@@ -1629,6 +1758,12 @@ int wmain(int argc, wchar_t** argv) {
             wpa3 = true;
         } else if (a == L"--open") {
             openNetwork = true;
+        } else if (a.starts_with(L"--expect=")) {
+            expectHash = std::wstring(a.substr(9));
+        } else if (a.starts_with(L"--size-mb=")) {
+            sizeMb = std::wstring(a.substr(10));
+        } else if (a.starts_with(L"--index=")) {
+            indexList = std::wstring(a.substr(8));
         } else if (a == L"--hidden") {
             hidden = true;
         } else if (a.starts_with(L"--unattend=")) {
@@ -1769,6 +1904,27 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"export-host-associations" && args.size() == 2) {
         return cmdExportHostAssociations(args[1]);
+    }
+    if (command == L"hash" && args.size() == 2) {
+        return cmdHash(args[1], expectHash);
+    }
+    if (command == L"recompress" && args.size() == 2) {
+        return cmdRecompress(args[1], compress);
+    }
+    if (command == L"swm-merge" && args.size() == 3) {
+        return cmdSwmMerge(args[1], args[2]);
+    }
+    if (command == L"swm-split" && args.size() == 3) {
+        return cmdSwmSplit(args[1], args[2], sizeMb);
+    }
+    if (command == L"duplicate" && args.size() == 4) {
+        return cmdDuplicate(args[1], args[2], args[3]);
+    }
+    if (command == L"append" && args.size() == 3) {
+        return cmdAppend(args[1], args[2], indexList, compress);
+    }
+    if (command == L"capture" && args.size() == 4) {
+        return cmdCapture(args[1], args[2], args[3], compress);
     }
     if (command == L"font-info" && args.size() == 2) {
         return cmdFontInfo(args[1]);

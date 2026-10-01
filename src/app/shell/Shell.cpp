@@ -2,6 +2,8 @@
 
 #include "app/pages/images/EditionDialog.h"
 #include "app/pages/images/RenameDialog.h"
+#include "app/pages/images/ToolDialogs.h"
+#include "core/iso/IsoBuilder.h"
 #include "core/image/dism/Edition.h"
 #include "core/image/WindowsRelease.h"
 #include "ui/platform/Clipboard.h"
@@ -57,6 +59,7 @@
 #include <shellapi.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <format>
 #include <fstream>
@@ -1205,6 +1208,11 @@ void Shell::updateImagesChrome() {
         m_actionVerify->setEnabled(!refusal);
         m_actionVerify->setTooltip(m_strings.get(refusal && !busy ? *refusal : Str::ImagesVerifyHint));
     }
+    if (m_actionTools) {
+        const auto refusal = m_images->toolsRefusal();
+        m_actionTools->setEnabled(!refusal);
+        m_actionTools->setTooltip(refusal && !busy ? m_strings.get(*refusal) : m_strings.get(Str::ImagesToolsHint));
+    }
     if (m_actionEsd) {
         m_actionEsd->setEnabled(!busy && m_images->isPackedSource());
         m_actionEsd->setTooltip(m_images->isPackedSource() ? std::wstring{} : m_strings.get(Str::ImagesEsdOnly));
@@ -1260,7 +1268,7 @@ void Shell::showPage(PageId page) {
         m_sideInspector = nullptr;
     }
     m_actionExpand = nullptr;
-    m_actionMount = m_actionExport = m_actionEsd = m_actionVerify = nullptr;
+    m_actionMount = m_actionExport = m_actionEsd = m_actionVerify = m_actionTools = nullptr;
     m_actionReset = nullptr;
     m_actionIso = nullptr;
 
@@ -1276,6 +1284,8 @@ void Shell::showPage(PageId page) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::SourceOpenFolder)).onInvoke = [this] {
                 pickSourceFolder();
             };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::SourceCaptureAction), ui::icons::Icon::ImageWim)
+                .onInvoke = [this] { askCapture(); };
             m_pageBody = &m_pageView->setBody<SourcePage>(
                 m_state, m_strings, m_language,
                 SourcePage::Intents{[this] { pickSourceFile(); },
@@ -1284,9 +1294,13 @@ void Shell::showPage(PageId page) {
                                     [](const std::filesystem::path& p) {
                                         const std::wstring args = L"/select,\"" + p.wstring() + L"\"";
                                         ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
-                                    }});
+                                    },
+                                    [this](const std::filesystem::path& p) { verifyHash(p); }});
         } else if (page == PageId::Images) {
             if (m_state.source()) {
+                m_actionTools = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesTools),
+                                                       ui::icons::Icon::MoreHorizontal);
+                m_actionTools->onInvoke = [this] { showImageTools(); };
                 m_actionEsd = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesEsdToWim));
                 m_actionEsd->onInvoke = [this] { convertEsd(); };
                 m_actionVerify = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesVerify),
@@ -1312,6 +1326,7 @@ void Shell::showPage(PageId page) {
             images.onKeepOnly = [this] { askDeleteSelected(/*keepOnly=*/true); };
             images.onRename = [this] { askRenameSelected(); };
             images.onUpgrade = [this] { askUpgradeEdition(); };
+            images.onDuplicate = [this] { askDuplicateEdition(); };
             images.onExploreMount = [this] { exploreMount(); };
             images.onTerminal = [this] { openTerminalAtMount(); };
             images.onReveal = [this] { revealImageFile(); };
@@ -2049,16 +2064,36 @@ void Shell::drop(const std::vector<std::filesystem::path>& files) {
         m_apps->addPackages(files);
         return;
     }
-    // Several files may be dropped; the first source-type one opens (others are ignored for now).
-    for (const auto& file : files) {
-        if (isSourceCandidate(file)) {
-            if (m_page != PageId::Source) {
-                showPage(PageId::Source);
-            }
-            openSource(file);
-            return;
-        }
+    // Several files dropped: the first source opens, the others go into the recent list (D-058).
+    std::vector<std::filesystem::path> sources;
+    std::ranges::copy_if(files, std::back_inserter(sources), [](const auto& f) { return isSourceCandidate(f); });
+    if (sources.empty()) {
+        return;
     }
+    if (m_page != PageId::Source) {
+        showPage(PageId::Source);
+    }
+    for (std::size_t i = 1; i < sources.size(); ++i) {
+        m_state.reader().run<core::SourceInfo>(
+            [path = sources[i]](const core::TaskContext&) { return core::openSource(path); },
+            [this, post = m_services.postToUi, alive = std::weak_ptr<bool>(m_alive)](Result<core::SourceInfo> result) {
+                post([this, alive, result = std::move(result)] {
+                    const auto stillAlive = alive.lock();
+                    if (!stillAlive || !*stillAlive) {
+                        return;
+                    }
+                    if (result) {
+                        m_state.rememberSource(*result);
+                    } else {
+                        log::warn("app", L"dropped file not added: " + describe(result.error()));
+                    }
+                });
+            });
+    }
+    if (sources.size() > 1) {
+        showToast(ui::InfoKind::Info, m_strings.format(Str::SourceDroppedMany, {{L"n", std::to_wstring(sources.size() - 1)}}), L"");
+    }
+    openSource(sources.front());
 }
 
 // ---- images (P02) ----------------------------------------------------------------------------
@@ -2428,6 +2463,303 @@ void Shell::exportLog() {
     } else {
         showToast(ui::InfoKind::Error, m_strings.get(Str::LogsExportFailed), target->wstring());
     }
+}
+
+// ---- D-058 tools ------------------------------------------------------------------------------
+
+void Shell::pushToolDialog(std::unique_ptr<ui::Dialog> dialog, ui::Widget* focus, std::shared_ptr<ui::Dialog*> raw) {
+    *raw = dialog.get();
+    host()->pushModal(std::move(dialog), focus);
+}
+
+void Shell::showImageTools() {
+    if (!host() || !m_actionTools) {
+        return;
+    }
+    std::vector<std::wstring> labels{m_strings.get(Str::ImagesRecompress)};
+    std::vector<std::function<void()>> actions{[this] { askRecompress(); }};
+    if (m_images->isSwmSource()) {
+        labels.push_back(m_strings.get(Str::ImagesSwmToWim));
+        actions.push_back([this] { askMergeSwm(); });
+    } else {
+        labels.push_back(m_strings.get(Str::ImagesSplitSwm));
+        actions.push_back([this] { askSplitSwm(); });
+    }
+    labels.push_back(m_strings.get(Str::ImagesAppend));
+    actions.push_back([this] { askAppendEditions(); });
+    auto popup = std::make_unique<ui::MenuPopup>(
+        m_actionTools->bounds(), std::move(labels), -1,
+        [actions = std::move(actions)](int picked) {
+            if (picked >= 0 && picked < static_cast<int>(actions.size())) {
+                actions[static_cast<std::size_t>(picked)]();
+            }
+        },
+        [] {});
+    ui::Widget* raw = popup.get();
+    host()->pushModal(std::move(popup), raw, /*scrim=*/false);
+}
+
+void Shell::toolDialogForDemo(const std::wstring& which, const std::filesystem::path& file) {
+    if (which == L"recompress") {
+        askRecompress();
+    } else if (which == L"split") {
+        askSplitSwm();
+    } else if (which == L"duplicate") {
+        askDuplicateEdition();
+    } else if (which == L"hash") {
+        verifyHash(file);
+    } else if (which == L"capture") {
+        auto raw = std::make_shared<ui::Dialog*>(nullptr);
+        ToolDialog built = makeCaptureDialog(
+            m_strings, m_strings.format(Str::SourceCaptureNote, {{L"folder", L"D:\\Kurulum\\Ofis"}, {L"wim", L"Ofis.wim"}}),
+            L"Ofis", [](CaptureAnswers) {}, [] {});
+        pushToolDialog(std::move(built.dialog), built.initialFocus, raw);
+    } else if (which == L"append" && m_state.source()) {
+        auto raw = std::make_shared<ui::Dialog*>(nullptr);
+        ToolDialog built = makeEditionsDialog(m_strings, m_strings.get(Str::ImagesAppend),
+                                              m_strings.format(Str::ImagesAppendNote, {{L"file", file.filename().wstring()}}),
+                                              m_state.source()->install.images, m_strings.get(Str::CommonAdd), [](std::vector<int>) {}, [] {});
+        pushToolDialog(std::move(built.dialog), built.initialFocus, raw);
+    }
+}
+
+void Shell::askRecompress() {
+    const auto& source = m_state.source();
+    if (!source) {
+        return;
+    }
+    using C = core::WimCompression;
+    // Every format but the one the image has.
+    const std::vector<std::pair<C, Str>> all{{C::Lzx, Str::ImagesCompressLzx},
+                                             {C::Xpress, Str::ImagesCompressXpress},
+                                             {C::None, Str::ImagesCompressNone},
+                                             {C::Lzms, Str::ImagesCompressEsd}};
+    const auto& header = source->install.header;
+    const C current = header.solid ? C::Lzms : header.compression;
+    auto targets = std::make_shared<std::vector<C>>();
+    std::vector<std::wstring> labels;
+    for (const auto& [c, label] : all) {
+        if (c != current) {
+            targets->push_back(c);
+            labels.push_back(m_strings.get(label));
+        }
+    }
+    std::wstring note = m_strings.format(Str::ImagesRecompressNote, {{L"now", m_strings.get(std::ranges::find_if(all, [&](const auto& p) {
+                                                                                               return p.first == current;
+                                                                                           })->second)}});
+    if (source->format == core::ImageFormat::Iso) {
+        note += L" " + m_strings.get(Str::DialogsDeleteIsoNote);
+    }
+    auto raw = std::make_shared<ui::Dialog*>(nullptr);
+    auto close = [this, raw] {
+        if (*raw) {
+            host()->popModal(std::exchange(*raw, nullptr));
+        }
+    };
+    ToolDialog built = makeChoiceDialog(m_strings, m_strings.get(Str::ImagesRecompress), note, m_strings.get(Str::ImagesCompression),
+                                        std::move(labels), 0, m_strings.get(Str::ImagesConvert),
+                                        [this, targets](int picked) { m_images->recompress((*targets)[static_cast<std::size_t>(picked)]); },
+                                        close);
+    pushToolDialog(std::move(built.dialog), built.initialFocus, raw);
+}
+
+void Shell::askSplitSwm() {
+    static constexpr std::uint64_t kSizes[] = {3800, 2000, 1000, 650};
+    auto raw = std::make_shared<ui::Dialog*>(nullptr);
+    auto close = [this, raw] {
+        if (*raw) {
+            host()->popModal(std::exchange(*raw, nullptr));
+        }
+    };
+    ToolDialog built = makeChoiceDialog(
+        m_strings, m_strings.get(Str::ImagesSplitSwm), m_strings.get(Str::ImagesSplitNote), m_strings.get(Str::ImagesPartSize),
+        {m_strings.get(Str::ImagesPartFat32), L"2000 MB", L"1000 MB", m_strings.get(Str::ImagesPartCd)}, 0,
+        m_strings.get(Str::ImagesSplitGo),
+        [this](int picked) {
+            const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+            const auto target = ui::pickSaveFile(owner, m_strings.get(Str::ImagesSplitSwm), {{L"SWM", L"*.swm"}}, L"install.swm", L"swm");
+            if (target) {
+                m_images->splitSwm(*target, kSizes[std::clamp(picked, 0, 3)]);
+            }
+        },
+        close);
+    pushToolDialog(std::move(built.dialog), built.initialFocus, raw);
+}
+
+void Shell::askMergeSwm() {
+    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+    const auto target = ui::pickSaveFile(owner, m_strings.get(Str::ImagesSwmToWim), {{m_strings.get(Str::ImagesSaveWim), L"*.wim"}},
+                                         L"install.wim", L"wim");
+    if (target) {
+        m_images->mergeSwm(*target);
+    }
+}
+
+void Shell::askAppendEditions() {
+    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+    const auto file = ui::pickFile(owner, m_strings.get(Str::ImagesAppend),
+                                   {{m_strings.get(Str::SourceFilterImages), L"*.iso;*.wim;*.esd;*.swm"}});
+    if (!file) {
+        return;
+    }
+    // The other image's editions are read on the reader thread, then offered as check boxes.
+    m_state.reader().run<core::SourceInfo>(
+        [path = *file](const core::TaskContext&) { return core::openSource(path); },
+        [this, post = m_services.postToUi, alive = std::weak_ptr<bool>(m_alive), path = *file](Result<core::SourceInfo> result) {
+            post([this, alive, path, result = std::move(result)] {
+                const auto stillAlive = alive.lock();
+                if (!stillAlive || !*stillAlive || !host()) {
+                    return;
+                }
+                if (!result) {
+                    showToast(ui::InfoKind::Error, m_strings.get(Str::ImagesAppend), result.error().message);
+                    return;
+                }
+                auto raw = std::make_shared<ui::Dialog*>(nullptr);
+                auto close = [this, raw] {
+                    if (*raw) {
+                        host()->popModal(std::exchange(*raw, nullptr));
+                    }
+                };
+                std::wstring note = m_strings.format(Str::ImagesAppendNote, {{L"file", path.filename().wstring()}});
+                if (m_state.source() && m_state.source()->format == core::ImageFormat::Iso) {
+                    note += L" " + m_strings.get(Str::DialogsDeleteIsoNote);
+                }
+                ToolDialog built = makeEditionsDialog(m_strings, m_strings.get(Str::ImagesAppend), note, result->install.images,
+                                                      m_strings.get(Str::CommonAdd),
+                                                      [this, path](std::vector<int> picked) { m_images->appendFrom(path, std::move(picked)); },
+                                                      close);
+                pushToolDialog(std::move(built.dialog), built.initialFocus, raw);
+            });
+        });
+}
+
+void Shell::askDuplicateEdition() {
+    const auto index = m_state.selectedIndex();
+    const auto& source = m_state.source();
+    if (!index || !source) {
+        return;
+    }
+    std::wstring name;
+    for (const auto& image : source->install.images) {
+        if (image.index == *index) {
+            name = image.displayName.empty() ? image.name : image.displayName;
+        }
+    }
+    std::wstring note = m_strings.get(Str::ImagesDuplicateNote);
+    if (source->format == core::ImageFormat::Iso) {
+        note += L" " + m_strings.get(Str::DialogsDeleteIsoNote);
+    }
+    auto raw = std::make_shared<ui::Dialog*>(nullptr);
+    auto close = [this, raw] {
+        if (*raw) {
+            host()->popModal(std::exchange(*raw, nullptr));
+        }
+    };
+    ToolDialog built = makeTextDialog(m_strings, m_strings.get(Str::ImagesDuplicate), note, m_strings.get(Str::CommonName),
+                                      m_strings.format(Str::ImagesDuplicateName, {{L"name", name}}), m_strings.get(Str::ImagesDuplicateGo),
+                                      [this, i = *index](std::wstring newName) { m_images->duplicateEdition(i, std::move(newName)); },
+                                      close);
+    pushToolDialog(std::move(built.dialog), built.initialFocus, raw);
+}
+
+void Shell::askCapture() {
+    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+    const auto folder = ui::pickFolder(owner, m_strings.get(Str::SourceCaptureFolder));
+    if (!folder) {
+        return;
+    }
+    std::wstring stem = folder->filename().wstring();
+    if (stem.empty()) {
+        stem = folder->root_name().wstring(); // a drive
+        std::erase(stem, L':');
+    }
+    const auto wim = ui::pickSaveFile(owner, m_strings.get(Str::SourceCaptureTitle), {{m_strings.get(Str::ImagesSaveWim), L"*.wim"}},
+                                      (stem.empty() ? std::wstring(L"capture") : stem) + L".wim", L"wim");
+    if (!wim) {
+        return;
+    }
+    auto raw = std::make_shared<ui::Dialog*>(nullptr);
+    auto close = [this, raw] {
+        if (*raw) {
+            host()->popModal(std::exchange(*raw, nullptr));
+        }
+    };
+    const std::wstring note = m_strings.format(Str::SourceCaptureNote, {{L"folder", folder->wstring()}, {L"wim", wim->filename().wstring()}});
+    ToolDialog built = makeCaptureDialog(
+        m_strings, note, stem.empty() ? std::wstring(L"Capture") : stem,
+        [this, folder = *folder, wim = *wim](CaptureAnswers a) {
+            if (m_page != PageId::Images) {
+                showPage(PageId::Images); // the operation strip is there
+            }
+            m_images->capture(folder, wim, core::ImageText{a.name, a.description, std::nullopt},
+                              a.compression == 1 ? core::WimCompression::Xpress : core::WimCompression::Lzx);
+        },
+        close);
+    pushToolDialog(std::move(built.dialog), built.initialFocus, raw);
+}
+
+void Shell::verifyHash(const std::filesystem::path& file) {
+    if (!host()) {
+        return;
+    }
+    auto raw = std::make_shared<ui::Dialog*>(nullptr);
+    auto open = std::make_shared<bool>(true);
+    auto cancel = std::make_shared<core::CancelToken>();
+    auto close = [this, raw, open, cancel] {
+        *open = false;
+        cancel->cancel();
+        if (*raw) {
+            host()->popModal(std::exchange(*raw, nullptr));
+        }
+    };
+    HashDialog built = makeHashDialog(m_strings, file.wstring(), [this](std::wstring hash) {
+        if (ui::setClipboardText(hash)) {
+            showToast(ui::InfoKind::Success, m_strings.get(Str::SourceHashCopied), L"");
+        }
+    }, close);
+    auto progress = built.progress;
+    auto done = built.done;
+    auto failed = built.failed;
+    pushToolDialog(std::move(built.dialog), built.initialFocus, raw);
+    // Reader thread; progress at whole percents only, and nothing once the dialog (or the shell) is gone.
+    // The reader's own cancel (app closing) stops the hash too.
+    auto post = m_services.postToUi;
+    auto alive = std::weak_ptr<bool>(m_alive);
+    auto lastPercent = std::make_shared<std::atomic<int>>(-1);
+    auto showing = [open, alive] {
+        const auto stillAlive = alive.lock();
+        return stillAlive && *stillAlive && *open;
+    };
+    m_state.reader().run<std::wstring>(
+        [file, cancel, post, progress, showing, lastPercent](const core::TaskContext& outer) {
+            const core::TaskContext task{*cancel, [&](double f, std::wstring_view) {
+                                             if (outer.cancel.cancelled()) {
+                                                 cancel->cancel();
+                                             }
+                                             const int percent = static_cast<int>(f * 100);
+                                             if (lastPercent->exchange(percent) != percent) {
+                                                 post([showing, progress, f] {
+                                                     if (showing()) {
+                                                         progress(f);
+                                                     }
+                                                 });
+                                             }
+                                         }};
+            return core::sha256File(file, task);
+        },
+        [post, showing, done, failed](Result<std::wstring> result) {
+            post([showing, done, failed, result = std::move(result)] {
+                if (!showing()) {
+                    return;
+                }
+                if (result) {
+                    done(*result);
+                } else {
+                    failed(result.error().message);
+                }
+            });
+        });
 }
 
 void Shell::convertEsd() {

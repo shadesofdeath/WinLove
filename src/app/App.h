@@ -61,6 +61,7 @@ struct LaunchOptions {
     std::optional<std::wstring> demoFiles; // render: fake mount + queued files ("where": the destination dialog) (D-051)
     bool demoHosts = false;
     bool demoBranding = false;
+    std::wstring demoTool; // render, with a source: recompress | split | duplicate | capture | hash | append (D-058)
     bool demoWifi = false; // render: Kurulum Sonrası › Wi-Fi ağı ekle dialog (D-056) // render: Kişiselleştirme with OEM text, pictures and fonts queued (D-056)
     bool demoBootDrivers = false; // render, with --demo-drivers=<folder>: Sürücüler › Kurulum ortamı
     bool demoEditions = false; // render, with a source: Apply summary with two other editions ticked (D-055)

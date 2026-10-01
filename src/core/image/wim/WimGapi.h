@@ -49,6 +49,40 @@ struct ImageText {
 [[nodiscard]] Result<int> splitWim(const std::filesystem::path& source, const std::filesystem::path& firstPart,
                                    std::uint64_t partSize, const TaskContext& task);
 
+// ---- Images page tools (2026-10-01, D-058) -----------------------------------------------------
+
+// Editions `indexes` of `source` — a WIM, an ESD or the first part of a split WIM (its other
+// parts next to it) — appended to `destination` (created when missing) with `compression`. The
+// same edition twice is allowed: a copy is a variant to be customised on its own.
+[[nodiscard]] Result<void> exportImages(const std::filesystem::path& source, std::span<const int> indexes,
+                                        const std::filesystem::path& destination, WimCompression compression,
+                                        const TaskContext& task);
+
+// Every edition of `wim` rewritten with `target` compression (Lzms = a solid ESD). The result has
+// the same name with .wim / .esd as the compression says; the original goes once the new file is
+// complete. A bootable WIM keeps its boot index. Returns the new path (the same when only the
+// compression changed). Not for split WIMs (mergeSplitWim first); same compression = refused.
+[[nodiscard]] Result<std::filesystem::path> recompressWim(const std::filesystem::path& wim, WimCompression target,
+                                                          const TaskContext& task);
+
+// install.swm + install2.swm … (the parts next to `firstPart`) → one WIM, LZX.
+[[nodiscard]] Result<void> mergeSplitWim(const std::filesystem::path& firstPart, const std::filesystem::path& destination,
+                                         const TaskContext& task);
+
+// A copy of edition `index` appended to the same WIM, named `name` (the description stays). The
+// file grows by the copy's metadata only: every file is shared. Returns the new index.
+[[nodiscard]] Result<int> duplicateEdition(const std::filesystem::path& wim, int index, const std::wstring& name,
+                                           const TaskContext& task);
+
+// `folder` (a folder, or a drive's root) captured as a new edition of `wim` (created when missing,
+// otherwise appended), named by `text`. Needs an elevated process (backup / security privileges);
+// a running system's own drive needs a shadow copy and is not supported. Returns the new index.
+[[nodiscard]] Result<int> captureImage(const std::filesystem::path& folder, const std::filesystem::path& wim,
+                                       const ImageText& text, WimCompression compression, const TaskContext& task);
+
+// The edition a WIM boots (WIMSetBootImage); 0 = none. boot.wim / WinRE.wim need it.
+[[nodiscard]] Result<void> setBootImage(const std::filesystem::path& wim, int index);
+
 // The index an edition has once the editions `removed` are gone; empty when it is one of them.
 [[nodiscard]] std::optional<int> indexAfterRemoval(int index, std::span<const int> removed);
 

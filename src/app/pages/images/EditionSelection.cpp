@@ -1,8 +1,31 @@
 #include "app/pages/images/EditionSelection.h"
 
 #include <algorithm>
+#include <cwctype>
 
 namespace wl::app {
+
+namespace {
+std::wstring lowered(std::wstring text) {
+    for (auto& c : text) {
+        c = static_cast<wchar_t>(std::towlower(c));
+    }
+    return text;
+}
+} // namespace
+
+bool EditionFilter::matches(const core::ImageInfo& image) const {
+    if (!arch.empty() && std::wstring_view(core::architectureName(image.architecture)) != arch) {
+        return false;
+    }
+    const std::wstring needle = lowered(text);
+    if (needle.find_first_not_of(L' ') == std::wstring::npos) {
+        return true;
+    }
+    const std::wstring hay = lowered(image.name + L"\n" + image.displayName + L"\n" + image.editionId + L"\n" + image.description +
+                                     L"\n" + std::to_wstring(image.index));
+    return hay.find(needle) != std::wstring::npos;
+}
 
 bool EditionSelection::contains(int row) const {
     return std::ranges::binary_search(rows, row);

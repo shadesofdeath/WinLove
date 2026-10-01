@@ -33,6 +33,7 @@ add_executable(wl_tests
     app/ApplyTests.cpp
     app/ComponentTests.cpp
     app/EditionTests.cpp
+    app/ImageToolsTests.cpp
     app/FeatureTests.cpp
     app/ImageSettingsTests.cpp
     app/ImageValuesTests.cpp

@@ -312,6 +312,8 @@ public:
 
     [[nodiscard]] RecentSources& recent() noexcept { return m_recent; }
     void forgetRecent(const std::filesystem::path& path);
+    // Into the recent list without opening it (several files dropped at once). Change::Recent.
+    void rememberSource(const core::SourceInfo& source);
 
     std::size_t subscribe(Listener listener);
     void unsubscribe(std::size_t id);

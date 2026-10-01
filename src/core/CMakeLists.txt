@@ -44,6 +44,7 @@ add_library(wl_core STATIC
     postsetup/SetupScripts.cpp
     postsetup/Wifi.cpp
     system/FileLocks.cpp
+    system/Hash.cpp
     system/Picture.cpp
     system/Privileges.cpp
     system/Process.cpp

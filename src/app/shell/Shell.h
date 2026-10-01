@@ -172,6 +172,16 @@ public:
     void onImageVerified(const core::WimVerifyReport& report, const std::wstring& file);
     void exportSelected();
     void convertEsd();
+    // D-058
+    void showImageTools();
+    void askRecompress();
+    void askSplitSwm();
+    void askMergeSwm();
+    void askAppendEditions();
+    void askDuplicateEdition();
+    void askCapture();
+    void verifyHash(const std::filesystem::path& file);
+    void pushToolDialog(std::unique_ptr<ui::Dialog> dialog, ui::Widget* focus, std::shared_ptr<ui::Dialog*> raw);
     void exportLog();
 
     void layout() override;
@@ -209,6 +219,7 @@ private:
 
 public:
     void wifiDialogForDemo() { editPostSetupStep(core::PostSetupStep::Type::Wifi, std::nullopt); }
+    void toolDialogForDemo(const std::wstring& which, const std::filesystem::path& file); // D-058 renders
 
 private:
     void pickPostSetupApps(); // "Hazır uygulamalar": the winget catalog as a check list
@@ -290,6 +301,7 @@ private:
     ui::Button* m_actionMount = nullptr;
     ui::Button* m_actionExport = nullptr;
     ui::Button* m_actionEsd = nullptr;
+    ui::Button* m_actionTools = nullptr; // D-058 "Araçlar"
     ui::Button* m_actionVerify = nullptr;
     PageId m_page = PageId::Source;
     std::uint64_t m_openSerial = 0; // latest openSource request; older results are dropped

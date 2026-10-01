@@ -4,6 +4,7 @@
 #include "ui/widget/Host.h"
 #include "ui/widgets/Dropdown.h"
 
+#include <cwctype>
 #include <format>
 
 namespace wl::app {
@@ -17,6 +18,9 @@ constexpr float kToolbarTop = 12.0f;
 constexpr float kToolbar = 24.0f;
 constexpr float kGap = 12.0f;
 constexpr float kInfoBar = 32.0f;
+constexpr float kSearchWidth = 240.0f;
+constexpr const wchar_t* kArchKeys[] = {L"", L"x64", L"arm64", L"x86"};
+
 } // namespace
 
 ImagesPage::ImagesPage(AppState& state, ImageController& controller, const Localization& strings, Language language,
@@ -43,6 +47,25 @@ ImagesPage::ImagesPage(AppState& state, ImageController& controller, const Local
     m_strip = &add<OperationStrip>(strings, state);
     m_strip->setVisible(false);
     m_strip->onCancel = [this] { m_controller.cancel(); };
+
+    m_search = &add<ui::SearchBox>(strings.get(Str::ImagesSearch), std::vector<std::wstring>{L"/"});
+    m_search->setAccessible(ui::AccessRole::Edit, strings.get(Str::ImagesSearch));
+    m_search->onChange = [this](const std::wstring& text) {
+        m_needle = text;
+        m_table->setImages(visibleImages());
+        m_table->setSelection(m_state.selectedIndex(), m_state.selection());
+        layout();
+        invalidate();
+    };
+    m_arch = &add<ui::Dropdown>(strings.get(Str::ImagesArch),
+                                std::vector<std::wstring>{strings.get(Str::CommonAll), L"x64", L"arm64", L"x86"}, 0);
+    m_arch->onChange = [this](int index) {
+        m_archFilter = index;
+        m_table->setImages(visibleImages());
+        m_table->setSelection(m_state.selectedIndex(), m_state.selection());
+        layout();
+        invalidate();
+    };
 
     m_table = &add<EditionTable>(strings, language);
     m_table->onSelect = [this](int primary, std::vector<int> marked) { m_state.selectMany(std::move(marked), primary); };
@@ -221,6 +244,7 @@ bool ImagesPage::showRowMenu(ui::PointF at) {
         }
         if (!m_controller.editRefusal()) {
             item(Str::ImagesRename, onRename);
+            item(Str::ImagesDuplicate, onDuplicate);
         }
         if (m_controller.canDelete()) {
             item(Str::ImagesDeleteIndex, onDelete);
@@ -248,6 +272,31 @@ bool ImagesPage::showRowMenu(ui::PointF at) {
     return true;
 }
 
+std::vector<core::ImageInfo> ImagesPage::visibleImages() const {
+    std::vector<core::ImageInfo> out;
+    const auto& source = m_state.source();
+    if (!source) {
+        return out;
+    }
+    const EditionFilter filter{m_needle, kArchKeys[std::clamp(m_archFilter, 0, 3)]};
+    std::ranges::copy_if(source->install.images, std::back_inserter(out), [&](const auto& image) { return filter.matches(image); });
+    return out;
+}
+
+void ImagesPage::focusSearch() {
+    if (host() && m_search->visible()) {
+        host()->setFocus(m_search, /*visible=*/true);
+    }
+}
+
+bool ImagesPage::onChar(wchar_t ch) {
+    if (ch == L'/') {
+        focusSearch();
+        return true;
+    }
+    return false;
+}
+
 void ImagesPage::showNotice(ui::InfoKind kind, const std::wstring& title, const std::wstring& message) {
     m_error->set(kind, title, message);
     m_error->setAction(L"", nullptr);
@@ -259,8 +308,18 @@ void ImagesPage::refresh(AppState::Change change) {
     const auto& source = m_state.source();
     m_empty->setVisible(!source);
     m_table->setVisible(source.has_value());
+    // The search and the filter only help with several editions.
+    const bool tools = source && source->install.images.size() > 1;
+    m_search->setVisible(tools);
+    m_arch->setVisible(tools);
     if (change == AppState::Change::Source) {
-        m_table->setImages(source ? source->install.images : std::vector<core::ImageInfo>{});
+        if (!tools) {
+            m_needle.clear();
+            m_archFilter = 0;
+            m_search->setText(L"");
+            m_arch->setSelected(0);
+        }
+        m_table->setImages(visibleImages());
     }
     m_table->setSelection(m_state.selectedIndex(), m_state.selection());
     updateFolderBar();
@@ -291,6 +350,13 @@ void ImagesPage::refresh(AppState::Change change) {
 void ImagesPage::layout() {
     const RectF b = bounds();
     m_empty->setBounds(b);
+    {
+        float x = b.x;
+        m_search->setBounds({x, b.y + kToolbarTop, kSearchWidth, kToolbar});
+        x += kSearchWidth + 8;
+        const float archWidth = std::min(m_arch->measure({}).width, 200.0f);
+        m_arch->setBounds({x, b.y + kToolbarTop, archWidth, kToolbar});
+    }
     float y = b.y + kToolbarTop + kToolbar + kGap;
     if (m_error->visible()) {
         m_error->setBounds({b.x, y, b.width, kInfoBar});

@@ -11,6 +11,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cwctype>
 #include <format>
 #include <functional>
 #include <mutex>
@@ -39,6 +40,11 @@ using CallbackFn = DWORD(CALLBACK*)(DWORD, WPARAM, LPARAM, PVOID);
 using RegisterCallbackFn = DWORD(WINAPI*)(HANDLE, FARPROC, PVOID);
 using UnregisterCallbackFn = BOOL(WINAPI*)(HANDLE, FARPROC);
 using SplitFileFn = BOOL(WINAPI*)(HANDLE, PCWSTR, PLARGE_INTEGER, DWORD);
+using SetReferenceFileFn = BOOL(WINAPI*)(HANDLE, PCWSTR, DWORD);
+using SetBootImageFn = BOOL(WINAPI*)(HANDLE, DWORD);
+using CaptureImageFn = HANDLE(WINAPI*)(HANDLE, PCWSTR, DWORD);
+constexpr DWORD kReferenceAppend = 0x00010000;  // WIM_REFERENCE_APPEND
+constexpr DWORD kExportAllowDuplicates = 0x1;    // WIM_EXPORT_ALLOW_DUPLICATES
 
 struct Api {
     CreateFileFn createFile = nullptr;
@@ -52,6 +58,9 @@ struct Api {
     RegisterCallbackFn registerCallback = nullptr;
     UnregisterCallbackFn unregisterCallback = nullptr;
     SplitFileFn splitFile = nullptr;
+    SetReferenceFileFn setReferenceFile = nullptr;
+    SetBootImageFn setBootImage = nullptr;
+    CaptureImageFn captureImage = nullptr;
 };
 
 template <class F>
@@ -78,7 +87,9 @@ Result<const Api*> api() {
                         load(m, "WIMSetImageInformation", instance.setImageInformation) &&
                         load(m, "WIMRegisterMessageCallback", instance.registerCallback) &&
                         load(m, "WIMUnregisterMessageCallback", instance.unregisterCallback) &&
-                        load(m, "WIMSplitFile", instance.splitFile);
+                        load(m, "WIMSplitFile", instance.splitFile) &&
+                        load(m, "WIMSetReferenceFile", instance.setReferenceFile) &&
+                        load(m, "WIMSetBootImage", instance.setBootImage) && load(m, "WIMCaptureImage", instance.captureImage);
         if (!ok) {
             return fail(ErrorCode::Unsupported, L"wimgapi.dll is missing expected entry points", path.wstring());
         }
@@ -143,7 +154,8 @@ DWORD CALLBACK onMessage(DWORD message, WPARAM wParam, LPARAM, PVOID user) {
 
 namespace {
 Result<void> exportImageOnce(const std::filesystem::path& sourceInput, int index, const std::filesystem::path& destinationInput,
-                             WimCompression compression, const TaskContext& task);
+                             WimCompression compression, const TaskContext& task, DWORD exportFlags = 0,
+                             const std::vector<std::filesystem::path>& references = {});
 } // namespace
 
 Result<void> exportImage(const std::filesystem::path& source, int index, const std::filesystem::path& destination,
@@ -172,7 +184,8 @@ Result<void> exportImage(const std::filesystem::path& source, int index, const s
 namespace {
 
 Result<void> exportImageOnce(const std::filesystem::path& sourceInput, int index, const std::filesystem::path& destinationInput,
-                             WimCompression compression, const TaskContext& task) {
+                             WimCompression compression, const TaskContext& task, DWORD exportFlags,
+                             const std::vector<std::filesystem::path>& references) {
     const std::filesystem::path source = nativePath(sourceInput);
     const std::filesystem::path destination = nativePath(destinationInput);
     auto a = api();
@@ -192,6 +205,11 @@ Result<void> exportImageOnce(const std::filesystem::path& sourceInput, int index
                                                            : destination.parent_path();
     std::filesystem::create_directories(tempDir, ec);
     w->setTemporaryPath(src.h, tempDir.c_str());
+    for (const auto& part : references) {
+        if (!w->setReferenceFile(src.h, part.c_str(), kReferenceAppend)) {
+            return std::unexpected(lastError(L"part " + part.wstring() + L" of " + source.wstring()));
+        }
+    }
 
     const bool exists = std::filesystem::exists(destination, ec);
     DWORD created = 0;
@@ -212,7 +230,7 @@ Result<void> exportImageOnce(const std::filesystem::path& sourceInput, int index
     }
     CallbackState state{&task};
     w->registerCallback(src.h, reinterpret_cast<FARPROC>(&onMessage), &state);
-    const BOOL ok = w->exportImage(image.h, dst.h, 0);
+    const BOOL ok = w->exportImage(image.h, dst.h, exportFlags);
     const DWORD exportError = GetLastError();
     w->unregisterCallback(src.h, reinterpret_cast<FARPROC>(&onMessage));
     if (!ok) {
@@ -490,6 +508,268 @@ Result<int> splitWim(const std::filesystem::path& sourceInput, const std::filesy
     }
     task.report(1.0, L"split");
     return parts;
+}
+
+// ---- Images page tools (D-058) -----------------------------------------------------------------
+
+namespace {
+
+// The other parts of a split WIM: install2.swm, install3.swm … next to install.swm. WIMSetReferenceFile
+// takes them one by one (a wildcard is refused: ERROR_INVALID_NAME, 2026-10-01).
+std::vector<std::filesystem::path> otherParts(const std::filesystem::path& firstPart) {
+    std::wstring stem = firstPart.stem().wstring();
+    while (!stem.empty() && std::iswdigit(stem.back())) {
+        stem.pop_back();
+    }
+    std::vector<std::filesystem::path> parts;
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(firstPart.parent_path(), ec)) {
+        const auto& p = entry.path();
+        if (!entry.is_regular_file(ec) || _wcsicmp(p.extension().c_str(), firstPart.extension().c_str()) != 0 ||
+            _wcsicmp(p.filename().c_str(), firstPart.filename().c_str()) == 0) {
+            continue;
+        }
+        const std::wstring name = p.stem().wstring();
+        if (name.size() > stem.size() && _wcsnicmp(name.c_str(), stem.c_str(), stem.size()) == 0 &&
+            std::all_of(name.begin() + static_cast<std::ptrdiff_t>(stem.size()), name.end(), [](wchar_t c) { return std::iswdigit(c) != 0; })) {
+            parts.push_back(p);
+        }
+    }
+    std::ranges::sort(parts);
+    return parts;
+}
+
+std::filesystem::path withExtension(std::filesystem::path p, const wchar_t* extension) {
+    p.replace_extension(extension);
+    return p;
+}
+
+} // namespace
+
+Result<void> exportImages(const std::filesystem::path& sourceInput, std::span<const int> indexes,
+                          const std::filesystem::path& destinationInput, WimCompression compression, const TaskContext& task) {
+    const std::filesystem::path source = nativePath(sourceInput);
+    const std::filesystem::path destination = nativePath(destinationInput);
+    auto info = readInfo(source);
+    if (!info) {
+        return std::unexpected(info.error());
+    }
+    const std::vector<std::filesystem::path> references =
+        info->header.totalParts > 1 ? otherParts(source) : std::vector<std::filesystem::path>{};
+    if (info->header.totalParts > 1 && references.size() + 1 != info->header.totalParts) {
+        return fail(ErrorCode::NotFound, std::format(L"{} of the {} parts are next to it", references.size() + 1, info->header.totalParts),
+                    source.wstring());
+    }
+    const double count = static_cast<double>(std::max<std::size_t>(indexes.size(), 1));
+    for (std::size_t i = 0; i < indexes.size(); ++i) {
+        const TaskContext one{task.cancel, [&](double f, std::wstring_view) {
+                                  task.report((static_cast<double>(i) + f) / count, L"export");
+                              }};
+        if (auto r = exportImageOnce(source, indexes[i], destination, compression, one, kExportAllowDuplicates, references); !r) {
+            return r;
+        }
+    }
+    if (compression == WimCompression::Lzms) {
+        auto header = readInfo(destination);
+        if (!header || header->header.compression != WimCompression::Lzms || !header->header.solid) {
+            return fail(ErrorCode::WimFailure, L"the ESD was not written as solid LZMS", destination.wstring());
+        }
+    }
+    task.report(1.0, L"export");
+    return {};
+}
+
+Result<std::filesystem::path> recompressWim(const std::filesystem::path& wimInput, WimCompression target,
+                                            const TaskContext& task) {
+    const std::filesystem::path wim = nativePath(wimInput);
+    auto info = readInfo(wim);
+    if (!info) {
+        return std::unexpected(info.error());
+    }
+    const auto& header = info->header;
+    if (header.totalParts > 1) {
+        return fail(ErrorCode::Unsupported, L"a split WIM is joined first (SWM -> WIM)", wim.wstring());
+    }
+    if (header.compression == target && header.solid == (target == WimCompression::Lzms)) {
+        return fail(ErrorCode::InvalidArgument, L"the image already has this compression", wim.wstring());
+    }
+    const std::filesystem::path result = withExtension(wim, target == WimCompression::Lzms ? L".esd" : L".wim");
+    const std::filesystem::path fresh = result.wstring() + L".new";
+    std::error_code ec;
+    if (result != wim && std::filesystem::exists(result, ec)) {
+        return fail(ErrorCode::InvalidArgument, L"a file of that name is already next to it", result.wstring());
+    }
+    std::filesystem::remove(fresh, ec);
+    std::vector<int> all;
+    for (const auto& image : info->images) {
+        all.push_back(image.index);
+    }
+    if (auto r = exportImages(wim, all, fresh, target, task); !r) {
+        std::filesystem::remove(fresh, ec);
+        return std::unexpected(r.error());
+    }
+    if (header.bootIndex > 0) {
+        if (auto r = setBootImage(fresh, static_cast<int>(header.bootIndex)); !r) {
+            std::filesystem::remove(fresh, ec);
+            return std::unexpected(r.error());
+        }
+    }
+    // Swap: the original goes only once the new file is in its place.
+    const std::filesystem::path old = wim.wstring() + L".old";
+    std::filesystem::remove(old, ec);
+    std::filesystem::rename(wim, old, ec);
+    if (ec) {
+        std::filesystem::remove(fresh, ec);
+        return fail(ErrorCode::IoError, L"cannot replace the image file (in use?)", wim.wstring());
+    }
+    std::filesystem::rename(fresh, result, ec);
+    if (ec) {
+        std::filesystem::rename(old, wim, ec);
+        std::filesystem::remove(fresh, ec);
+        return fail(ErrorCode::IoError, L"cannot move the new image into place", result.wstring());
+    }
+    std::filesystem::remove(old, ec);
+    log::info("wim", std::format(L"recompressed {} -> {} ({})", wim.wstring(), result.wstring(), compressionName(target)));
+    return result;
+}
+
+Result<void> mergeSplitWim(const std::filesystem::path& firstPartInput, const std::filesystem::path& destinationInput,
+                           const TaskContext& task) {
+    const std::filesystem::path first = nativePath(firstPartInput);
+    const std::filesystem::path destination = nativePath(destinationInput);
+    auto info = readInfo(first);
+    if (!info) {
+        return std::unexpected(info.error());
+    }
+    if (info->header.partNumber != 1) {
+        return fail(ErrorCode::InvalidArgument, L"open the first part (install.swm), not a later one", first.wstring());
+    }
+    std::error_code ec;
+    if (std::filesystem::exists(destination, ec)) {
+        return fail(ErrorCode::InvalidArgument, L"the WIM to write is already there", destination.wstring());
+    }
+    std::vector<int> all;
+    for (const auto& image : info->images) {
+        all.push_back(image.index);
+    }
+    if (auto r = exportImages(first, all, destination, WimCompression::Lzx, task); !r) {
+        std::filesystem::remove(destination, ec);
+        return r;
+    }
+    return {};
+}
+
+Result<int> duplicateEdition(const std::filesystem::path& wimInput, int index, const std::wstring& name, const TaskContext& task) {
+    const std::filesystem::path wim = nativePath(wimInput);
+    auto info = readInfo(wim);
+    if (!info) {
+        return std::unexpected(info.error());
+    }
+    if (!plainWim(info->header)) {
+        return fail(ErrorCode::Unsupported, L"editions are copied within a plain WIM (convert an ESD first)", wim.wstring());
+    }
+    std::wstring description;
+    for (const auto& image : info->images) {
+        if (image.index == index) {
+            description = image.description;
+        }
+    }
+    // wimgapi will not export an edition into the file it is read from: through a one-edition copy.
+    const std::filesystem::path one = wim.wstring() + L".copy.tmp";
+    std::error_code ec;
+    std::filesystem::remove(one, ec);
+    const TaskContext half{task.cancel, [&](double f, std::wstring_view s) { task.report(f * 0.5, s); }};
+    if (auto r = exportImageOnce(wim, index, one, info->header.compression, half); !r) {
+        std::filesystem::remove(one, ec);
+        return std::unexpected(r.error());
+    }
+    const TaskContext rest{task.cancel, [&](double f, std::wstring_view s) { task.report(0.5 + f * 0.5, s); }};
+    auto appended = exportImageOnce(one, 1, wim, info->header.compression, rest, kExportAllowDuplicates);
+    std::filesystem::remove(one, ec);
+    if (!appended) {
+        return std::unexpected(appended.error());
+    }
+    const int added = static_cast<int>(info->images.size()) + 1;
+    if (auto r = setImageText(wim, added, ImageText{name, description, std::nullopt}); !r) {
+        return std::unexpected(r.error());
+    }
+    log::info("wim", std::format(L"edition {} of {} copied as {} \"{}\"", index, wim.wstring(), added, name));
+    return added;
+}
+
+Result<int> captureImage(const std::filesystem::path& folderInput, const std::filesystem::path& wimInput, const ImageText& text,
+                         WimCompression compression, const TaskContext& task) {
+    const std::filesystem::path folder = nativePath(folderInput);
+    const std::filesystem::path wim = nativePath(wimInput);
+    std::error_code ec;
+    if (!std::filesystem::is_directory(folder, ec)) {
+        return fail(ErrorCode::NotFound, L"the folder to capture is not there", folder.wstring());
+    }
+    if (compression == WimCompression::Lzms) {
+        return fail(ErrorCode::InvalidArgument, L"capture to a WIM (LZX / XPRESS); an ESD is made from it afterwards", wim.wstring());
+    }
+    int before = 0;
+    const bool exists = std::filesystem::exists(wim, ec);
+    if (exists) {
+        auto info = readInfo(wim);
+        if (!info) {
+            return std::unexpected(info.error());
+        }
+        if (!plainWim(info->header)) {
+            return fail(ErrorCode::Unsupported, L"a capture is appended to a plain WIM only", wim.wstring());
+        }
+        before = static_cast<int>(info->images.size());
+    }
+    auto a = api();
+    if (!a) {
+        return std::unexpected(a.error());
+    }
+    const Api* w = *a;
+    log::info("wim", std::format(L"capture {} -> {} ({})", folder.wstring(), wim.wstring(), compressionName(compression)));
+    {
+        DWORD created = 0;
+        WimHandle file{w, w->createFile(wim.c_str(), GENERIC_WRITE | GENERIC_READ, exists ? kOpenExisting : kCreateNew, 0,
+                                        compressionCode(compression), &created)};
+        if (!file.h) {
+            return std::unexpected(lastError(L"create " + wim.wstring()));
+        }
+        const auto tempDir = wim.parent_path().empty() ? std::filesystem::temp_directory_path() : wim.parent_path();
+        w->setTemporaryPath(file.h, tempDir.c_str());
+        CallbackState state{&task};
+        w->registerCallback(file.h, reinterpret_cast<FARPROC>(&onMessage), &state);
+        WimHandle image{w, w->captureImage(file.h, folder.c_str(), 0)};
+        const DWORD error = GetLastError();
+        w->unregisterCallback(file.h, reinterpret_cast<FARPROC>(&onMessage));
+        if (!image.h) {
+            if (task.cancel.cancelled()) {
+                return fail(ErrorCode::Cancelled, L"capture cancelled", wim.wstring());
+            }
+            return fail(ErrorCode::WimFailure, L"capture failed", folder.wstring(), static_cast<std::int32_t>(HRESULT_FROM_WIN32(error)));
+        }
+    }
+    const int added = before + 1;
+    if (auto r = setImageText(wim, added, text); !r) {
+        return std::unexpected(r.error());
+    }
+    task.report(1.0, L"capture");
+    return added;
+}
+
+Result<void> setBootImage(const std::filesystem::path& wimInput, int index) {
+    const std::filesystem::path wim = nativePath(wimInput);
+    auto a = api();
+    if (!a) {
+        return std::unexpected(a.error());
+    }
+    const Api* w = *a;
+    WimHandle file{w, w->createFile(wim.c_str(), GENERIC_WRITE | GENERIC_READ, kOpenExisting, 0, 0, nullptr)};
+    if (!file.h) {
+        return std::unexpected(lastError(L"open " + wim.wstring()));
+    }
+    if (!w->setBootImage(file.h, static_cast<DWORD>(index))) {
+        return std::unexpected(lastError(std::format(L"set boot index {} of {}", index, wim.wstring())));
+    }
+    return {};
 }
 
 } // namespace wl::core
