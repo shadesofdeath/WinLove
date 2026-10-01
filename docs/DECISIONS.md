@@ -267,8 +267,13 @@ Karar:
   export 6637 → 5949 MB (−688 MB); gönderilen katalogla (30 girdi, OneDrive dahil) yeniden: ALL PASSED, ScanHealth temiz,
   6637 → 5793 MB (−844 MB). Çalışma anı boyutları Python analiziyle bayt bayt aynı. Görülmeyen: bu imaja sonradan
   toplu güncelleme eklenmesi, kurulan sistemde etki (VM).
-- Sıradaki aşama (ayrı karar): Windows'la gelen sürücü deposu (715 paket, 443 MB) — yalnız eski sınıflar (modem,
-  teyp, disket, 1394, PCMCIA, IrDA, POS, eski yazıcılar); DISM bunları kaldırmaz, kendi motorumuz gerekir.
+- **Windows'la gelen sürücüler: yapılmadı (2026-10-02, ölçülerek).** Eski sınıfların sürücüleri (yazıcı 53, modem 28,
+  diğerleri ~5 MB) WinSxS'te `amd64_dual_<inf>` bileşenleri ve hepsinin sahibi çekirdek paketler
+  (Client-Desktop-Required-Package011120 / 0111, Common-DriverClasses-Core): paket düzeyinde kaldırılamaz. FileRepository
+  dosyaları WinSxS'e hard link — yalnız onları silmek ISO'yu küçültmez. Deney: 153 modem sürücüsünün WinSxS yükü
+  silinince `/ScanHealth` "The component store is repairable" (önce: bozulma yok). Bozuk depo toplu güncellemeyi
+  kırabilir, RestoreHealth sürücüleri geri getirir. ~85 MB için Windows Update'i riske atmak yok; ancak manifest ve
+  kayıtları da tutarlı biçimde söken bir "derin kaldırma" (NTLite tarzı) yeni bir karar ve VM'de güncelleme testi ister.
 
 ## D-058 — Kaynak ve İmajlar araçları: SHA-256, arama, sıkıştırma, SWM, çoğaltma, sürüm ekleme, yakalama (2026-10-01)
 Bağlam: Kullanıcı Kaynak / İmajlar sayfalarının NTLite'a göre eksiklerinden 1, 2, 3, 4, 5, 6, 7, 9'u seçti ("profesyonelce").
