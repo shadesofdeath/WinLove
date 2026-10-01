@@ -34,20 +34,24 @@ Result<StoreCleanupOptions> storeCleanupFromJson(std::string_view json) {
     return options;
 }
 
+namespace {
+
+const wchar_t* cleanupArguments(bool resetBase) noexcept {
+    return resetBase ? L"/Cleanup-Image /StartComponentCleanup /ResetBase" : L"/Cleanup-Image /StartComponentCleanup";
+}
+
+} // namespace
+
 std::wstring storeCleanupCommandLine(const std::filesystem::path& dismExe, const std::filesystem::path& mountDir,
                                      bool resetBase) {
-    return dismExeCommandLine(dismExe, mountDir,
-                              resetBase ? L"/Cleanup-Image /StartComponentCleanup /ResetBase"
-                                        : L"/Cleanup-Image /StartComponentCleanup");
+    return dismExeCommandLine(dismExe, mountDir, cleanupArguments(resetBase));
 }
 
 Result<void> cleanupComponentStore(DismSession& session, bool resetBase, const TaskContext& task) {
     if (auto go = task.cancel.check(L"component store cleanup"); !go) {
         return go;
     }
-    const auto run = runDismExe(session,
-                                resetBase ? L"/Cleanup-Image /StartComponentCleanup /ResetBase"
-                                          : L"/Cleanup-Image /StartComponentCleanup",
+    const auto run = runDismExe(session, cleanupArguments(resetBase),
                                 [&](double percent) { task.report(percent, L"StartComponentCleanup"); });
     if (!run) {
         return std::unexpected(run.error());

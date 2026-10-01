@@ -48,6 +48,9 @@ Bağlı imajdan kaldırılacak bileşenleri seçmek; seçimler kuyruğa girer (P
 - Edge / EdgeCore / WebView2 klasörleri aynı dosyaları içerir (WIM tek kopya saklar): "Boyut" sütunu açılmış boyuttur;
   ISO ancak üçü birden kaldırılınca belirgin küçülür.
 
+- **Derin kaldırma (D-060):** "Eski Donanım Sürücüleri" grubu — modem, teyp, disket, FireWire, PCMCIA, POS sürücüleri imajdan
+  ve bileşen deposundan birlikte çıkar (ScanHealth temiz). Uygula'da güncellemelerden sonra çalışır (DeepRemove aşaması);
+  sonradan eklenen toplu güncelleme kurulamaz — sayfa ve notlar bunu söyler.
 - **Paket düzeyinde bileşenler (D-059):** Gizlilik, Güvenlik, Multimedya, Yazı Tipleri, Kurumsal ve Diğer grupları;
   tarif yalnız CBS paket aileleri taşır. İmajda var mı ve boyutu `ComponentStoreIndex` ile okunur (paket kurulu mu,
   ağacının tek sahipli WinSxS baytı). 25H2 Pro ölçümleri: Defender tanımları 483 MB, Japonca 81 / Basit Çince 56 /

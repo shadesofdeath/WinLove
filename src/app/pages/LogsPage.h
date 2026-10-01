@@ -27,10 +27,12 @@ public:
     void layout() override;
     void paint(ui::Canvas& canvas) override;
 
+    // One log entry as the console shows it (also the Apply page's live log).
+    [[nodiscard]] static ui::LogLine toLine(const log::Entry& entry);
+
 private:
     enum class MinLevel : std::uint8_t { All, Debug, Info, Warn, Error };
     [[nodiscard]] bool passes(const log::Entry& entry) const;
-    [[nodiscard]] static ui::LogLine toLine(const log::Entry& entry);
     void rebuild();          // filters changed: refilter everything
     void updateSources();    // new source tags appeared
 

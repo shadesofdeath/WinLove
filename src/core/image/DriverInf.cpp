@@ -1,6 +1,9 @@
 #include "core/image/DriverInf.h"
 
+#include "base/File.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
+#include "core/system/Files.h"
 
 #include <windows.h>
 
@@ -15,23 +18,8 @@ namespace wl::core {
 
 namespace {
 
-std::wstring lowered(std::wstring text) {
-    for (auto& c : text) {
-        c = static_cast<wchar_t>(std::towlower(c));
-    }
-    return text;
-}
-
-std::wstring trim(std::wstring_view text) {
-    std::size_t a = 0;
-    std::size_t b = text.size();
-    while (a < b && std::iswspace(text[a])) {
-        ++a;
-    }
-    while (b > a && std::iswspace(text[b - 1])) {
-        --b;
-    }
-    return std::wstring(text.substr(a, b - a));
+std::wstring trim(std::wstring_view s) {
+    return std::wstring(text::trim(s));
 }
 
 std::wstring unquote(std::wstring value) {
@@ -76,14 +64,14 @@ DriverInf parseInfText(const std::wstring& text, const std::filesystem::path& pa
             continue;
         }
         if (t.front() == L'[' && t.back() == L']') {
-            section = lowered(trim(std::wstring_view(t).substr(1, t.size() - 2)));
+            section = text::lower(trim(std::wstring_view(t).substr(1, t.size() - 2)));
             continue;
         }
         const auto eq = t.find(L'=');
         if (eq == std::wstring::npos) {
             continue;
         }
-        const std::wstring key = lowered(trim(std::wstring_view(t).substr(0, eq)));
+        const std::wstring key = text::lower(trim(std::wstring_view(t).substr(0, eq)));
         const std::wstring value = trim(std::wstring_view(t).substr(eq + 1));
         sections[section][key] = value;
         if (section == L"manufacturer") {
@@ -94,7 +82,7 @@ DriverInf parseInfText(const std::wstring& text, const std::filesystem::path& pa
     auto resolve = [&](std::wstring value) {
         value = unquote(trim(value));
         if (value.size() > 2 && value.front() == L'%' && value.back() == L'%') {
-            const auto it = strings.find(lowered(value.substr(1, value.size() - 2)));
+            const auto it = strings.find(text::lower(value.substr(1, value.size() - 2)));
             if (it != strings.end()) {
                 return unquote(it->second);
             }
@@ -117,7 +105,7 @@ DriverInf parseInfText(const std::wstring& text, const std::filesystem::path& pa
         std::wstring part;
         std::getline(parts, part, L','); // models section name
         while (std::getline(parts, part, L',')) {
-            const std::wstring decoration = lowered(trim(part));
+            const std::wstring decoration = text::lower(trim(part));
             for (const wchar_t* arch : {L"amd64", L"arm64", L"x86"}) {
                 if (decoration.starts_with(std::wstring(L"nt") + arch) &&
                     std::ranges::find(inf.architectures, arch) == inf.architectures.end()) {
@@ -135,10 +123,7 @@ DriverInf parseInfText(const std::wstring& text, const std::filesystem::path& pa
 }
 
 DriverInf parseInf(const std::filesystem::path& path) {
-    std::ifstream in(path, std::ios::binary);
-    std::stringstream buffer;
-    buffer << in.rdbuf();
-    return parseInfText(utf8::decodeText(buffer.str()), path);
+    return parseInfText(utf8::decodeText(readFileBytes(path).value_or(std::string())), path);
 }
 
 std::vector<DriverInf> scanDrivers(const std::filesystem::path& folder) {
@@ -155,8 +140,8 @@ std::vector<DriverInf> scanDrivers(const std::filesystem::path& folder) {
             continue;
         }
         auto& f = folders[it->path().parent_path()];
-        f.first += it->file_size(ec);
-        if (lowered(it->path().extension().wstring()) == L".inf") {
+        f.first += treeBytes(it->path()); // an unreadable size counts 0, not uintmax_t(-1)
+        if (text::lower(it->path().extension().wstring()) == L".inf") {
             ++f.second;
             infs.push_back(parseInf(it->path()));
         }

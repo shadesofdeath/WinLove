@@ -2,12 +2,12 @@
 
 #include "app/Format.h"
 #include "app/pages/PageBits.h"
+#include "base/Text.h"
 #include "ui/widget/Host.h"
 #include "ui/widgets/Checkbox.h"
 
 #include <algorithm>
 #include <cmath>
-#include <cwctype>
 #include <map>
 
 namespace wl::app {
@@ -28,17 +28,8 @@ constexpr float kChevron = 16.0f;
 enum Column : int { kName, kProvider, kSize };
 enum ImageColumn : int { kDriver, kClass, kImageProvider, kVersion, kDate };
 
-std::wstring lowered(std::wstring text) {
-    for (auto& c : text) {
-        c = static_cast<wchar_t>(std::towlower(c));
-    }
-    return text;
-}
-
-const wchar_t* kArchKeys[] = {L"", L"x64", L"arm64", L"x86"};
-
 ui::icons::Icon classIcon(const std::wstring& cls) {
-    const std::wstring c = lowered(cls);
+    const std::wstring c = wl::text::lower(cls);
     if (c == L"net" || c == L"netservice" || c == L"bluetooth") {
         return ui::icons::Icon::Network;
     }
@@ -75,7 +66,7 @@ std::wstring DriversPage::className(const std::wstring& cls, const Localization&
     if (cls.empty()) {
         return strings.get(Str::DriversClsNone);
     }
-    const auto it = kNames.find(lowered(cls));
+    const auto it = kNames.find(wl::text::lower(cls));
     if (it == kNames.end()) {
         return cls;
     }
@@ -120,7 +111,7 @@ DriversPage::DriversPage(AppState& state, ImageDriverController& images, const L
     m_imageTable->onSelect = [this](int) { invalidate(); };
     m_search = &add<ui::SearchBox>(strings.get(Str::DriversSearch), std::vector<std::wstring>{L"/"});
     m_search->onChange = [this](const std::wstring& text) {
-        m_needle = lowered(text);
+        m_needle = wl::text::lower(text);
         rebuild();
     };
     m_class = &add<ui::Dropdown>(strings.get(Str::DriversClass), std::vector<std::wstring>{strings.get(Str::CommonAll)}, 0);
@@ -128,8 +119,7 @@ DriversPage::DriversPage(AppState& state, ImageDriverController& images, const L
         m_classFilter = index;
         rebuild();
     };
-    m_arch = &add<ui::Dropdown>(strings.get(Str::ImagesArch),
-                                std::vector<std::wstring>{strings.get(Str::CommonAll), L"x64", L"arm64", L"x86"}, 0);
+    m_arch = &add<ui::Dropdown>(strings.get(Str::ImagesArch), archFilterItems(strings), 0);
     m_arch->onChange = [this](int index) {
         m_archFilter = index;
         rebuild();
@@ -140,7 +130,7 @@ DriversPage::DriversPage(AppState& state, ImageDriverController& images, const L
             if (image.index == mounted->index) {
                 const std::wstring arch = core::architectureName(image.architecture);
                 for (int i = 1; i < 4; ++i) {
-                    if (arch == kArchKeys[i]) {
+                    if (arch == kArchFilterKeys[i]) {
                         m_archFilter = i;
                         m_arch->setSelected(i);
                     }
@@ -279,6 +269,9 @@ void DriversPage::refresh() {
         const auto& list = m_state.imageDrivers();
         const bool ready = list && list->status == AppState::ImageDrivers::Status::Ready;
         if (!list || list->status == AppState::ImageDrivers::Status::Loading) {
+            // A new mount resets the list (AppState::setMounted): start reading it, as the other
+            // per-mount pages do — nothing else would until the tab is switched.
+            m_images.load();
             m_empty->setContent(ui::icons::Icon::Spinner, m_strings.get(Str::DriversImageLoading), m_strings.get(Str::DriversImageLoadingBody));
             m_empty->clearAction();
         } else if (list->status == AppState::ImageDrivers::Status::Failed) {
@@ -299,7 +292,7 @@ void DriversPage::refresh() {
     if (!mounted) {
         m_empty->setContent(ui::icons::Icon::DriverChip, m_strings.get(Str::DriversNoMountTitle),
                             m_strings.get(Str::DriversNoMountBody));
-        m_empty->setAction(m_strings.get(Str::FeaturesGoImages)).onInvoke = m_intents.goImages;
+        m_empty->setAction(m_strings.get(Str::CommonGoImages)).onInvoke = m_intents.goImages;
     } else if (!any) {
         m_empty->setContent(ui::icons::Icon::OpenFolder, m_strings.get(Str::DriversEmptyTitle),
                             m_strings.get(Str::DriversEmptyBody));
@@ -334,11 +327,11 @@ void DriversPage::rebuild() {
         }
         auto& g = groups[inf.className];
         ++g.total;
-        if (m_archFilter > 0 && !inf.supports(kArchKeys[m_archFilter])) {
+        if (m_archFilter > 0 && !inf.supports(kArchFilterKeys[m_archFilter])) {
             continue;
         }
-        if (!m_needle.empty() && lowered(inf.path.filename().wstring()).find(m_needle) == std::wstring::npos &&
-            lowered(inf.provider).find(m_needle) == std::wstring::npos) {
+        if (!m_needle.empty() && wl::text::lower(inf.path.filename().wstring()).find(m_needle) == std::wstring::npos &&
+            wl::text::lower(inf.provider).find(m_needle) == std::wstring::npos) {
             continue;
         }
         g.infs.push_back(static_cast<int>(i));

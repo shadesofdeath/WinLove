@@ -1,12 +1,13 @@
 #include "app/pages/ComponentsPage.h"
 
 #include "app/Format.h"
+#include "app/pages/PageBits.h"
 #include "app/pages/components/ComponentInspector.h"
+#include "base/Text.h"
 #include "ui/widget/Host.h"
 #include "ui/widgets/Checkbox.h"
 
 #include <algorithm>
-#include <cwctype>
 
 namespace wl::app {
 
@@ -25,31 +26,6 @@ constexpr float kIndent = 16.0f;
 constexpr float kChevron = 16.0f;
 
 enum Column : int { kName, kRisk, kSize };
-
-std::wstring lowered(std::wstring text) {
-    for (auto& c : text) {
-        c = static_cast<wchar_t>(std::towlower(c));
-    }
-    return text;
-}
-
-Color riskInk(Risk risk) {
-    switch (risk) {
-    case Risk::Low: return Color::StatusSuccess;
-    case Risk::Medium: return Color::StatusWarning;
-    case Risk::High: return Color::StatusError;
-    }
-    return Color::TextSecondary;
-}
-
-Str riskText(Risk risk) {
-    switch (risk) {
-    case Risk::Low: return Str::RiskLow;
-    case Risk::Medium: return Str::RiskMedium;
-    case Risk::High: return Str::RiskHigh;
-    }
-    return Str::RiskMedium;
-}
 } // namespace
 
 ComponentsPage::ComponentsPage(AppState& state, ComponentController& controller, const Localization& strings,
@@ -58,7 +34,7 @@ ComponentsPage::ComponentsPage(AppState& state, ComponentController& controller,
       m_goToImages(std::move(goToImages)) {
     m_search = &add<ui::SearchBox>(strings.get(Str::ComponentsSearch), std::vector<std::wstring>{L"/"});
     m_search->onChange = [this](const std::wstring& text) {
-        m_needle = lowered(text);
+        m_needle = wl::text::lower(text);
         rebuildRows();
     };
     m_category = &add<ui::Dropdown>(strings.get(Str::ComponentsCategory), std::vector<std::wstring>{strings.get(Str::CommonAll)}, 0);
@@ -219,7 +195,7 @@ void ComponentsPage::refresh() {
     if (!m_state.mounted()) {
         m_empty->setContent(ui::icons::Icon::ComponentsRemove, m_strings.get(Str::ComponentsEmptyTitle),
                             m_strings.get(Str::ComponentsEmptyBody));
-        m_empty->setAction(m_strings.get(Str::FeaturesGoImages)).onInvoke = m_goToImages;
+        m_empty->setAction(m_strings.get(Str::CommonGoImages)).onInvoke = m_goToImages;
         m_empty->setVisible(true);
     } else if (!list || list->status == AppState::AppxList::Status::Loading) {
         m_controller.load();
@@ -230,7 +206,7 @@ void ComponentsPage::refresh() {
     } else if (list->status == AppState::AppxList::Status::Failed) {
         m_empty->setContent(ui::icons::Icon::ErrorOctagon, m_strings.get(Str::ComponentsFailedTitle),
                             list->error.message + L" — " + list->error.context);
-        m_empty->setAction(m_strings.get(Str::FeaturesRetry)).onInvoke = [this] { m_controller.load(/*force=*/true); };
+        m_empty->setAction(m_strings.get(Str::CommonRetry)).onInvoke = [this] { m_controller.load(/*force=*/true); };
         m_empty->setVisible(true);
     } else {
         m_empty->setVisible(false);
@@ -238,13 +214,21 @@ void ComponentsPage::refresh() {
     for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_search, m_category, m_risk, m_selectedOnly, m_table}) {
         w->setVisible(ready);
     }
+    // The picked category survives a rebuild (the system components arrive a few seconds after the
+    // apps): it is kept by group identity, not by position — groups come and go with the image.
+    const int keptGroup = m_categoryFilter > 0 && m_categoryFilter <= static_cast<int>(m_groups.size())
+                              ? m_groups[static_cast<std::size_t>(m_categoryFilter - 1)].catalogIndex
+                              : -1;
     m_groups = m_controller.groups();
     std::vector<std::wstring> categories{m_strings.get(Str::CommonAll)};
-    for (const auto& g : m_groups) {
-        categories.push_back(g.name);
-    }
-    m_category->setItems(std::move(categories), 0);
     m_categoryFilter = 0;
+    for (std::size_t g = 0; g < m_groups.size(); ++g) {
+        categories.push_back(m_groups[g].name);
+        if (m_groups[g].catalogIndex == keptGroup) {
+            m_categoryFilter = static_cast<int>(g) + 1;
+        }
+    }
+    m_category->setItems(std::move(categories), m_categoryFilter);
     rebuildRows();
     updateRiskBar();
     layout();
@@ -258,8 +242,8 @@ bool ComponentsPage::itemVisible(const Item& item) const {
     if (m_riskFilter > 0 && static_cast<int>(item.risk) != m_riskFilter - 1) {
         return false;
     }
-    if (!m_needle.empty() && lowered(item.name).find(m_needle) == std::wstring::npos &&
-        lowered(item.identity).find(m_needle) == std::wstring::npos) {
+    if (!m_needle.empty() && wl::text::lower(item.name).find(m_needle) == std::wstring::npos &&
+        wl::text::lower(item.identity).find(m_needle) == std::wstring::npos) {
         return false;
     }
     return true;
@@ -423,7 +407,7 @@ void ComponentsPage::paintCell(ui::Canvas& canvas, int row, int column, RectF re
         x += ui::tokens::size::icon + 6;
         const std::wstring& name = isGroup ? group.name : item->name;
         if (!isGroup && !m_needle.empty()) {
-            const auto at = lowered(name).find(m_needle);
+            const auto at = wl::text::lower(name).find(m_needle);
             if (at != std::wstring::npos) {
                 const float x0 = x + canvas.text().measure(std::wstring_view(name).substr(0, at), TypeStyle::Body);
                 const float x1 = x + canvas.text().measure(std::wstring_view(name).substr(0, at + m_needle.size()), TypeStyle::Body);
@@ -442,9 +426,7 @@ void ComponentsPage::paintCell(ui::Canvas& canvas, int row, int column, RectF re
                                           : m_strings.format(Str::ComponentsItemsN, {{L"n", std::to_wstring(group.items.size())}});
             canvas.drawText(text, rect, TypeStyle::Caption, Color::TextTertiary);
         } else {
-            canvas.fillRect({rect.x, rect.y + 9, 6, 6}, riskInk(item->risk));
-            canvas.drawText(m_strings.get(riskText(item->risk)), {rect.x + 12, rect.y, rect.width - 12, rect.height},
-                            TypeStyle::Caption, Color::TextSecondary);
+            paintRisk(canvas, rect, item->risk, m_strings);
         }
         break;
     case kSize: {

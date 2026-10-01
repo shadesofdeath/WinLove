@@ -7,7 +7,8 @@
   (-Lcu <msu>) and the store is scanned again, and whether a driver came back is reported. Commit,
   fresh export, verify. Nothing outside build\lab is touched; the test ISO is never read.
 
-    powershell -ExecutionPolicy Bypass -File tools\lab_deep_removal.ps1 [-Lcu <newer LCU .msu>] [-Index 4]
+    powershell -ExecutionPolicy Bypass -File tools\lab_deep_removal.ps1 [-Lcu <newer LCU .msu> [-LcuFirst]] [-Index 4]
+  -LcuFirst adds the update BEFORE the deep removal (the order Apply uses: updates, then components).
   Needs an elevated PowerShell. About 10 minutes, 40-60 more with -Lcu.
   Log: build\lab\out\deep-removal-test.log (UTF-8).
 
@@ -16,6 +17,7 @@
 #>
 param(
     [string] $Lcu = '',
+    [switch] $LcuFirst,
     [int] $Index = 4,              # Windows 11 Pro in the 25H2 test ISO
     [string] $Lab = (Join-Path $PSScriptRoot '..\build\lab'),
     [string] $Cli = "$PSScriptRoot\..\build\x64-release\bin\wlcli.exe"
@@ -54,6 +56,13 @@ function ScanHealth([string] $when) {
     $line = "$($scan | Where-Object { $_ -match 'component store|corruption|repairable' } | Select-Object -Last 1)".Trim()
     Check ("ScanHealth $when`: $line (" + [int]$watch.Elapsed.TotalSeconds + " s)") ($LASTEXITCODE -eq 0 -and $line -match 'No component store corruption')
 }
+function AddLcu() {
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    $add = @(Native { & dism.exe /English "/Image:$mount" /Add-Package "/PackagePath:$Lcu" })
+    $code = $LASTEXITCODE
+    $add | Where-Object { $_ -match 'error|completed|Processing' } | Select-Object -Last 3 | ForEach-Object { Say ("        " + $_.Trim()) }
+    Check ("cumulative update added (exit $code, " + [int]$watch.Elapsed.TotalMinutes + " min)") ($code -eq 0)
+}
 function Probe([System.IO.FileInfo] $file) {
     $out = @(Native { & $Cli component $mount $file.FullName })
     return [pscustomobject]@{
@@ -72,7 +81,7 @@ foreach ($c in $catalog.components) {
 }
 $recipes = @(Get-ChildItem (Join-Path $work 'recipes') -Filter '*.json' | Sort-Object Name)
 
-Say ("=== lab_deep_removal " + (Get-Date -Format s) + " ($($recipes.Count) deep entries, index $Index" + $(if ($Lcu) { ", then $(Split-Path $Lcu -Leaf)" } else { '' }) + ")")
+Say ("=== lab_deep_removal " + (Get-Date -Format s) + " ($($recipes.Count) deep entries, index $Index" + $(if ($Lcu) { $(if ($LcuFirst) { ', after ' } else { ', then ' }) + (Split-Path $Lcu -Leaf) } else { '' }) + ")")
 $wim = Join-Path $work 'pro.wim'
 Native { & $Cli export $source $Index $wim } | Out-Null
 $before = Mb $wim
@@ -82,6 +91,10 @@ try {
     Native { & $Cli mount $wim 1 $mount } | Select-Object -Last 1 | ForEach-Object { Say "  $_" }
     if ($LASTEXITCODE -ne 0) { throw "mount failed ($LASTEXITCODE)" }
     $mounted = $true
+    if ($Lcu -and $LcuFirst) {
+        AddLcu
+        ScanHealth 'after the cumulative update'
+    }
 
     foreach ($file in $recipes) {
         $p = Probe $file
@@ -99,12 +112,8 @@ try {
     Check "no modem package left in the driver store ($repo)" ($repo -eq 0)
     ScanHealth 'after the deep removal'
 
-    if ($Lcu) {
-        $watch = [Diagnostics.Stopwatch]::StartNew()
-        $add = @(Native { & dism.exe /English "/Image:$mount" /Add-Package "/PackagePath:$Lcu" })
-        $code = $LASTEXITCODE
-        $add | Where-Object { $_ -match 'error|completed|Processing' } | Select-Object -Last 3 | ForEach-Object { Say ("        " + $_.Trim()) }
-        Check ("cumulative update added (exit $code, " + [int]$watch.Elapsed.TotalMinutes + " min)") ($code -eq 0)
+    if ($Lcu -and -not $LcuFirst) {
+        AddLcu
         ScanHealth 'after the cumulative update'
         foreach ($file in $recipes) {
             $back = Probe $file

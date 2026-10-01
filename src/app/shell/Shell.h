@@ -91,10 +91,7 @@ public:
     ~Shell() override;
 
     TitleBar& titleBar() { return *m_titleBar; }
-    NavRail& nav() { return *m_nav; }
     ImageController& images() { return *m_images; }
-    FeatureController& features() { return *m_features; }
-    ApplyController& apply() { return *m_apply; }
     ComponentController& components() { return *m_components; }
     ServiceController& services() { return *m_serviceCtl; }
     IsoPage* isoPageForDemo() const { return isoPage(); } // render: --demo-usb
@@ -181,7 +178,6 @@ public:
     void askDuplicateEdition();
     void askCapture();
     void verifyHash(const std::filesystem::path& file);
-    void pushToolDialog(std::unique_ptr<ui::Dialog> dialog, ui::Widget* focus, std::shared_ptr<ui::Dialog*> raw);
     void exportLog();
 
     void layout() override;
@@ -191,7 +187,7 @@ private:
     void updateBreadcrumb();
     void updateImagesChrome();
     void updateStatus();
-    void onImageFailure(ImageController::Failure failure, const Error& error, int index);
+    void onImageFailure(ImageController::Failure failure, const Error& error);
     [[nodiscard]] SourcePage* sourcePage() const;
     [[nodiscard]] ImagesPage* imagesPage() const;
     [[nodiscard]] LogsPage* logsPage() const;
@@ -249,6 +245,34 @@ private:
     void toggleNav();
     void openLogFolder();
     ui::Dialog& pushDialog(std::unique_ptr<ui::Dialog> dialog);
+    // A dialog built by a factory that takes its close action before the dialog exists: the slot
+    // holds the dialog once shown; close() pops it once, whichever handler calls it first.
+    struct ModalSlot {
+        std::shared_ptr<ui::Dialog*> dialog = std::make_shared<ui::Dialog*>(nullptr);
+        std::function<void()> close;
+    };
+    [[nodiscard]] ModalSlot modalSlot();
+    void showModal(const ModalSlot& slot, std::unique_ptr<ui::Dialog> dialog, ui::Widget* focus);
+    // Pops `dialog` (a handler of the dialog itself: Cancel, Escape).
+    [[nodiscard]] std::function<void()> closer(ui::Widget* modal); // pops it
+    [[nodiscard]] std::wstring errorText(const Error& error) const; // a toast line for an engine error
+    [[nodiscard]] HWND owner() const; // file pickers' owner window
+    // The queue belongs to a mounted image: false (and the page's own warning) without one.
+    [[nodiscard]] bool requireMount(Str title, Str body);
+    // `work` on the reader thread, then `onUi(result)` on the UI thread — unless the shell is gone
+    // by then (every reader job used to repeat this post + liveness check).
+    template <class T, class Work, class OnUi>
+    void readThenUi(Work work, OnUi onUi) {
+        m_state.reader().run<T>(std::move(work), [post = m_services.postToUi, alive = std::weak_ptr<bool>(m_alive),
+                                                  onUi = std::move(onUi)](Result<T> result) {
+            post([alive, onUi, result = std::move(result)]() mutable {
+                if (const auto a = alive.lock(); !a || !*a) {
+                    return;
+                }
+                onUi(std::move(result));
+            });
+        });
+    }
 public:
     // WM_CLOSE: while a mount / apply / ISO job runs, closing would leave a windowless process
     // (or a half-committed image). Shows why and keeps the window open.

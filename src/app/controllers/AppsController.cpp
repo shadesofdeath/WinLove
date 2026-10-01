@@ -1,5 +1,6 @@
 #include "app/controllers/AppsController.h"
 
+#include "base/File.h"
 #include "base/Log.h"
 #include "base/Utf8.h"
 
@@ -7,8 +8,6 @@
 
 #include <algorithm>
 #include <format>
-#include <fstream>
-#include <sstream>
 
 namespace wl::app {
 
@@ -66,6 +65,8 @@ void AppsController::addPackages(std::vector<std::filesystem::path> files) {
         return;
     }
     const std::wstring arch = imageArchitecture();
+    // The plan is for this mount (its architecture): queued only if it is still the one mounted.
+    const std::filesystem::path mountDir = m_state.mounted() ? m_state.mounted()->mountDir : std::filesystem::path();
     auto post = m_events.postToUi;
     std::weak_ptr<bool> alive = m_alive;
     struct Planned {
@@ -85,8 +86,8 @@ void AppsController::addPackages(std::vector<std::filesystem::path> files) {
             }
             return true;
         },
-        [this, post, alive, planned](Result<bool>) {
-            post([this, alive, planned] {
+        [this, post, alive, planned, mountDir](Result<bool>) {
+            post([this, alive, planned, mountDir] {
                 if (const auto a = alive.lock(); !a || !*a) {
                     return;
                 }
@@ -94,8 +95,11 @@ void AppsController::addPackages(std::vector<std::filesystem::path> files) {
                 for (const auto& install : planned->installs) {
                     ops.push_back(operationFor(install));
                 }
-                const int n = static_cast<int>(ops.size());
-                if (m_state.mounted()) {
+                // What the toast reports is what was actually queued: nothing when the image was
+                // unmounted / replaced meanwhile or the queue is locked (Uygula running).
+                int n = 0;
+                if (m_state.mounted() && m_state.mounted()->mountDir == mountDir && !m_state.queueLocked()) {
+                    n = static_cast<int>(ops.size());
                     m_state.queueMany(std::move(ops));
                 }
                 for (const auto& e : planned->errors) {
@@ -161,18 +165,12 @@ void AppsController::removeAssociation(std::wstring_view identifier) {
     setAssociations(current);
 }
 
-void AppsController::clearAssociations() {
-    setAssociations({});
-}
-
 Result<int> AppsController::importAssociationsFile(const std::filesystem::path& file) {
-    std::ifstream in(file, std::ios::binary);
-    if (!in) {
-        return fail(ErrorCode::NotFound, L"cannot open the file", file.wstring());
+    const auto bytes = readFileBytes(file);
+    if (!bytes) {
+        return std::unexpected(bytes.error());
     }
-    std::stringstream buffer;
-    buffer << in.rdbuf();
-    auto list = core::parseAssociations(buffer.str());
+    auto list = core::parseAssociations(*bytes);
     if (!list) {
         return std::unexpected(list.error());
     }
@@ -210,11 +208,13 @@ void AppsController::importHostAssociations() {
                     }
                     return;
                 }
-                if (m_state.mounted()) {
+                int imported = 0;
+                if (m_state.mounted() && !m_state.queueLocked()) {
                     mergeAssociations(*result);
+                    imported = static_cast<int>(result->size());
                 }
                 if (m_events.hostImported) {
-                    m_events.hostImported(static_cast<int>(result->size()));
+                    m_events.hostImported(imported);
                 }
             });
         });

@@ -51,11 +51,7 @@ void DropZone::onClick() {
 }
 
 bool DropZone::onKeyDown(const KeyEvent& key) {
-    if (key.virtualKey == VK_SPACE || key.virtualKey == VK_RETURN) {
-        onClick();
-        return true;
-    }
-    return false;
+    return activateOnKey(key);
 }
 
 void DropZone::paint(Canvas& canvas) {

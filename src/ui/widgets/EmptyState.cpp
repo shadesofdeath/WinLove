@@ -29,8 +29,8 @@ Button& EmptyState::setAction(std::wstring label) {
 }
 
 void EmptyState::clearAction() {
+    hideAction();
     if (m_action) {
-        m_action->setVisible(false);
         m_action->onInvoke = nullptr;
     }
 }

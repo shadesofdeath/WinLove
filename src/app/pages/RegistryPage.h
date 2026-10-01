@@ -18,7 +18,6 @@ class CategoryGrid;
 class RegistryPage : public ui::Widget {
 public:
     struct Intents {
-        std::function<void()> importReg;
         std::function<void()> goImages;
     };
     RegistryPage(AppState& state, RegistryController& controller, const Localization& strings, Language language,

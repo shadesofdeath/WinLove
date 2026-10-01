@@ -1,12 +1,12 @@
 #include "app/controllers/ServiceController.h"
 
 #include "base/Log.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 
 #include <json.hpp>
 
 #include <algorithm>
-#include <cwctype>
 
 namespace wl::app {
 
@@ -17,13 +17,6 @@ using core::ops::Operation;
 using core::ops::Risk;
 
 namespace {
-
-std::wstring lowered(std::wstring text) {
-    for (auto& c : text) {
-        c = static_cast<wchar_t>(std::towlower(c));
-    }
-    return text;
-}
 
 Risk riskFrom(const std::string& text) {
     return text == "low" ? Risk::Low : text == "high" ? Risk::High : Risk::Medium;
@@ -46,7 +39,7 @@ std::map<std::wstring, ServiceNote> ServiceController::parseCatalog(std::string_
         return catalog;
     }
     for (const auto& s : doc.value("services", nlohmann::json::array())) {
-        catalog[lowered(utf8::toWide(s.value("name", std::string{})))] =
+        catalog[wl::text::lower(utf8::toWide(s.value("name", std::string{})))] =
             ServiceNote{riskFrom(s.value("risk", std::string{"medium"})), utf8::toWide(s.value("notes_tr", std::string{})),
                         utf8::toWide(s.value("notes_en", std::string{}))};
     }
@@ -135,12 +128,12 @@ Risk ServiceController::risk(const ServiceEntry& service) const {
     if (service.start == StartType::Boot || service.start == StartType::System) {
         return Risk::High;
     }
-    const auto it = m_catalog.find(lowered(service.name));
+    const auto it = m_catalog.find(wl::text::lower(service.name));
     return it != m_catalog.end() ? it->second.risk : Risk::Medium;
 }
 
 std::wstring ServiceController::notes(const ServiceEntry& service, Language language) const {
-    const auto it = m_catalog.find(lowered(service.name));
+    const auto it = m_catalog.find(wl::text::lower(service.name));
     if (it == m_catalog.end()) {
         return {};
     }

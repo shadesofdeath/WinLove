@@ -454,9 +454,7 @@ void Host::paintTooltip(Canvas& canvas) {
         y = m_tooltipOwner->bounds().y - kTooltipGap - kTooltipHeight;
     }
     const RectF box{std::round(x), std::round(y), width, kTooltipHeight};
-    canvas.dropShadow(box, tokens::radius::r2, tokens::elevation::menu);
-    canvas.fillRoundRect(box, tokens::radius::r2, tokens::Color::BgOverlay);
-    canvas.strokeRoundRect(box, tokens::radius::r2, tokens::Color::LineStrong);
+    canvas.panel(box, tokens::radius::r2, tokens::elevation::menu);
     canvas.drawText(text, box.inset(kTooltipPaddingX + 1, 0), tokens::TypeStyle::Caption, tokens::Color::TextPrimary);
 }
 

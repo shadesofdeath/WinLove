@@ -5,6 +5,7 @@
 // produced lazily by IMAPI while we copy it to the file, so building = writing (progress, cancel).
 // Optional: SHA-256 of the result (CNG). Engine thread only.
 #include "core/image/WimFile.h"
+#include "core/system/Hash.h" // sha256File (the ISO's optional .sha256)
 #include "core/tasks/Task.h"
 
 #include <filesystem>
@@ -56,8 +57,5 @@ struct IsoResult {
 // work folders (it rewrites the setup files).
 [[nodiscard]] Result<void> repackInstallImage(const std::filesystem::path& folder, WimCompression compression,
                                               const TaskContext& task);
-
-// SHA-256 of a file as lowercase hex (CNG), with progress.
-[[nodiscard]] Result<std::wstring> sha256File(const std::filesystem::path& file, const TaskContext& task);
 
 } // namespace wl::core

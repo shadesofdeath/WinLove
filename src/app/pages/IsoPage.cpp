@@ -1,6 +1,7 @@
 #include "app/pages/IsoPage.h"
 
 #include "app/Format.h"
+#include "app/pages/PageBits.h"
 #include "core/usb/UsbMedia.h"
 #include "ui/anim/Tween.h"
 
@@ -125,6 +126,9 @@ IsoPage::IsoPage(AppState& state, IsoController& controller, const Localization&
     setAccessible(ui::AccessRole::Group, strings.get(Str::IsoTitle));
 
     m_subscription = m_state.subscribe([this](AppState::Change change) {
+        if (change == AppState::Change::Source) {
+            computeSize(); // a re-read source (after a commit) is another size: USB check, estimate
+        }
         if (change == AppState::Change::Iso || change == AppState::Change::Mount || change == AppState::Change::Source ||
             change == AppState::Change::Apply || change == AppState::Change::Operation ||
             change == AppState::Change::Unattend) {
@@ -143,11 +147,13 @@ IsoPage::~IsoPage() {
 void IsoPage::computeSize() {
     const auto& source = m_state.source();
     if (!source) {
+        m_sourceBytes = 0;
         return;
     }
     std::error_code ec;
     if (source->format == core::ImageFormat::Iso) {
-        m_sourceBytes = std::filesystem::file_size(source->path, ec);
+        const auto size = std::filesystem::file_size(source->path, ec);
+        m_sourceBytes = ec ? 0 : size; // file_size answers -1 on an error
         return;
     }
     // Walking ~1000 files: on the reader thread, then repaint.
@@ -166,7 +172,7 @@ void IsoPage::computeSize() {
             post([this, alive, bytes] { // back on the UI thread
                 if (const auto a = alive.lock(); a && *a) {
                     m_sourceBytes = *bytes;
-                    invalidate();
+                    refresh(); // the USB size check and the estimate read it
                 }
             });
         });
@@ -487,8 +493,7 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
     const RectF b = bounds();
     // Section headers + field labels.
     auto section = [&](Str title) {
-        canvas.drawText(m_strings.get(title), {b.x, y + 8, 300, 20}, TypeStyle::Section, Color::TextSecondary);
-        canvas.hairlineH(b.x, y + kSection - 6, formRight - b.x, Color::LineSubtle);
+        paintFormSection(canvas, {b.x, y, formRight - b.x, kSection}, m_strings.get(title));
         y += kSection;
     };
     auto label = [&](Str text) {
@@ -560,8 +565,7 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
 void IsoPage::paintUsbForm(ui::Canvas& canvas, float y, float formRight) {
     const RectF b = bounds();
     auto section = [&](Str title) {
-        canvas.drawText(m_strings.get(title), {b.x, y + 8, 300, 20}, TypeStyle::Section, Color::TextSecondary);
-        canvas.hairlineH(b.x, y + kSection - 6, formRight - b.x, Color::LineSubtle);
+        paintFormSection(canvas, {b.x, y, formRight - b.x, kSection}, m_strings.get(title));
         y += kSection;
     };
     auto label = [&](Str text) {

@@ -51,6 +51,7 @@ std::wstring applyPhaseName(const Localization& strings, Phase phase) {
     case Phase::Drivers: return strings.get(Str::ApplyOpsDrivers);
     case Phase::Updates: return strings.get(Str::ApplyOpsUpdates);
     case Phase::Apps: return strings.get(Str::ApplyOpsApps);
+    case Phase::DeepRemove: return strings.get(Str::ApplyOpsDeepRemove);
     case Phase::Cleanup: return strings.get(Str::ApplyOpsCleanup);
     case Phase::Settings: return strings.get(Str::ApplyOpsSettings);
     }

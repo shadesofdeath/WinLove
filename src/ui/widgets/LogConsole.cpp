@@ -327,9 +327,7 @@ void LogConsole::paint(Canvas& canvas) {
     if (!m_autoScroll && m_unseen > 0 && newLinesText) {
         const RectF chip = chipRect(&canvas);
         m_chipWidth = chip.width;
-        canvas.dropShadow(chip, tokens::radius::r3, tokens::elevation::menu);
-        canvas.fillRoundRect(chip, tokens::radius::r3, Color::BgOverlay);
-        canvas.strokeRoundRect(chip, tokens::radius::r3, Color::LineStrong);
+        canvas.panel(chip, tokens::radius::r3, tokens::elevation::menu);
         canvas.drawText(newLinesText(m_unseen), chip, TypeStyle::Caption, Color::TextPrimary, TextAlign::Center);
     }
     canvas.popClip();

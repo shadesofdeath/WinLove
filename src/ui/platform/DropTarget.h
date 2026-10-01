@@ -42,7 +42,6 @@ private:
 
     Window& m_window;
     DropCallbacks m_callbacks;
-    std::vector<std::filesystem::path> m_files;
     bool m_accepted = false;
     bool m_legacy = false; // elevated: WM_DROPFILES instead of OLE
     LONG m_refs = 1;

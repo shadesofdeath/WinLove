@@ -1,11 +1,9 @@
 #include "app/state/Preset.h"
 
+#include "base/File.h"
 #include "base/Utf8.h"
 
 #include <json.hpp>
-
-#include <fstream>
-#include <iterator>
 
 namespace wl::app {
 
@@ -66,12 +64,11 @@ Result<Preset> presetFromJson(std::string_view json, std::wstring fallbackName) 
 }
 
 Result<Preset> readPreset(const std::filesystem::path& file) {
-    std::ifstream in(file, std::ios::binary);
-    if (!in) {
+    const auto bytes = readFileBytes(file);
+    if (!bytes) {
         return fail(ErrorCode::NotFound, L"could not open the preset", file.wstring());
     }
-    const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    auto preset = presetFromJson(bytes, file.stem().wstring());
+    auto preset = presetFromJson(*bytes, file.stem().wstring());
     if (!preset) {
         auto error = preset.error();
         error.context = file.filename().wstring() + (error.context.empty() ? L"" : L" · " + error.context);
@@ -84,11 +81,10 @@ Result<Preset> readPreset(const std::filesystem::path& file) {
 Result<void> writePreset(const std::filesystem::path& file, const Preset& preset) {
     std::error_code ec;
     std::filesystem::create_directories(file.parent_path(), ec);
-    const std::string bytes = presetToJson(preset);
-    std::ofstream out(file, std::ios::binary | std::ios::trunc);
-    out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-    out.flush();
-    return out ? Result<void>{} : fail(ErrorCode::IoError, L"could not write the preset", file.wstring());
+    if (auto written = writeFileAtomic(file, presetToJson(preset)); !written) {
+        return fail(ErrorCode::IoError, L"could not write the preset", file.wstring());
+    }
+    return {};
 }
 
 Preset presetFromState(const AppState& state, std::wstring name) {

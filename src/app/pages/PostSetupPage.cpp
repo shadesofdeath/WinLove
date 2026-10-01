@@ -1,6 +1,7 @@
 #include "app/pages/PostSetupPage.h"
 
 #include "app/Format.h"
+#include "app/pages/PageBits.h"
 
 #include <algorithm>
 #include <cmath>
@@ -94,7 +95,7 @@ PostSetupPage::PostSetupPage(AppState& state, PostSetupController& controller, c
 
     m_empty = &add<ui::EmptyState>(ui::icons::Icon::PostSetupRocket, s(Str::PostsetupNoMountTitle),
                                    s(Str::PostsetupNoMountBody));
-    m_empty->setAction(s(Str::FeaturesGoImages)).onInvoke = m_intents.goImages;
+    m_empty->setAction(s(Str::CommonGoImages)).onInvoke = m_intents.goImages;
     setAccessible(ui::AccessRole::Group, s(Str::PostsetupTitle));
 
     m_subscription = m_state.subscribe([this](AppState::Change change) {
@@ -177,7 +178,7 @@ void PostSetupPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rec
         // A Wi-Fi step shows the network, never the profile (it holds the key).
         const std::wstring text = step.type == PostSetupStep::Type::Copy
                                       ? std::format(L"{} → {}", step.source, step.destination)
-                                  : step.type == PostSetupStep::Type::Wifi ? L"SSID: " + step.name
+                                  : step.type == PostSetupStep::Type::Wifi ? m_strings.get(Str::PostsetupWifiSsid) + L": " + step.name
                                                                            : step.source;
         canvas.drawText(text, rect, TypeStyle::Mono, problem ? Color::StatusError : Color::TextPrimary);
         break;
@@ -228,9 +229,7 @@ void PostSetupPage::paint(ui::Canvas& canvas) {
     canvas.drawText(summary, {b.x, b.y + kTop, b.width, kToolbar}, TypeStyle::Caption, Color::TextSecondary,
                     ui::TextAlign::Trailing);
     if (plan.steps.empty()) {
-        canvas.drawText(m_strings.get(Str::PostsetupEmpty),
-                        {b.x, m_table->bounds().y + ui::TableView::kHeader + 12, b.width, 20}, TypeStyle::Body,
-                        Color::TextTertiary, ui::TextAlign::Center);
+        paintTableEmpty(canvas, {b.x, m_table->bounds().y, b.width, 0}, m_strings.get(Str::PostsetupEmpty));
     } else {
         canvas.drawText(m_strings.get(Str::PostsetupKeysHint), {b.x, b.bottom() - kHint, b.width, kHint}, TypeStyle::Caption,
                         Color::TextTertiary);

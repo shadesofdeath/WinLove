@@ -61,7 +61,7 @@ private:
     std::vector<Row> m_rows;
     std::set<int> m_collapsed; // catalog indexes of collapsed groups
     std::wstring m_needle;
-    int m_categoryFilter = 0; // 0 = all, else group catalogIndex + 1
+    int m_categoryFilter = 0; // 0 = all, else position in m_groups + 1
     int m_riskFilter = 0;     // 0 all, 1 low, 2 medium, 3 high
     bool m_onlySelected = false;
 

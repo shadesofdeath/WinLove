@@ -110,6 +110,24 @@ Result<Request> send(std::wstring_view url, const wchar_t* verb, std::wstring_vi
     return r;
 }
 
+// The address the request ended at (after redirects WinHTTP followed); empty when unknown.
+std::wstring requestUrl(const Request& r) {
+    DWORD size = 0;
+    WinHttpQueryOption(r.request.h, WINHTTP_OPTION_URL, nullptr, &size);
+    if (size < sizeof(wchar_t)) {
+        return {};
+    }
+    std::wstring text(size / sizeof(wchar_t), L'\0');
+    if (!WinHttpQueryOption(r.request.h, WINHTTP_OPTION_URL, text.data(), &size)) {
+        return {};
+    }
+    text.resize(size / sizeof(wchar_t));
+    while (!text.empty() && text.back() == L'\0') {
+        text.pop_back();
+    }
+    return text;
+}
+
 std::uint64_t contentLength(const Request& r) {
     wchar_t text[32] = {};
     DWORD size = sizeof(text);
@@ -170,7 +188,8 @@ Result<HttpResponse> httpPostForm(std::wstring_view url, std::string_view form, 
 
 Result<std::uint64_t> httpDownload(std::wstring_view url, const std::filesystem::path& target,
                                    std::uint64_t expectedSize, const TaskContext& task,
-                                   const std::function<void(std::uint64_t, std::uint64_t)>& bytes) {
+                                   const std::function<void(std::uint64_t, std::uint64_t)>& bytes,
+                                   const std::function<bool(std::wstring_view)>& acceptFinalUrl) {
     const std::filesystem::path part = target.wstring() + L".part";
     std::error_code ec;
     std::filesystem::create_directories(target.parent_path(), ec);
@@ -182,6 +201,13 @@ Result<std::uint64_t> httpDownload(std::wstring_view url, const std::filesystem:
     auto r = send(url, L"GET", range, {});
     if (!r) {
         return std::unexpected(r.error());
+    }
+    if (acceptFinalUrl) {
+        const std::wstring finalUrl = requestUrl(*r);
+        if (finalUrl.empty() || !acceptFinalUrl(finalUrl)) {
+            return fail(ErrorCode::AccessDenied, L"the download was redirected to an untrusted address",
+                        finalUrl.empty() ? std::wstring(url) : finalUrl);
+        }
     }
     if (r->status == 200) {
         have = 0; // the server sends the whole file (no range support)

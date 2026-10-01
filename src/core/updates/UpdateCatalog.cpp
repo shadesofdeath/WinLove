@@ -1,10 +1,13 @@
 #include "core/updates/UpdateCatalog.h"
 
+#include "base/Encoding.h"
 #include "base/Log.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 #include "core/image/WindowsRelease.h"
 #include "core/iso/IsoBuilder.h"
 #include "core/net/Http.h"
+#include "core/system/Hash.h"
 
 #include <algorithm>
 #include <chrono>
@@ -18,14 +21,6 @@ namespace {
 
 constexpr std::wstring_view kSearchUrl = L"https://www.catalog.update.microsoft.com/Search.aspx?q=";
 constexpr std::wstring_view kDownloadUrl = L"https://www.catalog.update.microsoft.com/DownloadDialog.aspx";
-
-std::wstring lower(std::wstring_view text) {
-    std::wstring out(text);
-    for (auto& c : out) {
-        c = static_cast<wchar_t>(std::towlower(c));
-    }
-    return out;
-}
 
 bool contains(std::wstring_view text, std::wstring_view part) {
     return text.find(part) != std::wstring_view::npos;
@@ -84,44 +79,6 @@ bool isGuid(std::string_view text) {
     return true;
 }
 
-std::vector<std::uint8_t> base64(std::string_view text) {
-    auto value = [](char c) -> int {
-        if (c >= 'A' && c <= 'Z') return c - 'A';
-        if (c >= 'a' && c <= 'z') return c - 'a' + 26;
-        if (c >= '0' && c <= '9') return c - '0' + 52;
-        if (c == '+') return 62;
-        if (c == '/') return 63;
-        return -1;
-    };
-    std::vector<std::uint8_t> out;
-    std::uint32_t acc = 0;
-    int bits = 0;
-    for (const char c : text) {
-        const int v = value(c);
-        if (v < 0) {
-            if (c == '=') {
-                break;
-            }
-            return {};
-        }
-        acc = (acc << 6) | static_cast<std::uint32_t>(v);
-        bits += 6;
-        if (bits >= 8) {
-            bits -= 8;
-            out.push_back(static_cast<std::uint8_t>((acc >> bits) & 0xFF));
-        }
-    }
-    return out;
-}
-
-std::wstring hex(const std::vector<std::uint8_t>& bytes) {
-    std::wstring out;
-    for (const auto b : bytes) {
-        out += std::format(L"{:02x}", b);
-    }
-    return out;
-}
-
 // "…(26200.9457)" at the end of a title.
 void parseBuild(std::wstring_view title, int& build, int& revision) {
     const auto close = title.rfind(L')');
@@ -138,10 +95,6 @@ void parseBuild(std::wstring_view title, int& build, int& revision) {
     }
 }
 
-std::wstring productName(const CatalogTarget& target) {
-    return target.windows == 11 ? L"Windows 11, version " + target.release : L"Windows 10 Version " + target.release;
-}
-
 } // namespace
 
 CatalogTarget catalogTarget(int build, int revision, std::wstring_view architecture) {
@@ -149,7 +102,7 @@ CatalogTarget catalogTarget(int build, int revision, std::wstring_view architect
     target.windows = build >= 22000 ? 11 : 10;
     target.build = build;
     target.revision = revision;
-    target.architecture = lower(architecture.empty() ? L"x64" : architecture);
+    target.architecture = text::lower(architecture.empty() ? L"x64" : architecture);
     if (target.architecture == L"amd64") {
         target.architecture = L"x64";
     }
@@ -161,7 +114,7 @@ CatalogTarget catalogTarget(int build, int revision, std::wstring_view architect
 }
 
 void classifyCatalogEntry(CatalogEntry& entry) {
-    const std::wstring title = lower(entry.title);
+    const std::wstring title = text::lower(entry.title);
     entry.preview = contains(title, L"cumulative update preview");
     if (contains(title, L"safe os dynamic update")) {
         entry.kind = CatalogKind::SafeOs;
@@ -263,7 +216,7 @@ std::vector<CatalogFile> parseCatalogDownload(std::string_view script) {
         } else if (field == "fileName") {
             file.fileName = utf8::toWide(value);
         } else if (field == "sha256") {
-            file.sha256 = base64(value);
+            file.sha256 = base64Decode(value);
             if (file.sha256.size() != 32) {
                 file.sha256.clear();
             }
@@ -288,16 +241,16 @@ bool matchesTarget(const CatalogEntry& entry, const CatalogTarget& target) {
     if (target.release.empty()) {
         return false;
     }
-    const std::wstring title = lower(entry.title);
+    const std::wstring title = text::lower(entry.title);
     if (contains(title, L"hotpatch") || contains(title, L"server") || contains(title, L"azure")) {
         return false;
     }
-    const std::wstring release = lower(target.release);
+    const std::wstring release = text::lower(target.release);
     const std::wstring product = target.windows == 11 ? L"windows 11" : L"windows 10";
     if (!contains(title, product + L", version " + release) && !contains(title, product + L" version " + release)) {
         return false;
     }
-    const std::wstring arch = lower(target.architecture);
+    const std::wstring arch = text::lower(target.architecture);
     return contains(title, L"for " + arch + L"-based systems") || contains(title, L"for " + arch + L" (");
 }
 
@@ -356,7 +309,7 @@ std::vector<CatalogOffer> pickCatalogOffers(const std::vector<CatalogEntry>& ent
 }
 
 bool trustedDownloadUrl(std::wstring_view url) {
-    const std::wstring u = lower(url);
+    const std::wstring u = text::lower(url);
     std::wstring_view rest;
     if (u.starts_with(L"https://")) {
         rest = std::wstring_view(u).substr(8);
@@ -365,7 +318,14 @@ bool trustedDownloadUrl(std::wstring_view url) {
     } else {
         return false;
     }
-    const std::wstring_view host = rest.substr(0, rest.find_first_of(L"/:?#"));
+    // The authority ends at the first "/?#"; "user:pass@" before the host would make a check on
+    // the text before ":" pass for a host WinHTTP never connects to
+    // ("https://download.microsoft.com:x@evil.example/").
+    const std::wstring_view authority = rest.substr(0, rest.find_first_of(L"/?#"));
+    if (authority.find_first_of(L"@\\") != std::wstring_view::npos) {
+        return false;
+    }
+    const std::wstring_view host = authority.substr(0, authority.find(L':'));
     auto under = [&](std::wstring_view domain) {
         return host == domain.substr(1) || (host.size() > domain.size() && host.ends_with(domain));
     };
@@ -426,7 +386,7 @@ Result<DownloadedUpdate> downloadCatalogUpdate(const CatalogEntry& entry, const 
         return std::unexpected(files.error());
     }
     DownloadedUpdate result;
-    const std::wstring kb = lower(entry.kb);
+    const std::wstring kb = text::lower(entry.kb);
     std::uint64_t base = 0;
     const double total = static_cast<double>(std::max<std::uint64_t>(entry.size, 1));
     for (const auto& file : *files) {
@@ -435,7 +395,7 @@ Result<DownloadedUpdate> downloadCatalogUpdate(const CatalogEntry& entry, const 
             file.fileName.starts_with(L".")) {
             return fail(ErrorCode::InvalidArgument, L"unexpected file name in the update catalog", file.fileName);
         }
-        if (!trustedDownloadUrl(file.url) || (file.sha256.empty() && !lower(file.url).starts_with(L"https://"))) {
+        if (!trustedDownloadUrl(file.url) || (file.sha256.empty() && !text::lower(file.url).starts_with(L"https://"))) {
             return fail(ErrorCode::AccessDenied, L"download address is not a Microsoft server", file.url);
         }
         const std::filesystem::path target = folder / file.fileName;
@@ -444,12 +404,18 @@ Result<DownloadedUpdate> downloadCatalogUpdate(const CatalogEntry& entry, const 
         std::error_code ec;
         if (std::filesystem::is_regular_file(target, ec) && !file.sha256.empty()) {
             auto hash = sha256File(target, quiet);
-            have = hash && *hash == hex(file.sha256);
+            have = hash && *hash == hexLower(file.sha256);
         }
         if (!have) {
-            auto got = httpDownload(file.url, target, 0, quiet, [&](std::uint64_t done, std::uint64_t) {
-                task.report(std::min(static_cast<double>(base + done) / total, 1.0), L"download");
-            });
+            // A redirect must land on a Microsoft server too (WinHTTP follows it on its own).
+            auto got = httpDownload(
+                file.url, target, 0, quiet,
+                [&](std::uint64_t done, std::uint64_t) {
+                    task.report(std::min(static_cast<double>(base + done) / total, 1.0), L"download");
+                },
+                [&](std::wstring_view finalUrl) {
+                    return trustedDownloadUrl(finalUrl) && (!file.sha256.empty() || text::lower(finalUrl).starts_with(L"https://"));
+                });
             if (!got) {
                 return std::unexpected(got.error());
             }
@@ -461,7 +427,7 @@ Result<DownloadedUpdate> downloadCatalogUpdate(const CatalogEntry& entry, const 
                 if (!hash) {
                     return std::unexpected(hash.error());
                 }
-                if (*hash != hex(file.sha256)) {
+                if (*hash != hexLower(file.sha256)) {
                     std::filesystem::remove(target, ec);
                     return fail(ErrorCode::IoError, L"the downloaded file does not match the catalog's SHA-256",
                                 target.wstring());
@@ -472,7 +438,7 @@ Result<DownloadedUpdate> downloadCatalogUpdate(const CatalogEntry& entry, const 
         } else {
             log::info("updates", L"already downloaded: " + target.wstring());
         }
-        const bool main = !kb.empty() && contains(lower(file.fileName), kb);
+        const bool main = !kb.empty() && contains(text::lower(file.fileName), kb);
         (main && result.main.empty() ? result.main : result.prerequisites.emplace_back()) = target;
     }
     if (result.main.empty()) { // no file carries the KB: the first one is the package

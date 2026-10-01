@@ -1,6 +1,8 @@
 #include "core/image/Branding.h"
 
+#include "base/File.h"
 #include "base/Log.h"
+#include "base/Text.h"
 #include "core/image/Fonts.h"
 #include "core/image/ImageFiles.h"
 #include "core/system/Picture.h"
@@ -14,11 +16,6 @@ namespace wl::core {
 
 namespace {
 
-std::wstring lower(std::wstring s) {
-    std::ranges::transform(s, s.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
-    return s;
-}
-
 // Pictures directly in <mountDir>\<folder> whose lower-case name passes `keep`.
 void collect(const std::filesystem::path& mountDir, std::wstring_view folder, std::vector<std::wstring>& out,
              const auto& keep) {
@@ -29,7 +26,7 @@ void collect(const std::filesystem::path& mountDir, std::wstring_view folder, st
             continue;
         }
         const std::wstring name = entry.path().filename().wstring();
-        if (keep(lower(name))) {
+        if (keep(text::lower(name))) {
             found.push_back(std::wstring(folder) + L"\\" + name);
         }
     }
@@ -38,7 +35,7 @@ void collect(const std::filesystem::path& mountDir, std::wstring_view folder, st
 }
 
 PictureFormat formatOf(std::wstring_view relative) {
-    const std::wstring ext = lower(std::filesystem::path(relative).extension().wstring());
+    const std::wstring ext = text::lower(std::filesystem::path(relative).extension().wstring());
     return ext == L".png" ? PictureFormat::Png : ext == L".bmp" ? PictureFormat::Bmp : PictureFormat::Jpeg;
 }
 
@@ -149,11 +146,11 @@ Result<PictureResult> applyPicture(const std::filesystem::path& mountDir, Pictur
 }
 
 Result<RegistryWrite> applyFont(const std::filesystem::path& mountDir, const std::filesystem::path& source) {
-    std::ifstream in(source, std::ios::binary);
-    if (!in) {
+    const auto read = readFileBytes(source);
+    if (!read) {
         return fail(ErrorCode::NotFound, L"font file not found", source.wstring());
     }
-    const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const std::string& bytes = *read;
     auto info = parseFont(bytes);
     if (!info) {
         return std::unexpected(info.error());

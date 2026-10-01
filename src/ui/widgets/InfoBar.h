@@ -11,6 +11,14 @@ namespace wl::ui {
 
 enum class InfoKind : std::uint8_t { Info, Success, Warning, Error };
 
+// What a status kind looks like (InfoBar, Toast): subtle background, ink, icon.
+struct InfoStyle {
+    tokens::Color background;
+    tokens::Color ink;
+    icons::Icon icon;
+};
+[[nodiscard]] InfoStyle infoStyle(InfoKind kind) noexcept;
+
 class InfoBar : public Widget {
 public:
     InfoBar(InfoKind kind, std::wstring title, std::wstring message, std::wstring closeTooltip);

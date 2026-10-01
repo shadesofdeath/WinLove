@@ -55,6 +55,8 @@ struct OfflineKey {
 [[nodiscard]] std::wstring normalizeRegistryKey(std::wstring_view key);
 [[nodiscard]] Result<OfflineKey> mapOfflineKey(std::wstring_view key);
 [[nodiscard]] std::filesystem::path hiveFilePath(const std::filesystem::path& mountDir, OfflineHiveFile hive);
+// "ControlSet001": what CurrentControlSet means in a loaded SYSTEM hive (Select\Current; 1 when unreadable).
+[[nodiscard]] std::wstring currentControlSet(HKEY systemRoot);
 // "Sistem" (HKLM/HKCR/HKU) vs "Kullanıcı" (HKCU).
 [[nodiscard]] bool isUserKey(std::wstring_view key);
 // No hive in the image, but writable on the installed system by SetupComplete.cmd (SYSTEM):

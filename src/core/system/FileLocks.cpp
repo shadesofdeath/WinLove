@@ -1,6 +1,8 @@
 #include "core/system/FileLocks.h"
 
 #include "base/Log.h"
+#include "core/system/Com.h"
+#include "core/system/Files.h"
 #include "core/system/Privileges.h"
 
 #include <aclapi.h>
@@ -30,26 +32,10 @@ bool isInside(const std::filesystem::path& path, const std::filesystem::path& fo
     return p.size() == f.size() || p[f.size()] == L'\\' || p[f.size()] == L'/';
 }
 
-// COM for the calling thread (the engine thread has none); undone on scope exit if we did it.
-struct ComScope {
-    bool owned = false;
-    ComScope() {
-        const HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-        owned = SUCCEEDED(hr);
-    }
-    ~ComScope() {
-        if (owned) {
-            CoUninitialize();
-        }
-    }
-    ComScope(const ComScope&) = delete;
-    ComScope& operator=(const ComScope&) = delete;
-};
-
 // Calls fn(IWebBrowser2*, folderPath) for every shell window showing a file-system folder.
 template <class F>
 void forEachExplorerWindow(F&& fn) {
-    ComScope com;
+    const ComScope com(COINIT_APARTMENTTHREADED); // Shell windows live in an STA
     IShellWindows* windows = nullptr;
     if (FAILED(CoCreateInstance(CLSID_ShellWindows, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&windows)))) {
         return;
@@ -80,11 +66,6 @@ void forEachExplorerWindow(F&& fn) {
         dispatch->Release();
     }
     windows->Release();
-}
-
-bool isReparsePoint(const std::filesystem::path& path) {
-    const DWORD attributes = GetFileAttributesW(path.c_str());
-    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
 }
 
 // Owner := Administrators, DACL := Administrators full control — on THIS entry only.
@@ -135,7 +116,9 @@ DWORD removeEntry(const std::filesystem::path& path) {
     SetFileAttributesW(path.c_str(), FILE_ATTRIBUTE_NORMAL);
     const DWORD attributes = GetFileAttributesW(path.c_str());
     if (attributes == INVALID_FILE_ATTRIBUTES) {
-        return ERROR_SUCCESS; // already gone
+        // Only a missing entry is done; access denied / sharing violation must not read as removed.
+        const DWORD error = GetLastError();
+        return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND ? ERROR_SUCCESS : error;
     }
     const bool directory = (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
     auto attempt = [&]() -> DWORD {

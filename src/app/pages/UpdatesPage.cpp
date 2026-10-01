@@ -1,6 +1,7 @@
 #include "app/pages/UpdatesPage.h"
 
 #include "app/Format.h"
+#include "app/pages/PageBits.h"
 #include "ui/anim/Tween.h"
 
 #include <algorithm>
@@ -129,7 +130,7 @@ UpdatesPage::UpdatesPage(AppState& state, const Localization& strings, Language 
     };
     m_empty = &add<ui::EmptyState>(ui::icons::Icon::UpdateDownload, strings.get(Str::UpdatesNoMountTitle),
                                    strings.get(Str::UpdatesNoMountBody));
-    m_empty->setAction(strings.get(Str::FeaturesGoImages)).onInvoke = [this] {
+    m_empty->setAction(strings.get(Str::CommonGoImages)).onInvoke = [this] {
         if (m_intents.goImages) {
             m_intents.goImages();
         }
@@ -260,7 +261,8 @@ void UpdatesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect)
         if (compat == Compat::WrongWindows) {
             icon = ui::icons::Icon::ErrorOctagon;
             ink = Color::StatusError;
-            text = m_strings.format(Str::UpdatesIncompatible, {{L"ver", std::format(L"Windows {}", info.targetWindows)}});
+            text = m_strings.format(Str::UpdatesIncompatible,
+                                    {{L"ver", m_strings.format(Str::UpdatesWindowsVersion, {{L"ver", std::to_wstring(info.targetWindows)}})}});
         } else if (compat == Compat::WrongArch) {
             icon = ui::icons::Icon::ErrorOctagon;
             ink = Color::StatusError;
@@ -295,8 +297,7 @@ void UpdatesPage::paint(ui::Canvas& canvas) {
     }
     const RectF t = m_table->bounds();
     if (m_rows.empty()) {
-        canvas.drawText(m_strings.get(Str::UpdatesEmptyList), {t.x, t.y + ui::TableView::kHeader + 12, t.width, 20},
-                        TypeStyle::Body, Color::TextTertiary, ui::TextAlign::Center);
+        paintTableEmpty(canvas, t, m_strings.get(Str::UpdatesEmptyList));
     }
 }
 

@@ -322,6 +322,37 @@ App::~App() {
     m_host.reset();
 }
 
+void App::post(std::function<void()> fn) {
+    if (!m_options.renderTo) {
+        m_window.post(std::move(fn));
+        return;
+    }
+    // Headless, no message loop: the main thread's own posts run right away (the render steps rely
+    // on that); a worker's wait for drainPosted() on the main thread.
+    if (std::this_thread::get_id() == m_mainThread) {
+        fn();
+        return;
+    }
+    std::scoped_lock lock(m_postedMutex);
+    m_posted.push_back(std::move(fn));
+}
+
+void App::drainPosted() {
+    for (;;) {
+        std::vector<std::function<void()>> batch;
+        {
+            std::scoped_lock lock(m_postedMutex);
+            batch.swap(m_posted);
+        }
+        if (batch.empty()) {
+            return;
+        }
+        for (auto& fn : batch) {
+            fn();
+        }
+    }
+}
+
 int App::run() {
     g_headless = m_options.renderTo.has_value();
     if (auto ready = initialize(); !ready) {
@@ -383,13 +414,7 @@ void App::buildUi(ui::HostServices services) {
         m_state->setSettings(std::move(settings));
     };
     shellServices.settingsChanged = [this] { applySettings(); };
-    shellServices.postToUi = [this](std::function<void()> fn) {
-        if (m_options.renderTo) {
-            fn(); // headless: no message loop
-        } else {
-            m_window.post(std::move(fn));
-        }
-    };
+    shellServices.postToUi = [this](std::function<void()> fn) { post(std::move(fn)); };
     shellServices.ownerWindow = [this] { return m_window.hwnd(); };
     shellServices.relaunchElevated = [this](const std::wstring& args) {
         auto relaunched = core::relaunchElevated(args);
@@ -561,13 +586,14 @@ int App::renderOffscreen() {
                 run.result = std::move(result);
                 m_state->setApplyRun(std::move(run));
                 m_state->setMounted(std::nullopt);
-                m_shell->showPage(PageId::Apply);
             }
             if (m_state->applyRun() == std::nullopt) {
                 m_state->setApplyRun(std::move(run));
             }
         }
-        m_shell->showPage(m_options.page.value_or(PageId::Features));
+        // A finished run is shown on the Apply page; a running one (and no run) on Features.
+        const bool finished = m_options.demoApply == L"done" || m_options.demoApply == L"skipped";
+        m_shell->showPage(m_options.page.value_or(finished ? PageId::Apply : PageId::Features));
     }
     if (m_options.demoRegistry) {
         m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,
@@ -1141,6 +1167,8 @@ int App::renderOffscreen() {
         m_shell->showAdminRequired();
     }
 
+    drainPosted(); // what the workers finished so far, on this thread
+    m_host->layout(m_options.size);
     ui::Canvas canvas((*target)->beginDraw(), m_options.theme, m_options.scale, *m_graphics->text, *m_graphics->icons);
     canvas.clear(Color::BgBase);
     // Hover/press tweens settle instantly in a still frame.
@@ -1236,11 +1264,7 @@ int App::runWindowed() {
     const ui::SizeF minimum{ui::tokens::size::minWindowW, ui::tokens::size::minWindowH};
 
     // The host must exist before the window: creation already sends WM_SIZE / WM_NCHITTEST.
-    buildUi({
-        [this] { m_window.invalidate(); },
-        [this](UINT id, UINT ms) { m_window.setTimer(id, ms); },
-        [this](UINT id) { m_window.stopTimer(id); },
-    });
+    buildUi(windowHostServices());
     if (auto created = m_window.create(L"WinLove", m_options.size, minimum, std::move(callbacks), appearance);
         !created) {
         showError(created.error());
@@ -1334,12 +1358,7 @@ void App::rebuildUi() {
     if (!strings) {
         return;
     }
-    if (m_shell) {
-        m_options.page = m_shell->currentPage();
-        m_options.navCollapsed = m_shell->navCollapsed();
-    }
-    m_host.reset(); // the old shell reads the old strings: it goes first
-    m_shell = nullptr;
+    releaseShell(); // the old shell reads the old strings: it goes first
     m_strings = std::move(*strings);
     if (m_options.renderTo) {
         buildUi({}); // --switch-lang: the frame is laid out and drawn by renderOffscreen
@@ -1348,6 +1367,15 @@ void App::rebuildUi() {
     buildUi(windowHostServices());
     m_host->layout(m_window.clientSize());
     m_window.invalidate();
+}
+
+void App::releaseShell() {
+    if (m_shell) {
+        m_options.page = m_shell->currentPage();
+        m_options.navCollapsed = m_shell->navCollapsed();
+    }
+    m_host.reset();
+    m_shell = nullptr;
 }
 
 void App::paint() {
@@ -1380,10 +1408,10 @@ Result<void> App::recreateGraphics() {
     if (!graphics) {
         return std::unexpected(graphics.error());
     }
+    // The widget tree measures with the old TextStyles: it goes before the graphics it uses (the
+    // order ~App and rebuildUi keep too), then the UI is built again on the new graphics.
+    releaseShell();
     m_graphics = std::move(*graphics);
-    // Host keeps a pointer to the old TextStyles: rebuild the UI on the new graphics.
-    const PageId page = m_shell ? m_shell->currentPage() : PageId::Source;
-    m_options.page = page;
     buildUi(windowHostServices());
     m_host->layout(m_window.clientSize());
     auto target = ui::SwapChainTarget::create(*m_graphics->device, m_window.hwnd(), m_window.clientWidthPx(),

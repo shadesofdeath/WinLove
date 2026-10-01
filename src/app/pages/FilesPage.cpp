@@ -44,7 +44,7 @@ FilesPage::FilesPage(AppState& state, FilesController& controller, const Localiz
     };
     m_table->onSelect = [this](int) { invalidate(); };
     m_empty = &add<ui::EmptyState>(ui::icons::Icon::Folder, strings.get(Str::FilesNoMountTitle), strings.get(Str::FilesNoMountBody));
-    m_empty->setAction(strings.get(Str::FeaturesGoImages)).onInvoke = std::move(goImages);
+    m_empty->setAction(strings.get(Str::CommonGoImages)).onInvoke = std::move(goImages);
     setAccessible(ui::AccessRole::Group, strings.get(Str::FilesTitle));
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Mount || change == AppState::Change::Queue) {
@@ -116,8 +116,7 @@ void FilesPage::paint(ui::Canvas& canvas) {
     const RectF b = bounds();
     const RectF t = m_table->bounds();
     if (m_rows.empty()) {
-        canvas.drawText(m_strings.get(Str::FilesEmpty), {t.x, t.y + ui::TableView::kHeader + 12, t.width, 20}, TypeStyle::Body,
-                        Color::TextTertiary, ui::TextAlign::Center);
+        paintTableEmpty(canvas, t, m_strings.get(Str::FilesEmpty));
     }
     std::int64_t total = 0;
     for (const auto& op : m_rows) {

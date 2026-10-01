@@ -2,6 +2,7 @@
 
 #include "base/Log.h"
 #include "base/Path.h"
+#include "base/Text.h"
 #include "core/image/Source.h"
 #include "core/image/dism/DismErrors.h"
 #include "core/system/Privileges.h"
@@ -23,12 +24,6 @@ bool samePath(const std::filesystem::path& a, const std::filesystem::path& b) {
         return s;
     };
     return _wcsicmp(norm(a).c_str(), norm(b).c_str()) == 0;
-}
-
-bool startsWithNoCase(std::wstring_view text, std::wstring_view prefix) {
-    return text.size() >= prefix.size() &&
-           CompareStringOrdinal(text.data(), static_cast<int>(prefix.size()), prefix.data(),
-                                static_cast<int>(prefix.size()), TRUE) == CSTR_EQUAL;
 }
 
 bool hasEntries(const std::filesystem::path& folder) {
@@ -175,7 +170,7 @@ std::vector<std::wstring> hivesLoadedFrom(const std::filesystem::path& folder) {
         if (status == ERROR_NO_MORE_ITEMS) {
             break;
         }
-        if (status == ERROR_SUCCESS && type == REG_SZ && startsWithNoCase(data, prefix)) {
+        if (status == ERROR_SUCCESS && type == REG_SZ && text::istartsWith(data, prefix)) {
             result.emplace_back(name);
         }
     }
@@ -195,10 +190,10 @@ Result<void> unloadHivesUnder(const std::filesystem::path& folder) {
     for (const auto& hive : hives) {
         HKEY root = nullptr;
         std::wstring sub;
-        if (startsWithNoCase(hive, kMachine)) {
+        if (text::istartsWith(hive, kMachine)) {
             root = HKEY_LOCAL_MACHINE;
             sub = hive.substr(kMachine.size());
-        } else if (startsWithNoCase(hive, kUser)) {
+        } else if (text::istartsWith(hive, kUser)) {
             root = HKEY_USERS;
             sub = hive.substr(kUser.size());
         } else {

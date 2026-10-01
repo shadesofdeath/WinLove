@@ -1,8 +1,11 @@
 // D-059: reading what CBS packages own (core/image/ComponentStore). The names and the value layout
 // are those of a real 25H2 image (tools/lab_scan_components.ps1, tools/analyze_cbs.py).
+#include "base/Utf8.h"
 #include "core/image/ComponentStore.h"
 #include "core/image/DeepRemoval.h"
 #include "core/image/SystemComponents.h"
+#include "core/ops/ChangeSet.h"
+#include "core/ops/Planner.h"
 
 #include <doctest.h>
 
@@ -118,4 +121,23 @@ TEST_CASE("deep removal: a recipe carries its classes, and a preset cannot widen
     CHECK(*back == recipe);
     recipe.driverClasses.push_back(L"{4D36E972-E325-11CE-BFC1-08002BE10318}"); // Net
     CHECK_FALSE(core::validateComponentRecipe(recipe));
+}
+
+TEST_CASE("deep removal runs after the updates in one Apply (an update needs the drivers' payload)") {
+    using namespace core::ops;
+    core::ComponentRecipe deep;
+    deep.title = L"Modem";
+    deep.driverClasses = {L"{4D36E96D-E325-11CE-BFC1-08002BE10318}"};
+    core::ComponentRecipe plain;
+    plain.title = L"Telemetry";
+    plain.packages = {L"Microsoft-OneCore-TroubleShooting-Package"};
+    ChangeSet changes;
+    changes.add(Operation{OpKind::RemoveComponent, L"deep-modem", utf8::toWide(core::componentRecipeToJson(deep))});
+    changes.add(Operation{OpKind::RemoveComponent, L"telemetry", utf8::toWide(core::componentRecipeToJson(plain))});
+    changes.add(Operation{OpKind::AddPackage, L"lcu.msu", L"lcu"});
+    const auto p = plan(changes);
+    REQUIRE(p.steps.size() == 3);
+    CHECK(p.steps[0].phase == Phase::Remove);  // the package-level component, as before
+    CHECK(p.steps[1].phase == Phase::Updates);
+    CHECK(p.steps[2].phase == Phase::DeepRemove);
 }

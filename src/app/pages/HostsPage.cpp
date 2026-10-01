@@ -45,7 +45,7 @@ HostsPage::HostsPage(AppState& state, HostsController& controller, const Localiz
         return false;
     };
     m_empty = &add<ui::EmptyState>(ui::icons::Icon::Network, strings.get(Str::HostsNoMountTitle), strings.get(Str::HostsNoMountBody));
-    m_empty->setAction(strings.get(Str::FeaturesGoImages)).onInvoke = std::move(goImages);
+    m_empty->setAction(strings.get(Str::CommonGoImages)).onInvoke = std::move(goImages);
     setAccessible(ui::AccessRole::Group, strings.get(Str::HostsTitle));
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Mount || change == AppState::Change::ImageValues || change == AppState::Change::Queue) {

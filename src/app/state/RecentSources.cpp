@@ -1,5 +1,6 @@
 #include "app/state/RecentSources.h"
 
+#include "base/File.h"
 #include "base/Log.h"
 #include "base/Path.h"
 #include "base/Utf8.h"
@@ -10,8 +11,6 @@
 #include <windows.h>
 
 #include <algorithm>
-#include <fstream>
-#include <sstream>
 
 namespace wl::app {
 
@@ -37,13 +36,11 @@ std::filesystem::path RecentSources::defaultFile() {
 
 void RecentSources::load() {
     m_entries.clear();
-    std::ifstream file(m_file, std::ios::binary);
-    if (!file) {
+    const auto bytes = readFileBytes(m_file);
+    if (!bytes) {
         return;
     }
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    const auto doc = nlohmann::json::parse(buffer.str(), nullptr, /*allow_exceptions=*/false);
+    const auto doc = nlohmann::json::parse(*bytes, nullptr, /*allow_exceptions=*/false);
     if (doc.is_discarded() || !doc.is_object()) {
         log::warn("app", L"recent.json is corrupt; starting with an empty list");
         return;
@@ -82,20 +79,8 @@ Result<void> RecentSources::save() const {
     }
     std::error_code ec;
     std::filesystem::create_directories(m_file.parent_path(), ec);
-    const auto temp = m_file.wstring() + L".tmp";
-    {
-        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-        if (!out) {
-            return fail(ErrorCode::IoError, L"cannot write recent list", temp);
-        }
-        out << nlohmann::json{{"version", 1}, {"sources", sources}}.dump(2);
-    }
-    // Replace atomically so a crash never leaves a half-written file.
-    if (!MoveFileExW(temp.c_str(), m_file.c_str(), MOVEFILE_REPLACE_EXISTING)) {
-        return fail(ErrorCode::IoError, L"cannot replace recent list", m_file.wstring(),
-                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
-    }
-    return {};
+    // Replaced atomically: a crash never leaves a half-written file.
+    return writeFileAtomic(m_file, nlohmann::json{{"version", 1}, {"sources", sources}}.dump(2));
 }
 
 void RecentSources::touch(const core::SourceInfo& source, std::chrono::system_clock::time_point when) {

@@ -2,6 +2,8 @@
 
 #include "base/Log.h"
 #include "core/image/SystemComponents.h"
+#include "core/system/Files.h"
+#include "core/system/Handle.h"
 #include "core/system/Privileges.h"
 
 #include <windows.h>
@@ -97,15 +99,6 @@ void enableBackupRestore() {
     (void)once;
 }
 
-struct Handle {
-    HANDLE h = INVALID_HANDLE_VALUE;
-    ~Handle() {
-        if (h != INVALID_HANDLE_VALUE) {
-            CloseHandle(h);
-        }
-    }
-};
-
 } // namespace
 
 Result<void> unlinkImageFile(const std::filesystem::path& mountDir, std::wstring_view relative) {
@@ -114,9 +107,9 @@ Result<void> unlinkImageFile(const std::filesystem::path& mountDir, std::wstring
         return std::unexpected(target.error());
     }
     enableBackupRestore();
-    Handle file{CreateFileW(target->c_str(), DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+    UniqueHandle file{CreateFileW(target->c_str(), DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
                             OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr)};
-    if (file.h == INVALID_HANDLE_VALUE) {
+    if (!file) {
         const DWORD error = GetLastError();
         if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) {
             return {};
@@ -126,10 +119,10 @@ Result<void> unlinkImageFile(const std::filesystem::path& mountDir, std::wstring
     }
     FILE_DISPOSITION_INFO_EX ex{FILE_DISPOSITION_FLAG_DELETE | FILE_DISPOSITION_FLAG_POSIX_SEMANTICS |
                                 FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE};
-    if (!SetFileInformationByHandle(file.h, FileDispositionInfoEx, &ex, sizeof(ex))) {
+    if (!SetFileInformationByHandle(file.get(), FileDispositionInfoEx, &ex, sizeof(ex))) {
         FILE_DISPOSITION_INFO plain{TRUE};
         SetFileAttributesW(target->c_str(), FILE_ATTRIBUTE_NORMAL);
-        if (!SetFileInformationByHandle(file.h, FileDispositionInfo, &plain, sizeof(plain))) {
+        if (!SetFileInformationByHandle(file.get(), FileDispositionInfo, &plain, sizeof(plain))) {
             return fail(ErrorCode::IoError, L"cannot remove the image's file", target->wstring(),
                         static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
         }
@@ -146,9 +139,9 @@ Result<void> replaceImageFile(const std::filesystem::path& mountDir, std::wstrin
         return removed;
     }
     enableBackupRestore();
-    Handle file{CreateFileW(target->c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+    UniqueHandle file{CreateFileW(target->c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
                             FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, nullptr)};
-    if (file.h == INVALID_HANDLE_VALUE) {
+    if (!file) {
         return fail(ErrorCode::IoError, L"cannot create the file in the image", target->wstring(),
                     static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
     }
@@ -156,7 +149,7 @@ Result<void> replaceImageFile(const std::filesystem::path& mountDir, std::wstrin
     while (done < bytes.size()) {
         const DWORD chunk = static_cast<DWORD>(std::min<std::size_t>(bytes.size() - done, 1u << 24));
         DWORD written = 0;
-        if (!WriteFile(file.h, bytes.data() + done, chunk, &written, nullptr) || written != chunk) {
+        if (!WriteFile(file.get(), bytes.data() + done, chunk, &written, nullptr) || written != chunk) {
             return fail(ErrorCode::IoError, L"cannot write the file in the image", target->wstring(),
                         static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
         }
@@ -274,18 +267,7 @@ bool treeTargetRisky(std::wstring_view relative) {
 }
 
 std::uint64_t treeSize(const std::filesystem::path& source) {
-    std::error_code ec;
-    if (std::filesystem::is_regular_file(source, ec)) {
-        return std::filesystem::file_size(source, ec);
-    }
-    std::uint64_t total = 0;
-    for (auto it = std::filesystem::recursive_directory_iterator(source, ec); !ec && it != std::filesystem::end(it);
-         it.increment(ec)) {
-        if (it->is_regular_file(ec)) {
-            total += it->file_size(ec);
-        }
-    }
-    return total;
+    return treeBytes(source);
 }
 
 Result<std::uint64_t> copyImageTree(const std::filesystem::path& mountDir, std::wstring_view relative,
@@ -316,7 +298,7 @@ Result<std::uint64_t> copyImageTree(const std::filesystem::path& mountDir, std::
         if (ec) {
             return fail(ErrorCode::IoError, L"cannot copy into the image", to.wstring(), ec.value());
         }
-        done += std::filesystem::file_size(from, ec);
+        done += treeBytes(from);
         task.report(static_cast<double>(done) / static_cast<double>(total), L"copy");
         return {};
     };
@@ -333,7 +315,20 @@ Result<std::uint64_t> copyImageTree(const std::filesystem::path& mountDir, std::
                 continue;
             }
             const auto rel = std::filesystem::relative(it->path(), source, ec);
-            if (auto r = copyOne(it->path(), *target / rel); !r) {
+            // resolveImagePath checked the target folder only: a sub-folder the source shares with
+            // the image may be a junction there ("Application Data" under Users\Default points at
+            // the HOST's profile). Nothing is written through one. Folders only: a file of a mounted
+            // WIM is a reparse point of the WIM's own until it is written.
+            std::filesystem::path to = *target;
+            for (const auto& part : rel.parent_path()) {
+                to /= part;
+                if (isReparsePoint(to)) {
+                    return fail(ErrorCode::InvalidArgument, L"a folder in the image is a link (it may leave the image)",
+                                to.wstring());
+                }
+            }
+            to /= rel.filename();
+            if (auto r = copyOne(it->path(), to); !r) {
                 return std::unexpected(r.error());
             }
         }

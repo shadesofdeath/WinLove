@@ -27,7 +27,7 @@ public:
 
     struct Events {
         std::function<void(std::function<void()>)> postToUi;
-        std::function<void(Failure, const Error&, int index)> failed;
+        std::function<void(Failure, const Error&)> failed;
         std::function<void(Str title, std::wstring detail)> succeeded;       // success toast
         std::function<void(Str title)> refused;                                // busy / not allowed toast
         std::function<void(std::wstring relaunchArguments)> needsAdmin;        // show s4, relaunch with these args

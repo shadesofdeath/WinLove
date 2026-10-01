@@ -132,7 +132,7 @@ BrandingPage::BrandingPage(AppState& state, BrandingController& controller, cons
         }
     };
     m_empty = &add<ui::EmptyState>(ui::icons::Icon::WindowsLogoGeneric, s(Str::BrandingNoMountTitle), s(Str::BrandingNoMountBody));
-    m_empty->setAction(s(Str::FeaturesGoImages)).onInvoke = [this] {
+    m_empty->setAction(s(Str::CommonGoImages)).onInvoke = [this] {
         if (m_intents.goImages) {
             m_intents.goImages();
         }

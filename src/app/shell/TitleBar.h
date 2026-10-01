@@ -57,6 +57,8 @@ public:
         std::wstring ctrlKey;
         std::wstring minimize;
         std::wstring close;
+        std::wstring maximize; // accessible name only: Windows 11 puts Snap Layouts on hover there
+        std::wstring restore;
     };
     explicit TitleBar(const Labels& labels);
 
@@ -76,6 +78,8 @@ public:
 
 private:
     std::wstring m_appName;
+    std::wstring m_maximizeName;
+    std::wstring m_restoreName;
     std::vector<std::wstring> m_breadcrumb;
     bool m_windowActive = true;
     PaletteTrigger* m_palette = nullptr;

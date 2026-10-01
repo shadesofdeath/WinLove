@@ -230,7 +230,8 @@ void ApplyController::start() {
                         extra.error = other.error().message;
                     } else if (!other->committed) {
                         extra.state = AppState::ApplyRun::ExtraEdition::State::Failed;
-                        extra.error = other->commitError ? other->commitError->message : std::wstring(L"not saved");
+                        // No message of its own: the page says "not saved" (apply.editionFailed).
+                        extra.error = other->commitError ? other->commitError->message : std::wstring();
                         extra.failures = other->report.failures();
                     } else {
                         extra.state = AppState::ApplyRun::ExtraEdition::State::Done;

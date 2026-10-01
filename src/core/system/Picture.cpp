@@ -1,5 +1,7 @@
 #include "core/system/Picture.h"
 
+#include "core/system/Com.h"
+
 #include <windows.h>
 
 #include <objbase.h>
@@ -14,18 +16,6 @@ namespace wl::core {
 namespace {
 
 using Microsoft::WRL::ComPtr;
-
-struct ComScope {
-    bool owned = false;
-    ComScope() { owned = SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)); }
-    ~ComScope() {
-        if (owned) {
-            CoUninitialize();
-        }
-    }
-    ComScope(const ComScope&) = delete;
-    ComScope& operator=(const ComScope&) = delete;
-};
 
 Error wicError(HRESULT hr, std::wstring_view what, const std::filesystem::path& file) {
     return Error{ErrorCode::IoError, std::wstring(what), file.wstring(), static_cast<std::int32_t>(hr)};

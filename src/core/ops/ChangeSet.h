@@ -83,7 +83,6 @@ public:
     [[nodiscard]] std::uint64_t version() const noexcept { return m_version; }
 
     [[nodiscard]] bool canUndo() const noexcept { return !m_undo.empty(); }
-    [[nodiscard]] bool canRedo() const noexcept { return !m_redo.empty(); }
     bool undo();
     bool redo();
 

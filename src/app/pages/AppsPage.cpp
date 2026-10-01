@@ -74,7 +74,7 @@ AppsPage::AppsPage(AppState& state, AppsController& controller, const Localizati
         return false;
     };
     m_empty = &add<ui::EmptyState>(ui::icons::Icon::AppxPackage, strings.get(Str::AppsNoMountTitle), strings.get(Str::AppsNoMountBody));
-    m_empty->setAction(strings.get(Str::FeaturesGoImages)).onInvoke = std::move(goImages);
+    m_empty->setAction(strings.get(Str::CommonGoImages)).onInvoke = std::move(goImages);
     setAccessible(ui::AccessRole::Group, strings.get(Str::AppsTitle));
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Mount || change == AppState::Change::Queue) {
@@ -195,16 +195,14 @@ void AppsPage::paint(ui::Canvas& canvas) {
     if (defaultsTab()) {
         const RectF t = m_assocTable->bounds();
         if (m_assoc.empty()) {
-            canvas.drawText(m_strings.get(Str::AppsAssocEmpty), {t.x, t.y + ui::TableView::kHeader + 12, t.width, 20},
-                            TypeStyle::Body, Color::TextTertiary, ui::TextAlign::Center);
+            paintTableEmpty(canvas, t, m_strings.get(Str::AppsAssocEmpty));
         }
         paintDetail(canvas, {b.x, t.bottom(), b.width, kDetailLine}, L"", m_strings.get(Str::AppsAssocHint));
         return;
     }
     const RectF t = m_appTable->bounds();
     if (m_apps.empty()) {
-        canvas.drawText(m_strings.get(Str::AppsEmpty), {t.x, t.y + ui::TableView::kHeader + 12, t.width, 20}, TypeStyle::Body,
-                        Color::TextTertiary, ui::TextAlign::Center);
+        paintTableEmpty(canvas, t, m_strings.get(Str::AppsEmpty));
     }
     const int row = m_appTable->selected();
     if (row >= 0 && row < static_cast<int>(m_apps.size())) {

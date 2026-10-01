@@ -58,7 +58,7 @@ TweaksPage::TweaksPage(AppState& state, ImageSettingsController& controller, con
     m_tabs->onChange = [this](int index) { showTab(m_controller.catalog().tabs()[static_cast<std::size_t>(index)].id); };
     m_empty = &add<ui::EmptyState>(ui::icons::Icon::TweaksSliders, strings.get(Str::TweaksNoMountTitle),
                                    strings.get(Str::TweaksNoMountBody));
-    m_empty->setAction(strings.get(Str::FeaturesGoImages)).onInvoke = std::move(goImages);
+    m_empty->setAction(strings.get(Str::CommonGoImages)).onInvoke = std::move(goImages);
     setAccessible(ui::AccessRole::Group, strings.get(Str::TweaksTitle));
 
     m_subscription = m_state.subscribe([this](AppState::Change change) {

@@ -1,9 +1,9 @@
 #include "app/pages/FeaturesPage.h"
 
 #include "app/Format.h"
+#include "app/pages/PageBits.h"
+#include "base/Text.h"
 #include "ui/widget/Host.h"
-
-#include <cwctype>
 
 namespace wl::app {
 
@@ -20,13 +20,6 @@ constexpr float kGap = 8.0f;
 constexpr float kTableGap = 12.0f;
 
 enum Column : int { kName, kType, kState, kTarget, kSize };
-
-std::wstring lowered(std::wstring text) {
-    for (auto& c : text) {
-        c = static_cast<wchar_t>(std::towlower(c));
-    }
-    return text;
-}
 } // namespace
 
 FeaturesPage::FeaturesPage(AppState& state, FeatureController& controller, const Localization& strings,
@@ -35,7 +28,7 @@ FeaturesPage::FeaturesPage(AppState& state, FeatureController& controller, const
       m_goToImages(std::move(goToImages)) {
     m_search = &add<ui::SearchBox>(strings.get(Str::FeaturesSearch), std::vector<std::wstring>{L"/"});
     m_search->onChange = [this](const std::wstring& text) {
-        m_needle = lowered(text);
+        m_needle = wl::text::lower(text);
         refilter();
     };
     m_stateBox = &add<ui::Dropdown>(strings.get(Str::FeaturesState),
@@ -46,7 +39,7 @@ FeaturesPage::FeaturesPage(AppState& state, FeatureController& controller, const
         m_filter = static_cast<Filter>(index);
         refilter();
     };
-    m_changed = &add<ui::Toggle>(strings.get(Str::FeaturesOnlyChanged), false);
+    m_changed = &add<ui::Toggle>(strings.get(Str::CommonOnlyChanged), false);
     m_changed->onChange = [this](bool on) {
         m_onlyChanged = on;
         refilter();
@@ -169,14 +162,14 @@ void FeaturesPage::refresh() {
     const bool ready = features && features->status == AppState::OptionalFeatures::Status::Ready;
     if (!m_state.mounted()) {
         showEmpty(ui::icons::Icon::PuzzleFeatures, Str::FeaturesNoMountTitle, m_strings.get(Str::FeaturesNoMountBody),
-                  Str::FeaturesGoImages, m_goToImages);
+                  Str::CommonGoImages, m_goToImages);
     } else if (!features || features->status == AppState::OptionalFeatures::Status::Loading) {
         m_controller.load();
         showEmpty(ui::icons::Icon::Spinner, Str::FeaturesLoadingTitle, m_strings.get(Str::FeaturesLoadingBody),
                   std::nullopt, {});
     } else if (features->status == AppState::OptionalFeatures::Status::Failed) {
         showEmpty(ui::icons::Icon::ErrorOctagon, Str::FeaturesFailedTitle,
-                  features->error.message + L" — " + features->error.context, Str::FeaturesRetry,
+                  features->error.message + L" — " + features->error.context, Str::CommonRetry,
                   [this] { m_controller.load(/*force=*/true); });
     } else {
         m_empty->setVisible(false);
@@ -204,8 +197,8 @@ void FeaturesPage::refilter() {
                 (m_filter == Filter::Queued && !isQueued)) {
                 continue;
             }
-            if (!m_needle.empty() && lowered(item.displayName).find(m_needle) == std::wstring::npos &&
-                lowered(item.name).find(m_needle) == std::wstring::npos) {
+            if (!m_needle.empty() && wl::text::lower(item.displayName).find(m_needle) == std::wstring::npos &&
+                wl::text::lower(item.name).find(m_needle) == std::wstring::npos) {
                 continue;
             }
             m_rows.push_back(static_cast<int>(i));
@@ -301,9 +294,7 @@ void FeaturesPage::paint(ui::Canvas& canvas) {
                     {left, b.y + kToolbarTop, std::max(b.right() - left, 0.0f), kToolbar}, TypeStyle::Caption,
                     Color::TextSecondary, ui::TextAlign::Trailing);
     if (m_rows.empty()) {
-        canvas.drawText(m_strings.get(Str::FeaturesNoResults),
-                        {b.x, m_table->bounds().y + ui::TableView::kHeader + 12, b.width, 20}, TypeStyle::Body,
-                        Color::TextTertiary, ui::TextAlign::Center);
+        paintTableEmpty(canvas, {b.x, m_table->bounds().y, b.width, 0}, m_strings.get(Str::FeaturesNoResults));
     }
 }
 

@@ -1,5 +1,6 @@
 #include "core/postsetup/Wifi.h"
 
+#include "base/Encoding.h"
 #include "base/Utf8.h"
 
 #include <windows.h>
@@ -13,21 +14,6 @@
 namespace wl::core {
 
 namespace {
-
-std::wstring xmlEscape(std::wstring_view text) {
-    std::wstring out;
-    for (const wchar_t c : text) {
-        switch (c) {
-        case L'&': out += L"&amp;"; break;
-        case L'<': out += L"&lt;"; break;
-        case L'>': out += L"&gt;"; break;
-        case L'"': out += L"&quot;"; break;
-        case L'\'': out += L"&apos;"; break;
-        default: out.push_back(c);
-        }
-    }
-    return out;
-}
 
 // Text of the first <tag>…</tag> (no nesting needed for the elements read here).
 std::wstring firstElement(std::wstring_view xml, std::wstring_view tag) {

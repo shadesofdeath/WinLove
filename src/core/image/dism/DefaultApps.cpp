@@ -1,5 +1,6 @@
 #include "core/image/dism/DefaultApps.h"
 
+#include "base/File.h"
 #include "base/Log.h"
 #include "base/Utf8.h"
 #include "core/image/dism/DismExe.h"
@@ -101,17 +102,14 @@ Result<std::string> exportHostAssociations(const std::filesystem::path& scratchF
     if (!exit) {
         return std::unexpected(exit.error());
     }
-    std::ifstream in(file, std::ios::binary);
-    std::stringstream buffer;
-    buffer << in.rdbuf();
-    in.close();
+    const std::string exported = readFileBytes(file).value_or(std::string());
     std::filesystem::remove(file, ec);
-    if (*exit != 0 || buffer.str().empty()) {
+    if (*exit != 0 || exported.empty()) {
         log::error("dism", utf8::toWide(output));
         return fail(ErrorCode::DismFailure, L"this PC's default app associations could not be exported",
                     std::format(L"dism.exe exit code 0x{:08X}", *exit), static_cast<std::int32_t>(*exit));
     }
-    return buffer.str();
+    return exported;
 }
 
 } // namespace wl::core

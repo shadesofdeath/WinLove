@@ -18,15 +18,14 @@ Error registryError(LSTATUS status, std::wstring what, std::wstring detail) {
 
 std::vector<std::wstring> subkeyNames(HKEY key) {
     std::vector<std::wstring> names;
-    wchar_t name[256];
+    wchar_t name[256]; // key names are at most 255 characters
     for (DWORD i = 0;; ++i) {
         DWORD length = static_cast<DWORD>(std::size(name));
         const LSTATUS status = RegEnumKeyExW(key, i, name, &length, nullptr, nullptr, nullptr, nullptr);
-        if (status == ERROR_NO_MORE_ITEMS) {
-            break;
-        }
         if (status == ERROR_SUCCESS) {
             names.emplace_back(name, length);
+        } else if (status != ERROR_MORE_DATA) {
+            break; // no more items — or an error that would repeat for every index (a bad handle)
         }
     }
     return names;
@@ -126,15 +125,7 @@ Result<void> RegKey::setDword(const wchar_t* name, std::uint32_t value) {
     if (const LSTATUS status =
             RegSetValueExW(m_key, name, 0, REG_DWORD, reinterpret_cast<const BYTE*>(&data), sizeof(data));
         status != ERROR_SUCCESS) {
-        return fail(ErrorCode::IoError, L"could not write registry value", name, static_cast<std::int32_t>(HRESULT_FROM_WIN32(status)));
-    }
-    return {};
-}
-
-Result<void> RegKey::deleteValue(const wchar_t* name) {
-    const LSTATUS status = RegDeleteValueW(m_key, name);
-    if (status != ERROR_SUCCESS && status != ERROR_FILE_NOT_FOUND) {
-        return fail(ErrorCode::IoError, L"could not delete registry value", name, static_cast<std::int32_t>(HRESULT_FROM_WIN32(status)));
+        return std::unexpected(registryError(status, L"could not write registry value", name ? name : L"(default)"));
     }
     return {};
 }

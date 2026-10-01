@@ -1,6 +1,7 @@
 // wlcli — drives the image engine without UI (docs/ENGINE.md §4).
 // Every engine capability gets a command here before any page uses it. `--json` output is stable
 // and parsed by integration tests and tools.
+#include "base/File.h"
 #include "base/Log.h"
 #include "base/Utf8.h"
 #include "core/image/ComponentStore.h"
@@ -15,6 +16,7 @@
 #include "core/image/dism/DefaultApps.h"
 #include "core/image/dism/Intl.h"
 #include "core/image/Fonts.h"
+#include "core/system/Files.h"
 #include "core/system/Hash.h"
 #include "core/postsetup/Wifi.h"
 #include "core/system/Picture.h"
@@ -46,9 +48,9 @@
 #include <chrono>
 #include <cstdio>
 #include <cwctype>
-#include <fstream>
 #include <sstream>
 #include <format>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -96,11 +98,17 @@ std::string narrow(std::wstring_view text) {
     return utf8::fromWide(text);
 }
 
-json imageJson(const core::ImageInfo& image) {
-    json languages = json::array();
-    for (const auto& l : image.languages) {
-        languages.push_back(narrow(l));
+// ["a","b"] from wide strings (UTF-8).
+json stringArray(const std::vector<std::wstring>& items) {
+    json array = json::array();
+    for (const auto& item : items) {
+        array.push_back(narrow(item));
     }
+    return array;
+}
+
+json imageJson(const core::ImageInfo& image) {
+    json languages = stringArray(image.languages);
     return {{"index", image.index},
             {"name", narrow(image.name)},
             {"displayName", narrow(image.displayName)},
@@ -237,8 +245,54 @@ core::TaskContext progressTask(const wchar_t* label) {
                              }};
 }
 
+// "2,3,5" → {2, 3, 5}; empty or non-positive parts are left out.
+std::vector<int> parseIndexList(std::wstring_view text) {
+    std::vector<int> indexes;
+    while (!text.empty()) {
+        const auto comma = text.find(L',');
+        if (const int i = parseIndex(std::wstring(text.substr(0, comma))); i > 0) {
+            indexes.push_back(i);
+        }
+        text = comma == std::wstring_view::npos ? std::wstring_view{} : text.substr(comma + 1);
+    }
+    return indexes;
+}
+
+// --compress= of export / recompress / append / capture: one vocabulary for all of them.
+// Empty: `fallback`, or an error when the command needs a value (no fallback).
+Result<core::WimCompression> parseCompression(const std::wstring& text, std::optional<core::WimCompression> fallback) {
+    if (text.empty()) {
+        if (fallback) {
+            return *fallback;
+        }
+        return fail(ErrorCode::InvalidArgument, L"--compress is required: lzx|xpress|none|esd");
+    }
+    if (text == L"max" || text == L"lzx") {
+        return core::WimCompression::Lzx;
+    }
+    if (text == L"fast" || text == L"xpress") {
+        return core::WimCompression::Xpress;
+    }
+    if (text == L"none") {
+        return core::WimCompression::None;
+    }
+    if (text == L"recovery" || text == L"lzms" || text == L"esd") {
+        return core::WimCompression::Lzms;
+    }
+    return fail(ErrorCode::InvalidArgument, L"--compress takes lzx (max), xpress (fast), none, esd (recovery / lzms)", text);
+}
+
 Result<core::Dism*> dism() {
     return core::Dism::instance();
+}
+
+// DISM loaded and a session on the mounted image in `dir` (the start of most commands).
+Result<std::unique_ptr<core::DismSession>> openImageSession(const std::wstring& dir) {
+    auto d = dism();
+    if (!d) {
+        return std::unexpected(d.error());
+    }
+    return (*d)->openSession(dir);
 }
 
 int cmdMount(const std::wstring& wim, const std::wstring& index, const std::wstring& dir, bool readOnly) {
@@ -281,10 +335,7 @@ int cmdMounts(bool asJson) {
     if (asJson) {
         json out = json::array();
         for (const auto& c : *checks) {
-            json hives = json::array();
-            for (const auto& h : c.loadedHives) {
-                hives.push_back(narrow(h));
-            }
+            json hives = stringArray(c.loadedHives);
             out.push_back({{"mountPath", narrow(c.folder.wstring())},
                            {"imagePath", narrow(c.record ? c.record->imagePath.wstring() : L"")},
                            {"index", c.record ? c.record->index : 0},
@@ -376,11 +427,7 @@ int cmdOptionalFeatures(const std::wstring& dir, bool asJson) {
 }
 
 int cmdServicing(const std::wstring& what, const std::wstring& dir, bool asJson) {
-    auto d = dism();
-    if (!d) {
-        return reportError(d.error());
-    }
-    auto session = (*d)->openSession(dir);
+    auto session = openImageSession(dir);
     if (!session) {
         return reportError(session.error());
     }
@@ -412,13 +459,11 @@ int cmdServicing(const std::wstring& what, const std::wstring& dir, bool asJson)
 }
 
 Result<core::ops::ChangeSet> loadChangeSet(const std::wstring& path) {
-    std::ifstream file{std::filesystem::path(path), std::ios::binary};
-    if (!file) {
+    const auto bytes = readFileBytes(path);
+    if (!bytes) {
         return fail(ErrorCode::NotFound, L"cannot read change set", path);
     }
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    return core::ops::ChangeSet::fromJson(buffer.str());
+    return core::ops::ChangeSet::fromJson(*bytes);
 }
 
 const wchar_t* phaseName(core::ops::Phase phase) {
@@ -429,6 +474,7 @@ const wchar_t* phaseName(core::ops::Phase phase) {
     case core::ops::Phase::Drivers: return L"drivers";
     case core::ops::Phase::Updates: return L"updates";
     case core::ops::Phase::Apps: return L"apps";
+    case core::ops::Phase::DeepRemove: return L"deep-remove";
     case core::ops::Phase::Cleanup: return L"cleanup";
     case core::ops::Phase::Settings: return L"settings";
     }
@@ -455,6 +501,10 @@ int cmdPlan(const std::wstring& changeSetPath) {
 
 int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bool commit, const std::wstring& source,
              const std::wstring& also, const std::wstring& wim) {
+    if (!also.empty() && (!commit || wim.empty())) {
+        // Silently skipped before: the further editions are applied after a commit, from that WIM.
+        return reportError(Error{ErrorCode::InvalidArgument, L"--also needs --commit and --wim=<file>", also});
+    }
     auto set = loadChangeSet(changeSetPath);
     if (!set) {
         return reportError(set.error());
@@ -492,14 +542,7 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
     int result = report.completed && report.failures() == 0 && !job->commitError ? 0 : 3;
     // D-055: the same plan on further editions of `wim` (--also=2,3 --wim=<file>), after a commit.
     if (!also.empty() && job->committed && !wim.empty()) {
-        std::wstring_view rest = also;
-        while (!rest.empty()) {
-            const auto comma = rest.find(L',');
-            const int index = parseIndex(std::wstring(rest.substr(0, comma)));
-            rest = comma == std::wstring_view::npos ? std::wstring_view{} : rest.substr(comma + 1);
-            if (index <= 0) {
-                continue;
-            }
+        for (const int index : parseIndexList(also)) {
             print(std::format(L"\n  edition {} of {}\n", index, wim));
             auto other = core::ops::applyToEdition(**d, wim, index, mountDir, p, options, core::TaskContext{g_cancel, {}}, callbacks);
             if (!other) {
@@ -586,13 +629,11 @@ int cmdCbs(const std::wstring& dir, const std::wstring& filter, bool asJson) {
 // One component recipe (the value of a removeComponent operation: title, packages, paths,
 // registry) against a mounted image: what is there, or — with --remove — take it out.
 int cmdComponent(const std::wstring& dir, const std::wstring& recipeFile, bool remove) {
-    std::ifstream file{std::filesystem::path(recipeFile), std::ios::binary};
-    if (!file) {
+    const auto bytes = readFileBytes(recipeFile);
+    if (!bytes) {
         return reportError(Error{ErrorCode::NotFound, L"cannot open the recipe", recipeFile});
     }
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    auto recipe = core::componentRecipeFromJson(buffer.str());
+    auto recipe = core::componentRecipeFromJson(*bytes);
     if (!recipe) {
         return reportError(recipe.error());
     }
@@ -631,17 +672,11 @@ int cmdComponent(const std::wstring& dir, const std::wstring& recipeFile, bool r
     if (!remove) {
         return 0;
     }
-    auto d = dism();
-    if (!d) {
-        return reportError(d.error());
-    }
-    auto session = (*d)->openSession(dir);
+    auto session = openImageSession(dir);
     if (!session) {
         return reportError(session.error());
     }
-    const core::TaskContext task{g_cancel, [](double fraction, std::wstring_view) {
-                                     print(std::format(L"\r  {:5.1f}%", fraction * 100));
-                                 }};
+    const auto task = progressTask(L"remove");
     const auto removed = core::removeComponent(**session, *recipe, task);
     print(L"\n");
     if (!removed) {
@@ -655,9 +690,7 @@ int cmdComponent(const std::wstring& dir, const std::wstring& recipeFile, bool r
 int cmdOptimize(const std::wstring& wim) {
     std::error_code ec;
     const auto before = std::filesystem::file_size(wim, ec);
-    const core::TaskContext task{g_cancel, [](double fraction, std::wstring_view) {
-                                     print(std::format(L"\r  {:5.1f}%", fraction * 100));
-                                 }};
+    const auto task = progressTask(L"optimize");
     const auto done = core::optimizeWim(wim, task);
     print(L"\n");
     if (!done) {
@@ -697,18 +730,6 @@ int cmdVerify(const std::wstring& path) {
 }
 
 // D-058: Images page tools (no admin except capture).
-core::WimCompression compressionArg(const std::wstring& text) {
-    if (text == L"recovery" || text == L"lzms" || text == L"esd") {
-        return core::WimCompression::Lzms;
-    }
-    if (text == L"fast" || text == L"xpress") {
-        return core::WimCompression::Xpress;
-    }
-    if (text == L"none") {
-        return core::WimCompression::None;
-    }
-    return core::WimCompression::Lzx;
-}
 
 int cmdHash(const std::wstring& file, const std::wstring& expect) {
     const auto started = GetTickCount64();
@@ -727,7 +748,11 @@ int cmdHash(const std::wstring& file, const std::wstring& expect) {
 }
 
 int cmdRecompress(const std::wstring& wim, const std::wstring& compress) {
-    auto result = core::recompressWim(wim, compressionArg(compress), progressTask(L"recompress"));
+    const auto target = parseCompression(compress, std::nullopt);
+    if (!target) {
+        return reportError(target.error());
+    }
+    auto result = core::recompressWim(wim, *target, progressTask(L"recompress"));
     print(L"\n");
     if (!result) {
         return reportError(result.error());
@@ -772,14 +797,11 @@ int cmdAppend(const std::wstring& sourcePath, const std::wstring& destination, c
     if (!source) {
         return reportError(source.error());
     }
-    std::vector<int> list;
-    for (std::wstring_view rest = indexes; !rest.empty();) {
-        const auto comma = rest.find(L',');
-        if (const int i = parseIndex(std::wstring(rest.substr(0, comma))); i > 0) {
-            list.push_back(i);
-        }
-        rest = comma == std::wstring_view::npos ? std::wstring_view{} : rest.substr(comma + 1);
+    const auto compression = parseCompression(compress, core::WimCompression::Lzx);
+    if (!compression) {
+        return reportError(compression.error());
     }
+    std::vector<int> list = parseIndexList(indexes);
     if (list.empty()) {
         for (const auto& image : source->install.images) {
             list.push_back(image.index);
@@ -791,7 +813,7 @@ int cmdAppend(const std::wstring& sourcePath, const std::wstring& destination, c
     if (!file) {
         return reportError(file.error());
     }
-    auto r = core::exportImages(*file, list, destination, compressionArg(compress), progressTask(L"append"));
+    auto r = core::exportImages(*file, list, destination, *compression, progressTask(L"append"));
     std::error_code ec;
     if (extracted) {
         std::filesystem::remove_all(scratch, ec);
@@ -805,7 +827,11 @@ int cmdAppend(const std::wstring& sourcePath, const std::wstring& destination, c
 }
 
 int cmdCapture(const std::wstring& folder, const std::wstring& wim, const std::wstring& name, const std::wstring& compress) {
-    auto added = core::captureImage(folder, wim, core::ImageText{name, std::wstring(), std::nullopt}, compressionArg(compress),
+    const auto compression = parseCompression(compress, core::WimCompression::Lzx);
+    if (!compression) {
+        return reportError(compression.error());
+    }
+    auto added = core::captureImage(folder, wim, core::ImageText{name, std::wstring(), std::nullopt}, *compression,
                                     progressTask(L"capture"));
     print(L"\n");
     if (!added) {
@@ -840,12 +866,12 @@ int cmdPicture(const std::wstring& source, const std::wstring& target, const std
     if (!bytes) {
         return reportError(bytes.error());
     }
-    std::ofstream out(std::filesystem::path(target), std::ios::binary | std::ios::trunc);
-    out.write(bytes->data(), static_cast<std::streamsize>(bytes->size()));
-    out.close();
+    if (auto saved = writeFileAtomic(target, *bytes); !saved) {
+        return reportError(saved.error());
+    }
     auto written = core::pictureSize(target);
     print(std::format(L"  {} bytes, {}x{}\n", bytes->size(), written ? written->width : 0, written ? written->height : 0));
-    return out ? 0 : 3;
+    return 0;
 }
 
 int cmdWifiList() {
@@ -887,17 +913,11 @@ int cmdSetInfo(const std::wstring& wim, const std::wstring& index, const std::ws
 }
 
 int cmdStoreCleanup(const std::wstring& dir, bool resetBase) {
-    auto d = dism();
-    if (!d) {
-        return reportError(d.error());
-    }
-    auto session = (*d)->openSession(dir);
+    auto session = openImageSession(dir);
     if (!session) {
         return reportError(session.error());
     }
-    const core::TaskContext task{g_cancel, [](double fraction, std::wstring_view) {
-                                     print(std::format(L"\r  {:5.1f}%", fraction * 100));
-                                 }};
+    const auto task = progressTask(L"cleanup");
     const auto cleaned = core::cleanupComponentStore(**session, resetBase, task);
     print(L"\n");
     if (!cleaned) {
@@ -925,11 +945,7 @@ int cmdAppxRemove(const std::wstring& dir, const std::wstring& package, bool nat
     const auto before = core::probeComponent(dir, recipe);
     print(std::format(L"{}: {} package(s) staged, {} bytes on disk\n", family, staged->size(), before.size));
     {
-        auto d = dism();
-        if (!d) {
-            return reportError(d.error());
-        }
-        auto session = (*d)->openSession(dir);
+        auto session = openImageSession(dir);
         if (!session) {
             return reportError(session.error());
         }
@@ -1007,18 +1023,12 @@ int cmdBootPatch(const std::wstring& bootWim, const std::wstring& mountDir, cons
 // The edition of a mounted image and what it can be changed to; with `target`: changes it
 // (dism.exe /Set-Edition — one-way; the image is not committed).
 int cmdEdition(const std::wstring& dir, const std::wstring& target, bool asJson) {
-    auto d = dism();
-    if (!d) {
-        return reportError(d.error());
-    }
-    auto session = (*d)->openSession(dir);
+    auto session = openImageSession(dir);
     if (!session) {
         return reportError(session.error());
     }
     if (!target.empty()) {
-        const core::TaskContext task{g_cancel, [](double fraction, std::wstring_view) {
-                                         print(std::format(L"\r  {:5.1f}%", fraction * 100));
-                                     }};
+        const auto task = progressTask(L"edition");
         const auto changed = core::setEdition(**session, target, task);
         print(L"\n");
         if (!changed) {
@@ -1030,10 +1040,7 @@ int cmdEdition(const std::wstring& dir, const std::wstring& target, bool asJson)
         return reportError(editions.error());
     }
     if (asJson) {
-        json targets = json::array();
-        for (const auto& edition : editions->targets) {
-            targets.push_back(narrow(edition));
-        }
+        json targets = stringArray(editions->targets);
         print(utf8::toWide(json{{"current", narrow(editions->current)}, {"targets", targets}}.dump(2)) + L"\n");
         return 0;
     }
@@ -1082,12 +1089,11 @@ int cmdServices(const std::wstring& dir, const std::wstring& set, bool asJson) {
 
 // P13: read an answer file for the options WinLove knows and print the file it would write.
 int cmdUnattend(const std::wstring& file) {
-    std::ifstream in(file, std::ios::binary);
-    if (!in) {
+    const auto bytes = readFileBytes(file);
+    if (!bytes) {
         return reportError(Error{ErrorCode::NotFound, L"could not open the answer file", file, 0});
     }
-    const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    const auto options = core::parseUnattendXml(bytes);
+    const auto options = core::parseUnattendXml(*bytes);
     if (!options) {
         return reportError(options.error());
     }
@@ -1104,12 +1110,11 @@ int cmdUnattend(const std::wstring& file) {
 // P14: write a post-setup plan (the JSON a preset holds) into a mounted image — or any folder
 // standing in for one: scripts, task definition, copy payloads, SetupComplete.cmd line.
 int cmdPostSetup(const std::wstring& planFile, const std::wstring& mountDir) {
-    std::ifstream in(planFile, std::ios::binary);
-    if (!in) {
+    const auto bytes = readFileBytes(planFile);
+    if (!bytes) {
         return reportError(Error{ErrorCode::NotFound, L"could not open the plan", planFile, 0});
     }
-    const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    const auto plan = core::postSetupFromJson(bytes);
+    const auto plan = core::postSetupFromJson(*bytes);
     if (!plan) {
         return reportError(plan.error());
     }
@@ -1273,10 +1278,7 @@ int cmdUsbList(bool allowVirtual, bool all, bool asJson) {
     if (asJson) {
         json out = json::array();
         for (const auto& d : disks) {
-            json letters = json::array();
-            for (const auto& l : d.letters) {
-                letters.push_back(narrow(l));
-            }
+            json letters = stringArray(d.letters);
             out.push_back({{"disk", d.number},
                            {"name", narrow(d.name())},
                            {"serial", narrow(d.serial)},
@@ -1327,10 +1329,15 @@ int cmdUsbWrite(const std::wstring& diskText, const std::wstring& folder, const 
     options.sourceFolder = folder;
     options.allowVirtual = allowVirtual;
     if (!unattend.empty()) {
-        std::ifstream in(std::filesystem::path(unattend), std::ios::binary);
-        std::stringstream buffer;
-        buffer << in.rdbuf();
-        options.rootFiles.push_back({L"autounattend.xml", buffer.str()});
+        // A wrong path used to put an empty autounattend.xml on the stick.
+        auto xml = readFileBytes(unattend);
+        if (!xml) {
+            return reportError(xml.error());
+        }
+        if (xml->empty()) {
+            return reportError(Error{ErrorCode::InvalidArgument, L"the answer file is empty", unattend});
+        }
+        options.rootFiles.push_back({L"autounattend.xml", std::move(*xml)});
     }
     const auto task = progressTask(L"usb");
     auto result = core::writeUsb(options, task);
@@ -1345,11 +1352,7 @@ int cmdUsbWrite(const std::wstring& diskText, const std::wstring& folder, const 
 
 // D-052: third-party drivers of a mounted image; --remove=oemN.inf takes one out (admin).
 int cmdDrivers(const std::wstring& mountDir, const std::wstring& remove, bool asJson) {
-    auto d = dism();
-    if (!d) {
-        return reportError(d.error());
-    }
-    auto session = (*d)->openSession(mountDir);
+    auto session = openImageSession(mountDir);
     if (!session) {
         return reportError(session.error());
     }
@@ -1394,11 +1397,7 @@ int cmdExportHostDrivers(const std::wstring& folder) {
 
 // D-053: international settings of a mounted image; --set=<json> changes them (admin).
 int cmdIntl(const std::wstring& mountDir, const std::wstring& set, bool asJson) {
-    auto d = dism();
-    if (!d) {
-        return reportError(d.error());
-    }
-    auto session = (*d)->openSession(mountDir);
+    auto session = openImageSession(mountDir);
     if (!session) {
         return reportError(session.error());
     }
@@ -1406,10 +1405,11 @@ int cmdIntl(const std::wstring& mountDir, const std::wstring& set, bool asJson) 
         // "@file.json": the JSON from a file (PowerShell 5.1 mangles quotes in native arguments).
         std::string json = narrow(set);
         if (set.starts_with(L"@")) {
-            std::ifstream in(std::filesystem::path(set.substr(1)), std::ios::binary);
-            std::stringstream buffer;
-            buffer << in.rdbuf();
-            json = buffer.str();
+            auto bytes = readFileBytes(std::filesystem::path(set.substr(1)));
+            if (!bytes) {
+                return reportError(bytes.error());
+            }
+            json = std::move(*bytes);
         }
         auto settings = core::intlFromJson(json);
         if (!settings) {
@@ -1425,10 +1425,7 @@ int cmdIntl(const std::wstring& mountDir, const std::wstring& set, bool asJson) 
         return reportError(intl.error());
     }
     if (asJson) {
-        json langs = json::array();
-        for (const auto& l : intl->languages) {
-            langs.push_back(narrow(l));
-        }
+        json langs = stringArray(intl->languages);
         printJson({{"ui", narrow(intl->current.uiLanguage)}, {"system", narrow(intl->current.systemLocale)},
                    {"user", narrow(intl->current.userLocale)}, {"input", narrow(intl->current.inputLocale)},
                    {"timezone", narrow(intl->current.timeZone)}, {"languages", langs}});
@@ -1445,24 +1442,19 @@ int cmdIntl(const std::wstring& mountDir, const std::wstring& set, bool asJson) 
 
 // D-054: default app associations into a mounted image (admin).
 int cmdAssociations(const std::wstring& mountDir, const std::wstring& file) {
-    std::ifstream in(std::filesystem::path(file), std::ios::binary);
-    std::stringstream buffer;
-    buffer << in.rdbuf();
-    auto list = core::parseAssociations(buffer.str());
+    const auto bytes = readFileBytes(file);
+    if (!bytes) {
+        return reportError(bytes.error());
+    }
+    auto list = core::parseAssociations(*bytes);
     if (!list) {
         return reportError(list.error());
     }
-    auto d = dism();
-    if (!d) {
-        return reportError(d.error());
-    }
-    auto session = (*d)->openSession(mountDir);
+    auto session = openImageSession(mountDir);
     if (!session) {
         return reportError(session.error());
     }
-    wchar_t temp[MAX_PATH];
-    GetTempPathW(MAX_PATH, temp);
-    if (auto r = core::importAssociations(**session, buffer.str(), std::filesystem::path(temp) / L"WinLove", core::TaskContext{}); !r) {
+    if (auto r = core::importAssociations(**session, *bytes, core::tempFolder() / L"WinLove", core::TaskContext{}); !r) {
         return reportError(r.error());
     }
     print(std::format(L"  {} association(s) imported\n", list->size()));
@@ -1471,13 +1463,13 @@ int cmdAssociations(const std::wstring& mountDir, const std::wstring& file) {
 
 // D-054: this PC's default app associations (admin) → a file.
 int cmdExportHostAssociations(const std::wstring& file) {
-    wchar_t temp[MAX_PATH];
-    GetTempPathW(MAX_PATH, temp);
-    auto xml = core::exportHostAssociations(std::filesystem::path(temp) / L"WinLove");
+    auto xml = core::exportHostAssociations(core::tempFolder() / L"WinLove");
     if (!xml) {
         return reportError(xml.error());
     }
-    std::ofstream(std::filesystem::path(file), std::ios::binary) << *xml;
+    if (auto saved = writeFileAtomic(file, *xml); !saved) {
+        return reportError(saved.error());
+    }
     auto list = core::parseAssociations(*xml);
     print(std::format(L"  {} association(s) -> {}\n", list ? list->size() : 0, file));
     return 0;
@@ -1515,11 +1507,7 @@ int cmdAppx(const std::wstring& file, const std::wstring& mountDir, const std::w
     if (mountDir.empty()) {
         return 0;
     }
-    auto d = dism();
-    if (!d) {
-        return reportError(d.error());
-    }
-    auto session = (*d)->openSession(mountDir);
+    auto session = openImageSession(mountDir);
     if (!session) {
         return reportError(session.error());
     }
@@ -1568,14 +1556,12 @@ int cmdIso(const std::wstring& folder, const std::wstring& output, const std::ws
 
 int cmdExport(const std::wstring& source, const std::wstring& index, const std::wstring& destination,
               const std::wstring& compression) {
-    core::WimCompression c = core::WimCompression::Lzx;
-    if (compression == L"none") c = core::WimCompression::None;
-    else if (compression == L"fast" || compression == L"xpress") c = core::WimCompression::Xpress;
-    else if (compression == L"max" || compression == L"lzx" || compression.empty()) c = core::WimCompression::Lzx;
-    else if (compression == L"recovery" || compression == L"lzms") c = core::WimCompression::Lzms;
-    else return reportError(Error{ErrorCode::InvalidArgument, L"--compress must be none|fast|max|recovery", compression});
+    const auto c = parseCompression(compression, core::WimCompression::Lzx);
+    if (!c) {
+        return reportError(c.error());
+    }
     const auto task = progressTask(L"export");
-    if (auto r = core::exportImage(source, parseIndex(index), destination, c, task); !r) {
+    if (auto r = core::exportImage(source, parseIndex(index), destination, *c, task); !r) {
         print(L"\n");
         return reportError(r.error());
     }
@@ -1585,10 +1571,9 @@ int cmdExport(const std::wstring& source, const std::wstring& index, const std::
 
 // Removes editions and rewrites the WIM with the ones that stay (what the Images page does).
 int cmdDeleteIndex(const std::wstring& wim, const std::wstring& list) {
-    std::vector<int> indexes;
-    std::wstringstream parts(list);
-    for (std::wstring part; std::getline(parts, part, L',');) {
-        indexes.push_back(parseIndex(part));
+    const std::vector<int> indexes = parseIndexList(list);
+    if (indexes.empty()) {
+        return reportError(Error{ErrorCode::InvalidArgument, L"no edition index given", list});
     }
     std::error_code ec;
     const auto before = std::filesystem::file_size(wim, ec);
@@ -1628,6 +1613,7 @@ void printUsage() {
           L"  wlcli mount <wim> <index> <dir> [--readonly]\n"
           L"  wlcli unmount <dir> --commit|--discard\n"
           L"  wlcli mounts | cleanup\n"
+          L"  wlcli repair <dir>                  (inspect a mount folder and do what it needs: remount / discard / clean)\n"
           L"  wlcli packages|features|capabilities <mountdir>\n"
           L"  wlcli iso <setup-folder> <out.iso> [--label=X] [--boot=both|uefi|bios] [--sha256] [--no-prompt]\n"
           L"  wlcli unattend <answer.xml>         (read an answer file; print it as WinLove writes it, P13)\n"
@@ -1642,7 +1628,7 @@ void printUsage() {
           L"  wlcli appx-info <package> [--arch=x64]      (manifest, dependencies found next to it; no admin)\n"
           L"  wlcli font-info <font>                     (registry name Windows gives it; no admin)\n"
           L"  wlcli hash <file> [--expect=<sha256>]      (SHA-256; exit 3 when it does not match)\n"
-          L"  wlcli recompress <wim|esd> --compress=lzx|xpress|none|esd   (every edition, the file replaced)\n"
+          L"  wlcli recompress <wim|esd> --compress=lzx|xpress|none|esd   (required; every edition, the file replaced)\n"
           L"  wlcli swm-split <wim> <first.swm> [--size-mb=3800]  ·  wlcli swm-merge <first.swm> <out.wim>\n"
           L"  wlcli duplicate <wim> <index> <name>       (a copy of an edition in the same WIM)\n"
           L"  wlcli append <iso|wim|esd|swm> <dest.wim> [--index=1,3] [--compress=lzx]   (editions added)\n"
@@ -1652,8 +1638,10 @@ void printUsage() {
           L"  wlcli wifi-xml --ssid=<name> [--password=<key>] [--wpa3|--open] [--hidden]   (WLAN profile XML)\n"
           L"  wlcli appx-add <mountdir> <package> [--arch=x64]   (provision an .appx / .msix (bundle); admin)\n"
           L"  wlcli languages <folder>                   (language packs and features under a folder)\n"
-          L"  wlcli usb-list [--all] [--json]      USB disks a setup stick can go to (never the system disk)\n"
-          L"  wlcli usb-write <disk> <setup folder> --yes [--gpt] [--label=] [--unattend=<xml>]   (admin; ERASES the\n"
+          L"  wlcli usb-list [--all] [--json] [--allow-virtual]   USB disks a setup stick can go to (never the system\n"
+          L"                                      disk; --allow-virtual: file-backed VHD(X) disks too, for the lab)\n"
+          L"  wlcli usb-write <disk> <setup folder> --yes [--gpt] [--label=] [--unattend=<xml>] [--allow-virtual]\n"
+          L"                                      (admin; ERASES the\n"
           L"                                      disk: FAT32, BIOS + UEFI (--gpt: UEFI only), install.wim > 4 GB -> .swm)\n"
           L"  wlcli catalog <build>[.<revision>] [--arch=x64|arm64] [--download=<folder>] [--preview] [--kb=KB…] [--json]\n"
           L"                                      (newest cumulative + .NET updates from the Microsoft Update\n"
@@ -1671,11 +1659,11 @@ void printUsage() {
           L"                                      (Setup's image: LabConfig + drivers; mounts, commits)\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
           L"  wlcli apply <changeset.json> <mountdir> [--commit] [--source=<sources\\sxs>]\n"
-          L"                                      [--also=2,3 --wim=<file>]   (then the same on further editions)\n"
+          L"                                      [--also=2,3 --wim=<file>]   (with --commit: then the same on further editions)\n"
           L"\n  Change sets (no admin):\n"
           L"  wlcli plan <changeset.json>              Show the ordered apply plan\n"
           L"  wlcli extract-all <iso> <dir>             Copy the whole ISO into a folder (resumable)\n"
-          L"  wlcli export <wim|esd> <index> <dst.wim> [--compress=max|fast|none|recovery]\n"
+          L"  wlcli export <wim|esd> <index> <dst.wim> [--compress=lzx|xpress|none|esd]   (lzx when left out)\n"
           L"  wlcli delete-index <wim> <index>[,<index>...]   Remove editions; the WIM is rewritten with the rest\n"
           L"  wlcli optimize <wim>                      Rewrite a WIM without what commits left behind\n"
           L"  wlcli verify <iso|wim|folder>             Read every stream and check its SHA-1 (exit 3: damaged)\n"

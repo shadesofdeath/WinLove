@@ -38,7 +38,6 @@ public:
     void setLines(std::vector<LogLine> lines);
     void append(std::span<const LogLine> lines);
     [[nodiscard]] std::size_t lineCount() const noexcept { return m_lines.size(); }
-    [[nodiscard]] const std::vector<LogLine>& lines() const noexcept { return m_lines; }
 
     void setHighlight(std::wstring needle); // case-insensitive, message column
     void setAutoScroll(bool on);

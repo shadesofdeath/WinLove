@@ -1,8 +1,10 @@
 #include "core/image/AppxInstall.h"
 
 #include "base/Log.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 #include "core/image/dism/DismExe.h"
+#include "core/system/Com.h"
 
 #include <json.hpp>
 
@@ -19,14 +21,6 @@ namespace wl::core {
 using Microsoft::WRL::ComPtr;
 
 namespace {
-
-std::wstring lower(std::wstring_view text) {
-    std::wstring out(text);
-    for (auto& c : out) {
-        c = static_cast<wchar_t>(std::towlower(c));
-    }
-    return out;
-}
 
 // Takes a CoTaskMem string.
 std::wstring take(LPWSTR text) {
@@ -251,22 +245,14 @@ std::size_t commonPrefix(std::wstring_view a, std::wstring_view b) {
 } // namespace
 
 bool isAppxFile(const std::filesystem::path& file) {
-    const std::wstring ext = lower(file.extension().wstring());
+    const std::wstring ext = text::lower(file.extension().wstring());
     return ext == L".appx" || ext == L".msix" || ext == L".appxbundle" || ext == L".msixbundle";
 }
 
 Result<AppxPackageInfo> readAppxPackage(const std::filesystem::path& file) {
-    // The engine threads have COM; a tool's main thread may not (a thread in another apartment
-    // mode keeps it and the call still works).
-    struct ComScope {
-        bool owned = SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
-        ~ComScope() {
-            if (owned) {
-                CoUninitialize();
-            }
-        }
-    } com;
-    const std::wstring ext = lower(file.extension().wstring());
+    // The engine threads have COM; a tool's main thread may not.
+    const ComScope com;
+    const std::wstring ext = text::lower(file.extension().wstring());
     if (!isAppxFile(file)) {
         return fail(ErrorCode::InvalidArgument, L"not an app package (.appx, .msix or a bundle of them)", file.wstring());
     }
@@ -293,7 +279,7 @@ Result<AppxInstall> planAppxInstall(const std::filesystem::path& package, std::w
     install.version = info->version;
     install.architectures = info->architectures;
     install.framework = info->framework;
-    const std::wstring arch = lower(imageArchitecture.empty() ? L"x64" : imageArchitecture);
+    const std::wstring arch = text::lower(imageArchitecture.empty() ? L"x64" : imageArchitecture);
     // Candidates: packages next to it and in a "Dependencies" folder (both levels).
     std::vector<std::filesystem::path> candidates;
     std::vector<std::filesystem::path> licenses;
@@ -310,8 +296,8 @@ Result<AppxInstall> planAppxInstall(const std::filesystem::path& package, std::w
         }
         if (isAppxFile(it->path())) {
             candidates.push_back(it->path());
-        } else if (lower(it->path().extension().wstring()) == L".xml" &&
-                   lower(it->path().filename().wstring()).find(L"license") != std::wstring::npos) {
+        } else if (text::lower(it->path().extension().wstring()) == L".xml" &&
+                   text::lower(it->path().filename().wstring()).find(L"license") != std::wstring::npos) {
             licenses.push_back(it->path());
         }
     }

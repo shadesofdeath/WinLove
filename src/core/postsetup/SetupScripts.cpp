@@ -1,5 +1,6 @@
 #include "core/postsetup/SetupScripts.h"
 
+#include "base/File.h"
 #include "base/Log.h"
 #include "base/Utf8.h"
 #include "core/image/RegistryEdit.h"
@@ -68,13 +69,11 @@ Result<void> removeSetupScript(const std::filesystem::path& mountDir, std::wstri
 }
 
 std::wstring readSetupScript(const std::filesystem::path& mountDir, std::wstring_view name) {
-    std::ifstream in(setupScriptPath(mountDir, name), std::ios::binary);
-    if (!in) {
+    auto bytes = readFileBytes(setupScriptPath(mountDir, name));
+    if (!bytes) {
         return {};
     }
-    std::stringstream buffer;
-    buffer << in.rdbuf();
-    std::string text = buffer.str();
+    std::string text = std::move(*bytes);
     if (text.starts_with("\xEF\xBB\xBF")) {
         text.erase(0, 3);
     }

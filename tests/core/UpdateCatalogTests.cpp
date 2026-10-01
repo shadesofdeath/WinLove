@@ -166,6 +166,10 @@ TEST_CASE("update catalog: download dialog files, SHA-256 and trusted hosts") {
     CHECK_FALSE(trustedDownloadUrl(L"https://microsoft.com.evil.example/x.msu"));
     CHECK_FALSE(trustedDownloadUrl(L"https://evilmicrosoft.com/x.msu"));
     CHECK_FALSE(trustedDownloadUrl(L"file:///C:/x.msu"));
+    // "user:pass@" before the real host: WinHTTP would connect to evil.example.
+    CHECK_FALSE(trustedDownloadUrl(L"https://download.microsoft.com:x@evil.example/f.msu"));
+    CHECK_FALSE(trustedDownloadUrl(L"https://download.microsoft.com@evil.example/f.msu"));
+    CHECK(trustedDownloadUrl(L"https://download.microsoft.com:443/f.msu"));
 
     CHECK(urlEncode(R"([{"a":"b c"}])") == "%5B%7B%22a%22%3A%22b%20c%22%7D%5D");
 }

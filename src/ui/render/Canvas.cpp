@@ -87,6 +87,12 @@ void Canvas::fillEllipse(PointF center, float radius, Ink ink) {
     m_context->FillEllipse(D2D1::Ellipse({center.x, center.y}, radius, radius), brush(ink));
 }
 
+void Canvas::panel(RectF rect, float radius, std::span<const tokens::Shadow> elevation) {
+    dropShadow(rect, radius, elevation);
+    fillRoundRect(rect, radius, tokens::Color::BgOverlay);
+    strokeRoundRect(rect, radius, tokens::Color::LineStrong);
+}
+
 void Canvas::dropShadow(RectF rect, float radius, std::span<const tokens::Shadow> layers) {
     // Record the shape once, then blur it per layer with the D2D shadow effect.
     ComPtr<ID2D1CommandList> shape;

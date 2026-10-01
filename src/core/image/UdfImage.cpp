@@ -464,7 +464,8 @@ Result<void> UdfImage::extractAll(const std::filesystem::path& destination, cons
 Result<void> UdfImage::copyNode(const Node& file, const std::filesystem::path& destination, const TaskContext& task,
                                 std::uint64_t doneBefore, std::uint64_t total) const {
     const std::filesystem::path partial = destination.wstring() + L".partial";
-    {
+    // Every way out but success removes the .partial (cancel, a read error, a full disk).
+    const auto written = [&]() -> Result<void> {
         std::ofstream out(partial, std::ios::binary | std::ios::trunc);
         if (!out) {
             return fail(ErrorCode::IoError, L"cannot create destination", partial.wstring());
@@ -474,9 +475,6 @@ Result<void> UdfImage::copyNode(const Node& file, const std::filesystem::path& d
         std::vector<std::byte> buffer(kChunk);
         for (std::uint64_t offset = 0; offset < file.size;) {
             if (auto c = task.cancel.check(file.name); !c) {
-                out.close();
-                std::error_code ignored;
-                std::filesystem::remove(partial, ignored);
                 return c;
             }
             const std::size_t chunk = static_cast<std::size_t>(std::min<std::uint64_t>(kChunk, file.size - offset));
@@ -490,6 +488,12 @@ Result<void> UdfImage::copyNode(const Node& file, const std::filesystem::path& d
             offset += chunk;
             task.report(total ? static_cast<double>(doneBefore + offset) / static_cast<double>(total) : 1.0, file.name);
         }
+        return {};
+    }(); // the stream is closed here
+    if (!written) {
+        std::error_code ignored;
+        std::filesystem::remove(partial, ignored);
+        return written;
     }
     // Only a complete file gets the final name.
     std::error_code ec;

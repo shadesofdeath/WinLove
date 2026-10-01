@@ -241,6 +241,29 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-060 — Derin kaldırma: eski donanım sürücüleri, bileşen deposu tutarlı (2026-10-02)
+Bağlam: Kullanıcı NTLite'taki gibi derin kaldırmayı istedi ("uyarılarını da kullanıcıya söylemeliyiz"). D-059'daki ölçüm:
+sürücü yükünü WinSxS'ten silmek depoyu bozuyordu ("repairable").
+Araştırma (25H2 Pro, kopya imaj): her Windows'la gelen sürücü kendi deployment'ı (`dual_<inf>_…`); onu çekirdek paketin bir
+update'i kuruyor. Sürücü veritabanı ikiye bölünmüş: çoğu DRIVERS hive'ında, önyüklenebilir sınıflar (disket, FDC, PCMCIA,
+1394, SBP2) SYSTEM\DriverDatabase'de.
+Karar:
+- **Motor** (`core/image/DeepRemoval`): bir sürücü paketi her yerden birlikte çıkar — COMPONENTS (bileşen + deployment),
+  WinSxS yükü + manifest, DriverStore\FileRepository + `<kültür>\<inf>_loc`, iki DriverDatabase (DriverPackages,
+  DriverInfFiles, DeviceIds değerleri, yalnız bize ait DriverFiles), `Windows\INF\<inf>` + `.pnf`, yük dosyalarının diğer
+  hard link'leri (System32\drivers\*.sys) ve onları çalıştıran servis anahtarları. Böylece depo tutarlı: `/ScanHealth` temiz.
+- **Yalnız sabit bir eski sınıf listesi** (modem, teyp, ortam değiştirici, disket + FDC, 1394 / 61883 / AVC / SBP2, PCMCIA,
+  barkod / OPOS / uzak POS); başka sınıf preset'le bile istenemez (`isDeepRemovableClass`, doğrulamada ve kaldırmada).
+  Sınıf tanım INF'leri (`c_*.inf`) kalır. Tarif `driverClasses` (GUID) taşır; sürücüler çalışma anında imajın kendi
+  veritabanından bulunur (her Windows sürümünde).
+- **Katalog:** "Eski Donanım Sürücüleri (derin kaldırma)" grubu, 6 girdi, hepsi yüksek risk, `deep: true`. Sayfada derin
+  girdi seçilince kırmızı uyarı; her girdinin notu güncelleme kısıtını anlatır.
+- **Toplu güncelleme kısıtı (ölçüldü):** derin kaldırılmış imaja KB5129195 (26200.9457) eklenemedi — "An error occurred
+  applying the Unattend.xml file from the .msu package" 0x80070002; dokunulmamış kopyaya aynı .msu 6 dakikada kuruldu.
+  Önce güncelleme sonra derin kaldırma: ALL PASSED, ScanHealth iki adımda da temiz. → Planner'da yeni **DeepRemove**
+  aşaması güncellemelerden (ve Apps'ten) sonra; derin olmayan bileşen kaldırmalar eski yerinde (Remove).
+- Görülmeyen: kurulan sistemde Windows Update'in toplu güncellemesi (VM); notlar "başarısız olabilir" der.
+
 ## D-059 — Bileşenler: paket düzeyinde bileşenler, bileşen deposu taraması (2026-10-02)
 Bağlam: Kullanıcı Bileşenler sayfasının NTLite'a göre çok az şey sunduğunu söyledi ("gerçekten iyi bir tarama
 yaparak bileşen deposunu genişletmeliyiz"). Sayfada uygulamaların dışında 6 sistem bileşeni vardı; D-031'de 865 gizli

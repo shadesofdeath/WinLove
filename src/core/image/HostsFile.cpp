@@ -1,6 +1,8 @@
 #include "core/image/HostsFile.h"
 
+#include "base/File.h"
 #include "base/Log.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 
 #include <windows.h>
@@ -20,14 +22,6 @@ namespace {
 constexpr std::wstring_view kOpen = L"# >>> WinLove: ";
 constexpr std::wstring_view kClose = L"# <<< WinLove: ";
 
-std::wstring lower(std::wstring_view text) {
-    std::wstring out(text);
-    for (auto& c : out) {
-        c = static_cast<wchar_t>(std::towlower(c));
-    }
-    return out;
-}
-
 std::vector<std::wstring> splitLines(std::wstring_view text) {
     std::vector<std::wstring> lines;
     std::size_t at = 0;
@@ -46,16 +40,8 @@ std::vector<std::wstring> splitLines(std::wstring_view text) {
     return lines;
 }
 
-std::wstring trim(std::wstring_view text) {
-    std::size_t a = 0;
-    std::size_t b = text.size();
-    while (a < b && std::iswspace(text[a])) {
-        ++a;
-    }
-    while (b > a && std::iswspace(text[b - 1])) {
-        --b;
-    }
-    return std::wstring(text.substr(a, b - a));
+std::wstring trim(std::wstring_view s) {
+    return std::wstring(text::trim(s));
 }
 
 } // namespace
@@ -103,7 +89,7 @@ std::vector<HostEntry> parseHosts(std::wstring_view text) {
         }
         std::wstring name;
         while (words >> name) {
-            name = lower(name);
+            name = text::lower(name);
             if (name == L"localhost" || name == L"localhost.localdomain" || name == L"local" || name == L"broadcasthost" ||
                 name == L"0.0.0.0" || !validHostName(name) || !seen.insert(name).second) {
                 continue;
@@ -196,26 +182,10 @@ std::filesystem::path hostsPath(const std::filesystem::path& mountDir) {
 
 namespace {
 
+// Microsoft's file is ASCII; a user's may be ANSI: decodeText takes it as UTF-8 when it is valid.
 std::wstring readText(const std::filesystem::path& file) {
-    std::ifstream in(file, std::ios::binary);
-    if (!in) {
-        return {};
-    }
-    std::stringstream buffer;
-    buffer << in.rdbuf();
-    std::string bytes = buffer.str();
-    if (bytes.starts_with("\xEF\xBB\xBF")) {
-        bytes.erase(0, 3);
-    }
-    // Microsoft's file is ASCII; a user's may be ANSI: take it as UTF-8 when it is valid, else ANSI.
-    const int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes.data(), static_cast<int>(bytes.size()), nullptr, 0);
-    if (n > 0 || bytes.empty()) {
-        return utf8::toWide(bytes);
-    }
-    const int m = MultiByteToWideChar(CP_ACP, 0, bytes.data(), static_cast<int>(bytes.size()), nullptr, 0);
-    std::wstring wide(static_cast<std::size_t>(m), L'\0');
-    MultiByteToWideChar(CP_ACP, 0, bytes.data(), static_cast<int>(bytes.size()), wide.data(), m);
-    return wide;
+    const auto bytes = readFileBytes(file);
+    return bytes ? utf8::decodeText(*bytes) : std::wstring();
 }
 
 } // namespace

@@ -37,6 +37,8 @@ struct ServiceEntry {
                                            StartType start);
 
 // The registry writes behind a start type (HKLM\SYSTEM\CurrentControlSet\Services\<name>).
+// A service key name: one path component (a preset must not reach "Svc\Parameters" or "..").
+[[nodiscard]] bool validServiceName(std::wstring_view name) noexcept;
 [[nodiscard]] std::vector<RegistryWrite> serviceStartWrites(const std::wstring& name, StartType start);
 
 // Services whose DependOnService lists `name` (case-insensitive), directly or transitively.

@@ -40,7 +40,6 @@ public:
     std::function<void(int)> onChange;
     void setSelected(int index); // no onChange
     [[nodiscard]] int selected() const noexcept { return m_selected; }
-    void setOptionEnabled(int index, bool enabled);
 
     [[nodiscard]] SizeF measure(SizeF available) override;
     void paint(Canvas& canvas) override;
@@ -52,7 +51,6 @@ private:
     [[nodiscard]] std::vector<RectF> optionRects() const;
     void choose(int index);
     std::vector<std::wstring> m_options;
-    std::vector<bool> m_enabled;
     int m_selected;
 };
 
