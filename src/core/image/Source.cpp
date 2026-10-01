@@ -1,4 +1,5 @@
 #include "core/image/Source.h"
+#include "core/wlm/Wlm.h"
 
 #include "base/Log.h"
 #include "base/Path.h"
@@ -98,6 +99,16 @@ Result<SourceInfo> openSource(const std::filesystem::path& input) {
                 info.boot = std::move(*bootWim);
             }
         }
+        break;
+    }
+    case ImageFormat::Wlm: {
+        auto wim = readWlmWim(path);
+        if (!wim) {
+            return std::unexpected(wim.error());
+        }
+        info.installImage = path.filename().wstring();
+        info.installImageSize = std::filesystem::file_size(path, ec);
+        info.install = std::move(*wim);
         break;
     }
     case ImageFormat::Vhd:

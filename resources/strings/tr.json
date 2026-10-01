@@ -252,7 +252,14 @@
     "revealFile": "Dosya konumunu aç",
     "copyInfo": "Bilgileri kopyala",
     "copiedToast": "Sürüm bilgileri panoya kopyalandı",
-    "noMountToExplore": "Açılacak bağlı imaj yok"
+    "noMountToExplore": "Açılacak bağlı imaj yok",
+    "wlmToWim": "WLM → WIM",
+    "packWlm": "WLM'e paketle…",
+    "packWlmHint": "WinLove Method: ESD'den ~%12 küçük arşiv; açılırken her dosya SHA-1 ile doğrulanır",
+    "saveWlm": "WinLove arşivi (WLM)",
+    "wlmNeedsWim": "WLM'e yalnız düz bir WIM paketlenir: ESD'yi önce WIM'e dönüştür",
+    "wlmNoMount": "WLM bağlanamaz: önce \"WLM → WIM\"",
+    "wlmPackedToast": "{file} oluşturuldu (WLM)"
   },
   "components": {
     "title": "Bileşenler",

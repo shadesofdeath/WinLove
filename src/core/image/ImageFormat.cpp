@@ -24,13 +24,14 @@ bool endsWithNoCase(std::wstring_view text, std::wstring_view suffix) noexcept {
 } // namespace
 
 ImageFormat formatFromPath(std::wstring_view path) noexcept {
-    static constexpr std::array<std::pair<std::wstring_view, ImageFormat>, 6> kExtensions = {{
+    static constexpr std::array<std::pair<std::wstring_view, ImageFormat>, 7> kExtensions = {{
         {L".iso", ImageFormat::Iso},
         {L".wim", ImageFormat::Wim},
         {L".esd", ImageFormat::Esd},
         {L".swm", ImageFormat::Swm},
         {L".vhdx", ImageFormat::Vhdx},
         {L".vhd", ImageFormat::Vhd},
+        {L".wlm", ImageFormat::Wlm},
     }};
     for (const auto& [extension, format] : kExtensions) {
         if (endsWithNoCase(path, extension)) {
@@ -50,6 +51,7 @@ const wchar_t* formatName(ImageFormat format) noexcept {
     case ImageFormat::Vhd: return L"VHD";
     case ImageFormat::Vhdx: return L"VHDX";
     case ImageFormat::Folder: return L"Folder";
+    case ImageFormat::Wlm: return L"WLM";
     }
     return L"?";
 }
