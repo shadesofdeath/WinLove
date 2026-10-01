@@ -328,16 +328,26 @@ void ComponentsPage::rebuildRows() {
 }
 
 void ComponentsPage::updateRiskBar() {
-    // The first queued high-risk app names the warning (design: "Defender kaldırılıyor:").
+    // The first queued high-risk app names the warning (design: "Defender kaldırılıyor:"). Deep
+    // removal (D-060) outranks it: its warning says what cannot be undone.
     const Item* risky = nullptr;
     std::size_t count = 0;
+    std::size_t deep = 0;
     for (const auto& g : m_groups) {
         for (const auto& item : g.items) {
             if (item.risk == Risk::High && m_controller.queued(item)) {
                 risky = risky ? risky : &item;
                 ++count;
+                deep += item.deep ? 1 : 0;
             }
         }
+    }
+    if (deep > 0) {
+        m_riskBar->set(ui::InfoKind::Error, m_strings.format(Str::ComponentsDeepTitle, {{L"n", std::to_wstring(deep)}}),
+                       m_strings.get(Str::ComponentsDeepWarning));
+        m_riskBar->setVisible(true);
+        layout();
+        return;
     }
     if (!risky) {
         if (m_riskBar->visible()) {

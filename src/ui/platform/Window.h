@@ -35,6 +35,7 @@ struct KeyEvent {
     bool ctrl;
     bool shift;
     bool alt;
+    bool repeat = false; // auto-repeat of a held key (WM_KEYDOWN lParam bit 30)
 };
 
 struct WindowCallbacks {
@@ -103,6 +104,7 @@ private:
     void trackLeave(bool nonClient);
 
     HWND m_hwnd = nullptr;
+    bool m_releasingCapture = false; // our own ReleaseCapture: its WM_CAPTURECHANGED is no cancel
     WindowCallbacks m_callbacks;
     std::function<void(std::vector<std::filesystem::path>, PointF)> m_fileDrop;
     SizeF m_minimum{};

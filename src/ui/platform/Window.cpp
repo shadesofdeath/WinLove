@@ -331,7 +331,9 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_LBUTTONUP:
         // Up first: ReleaseCapture sends WM_CAPTURECHANGED, which cancels a press still pending.
         pointer(PointerAction::Up, clientPoint(), HitZone::Client);
+        m_releasingCapture = true;
         ReleaseCapture();
+        m_releasingCapture = false;
         return 0;
     case WM_RBUTTONUP:
         if (m_callbacks.contextMenu) {
@@ -341,7 +343,7 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_CAPTURECHANGED:
         // Capture taken away mid-press (Alt+Tab, UAC, a dialog): drop the press instead of
         // leaving a widget stuck in its pressed / dragging state.
-        if (reinterpret_cast<HWND>(lParam) != m_hwnd) {
+        if (reinterpret_cast<HWND>(lParam) != m_hwnd && !m_releasingCapture) {
             pointer(PointerAction::Cancel, {-1, -1}, HitZone::Client);
         }
         return 0;
@@ -383,7 +385,7 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_KEYDOWN:
         if (m_callbacks.keyDown) {
             auto down = [](int key) { return (GetKeyState(key) & 0x8000) != 0; };
-            m_callbacks.keyDown({static_cast<UINT>(wParam), down(VK_CONTROL), down(VK_SHIFT), down(VK_MENU)});
+            m_callbacks.keyDown({static_cast<UINT>(wParam), down(VK_CONTROL), down(VK_SHIFT), down(VK_MENU), (lParam & 0x40000000) != 0});
         }
         return 0;
     case kPostMessage: {

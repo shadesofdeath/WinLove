@@ -601,7 +601,7 @@ int cmdComponent(const std::wstring& dir, const std::wstring& recipeFile, bool r
     }
     // Packages: the component store says whether they are there and what only they own (D-059).
     std::optional<core::ComponentStoreIndex> store;
-    if (!recipe->packages.empty()) {
+    if (!recipe->packages.empty() || !recipe->driverClasses.empty()) {
         const auto started = std::chrono::steady_clock::now();
         auto built = core::ComponentStoreIndex::build(dir, core::TaskContext{g_cancel, {}});
         if (!built) {
@@ -621,6 +621,11 @@ int cmdComponent(const std::wstring& dir, const std::wstring& recipeFile, bool r
         }
         for (const auto& p : core::cbsRemovalOrder(recipe->packages, *all)) {
             print(std::format(L"  package  {}  0x{:02X}  {}\n", p.visibility == 1 ? L"visible" : L"hidden ", p.state, p.identity));
+        }
+    }
+    if (store && !recipe->driverClasses.empty()) {
+        for (const auto& d : store->drivers(recipe->driverClasses)) {
+            print(std::format(L"  driver   {}  {}  {}\n", d.classGuid, d.inf, d.package));
         }
     }
     if (!remove) {

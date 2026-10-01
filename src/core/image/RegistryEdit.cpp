@@ -750,12 +750,7 @@ Result<void> OfflineRegistry::apply(const RegistryWrite& write) {
     };
     if (write.kind == RegistryWrite::Kind::CreateKey) {
         HKEY created = nullptr;
-        LSTATUS status = RegCreateKeyExW(HKEY_LOCAL_MACHINE, full->c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE,
-                                         KEY_QUERY_VALUE, nullptr, &created, nullptr);
-        if (status == ERROR_ACCESS_DENIED) { // TrustedInstaller-owned parent: see the value write below
-            status = RegCreateKeyExW(HKEY_LOCAL_MACHINE, full->c_str(), 0, nullptr, REG_OPTION_BACKUP_RESTORE,
-                                     KEY_QUERY_VALUE, nullptr, &created, nullptr);
-        }
+        const LSTATUS status = openKeyForWrite(HKEY_LOCAL_MACHINE, full->c_str(), KEY_QUERY_VALUE, created, /*create=*/true);
         if (status == ERROR_SUCCESS) {
             RegCloseKey(created);
         }
@@ -765,32 +760,13 @@ Result<void> OfflineRegistry::apply(const RegistryWrite& write) {
         if (mapped->path.empty()) {
             return fail(ErrorCode::InvalidArgument, L"refusing to delete a hive root", context);
         }
-        LSTATUS status = RegDeleteTreeW(HKEY_LOCAL_MACHINE, full->c_str());
-        if (status == ERROR_ACCESS_DENIED) {
-            // TrustedInstaller-owned: open with backup/restore semantics (SeRestore), clear it, then
-            // delete the (now empty) key through its parent.
-            HKEY backup = nullptr;
-            if (RegCreateKeyExW(HKEY_LOCAL_MACHINE, full->c_str(), 0, nullptr, REG_OPTION_BACKUP_RESTORE, 0, nullptr,
-                                &backup, nullptr) == ERROR_SUCCESS) {
-                RegKey owned(backup);
-                status = RegDeleteTreeW(owned.get(), nullptr);
-                // Through the handle: deleting by name would be checked against the ACL again.
-                if (status == ERROR_SUCCESS && !deleteKeyByHandle(owned.get())) {
-                    status = RegDeleteKeyExW(HKEY_LOCAL_MACHINE, full->c_str(), 0, 0);
-                }
-            }
-        }
-        return win32(status == ERROR_FILE_NOT_FOUND ? ERROR_SUCCESS : status, L"could not delete registry key");
+        return win32(deleteKeyTree(HKEY_LOCAL_MACHINE, full->c_str()), L"could not delete registry key");
     }
     HKEY raw = nullptr;
     if (write.kind == RegistryWrite::Kind::DeleteValue) {
-        LSTATUS status = RegOpenKeyExW(HKEY_LOCAL_MACHINE, full->c_str(), 0, KEY_SET_VALUE, &raw);
+        LSTATUS status = openKeyForWrite(HKEY_LOCAL_MACHINE, full->c_str(), KEY_SET_VALUE, raw);
         if (status == ERROR_FILE_NOT_FOUND) {
             return {};
-        }
-        if (status == ERROR_ACCESS_DENIED) {
-            status = RegCreateKeyExW(HKEY_LOCAL_MACHINE, full->c_str(), 0, nullptr, REG_OPTION_BACKUP_RESTORE,
-                                     KEY_SET_VALUE, nullptr, &raw, nullptr);
         }
         if (auto r = win32(status, L"could not open registry key"); !r) {
             return r;
@@ -799,13 +775,7 @@ Result<void> OfflineRegistry::apply(const RegistryWrite& write) {
         status = RegDeleteValueW(key.get(), write.name.c_str());
         return win32(status == ERROR_FILE_NOT_FOUND ? ERROR_SUCCESS : status, L"could not delete registry value");
     }
-    LSTATUS status = RegCreateKeyExW(HKEY_LOCAL_MACHINE, full->c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE,
-                                     KEY_SET_VALUE, nullptr, &raw, nullptr);
-    if (status == ERROR_ACCESS_DENIED) {
-        // TrustedInstaller-owned keys: SeRestore lets a backup/restore open write regardless of the ACL.
-        status = RegCreateKeyExW(HKEY_LOCAL_MACHINE, full->c_str(), 0, nullptr, REG_OPTION_BACKUP_RESTORE,
-                                 KEY_SET_VALUE, nullptr, &raw, nullptr);
-    }
+    LSTATUS status = openKeyForWrite(HKEY_LOCAL_MACHINE, full->c_str(), KEY_SET_VALUE, raw, /*create=*/true);
     if (auto r = win32(status, L"could not create registry key"); !r) {
         return r;
     }

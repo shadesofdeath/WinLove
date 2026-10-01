@@ -108,8 +108,8 @@ ComponentCatalog shippedComponents() {
 
 TEST_CASE("components catalog: the shipped file parses, every recipe is one the engine accepts") {
     const auto catalog = shippedComponents();
-    REQUIRE(catalog.groups().size() == 8);
-    CHECK(catalog.components().size() == 36); // nothing skipped
+    REQUIRE(catalog.groups().size() == 9);
+    CHECK(catalog.components().size() == 42); // nothing skipped
     for (const auto& entry : catalog.components()) {
         CAPTURE(entry.id);
         CHECK_FALSE(entry.notes.tr.empty());
@@ -117,7 +117,8 @@ TEST_CASE("components catalog: the shipped file parses, every recipe is one the 
         if (entry.kind == ComponentCatalogEntry::Kind::Remove) {
             CHECK(core::validateComponentRecipe(entry.recipe));
             // Something to find in the image: a path, or a package the component store knows (D-059).
-            CHECK((!entry.recipe.paths.empty() || !entry.recipe.packages.empty()));
+            CHECK((!entry.recipe.paths.empty() || !entry.recipe.packages.empty() || !entry.recipe.driverClasses.empty()));
+            CHECK(entry.deep == !entry.recipe.driverClasses.empty());
             // What a working PC needs is never on offer (user, 2026-10-02): network and storage
             // drivers, phones / cameras (MTP), BitLocker.
             for (const auto& family : entry.recipe.packages) {

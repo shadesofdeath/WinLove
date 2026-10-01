@@ -15,6 +15,7 @@ namespace wl::ui {
 class Dropdown : public Widget {
 public:
     Dropdown(std::wstring label, std::vector<std::wstring> items, int selected = 0);
+    ~Dropdown() override; // closes its popup: the popup's callbacks point back here
 
     std::function<void(int)> onChange;
 
@@ -29,13 +30,16 @@ public:
     bool onKeyDown(const KeyEvent& key) override;
 
     void open();
-    void popupClosed() noexcept { m_open = false; invalidate(); }
 
 private:
+    void popupClosed() noexcept;
+    void closePopup();
+
     std::wstring m_label;
     std::vector<std::wstring> m_items;
     int m_selected;
     bool m_open = false;
+    class MenuPopup* m_popup = nullptr; // while open
 };
 
 // The popup list; covers the window (Host::pushModal without scrim), closes on outside click.
@@ -58,10 +62,10 @@ public:
     bool onContextMenu(PointF p) override; // a right click anywhere closes it
     bool onWheel(PointF p, float lines) override;
     bool onChar(wchar_t ch) override;
+    void close(); // pops it (nothing picked); the closed callback runs
 
 private:
     [[nodiscard]] int itemAt(PointF p) const;
-    void close();
     void pick(int index);
     void reveal(int index); // scrolls so that `index` is in view
 

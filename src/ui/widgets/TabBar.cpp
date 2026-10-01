@@ -84,6 +84,13 @@ void TabBar::onPointerMove(PointF p) {
     }
 }
 
+void TabBar::onHoverChanged(bool hovered) {
+    if (!hovered && m_hover >= 0) {
+        m_hover = -1; // no pointer move arrives after the pointer has left the bar
+    }
+    invalidate();
+}
+
 void TabBar::onPointerDown(PointF p) {
     const auto rects = tabRects();
     for (std::size_t i = 0; i < rects.size(); ++i) {

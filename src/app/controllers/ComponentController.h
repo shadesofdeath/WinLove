@@ -30,6 +30,7 @@ public:
         std::wstring identity;                   // technical line under the name
         std::wstring notes;                      // catalog note in the UI language (may be empty)
         std::vector<std::wstring> contents;      // what is removed (package full name; packages + paths)
+        bool deep = false;                       // deep removal (D-060): its own warning
     };
     struct Group {
         int catalogIndex = 0; // unique per group: AppX catalog groups first, then the system groups

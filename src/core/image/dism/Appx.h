@@ -20,11 +20,6 @@ struct AppxComponent {
 [[nodiscard]] Result<std::vector<AppxComponent>> readAppx(Dism& dism, const std::filesystem::path& mountDir,
                                                           const TaskContext& task);
 
-// Sum of file sizes under `folder`, readable even where the ACL denies administrators
-// (opens with FILE_FLAG_BACKUP_SEMANTICS; SeBackupPrivilege must be enabled — done here).
-[[nodiscard]] std::uint64_t backupFolderSize(const std::filesystem::path& folder);
-// Names of the direct subfolders (same access rules).
-[[nodiscard]] std::vector<std::wstring> backupListFolders(const std::filesystem::path& folder);
 
 // ---- removal without DISM ------------------------------------------------------------------
 // DismRemoveProvisionedAppxPackage refuses a few apps outright (0x80073CFA within milliseconds:

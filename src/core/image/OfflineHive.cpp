@@ -9,16 +9,28 @@
 
 namespace wl::core {
 
-namespace {
-
-Error regError(LSTATUS status, std::wstring what, std::wstring detail) {
+Error registryError(LSTATUS status, std::wstring what, std::wstring detail) {
     const auto code = status == ERROR_ACCESS_DENIED || status == ERROR_PRIVILEGE_NOT_HELD ? ErrorCode::AccessDenied
                       : status == ERROR_FILE_NOT_FOUND                                  ? ErrorCode::NotFound
                                                                                         : ErrorCode::IoError;
     return Error{code, std::move(what), std::move(detail), static_cast<std::int32_t>(HRESULT_FROM_WIN32(status))};
 }
 
-} // namespace
+std::vector<std::wstring> subkeyNames(HKEY key) {
+    std::vector<std::wstring> names;
+    wchar_t name[256];
+    for (DWORD i = 0;; ++i) {
+        DWORD length = static_cast<DWORD>(std::size(name));
+        const LSTATUS status = RegEnumKeyExW(key, i, name, &length, nullptr, nullptr, nullptr, nullptr);
+        if (status == ERROR_NO_MORE_ITEMS) {
+            break;
+        }
+        if (status == ERROR_SUCCESS) {
+            names.emplace_back(name, length);
+        }
+    }
+    return names;
+}
 
 RegKey& RegKey::operator=(RegKey&& other) noexcept {
     if (this != &other) {
@@ -40,25 +52,13 @@ Result<RegKey> RegKey::open(HKEY parent, const std::wstring& path, bool write) {
     HKEY key = nullptr;
     const REGSAM access = KEY_READ | (write ? KEY_SET_VALUE : 0);
     if (const LSTATUS status = RegOpenKeyExW(parent, path.c_str(), 0, access, &key); status != ERROR_SUCCESS) {
-        return std::unexpected(regError(status, L"could not open registry key", path));
+        return std::unexpected(registryError(status, L"could not open registry key", path));
     }
     return RegKey(key);
 }
 
 std::vector<std::wstring> RegKey::subkeys() const {
-    std::vector<std::wstring> names;
-    wchar_t name[256];
-    for (DWORD i = 0;; ++i) {
-        DWORD length = static_cast<DWORD>(std::size(name));
-        const LSTATUS status = RegEnumKeyExW(m_key, i, name, &length, nullptr, nullptr, nullptr, nullptr);
-        if (status == ERROR_NO_MORE_ITEMS) {
-            break;
-        }
-        if (status == ERROR_SUCCESS) {
-            names.emplace_back(name, length);
-        }
-    }
-    return names;
+    return subkeyNames(m_key);
 }
 
 std::optional<std::uint32_t> RegKey::dword(const wchar_t* name) const {
@@ -146,6 +146,57 @@ bool deleteKeyByHandle(HKEY key) noexcept {
     return ntDeleteKey && ntDeleteKey(key) >= 0;
 }
 
+LSTATUS openKeyForWrite(HKEY parent, const wchar_t* name, REGSAM access, HKEY& out, bool create) {
+    LSTATUS status = create ? RegCreateKeyExW(parent, name, 0, nullptr, REG_OPTION_NON_VOLATILE, access, nullptr, &out, nullptr)
+                            : RegOpenKeyExW(parent, name, 0, access, &out);
+    if (status == ERROR_ACCESS_DENIED) {
+        // RegCreateKeyEx is the only call that takes REG_OPTION_BACKUP_RESTORE; it opens an
+        // existing key as well (a missing one is created only when asked to).
+        if (!create) {
+            HKEY probe = nullptr;
+            if (RegOpenKeyExW(parent, name, 0, 0, &probe) == ERROR_FILE_NOT_FOUND) {
+                return ERROR_FILE_NOT_FOUND;
+            }
+            if (probe) {
+                RegCloseKey(probe);
+            }
+        }
+        status = RegCreateKeyExW(parent, name, 0, nullptr, REG_OPTION_BACKUP_RESTORE, access, nullptr, &out, nullptr);
+    }
+    return status;
+}
+
+namespace {
+
+// Depth first, every key opened with backup / restore semantics: RegDeleteTree opens the subkeys
+// with plain access and stops at the first one whose ACL refuses it (the driver database's
+// Configurations / Descriptors keys do, 2026-10-02). Each key goes through its own handle —
+// deleting by name would be checked against the ACL again.
+LSTATUS deleteTreeWithBackup(HKEY parent, const wchar_t* name) {
+    HKEY raw = nullptr;
+    LSTATUS status = openKeyForWrite(parent, name, DELETE | KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE | KEY_SET_VALUE, raw);
+    if (status != ERROR_SUCCESS) {
+        return status;
+    }
+    RegKey key(raw);
+    for (const auto& child : subkeyNames(key.get())) {
+        if (status = deleteTreeWithBackup(key.get(), child.c_str()); status != ERROR_SUCCESS && status != ERROR_FILE_NOT_FOUND) {
+            return status;
+        }
+    }
+    return deleteKeyByHandle(key.get()) ? ERROR_SUCCESS : RegDeleteKeyExW(parent, name, 0, 0);
+}
+
+} // namespace
+
+LSTATUS deleteKeyTree(HKEY parent, const wchar_t* name) {
+    LSTATUS status = RegDeleteTreeW(parent, name);
+    if (status == ERROR_ACCESS_DENIED) {
+        status = deleteTreeWithBackup(parent, name);
+    }
+    return status == ERROR_FILE_NOT_FOUND ? ERROR_SUCCESS : status;
+}
+
 Result<OfflineHive> OfflineHive::load(const std::filesystem::path& file) {
     static std::atomic<int> counter{0};
     for (const wchar_t* privilege : {SE_BACKUP_NAME, SE_RESTORE_NAME}) {
@@ -155,7 +206,7 @@ Result<OfflineHive> OfflineHive::load(const std::filesystem::path& file) {
     }
     const std::wstring name = std::format(L"WinLove_{}_{}_{}", file.filename().wstring(), GetCurrentProcessId(), ++counter);
     if (const LSTATUS status = RegLoadKeyW(HKEY_LOCAL_MACHINE, name.c_str(), file.c_str()); status != ERROR_SUCCESS) {
-        return std::unexpected(regError(status, L"could not load registry hive", file.wstring()));
+        return std::unexpected(registryError(status, L"could not load registry hive", file.wstring()));
     }
     auto root = RegKey::open(HKEY_LOCAL_MACHINE, name, true);
     if (!root) {

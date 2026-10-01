@@ -343,7 +343,9 @@
     "failedTitle": "Could not read components",
     "presetLoaded": "{n} changes added to the queue",
     "presetFailed": "Could not read the preset",
-    "presetNeedsMount": "Mount an edition before loading a preset"
+    "presetNeedsMount": "Mount an edition before loading a preset",
+    "deepTitle": "Deep removal selected ({n} item(s)):",
+    "deepWarning": "The drivers are taken out of the image and its component store; this cannot be undone and the hardware is not recognised on the installed system. The store stays consistent, but Microsoft does not support it: a later update or DISM /RestoreHealth may bring some back."
   },
   "features": {
     "title": "Windows Features",

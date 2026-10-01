@@ -56,13 +56,15 @@ public:
     // ---- used by Widget -------------------------------------------------------------------
     void requestFrame();
     void startAnimating(Widget* widget);
-    void forget(Widget* widget); // widget destroyed, hidden or disabled
+    void forget(Widget* widget);  // widget destroyed: its slots are cleared, nothing is called on it
+    void release(Widget* widget); // widget hidden or disabled: hover / press / focus end normally
 
     static constexpr UINT kTooltipTimer = 1;
 
 private:
     void setHovered(Widget* widget);
     void setPressed(Widget* widget);
+    void clearSlots(Widget* widget); // every slot pointing into `widget`
     void hideTooltip();
     void paintTooltip(Canvas& canvas);
     void collectFocusable(Widget* widget, std::vector<Widget*>& out) const;

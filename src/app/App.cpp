@@ -481,7 +481,10 @@ int App::renderOffscreen() {
              {"work-folders", {true, 4 * mb}}, {"offline-files", {true, 4 * mb}}, {"remoteapp", {true, 4 * mb}},
              {"remote-assistance", {true, 3 * mb}}, {"take-a-test", {true, 2 * mb}}, {"edge-devtools", {true, 11 * mb}},
              {"pos", {true, 8 * mb}}, {"recovery-media", {true, 7 * mb}}, {"help", {true, 6 * mb}},
-             {"bio-enrollment", {true, 5 * mb}}}});
+             {"bio-enrollment", {true, 5 * mb}},
+             // Deep removal (D-060): inbox drivers of legacy classes, WinSxS payload of the same image.
+             {"deep-modem", {true, 28 * mb}}, {"deep-tape", {true, 2 * mb}}, {"deep-floppy", {true, 1 * mb}},
+             {"deep-firewire", {true, 1 * mb}}, {"deep-pcmcia", {true, 1 * mb}}, {"deep-pos", {true, 1 * mb}}}});
         m_state->setAppxList(AppState::AppxList{AppState::AppxList::Status::Ready, mountDir, std::move(items), {}});
         auto& controller = m_shell->components();
         for (const auto& g : controller.groups()) {

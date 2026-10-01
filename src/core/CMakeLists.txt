@@ -9,6 +9,7 @@ add_library(wl_core STATIC
     image/RegistryRead.cpp
     image/OffReg.cpp
     image/ComponentStore.cpp
+    image/DeepRemoval.cpp
     image/Services.cpp
     image/ScheduledTasks.cpp
     image/HostsFile.cpp
@@ -47,6 +48,7 @@ add_library(wl_core STATIC
     postsetup/Wifi.cpp
     system/FileLocks.cpp
     system/Hash.cpp
+    system/BackupFiles.cpp
     system/Picture.cpp
     system/Privileges.cpp
     system/Process.cpp

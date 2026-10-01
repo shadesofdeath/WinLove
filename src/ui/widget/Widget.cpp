@@ -43,6 +43,9 @@ void Widget::bringToFront(Widget* child) {
 
 void Widget::setHostRecursive(Host* host) {
     m_host = host;
+    if (m_host && std::exchange(m_animationPending, false)) {
+        m_host->startAnimating(this); // e.g. Toggle::setOn() in a page constructor
+    }
     for (auto& child : m_children) {
         child->setHostRecursive(host);
     }
@@ -61,7 +64,7 @@ void Widget::setVisible(bool visible) {
     if (m_visible != visible) {
         m_visible = visible;
         if (!visible && m_host) {
-            m_host->forget(this);
+            m_host->release(this);
         }
         invalidate();
     }
@@ -71,7 +74,7 @@ void Widget::setEnabled(bool enabled) {
     if (m_enabled != enabled) {
         m_enabled = enabled;
         if (!enabled && m_host) {
-            m_host->forget(this);
+            m_host->release(this);
         }
         invalidate();
     }
@@ -100,6 +103,8 @@ void Widget::invalidate() {
 void Widget::animate() {
     if (m_host) {
         m_host->startAnimating(this);
+    } else {
+        m_animationPending = true;
     }
 }
 

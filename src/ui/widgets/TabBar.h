@@ -24,6 +24,7 @@ public:
     [[nodiscard]] Cursor cursor() const override { return Cursor::Hand; }
     void onPointerDown(PointF p) override;
     void onPointerMove(PointF p) override;
+    void onHoverChanged(bool hovered) override;
     bool onKeyDown(const KeyEvent& key) override;
 
 private:

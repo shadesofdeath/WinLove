@@ -58,6 +58,7 @@ Result<ComponentCatalog> ComponentCatalog::parse(std::string_view json) {
             entry.risk = riskFrom(c.value("risk", std::string{"medium"}));
             entry.resetBase = c.value("resetBase", true);
             entry.always = c.value("always", false);
+            entry.deep = c.value("deep", false);
             std::wstring why;
             if (entry.id.empty() || entry.name.tr.empty() || entry.name.en.empty()) {
                 why = L"needs an id and both names";
@@ -73,6 +74,9 @@ Result<ComponentCatalog> ComponentCatalog::parse(std::string_view json) {
                 for (const auto& item : c.value("paths", Json::array())) {
                     entry.recipe.paths.push_back(utf8::toWide(item.get<std::string>()));
                 }
+                for (const auto& item : c.value("driverClasses", Json::array())) {
+                    entry.recipe.driverClasses.push_back(utf8::toWide(item.get<std::string>()));
+                }
                 for (const auto& item : c.value("registry", Json::array())) {
                     auto write = writeFrom(item);
                     if (!write) {
@@ -84,9 +88,11 @@ Result<ComponentCatalog> ComponentCatalog::parse(std::string_view json) {
                 if (why.empty()) {
                     if (auto valid = core::validateComponentRecipe(entry.recipe); !valid) {
                         why = describe(valid.error());
-                    } else if (entry.recipe.paths.empty() && entry.recipe.packages.empty()) {
-                        // Presence is read from the paths or from the component store (D-059).
-                        why = L"needs a path or a package";
+                    } else if (entry.recipe.paths.empty() && entry.recipe.packages.empty() && entry.recipe.driverClasses.empty()) {
+                        // Presence is read from the paths or from the component store (D-059, D-060).
+                        why = L"needs a path, a package or a driver class";
+                    } else if (entry.deep != !entry.recipe.driverClasses.empty()) {
+                        why = L"\"deep\" goes with driverClasses (the page warns for exactly these)";
                     }
                 }
             }

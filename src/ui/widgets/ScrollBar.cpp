@@ -35,7 +35,8 @@ float ScrollBar::maxOffset() const noexcept {
 RectF ScrollBar::thumbRect() const {
     const RectF b = bounds();
     const float track = b.height - 2 * kEdge;
-    const float length = std::clamp(track * m_viewport / std::max(m_content, 1.0f), kMinThumb, track);
+    // std::clamp needs lo <= hi: a track shorter than the minimum thumb takes the whole track.
+    const float length = std::clamp(track * m_viewport / std::max(m_content, 1.0f), std::min(kMinThumb, track), track);
     const float travel = track - length;
     const float y = b.y + kEdge + (maxOffset() > 0 ? travel * m_offset / maxOffset() : 0.0f);
     const float width = kThin + (kThick - kThin) * m_wide.value();
@@ -55,7 +56,7 @@ void ScrollBar::paint(Canvas& canvas) {
 }
 
 void ScrollBar::onHoverChanged(bool hovered) {
-    if (m_wide.animateTo(hovered || pressed() ? 1.0f : 0.0f, tokens::motion::baseMs)) {
+    if (m_wide.animateTo(hovered || captured() ? 1.0f : 0.0f, tokens::motion::baseMs)) {
         animate();
     }
     invalidate();

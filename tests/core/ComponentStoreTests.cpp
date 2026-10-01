@@ -1,6 +1,8 @@
 // D-059: reading what CBS packages own (core/image/ComponentStore). The names and the value layout
 // are those of a real 25H2 image (tools/lab_scan_components.ps1, tools/analyze_cbs.py).
 #include "core/image/ComponentStore.h"
+#include "core/image/DeepRemoval.h"
+#include "core/image/SystemComponents.h"
 
 #include <doctest.h>
 
@@ -78,4 +80,42 @@ TEST_CASE("component store: exclusive bytes of a set of package trees") {
     // Both owners inside the set: the shared component counts too.
     CHECK(index.exclusiveBytes({L"Microsoft-Windows-MediaPlayer-Package", L"Microsoft-Windows-Client-Features-Package"}) == 51000);
     CHECK(index.exclusiveBytes({L"Microsoft-Windows-Unknown-Package"}) == 0);
+}
+
+// ---- deep removal (D-060) ----------------------------------------------------------------------
+
+TEST_CASE("deep removal: only legacy device classes, however the GUID is written") {
+    CHECK(core::normalizeClassGuid(L" 4d36e96d-e325-11ce-bfc1-08002be10318 ") == L"{4D36E96D-E325-11CE-BFC1-08002BE10318}");
+    CHECK(core::normalizeClassGuid(L"{4d36e96d-e325-11ce-bfc1-08002be10318}") == L"{4D36E96D-E325-11CE-BFC1-08002BE10318}");
+    CHECK(core::normalizeClassGuid(L"{4d36e96d-e325-11ce-bfc1-08002be1031}").empty());
+    CHECK(core::normalizeClassGuid(L"modem").empty());
+    CHECK(core::isDeepRemovableClass(L"{4d36e96d-e325-11ce-bfc1-08002be10318}")); // Modem
+    CHECK(core::isDeepRemovableClass(L"{4D36E980-E325-11CE-BFC1-08002BE10318}")); // FloppyDisk
+    // Never: network, storage controllers, USB, keyboards, display, printers.
+    for (const wchar_t* needed : {L"{4D36E972-E325-11CE-BFC1-08002BE10318}", L"{4D36E97B-E325-11CE-BFC1-08002BE10318}",
+                                  L"{36FC9E60-C465-11CF-8056-444553540000}", L"{4D36E96B-E325-11CE-BFC1-08002BE10318}",
+                                  L"{4D36E968-E325-11CE-BFC1-08002BE10318}", L"{4D36E979-E325-11CE-BFC1-08002BE10318}"}) {
+        CAPTURE(std::wstring(needed));
+        CHECK_FALSE(core::isDeepRemovableClass(needed));
+    }
+}
+
+TEST_CASE("deep removal: the class GUID in a DriverPackages Version value") {
+    // mdm3com.inf on 25H2: ff ff 09 00 00 00 00 00 | 6d e9 36 4d 25 e3 ce 11 bf c1 08 00 2b e1 03 18 | …
+    const std::vector<std::uint8_t> version{0xff, 0xff, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0xe9, 0x36, 0x4d, 0x25, 0xe3,
+                                            0xce, 0x11, 0xbf, 0xc1, 0x08, 0x00, 0x2b, 0xe1, 0x03, 0x18, 0x00, 0x80};
+    CHECK(core::driverPackageClass(version) == L"{4D36E96D-E325-11CE-BFC1-08002BE10318}");
+    CHECK(core::driverPackageClass({1, 2, 3}).empty());
+}
+
+TEST_CASE("deep removal: a recipe carries its classes, and a preset cannot widen them") {
+    core::ComponentRecipe recipe;
+    recipe.title = L"Modem";
+    recipe.driverClasses = {L"{4D36E96D-E325-11CE-BFC1-08002BE10318}"};
+    CHECK(core::validateComponentRecipe(recipe));
+    const auto back = core::componentRecipeFromJson(core::componentRecipeToJson(recipe));
+    REQUIRE(back);
+    CHECK(*back == recipe);
+    recipe.driverClasses.push_back(L"{4D36E972-E325-11CE-BFC1-08002BE10318}"); // Net
+    CHECK_FALSE(core::validateComponentRecipe(recipe));
 }

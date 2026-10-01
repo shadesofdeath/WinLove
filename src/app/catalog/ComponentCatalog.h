@@ -30,6 +30,9 @@ struct ComponentCatalogEntry {
     // Remove: offered for every image, present or not — a preventive change (the new Outlook's
     // automatic install leaves nothing on disk to find on Windows 11).
     bool always = false;
+    // Deep removal (D-060): driverClasses taken out of the image and its component store. The page
+    // shows its own warning for these.
+    bool deep = false;
 };
 
 class ComponentCatalog {
