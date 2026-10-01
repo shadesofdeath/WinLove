@@ -2,7 +2,8 @@
 // A preset file (P15): a named ChangeSet plus, when it has any, the answer file options (P13).
 // The format is the ChangeSet JSON with two more keys, so older readers and `wlcli apply` still
 // take it:  {"format":"winlove.changeset","version":1,"name":…,"operations":[…],
-//            "unattend":{"includeInIso":true,"xml":"<unattend …>"}}
+//            "unattend":{"includeInIso":true,"xml":"<unattend …>"},
+//            "bootDrivers":["D:\\drivers\\vmd\\iaStorVD.inf", …]}   (D-056, Sürücüler › Kurulum ortamı)
 // The answer file travels as its own XML: one reader / writer for it (core/unattend).
 #include "app/state/AppState.h"
 
@@ -17,6 +18,7 @@ struct Preset {
     std::wstring name;
     core::ops::ChangeSet changes;
     std::optional<AppState::Unattend> unattend; // only when the preset carries answer file options
+    std::vector<std::filesystem::path> bootDrivers; // INFs for boot.wim (not part of the queue)
     std::filesystem::path file;                 // library entry it was read from (empty: not saved)
 };
 
