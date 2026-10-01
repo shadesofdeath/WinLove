@@ -673,6 +673,50 @@ int cmdVerify(const std::wstring& path) {
     return report->sound() ? 0 : 3;
 }
 
+// Compression research: every stream of the WIM uncompressed into <out> (one file, file order) and
+// <out>.streams.tsv (size, metadata?, sha1 per stream) — the same data for every compressor.
+int cmdDumpStreams(const std::wstring& path, const std::wstring& out) {
+    auto source = core::openSource(path);
+    if (!source) {
+        return reportError(source.error());
+    }
+    auto bytes = core::openInstallImage(*source);
+    if (!bytes) {
+        return reportError(bytes.error());
+    }
+    std::ofstream data(std::filesystem::path(out), std::ios::binary | std::ios::trunc);
+    std::ofstream list(std::filesystem::path(out + L".streams.tsv"), std::ios::binary | std::ios::trunc);
+    if (!data || !list) {
+        return reportError(Error{ErrorCode::IoError, L"cannot create the dump", out});
+    }
+    std::vector<char> buffer(1u << 20);
+    data.rdbuf()->pubsetbuf(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+    const auto task = progressTask(L"dump");
+    const auto started = GetTickCount64();
+    const auto report = core::dumpWimStreams(
+        **bytes,
+        [&](const core::WimStreamInfo& info) {
+            std::string hex;
+            for (const auto b : info.hash) {
+                hex += std::format("{:02x}", b);
+            }
+            list << info.size << '\t' << (info.metadata ? 1 : 0) << '\t' << hex << '\n';
+        },
+        [&](std::span<const std::byte> chunk) {
+            data.write(reinterpret_cast<const char*>(chunk.data()), static_cast<std::streamsize>(chunk.size()));
+            return static_cast<bool>(data);
+        },
+        task);
+    print(L"\n");
+    if (!report) {
+        return reportError(report.error());
+    }
+    print(std::format(L"  {} streams, {} bytes in {:.1f} s{}\n", report->streams, report->bytes,
+                      static_cast<double>(GetTickCount64() - started) / 1000.0,
+                      report->sound() ? std::wstring() : std::format(L", {} DAMAGED", report->damaged)));
+    return report->sound() ? 0 : 3;
+}
+
 int cmdSetInfo(const std::wstring& wim, const std::wstring& index, const std::wstring& name,
                const std::wstring& description, const std::wstring& flags) {
     core::ImageText text{name, description, {}};
@@ -1469,6 +1513,7 @@ void printUsage() {
           L"  wlcli delete-index <wim> <index>[,<index>...]   Remove editions; the WIM is rewritten with the rest\n"
           L"  wlcli optimize <wim>                      Rewrite a WIM without what commits left behind\n"
           L"  wlcli verify <iso|wim|folder>             Read every stream and check its SHA-1 (exit 3: damaged)\n"
+          L"  wlcli dump-streams <iso|wim> <out.bin>     Every stream uncompressed into one file (compression research)\n"
           L"  wlcli set-info <wim> <index> <name> [<description>] [--flags=<EditionId>]\n"
           L"  wlcli version | help\n"
           L"\n"
@@ -1605,6 +1650,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"export" && args.size() == 4) {
         return cmdExport(args[1], args[2], args[3], compress);
+    }
+    if (command == L"dump-streams" && args.size() == 3) {
+        return cmdDumpStreams(args[1], args[2]);
     }
     if (command == L"verify" && args.size() == 2) {
         return cmdVerify(args[1]);

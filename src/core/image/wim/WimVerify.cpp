@@ -119,6 +119,15 @@ struct Worker {
     std::vector<std::byte> plain;    // one chunk, uncompressed
     std::vector<std::byte> table;    // chunk table of the stream
     std::vector<std::byte> workspace;
+    std::function<bool(std::span<const std::byte>)> sink; // dumpWimStreams: the plain bytes, in order
+    bool sinkFailed = false;
+
+    void consume(std::span<const std::byte> data) noexcept {
+        sha.update(data);
+        if (sink && !sinkFailed && !sink(data)) {
+            sinkFailed = true;
+        }
+    }
 
     Worker(const ByteSource& s, WimCompression c, std::uint32_t chunk)
         : source(s), compression(c), chunkSize(chunk), plain(chunk), workspace(xpress().workspace) {}
@@ -151,7 +160,7 @@ struct Worker {
                     (void)sha.finish();
                     return L"cannot be read";
                 }
-                sha.update(std::span(stored.data(), count));
+                consume(std::span(stored.data(), count));
                 done += count;
             }
         } else if (auto problem = hashChunks(entry, stop); !problem.empty()) {
@@ -218,23 +227,28 @@ struct Worker {
                 }
                 const std::span<const std::byte> in(stored.data() + (from - runStart), static_cast<std::size_t>(to - from));
                 if (in.size() == plainSize) {
-                    sha.update(in); // stored as it is: compression did not help
+                    consume(in); // stored as it is: compression did not help
                     continue;
                 }
                 const std::span<std::byte> out(plain.data(), plainSize);
                 if (!decompress(in, out)) {
                     return std::format(L"chunk {} does not decompress", i);
                 }
-                sha.update(out);
+                consume(out);
             }
         }
         return {};
     }
 };
 
-} // namespace
+struct Table {
+    WimHeader header;
+    std::uint32_t chunkSize = 0;
+    std::vector<Entry> entries; // by offset
+    std::uint64_t total = 0;    // stored bytes
+};
 
-Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task) {
+Result<Table> readTable(const ByteSource& wim) {
     auto header = readWimHeader(wim);
     if (!header) {
         return std::unexpected(header.error());
@@ -283,6 +297,20 @@ Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task
         entries.push_back(entry);
     }
     std::ranges::sort(entries, {}, &Entry::offset); // sequential reads
+    return Table{*header, chunkSize, std::move(entries), total};
+}
+
+} // namespace
+
+Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task) {
+    auto table = readTable(wim);
+    if (!table) {
+        return std::unexpected(table.error());
+    }
+    const auto& header = table->header;
+    const std::uint32_t chunkSize = table->chunkSize;
+    const std::vector<Entry>& entries = table->entries;
+    const std::uint64_t total = table->total;
 
     WimVerifyReport report;
     std::mutex mutex; // report + wake-up
@@ -295,7 +323,7 @@ Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task
     running = static_cast<unsigned>(std::min<std::size_t>(running, std::max<std::size_t>(entries.size(), 1)));
 
     auto work = [&] {
-        Worker worker(wim, header->compression, chunkSize);
+        Worker worker(wim, header.compression, chunkSize);
         if (!worker.sha.usable()) {
             hashFailed = true;
             stop = true;
@@ -356,6 +384,41 @@ Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task
     }
     log::info("wim", std::format(L"verified {} streams, {} bytes: {} damaged", report.streams, report.bytes, report.damaged));
     task.report(1.0, L"verify");
+    return report;
+}
+
+Result<WimVerifyReport> dumpWimStreams(const ByteSource& wim, const std::function<void(const WimStreamInfo&)>& stream,
+                                       const std::function<bool(std::span<const std::byte>)>& write,
+                                       const TaskContext& task) {
+    auto table = readTable(wim);
+    if (!table) {
+        return std::unexpected(table.error());
+    }
+    Worker worker(wim, table->header.compression, table->chunkSize);
+    if (!worker.sha.usable()) {
+        return fail(ErrorCode::Unknown, L"SHA-1 is not available", L"WIM");
+    }
+    worker.sink = write;
+    WimVerifyReport report;
+    std::atomic<bool> stop{false};
+    std::uint64_t done = 0;
+    for (const Entry& entry : table->entries) {
+        if (task.cancel.cancelled()) {
+            return fail(ErrorCode::Cancelled, L"cancelled", L"WIM");
+        }
+        stream(WimStreamInfo{entry.original, (entry.flags & kMetadata) != 0, entry.hash});
+        std::wstring problem = worker.check(entry, stop);
+        if (worker.sinkFailed) {
+            return fail(ErrorCode::IoError, L"the dump could not be written", L"WIM");
+        }
+        ++report.streams;
+        report.bytes += entry.original;
+        if (!problem.empty()) {
+            ++report.damaged;
+        }
+        done += entry.size;
+        task.report(table->total ? static_cast<double>(done) / static_cast<double>(table->total) : 1.0, L"dump");
+    }
     return report;
 }
 
