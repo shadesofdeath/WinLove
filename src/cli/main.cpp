@@ -14,7 +14,6 @@
 #include "core/image/dism/DefaultApps.h"
 #include "core/image/dism/Intl.h"
 #include "core/image/Fonts.h"
-#include "core/wlm/Wlm.h"
 #include "core/postsetup/Wifi.h"
 #include "core/system/Picture.h"
 #include "core/system/HostExport.h"
@@ -675,107 +674,6 @@ int cmdVerify(const std::wstring& path) {
                           damage.metadata ? L", metadata" : L"", damage.reason));
     }
     return report->sound() ? 0 : 3;
-}
-
-// Compression research: every stream of the WIM uncompressed into <out> (one file, file order) and
-// <out>.streams.tsv (size, metadata?, sha1 per stream) — the same data for every compressor.
-int cmdDumpStreams(const std::wstring& path, const std::wstring& out) {
-    auto source = core::openSource(path);
-    if (!source) {
-        return reportError(source.error());
-    }
-    auto bytes = core::openInstallImage(*source);
-    if (!bytes) {
-        return reportError(bytes.error());
-    }
-    std::ofstream data(std::filesystem::path(out), std::ios::binary | std::ios::trunc);
-    std::ofstream list(std::filesystem::path(out + L".streams.tsv"), std::ios::binary | std::ios::trunc);
-    if (!data || !list) {
-        return reportError(Error{ErrorCode::IoError, L"cannot create the dump", out});
-    }
-    const auto task = progressTask(L"dump");
-    const auto started = GetTickCount64();
-    const auto report = core::dumpWimStreams(
-        **bytes,
-        [&](const core::WimStreamInfo& info) {
-            std::string hex;
-            for (const auto b : info.hash) {
-                hex += std::format("{:02x}", b);
-            }
-            list << info.size << '\t' << (info.metadata ? 1 : 0) << '\t' << hex << '\n';
-        },
-        [&](std::span<const std::byte> chunk) {
-            data.write(reinterpret_cast<const char*>(chunk.data()), static_cast<std::streamsize>(chunk.size()));
-            return static_cast<bool>(data);
-        },
-        task);
-    print(L"\n");
-    data.close();
-    if (!report) {
-        return reportError(report.error());
-    }
-    if (!data) {
-        return reportError(Error{ErrorCode::IoError, L"the dump could not be written", out});
-    }
-    print(std::format(L"  {} streams, {} bytes in {:.1f} s{}\n", report->streams, report->bytes,
-                      static_cast<double>(GetTickCount64() - started) / 1000.0,
-                      report->sound() ? std::wstring() : std::format(L", {} DAMAGED", report->damaged)));
-    return report->sound() ? 0 : 3;
-}
-
-// D-057 WLM: pack a WIM, unpack it back (every stream's SHA-1 checked), or show what a .wlm holds.
-void printWlm(const core::WlmReport& r, bool withTime) {
-    for (int g = 0; g < core::kWlmGroups; ++g) {
-        const auto& s = r.groups[static_cast<std::size_t>(g)];
-        print(std::format(L"  {:<10} {:>7} streams  {:>14} -> {:>13} bytes  ({:.4f})  {} block(s)\n", core::wlmGroupName(g), s.streams,
-                          s.plain, s.packed, s.plain ? static_cast<double>(s.packed) / static_cast<double>(s.plain) : 0.0, s.blocks));
-    }
-    print(std::format(L"  total      {:>7} streams  {:>14} -> {:>13} bytes in the file", r.streams, r.plainBytes, r.fileBytes));
-    if (r.nested > 0) {
-        print(std::format(L"\n  {} WIM(s) inside opened, {} of their streams kept once (the image has them)", r.nested, r.duplicates));
-    }
-    if (withTime) {
-        print(std::format(L"  ({} thread(s), {:.0f} s)", r.threads, r.seconds));
-    }
-    print(L"\n");
-}
-
-int cmdWlmPack(const std::wstring& wim, const std::wstring& out, const std::wstring& block, const std::wstring& threads) {
-    core::WlmPackOptions options;
-    if (!block.empty()) {
-        options.blockMiB = static_cast<std::uint32_t>(_wtoi(block.c_str()));
-    }
-    if (!threads.empty()) {
-        options.threads = static_cast<unsigned>(_wtoi(threads.c_str()));
-    }
-    const auto report = core::packWlm(wim, out, options, progressTask(L"pack"));
-    print(L"\n");
-    if (!report) {
-        return reportError(report.error());
-    }
-    printWlm(*report, true);
-    return 0;
-}
-
-int cmdWlmUnpack(const std::wstring& wlm, const std::wstring& out, const std::wstring& threads) {
-    (void)threads;
-    const auto report = core::unpackWlm(wlm, out, progressTask(L"unpack"));
-    print(L"\n");
-    if (!report) {
-        return reportError(report.error());
-    }
-    print(std::format(L"  {} streams written, every SHA-1 matched\n", report->streams));
-    printWlm(*report, true);
-    return 0;
-}
-
-int cmdWlmInfo(const std::wstring& wlm) {
-    const auto report = core::readWlmInfo(wlm);
-    if (!report) {
-        return reportError(report.error());
-    }
-    printWlm(*report, false);
-    return 0;
 }
 
 // D-056: Kişiselleştirme helpers (no admin).
@@ -1604,9 +1502,6 @@ void printUsage() {
           L"  wlcli export-host-associations <file.xml>  (this PC's default app associations; admin)\n"
           L"  wlcli appx-info <package> [--arch=x64]      (manifest, dependencies found next to it; no admin)\n"
           L"  wlcli font-info <font>                     (registry name Windows gives it; no admin)\n"
-          L"  wlcli wlm-pack <wim> <out.wlm> [--block=1024] [--threads=N]   (WinLove Method, D-057; no admin)\n"
-          L"  wlcli wlm-unpack <file.wlm> <out.wim> [--threads=N]           (back to a plain WIM, SHA-1 checked)\n"
-          L"  wlcli wlm-info <file.wlm>\n"
           L"  wlcli picture <src> <dst> [--size=WxH] [--format=jpg|png|bmp]   (WIC: cover-scale + encode)\n"
           L"  wlcli wifi-list                            (this PC's Wi-Fi profiles; keys readable when elevated)\n"
           L"  wlcli wifi-xml --ssid=<name> [--password=<key>] [--wpa3|--open] [--hidden]   (WLAN profile XML)\n"
@@ -1639,7 +1534,6 @@ void printUsage() {
           L"  wlcli delete-index <wim> <index>[,<index>...]   Remove editions; the WIM is rewritten with the rest\n"
           L"  wlcli optimize <wim>                      Rewrite a WIM without what commits left behind\n"
           L"  wlcli verify <iso|wim|folder>             Read every stream and check its SHA-1 (exit 3: damaged)\n"
-          L"  wlcli dump-streams <iso|wim> <out.bin>     Every stream uncompressed into one file (compression research)\n"
           L"  wlcli set-info <wim> <index> <name> [<description>] [--flags=<EditionId>]\n"
           L"  wlcli version | help\n"
           L"\n"
@@ -1687,8 +1581,6 @@ int wmain(int argc, wchar_t** argv) {
     bool wpa3 = false;
     bool openNetwork = false;
     bool hidden = false;
-    std::wstring wlmBlock;
-    std::wstring wlmThreads;
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
@@ -1737,10 +1629,6 @@ int wmain(int argc, wchar_t** argv) {
             wpa3 = true;
         } else if (a == L"--open") {
             openNetwork = true;
-        } else if (a.starts_with(L"--block=")) {
-            wlmBlock = std::wstring(a.substr(8));
-        } else if (a.starts_with(L"--threads=")) {
-            wlmThreads = std::wstring(a.substr(10));
         } else if (a == L"--hidden") {
             hidden = true;
         } else if (a.starts_with(L"--unattend=")) {
@@ -1803,9 +1691,6 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"export" && args.size() == 4) {
         return cmdExport(args[1], args[2], args[3], compress);
-    }
-    if (command == L"dump-streams" && args.size() == 3) {
-        return cmdDumpStreams(args[1], args[2]);
     }
     if (command == L"verify" && args.size() == 2) {
         return cmdVerify(args[1]);
@@ -1884,15 +1769,6 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"export-host-associations" && args.size() == 2) {
         return cmdExportHostAssociations(args[1]);
-    }
-    if (command == L"wlm-pack" && args.size() == 3) {
-        return cmdWlmPack(args[1], args[2], wlmBlock, wlmThreads);
-    }
-    if (command == L"wlm-unpack" && args.size() == 3) {
-        return cmdWlmUnpack(args[1], args[2], wlmThreads);
-    }
-    if (command == L"wlm-info" && args.size() == 2) {
-        return cmdWlmInfo(args[1]);
     }
     if (command == L"font-info" && args.size() == 2) {
         return cmdFontInfo(args[1]);

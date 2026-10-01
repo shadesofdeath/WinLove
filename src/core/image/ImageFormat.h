@@ -14,7 +14,6 @@ enum class ImageFormat : std::uint8_t {
     Vhd,
     Vhdx,
     Folder, // an extracted setup folder containing sources\install.*
-    Wlm,    // WinLove Method (D-057): read for its editions, turned back into a WIM to be used
 };
 
 // Classifies by file extension only (case-insensitive). Content sniffing is done by the backend

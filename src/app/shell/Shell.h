@@ -172,7 +172,6 @@ public:
     void onImageVerified(const core::WimVerifyReport& report, const std::wstring& file);
     void exportSelected();
     void convertEsd();
-    void packWlm(); // D-057
     void exportLog();
 
     void layout() override;
@@ -291,7 +290,6 @@ private:
     ui::Button* m_actionMount = nullptr;
     ui::Button* m_actionExport = nullptr;
     ui::Button* m_actionEsd = nullptr;
-    ui::Button* m_actionWlm = nullptr; // D-057 "WLM'e paketle…"
     ui::Button* m_actionVerify = nullptr;
     PageId m_page = PageId::Source;
     std::uint64_t m_openSerial = 0; // latest openSource request; older results are dropped

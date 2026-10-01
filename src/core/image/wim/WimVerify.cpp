@@ -29,7 +29,15 @@ constexpr std::uint8_t kCompressed = 0x04;
 constexpr std::uint8_t kSolid = 0x10;
 constexpr std::size_t kReadAhead = 4u << 20; // compressed bytes read per request
 
-using Entry = WimStreamEntry;
+struct Entry {
+    std::uint64_t offset = 0;
+    std::uint64_t size = 0;     // as stored
+    std::uint64_t original = 0; // uncompressed
+    std::uint8_t flags = 0;
+    std::uint16_t part = 1;
+    std::uint32_t refCount = 0;
+    std::array<std::uint8_t, 20> hash{};
+};
 
 template <class T>
 T le(const std::byte* p) {
@@ -113,7 +121,7 @@ struct Worker {
     std::vector<std::byte> plain;    // one chunk, uncompressed
     std::vector<std::byte> table;    // chunk table of the stream
     std::vector<std::byte> workspace;
-    std::function<bool(std::span<const std::byte>)> sink; // dumpWimStreams: the plain bytes, in order
+    std::function<bool(std::span<const std::byte>)> sink; // optional: the plain bytes, in order
     bool sinkFailed = false;
     std::uint64_t limit = UINT64_MAX; // WimStreamReader::read maxBytes
     std::uint64_t produced = 0;
@@ -391,84 +399,6 @@ Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task
     log::info("wim", std::format(L"verified {} streams, {} bytes: {} damaged", report.streams, report.bytes, report.damaged));
     task.report(1.0, L"verify");
     return report;
-}
-
-Result<WimVerifyReport> dumpWimStreams(const ByteSource& wim, const std::function<void(const WimStreamInfo&)>& stream,
-                                       const std::function<bool(std::span<const std::byte>)>& write,
-                                       const TaskContext& task) {
-    auto table = readTable(wim);
-    if (!table) {
-        return std::unexpected(table.error());
-    }
-    Worker worker(wim, table->header.compression, table->chunkSize);
-    if (!worker.sha.usable()) {
-        return fail(ErrorCode::Unknown, L"SHA-1 is not available", L"WIM");
-    }
-    worker.sink = write;
-    WimVerifyReport report;
-    std::atomic<bool> stop{false};
-    std::uint64_t done = 0;
-    std::vector<Entry> ordered = table->entries;
-    std::ranges::sort(ordered, {}, &Entry::offset);
-    for (const Entry& entry : ordered) {
-        worker.produced = 0;
-        if (task.cancel.cancelled()) {
-            return fail(ErrorCode::Cancelled, L"cancelled", L"WIM");
-        }
-        stream(WimStreamInfo{entry.original, (entry.flags & kMetadata) != 0, entry.hash});
-        std::wstring problem = worker.check(entry, stop);
-        if (worker.sinkFailed) {
-            return fail(ErrorCode::IoError, L"the dump could not be written", L"WIM");
-        }
-        ++report.streams;
-        report.bytes += entry.original;
-        if (!problem.empty()) {
-            ++report.damaged;
-        }
-        done += entry.size;
-        task.report(table->total ? static_cast<double>(done) / static_cast<double>(table->total) : 1.0, L"dump");
-    }
-    return report;
-}
-
-Result<WimStreamTable> readWimStreamTable(const ByteSource& wim) {
-    auto table = readTable(wim);
-    if (!table) {
-        return std::unexpected(table.error());
-    }
-    return WimStreamTable{table->header, table->chunkSize, std::move(table->entries)};
-}
-
-struct WimStreamReader::Impl {
-    Worker worker;
-    std::atomic<bool> stop{false};
-    Impl(const ByteSource& wim, const WimStreamTable& table) : worker(wim, table.header.compression, table.chunkSize) {}
-};
-
-WimStreamReader::WimStreamReader(const ByteSource& wim, const WimStreamTable& table)
-    : m_impl(std::make_unique<Impl>(wim, table)) {}
-
-WimStreamReader::~WimStreamReader() = default;
-
-Result<void> WimStreamReader::read(const WimStreamEntry& entry, const std::function<bool(std::span<const std::byte>)>& write,
-                                   std::uint64_t maxBytes) {
-    Worker& w = m_impl->worker;
-    if (!w.sha.usable()) {
-        return fail(ErrorCode::Unknown, L"SHA-1 is not available", L"WIM");
-    }
-    w.sink = write;
-    w.sinkFailed = false;
-    w.limit = maxBytes;
-    w.produced = 0;
-    const std::wstring problem = w.check(entry, m_impl->stop);
-    w.sink = nullptr;
-    if (w.sinkFailed) {
-        return fail(ErrorCode::IoError, L"the stream could not be written on", std::format(L"offset {}", entry.offset));
-    }
-    if (!problem.empty()) {
-        return fail(ErrorCode::ParseError, L"damaged stream: " + problem, std::format(L"offset {}", entry.offset));
-    }
-    return {};
 }
 
 } // namespace wl::core
