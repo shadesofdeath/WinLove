@@ -75,7 +75,11 @@ struct ComponentPresence {
     bool present = false;   // at least one of the recipe's paths exists
     std::uint64_t size = 0; // bytes under those paths (files are counted where they are listed)
 };
-[[nodiscard]] ComponentPresence probeComponent(const std::filesystem::path& mountDir, const ComponentRecipe& recipe);
+class ComponentStoreIndex;
+// With an index (D-059), a recipe's packages count too: present when one of its families is
+// installed, and the size is the larger of the paths' bytes and what only its packages own.
+[[nodiscard]] ComponentPresence probeComponent(const std::filesystem::path& mountDir, const ComponentRecipe& recipe,
+                                               const ComponentStoreIndex* store = nullptr);
 
 // Runs the recipe against the session's image. The session is closed while the hives are edited
 // (DISM keeps them to itself) and reopened for the package removal.

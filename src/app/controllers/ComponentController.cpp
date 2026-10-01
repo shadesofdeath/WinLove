@@ -2,6 +2,7 @@
 
 #include "base/Log.h"
 #include "base/Utf8.h"
+#include "core/image/ComponentStore.h"
 #include "core/image/dism/StoreCleanup.h"
 
 #include <algorithm>
@@ -89,9 +90,19 @@ void ComponentController::load(bool force) {
 AppState::SystemComponents ComponentController::probeSystem(const ComponentCatalog& catalog,
                                                             const std::filesystem::path& mountDir) {
     AppState::SystemComponents found{mountDir, {}};
+    // Package-level entries (D-059) need the image's component store: read once for all of them.
+    std::optional<core::ComponentStoreIndex> store;
+    if (std::ranges::any_of(catalog.components(), [](const ComponentCatalogEntry& e) { return !e.recipe.packages.empty(); })) {
+        core::CancelToken never;
+        if (auto built = core::ComponentStoreIndex::build(mountDir, core::TaskContext{never, {}})) {
+            store = std::move(*built);
+        } else {
+            log::warn("app", L"component store not read, package sizes unknown: " + describe(built.error()));
+        }
+    }
     for (const auto& entry : catalog.components()) {
         if (entry.kind == ComponentCatalogEntry::Kind::Remove) {
-            found.items[entry.id] = core::probeComponent(mountDir, entry.recipe);
+            found.items[entry.id] = core::probeComponent(mountDir, entry.recipe, store ? &*store : nullptr);
         }
     }
     return found;
@@ -200,7 +211,9 @@ std::vector<ComponentController::Group> ComponentController::groups() const {
             }
             item.kind = Item::Kind::System;
             item.size = present ? found->second.size : 0;
-            item.identity = entry.recipe.paths.front();
+            item.identity = !entry.recipe.paths.empty()      ? entry.recipe.paths.front()
+                            : !entry.recipe.packages.empty() ? entry.recipe.packages.front()
+                                                             : utf8::toWide(entry.id);
             item.contents = entry.recipe.packages;
             item.contents.insert(item.contents.end(), entry.recipe.paths.begin(), entry.recipe.paths.end());
             if (entry.always) { // mostly registry: what it changes is what there is to show

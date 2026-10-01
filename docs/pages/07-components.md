@@ -38,13 +38,21 @@ Bağlı imajdan kaldırılacak bileşenleri seçmek; seçimler kuyruğa girer (P
 - **Yok (bilerek):**
   - **Defender kaldırma.** 24H2+ imajlarda Defender ayrı bir paket değil; DISM ile sökülemez. Kapatmak için:
     Servisler (WinDefend, Sense…) ve Ayarlar / Tweaks.
-  - 865 gizli paket ailesinin ham listesi (çoğu çekirdek; sonucu öngörülemez).
+  - 865 gizli paket ailesinin ham listesi (çoğu çekirdek; sonucu öngörülemez). Bunun yerine D-059: taranıp tek tek
+    denenmiş, gerçekten isteğe bağlı paketler katalogda (aşağıda); gerekli olanlar (ağ / depolama sürücüleri, MTP,
+    BitLocker, gpedit) bilerek yok.
   - Media Player, IE, PowerShell ISE, WMIC, VBScript, Hello Face, Wi-Fi / Ethernet sürücü paketleri, System32'deki
     WebView platformu: bunlar görünür FoD → **P04 Özellikler**'de.
 - Kaldırmalar imajda geri alınamaz → Inspector "Geri alınabilir: Hayır". Windows Update bazılarını (Edge) geri
   getirebilir; paketi sökülmüş bir bileşen sonraki toplu güncellemede geri gelebilir ya da güncelleme hata verebilir.
 - Edge / EdgeCore / WebView2 klasörleri aynı dosyaları içerir (WIM tek kopya saklar): "Boyut" sütunu açılmış boyuttur;
   ISO ancak üçü birden kaldırılınca belirgin küçülür.
+
+- **Paket düzeyinde bileşenler (D-059):** Gizlilik, Güvenlik, Multimedya, Yazı Tipleri, Kurumsal ve Diğer grupları;
+  tarif yalnız CBS paket aileleri taşır. İmajda var mı ve boyutu `ComponentStoreIndex` ile okunur (paket kurulu mu,
+  ağacının tek sahipli WinSxS baytı). 25H2 Pro ölçümleri: Defender tanımları 483 MB, Japonca 81 / Basit Çince 56 /
+  Geleneksel Çince 26 / Korece 17 MB yazı tipleri, App-V 24, Fotoğraf Görüntüleyici 19, UE-V 15, DLNA 12, telemetri
+  11, Edge DevTools 11 MB … Hepsi birlikte ISO'da ~690 MB.
 
 ## 3. Kataloglar
 - `resources/catalog/appx.json` (IDR_CATALOG_APPX): grup, TR / EN ad, risk, notlar; eşleşme paket kimliğinin önekiyle

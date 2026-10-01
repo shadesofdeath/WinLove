@@ -4,6 +4,12 @@
   "comment": "System components outside the provisioned-app list (docs/pages/07-components.md, D-031). packages: CBS package families (unlocked in the offline registry, then DismRemovePackage; best effort when the component also has paths). paths: relative to the image root, removed whole. registry: offline writes; {key, delete:true} removes a key, value \"-\" removes a value, \"[+]\" creates the key. always: offered whether or not a path is present (a preventive change: on some Windows versions there is nothing on disk to find). Paths and names checked against Windows 11 25H2 (26200.8037) and Windows 10 22H2 (19045.6456).",
   "groups": [
     { "id": "components", "tr": "Sistem Bileşenleri", "en": "System Components" },
+    { "id": "privacy", "tr": "Gizlilik", "en": "Privacy" },
+    { "id": "security", "tr": "Güvenlik", "en": "Security" },
+    { "id": "multimedia", "tr": "Multimedya", "en": "Multimedia" },
+    { "id": "fonts", "tr": "Yazı Tipleri", "en": "Fonts" },
+    { "id": "enterprise", "tr": "Kurumsal ve Uzaktan Yönetim", "en": "Enterprise and Remote Management" },
+    { "id": "extras", "tr": "Diğer Bileşenler", "en": "Other Components" },
     { "id": "cleanup", "tr": "Temizlik", "en": "Cleanup" }
   ],
   "components": [
@@ -65,6 +71,151 @@
       "notes_tr": "Kurulan sistemde kurtarma ortamı olmaz: \"Bu bilgisayarı sıfırla\", başlangıç onarımı ve gelişmiş başlangıç çalışmaz; BitLocker kurtarma ekranı ve WinRE güncellemeleri hata verir.",
       "notes_en": "The installed system has no recovery environment: \"Reset this PC\", startup repair and advanced startup do not work; the BitLocker recovery screen and WinRE updates fail.",
       "paths": [ "Windows\\System32\\Recovery\\Winre.wim" ] },
+
+    { "id": "telemetry", "group": "privacy", "tr": "Telemetri ve tanılama (DiagTrack)", "en": "Telemetry and diagnostics (DiagTrack)", "risk": "medium",
+      "notes_tr": "Bağlı Kullanıcı Deneyimleri ve Telemetri hizmeti (DiagTrack), tanılama verisi toplayıcıları (UTC), OneSettings istemcisi ve Windows Performans Kaydedicisi (wpr.exe) kaldırılır. Microsoft'a tanılama verisi gönderilmez. Ayarlar'daki 'Tanılama verileri' sayfası ve Geri Bildirim Merkezi'nin tanılama kısmı çalışmaz.",
+      "notes_en": "The Connected User Experiences and Telemetry service (DiagTrack), the diagnostic data collectors (UTC), the OneSettings client and Windows Performance Recorder (wpr.exe) are removed. No diagnostic data is sent to Microsoft. The Diagnostic data page of Settings and the diagnostics part of Feedback Hub stop working.",
+      "packages": [ "Microsoft-OneCore-TroubleShooting-Package", "Microsoft-OneCore-TroubleShooting-WOW64-Package" ] },
+
+    { "id": "defender-definitions", "group": "security", "tr": "Defender hazır virüs tanımları", "en": "Defender default definitions", "risk": "medium",
+      "notes_tr": "İmajla gelen virüs tanımları ve tarama motoru kaldırılır (ISO'da en büyük kazançlardan biri). Defender açık kalır; tanımlar ve motor ilk Windows Update'te yeniden iner — o zamana kadar kurulan sistem virüs taraması yapamaz. İnternetsiz kurulacak sistemlerde önerilmez.",
+      "notes_en": "The virus definitions and scan engine shipped in the image are removed (one of the biggest savings for the ISO). Defender stays on; definitions and engine come back with the first Windows Update — until then the installed system cannot scan. Not recommended for systems installed without internet.",
+      "packages": [ "Windows-Defender-AM-Default-Definitions-OptionalWrapper-Package", "Windows-Defender-AM-Default-Definitions-Package" ] },
+
+    { "id": "app-guard", "group": "security", "tr": "Application Guard", "en": "Application Guard", "risk": "low",
+      "notes_tr": "Microsoft Defender Application Guard'ın yerleşik kısmı. Microsoft bu özelliği kullanımdan kaldırdı; Edge'de artık yok.",
+      "notes_en": "The inbox part of Microsoft Defender Application Guard. Microsoft has deprecated the feature; Edge no longer has it.",
+      "packages": [ "Windows-Defender-ApplicationGuard-Inbox-Package", "Windows-Defender-ApplicationGuard-Inbox-WOW64-Package" ] },
+
+    { "id": "photo-viewer", "group": "multimedia", "tr": "Windows Fotoğraf Görüntüleyici (eski)", "en": "Windows Photo Viewer (legacy)", "risk": "low",
+      "notes_tr": "Eski Fotoğraf Görüntüleyici, fotoğraf içe aktarma sihirbazı ve fotoğraf ekran koruyucusu. Yeni Fotoğraflar uygulaması etkilenmez.",
+      "notes_en": "The legacy Photo Viewer, the photo import wizard and the photo screen saver. The new Photos app is not affected.",
+      "packages": [ "Microsoft-Windows-PhotoBasic-Feature-Package", "Microsoft-Windows-PhotoBasic-Feature-WOW64-Package", "Microsoft-Windows-PhotoBasic-Package", "Microsoft-Windows-PhotoBasic-WOW64-Package", "Microsoft-Windows-PhotoBasic-merged-Package", "Microsoft-Windows-PhotoBasic-WOW64-merged-Package", "Microsoft-Windows-PhotoBasic-PictureTools-Package", "Microsoft-Windows-PhotoBasic-PictureTools-WOW64-Package" ] },
+
+    { "id": "media-streaming", "group": "multimedia", "tr": "Medya akışı (DLNA)", "en": "Media streaming (DLNA)", "risk": "low",
+      "notes_tr": "Ağdaki televizyonlara ve oynatıcılara medya akışı, 'Cihaza yayınla' kabuk menüsü ve DLNA sunucusu kaldırılır.",
+      "notes_en": "Streaming media to TVs and players on the network, the 'Cast to device' shell menu and the DLNA server are removed.",
+      "packages": [ "Microsoft-Windows-Media-Streaming-Package", "Microsoft-Windows-Media-Streaming-WOW64-Package", "Microsoft-Windows-Media-Streaming-merged-Package", "Microsoft-Windows-Media-Streaming-WOW64-merged-Package" ] },
+
+    { "id": "casting", "group": "multimedia", "tr": "Kablosuz yansıtma alıcısı (Miracast)", "en": "Wireless display receiver (Miracast)", "risk": "medium",
+      "notes_tr": "Bu bilgisayara kablosuz yansıtma ve 'Play To' alıcısı kaldırılır. Başka bir ekrana yansıtma (Win+K) bazı cihazlarda çalışmayabilir.",
+      "notes_en": "Projecting to this PC and the 'Play To' receiver are removed. Projecting to another display (Win+K) may stop working on some devices.",
+      "packages": [ "Microsoft-OneCore-Multimedia-CastingTransmitter-Media-Package", "Microsoft-OneCore-Multimedia-CastingReceiver-Media-Package", "Microsoft-OneCore-Multimedia-CastingReceiver-Media-WOW64-Package", "Microsoft-OneCore-Miracast-Transmitter-Package" ] },
+
+    { "id": "wmp-sharing", "group": "multimedia", "tr": "Windows Media Player ağ paylaşımı", "en": "Windows Media Player network sharing", "risk": "low",
+      "notes_tr": "Windows Media Player'ın kitaplığı ağda paylaşan hizmeti (WMPNetworkSvc).",
+      "notes_en": "The service that shares the Windows Media Player library on the network (WMPNetworkSvc).",
+      "packages": [ "Microsoft-Windows-WMPNetworkSharingService-Opt-Package", "Microsoft-Windows-WMPNetworkSharingService-Opt-WOW64-Package", "Microsoft-Windows-WMPNetworkSharingService-Package", "Microsoft-Windows-WMPNetworkSharingService-WOW64-Package" ] },
+
+    { "id": "play-to", "group": "multimedia", "tr": "Play To denetleyicisi", "en": "Play To controller", "risk": "low",
+      "notes_tr": "Eski 'Play To' yayın denetleyicisi (wmpdmc.exe).",
+      "notes_en": "The legacy 'Play To' cast controller (wmpdmc.exe).",
+      "packages": [ "Microsoft-Windows-Multimedia-WMPDMC-Package" ] },
+
+    { "id": "spatial-audio", "group": "multimedia", "tr": "Uzamsal ses verisi (Windows Sonic)", "en": "Spatial sound data (Windows Sonic)", "risk": "low",
+      "notes_tr": "Windows Sonic kulaklık uzamsal sesinin oda / HRTF verileri. Uzamsal ses seçeneği çalışmaz; normal ses etkilenmez.",
+      "notes_en": "Room and HRTF data of Windows Sonic for headphones. The spatial sound option stops working; normal audio is not affected.",
+      "packages": [ "Microsoft-Windows-3DAudio-HrtfData-Package" ] },
+
+    { "id": "screensavers-3d", "group": "multimedia", "tr": "3D ekran koruyucular", "en": "3D screen savers", "risk": "low",
+      "notes_tr": "Kabarcıklar, Mistik, Şeritler ve 3D Metin ekran koruyucuları.",
+      "notes_en": "The Bubbles, Mystify, Ribbons and 3D Text screen savers.",
+      "packages": [ "Microsoft-Windows-ScreenSavers-3D-Package" ] },
+
+    { "id": "fonts-jpan", "group": "fonts", "tr": "Japonca ek yazı tipleri (Yu Gothic)", "en": "Japanese supplemental fonts (Yu Gothic)", "risk": "medium",
+      "notes_tr": "Yu Gothic ailesi. Japonca metin başka bir yazı tipiyle ya da kutu olarak görünebilir. Japonca kullanmayan sistemler için.",
+      "notes_en": "The Yu Gothic family. Japanese text may show in another font or as boxes. For systems that do not use Japanese.",
+      "packages": [ "Microsoft-OneCore-Fonts-DesktopFonts-Supplement-Jpan-Package" ] },
+
+    { "id": "fonts-hans", "group": "fonts", "tr": "Basitleştirilmiş Çince ek yazı tipleri (YaHei)", "en": "Simplified Chinese supplemental fonts (YaHei)", "risk": "medium",
+      "notes_tr": "Microsoft YaHei ailesi. Basitleştirilmiş Çince metin başka bir yazı tipiyle ya da kutu olarak görünebilir.",
+      "notes_en": "The Microsoft YaHei family. Simplified Chinese text may show in another font or as boxes.",
+      "packages": [ "Microsoft-OneCore-Fonts-DesktopFonts-Supplement-Hans-Package" ] },
+
+    { "id": "fonts-hant", "group": "fonts", "tr": "Geleneksel Çince ek yazı tipleri (JhengHei)", "en": "Traditional Chinese supplemental fonts (JhengHei)", "risk": "medium",
+      "notes_tr": "Microsoft JhengHei ailesi. Geleneksel Çince metin başka bir yazı tipiyle ya da kutu olarak görünebilir.",
+      "notes_en": "The Microsoft JhengHei family. Traditional Chinese text may show in another font or as boxes.",
+      "packages": [ "Microsoft-OneCore-Fonts-DesktopFonts-Supplement-Hant-Package" ] },
+
+    { "id": "fonts-kore", "group": "fonts", "tr": "Korece ek yazı tipleri (Malgun Gothic)", "en": "Korean supplemental fonts (Malgun Gothic)", "risk": "medium",
+      "notes_tr": "Malgun Gothic kalın / ince. Korece metin başka bir yazı tipiyle ya da kutu olarak görünebilir.",
+      "notes_en": "Malgun Gothic bold / semilight. Korean text may show in another font or as boxes.",
+      "packages": [ "Microsoft-OneCore-Fonts-DesktopFonts-Supplement-Kore-Package" ] },
+
+    { "id": "appv", "group": "enterprise", "tr": "App-V istemcisi", "en": "App-V client", "risk": "low",
+      "notes_tr": "Kurumsal uygulama sanallaştırma (Microsoft Application Virtualization) istemcisi ve PowerShell modülü.",
+      "notes_en": "The Microsoft Application Virtualization client and its PowerShell module.",
+      "packages": [ "Microsoft-Windows-AppManagement-AppV-Package", "Microsoft-Windows-AppManagement-AppV-WOW64-Package" ] },
+
+    { "id": "uev", "group": "enterprise", "tr": "UE-V aracısı", "en": "UE-V agent", "risk": "low",
+      "notes_tr": "Kullanıcı ayarlarını kurumsal sunucuyla eşitleyen User Experience Virtualization aracısı.",
+      "notes_en": "The User Experience Virtualization agent that syncs user settings with a corporate server.",
+      "packages": [ "Microsoft-Windows-AppManagement-UEV-Package", "Microsoft-Windows-AppManagement-UEV-WOW64-Package" ] },
+
+    { "id": "branchcache", "group": "enterprise", "tr": "BranchCache", "en": "BranchCache", "risk": "low",
+      "notes_tr": "Şube ofislerinde ağ içeriğini önbelleğe alan istemci. Ev ve küçük ofis ağlarında kullanılmaz.",
+      "notes_en": "The client that caches network content in branch offices. Not used on home and small office networks.",
+      "packages": [ "Microsoft-Windows-PeerDist-Client-Group-Package", "Microsoft-Windows-PeerDist-Client-Group-WOW64-Package", "Microsoft-Windows-PeerDist-Client-Package", "Microsoft-Windows-PeerDist-Client-WOW64-Package" ] },
+
+    { "id": "kiosk", "group": "enterprise", "tr": "Kiosk ve Atanmış Erişim", "en": "Kiosk and Assigned Access", "risk": "medium",
+      "notes_tr": "Tek uygulamalı kiosk modu, özel kabuk, klavye filtresi, iletişim kutusu engelleme ve Birleşik Yazma Filtresi yönetimi. 'Atanmış erişim' kullanılamaz.",
+      "notes_en": "Single-app kiosk mode, custom shell, keyboard filter, dialog blocking and Unified Write Filter management. 'Assigned access' can no longer be used.",
+      "packages": [ "Microsoft-Windows-Client-EmbeddedExp-Package", "Microsoft-Windows-Client-EmbeddedExp-WOW64-Package", "Microsoft-Windows-Client-AssignedAccess-Package", "Microsoft-Windows-Client-AssignedAccess-WOW64-Package", "Microsoft-Windows-Embedded-AssignedAccessCsp-Package", "Microsoft-Windows-Embedded-KeyboardFilter-Core-Package", "Microsoft-Windows-Embedded-KeyboardFilter-Core-WOW64-Package", "Microsoft-Windows-Embedded-DialogBlocking-Package", "Microsoft-Windows-Embedded-DialogBlocking-WOW64-Package", "Microsoft-Windows-Embedded-UnifiedWriteFilterCSP-Package", "Microsoft-Windows-Client-ShellLauncher-Package", "Microsoft-Windows-Shell-CustomShellHost-Package" ] },
+
+    { "id": "fci", "group": "enterprise", "tr": "Dosya Sınıflandırma (FCI) istemcisi", "en": "File Classification (FCI) client", "risk": "low",
+      "notes_tr": "Dosya sunucularının erişim reddi yardımı ve sınıflandırma istemcisi.",
+      "notes_en": "File servers' access-denied assistance and classification client.",
+      "packages": [ "Microsoft-Windows-FCI-Client-Package", "Microsoft-Windows-FCI-Client-WOW64-Package" ] },
+
+    { "id": "work-folders", "group": "enterprise", "tr": "İş Klasörleri", "en": "Work Folders", "risk": "low",
+      "notes_tr": "Kurumsal dosya sunucusuyla eşitlenen İş Klasörleri istemcisi.",
+      "notes_en": "The Work Folders client that syncs with a corporate file server.",
+      "packages": [ "Microsoft-Windows-EnterpriseClientSync-Host-Opt-Package", "Microsoft-Windows-EnterpriseClientSync-Host-Opt-WOW64-Package" ] },
+
+    { "id": "offline-files", "group": "enterprise", "tr": "Çevrimdışı Dosyalar", "en": "Offline Files", "risk": "low",
+      "notes_tr": "Ağ paylaşımlarının çevrimdışı kopyası (Eşitleme Merkezi). Etki alanı kullanmayan sistemler için.",
+      "notes_en": "Offline copies of network shares (Sync Center). For systems not in a domain.",
+      "packages": [ "Microsoft-Windows-OfflineFiles-Package", "Microsoft-Windows-OfflineFiles-UI-Package", "Microsoft-Windows-OfflineFiles-WOW64-Package", "Microsoft-Windows-OfflineFiles-merged-Package" ] },
+
+    { "id": "remoteapp", "group": "enterprise", "tr": "RemoteApp ve Masaüstü Bağlantıları istemcisi", "en": "RemoteApp and Desktop Connections client", "risk": "low",
+      "notes_tr": "Kurumsal RemoteApp yayını istemcisi. Uzak Masaüstü Bağlantısı (mstsc) etkilenmez.",
+      "notes_en": "The corporate RemoteApp publishing client. Remote Desktop Connection (mstsc) is not affected.",
+      "packages": [ "Microsoft-Windows-TerminalServices-RemoteApplications-Client-Package" ] },
+
+    { "id": "remote-assistance", "group": "enterprise", "tr": "Uzaktan Yardım", "en": "Remote Assistance", "risk": "low",
+      "notes_tr": "Windows Uzaktan Yardım (msra.exe). Hızlı Yardım ve Uzak Masaüstü etkilenmez.",
+      "notes_en": "Windows Remote Assistance (msra.exe). Quick Assist and Remote Desktop are not affected.",
+      "packages": [ "Microsoft-Windows-RemoteAssistance-Package-Client" ] },
+
+    { "id": "take-a-test", "group": "enterprise", "tr": "Sınav Uygulaması (Take a Test)", "en": "Take a Test", "risk": "low",
+      "notes_tr": "Okulların güvenli sınav uygulaması.",
+      "notes_en": "Schools' secure assessment app.",
+      "packages": [ "Microsoft-Windows-Management-SecureAssessment-Package" ] },
+
+    { "id": "edge-devtools", "group": "extras", "tr": "Edge geliştirici araçları istemcisi", "en": "Edge DevTools client", "risk": "low",
+      "notes_tr": "Uygulamaları uzaktan hata ayıklamak için eski Edge geliştirici araçları istemcisi. Edge'in F12 araçları etkilenmez.",
+      "notes_en": "The legacy Edge DevTools client for remote debugging of apps. Edge's own F12 tools are not affected.",
+      "packages": [ "Microsoft-Windows-MicrosoftEdgeDevToolsClient-Package" ] },
+
+    { "id": "pos", "group": "extras", "tr": "Barkod tarayıcı ve satış noktası (POS)", "en": "Barcode scanner and point of service (POS)", "risk": "low",
+      "notes_tr": "Kamerayla barkod okuma önizleyicisi ve satış noktası cihaz desteği.",
+      "notes_en": "The camera barcode scanner preview and point-of-service device support.",
+      "packages": [ "Microsoft-OneCore-PointOfService-removable-Package", "Microsoft-OneCore-PointOfService-CameraBarcodeScanner-Package" ] },
+
+    { "id": "recovery-media", "group": "extras", "tr": "Kurtarma sürücüsü ve onarım diski oluşturucu", "en": "Recovery drive and repair disc creator", "risk": "medium",
+      "notes_tr": "'Kurtarma sürücüsü oluştur' ve 'Sistem onarım diski oluştur' araçları. Windows Kurtarma Ortamı (WinRE) etkilenmez.",
+      "notes_en": "The 'Create a recovery drive' and 'Create a system repair disc' tools. The Windows Recovery Environment (WinRE) is not affected.",
+      "packages": [ "Microsoft-Windows-RecoveryDrive-Package", "Microsoft-Windows-RecDisc-SDP-removable-Package" ] },
+
+    { "id": "help", "group": "extras", "tr": "Kurulum yardım içerikleri", "en": "Setup help content", "risk": "low",
+      "notes_tr": "Kurulumun (OOBE) gizlilik ve yardım metinleri. Kurulum ekranlarındaki 'Daha fazla bilgi' bağlantıları boş açılabilir.",
+      "notes_en": "Setup's (OOBE) privacy and help texts. The 'Learn more' links on the setup screens may open empty.",
+      "packages": [ "Microsoft-Windows-Help-ClientUA-Client-Package", "Microsoft-Windows-Help-ClientUA-Client-merged-Package", "Microsoft-Windows-Help-ClientOOBE-Feature-Package" ] },
+
+    { "id": "bio-enrollment", "group": "extras", "tr": "Biyometrik kayıt arayüzü", "en": "Biometric enrollment UI", "risk": "medium",
+      "notes_tr": "Windows Hello parmak izi / yüz kaydı ekranı. Biyometrik giriş kurulamaz; PIN ve parola etkilenmez. Parmak izi okuyucusu olan bilgisayarlarda seçme.",
+      "notes_en": "The Windows Hello fingerprint / face enrollment screen. Biometric sign-in cannot be set up; PIN and password are not affected. Do not pick this on PCs with a fingerprint reader.",
+      "packages": [ "Microsoft-Windows-BioEnrollment-UX-Package" ] },
 
     { "id": "component-store", "group": "cleanup", "kind": "cleanup", "resetBase": true,
       "tr": "Bileşen deposu temizliği (ResetBase)", "en": "Component store cleanup (ResetBase)", "risk": "medium",

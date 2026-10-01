@@ -7,6 +7,8 @@ add_library(wl_core STATIC
     image/OfflineHive.cpp
     image/RegistryEdit.cpp
     image/RegistryRead.cpp
+    image/OffReg.cpp
+    image/ComponentStore.cpp
     image/Services.cpp
     image/ScheduledTasks.cpp
     image/HostsFile.cpp
