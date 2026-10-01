@@ -73,6 +73,24 @@ public:
     // written, an ISO is read in place. The result arrives through Events::verified.
     void verify();
     void convertEsd(const std::filesystem::path& destination);
+
+    // ---- D-058 tools (Araçlar menu, row menu, Kaynak) ---------------------------------------------
+    [[nodiscard]] bool isSwmSource() const;
+    // Why the image file cannot be read / rewritten by a tool now (no source, busy, mounted).
+    [[nodiscard]] std::optional<Str> toolsRefusal() const;
+    // Every edition rewritten with `target` (Lzms = ESD); the source follows the new file.
+    void recompress(core::WimCompression target);
+    // install.swm, install2.swm … of at most `partMiB` each, next to `firstPart`. Not for an ESD.
+    void splitSwm(const std::filesystem::path& firstPart, std::uint64_t partMiB);
+    // A split source joined into one LZX WIM, which becomes the source.
+    void mergeSwm(const std::filesystem::path& destination);
+    // A copy of edition `index` at the end of the same WIM, named `name`.
+    void duplicateEdition(int index, std::wstring name);
+    // Editions of another ISO / WIM / ESD / SWM added to this one.
+    void appendFrom(const std::filesystem::path& other, std::vector<int> indexes);
+    // A folder captured into `wim` (new or appended), which becomes the source. Needs elevation.
+    void capture(const std::filesystem::path& folder, const std::filesystem::path& wim, core::ImageText text,
+                 core::WimCompression compression);
     // Removes these editions; the WIM is rewritten with the ones that stay (core::removeImages),
     // which are renumbered. An ISO is copied to the work folder first. `label` is what the strip
     // and the toast call them: the edition's name, or "5 sürüm".

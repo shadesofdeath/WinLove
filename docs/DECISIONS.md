@@ -241,6 +241,26 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-058 — Kaynak ve İmajlar araçları: SHA-256, arama, sıkıştırma, SWM, çoğaltma, sürüm ekleme, yakalama (2026-10-01)
+Bağlam: Kullanıcı Kaynak / İmajlar sayfalarının NTLite'a göre eksiklerinden 1, 2, 3, 4, 5, 6, 7, 9'u seçti ("profesyonelce").
+Karar:
+- **Kaynak:** birden çok dosya bırakılınca ilki açılır, diğerleri okuyucu iş parçacığında okunup son kullanılanlara
+  eklenir (`AppState::rememberSource`). Son kullanılanlar sağ tık → **SHA-256 doğrula…**: canlı yüzde, Microsoft'un
+  değerini yapıştırma kutusu (büyük harf, "SHA256:" öneki, boşluklar kabul — `core::normalizeSha256`), eşleşiyor /
+  eşleşmiyor, kopyala. Hesap `core::sha256File` (CNG), dialog kapanınca ya da uygulama kapanırken iptal.
+  Başlık eylemi **Klasörden imaj oluştur…** (`WIMCaptureImage`, yönetici; değilse yükseltilmiş yeniden başlatma):
+  klasör → .wim (varsa yeni sürüm olarak eklenir), ad / açıklama / LZX-XPRESS.
+- **İmajlar:** birden fazla sürüm varsa arama kutusu (`/` odaklar; ad, görünen ad, sürüm kimliği, açıklama, index) +
+  mimari filtresi (`EditionFilter`). Başlıkta **Araçlar** menüsü: *Sıkıştırmayı değiştir…* (LZX / XPRESS / yok / ESD;
+  her sürüm yeni dosyaya export, önyükleme index'i korunur, uzantı .wim ↔ .esd değişir), *SWM'e böl…* (3800 / 2000 /
+  1000 / 650 MB) ya da parçalı kaynakta *SWM → WIM…*, *Başka imajdan sürüm ekle…* (ISO / WIM / ESD / SWM; sürümler
+  onay kutularıyla, `WIM_EXPORT_ALLOW_DUPLICATES`, ortak akışlar bir kez). Satır menüsünde **Çoğalt…** (aynı sürüm
+  yeni adla sona; dosyalar ortak, birkaç MB).
+- ISO kaynakta yazan araçlar önce çalışma klasörüne kopyalar (diğer düzenlemeler gibi); bağlıyken / meşgulken
+  hiçbiri çalışmaz (`toolsRefusal`). ESD bölünmez, parçalı imajda yalnız "SWM → WIM" çalışır.
+- Motor önce `wlcli` ile: `hash`, `recompress`, `swm-split`, `swm-merge`, `duplicate`, `append`, `capture`;
+  `tools\lab_imagetools.ps1` gerçek imajda.
+
 ## D-057 — WLM (WinLove Method) sıkıştırma araştırması; ESD yazma hatası düzeltildi (2026-10-01)
 Bağlam: Kullanıcı LZMS'den güçlü, uygulamaya özel bir sıkıştırma ("WinLove Method") istedi.
 Bulgular (25H2 TR Pro, yönetici gerekmeden ölçüldü, `build\lab\compress\results.txt`):

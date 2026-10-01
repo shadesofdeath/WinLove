@@ -52,6 +52,7 @@ add_library(wl_app STATIC
     pages/images/ImageInspector.cpp
     pages/images/OperationStrip.cpp
     pages/images/RenameDialog.cpp
+    pages/images/ToolDialogs.cpp
     pages/PageInfo.cpp
     pages/PostSetupPage.cpp
     pages/PresetsPage.cpp

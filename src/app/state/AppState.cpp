@@ -349,6 +349,11 @@ void AppState::endOperation() {
     notify(Change::Operation);
 }
 
+void AppState::rememberSource(const core::SourceInfo& source) {
+    m_recent.touch(source);
+    notify(Change::Recent);
+}
+
 void AppState::forgetRecent(const std::filesystem::path& path) {
     m_recent.remove(path);
     notify(Change::Recent);

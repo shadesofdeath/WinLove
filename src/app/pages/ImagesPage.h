@@ -8,7 +8,9 @@
 #include "app/pages/images/OperationStrip.h"
 #include "ui/widgets/EmptyState.h"
 #include "core/image/dism/DismErrors.h"
+#include "ui/widgets/Dropdown.h"
 #include "ui/widgets/InfoBar.h"
+#include "ui/widgets/SearchBox.h"
 
 namespace wl::app {
 
@@ -29,6 +31,7 @@ public:
     std::function<void()> onKeepOnly;
     std::function<void()> onRename;
     std::function<void()> onUpgrade; // the mounted edition: "Sürümü yükselt…"
+    std::function<void()> onDuplicate; // D-058 "Çoğalt…": a copy of the primary edition
     // Shortcuts into Explorer / a prompt / the clipboard (Shell: exploreMount, …).
     std::function<void()> onExploreMount;
     std::function<void()> onTerminal;
@@ -42,8 +45,12 @@ public:
     [[nodiscard]] static bool remedyRepairs(core::Remedy remedy) noexcept; // "Onar" helps
     void layout() override;
     void paint(ui::Canvas& canvas) override;
+    bool onChar(wchar_t ch) override; // "/" = search
+    void focusSearch();
 
 private:
+    // D-058: the editions the search and the architecture filter let through.
+    [[nodiscard]] std::vector<core::ImageInfo> visibleImages() const;
     void refresh(AppState::Change change);
     void updateFolderBar();
     // One edition: Bağla / Dışa aktar / (mounted: Sürümü yükselt…) / Yeniden adlandır… / Sürümü sil… /
@@ -61,6 +68,10 @@ private:
     ui::InfoBar* m_folder = nullptr;
     OperationStrip* m_strip = nullptr;
     EditionTable* m_table = nullptr;
+    ui::SearchBox* m_search = nullptr;
+    ui::Dropdown* m_arch = nullptr;
+    std::wstring m_needle;
+    int m_archFilter = 0; // 0 all, 1 x64, 2 arm64, 3 x86
 };
 
 } // namespace wl::app

@@ -172,15 +172,21 @@ bool RecentList::onContextMenu(ui::PointF p) {
     const auto open = onOpen;
     const auto show = onShowInFolder;
     const auto removeEntry = onRemove;
+    const auto hash = onVerifyHash;
+    std::vector<std::wstring> labels{m_strings.get(Str::CommonOpen), m_strings.get(Str::SourceShowInFolder)};
+    std::vector<std::function<void(const std::filesystem::path&)>> handlers{open, show};
+    std::error_code ec;
+    if (hash && std::filesystem::is_regular_file(path, ec)) {
+        labels.push_back(m_strings.get(Str::SourceHashMenu));
+        handlers.push_back(hash);
+    }
+    labels.push_back(m_strings.get(Str::SourceRemove));
+    handlers.push_back(removeEntry);
     auto popup = std::make_unique<ui::MenuPopup>(
-        RectF{p.x, p.y, 0, 0},
-        std::vector<std::wstring>{m_strings.get(Str::CommonOpen), m_strings.get(Str::SourceShowInFolder),
-                                  m_strings.get(Str::SourceRemove)},
-        -1,
-        [path, open, show, removeEntry](int index) {
-            const auto& handler = index == 0 ? open : index == 1 ? show : removeEntry;
-            if (handler) {
-                handler(path);
+        RectF{p.x, p.y, 0, 0}, std::move(labels), -1,
+        [path, handlers = std::move(handlers)](int index) {
+            if (index >= 0 && index < static_cast<int>(handlers.size()) && handlers[static_cast<std::size_t>(index)]) {
+                handlers[static_cast<std::size_t>(index)](path);
             }
         },
         [] {});

@@ -43,6 +43,11 @@ SourcePage::SourcePage(AppState& state, const Localization& strings, Language la
             m_intents.removePath(path);
         }
     };
+    m_recent->onVerifyHash = [this](const std::filesystem::path& path) {
+        if (m_intents.verifyHash) {
+            m_intents.verifyHash(path);
+        }
+    };
     m_recent->onShowInFolder = [this](const std::filesystem::path& path) {
         if (m_intents.showInFolder) {
             m_intents.showInFolder(path);

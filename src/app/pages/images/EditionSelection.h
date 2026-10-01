@@ -3,9 +3,23 @@
 // check boxes — a click takes one row, Ctrl+click or the row's box adds / removes it, Shift
 // extends from where the last plain click was, Ctrl+A takes all. One marked row is the primary
 // one (the inspector shows it). No widget in here: EditionTable feeds it rows.
+#include "core/image/ImageInfo.h"
+
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace wl::app {
+
+// D-058: the Images page search box and architecture filter. The text is matched without case
+// against the name, display name, edition ID, description and index; `arch` is "", "x64", "arm64"
+// or "x86" ("" = all).
+struct EditionFilter {
+    std::wstring text;
+    std::wstring_view arch;
+
+    [[nodiscard]] bool matches(const core::ImageInfo& image) const;
+};
 
 struct EditionSelection {
     std::vector<int> rows; // marked rows, ascending

@@ -11,7 +11,15 @@
   sonra doğrudan bir sonraki sayfa. Kullanıcı `dist\WinLove.exe`'yi paralel test ediyor.
 - **Faz 3'ün bütün sayfaları yazıldı** (P01–P04 onaylı, P05–P18 kullanıcı testi bekliyor). Kural 1 gereği Faz 4'e
   geçmeden önce bu sayfaların kullanıcı onayı gerekir.
-- **Bir sonraki somut adım (2026-10-01 akşam):** kullanıcı yeni sayfaları uygulamada dener (Kişiselleştirme, Wi-Fi, Compact OS, boot.wim sekmesi). WLM için karar bekleniyor: açma hızı ölçümü + kurucu prototipi (D-057). Önerilen küçük işler: ISO seçeneklerini presete eklemek, taşınabilir preset (dosyalar yanında).
+- **Kaynak / İmajlar araçları (2026-10-01 gece, kullanıcı seçimi "1,2,3,4,5,6,7,9", D-058):** çoklu dosya bırakma, son kullanılanlarda
+  SHA-256 doğrulama dialogu, Kaynak'ta "Klasörden imaj oluştur…" (yönetici); İmajlar'da arama + mimari filtresi, "Araçlar" menüsü
+  (sıkıştırmayı değiştir, SWM'e böl / SWM → WIM, başka imajdan sürüm ekle), satır menüsünde "Çoğalt…". WLM kaldırıldı (kullanıcı
+  kararı). **Kanıt:** 258 test / 6125 doğrulama; render (`--demo-tool=recompress|split|duplicate|capture|hash|append`,
+  `--click-at` ile Araçlar menüsü); `tools\lab_imagetools.ps1` (yönetici, kendim) **ALL PASSED**. Düzeltilen: SWM parçaları tek
+  tek referans verilmeli (joker reddediliyor). **Görülmeyen:** bu akışların uygulamanın içinden tıklanarak yapılması, çoklu
+  bırakma (render'da sürükleme yok).
+- **Bir sonraki somut adım (2026-10-01 gece):** kullanıcı yeni araçları uygulamada dener. Sonra ertelenen öneriler (`deferred-suggestions`).
+- **Önceki adım (2026-10-01 akşam):** kullanıcı yeni sayfaları uygulamada dener (Kişiselleştirme, Wi-Fi, Compact OS, boot.wim sekmesi). WLM için karar bekleniyor: açma hızı ölçümü + kurucu prototipi (D-057). Önerilen küçük işler: ISO seçeneklerini presete eklemek, taşınabilir preset (dosyalar yanında).
 - **Önceki adım (2026-09-30 akşam):** (`tools\lab_usb.ps1` MBR geçti; kalan `-Gpt` ve gerçek bellek) uygulamada P11 / P12 "imajda" gösterimini önceden Uygula'lanmış bir imajla ve
   "Güncellemeleri bul" akışını dener. Ardından (önceki adım sürüyor) VM'de kendi imajını deniyor (`docs/TESTING.md` → "VM kabul testi");
   testten gelen düzeltmeler sırayla. Log: `%LOCALAPPDATA%\WinLove\logs\WinLove-*.log` (oturum başına bir dosya).
