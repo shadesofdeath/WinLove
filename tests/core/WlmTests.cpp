@@ -80,10 +80,18 @@ struct Stream {
 };
 
 // An uncompressed one-edition WIM with `streams`; returns the file's bytes.
-std::string makeWim(const std::vector<Stream>& streams) {
+std::string makeWim(const std::vector<Stream>& streams, std::uint32_t bootIndex = 0) {
     std::string file(208, '\0');
     std::string lookup;
+    std::string bootMetadata(24, '\0');
+    std::uint32_t metadataSeen = 0;
     for (const auto& s : streams) {
+        if ((s.flags & 0x02) && ++metadataSeen == bootIndex) {
+            bootMetadata.clear();
+            put<std::uint64_t>(bootMetadata, s.data.size() | (std::uint64_t{s.flags} << 56));
+            put<std::uint64_t>(bootMetadata, file.size());
+            put<std::uint64_t>(bootMetadata, s.data.size());
+        }
         const std::uint64_t offset = file.size();
         file += s.data;
         put<std::uint64_t>(lookup, s.data.size() | (std::uint64_t{s.flags} << 56));
@@ -118,6 +126,8 @@ std::string makeWim(const std::vector<Stream>& streams) {
     put<std::uint64_t>(h, xml.size());
     put<std::uint64_t>(h, xmlOffset);
     put<std::uint64_t>(h, xml.size());
+    h += bootMetadata;
+    put<std::uint32_t>(h, bootIndex);
     h.resize(208, '\0');
     std::memcpy(file.data(), h.data(), 208);
     return file;
@@ -155,7 +165,7 @@ TEST_CASE("wlm: pack and unpack give back the WIM, streams in their groups, SHA-
     CHECK_FALSE(isWlmFile(wim));
     CHECK(packed->streams == streams.size());
     CHECK(packed->groups[0].streams == 1); // x64 code
-    CHECK(packed->groups[0].blocks == 3);  // 2.5 MiB in 1 MiB blocks
+    CHECK(packed->groups[0].blocks == 1);  // v2: one LZMA2 stream per group (1 MiB window over 2.5 MiB)
     CHECK(packed->groups[1].streams == 1); // x86 code
     CHECK(packed->groups[2].streams == 1); // resources
     CHECK(packed->groups[3].streams == 3); // text, empty, metadata
@@ -166,7 +176,7 @@ TEST_CASE("wlm: pack and unpack give back the WIM, streams in their groups, SHA-
     CHECK(info->plainBytes == packed->plainBytes);
 
     const auto back = scratch(L"back.wim");
-    auto unpacked = unpackWlm(wlm, back, TaskContext{}, 2);
+    auto unpacked = unpackWlm(wlm, back, TaskContext{}, false);
     REQUIRE(unpacked);
 
     // The rebuilt WIM: same streams (bytes, flags, refcounts), same order, same XML, sound.
@@ -214,13 +224,80 @@ TEST_CASE("wlm: a damaged block or a foreign file is refused, nothing half-writt
     const auto broken = scratch(L"broken.wlm");
     std::ofstream(broken, std::ios::binary | std::ios::trunc) << bytes;
     const auto out = scratch(L"broken.wim");
-    CHECK_FALSE(unpackWlm(broken, out, TaskContext{}, 1));
+    CHECK_FALSE(unpackWlm(broken, out, TaskContext{}, false));
     CHECK_FALSE(std::filesystem::exists(out));
 
     CHECK_FALSE(readWlmInfo(wim));                                            // a WIM is not a WLM
-    CHECK_FALSE(unpackWlm(scratch(L"missing.wlm"), out, TaskContext{}, 1));   // nor is nothing
+    CHECK_FALSE(unpackWlm(scratch(L"missing.wlm"), out, TaskContext{}, false));   // nor is nothing
     bytes = bytesOf(wlm);
     bytes.resize(bytes.size() - 10);                                          // cut short: the table is gone
     std::ofstream(broken, std::ios::binary | std::ios::trunc) << bytes;
-    CHECK_FALSE(unpackWlm(broken, out, TaskContext{}, 1));
+    CHECK_FALSE(unpackWlm(broken, out, TaskContext{}, false));
+}
+
+TEST_CASE("wlm: a WIM inside (WinRE) is opened, shared streams kept once, rebuilt, and the metadata follows it") {
+    // The inner WIM: one stream the image has too, one of its own, its metadata; it boots index 1.
+    const std::string shared = pe(0x8664, true, 300'000, 7);
+    std::vector<Stream> innerStreams{{shared}, {std::string(90'000, 'r')}, {std::string(40'000, 'n'), 0x02}};
+    const std::string inner = makeWim(innerStreams, 1);
+    const auto innerHash = sha1(inner);
+    // The image's metadata names the inner WIM by its SHA-1 (as a dentry does).
+    std::string metadata(30'000, 'm');
+    metadata.replace(1000, 20, reinterpret_cast<const char*>(innerHash.data()), 20);
+    std::vector<Stream> outerStreams{{shared}, {inner}, {std::string(200'000, 't')}, {metadata, 0x02}};
+    const auto wim = scratch(L"outer.wim");
+    std::ofstream(wim, std::ios::binary | std::ios::trunc) << makeWim(outerStreams);
+
+    const auto saved = wlmNestedMinimum;
+    wlmNestedMinimum = 0;
+    const auto wlm = scratch(L"outer.wlm");
+    WlmPackOptions options;
+    options.blockMiB = 1;
+    auto packed = packWlm(wim, wlm, options, TaskContext{});
+    wlmNestedMinimum = saved;
+    REQUIRE(packed);
+    CHECK(packed->nested == 1);
+    CHECK(packed->duplicates == 1);
+
+    const auto back = scratch(L"outer-back.wim");
+    REQUIRE(unpackWlm(wlm, back, TaskContext{}, /*lzxNested=*/false));
+    auto file = DiskFile::open(back);
+    REQUIRE(file);
+    auto table = readWimStreamTable(**file);
+    REQUIRE(table);
+    REQUIRE(table->entries.size() == outerStreams.size());
+    WimStreamReader reader(**file, *table);
+    auto bytes = [&](const WimStreamEntry& e) {
+        std::string got;
+        REQUIRE(reader.read(e, [&](std::span<const std::byte> d) {
+            got.append(reinterpret_cast<const char*>(d.data()), d.size());
+            return true;
+        }));
+        return got;
+    };
+    // Unchanged streams come back as they were.
+    CHECK(bytes(table->entries[0]) == shared);
+    CHECK(bytes(table->entries[2]) == outerStreams[2].data);
+    // The inner WIM: rebuilt (other bytes, so another SHA-1), its streams and boot index intact.
+    const std::string rebuilt = bytes(table->entries[1]);
+    const auto rebuiltHash = sha1(rebuilt);
+    CHECK(rebuiltHash != innerHash);
+    CHECK(table->entries[1].hash == rebuiltHash);
+    const auto rebuiltFile = scratch(L"rebuilt-inner.wim");
+    std::ofstream(rebuiltFile, std::ios::binary | std::ios::trunc) << rebuilt;
+    auto innerFile = DiskFile::open(rebuiltFile);
+    REQUIRE(innerFile);
+    auto innerTable = readWimStreamTable(**innerFile);
+    REQUIRE(innerTable);
+    CHECK(innerTable->header.bootIndex == 1);
+    REQUIRE(innerTable->entries.size() == innerStreams.size());
+    for (std::size_t i = 0; i < innerStreams.size(); ++i) {
+        CHECK(innerTable->entries[i].hash == sha1(innerStreams[i].data));
+    }
+    CHECK(verifyWim(**innerFile, TaskContext{})->sound());
+    // The metadata now names the rebuilt WIM, and its own SHA-1 is the new one (read checks it).
+    const std::string meta = bytes(table->entries[3]);
+    CHECK(meta.find(std::string(reinterpret_cast<const char*>(rebuiltHash.data()), 20)) == 1000);
+    CHECK(meta.find(std::string(reinterpret_cast<const char*>(innerHash.data()), 20)) == std::string::npos);
+    CHECK(verifyWim(**file, TaskContext{})->sound());
 }

@@ -43,6 +43,10 @@ struct ImageText {
 };
 [[nodiscard]] Result<void> setImageText(const std::filesystem::path& wim, int index, const ImageText& text);
 
+// The edition a WIM boots (WIMSetBootImage): what WinRE.wim / boot.wim need to be started from a
+// ramdisk. 0 = none. WLM (D-057) sets it on the WinRE it rebuilds.
+[[nodiscard]] Result<void> setBootImage(const std::filesystem::path& wim, int index);
+
 // Splits `source` into parts of at most `partSize` bytes — install.swm, install2.swm, … — what
 // Setup reads from a FAT32 stick when install.wim is larger than 4 GB (D-047). `firstPart` names
 // the first part; the rest go next to it. Returns the number of parts.

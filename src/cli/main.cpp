@@ -731,6 +731,9 @@ void printWlm(const core::WlmReport& r, bool withTime) {
                           s.plain, s.packed, s.plain ? static_cast<double>(s.packed) / static_cast<double>(s.plain) : 0.0, s.blocks));
     }
     print(std::format(L"  total      {:>7} streams  {:>14} -> {:>13} bytes in the file", r.streams, r.plainBytes, r.fileBytes));
+    if (r.nested > 0) {
+        print(std::format(L"\n  {} WIM(s) inside opened, {} of their streams kept once (the image has them)", r.nested, r.duplicates));
+    }
     if (withTime) {
         print(std::format(L"  ({} thread(s), {:.0f} s)", r.threads, r.seconds));
     }
@@ -755,7 +758,8 @@ int cmdWlmPack(const std::wstring& wim, const std::wstring& out, const std::wstr
 }
 
 int cmdWlmUnpack(const std::wstring& wlm, const std::wstring& out, const std::wstring& threads) {
-    const auto report = core::unpackWlm(wlm, out, progressTask(L"unpack"), threads.empty() ? 0u : static_cast<unsigned>(_wtoi(threads.c_str())));
+    (void)threads;
+    const auto report = core::unpackWlm(wlm, out, progressTask(L"unpack"));
     print(L"\n");
     if (!report) {
         return reportError(report.error());
