@@ -14,6 +14,7 @@
 #include "core/image/dism/DefaultApps.h"
 #include "core/image/dism/Intl.h"
 #include "core/image/Fonts.h"
+#include "core/wlm/Wlm.h"
 #include "core/postsetup/Wifi.h"
 #include "core/system/Picture.h"
 #include "core/system/HostExport.h"
@@ -720,6 +721,57 @@ int cmdDumpStreams(const std::wstring& path, const std::wstring& out) {
                       static_cast<double>(GetTickCount64() - started) / 1000.0,
                       report->sound() ? std::wstring() : std::format(L", {} DAMAGED", report->damaged)));
     return report->sound() ? 0 : 3;
+}
+
+// D-057 WLM: pack a WIM, unpack it back (every stream's SHA-1 checked), or show what a .wlm holds.
+void printWlm(const core::WlmReport& r, bool withTime) {
+    for (int g = 0; g < core::kWlmGroups; ++g) {
+        const auto& s = r.groups[static_cast<std::size_t>(g)];
+        print(std::format(L"  {:<10} {:>7} streams  {:>14} -> {:>13} bytes  ({:.4f})  {} block(s)\n", core::wlmGroupName(g), s.streams,
+                          s.plain, s.packed, s.plain ? static_cast<double>(s.packed) / static_cast<double>(s.plain) : 0.0, s.blocks));
+    }
+    print(std::format(L"  total      {:>7} streams  {:>14} -> {:>13} bytes in the file", r.streams, r.plainBytes, r.fileBytes));
+    if (withTime) {
+        print(std::format(L"  ({} thread(s), {:.0f} s)", r.threads, r.seconds));
+    }
+    print(L"\n");
+}
+
+int cmdWlmPack(const std::wstring& wim, const std::wstring& out, const std::wstring& block, const std::wstring& threads) {
+    core::WlmPackOptions options;
+    if (!block.empty()) {
+        options.blockMiB = static_cast<std::uint32_t>(_wtoi(block.c_str()));
+    }
+    if (!threads.empty()) {
+        options.threads = static_cast<unsigned>(_wtoi(threads.c_str()));
+    }
+    const auto report = core::packWlm(wim, out, options, progressTask(L"pack"));
+    print(L"\n");
+    if (!report) {
+        return reportError(report.error());
+    }
+    printWlm(*report, true);
+    return 0;
+}
+
+int cmdWlmUnpack(const std::wstring& wlm, const std::wstring& out, const std::wstring& threads) {
+    const auto report = core::unpackWlm(wlm, out, progressTask(L"unpack"), threads.empty() ? 0u : static_cast<unsigned>(_wtoi(threads.c_str())));
+    print(L"\n");
+    if (!report) {
+        return reportError(report.error());
+    }
+    print(std::format(L"  {} streams written, every SHA-1 matched\n", report->streams));
+    printWlm(*report, true);
+    return 0;
+}
+
+int cmdWlmInfo(const std::wstring& wlm) {
+    const auto report = core::readWlmInfo(wlm);
+    if (!report) {
+        return reportError(report.error());
+    }
+    printWlm(*report, false);
+    return 0;
 }
 
 // D-056: Kişiselleştirme helpers (no admin).
@@ -1548,6 +1600,9 @@ void printUsage() {
           L"  wlcli export-host-associations <file.xml>  (this PC's default app associations; admin)\n"
           L"  wlcli appx-info <package> [--arch=x64]      (manifest, dependencies found next to it; no admin)\n"
           L"  wlcli font-info <font>                     (registry name Windows gives it; no admin)\n"
+          L"  wlcli wlm-pack <wim> <out.wlm> [--block=1024] [--threads=N]   (WinLove Method, D-057; no admin)\n"
+          L"  wlcli wlm-unpack <file.wlm> <out.wim> [--threads=N]           (back to a plain WIM, SHA-1 checked)\n"
+          L"  wlcli wlm-info <file.wlm>\n"
           L"  wlcli picture <src> <dst> [--size=WxH] [--format=jpg|png|bmp]   (WIC: cover-scale + encode)\n"
           L"  wlcli wifi-list                            (this PC's Wi-Fi profiles; keys readable when elevated)\n"
           L"  wlcli wifi-xml --ssid=<name> [--password=<key>] [--wpa3|--open] [--hidden]   (WLAN profile XML)\n"
@@ -1628,6 +1683,8 @@ int wmain(int argc, wchar_t** argv) {
     bool wpa3 = false;
     bool openNetwork = false;
     bool hidden = false;
+    std::wstring wlmBlock;
+    std::wstring wlmThreads;
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
@@ -1676,6 +1733,10 @@ int wmain(int argc, wchar_t** argv) {
             wpa3 = true;
         } else if (a == L"--open") {
             openNetwork = true;
+        } else if (a.starts_with(L"--block=")) {
+            wlmBlock = std::wstring(a.substr(8));
+        } else if (a.starts_with(L"--threads=")) {
+            wlmThreads = std::wstring(a.substr(10));
         } else if (a == L"--hidden") {
             hidden = true;
         } else if (a.starts_with(L"--unattend=")) {
@@ -1819,6 +1880,15 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"export-host-associations" && args.size() == 2) {
         return cmdExportHostAssociations(args[1]);
+    }
+    if (command == L"wlm-pack" && args.size() == 3) {
+        return cmdWlmPack(args[1], args[2], wlmBlock, wlmThreads);
+    }
+    if (command == L"wlm-unpack" && args.size() == 3) {
+        return cmdWlmUnpack(args[1], args[2], wlmThreads);
+    }
+    if (command == L"wlm-info" && args.size() == 2) {
+        return cmdWlmInfo(args[1]);
     }
     if (command == L"font-info" && args.size() == 2) {
         return cmdFontInfo(args[1]);

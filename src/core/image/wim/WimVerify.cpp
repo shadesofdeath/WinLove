@@ -29,13 +29,7 @@ constexpr std::uint8_t kCompressed = 0x04;
 constexpr std::uint8_t kSolid = 0x10;
 constexpr std::size_t kReadAhead = 4u << 20; // compressed bytes read per request
 
-struct Entry {
-    std::uint64_t offset = 0;
-    std::uint64_t size = 0;     // as stored
-    std::uint64_t original = 0; // uncompressed
-    std::uint8_t flags = 0;
-    std::array<std::uint8_t, 20> hash{};
-};
+using Entry = WimStreamEntry;
 
 template <class T>
 T le(const std::byte* p) {
@@ -121,8 +115,18 @@ struct Worker {
     std::vector<std::byte> workspace;
     std::function<bool(std::span<const std::byte>)> sink; // dumpWimStreams: the plain bytes, in order
     bool sinkFailed = false;
+    std::uint64_t limit = UINT64_MAX; // WimStreamReader::read maxBytes
+    std::uint64_t produced = 0;
+    [[nodiscard]] bool full() const noexcept { return produced >= limit; }
 
     void consume(std::span<const std::byte> data) noexcept {
+        if (full()) {
+            return;
+        }
+        if (data.size() > limit - produced) {
+            data = data.first(static_cast<std::size_t>(limit - produced));
+        }
+        produced += data.size();
         sha.update(data);
         if (sink && !sinkFailed && !sink(data)) {
             sinkFailed = true;
@@ -154,7 +158,7 @@ struct Worker {
                 return L"stored size does not match its size";
             }
             stored.resize(static_cast<std::size_t>(std::min<std::uint64_t>(entry.size, kReadAhead)));
-            for (std::uint64_t done = 0; done < entry.size && !stop;) {
+            for (std::uint64_t done = 0; done < entry.size && !stop && !full() && !sinkFailed;) {
                 const auto count = static_cast<std::size_t>(std::min<std::uint64_t>(entry.size - done, stored.size()));
                 if (!source.read(entry.offset + done, std::span(stored.data(), count))) {
                     (void)sha.finish();
@@ -169,8 +173,8 @@ struct Worker {
         }
         const auto digest = sha.finish();
         static constexpr std::array<std::uint8_t, 20> kNoHash{};
-        if (stop || entry.hash == kNoHash) {
-            return {};
+        if (stop || entry.hash == kNoHash || produced < entry.original) {
+            return {}; // cut short on purpose (limit) or by the caller: nothing to compare
         }
         return digest == entry.hash ? std::wstring() : std::wstring(L"content does not match its SHA-1");
     }
@@ -202,7 +206,7 @@ struct Worker {
             return width == 8 ? le<std::uint64_t>(at) : le<std::uint32_t>(at);
         };
         const std::uint64_t dataOffset = entry.offset + tableBytes;
-        for (std::uint64_t i = 0; i < chunks && !stop;) {
+        for (std::uint64_t i = 0; i < chunks && !stop && !full() && !sinkFailed;) {
             // A run of whole chunks of up to kReadAhead bytes, at least one.
             const std::uint64_t runStart = startOf(i);
             std::uint64_t end = i + 1;
@@ -217,7 +221,7 @@ struct Worker {
             if (!stored.empty() && !source.read(dataOffset + runStart, stored)) {
                 return L"cannot be read";
             }
-            for (; i < end; ++i) {
+            for (; i < end && !full(); ++i) {
                 const std::uint64_t from = startOf(i);
                 const std::uint64_t to = startOf(i + 1);
                 const auto plainSize = static_cast<std::size_t>(
@@ -286,6 +290,8 @@ Result<Table> readTable(const ByteSource& wim) {
         entry.offset = le<std::uint64_t>(p + 8);
         entry.original = le<std::uint64_t>(p + 16);
         const auto part = le<std::uint16_t>(p + 24);
+        entry.part = part;
+        entry.refCount = le<std::uint32_t>(p + 26);
         std::memcpy(entry.hash.data(), p + 30, entry.hash.size());
         if (entry.flags & kSolid) {
             return fail(ErrorCode::Unsupported, L"an image with solid resources (ESD) cannot be verified", L"WIM");
@@ -296,8 +302,7 @@ Result<Table> readTable(const ByteSource& wim) {
         total += entry.size;
         entries.push_back(entry);
     }
-    std::ranges::sort(entries, {}, &Entry::offset); // sequential reads
-    return Table{*header, chunkSize, std::move(entries), total};
+    return Table{*header, chunkSize, std::move(entries), total}; // lookup order: callers sort a copy to read in sequence
 }
 
 } // namespace
@@ -309,7 +314,8 @@ Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task
     }
     const auto& header = table->header;
     const std::uint32_t chunkSize = table->chunkSize;
-    const std::vector<Entry>& entries = table->entries;
+    std::vector<Entry> entries = table->entries;
+    std::ranges::sort(entries, {}, &Entry::offset); // sequential reads
     const std::uint64_t total = table->total;
 
     WimVerifyReport report;
@@ -402,7 +408,10 @@ Result<WimVerifyReport> dumpWimStreams(const ByteSource& wim, const std::functio
     WimVerifyReport report;
     std::atomic<bool> stop{false};
     std::uint64_t done = 0;
-    for (const Entry& entry : table->entries) {
+    std::vector<Entry> ordered = table->entries;
+    std::ranges::sort(ordered, {}, &Entry::offset);
+    for (const Entry& entry : ordered) {
+        worker.produced = 0;
         if (task.cancel.cancelled()) {
             return fail(ErrorCode::Cancelled, L"cancelled", L"WIM");
         }
@@ -420,6 +429,46 @@ Result<WimVerifyReport> dumpWimStreams(const ByteSource& wim, const std::functio
         task.report(table->total ? static_cast<double>(done) / static_cast<double>(table->total) : 1.0, L"dump");
     }
     return report;
+}
+
+Result<WimStreamTable> readWimStreamTable(const ByteSource& wim) {
+    auto table = readTable(wim);
+    if (!table) {
+        return std::unexpected(table.error());
+    }
+    return WimStreamTable{table->header, table->chunkSize, std::move(table->entries)};
+}
+
+struct WimStreamReader::Impl {
+    Worker worker;
+    std::atomic<bool> stop{false};
+    Impl(const ByteSource& wim, const WimStreamTable& table) : worker(wim, table.header.compression, table.chunkSize) {}
+};
+
+WimStreamReader::WimStreamReader(const ByteSource& wim, const WimStreamTable& table)
+    : m_impl(std::make_unique<Impl>(wim, table)) {}
+
+WimStreamReader::~WimStreamReader() = default;
+
+Result<void> WimStreamReader::read(const WimStreamEntry& entry, const std::function<bool(std::span<const std::byte>)>& write,
+                                   std::uint64_t maxBytes) {
+    Worker& w = m_impl->worker;
+    if (!w.sha.usable()) {
+        return fail(ErrorCode::Unknown, L"SHA-1 is not available", L"WIM");
+    }
+    w.sink = write;
+    w.sinkFailed = false;
+    w.limit = maxBytes;
+    w.produced = 0;
+    const std::wstring problem = w.check(entry, m_impl->stop);
+    w.sink = nullptr;
+    if (w.sinkFailed) {
+        return fail(ErrorCode::IoError, L"the stream could not be written on", std::format(L"offset {}", entry.offset));
+    }
+    if (!problem.empty()) {
+        return fail(ErrorCode::ParseError, L"damaged stream: " + problem, std::format(L"offset {}", entry.offset));
+    }
+    return {};
 }
 
 } // namespace wl::core
