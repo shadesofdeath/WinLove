@@ -21,6 +21,13 @@ std::string presetToJson(const Preset& preset) {
         doc["unattend"] = Json{{"includeInIso", preset.unattend->includeInIso},
                                {"xml", utf8::fromWide(core::buildUnattendXml(preset.unattend->options))}};
     }
+    if (!preset.bootDrivers.empty()) {
+        Json drivers = Json::array();
+        for (const auto& inf : preset.bootDrivers) {
+            drivers.push_back(utf8::fromWide(inf.wstring()));
+        }
+        doc["bootDrivers"] = std::move(drivers);
+    }
     return doc.dump(2);
 }
 
@@ -44,6 +51,13 @@ Result<Preset> presetFromJson(std::string_view json, std::wstring fallbackName) 
                 return std::unexpected(options.error());
             }
             preset.unattend = AppState::Unattend{std::move(*options), it->value("includeInIso", false)};
+        }
+        if (const auto it = doc.find("bootDrivers"); it != doc.end() && it->is_array()) {
+            for (const auto& inf : *it) {
+                if (inf.is_string() && !inf.get<std::string>().empty()) {
+                    preset.bootDrivers.emplace_back(utf8::toWide(inf.get<std::string>()));
+                }
+            }
         }
     } catch (const Json::exception& e) {
         return fail(ErrorCode::ParseError, L"malformed preset", utf8::toWide(e.what()));
@@ -85,6 +99,7 @@ Preset presetFromState(const AppState& state, std::wstring name) {
     if (unattend.includeInIso || !(unattend.options == core::UnattendOptions{})) {
         preset.unattend = unattend;
     }
+    preset.bootDrivers = state.bootDrivers();
     return preset;
 }
 

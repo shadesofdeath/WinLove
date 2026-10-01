@@ -73,6 +73,8 @@ TEST_CASE("preset file: ChangeSet + name + answer file; plain ChangeSet files an
     preset.unattend->options.password = L"gizli";
     preset.unattend->options.bypassTpm = true;
     preset.unattend->includeInIso = true;
+    preset.unattend->options.compactOs = true;                  // D-056
+    preset.bootDrivers = {LR"(D:\drivers\vmd\iaStorVD.inf)"}; // D-056: not part of the queue
 
     const std::string json = presetToJson(preset);
     CHECK(json.find("gizli") == std::string::npos); // as in the answer file: not in clear text
@@ -83,6 +85,8 @@ TEST_CASE("preset file: ChangeSet + name + answer file; plain ChangeSet files an
     REQUIRE(back->unattend);
     CHECK(back->unattend->options == preset.unattend->options);
     CHECK(back->unattend->includeInIso);
+    CHECK(back->unattend->options.compactOs);
+    CHECK(back->bootDrivers == preset.bootDrivers);
 
     // What "Preset olarak kaydet" and wlcli write: no name, no answer file.
     const auto plain = presetFromJson(preset.changes.toJson(), L"from-file-name");

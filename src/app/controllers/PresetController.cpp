@@ -157,6 +157,9 @@ std::size_t PresetController::apply(const Preset& preset) {
     if (preset.unattend) {
         m_state.setUnattend(*preset.unattend);
     }
+    for (const auto& inf : preset.bootDrivers) {
+        m_state.setBootDriver(inf, true);
+    }
     if (!m_state.mounted() || preset.changes.empty()) {
         return 0;
     }
