@@ -470,7 +470,18 @@ int App::renderOffscreen() {
         m_state->setSystemComponents(AppState::SystemComponents{
             mountDir,
             {{"edge", {true, 803 * mb}}, {"edge-webview", {true, 796 * mb}}, {"edge-update", {true, 806 * mb}},
-             {"onedrive", {true, 86 * mb}}, {"winre", {true, 643 * mb}}}});
+             {"onedrive", {true, 197 * mb}}, {"winre", {true, 643 * mb}},
+             // Package-level components (D-059), from the component store of the same image.
+             {"telemetry", {true, 11 * mb}}, {"defender-definitions", {true, 483 * mb}}, {"app-guard", {true, 1 * mb}},
+             {"photo-viewer", {true, 19 * mb}}, {"media-streaming", {true, 12 * mb}}, {"casting", {true, 4 * mb}},
+             {"wmp-sharing", {true, 4 * mb}}, {"play-to", {true, 4 * mb}}, {"spatial-audio", {true, 6 * mb}},
+             {"screensavers-3d", {true, 2 * mb}}, {"fonts-jpan", {true, 81 * mb}}, {"fonts-hans", {true, 56 * mb}},
+             {"fonts-hant", {true, 26 * mb}}, {"fonts-kore", {true, 17 * mb}}, {"appv", {true, 24 * mb}},
+             {"uev", {true, 15 * mb}}, {"branchcache", {true, 8 * mb}}, {"kiosk", {true, 8 * mb}}, {"fci", {true, 8 * mb}},
+             {"work-folders", {true, 4 * mb}}, {"offline-files", {true, 4 * mb}}, {"remoteapp", {true, 4 * mb}},
+             {"remote-assistance", {true, 3 * mb}}, {"take-a-test", {true, 2 * mb}}, {"edge-devtools", {true, 11 * mb}},
+             {"pos", {true, 8 * mb}}, {"recovery-media", {true, 7 * mb}}, {"help", {true, 6 * mb}},
+             {"bio-enrollment", {true, 5 * mb}}}});
         m_state->setAppxList(AppState::AppxList{AppState::AppxList::Status::Ready, mountDir, std::move(items), {}});
         auto& controller = m_shell->components();
         for (const auto& g : controller.groups()) {

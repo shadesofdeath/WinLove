@@ -3,6 +3,7 @@
 // and parsed by integration tests and tools.
 #include "base/Log.h"
 #include "base/Utf8.h"
+#include "core/image/ComponentStore.h"
 #include "core/image/SystemComponents.h"
 #include "core/image/dism/StoreCleanup.h"
 #include "core/image/RegistryEdit.h"
@@ -42,6 +43,7 @@
 
 #include <windows.h>
 
+#include <chrono>
 #include <cstdio>
 #include <cwctype>
 #include <fstream>
@@ -597,9 +599,21 @@ int cmdComponent(const std::wstring& dir, const std::wstring& recipeFile, bool r
     if (auto valid = core::validateComponentRecipe(*recipe); !valid) {
         return reportError(valid.error());
     }
-    const auto presence = core::probeComponent(dir, *recipe);
-    print(std::format(L"{}: {}, {} bytes in {} path(s)\n", recipe->title, presence.present ? L"present" : L"not found",
-                      presence.size, recipe->paths.size()));
+    // Packages: the component store says whether they are there and what only they own (D-059).
+    std::optional<core::ComponentStoreIndex> store;
+    if (!recipe->packages.empty()) {
+        const auto started = std::chrono::steady_clock::now();
+        auto built = core::ComponentStoreIndex::build(dir, core::TaskContext{g_cancel, {}});
+        if (!built) {
+            return reportError(built.error());
+        }
+        store = std::move(*built);
+        print(std::format(L"  component store read in {} ms\n", std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                                    std::chrono::steady_clock::now() - started).count()));
+    }
+    const auto presence = core::probeComponent(dir, *recipe, store ? &*store : nullptr);
+    print(std::format(L"{}: {}, {} bytes ({} path(s), {} package famil(ies))\n", recipe->title,
+                      presence.present ? L"present" : L"not found", presence.size, recipe->paths.size(), recipe->packages.size()));
     if (!recipe->packages.empty()) {
         auto all = core::readCbsPackages(std::filesystem::path(dir));
         if (!all) {

@@ -84,8 +84,9 @@ Result<ComponentCatalog> ComponentCatalog::parse(std::string_view json) {
                 if (why.empty()) {
                     if (auto valid = core::validateComponentRecipe(entry.recipe); !valid) {
                         why = describe(valid.error());
-                    } else if (entry.recipe.paths.empty()) {
-                        why = L"needs at least one path (presence in an image is read from the paths)";
+                    } else if (entry.recipe.paths.empty() && entry.recipe.packages.empty()) {
+                        // Presence is read from the paths or from the component store (D-059).
+                        why = L"needs a path or a package";
                     }
                 }
             }

@@ -1,6 +1,7 @@
 #include "core/image/RegistryRead.h"
 
 #include "base/Log.h"
+#include "core/image/OffReg.h"
 
 #include <windows.h>
 
@@ -11,40 +12,8 @@ namespace wl::core {
 
 namespace {
 
-// offreg.dll is not in the SDK import libraries (it ships with the WDK); the few entry points are
-// declared here and resolved at run time from System32 (never from the application folder).
-using ORHKEY = void*;
-using OROpenHiveFn = DWORD(WINAPI*)(PCWSTR, ORHKEY*);
-using ORCloseHiveFn = DWORD(WINAPI*)(ORHKEY);
-using OROpenKeyFn = DWORD(WINAPI*)(ORHKEY, PCWSTR, ORHKEY*);
-using ORCloseKeyFn = DWORD(WINAPI*)(ORHKEY);
-using ORGetValueFn = DWORD(WINAPI*)(ORHKEY, PCWSTR, PCWSTR, PDWORD, PVOID, PDWORD);
-
-struct OffReg {
-    OROpenHiveFn openHive = nullptr;
-    ORCloseHiveFn closeHive = nullptr;
-    OROpenKeyFn openKey = nullptr;
-    ORCloseKeyFn closeKey = nullptr;
-    ORGetValueFn getValue = nullptr;
-    [[nodiscard]] bool ready() const noexcept { return openHive && closeHive && openKey && closeKey && getValue; }
-};
-
-const OffReg& offreg() {
-    static OffReg api;
-    static std::once_flag once;
-    std::call_once(once, [] {
-        const HMODULE module = LoadLibraryExW(L"offreg.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
-        if (!module) {
-            log::error("core", std::format(L"offreg.dll could not be loaded [{}]", GetLastError()));
-            return;
-        }
-        api.openHive = reinterpret_cast<OROpenHiveFn>(GetProcAddress(module, "OROpenHive"));
-        api.closeHive = reinterpret_cast<ORCloseHiveFn>(GetProcAddress(module, "ORCloseHive"));
-        api.openKey = reinterpret_cast<OROpenKeyFn>(GetProcAddress(module, "OROpenKey"));
-        api.closeKey = reinterpret_cast<ORCloseKeyFn>(GetProcAddress(module, "ORCloseKey"));
-        api.getValue = reinterpret_cast<ORGetValueFn>(GetProcAddress(module, "ORGetValue"));
-    });
-    return api;
+const OffRegApi& offreg() {
+    return offregApi();
 }
 
 Error readError(DWORD status, std::wstring what, std::wstring context) {

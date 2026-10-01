@@ -241,6 +241,35 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-059 — Bileşenler: paket düzeyinde bileşenler, bileşen deposu taraması (2026-10-02)
+Bağlam: Kullanıcı Bileşenler sayfasının NTLite'a göre çok az şey sunduğunu söyledi ("gerçekten iyi bir tarama
+yaparak bileşen deposunu genişletmeliyiz"). Sayfada uygulamaların dışında 6 sistem bileşeni vardı; D-031'de 865 gizli
+paket "sonucu öngörülemez" diye dışarıda bırakılmıştı.
+Tarama (25H2 TR Pro, `tools\lab_scan_components.ps1` + `tools\analyze_cbs.py`): 1227 nötr paket ailesi, 928 kurulu, 860'ı
+gizli; COMPONENTS hive'ından bileşen → deployment → paket sahipliği; WinSxS boyutları. Her paket için yalnız onun
+ağacına ait bayt ("tek sahipli") hesaplandı.
+Karar:
+- **Yalnız gerçekten isteğe bağlı olanlar** (kullanıcı: "wifi ethernet sürücüleri falan gerçekten gerekli bileşen,
+  ekleme"): 29 yeni girdi, 6 yeni grup — Gizlilik (telemetri), Güvenlik (Defender hazır tanımları, Application Guard),
+  Multimedya (Fotoğraf Görüntüleyici, DLNA, Miracast alıcısı, WMP paylaşımı, Play To, Windows Sonic, 3D ekran
+  koruyucular), Yazı Tipleri (Japonca, Basit / Geleneksel Çince, Korece), Kurumsal (App-V, UE-V, BranchCache, Kiosk,
+  FCI, İş Klasörleri, Çevrimdışı Dosyalar, RemoteApp, Uzaktan Yardım, Sınav), Diğer (Edge DevTools istemcisi, POS,
+  kurtarma diski oluşturucu, kurulum yardımı, biyometrik kayıt). **Bilerek yok:** MTP (telefon / kamera), BitLocker,
+  gpedit, ağ / depolama sürücüleri, varsayılan duvar kağıtları (Kişiselleştirme aynı dosyaya yazar). Birim testi
+  katalogda Wi-Fi / Ethernet / WPD / SecureStartup / Storage paketi olmadığını denetler.
+- Tarif yalnız `packages` taşıyabilir (yol şartı kalktı). Kaldırma eski yoldan: hive'da kilit açılır, DismRemovePackage;
+  bir üst paketle giden alt paket "zaten gitmiş" sayılır (DISM'e sorulur).
+- **Var mı / boyut çalışma anında** (`core::ComponentStoreIndex`, offreg + dizin listesi, hive yüklenmez, ~4 sn):
+  kurulu paket aileleri (SOFTWARE), paket ağacı (.mum), sahiplik (COMPONENTS: `c!` → deployment → `i!CBS_` →
+  paket; toplu güncellemeler sahip sayılmaz), WinSxS klasör boyutları. Boyut = girdinin paket ağaçlarının tek
+  sahipli baytları (yolları da varsa ikisinden büyüğü).
+- Kanıt: `tools\lab_cbs_removal.ps1` (yönetici, kendim) — 33 aday tek tek kaldırıldı, ScanHealth "bozulma yok",
+  export 6637 → 5949 MB (−688 MB); gönderilen katalogla (30 girdi, OneDrive dahil) yeniden: ALL PASSED, ScanHealth temiz,
+  6637 → 5793 MB (−844 MB). Çalışma anı boyutları Python analiziyle bayt bayt aynı. Görülmeyen: bu imaja sonradan
+  toplu güncelleme eklenmesi, kurulan sistemde etki (VM).
+- Sıradaki aşama (ayrı karar): Windows'la gelen sürücü deposu (715 paket, 443 MB) — yalnız eski sınıflar (modem,
+  teyp, disket, 1394, PCMCIA, IrDA, POS, eski yazıcılar); DISM bunları kaldırmaz, kendi motorumuz gerekir.
+
 ## D-058 — Kaynak ve İmajlar araçları: SHA-256, arama, sıkıştırma, SWM, çoğaltma, sürüm ekleme, yakalama (2026-10-01)
 Bağlam: Kullanıcı Kaynak / İmajlar sayfalarının NTLite'a göre eksiklerinden 1, 2, 3, 4, 5, 6, 7, 9'u seçti ("profesyonelce").
 Karar:

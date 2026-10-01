@@ -18,7 +18,17 @@
   `--click-at` ile Araçlar menüsü); `tools\lab_imagetools.ps1` (yönetici, kendim) **ALL PASSED**. Düzeltilen: SWM parçaları tek
   tek referans verilmeli (joker reddediliyor). **Görülmeyen:** bu akışların uygulamanın içinden tıklanarak yapılması, çoklu
   bırakma (render'da sürükleme yok).
-- **Bir sonraki somut adım (2026-10-01 gece):** kullanıcı yeni araçları uygulamada dener. Sonra ertelenen öneriler (`deferred-suggestions`).
+- **Bileşenler genişletildi (2026-10-02, D-059):** imaj tarandı (860 gizli paket, COMPONENTS sahipliği, WinSxS boyutları);
+  yalnız gerçekten isteğe bağlı 29 paket düzeyinde bileşen eklendi, 6 yeni grup (Gizlilik, Güvenlik, Multimedya, Yazı
+  Tipleri, Kurumsal, Diğer). Gerekli olanlar (ağ / depolama sürücüleri, MTP, BitLocker, gpedit) bilerek yok — kullanıcı
+  isteği, test bunu denetliyor. Var mı / boyut çalışma anında (`ComponentStoreIndex`, ~4 sn). **Kanıt:** 263 test;
+  `tools\lab_cbs_removal.ps1` (yönetici, kendim) ALL PASSED — 30 girdi kaldırıldı, ScanHealth temiz, ISO −844 MB; çalışma
+  anı boyutları gerçek imajda Python analiziyle aynı; render `--demo-components`. **Düzeltilen:** offreg değer adı hatası,
+  WinSxS listesinin yarıda kesilmesi, paket-yalnız tarifte çökme (`paths.front()`). **Görülmeyen:** kaldırılmış imaja
+  sonradan toplu güncelleme, kurulan sistemde etki (VM).
+- **Bir sonraki somut adım (2026-10-02):** kullanıcı yeni bileşenleri dener. Sıradaki aşama önerisi: Windows'la gelen sürücü
+  deposundan yalnız eski sınıflar (modem, teyp, disket, 1394, PCMCIA, IrDA, POS, eski yazıcılar) — kendi kaldırma motoru gerekir.
+- **Önceki adım (2026-10-01 gece):** kullanıcı yeni araçları uygulamada dener. Sonra ertelenen öneriler (`deferred-suggestions`).
 - **Önceki adım (2026-10-01 akşam):** kullanıcı yeni sayfaları uygulamada dener (Kişiselleştirme, Wi-Fi, Compact OS, boot.wim sekmesi). WLM için karar bekleniyor: açma hızı ölçümü + kurucu prototipi (D-057). Önerilen küçük işler: ISO seçeneklerini presete eklemek, taşınabilir preset (dosyalar yanında).
 - **Önceki adım (2026-09-30 akşam):** (`tools\lab_usb.ps1` MBR geçti; kalan `-Gpt` ve gerçek bellek) uygulamada P11 / P12 "imajda" gösterimini önceden Uygula'lanmış bir imajla ve
   "Güncellemeleri bul" akışını dener. Ardından (önceki adım sürüyor) VM'de kendi imajını deniyor (`docs/TESTING.md` → "VM kabul testi");

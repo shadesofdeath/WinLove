@@ -108,15 +108,24 @@ ComponentCatalog shippedComponents() {
 
 TEST_CASE("components catalog: the shipped file parses, every recipe is one the engine accepts") {
     const auto catalog = shippedComponents();
-    REQUIRE(catalog.groups().size() == 2);
-    CHECK(catalog.components().size() == 7); // nothing skipped
+    REQUIRE(catalog.groups().size() == 8);
+    CHECK(catalog.components().size() == 36); // nothing skipped
     for (const auto& entry : catalog.components()) {
         CAPTURE(entry.id);
         CHECK_FALSE(entry.notes.tr.empty());
         CHECK_FALSE(entry.notes.en.empty());
         if (entry.kind == ComponentCatalogEntry::Kind::Remove) {
             CHECK(core::validateComponentRecipe(entry.recipe));
-            CHECK_FALSE(entry.recipe.paths.empty());
+            // Something to find in the image: a path, or a package the component store knows (D-059).
+            CHECK((!entry.recipe.paths.empty() || !entry.recipe.packages.empty()));
+            // What a working PC needs is never on offer (user, 2026-10-02): network and storage
+            // drivers, phones / cameras (MTP), BitLocker.
+            for (const auto& family : entry.recipe.packages) {
+                CAPTURE(family);
+                for (const wchar_t* needed : {L"-Wifi-", L"-Ethernet-", L"Portable-Devices", L"WPD-", L"SecureStartup", L"Storage"}) {
+                    CHECK(family.find(needed) == std::wstring::npos);
+                }
+            }
             // The recipe survives the trip through a queue operation / preset file.
             auto recipe = entry.recipe;
             recipe.title = entry.name.tr;
@@ -161,13 +170,15 @@ TEST_CASE("components catalog: the shipped file parses, every recipe is one the 
         "components":[
           {"id":"ok","group":"g","tr":"Tamam","en":"Fine","paths":["Program Files\\X"]},
           {"id":"root","group":"g","tr":"Kök","en":"Root","paths":["Windows"]},
-          {"id":"nopath","group":"g","tr":"Yolsuz","en":"No path","packages":["Some-Package"]},
+          {"id":"package","group":"g","tr":"Paket","en":"Package","packages":["Some-Package"]},
+          {"id":"nothing","group":"g","tr":"Hiç","en":"Nothing","registry":[{"key":"HKLM\\SOFTWARE\\X","delete":true}]},
           {"id":"ok","group":"g","tr":"Yine","en":"Again","paths":["Program Files\\Y"]},
           {"id":"lost","group":"nowhere","tr":"A","en":"B","paths":["Program Files\\Z"]},
           {"id":"sam","group":"g","tr":"A","en":"B","paths":["Program Files\\Z"],"registry":[{"key":"HKLM\\SAM\\x","delete":true}]}]})");
     REQUIRE(partial);
-    REQUIRE(partial->components().size() == 1);
+    REQUIRE(partial->components().size() == 2); // a package alone is enough (D-059); registry alone is not
     CHECK(partial->components().front().id == "ok");
+    CHECK(partial->components().back().id == "package");
     CHECK_FALSE(ComponentCatalog::parse(R"({"format":"winlove.catalog.appx"})"));
 }
 

@@ -2,6 +2,7 @@
 
 #include "base/Log.h"
 #include "base/Utf8.h"
+#include "core/image/ComponentStore.h"
 #include "core/image/dism/Appx.h"
 #include "core/system/FileLocks.h"
 #include "core/system/Privileges.h"
@@ -325,7 +326,8 @@ Result<std::vector<CbsPackage>> readCbsPackages(const std::filesystem::path& mou
 
 // ---- presence ----------------------------------------------------------------------------------
 
-ComponentPresence probeComponent(const std::filesystem::path& mountDir, const ComponentRecipe& recipe) {
+ComponentPresence probeComponent(const std::filesystem::path& mountDir, const ComponentRecipe& recipe,
+                                 const ComponentStoreIndex* store) {
     ComponentPresence presence;
     (void)enablePrivilege(SE_BACKUP_NAME); // Program Files folders of an image can be closed to administrators
     for (const auto& relative : recipe.paths) {
@@ -352,6 +354,13 @@ ComponentPresence probeComponent(const std::filesystem::path& mountDir, const Co
             presence.size += backupFolderSize(*path);
         } else {
             presence.size += (static_cast<std::uint64_t>(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
+        }
+    }
+    if (store && !recipe.packages.empty()) {
+        if (std::ranges::any_of(recipe.packages, [&](const std::wstring& f) { return store->installed(f); })) {
+            presence.present = true;
+            // A file the paths list is usually a hard link into WinSxS: the same bytes, once.
+            presence.size = std::max(presence.size, store->exclusiveBytes(recipe.packages));
         }
     }
     return presence;
@@ -391,6 +400,18 @@ Result<std::vector<CbsPackage>> editHives(const std::filesystem::path& mountDir,
         }
     }
     return targets;
+}
+
+// After a failed removal: is the package still there? nullopt when DISM cannot list them.
+std::optional<bool> stillInstalled(DismSession& session, const std::wstring& identity) {
+    auto packages = session.packages();
+    if (!packages) {
+        return std::nullopt;
+    }
+    return std::ranges::any_of(*packages, [&](const PackageEntry& p) {
+        return _wcsicmp(p.name.c_str(), identity.c_str()) == 0 && p.state != ServicingState::NotPresent &&
+               p.state != ServicingState::Removed && p.state != ServicingState::UninstallPending;
+    });
 }
 
 } // namespace
@@ -441,6 +462,10 @@ Result<void> removeComponent(DismSession& session, const ComponentRecipe& recipe
         if (auto result = session.removePackage(package.identity, part); result) {
             ++removed;
             log::info("cbs", L"removed " + package.identity);
+        } else if (stillInstalled(session, package.identity) == false) {
+            // A child package goes with its parent: removing it afterwards finds nothing to do.
+            ++removed;
+            log::info("cbs", L"already gone with its parent: " + package.identity);
         } else if (package.state >= kCbsInstalled) {
             log::warn("cbs", L"package not removed: " + describe(result.error()));
             if (!refused) {
