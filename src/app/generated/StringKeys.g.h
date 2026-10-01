@@ -513,8 +513,6 @@ enum class Str : std::uint16_t {
     ImagesMountingState,
     ImagesNoMountToExplore,
     ImagesNone,
-    ImagesPackWlm,
-    ImagesPackWlmHint,
     ImagesPreparing,
     ImagesPreparingHint,
     ImagesReading,
@@ -525,7 +523,6 @@ enum class Str : std::uint16_t {
     ImagesRenaming,
     ImagesRevealFile,
     ImagesSaveWim,
-    ImagesSaveWlm,
     ImagesSelectedHint,
     ImagesSelectedState,
     ImagesSplit,
@@ -563,10 +560,6 @@ enum class Str : std::uint16_t {
     ImagesVerifySoundBody,
     ImagesVerifying,
     ImagesWimFile,
-    ImagesWlmNeedsWim,
-    ImagesWlmNoMount,
-    ImagesWlmPackedToast,
-    ImagesWlmToWim,
     ImagesWorkingHint,
     IsoBlockBusy,
     IsoBlockMounted,
@@ -1176,7 +1169,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1166;
+inline constexpr std::size_t kStrCount = 1159;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.checkUpdates",
     "about.dism",
@@ -1684,8 +1677,6 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "images.mountingState",
     "images.noMountToExplore",
     "images.none",
-    "images.packWlm",
-    "images.packWlmHint",
     "images.preparing",
     "images.preparingHint",
     "images.reading",
@@ -1696,7 +1687,6 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "images.renaming",
     "images.revealFile",
     "images.saveWim",
-    "images.saveWlm",
     "images.selectedHint",
     "images.selectedState",
     "images.split",
@@ -1734,10 +1724,6 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "images.verifySoundBody",
     "images.verifying",
     "images.wimFile",
-    "images.wlmNeedsWim",
-    "images.wlmNoMount",
-    "images.wlmPackedToast",
-    "images.wlmToWim",
     "images.workingHint",
     "iso.blockBusy",
     "iso.blockMounted",

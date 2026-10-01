@@ -79,8 +79,7 @@ bool isSourceCandidate(const std::filesystem::path& path) {
     case core::ImageFormat::Iso:
     case core::ImageFormat::Wim:
     case core::ImageFormat::Esd:
-    case core::ImageFormat::Swm:
-    case core::ImageFormat::Wlm: return true;
+    case core::ImageFormat::Swm: return true;
     default: return false;
     }
 }
@@ -1196,9 +1195,7 @@ void Shell::updateImagesChrome() {
     if (m_actionMount) {
         m_actionMount->setText(m_strings.get(mounted ? Str::ImagesUnmount : Str::ImagesMount));
         m_actionMount->setEnabled(!busy && (mounted || (image && m_images->canMount())));
-        m_actionMount->setTooltip(m_images->isWlmSource()      ? m_strings.get(Str::ImagesWlmNoMount)
-                                  : m_images->isPackedSource() ? m_strings.get(Str::ImagesEsdNoMount)
-                                                               : std::wstring{});
+        m_actionMount->setTooltip(m_images->isPackedSource() ? m_strings.get(Str::ImagesEsdNoMount) : std::wstring{});
     }
     if (m_actionExport) {
         m_actionExport->setEnabled(!busy && image != nullptr);
@@ -1207,11 +1204,6 @@ void Shell::updateImagesChrome() {
         const auto refusal = m_images->verifyRefusal();
         m_actionVerify->setEnabled(!refusal);
         m_actionVerify->setTooltip(m_strings.get(refusal && !busy ? *refusal : Str::ImagesVerifyHint));
-    }
-    if (m_actionWlm) {
-        const auto refusal = m_images->packWlmRefusal();
-        m_actionWlm->setEnabled(!refusal);
-        m_actionWlm->setTooltip(m_strings.get(refusal && !busy ? *refusal : Str::ImagesPackWlmHint));
     }
     if (m_actionEsd) {
         m_actionEsd->setEnabled(!busy && m_images->isPackedSource());
@@ -1268,7 +1260,7 @@ void Shell::showPage(PageId page) {
         m_sideInspector = nullptr;
     }
     m_actionExpand = nullptr;
-    m_actionMount = m_actionExport = m_actionEsd = m_actionVerify = m_actionWlm = nullptr;
+    m_actionMount = m_actionExport = m_actionEsd = m_actionVerify = nullptr;
     m_actionReset = nullptr;
     m_actionIso = nullptr;
 
@@ -1295,11 +1287,8 @@ void Shell::showPage(PageId page) {
                                     }});
         } else if (page == PageId::Images) {
             if (m_state.source()) {
-                m_actionEsd = &m_pageView->addAction(
-                    ui::ButtonKind::Secondary, m_strings.get(m_images->isWlmSource() ? Str::ImagesWlmToWim : Str::ImagesEsdToWim));
+                m_actionEsd = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesEsdToWim));
                 m_actionEsd->onInvoke = [this] { convertEsd(); };
-                m_actionWlm = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesPackWlm));
-                m_actionWlm->onInvoke = [this] { packWlm(); };
                 m_actionVerify = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesVerify),
                                                         ui::icons::Icon::ShieldCheck);
                 m_actionVerify->onInvoke = [this] { m_images->verify(); };
@@ -1899,7 +1888,7 @@ void Shell::startPreload() {
 void Shell::pickSourceFile() {
     const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
     const auto file = ui::pickFile(owner, m_strings.get(Str::SourceOpenFile),
-                                   {{m_strings.get(Str::SourceFilterImages), L"*.iso;*.wim;*.esd;*.swm;*.wlm"},
+                                   {{m_strings.get(Str::SourceFilterImages), L"*.iso;*.wim;*.esd;*.swm"},
                                     {m_strings.get(Str::SourceFilterAll), L"*.*"}});
     if (file) {
         openSource(*file);
@@ -2438,15 +2427,6 @@ void Shell::exportLog() {
         showToast(ui::InfoKind::Success, m_strings.get(Str::LogsExported), target->wstring());
     } else {
         showToast(ui::InfoKind::Error, m_strings.get(Str::LogsExportFailed), target->wstring());
-    }
-}
-
-void Shell::packWlm() {
-    const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
-    const auto target = ui::pickSaveFile(owner, m_strings.get(Str::ImagesPackWlm), {{m_strings.get(Str::ImagesSaveWlm), L"*.wlm"}},
-                                         L"install.wlm", L"wlm");
-    if (target) {
-        m_images->packWlm(*target);
     }
 }
 

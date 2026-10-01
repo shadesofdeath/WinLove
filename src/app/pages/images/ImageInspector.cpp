@@ -197,9 +197,6 @@ void ImageInspector::paint(ui::Canvas& canvas) {
     if (header.solid) {
         compression += L" · solid";
     }
-    if (m_source->format == core::ImageFormat::Wlm) {
-        compression = L"LZMA2 + BCJ (WLM)"; // the header is the packed WIM's own (D-057)
-    }
     row(Str::ImagesCompression, compression);
     row(Str::ImagesFileSize, formatBytes(m_source->installImageSize, m_language), true);
     row(Str::ImagesImageCount, std::to_wstring(m_source->install.images.size()));
