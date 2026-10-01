@@ -27,7 +27,8 @@
     "hosts": "Hosts",
     "files": "Files",
     "apps": "Apps",
-    "languages": "Languages"
+    "languages": "Languages",
+    "branding": "Personalization"
   },
   "title": {
     "cmdk": "Search commands, pages or components",
@@ -1213,5 +1214,40 @@
     "pickKind": "Kind",
     "pickFile": "File",
     "added": "{n} language packages queued"
+  },
+  "branding": {
+    "title": "Personalization",
+    "desc": "OEM information, default wallpaper, lock screen and account picture, fonts",
+    "oem": "OEM information",
+    "manufacturer": "Manufacturer",
+    "model": "Model",
+    "supportPhone": "Support phone",
+    "supportHours": "Support hours",
+    "supportUrl": "Support URL",
+    "logo": "Logo",
+    "logoHint": "In system information, cropped to 120×120",
+    "pictures": "Default pictures",
+    "wallpaper": "Desktop background",
+    "wallpaperHint": "Light and dark theme, every new user",
+    "lockScreen": "Lock screen",
+    "lockScreenHint": "The default lock screen picture",
+    "account": "Account picture",
+    "accountHint": "Accounts without a picture, every size",
+    "choose": "Choose…",
+    "default": "Windows default",
+    "clear": "Back to the default",
+    "choosePicture": "Choose a picture",
+    "pictureFiles": "Pictures",
+    "notPicture": "Not a picture Windows can read",
+    "fonts": "FONTS",
+    "fontsEmpty": "No fonts to add — \"Add fonts…\"",
+    "fontsN": "{n} font(s) to add",
+    "font": "Font",
+    "fontFile": "File",
+    "addFonts": "Add fonts…",
+    "fontFiles": "Fonts",
+    "notFont": "Could not be read as a font",
+    "noMountTitle": "No image mounted",
+    "noMountBody": "Personalization is written into the mounted image: mount an edition first."
   }
 }

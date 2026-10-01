@@ -27,7 +27,8 @@
     "hosts": "Hosts",
     "files": "Dosyalar",
     "apps": "Uygulamalar",
-    "languages": "Diller"
+    "languages": "Diller",
+    "branding": "Kişiselleştirme"
   },
   "title": {
     "cmdk": "Komut, sayfa veya bileşen ara",
@@ -1213,5 +1214,40 @@
     "pickKind": "Tür",
     "pickFile": "Dosya",
     "added": "{n} dil paketi kuyruğa eklendi"
+  },
+  "branding": {
+    "title": "Kişiselleştirme",
+    "desc": "OEM bilgileri, varsayılan duvar kağıdı, kilit ekranı ve hesap resmi, yazı tipleri",
+    "oem": "OEM bilgileri",
+    "manufacturer": "Üretici",
+    "model": "Model",
+    "supportPhone": "Destek telefonu",
+    "supportHours": "Destek saatleri",
+    "supportUrl": "Destek adresi",
+    "logo": "Logo",
+    "logoHint": "Sistem bilgisinde, 120×120'ye kırpılır",
+    "pictures": "Varsayılan görseller",
+    "wallpaper": "Masaüstü arka planı",
+    "wallpaperHint": "Açık ve koyu tema, her yeni kullanıcı",
+    "lockScreen": "Kilit ekranı",
+    "lockScreenHint": "Varsayılan kilit ekranı görseli",
+    "account": "Hesap resmi",
+    "accountHint": "Resmi olmayan hesaplar, tüm boyutlar",
+    "choose": "Seç…",
+    "default": "Windows varsayılanı",
+    "clear": "Varsayılana dön",
+    "choosePicture": "Görsel seç",
+    "pictureFiles": "Görseller",
+    "notPicture": "Görsel okunamadı",
+    "fonts": "YAZI TİPLERİ",
+    "fontsEmpty": "Eklenecek yazı tipi yok — \"Yazı tipi ekle…\"",
+    "fontsN": "{n} yazı tipi eklenecek",
+    "font": "Yazı tipi",
+    "fontFile": "Dosya",
+    "addFonts": "Yazı tipi ekle…",
+    "fontFiles": "Yazı tipleri",
+    "notFont": "Yazı tipi olarak okunamadı",
+    "noMountTitle": "Bağlı imaj yok",
+    "noMountBody": "Kişiselleştirme bağlı imaja yazılır: önce bir sürümü bağla."
   }
 }
