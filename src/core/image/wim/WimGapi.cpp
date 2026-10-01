@@ -39,6 +39,7 @@ using CallbackFn = DWORD(CALLBACK*)(DWORD, WPARAM, LPARAM, PVOID);
 using RegisterCallbackFn = DWORD(WINAPI*)(HANDLE, FARPROC, PVOID);
 using UnregisterCallbackFn = BOOL(WINAPI*)(HANDLE, FARPROC);
 using SplitFileFn = BOOL(WINAPI*)(HANDLE, PCWSTR, PLARGE_INTEGER, DWORD);
+using SetBootImageFn = BOOL(WINAPI*)(HANDLE, DWORD);
 
 struct Api {
     CreateFileFn createFile = nullptr;
@@ -52,6 +53,7 @@ struct Api {
     RegisterCallbackFn registerCallback = nullptr;
     UnregisterCallbackFn unregisterCallback = nullptr;
     SplitFileFn splitFile = nullptr;
+    SetBootImageFn setBootImage = nullptr;
 };
 
 template <class F>
@@ -78,7 +80,7 @@ Result<const Api*> api() {
                         load(m, "WIMSetImageInformation", instance.setImageInformation) &&
                         load(m, "WIMRegisterMessageCallback", instance.registerCallback) &&
                         load(m, "WIMUnregisterMessageCallback", instance.unregisterCallback) &&
-                        load(m, "WIMSplitFile", instance.splitFile);
+                        load(m, "WIMSplitFile", instance.splitFile) && load(m, "WIMSetBootImage", instance.setBootImage);
         if (!ok) {
             return fail(ErrorCode::Unsupported, L"wimgapi.dll is missing expected entry points", path.wstring());
         }
@@ -490,6 +492,23 @@ Result<int> splitWim(const std::filesystem::path& sourceInput, const std::filesy
     }
     task.report(1.0, L"split");
     return parts;
+}
+
+Result<void> setBootImage(const std::filesystem::path& wimInput, int index) {
+    const std::filesystem::path wim = nativePath(wimInput);
+    auto a = api();
+    if (!a) {
+        return std::unexpected(a.error());
+    }
+    const Api* w = *a;
+    WimHandle file{w, w->createFile(wim.c_str(), GENERIC_WRITE | GENERIC_READ, kOpenExisting, 0, 0, nullptr)};
+    if (!file.h) {
+        return std::unexpected(lastError(L"open " + wim.wstring()));
+    }
+    if (!w->setBootImage(file.h, static_cast<DWORD>(index))) {
+        return std::unexpected(lastError(std::format(L"set boot index {} of {}", index, wim.wstring())));
+    }
+    return {};
 }
 
 } // namespace wl::core
