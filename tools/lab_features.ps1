@@ -70,7 +70,10 @@ function Json([string[]] $arguments) {
     $text = (Native { & $Cli @arguments } | Out-String)
     $script:jsonExit = $LASTEXITCODE
     if ($LASTEXITCODE -ne 0 -or -not $text.Trim()) { return $null }
-    return $text | ConvertFrom-Json
+    # Windows PowerShell 5.1 passes a parsed JSON array down the pipeline as one object, so
+    # @(Json ...) of "[]" counted 1. Unroll it here: an empty array gives nothing.
+    $parsed = $text | ConvertFrom-Json
+    foreach ($item in $parsed) { $item }
 }
 function Check([string] $what, [bool] $ok) {
     if ($ok) { Say "PASS  $what" } else { Say "FAIL  $what"; $script:failed++ }

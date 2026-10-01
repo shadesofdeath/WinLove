@@ -58,7 +58,7 @@ Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **
 | P17 | Hakkında | 20 | `pages/17-about.md` | 🟨 test | Lisans satırı / güncelleme denetimi yok (spec §4) |
 | P18 | Komut Paleti (Ctrl+K) | 21 | `pages/18-command-palette.md` | 🟨 test | `PaletteIndex`: sayfalar, P12 ayarları, okunan listeler, komutlar |
 
-> **Ek sayfalar (2026-10-01, kullanıcı isteği; tasarım paketinde karşılıkları yok, mevcut sayfaların dilinde):** Uygulamalar (D-050, D-054), Diller (D-053), Görevler (D-048), Hosts (D-049), Dosyalar (D-051); Uygula'da diğer sürümler (D-055). Hepsi 🟨 test — motor kanıtı `tools\lab_features.ps1` (yönetici) bekliyor. Spec: `pages/19-extras.md`.
+> **Ek sayfalar (2026-10-01, kullanıcı isteği; tasarım paketinde karşılıkları yok, mevcut sayfaların dilinde):** Uygulamalar (D-050, D-054), Diller (D-053), Görevler (D-048), Hosts (D-049), Dosyalar (D-051); Uygula'da diğer sürümler (D-055). Hepsi 🟨 test — motor kanıtlandı (`tools\lab_features.ps1`, 2026-10-01 ALL PASSED); uygulama içi ve VM testi bekliyor. Spec: `pages/19-extras.md`.
 
 ## Faz 4 — Sağlamlaştırma ve yayın
 Performans profili, erişilebilirlik (Narrator) turu, installer/portable paket, imzalama, sürüm notları.

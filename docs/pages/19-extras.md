@@ -1,6 +1,6 @@
 # P19 — Ek sayfalar: Uygulamalar, Diller, Görevler, Hosts, Dosyalar (+ Uygula'da diğer sürümler)
 
-**Durum:** 🟨 geliştirme bitti, motor kanıtı (`tools\lab_features.ps1`, yönetici) ve kullanıcı testi bekliyor ·
+**Durum:** 🟨 geliştirme bitti, motor kanıtlandı (`tools\lab_features.ps1`, 2026-10-01 ALL PASSED), kullanıcı testi bekliyor ·
 **Tasarım:** handoff'ta karşılığı yok — mevcut liste sayfalarının dili (P07 / P09 / P10 düzeni: başlık + eylemler,
 sekme, tablo, sağda ayrıntı paneli, `PageBits` risk / ayrıntı satırları). Kararlar: D-048 … D-055.
 
@@ -53,7 +53,7 @@ WIM'in birden çok sürümüne uygulamak.
 ## 6. Motor ve `wlcli`
 - [x] `drivers [--remove=]`, `export-host-drivers`, `intl [--set=json|@dosya]`, `associations`, `export-host-associations`,
   `appx-info`, `appx-add`, `languages`, `apply --also= --wim=`
-- [ ] Gerçek imajda kanıt: `tools\lab_features.ps1` (yönetici)
+- [x] Gerçek imajda kanıt: `tools\lab_features.ps1` (yönetici, 2026-10-01 ALL PASSED; dil paketi medyasız atlandı)
 
 ## 7. Widget'lar
 Mevcutlar (TableView, Tabs, Dropdown, CheckField, InfoBar, EmptyState, dialoglar). Dropdown menüsü kaydırma kazandı
@@ -64,7 +64,7 @@ Mevcutlar (TableView, Tabs, Dropdown, CheckField, InfoBar, EmptyState, dialoglar
 `apply.otherEditions*`.
 
 ## 9. Kabul kriterleri
-- [ ] `tools\lab_features.ps1` ALL PASSED (yönetici).
+- [x] `tools\lab_features.ps1` ALL PASSED (yönetici, 2026-10-01).
 - [ ] Her sayfa koyu / açık, TR / EN render'da taşmasız (`--demo-*`).
 - [ ] Kurulan sistemde (VM): kapatılan görevler Disabled, hosts bölümü, DNS ilkesi, varsayılan tarayıcı, provision
   edilen uygulama yeni kullanıcıda, arayüz dili / saat dilimi.
