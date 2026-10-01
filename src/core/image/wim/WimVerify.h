@@ -8,6 +8,10 @@
 #include "core/io/ByteSource.h"
 #include "core/tasks/Task.h"
 
+#include <array>
+#include <cstdint>
+#include <functional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -33,5 +37,18 @@ struct WimVerifyReport {
 // An error only when the file cannot be read as a WIM at all (or is an ESD, or the task was
 // cancelled); a damaged image is a report with `damaged` > 0. Progress is by stored bytes.
 [[nodiscard]] Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task);
+
+// Compression research (wlcli dump-streams): every stream of a WIM, uncompressed, in file order —
+// the exact data any other compressor must hold to stand in for the WIM's own. `stream` is called
+// once per stream before its bytes; `write` gets the bytes. Single thread; same formats as verifyWim.
+struct WimStreamInfo {
+    std::uint64_t size = 0; // uncompressed
+    bool metadata = false;  // an edition's file list
+    std::array<std::uint8_t, 20> hash{};
+};
+[[nodiscard]] Result<WimVerifyReport> dumpWimStreams(const ByteSource& wim,
+                                                     const std::function<void(const WimStreamInfo&)>& stream,
+                                                     const std::function<bool(std::span<const std::byte>)>& write,
+                                                     const TaskContext& task);
 
 } // namespace wl::core

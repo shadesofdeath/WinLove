@@ -3,6 +3,7 @@
 #include "base/Log.h"
 #include "base/Path.h"
 #include "base/Utf8.h"
+#include "core/image/WimFile.h"
 #include "core/io/ByteSource.h"
 
 #include <pugixml.hpp>
@@ -106,6 +107,10 @@ struct WimHandle {
     }
 };
 
+// Not in wimgapi.h: WIMCreateFile flag for solid (ESD) resources. Known from community wrappers
+// and confirmed by experiment on 25H2 (2026-10-01): with it the file is a solid LZMS ESD.
+constexpr DWORD kWimFlagSolid = 0x20000000;
+
 DWORD compressionCode(WimCompression c) {
     switch (c) {
     case WimCompression::None: return 0;
@@ -136,8 +141,38 @@ DWORD CALLBACK onMessage(DWORD message, WPARAM wParam, LPARAM, PVOID user) {
 
 } // namespace
 
-Result<void> exportImage(const std::filesystem::path& sourceInput, int index, const std::filesystem::path& destinationInput,
+namespace {
+Result<void> exportImageOnce(const std::filesystem::path& sourceInput, int index, const std::filesystem::path& destinationInput,
+                             WimCompression compression, const TaskContext& task);
+} // namespace
+
+Result<void> exportImage(const std::filesystem::path& source, int index, const std::filesystem::path& destination,
                          WimCompression compression, const TaskContext& task) {
+    if (auto r = exportImageOnce(source, index, destination, compression, task); !r) {
+        return r;
+    }
+    // The handles are closed: the header is final. An ESD that is not solid LZMS is the silent
+    // failure this caught (uncompressed output) — never hand that on as a "compressed" image.
+    if (compression == WimCompression::Lzms) {
+        auto file = DiskFile::open(nativePath(destination));
+        if (!file) {
+            return std::unexpected(file.error());
+        }
+        auto header = readWimHeader(**file);
+        if (!header) {
+            return std::unexpected(header.error());
+        }
+        if (header->compression != WimCompression::Lzms || !header->solid) {
+            return fail(ErrorCode::WimFailure, L"the ESD was not written as solid LZMS", destination.wstring());
+        }
+    }
+    return {};
+}
+
+namespace {
+
+Result<void> exportImageOnce(const std::filesystem::path& sourceInput, int index, const std::filesystem::path& destinationInput,
+                             WimCompression compression, const TaskContext& task) {
     const std::filesystem::path source = nativePath(sourceInput);
     const std::filesystem::path destination = nativePath(destinationInput);
     auto a = api();
@@ -160,8 +195,12 @@ Result<void> exportImage(const std::filesystem::path& sourceInput, int index, co
 
     const bool exists = std::filesystem::exists(destination, ec);
     DWORD created = 0;
+    // LZMS needs the solid flag: without it wimgapi silently writes an *uncompressed* file
+    // (25H2 Pro: 13.0 GB instead of 4.87 GB). With it: one solid resource, 64 MiB LZMS chunks —
+    // what dism /Export-Image /Compress:recovery writes (ENGINE.md field notes, 2026-10-01).
+    const DWORD createFlags = compression == WimCompression::Lzms ? kWimFlagSolid : 0;
     WimHandle dst{w, w->createFile(destination.c_str(), GENERIC_WRITE | GENERIC_READ, exists ? kOpenExisting : kCreateNew,
-                                   0, compressionCode(compression), &created)};
+                                   createFlags, compressionCode(compression), &created)};
     if (!dst.h) {
         return std::unexpected(lastError(L"create " + destination.wstring()));
     }
@@ -186,6 +225,8 @@ Result<void> exportImage(const std::filesystem::path& sourceInput, int index, co
     task.report(1.0, L"export");
     return {};
 }
+
+} // namespace
 
 namespace {
 
