@@ -1440,6 +1440,8 @@ void Shell::showPage(PageId page) {
                 .onInvoke = [this] { editPostSetupStep(Type::Copy, std::nullopt); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupAddApp), ui::icons::Icon::AppxPackage)
                 .onInvoke = [this] { editPostSetupStep(Type::Winget, std::nullopt); };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupAddWifi), ui::icons::Icon::Network)
+                .onInvoke = [this] { editPostSetupStep(Type::Wifi, std::nullopt); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupCatalog), ui::icons::Icon::AppxPackage)
                 .onInvoke = [this] { pickPostSetupApps(); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupCommands), ui::icons::Icon::LogTerminal)

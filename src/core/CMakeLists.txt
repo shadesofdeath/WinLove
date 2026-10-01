@@ -1,6 +1,8 @@
 # wl_core — image engine: sources, sessions, backends, change sets, tasks. Knows nothing about UI.
 add_library(wl_core STATIC
     image/BootImage.cpp
+    image/Branding.cpp
+    image/Fonts.cpp
     image/DriverInf.cpp
     image/OfflineHive.cpp
     image/RegistryEdit.cpp
@@ -40,7 +42,9 @@ add_library(wl_core STATIC
     ops/Planner.cpp
     postsetup/PostSetup.cpp
     postsetup/SetupScripts.cpp
+    postsetup/Wifi.cpp
     system/FileLocks.cpp
+    system/Picture.cpp
     system/Privileges.cpp
     system/Process.cpp
     system/HostExport.cpp
@@ -50,4 +54,4 @@ add_library(wl_core STATIC
     usb/UsbMedia.cpp
     updates/UpdateCatalog.cpp)
 wl_configure_target(wl_core)
-target_link_libraries(wl_core PUBLIC wl_base PRIVATE wl_pugixml wl_json advapi32 shell32 ole32 oleaut32 shlwapi rstrtmgr bcrypt winhttp ws2_32)
+target_link_libraries(wl_core PUBLIC wl_base PRIVATE wl_pugixml wl_json advapi32 shell32 ole32 oleaut32 shlwapi rstrtmgr bcrypt winhttp ws2_32 windowscodecs wlanapi)

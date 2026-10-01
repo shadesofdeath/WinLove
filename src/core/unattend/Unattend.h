@@ -41,6 +41,9 @@ struct UnattendOptions {
     std::wstring computerName;
 
     UnattendDisk disk = UnattendDisk::Ask;
+    // Compact OS: Windows' own files stay compressed on the disk (WOF, XPRESS); Setup writes
+    // <ImageInstall><OSImage><Compact>true</Compact> (windowsPE, Microsoft-Windows-Setup).
+    bool compactOs = false;
 
     // OOBE
     bool skipPrivacy = false;       // ProtectYourPC = 3

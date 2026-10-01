@@ -1,6 +1,7 @@
 #include "app/pages/postsetup/StepDialog.h"
 
 #include "app/controllers/PostSetupController.h"
+#include "core/postsetup/Wifi.h"
 #include "ui/widgets/Checkbox.h"
 #include "ui/widgets/Dropdown.h"
 #include "ui/widgets/FormView.h"
@@ -37,6 +38,7 @@ StepDialog makeStepDialog(const Localization& strings, Step initial, bool editin
     const Str title = editing                                ? Str::PostsetupEditTitle
                       : initial.type == Step::Type::Winget   ? Str::PostsetupAddApp
                       : initial.type == Step::Type::Copy     ? Str::PostsetupAddFile
+                      : initial.type == Step::Type::Wifi     ? Str::PostsetupAddWifi
                                                              : Str::PostsetupAddCommand;
     auto dialog = std::make_unique<ui::Dialog>(s(title), std::wstring(), std::nullopt, ui::tokens::Color::TextSecondary, kWidth);
     ui::Dialog* raw = dialog.get();
@@ -44,7 +46,7 @@ StepDialog makeStepDialog(const Localization& strings, Step initial, bool editin
     if (draft->type == Step::Type::Copy && draft->destination.empty()) {
         draft->destination = L"%PUBLIC%\\Desktop";
     }
-    const int rows = 3;
+    const int rows = draft->type == Step::Type::Wifi ? 5 : 3;
     auto& form = raw->setContent<ui::FormView>(ui::FormView::kRow * rows, kLabelWidth);
 
     // Filled in below; the buttons and boxes refer to each other.
@@ -112,6 +114,81 @@ StepDialog makeStepDialog(const Localization& strings, Step initial, bool editin
         source = &text(Str::PostsetupSourcePath, &Step::source, Str::PostsetupPickTitle);
         text(Str::PostsetupDestination, &Step::destination, Str::PostsetupDestinationHint);
         focus = source;
+        break;
+    }
+    case Step::Type::Wifi: {
+        // D-056: a network typed in, or one of this PC's profiles (its key is readable elevated).
+        auto net = std::make_shared<core::WifiNetwork>(draft->source.empty() ? core::WifiNetwork{}
+                                                                             : core::wifiNetworkFromXml(draft->source));
+        auto hosts = std::make_shared<std::vector<core::HostWifiProfile>>();
+        if (auto list = core::hostWifiProfiles()) {
+            *hosts = std::move(*list);
+        }
+        std::vector<std::wstring> items{s(Str::PostsetupWifiManual)};
+        for (const auto& h : *hosts) {
+            items.push_back(h.portable ? h.name : h.name + L" \u00B7 " + s(Str::PostsetupWifiProtected));
+        }
+        auto& from = form.addRow<ui::Dropdown>(s(Str::PostsetupWifiFromPc), std::wstring(), kFieldWidth, std::wstring(),
+                                               std::move(items), 0);
+        from.setEnabled(!hosts->empty());
+        auto& ssid = form.addRow<ui::SearchBox>(s(Str::PostsetupWifiSsid), std::wstring(), kFieldWidth, std::wstring());
+        ssid.setPlain(true);
+        ssid.setText(net->ssid);
+        ssid.setAccessible(ui::AccessRole::Edit, s(Str::PostsetupWifiSsid));
+        auto& key = form.addRow<ui::SearchBox>(s(Str::PostsetupWifiPassword), s(Str::PostsetupWifiKeyHint), kFieldWidth, std::wstring());
+        key.setPlain(true);
+        key.setPassword(true);
+        key.setText(net->password);
+        key.setAccessible(ui::AccessRole::Edit, s(Str::PostsetupWifiPassword));
+        auto& security = form.addRow<ui::Dropdown>(
+            s(Str::PostsetupWifiSecurity), std::wstring(), kFieldWidth, std::wstring(),
+            std::vector<std::wstring>{L"WPA2-Personal", L"WPA3-Personal", s(Str::PostsetupWifiOpen)}, static_cast<int>(net->security));
+        auto& hidden = form.addRow<ui::CheckField>(s(Str::PostsetupWifiHidden), std::wstring(), 0.0f,
+                                                   s(Str::PostsetupWifiHiddenHint), net->hidden);
+        // Typed fields: the profile is ours, rebuilt from them (empty while they are not valid).
+        auto rebuild = [draft, net, refresh, &from] {
+            from.setSelected(0);
+            draft->name = net->ssid;
+            draft->source = core::validateWifi(*net) == core::WifiProblem::None ? core::wifiProfileXml(*net) : std::wstring();
+            refresh();
+        };
+        ssid.onChange = [net, rebuild](const std::wstring& v) {
+            net->ssid = v;
+            rebuild();
+        };
+        key.onChange = [net, rebuild](const std::wstring& v) {
+            net->password = v;
+            rebuild();
+        };
+        security.onChange = [net, rebuild](int index) {
+            net->security = static_cast<core::WifiSecurity>(std::clamp(index, 0, 2));
+            rebuild();
+        };
+        hidden.onChange = [net, rebuild](bool on) {
+            net->hidden = on;
+            rebuild();
+        };
+        ssid.onSubmit = accept;
+        key.onSubmit = accept;
+        // This PC's profile: taken as it is (other settings it has stay); a protected key cannot go.
+        from.onChange = [draft, net, hosts, refresh, &ssid, &key, &security, &hidden](int index) {
+            if (index < 1 || index > static_cast<int>(hosts->size())) {
+                return;
+            }
+            const auto& h = (*hosts)[static_cast<std::size_t>(index - 1)];
+            *net = core::wifiNetworkFromXml(h.xml);
+            if (!h.portable) {
+                net->password.clear();
+            }
+            ssid.setText(net->ssid);
+            key.setText(net->password);
+            security.setSelected(static_cast<int>(net->security));
+            hidden.setChecked(net->hidden);
+            draft->name = h.name;
+            draft->source = h.portable ? h.xml : std::wstring();
+            refresh();
+        };
+        focus = &ssid;
         break;
     }
     case Step::Type::Command: {

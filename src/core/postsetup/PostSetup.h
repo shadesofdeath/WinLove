@@ -25,10 +25,11 @@
 namespace wl::core {
 
 struct PostSetupStep {
-    enum class Type : std::uint8_t { Winget, Command, Copy };
+    enum class Type : std::uint8_t { Winget, Command, Copy, Wifi };
     Type type = Type::Command;
-    std::wstring name;        // shown in the list, echoed while it runs
+    std::wstring name;        // shown in the list, echoed while it runs (Wi-Fi: the SSID)
     std::wstring source;      // winget: package id · command: the command line · copy: file / folder on this PC
+                              // · wifi: the WLAN profile XML (Wifi.h; always a machine step, deleted after use)
     std::wstring destination; // copy only: folder on the installed system (%VARIABLES% allowed)
     bool wait = true;         // command only: finish before the next step starts
 
@@ -55,6 +56,7 @@ enum class PostSetupProblem : std::uint8_t {
     BadWingetId,      // something other than letters, digits and . - _ +
     EmptyDestination, // copy without a target folder
     BadDestination,   // a quote in the target folder
+    BadWifiProfile,   // not a WLAN profile
 };
 // (step index, problem) for every step that cannot be written as it is.
 [[nodiscard]] std::vector<std::pair<std::size_t, PostSetupProblem>> validatePostSetup(const PostSetupPlan& plan);

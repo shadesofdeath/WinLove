@@ -30,6 +30,7 @@ public:
 
     void focusSearch();
     void showImageTab(); // render demo: the second tab without reading DISM
+    void showBootTab();  // render demo: the third tab
     // Friendly class name ("Ağ (Net)") for the common setup classes, else the class itself.
     [[nodiscard]] static std::wstring className(const std::wstring& cls, const Localization& strings);
 
@@ -56,6 +57,7 @@ private:
     void paintCell(ui::Canvas& canvas, int row, int column, ui::RectF rect, ui::TableView::CellState cell);
     void paintImageCell(ui::Canvas& canvas, int row, int column, ui::RectF rect, ui::TableView::CellState cell);
     [[nodiscard]] bool imageTab() const { return m_tabs->selected() == 1; }
+    [[nodiscard]] bool bootTab() const { return m_tabs->selected() == 2; } // D-056: same tree, checkbox = boot.wim
 
     AppState& m_state;
     ImageDriverController& m_images;

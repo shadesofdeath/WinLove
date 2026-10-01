@@ -160,6 +160,22 @@ void AppState::unqueueIf(const std::function<bool(const core::ops::Operation&)>&
     }
 }
 
+bool AppState::isBootDriver(const std::filesystem::path& inf) const {
+    return std::ranges::find(m_bootDrivers, inf) != m_bootDrivers.end();
+}
+
+void AppState::setBootDriver(const std::filesystem::path& inf, bool on) {
+    if (isBootDriver(inf) == on) {
+        return;
+    }
+    if (on) {
+        m_bootDrivers.push_back(inf);
+    } else {
+        std::erase(m_bootDrivers, inf);
+    }
+    notify(Change::Drivers);
+}
+
 void AppState::addDriverScan(const std::filesystem::path& folder, std::vector<core::DriverInf> infs) {
     if (std::ranges::find(m_drivers.folders, folder) == m_drivers.folders.end()) {
         m_drivers.folders.push_back(folder);

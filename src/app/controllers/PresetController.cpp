@@ -54,6 +54,7 @@ Str stepTypeName(core::PostSetupStep::Type type) {
     switch (type) {
     case core::PostSetupStep::Type::Winget: return Str::PostsetupTypesWinget;
     case core::PostSetupStep::Type::Copy: return Str::PostsetupTypesCopy;
+    case core::PostSetupStep::Type::Wifi: return Str::PostsetupTypesWifi;
     default: return Str::PostsetupTypesCommand;
     }
 }

@@ -2,6 +2,7 @@
 
 #include "base/Log.h"
 #include "core/image/SystemComponents.h"
+#include "core/system/Privileges.h"
 
 #include <windows.h>
 
@@ -85,6 +86,85 @@ Result<std::filesystem::path> prepareTarget(const std::filesystem::path& mountDi
 
 } // namespace
 
+namespace {
+
+void enableBackupRestore() {
+    static const bool once = [] {
+        (void)enablePrivilege(SE_BACKUP_NAME);
+        (void)enablePrivilege(SE_RESTORE_NAME);
+        return true;
+    }();
+    (void)once;
+}
+
+struct Handle {
+    HANDLE h = INVALID_HANDLE_VALUE;
+    ~Handle() {
+        if (h != INVALID_HANDLE_VALUE) {
+            CloseHandle(h);
+        }
+    }
+};
+
+} // namespace
+
+Result<void> unlinkImageFile(const std::filesystem::path& mountDir, std::wstring_view relative) {
+    auto target = resolveImagePath(mountDir, relative);
+    if (!target) {
+        return std::unexpected(target.error());
+    }
+    enableBackupRestore();
+    Handle file{CreateFileW(target->c_str(), DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                            OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr)};
+    if (file.h == INVALID_HANDLE_VALUE) {
+        const DWORD error = GetLastError();
+        if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) {
+            return {};
+        }
+        return fail(ErrorCode::IoError, L"cannot open the image's file to replace it", target->wstring(),
+                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(error)));
+    }
+    FILE_DISPOSITION_INFO_EX ex{FILE_DISPOSITION_FLAG_DELETE | FILE_DISPOSITION_FLAG_POSIX_SEMANTICS |
+                                FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE};
+    if (!SetFileInformationByHandle(file.h, FileDispositionInfoEx, &ex, sizeof(ex))) {
+        FILE_DISPOSITION_INFO plain{TRUE};
+        SetFileAttributesW(target->c_str(), FILE_ATTRIBUTE_NORMAL);
+        if (!SetFileInformationByHandle(file.h, FileDispositionInfo, &plain, sizeof(plain))) {
+            return fail(ErrorCode::IoError, L"cannot remove the image's file", target->wstring(),
+                        static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
+        }
+    }
+    return {};
+}
+
+Result<void> replaceImageFile(const std::filesystem::path& mountDir, std::wstring_view relative, std::string_view bytes) {
+    auto target = resolveImagePath(mountDir, relative);
+    if (!target) {
+        return std::unexpected(target.error());
+    }
+    if (auto removed = unlinkImageFile(mountDir, relative); !removed) {
+        return removed;
+    }
+    enableBackupRestore();
+    Handle file{CreateFileW(target->c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, nullptr)};
+    if (file.h == INVALID_HANDLE_VALUE) {
+        return fail(ErrorCode::IoError, L"cannot create the file in the image", target->wstring(),
+                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
+    }
+    std::size_t done = 0;
+    while (done < bytes.size()) {
+        const DWORD chunk = static_cast<DWORD>(std::min<std::size_t>(bytes.size() - done, 1u << 24));
+        DWORD written = 0;
+        if (!WriteFile(file.h, bytes.data() + done, chunk, &written, nullptr) || written != chunk) {
+            return fail(ErrorCode::IoError, L"cannot write the file in the image", target->wstring(),
+                        static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
+        }
+        done += written;
+    }
+    return {};
+}
+
 Result<void> writeImageFile(const std::filesystem::path& mountDir, std::wstring_view relative, std::string_view content) {
     if (auto ok = validateImageFile(relative, content.size()); !ok) {
         return ok;
@@ -93,13 +173,8 @@ Result<void> writeImageFile(const std::filesystem::path& mountDir, std::wstring_
     if (!target) {
         return std::unexpected(target.error());
     }
-    {
-        std::ofstream out(*target, std::ios::binary | std::ios::trunc);
-        out.write(content.data(), static_cast<std::streamsize>(content.size()));
-        out.flush();
-        if (!out) {
-            return fail(ErrorCode::IoError, L"cannot write file", target->wstring(), static_cast<std::int32_t>(GetLastError()));
-        }
+    if (auto written = replaceImageFile(mountDir, relative, content); !written) {
+        return written;
     }
     log::info("file", std::format(L"wrote {} ({} bytes)", target->wstring(), content.size()));
     return {};
@@ -141,11 +216,17 @@ Result<void> copyImageFile(const std::filesystem::path& mountDir, std::wstring_v
     if (!target) {
         return std::unexpected(target.error());
     }
-    std::filesystem::copy_file(source, *target, std::filesystem::copy_options::overwrite_existing, ec);
-    if (ec) {
-        return fail(ErrorCode::IoError, L"cannot copy file into the image", target->wstring(), ec.value());
+    std::string bytes(static_cast<std::size_t>(size), '\0');
+    {
+        std::ifstream in(source, std::ios::binary);
+        in.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        if (!in) {
+            return fail(ErrorCode::IoError, L"cannot read the file to copy into the image", source.wstring());
+        }
     }
-    SetFileAttributesW(target->c_str(), FILE_ATTRIBUTE_NORMAL); // a read-only source stays replaceable in the image
+    if (auto written = replaceImageFile(mountDir, relative, bytes); !written) {
+        return written;
+    }
     log::info("file", std::format(L"copied {} -> {} ({} bytes)", source.wstring(), target->wstring(), size));
     return {};
 }

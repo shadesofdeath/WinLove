@@ -430,7 +430,10 @@
     "hostExporting": "Bu bilgisayarın sürücüleri dışa aktarılıyor…",
     "hostExported": "{n} sürücü paketi alındı — Eklenecek sekmesinde seç",
     "hostFailed": "Bu bilgisayarın sürücüleri alınamadı",
-    "providerName": "Sağlayıcı"
+    "providerName": "Sağlayıcı",
+    "tabBoot": "Kurulum ortamı (boot.wim)",
+    "bootSummary": "Kurulum ortamına eklenecek: {n} sürücü",
+    "bootHint": "ISO / USB oluşturulurken boot.wim'e eklenir: kurulumun diski (RAID / VMD) ya da ağı görmesi için"
   },
   "registry": {
     "title": "Kayıt Defteri",
@@ -565,7 +568,9 @@
     "saved": "Yanıt dosyası kaydedildi",
     "saveFailed": "Yanıt dosyası kaydedilemedi",
     "imported": "Yanıt dosyası içe aktarıldı",
-    "importFailed": "Yanıt dosyası okunamadı"
+    "importFailed": "Yanıt dosyası okunamadı",
+    "compactOs": "Compact OS",
+    "compactOsHint": "Windows dosyaları diskte sıkıştırılmış kalır: birkaç GB kazanç"
   },
   "postsetup": {
     "title": "Kurulum Sonrası",
@@ -628,7 +633,19 @@
       "winget": "winget",
       "command": "komut",
       "copy": "kopyala"
-    }
+    },
+    "addWifi": "Wi-Fi ağı ekle",
+    "typesWifi": "Wi-Fi",
+    "wifiFromPc": "Bu bilgisayardan",
+    "wifiManual": "Elle gir",
+    "wifiProtected": "anahtar korumalı (yönetici olarak aç)",
+    "wifiSsid": "Ağ adı (SSID)",
+    "wifiPassword": "Parola",
+    "wifiKeyHint": "Presette ve kurulum medyasında açık metin; kurulumdan sonra diskten silinir",
+    "wifiSecurity": "Güvenlik",
+    "wifiOpen": "Açık (parolasız)",
+    "wifiHidden": "Gizli ağ",
+    "wifiHiddenHint": "Adını yayınlamıyor"
   },
   "apply": {
     "title": "Uygula",

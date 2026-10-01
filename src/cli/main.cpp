@@ -13,6 +13,9 @@
 #include "core/image/LanguagePacks.h"
 #include "core/image/dism/DefaultApps.h"
 #include "core/image/dism/Intl.h"
+#include "core/image/Fonts.h"
+#include "core/postsetup/Wifi.h"
+#include "core/system/Picture.h"
 #include "core/system/HostExport.h"
 #include "core/image/Services.h"
 #include "core/image/Source.h"
@@ -689,8 +692,6 @@ int cmdDumpStreams(const std::wstring& path, const std::wstring& out) {
     if (!data || !list) {
         return reportError(Error{ErrorCode::IoError, L"cannot create the dump", out});
     }
-    std::vector<char> buffer(1u << 20);
-    data.rdbuf()->pubsetbuf(buffer.data(), static_cast<std::streamsize>(buffer.size()));
     const auto task = progressTask(L"dump");
     const auto started = GetTickCount64();
     const auto report = core::dumpWimStreams(
@@ -708,13 +709,75 @@ int cmdDumpStreams(const std::wstring& path, const std::wstring& out) {
         },
         task);
     print(L"\n");
+    data.close();
     if (!report) {
         return reportError(report.error());
+    }
+    if (!data) {
+        return reportError(Error{ErrorCode::IoError, L"the dump could not be written", out});
     }
     print(std::format(L"  {} streams, {} bytes in {:.1f} s{}\n", report->streams, report->bytes,
                       static_cast<double>(GetTickCount64() - started) / 1000.0,
                       report->sound() ? std::wstring() : std::format(L", {} DAMAGED", report->damaged)));
     return report->sound() ? 0 : 3;
+}
+
+// D-056: Kişiselleştirme helpers (no admin).
+int cmdFontInfo(const std::wstring& file) {
+    auto info = core::readFontInfo(file);
+    if (!info) {
+        return reportError(info.error());
+    }
+    print(std::format(L"  {}\n  file in Windows\\Fonts: {}\n", info->registryName(), core::fontFileName(file)));
+    return 0;
+}
+
+int cmdPicture(const std::wstring& source, const std::wstring& target, const std::wstring& size, const std::wstring& format) {
+    int width = 0;
+    int height = 0;
+    if (!size.empty()) {
+        const auto x = size.find(L'x');
+        width = x == std::wstring::npos ? 0 : _wtoi(size.substr(0, x).c_str());
+        height = x == std::wstring::npos ? 0 : _wtoi(size.substr(x + 1).c_str());
+    }
+    const core::PictureFormat f = format == L"png" ? core::PictureFormat::Png
+                                  : format == L"bmp" ? core::PictureFormat::Bmp
+                                                     : core::PictureFormat::Jpeg;
+    auto bytes = core::encodePicture(source, f, width, height);
+    if (!bytes) {
+        return reportError(bytes.error());
+    }
+    std::ofstream out(std::filesystem::path(target), std::ios::binary | std::ios::trunc);
+    out.write(bytes->data(), static_cast<std::streamsize>(bytes->size()));
+    out.close();
+    auto written = core::pictureSize(target);
+    print(std::format(L"  {} bytes, {}x{}\n", bytes->size(), written ? written->width : 0, written ? written->height : 0));
+    return out ? 0 : 3;
+}
+
+int cmdWifiList() {
+    auto list = core::hostWifiProfiles();
+    if (!list) {
+        return reportError(list.error());
+    }
+    for (const auto& p : *list) {
+        print(std::format(L"  {:<32} {}\n", p.name, p.portable ? L"key readable" : L"key protected (run elevated)"));
+    }
+    print(std::format(L"  {} profile(s)\n", list->size()));
+    return 0;
+}
+
+int cmdWifiXml(const std::wstring& ssid, const std::wstring& password, bool wpa3, bool open, bool hidden) {
+    core::WifiNetwork n{ssid, password,
+                        open ? core::WifiSecurity::Open : wpa3 ? core::WifiSecurity::Wpa3Personal : core::WifiSecurity::Wpa2Personal,
+                        hidden};
+    if (const auto problem = core::validateWifi(n); problem != core::WifiProblem::None) {
+        return reportError(Error{ErrorCode::InvalidArgument,
+                                 problem == core::WifiProblem::Ssid ? L"SSID must be 1-32 bytes" : L"password must be 8-63 ASCII characters",
+                                 ssid});
+    }
+    print(core::wifiProfileXml(n));
+    return 0;
 }
 
 int cmdSetInfo(const std::wstring& wim, const std::wstring& index, const std::wstring& name,
@@ -1484,6 +1547,10 @@ void printUsage() {
           L"  wlcli associations <mountdir> <file.xml>   (default app associations into the image; admin)\n"
           L"  wlcli export-host-associations <file.xml>  (this PC's default app associations; admin)\n"
           L"  wlcli appx-info <package> [--arch=x64]      (manifest, dependencies found next to it; no admin)\n"
+          L"  wlcli font-info <font>                     (registry name Windows gives it; no admin)\n"
+          L"  wlcli picture <src> <dst> [--size=WxH] [--format=jpg|png|bmp]   (WIC: cover-scale + encode)\n"
+          L"  wlcli wifi-list                            (this PC's Wi-Fi profiles; keys readable when elevated)\n"
+          L"  wlcli wifi-xml --ssid=<name> [--password=<key>] [--wpa3|--open] [--hidden]   (WLAN profile XML)\n"
           L"  wlcli appx-add <mountdir> <package> [--arch=x64]   (provision an .appx / .msix (bundle); admin)\n"
           L"  wlcli languages <folder>                   (language packs and features under a folder)\n"
           L"  wlcli usb-list [--all] [--json]      USB disks a setup stick can go to (never the system disk)\n"
@@ -1554,6 +1621,13 @@ int wmain(int argc, wchar_t** argv) {
     bool listAll = false;
     bool gpt = false;
     std::wstring unattendFile;
+    std::wstring pictureSize;
+    std::wstring pictureFormat;
+    std::wstring ssid;
+    std::wstring wifiPassword;
+    bool wpa3 = false;
+    bool openNetwork = false;
+    bool hidden = false;
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
@@ -1590,6 +1664,20 @@ int wmain(int argc, wchar_t** argv) {
             yes = true;
         } else if (a == L"--gpt") {
             gpt = true;
+        } else if (a.starts_with(L"--size=")) {
+            pictureSize = std::wstring(a.substr(7));
+        } else if (a.starts_with(L"--format=")) {
+            pictureFormat = std::wstring(a.substr(9));
+        } else if (a.starts_with(L"--ssid=")) {
+            ssid = std::wstring(a.substr(7));
+        } else if (a.starts_with(L"--password=")) {
+            wifiPassword = std::wstring(a.substr(11));
+        } else if (a == L"--wpa3") {
+            wpa3 = true;
+        } else if (a == L"--open") {
+            openNetwork = true;
+        } else if (a == L"--hidden") {
+            hidden = true;
         } else if (a.starts_with(L"--unattend=")) {
             unattendFile = std::wstring(a.substr(11));
         } else if (a == L"--preview") {
@@ -1731,6 +1819,18 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"export-host-associations" && args.size() == 2) {
         return cmdExportHostAssociations(args[1]);
+    }
+    if (command == L"font-info" && args.size() == 2) {
+        return cmdFontInfo(args[1]);
+    }
+    if (command == L"picture" && args.size() == 3) {
+        return cmdPicture(args[1], args[2], pictureSize, pictureFormat);
+    }
+    if (command == L"wifi-list") {
+        return cmdWifiList();
+    }
+    if (command == L"wifi-xml" && !ssid.empty()) {
+        return cmdWifiXml(ssid, wifiPassword, wpa3, openNetwork, hidden);
     }
     if (command == L"appx-info" && args.size() == 2) {
         return cmdAppx(args[1], L"", arch);

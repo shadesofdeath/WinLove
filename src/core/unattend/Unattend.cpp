@@ -326,7 +326,7 @@ std::wstring buildUnattendXml(const UnattendOptions& o) {
         if (o.disk != UnattendDisk::Ask) {
             diskConfiguration(setup, o.disk);
         }
-        if (o.disk != UnattendDisk::Ask || o.imageIndex > 0) {
+        if (o.disk != UnattendDisk::Ask || o.imageIndex > 0 || o.compactOs) {
             setup.open(L"ImageInstall");
             setup.open(L"OSImage");
             if (o.imageIndex > 0) {
@@ -342,6 +342,9 @@ std::wstring buildUnattendXml(const UnattendOptions& o) {
                 setup.number(L"DiskID", 0);
                 setup.number(L"PartitionID", windowsPartition(o.disk));
                 setup.close(L"InstallTo");
+            }
+            if (o.compactOs) {
+                setup.flag(L"Compact", true);
             }
             setup.close(L"OSImage");
             setup.close(L"ImageInstall");
@@ -481,6 +484,8 @@ Result<UnattendOptions> parseUnattendXml(std::string_view utf8) {
                         }
                     }
                 }
+                o.compactOs = o.compactOs ||
+                              truthy(component.child("ImageInstall").child("OSImage").child("Compact").text().as_string("false"));
                 for (const auto& meta : component.child("ImageInstall").child("OSImage").child("InstallFrom").children("MetaData")) {
                     if (_stricmp(meta.child("Key").text().get(), "/IMAGE/INDEX") == 0) {
                         o.imageIndex = meta.child("Value").text().as_int(0);

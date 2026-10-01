@@ -31,6 +31,7 @@ ui::icons::Icon iconOf(PostSetupStep::Type type) {
     switch (type) {
     case PostSetupStep::Type::Winget: return ui::icons::Icon::AppxPackage;
     case PostSetupStep::Type::Copy: return ui::icons::Icon::Copy;
+    case PostSetupStep::Type::Wifi: return ui::icons::Icon::Network;
     default: return ui::icons::Icon::LogTerminal;
     }
 }
@@ -39,6 +40,7 @@ Str typeName(PostSetupStep::Type type) {
     switch (type) {
     case PostSetupStep::Type::Winget: return Str::PostsetupTypesWinget;
     case PostSetupStep::Type::Copy: return Str::PostsetupTypesCopy;
+    case PostSetupStep::Type::Wifi: return Str::PostsetupTypesWifi;
     default: return Str::PostsetupTypesCommand;
     }
 }
@@ -172,9 +174,11 @@ void PostSetupPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rec
         PostSetupPlan one;
         one.steps.push_back(step);
         const bool problem = !core::validatePostSetup(one).empty(); // only a hand-edited preset gets here
+        // A Wi-Fi step shows the network, never the profile (it holds the key).
         const std::wstring text = step.type == PostSetupStep::Type::Copy
                                       ? std::format(L"{} → {}", step.source, step.destination)
-                                      : step.source;
+                                  : step.type == PostSetupStep::Type::Wifi ? L"SSID: " + step.name
+                                                                           : step.source;
         canvas.drawText(text, rect, TypeStyle::Mono, problem ? Color::StatusError : Color::TextPrimary);
         break;
     }
