@@ -253,8 +253,11 @@ Karar:
 - **Hata:** diğer sürümün commit'i başarısızsa o sürüm discard edilir (klasör sonraki için boşalır), sonuç satırında
   "kaydedilmedi". İptal kalan sürümleri atlar. Çalışırken "Sürüm k / n · ad", bitince bilgi bandında sürüm başına sonuç.
 - **CLI:** `wlcli apply <cs> <mount> --commit --also=2,3 --wim=<dosya>`.
-Kanıt: birim testi (`planForOtherEdition`), render (`--demo-editions`). **Görülmeyen:** gerçek iki sürümlük WIM'de
-çalıştırma → `tools\lab_features.ps1` (yönetici) bunu yapıyor.
+Kanıt: birim testi (`planForOtherEdition`), render (`--demo-editions`). **Gerçek imajda kanıtlandı (kullanıcı, yönetici, 2026-10-01 11:51, `tools\lab_features.ps1`): ALL PASSED** — iki sürümlük
+lab WIM'inde (Home + Pro) üç işlemlik kuyruk sürüm 1'de commit (144 sn), ardından sürüm 2'ye bağla + uygula + commit +
+tek `optimizeWim`, toplam 340 sn; sürüm 2 salt okunur bağlanınca tasks.cmd, SetupComplete çağrısı, hosts bölümü ve
+kopyalanan dosya oradaydı; sürüm 1'deki değişiklikler (ve önceden provision edilen Terminal) korundu; WIM 2 sürüm.
+**Görülmeyen:** uygulamanın içinden (Uygula sayfası) çalıştırma, ikinci sürümde hata / iptal yolu.
 
 ## D-054 — Varsayılan uygulama ilişkilendirmeleri (2026-10-01)
 Karar: Uygulamalar sayfasının ikinci sekmesi. Liste kullanıcının seçimi + içe aktarılan XML (`dism /Export-DefaultAppAssociations`
@@ -262,7 +265,8 @@ biçimi) + "Bu bilgisayardakini al" (`dism /Online /Export-…`, yönetici) + ha
 http, https, .htm, .html, .pdf'nin ProgId'leri). Kuyrukta tek `SetDefaultApps` işlemi (değer = XML); Uygula XML'i
 `%TEMP%\WinLove`'a yazar ve `dism /Image /Import-DefaultAppAssociations` çalıştırır. Yalnız yeni kullanıcılar için
 geçerli (Windows'un kuralı); ProgId'nin sahibi uygulama kurulu değilse Windows ilk açılışta sorar — sayfada yazıyor.
-Kanıt: XML ayrıştırma / yazma birim testli. **Görülmeyen:** gerçek imaja içe aktarma (lab betiği) ve kurulumda etkisi.
+Kanıt: XML ayrıştırma / yazma birim testli. **Gerçek imajda kanıtlandı (kullanıcı, yönetici, 2026-10-01 11:51, `tools\lab_features.ps1`): ALL PASSED**: 2 ilişkilendirme 4 sn'de içe aktarıldı,
+imajda `Windows\System32\OEMDefaultAssociations.xml` var. **Görülmeyen:** kurulumda etkisi (yeni kullanıcının varsayılanları).
 
 ## D-053 — Dil paketleri ve bölge ayarları (2026-10-01)
 Karar:
@@ -275,8 +279,10 @@ Karar:
   (`classifyLanguageFile`). İmajın mimarisine uymayanlar gösterilmez. Kuyruğa `AddPackage` + değer `language`
   (Planner'da güncellemelerden önce: SSU 0, dil 1, LCU 2 — Microsoft'un sırası: dil paketi LCU'dan önce).
 - Güncellemeler sayfası `language` değerli paketleri göstermez (iki sayfa aynı işlemi saymasın).
-Kanıt: sınıflandırma ve JSON / argüman birim testli, render. **Görülmeyen:** gerçek `/Get-Intl` / `/Set-*` (lab betiği
-saat dilimi + klavyeyi değiştirip geri okuyor) ve gerçek dil paketi eklemesi (medya yok: `-LanguageFolder`).
+Kanıt: sınıflandırma ve JSON / argüman birim testli, render. **Gerçek imajda kanıtlandı (kullanıcı, yönetici, 2026-10-01 11:51, `tools\lab_features.ps1`): ALL PASSED**: `/Get-Intl` (UI tr-TR, Turkey
+Standard Time, diller tr-TR) ayrıştırıldı; `/Set-InputLocale:0409:00000409 /Set-TimeZone:"GMT Standard Time"` 6 sn,
+geri okumada ikisi de yeni değerde. **Görülmeyen:** gerçek dil paketi eklemesi (medya yok: `-LanguageFolder`),
+`/Set-UILang` / yerel değişikliği ve kurulumda etkisi.
 
 ## D-052 — İmajdaki sürücüler: listele, kaldır; bu bilgisayarın sürücülerini al (2026-10-01)
 Karar: Sürücüler sayfasına ikinci sekme "İmajdaki sürücüler": `DismGetDrivers(AllDrivers = FALSE)` → yalnız üçüncü
@@ -285,7 +291,9 @@ işlemi (`DismRemoveDriver`); önyükleme için kritik olan yüksek risk. `0x800
 sürücüler listelenmez: kaldırılmaları desteklenmiyor. "Bu bilgisayarın sürücüleri" `pnputil /export-driver * <klasör>`
 (yönetici) → çalışma kökünde `host-drivers`, ardından mevcut klasör ekleme akışı.
 Kanıt: `DriverPackage` düzeni ADK başlığıyla derleme anında karşılaştırıldı (bulunan hata: alan `PCWSTR ProviderName`);
-birim / render. **Görülmeyen:** gerçek imajda liste / ekle / kaldır (lab betiği).
+birim / render. **Gerçek imajda kanıtlandı (kullanıcı, yönetici, 2026-10-01 11:51, `tools\lab_features.ps1`): ALL PASSED**: bu bilgisayardan `pnputil` 610 paket 35 sn; Home imajında üçüncü taraf sürücü yoktu,
+eklenen `realtekhsa.inf` 1,4 sn'de `oem0.inf` olarak listelendi, `DismRemoveDriver` 2 sn'de kaldırdı (liste yine boş).
+**Görülmeyen:** önyükleme için kritik sürücü kaldırma, uygulamanın içinden.
 
 ## D-051 — Dosyalar sayfası: bilgisayardan imaja dosya ve klasör (2026-10-01)
 Karar: "Kurulum Sonrası"nın altında yeni sayfa. Sürükle-bırak veya seç → "İmajda nereye?" dialogu (hazır yerler:
@@ -295,7 +303,8 @@ birleştirilir, dosyalar değiştirilir), bayt ilerlemesi, iptal edilebilir. **Y
 `Windows\System32\config`, `WinSxS`, `servicing`, `Program Files\WindowsApps`, `Windows\System32\drivers`, `Boot`,
 `System Volume Information`, `$Recycle.Bin` ve bunların üstleri; `Windows` / `System32` altı "yüksek risk". Kaynak
 Uygula anında okunur (kuyrukta yalnız yol) — sayfa bunu söyler.
-Kanıt: birim testleri (hedef denetimi, kopya, boyut), render. Gerçek imajda: lab betiği.
+Kanıt: birim testleri (hedef denetimi, kopya, boyut), render. **Gerçek imajda kanıtlandı (kullanıcı, yönetici, 2026-10-01 11:51, `tools\lab_features.ps1`): ALL PASSED**: `Tools\payload` kopyalandı, commit
+sonrası iki sürümde de `Tools\payload\readme.txt` var.
 
 ## D-050 — Uygulama yükleme (.appx / .msix, bundle): çevrimdışı provision (2026-10-01)
 Karar: Yeni sayfa "Uygulamalar" (Bileşenler'in altında). Paket seçilince manifest AppxPackaging COM API'siyle okunur
@@ -305,7 +314,10 @@ kaydediyor) → okuyucu diğer türü de dener. **Bağımlılıklar** aynı klas
 Uygula: `dism /Image /Add-ProvisionedAppxPackage /PackagePath /DependencyPackagePath… /LicensePath | /SkipLicense
 /Region:all`. Planner'da yeni faz **Apps** (güncellemelerden sonra, temizlikten önce).
 Kanıt: gerçek Windows Terminal paketi (winget, `build\lab\appx`) — manifest, bundle yedeği, VCLibs / UI.Xaml
-bağımlılığı bulundu (`wlcli appx-info`, yönetici gerekmez). **Görülmeyen:** provision (lab betiği).
+bağımlılığı bulundu (`wlcli appx-info`, yönetici gerekmez). **Gerçek imajda kanıtlandı (kullanıcı, yönetici, 2026-10-01 11:51, `tools\lab_features.ps1`): ALL PASSED**: Terminal bundle'ı (`Dependencies\`
+alt klasöründeki UI.Xaml 2.8 ile, `/SkipLicense /Region:all`) 8 sn'de provision edildi, DISM listeliyor, commit sonrası
+`Program Files\WindowsApps\Microsoft.WindowsTerminal*` var. **Görülmeyen:** lisanslı (Store) paket, yeni kullanıcıda
+uygulamanın açılması.
 
 ## D-049 — Hosts ve DNS (2026-10-01)
 Karar:
@@ -316,7 +328,8 @@ Karar:
 - **DNS:** ağ bağdaştırıcısı GUID'i imajda bilinmediği için arayüz başına değer yazılamaz → ilke değerleri
   (`HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient`: `NameServer`, `DoHPolicy`). Ayarlar › Ağ'a üç ayar:
   hazır sunucular (Cloudflare, Google, Quad9, AdGuard), özel liste, DoH. `SetDns` işlem türü ayrılmıştı; kullanılmıyor.
-Kanıt: bölüm ayrıştırma / yazma birim testli (satır sonu, BOM, çift bölüm), render. **Görülmeyen:** kurulan sistemde etkisi.
+Kanıt: bölüm ayrıştırma / yazma birim testli (satır sonu, BOM, çift bölüm), render. **Gerçek imajda kanıtlandı (kullanıcı, yönetici, 2026-10-01 11:51, `tools\lab_features.ps1`): ALL PASSED**: telemetri
+bölümü iki sürümün `hosts` dosyasında. **Görülmeyen:** kurulan sistemde etkisi (hosts, DNS ilkesi).
 
 ## D-048 — Zamanlanmış görevleri kapatma: kurulumdan sonra, schtasks ile (2026-10-01)
 Bağlam: Çevrimdışı imajın `Windows\System32\Tasks` klasörü neredeyse boş (görevler kurulumda kaydediliyor); görev
@@ -326,7 +339,8 @@ bakım, özellikler, güncelleme; "önerilen" işaretli) + özel görev yolu. Ku
 `Windows\Setup\Scripts\WinLove\tasks.cmd` betiğini yazar (`schtasks /Change /TN "…" /Disable`, çıktı
 `%ProgramData%\WinLove\tasks.log`) ve `SetupComplete.cmd`'ye `call` satırı ekler (`core/postsetup/SetupScripts`,
 Kurulum Sonrası ile ortak). İmajdaki betik okunarak "imajda" gösterilir.
-Kanıt: betik üretimi / okuma birim testli, render. **Görülmeyen:** kurulumda gerçekten kapandıkları (VM).
+Kanıt: betik üretimi / okuma birim testli, render. **Gerçek imajda kanıtlandı (kullanıcı, yönetici, 2026-10-01 11:51, `tools\lab_features.ps1`): ALL PASSED**: commit edilmiş imajda `tasks.cmd`
+Autochk\Proxy'yi kapatıyor, `SetupComplete.cmd` onu çağırıyor. **Görülmeyen:** kurulumda gerçekten kapandıkları (VM).
 
 ## D-047 — USB'ye yazma: diskpart + bootsect + kopya, FAT32 ve .swm bölme; yalnız USB / SD diskleri (2026-09-30)
 Bağlam: Kullanıcı "USB'ye yazma"yı istedi; P06'nın USB sekmesi yer tutucuydu.
