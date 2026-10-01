@@ -2,6 +2,7 @@
 
 #include "base/Log.h"
 #include "base/Path.h"
+#include "core/wlm/Wlm.h"
 #include "core/image/UdfImage.h"
 #include "core/image/dism/Dism.h"
 #include "core/image/dism/DismErrors.h"
@@ -44,8 +45,12 @@ bool ImageController::isEsdSource() const {
     return _wcsicmp(source->installImage.c_str() + source->installImage.size() - 4, L".esd") == 0;
 }
 
+bool ImageController::isWlmSource() const {
+    return m_state.source() && m_state.source()->format == core::ImageFormat::Wlm;
+}
+
 bool ImageController::canMount() const {
-    return m_state.source() && !isEsdSource() && !m_state.mounted() && !busy();
+    return m_state.source() && !isPackedSource() && !m_state.mounted() && !busy();
 }
 
 std::optional<Str> ImageController::editRefusal() const {
@@ -63,7 +68,7 @@ std::optional<Str> ImageController::editRefusal() const {
     const auto& header = source->install.header;
     const bool container = source->format == core::ImageFormat::Wim || source->format == core::ImageFormat::Folder ||
                            source->format == core::ImageFormat::Iso;
-    if (!container || isEsdSource() || header.solid || header.totalParts > 1 ||
+    if (!container || isPackedSource() || header.solid || header.totalParts > 1 ||
         header.compression == core::WimCompression::Lzms) {
         return Str::ImagesDeleteNeedsWim;
     }
@@ -89,7 +94,7 @@ std::optional<Str> ImageController::verifyRefusal() const {
         return Str::ImagesBusy;
     }
     const auto& header = source->install.header;
-    if (isEsdSource() || header.solid || header.compression == core::WimCompression::Lzms) {
+    if (isPackedSource() || header.solid || header.compression == core::WimCompression::Lzms) {
         return Str::ImagesVerifyEsd;
     }
     return std::nullopt;
@@ -103,7 +108,8 @@ std::optional<std::filesystem::path> ImageController::installWimPath() const {
     switch (source->format) {
     case core::ImageFormat::Wim:
     case core::ImageFormat::Esd:
-    case core::ImageFormat::Swm: return nativePath(source->path);
+    case core::ImageFormat::Swm:
+    case core::ImageFormat::Wlm: return nativePath(source->path);
     case core::ImageFormat::Folder: return nativePath(source->path / source->installImage);
     default: return std::nullopt; // inside an ISO: not a file yet
     }
@@ -218,7 +224,7 @@ void ImageController::mount(int index) {
         m_events.refused(Str::ImagesUnmountFirst);
         return;
     }
-    if (isEsdSource()) {
+    if (isPackedSource()) {
         m_events.refused(Str::ImagesEsdNoMount);
         return;
     }
@@ -436,8 +442,40 @@ void ImageController::verify() {
 }
 
 void ImageController::convertEsd(const std::filesystem::path& destination) {
-    if (busy() || !isEsdSource()) {
+    if (busy() || !isPackedSource()) {
         m_events.refused(busy() ? Str::ImagesBusy : Str::ImagesEsdOnly);
+        return;
+    }
+    if (isWlmSource()) {
+        // Unpacked next to the destination (plain, SHA-1 checked), then every edition into the
+        // destination as LZX by wimgapi; the plain file goes away.
+        const std::filesystem::path wlm = nativePath(m_state.source()->path);
+        std::vector<int> indexes;
+        for (const auto& image : m_state.source()->install.images) {
+            indexes.push_back(image.index);
+        }
+        run(EngineOperation{EngineOperation::Kind::Exporting, wlm.filename().wstring(), destination, 0},
+            [wlm, indexes, destination](const core::TaskContext& task) -> Result<void> {
+                const std::filesystem::path plain = destination.wstring() + L".unpacked.wim";
+                std::error_code ec;
+                const core::TaskContext unpack{task.cancel, [&](double f, std::wstring_view s) { task.report(f * 0.4, s); }};
+                if (auto r = core::unpackWlm(wlm, plain, unpack); !r) {
+                    return std::unexpected(r.error());
+                }
+                for (std::size_t i = 0; i < indexes.size(); ++i) {
+                    const core::TaskContext part{task.cancel, [&](double f, std::wstring_view s) {
+                                                     task.report(0.4 + 0.6 * (static_cast<double>(i) + f) / static_cast<double>(indexes.size()), s);
+                                                 }};
+                    if (auto r = core::exportImage(plain, indexes[i], destination, core::WimCompression::Lzx, part); !r) {
+                        std::filesystem::remove(plain, ec);
+                        return r;
+                    }
+                }
+                std::filesystem::remove(plain, ec);
+                return {};
+            },
+            [this, destination] { m_events.succeeded(Str::ImagesExportedToast, destination.filename().wstring()); },
+            Failure::Export);
         return;
     }
     withWritableSource(m_state.selectedIndex().value_or(1), [this, destination] {
@@ -460,6 +498,42 @@ void ImageController::convertEsd(const std::filesystem::path& destination) {
                 return {};
             },
             [this, destination] { m_events.succeeded(Str::ImagesExportedToast, destination.filename().wstring()); },
+            Failure::Export);
+    });
+}
+
+std::optional<Str> ImageController::packWlmRefusal() const {
+    const auto& source = m_state.source();
+    if (!source) {
+        return Str::ImagesEmptyTitle;
+    }
+    if (busy()) {
+        return Str::ImagesBusy;
+    }
+    // WLM reads a plain WIM's streams (none / XPRESS / LZX); an ESD becomes a WIM first.
+    const auto& header = source->install.header;
+    if (isPackedSource() || header.solid || header.totalParts > 1 || header.compression == core::WimCompression::Lzms) {
+        return Str::ImagesWlmNeedsWim;
+    }
+    return std::nullopt;
+}
+
+void ImageController::packWlm(const std::filesystem::path& destination) {
+    if (const auto refusal = packWlmRefusal()) {
+        m_events.refused(*refusal);
+        return;
+    }
+    withWritableSource(m_state.selectedIndex().value_or(1), [this, destination] {
+        const auto wim = installWimPath();
+        run(EngineOperation{EngineOperation::Kind::Exporting, wim->filename().wstring(), destination, 0},
+            [wim = *wim, destination](const core::TaskContext& task) -> Result<void> {
+                auto packed = core::packWlm(wim, destination, core::WlmPackOptions{}, task);
+                if (!packed) {
+                    return std::unexpected(packed.error());
+                }
+                return {};
+            },
+            [this, destination] { m_events.succeeded(Str::ImagesWlmPackedToast, destination.filename().wstring()); },
             Failure::Export);
     });
 }

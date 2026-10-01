@@ -699,6 +699,57 @@ Result<WlmReport> packWlm(const std::filesystem::path& wimPath, const std::files
 
 // ---- info / unpack -----------------------------------------------------------------------------------
 
+namespace {
+class MemorySource final : public ByteSource {
+public:
+    // `claimed`: the size the header's offsets are checked against (the WIM it came from is not here).
+    MemorySource(std::string bytes, std::uint64_t claimed) : m_bytes(std::move(bytes)), m_claimed(claimed) {}
+    [[nodiscard]] std::uint64_t size() const override { return m_claimed; }
+    [[nodiscard]] Result<void> read(std::uint64_t offset, std::span<std::byte> out) const override {
+        if (offset > m_bytes.size() || out.size() > m_bytes.size() - offset) {
+            return fail(ErrorCode::ParseError, L"read past the end", L"WLM");
+        }
+        std::memcpy(out.data(), m_bytes.data() + offset, out.size());
+        return {};
+    }
+
+private:
+    std::string m_bytes;
+    std::uint64_t m_claimed = 0;
+};
+} // namespace
+
+Result<WimFile> readWlmWim(const std::filesystem::path& wlmPath) {
+    std::ifstream in(wlmPath, std::ios::binary);
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(wlmPath, ec);
+    if (!in || ec) {
+        return fail(ErrorCode::NotFound, L"WLM file not found", wlmPath.wstring());
+    }
+    auto header = readHeader(in, size);
+    if (!header) {
+        return std::unexpected(header.error());
+    }
+    auto table = readTableOf(in, *header);
+    if (!table) {
+        return std::unexpected(table.error());
+    }
+    WimFile wim;
+    auto parsedHeader = readWimHeader(MemorySource(header->wimHeader, std::uint64_t{1} << 62));
+    if (!parsedHeader) {
+        return std::unexpected(parsedHeader.error());
+    }
+    wim.header = *parsedHeader;
+    std::u16string xml(table->xml.size() / 2, u'\0');
+    std::memcpy(xml.data(), table->xml.data(), xml.size() * 2);
+    auto images = parseWimXml(xml);
+    if (!images) {
+        return std::unexpected(images.error());
+    }
+    wim.images = std::move(*images);
+    return wim;
+}
+
 Result<WlmReport> readWlmInfo(const std::filesystem::path& wlmPath) {
     std::ifstream in(wlmPath, std::ios::binary);
     std::error_code ec;

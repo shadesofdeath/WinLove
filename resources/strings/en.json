@@ -252,7 +252,14 @@
     "revealFile": "Show the file in its folder",
     "copyInfo": "Copy details",
     "copiedToast": "Edition details copied to the clipboard",
-    "noMountToExplore": "No mounted image to open"
+    "noMountToExplore": "No mounted image to open",
+    "wlmToWim": "WLM → WIM",
+    "packWlm": "Pack to WLM…",
+    "packWlmHint": "WinLove Method: an archive ~12 % smaller than ESD; every file is SHA-1 checked when it is opened",
+    "saveWlm": "WinLove archive (WLM)",
+    "wlmNeedsWim": "Only a plain WIM packs into WLM: convert an ESD to WIM first",
+    "wlmNoMount": "A WLM cannot be mounted: \"WLM → WIM\" first",
+    "wlmPackedToast": "{file} created (WLM)"
   },
   "components": {
     "title": "Components",

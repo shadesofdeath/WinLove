@@ -18,6 +18,7 @@
 // the groups' bytes back to back, then the lookup table in the original order, then the XML.
 // Not kept: an integrity table, split parts, LZMS/solid sources (convert an ESD to WIM first).
 #include "base/Result.h"
+#include "core/image/WimFile.h"
 #include "core/tasks/Task.h"
 
 #include <array>
@@ -57,6 +58,8 @@ struct WlmReport {
                                         const WlmPackOptions& options, const TaskContext& task);
 [[nodiscard]] Result<WlmReport> unpackWlm(const std::filesystem::path& wlm, const std::filesystem::path& wim,
                                           const TaskContext& task, unsigned threads = 0);
+// The source WIM's header and editions (from the XML the table keeps), for the Source / Images pages.
+[[nodiscard]] Result<WimFile> readWlmWim(const std::filesystem::path& wlm);
 // Header + table only (no block is decoded).
 [[nodiscard]] Result<WlmReport> readWlmInfo(const std::filesystem::path& wlm);
 [[nodiscard]] bool isWlmFile(const std::filesystem::path& file);

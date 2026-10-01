@@ -52,6 +52,9 @@ public:
     [[nodiscard]] std::optional<Str> verifyRefusal() const;
     [[nodiscard]] bool canDelete() const { return !deleteRefusal(); }
     [[nodiscard]] bool isEsdSource() const;
+    [[nodiscard]] bool isWlmSource() const; // D-057
+    // ESD or WLM: read for its editions, not mounted or edited until it is a WIM.
+    [[nodiscard]] bool isPackedSource() const { return isEsdSource() || isWlmSource(); }
     [[nodiscard]] std::optional<int> failedIndex() const noexcept { return m_failedIndex; }
 
     void mount(int index);
@@ -71,7 +74,11 @@ public:
     // Reads every stream of the install image and checks its SHA-1 (core::verifyWim); nothing is
     // written, an ISO is read in place. The result arrives through Events::verified.
     void verify();
+    // ESD → WIM (wimgapi export, LZX); WLM → WIM (unpack, SHA-1 checked, then LZX by wimgapi).
     void convertEsd(const std::filesystem::path& destination);
+    // D-057: the install WIM (every edition) packed into a .wlm next to nothing else.
+    void packWlm(const std::filesystem::path& destination);
+    [[nodiscard]] std::optional<Str> packWlmRefusal() const;
     // Removes these editions; the WIM is rewritten with the ones that stay (core::removeImages),
     // which are renumbered. An ISO is copied to the work folder first. `label` is what the strip
     // and the toast call them: the edition's name, or "5 sürüm".
