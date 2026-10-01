@@ -26,8 +26,8 @@
   anı boyutları gerçek imajda Python analiziyle aynı; render `--demo-components`. **Düzeltilen:** offreg değer adı hatası,
   WinSxS listesinin yarıda kesilmesi, paket-yalnız tarifte çökme (`paths.front()`). **Görülmeyen:** kaldırılmış imaja
   sonradan toplu güncelleme, kurulan sistemde etki (VM).
-- **Bir sonraki somut adım (2026-10-02):** kullanıcı yeni bileşenleri dener. Sıradaki aşama önerisi: Windows'la gelen sürücü
-  deposundan yalnız eski sınıflar (modem, teyp, disket, 1394, PCMCIA, IrDA, POS, eski yazıcılar) — kendi kaldırma motoru gerekir.
+- **Bir sonraki somut adım (2026-10-02):** kullanıcı yeni bileşenleri dener. Windows'la gelen sürücülerin kaldırılması
+  ölçülüp bırakıldı: yükü silmek bileşen deposunu bozuyor (ScanHealth "repairable"), kazanç ~85 MB (D-059).
 - **Önceki adım (2026-10-01 gece):** kullanıcı yeni araçları uygulamada dener. Sonra ertelenen öneriler (`deferred-suggestions`).
 - **Önceki adım (2026-10-01 akşam):** kullanıcı yeni sayfaları uygulamada dener (Kişiselleştirme, Wi-Fi, Compact OS, boot.wim sekmesi). WLM için karar bekleniyor: açma hızı ölçümü + kurucu prototipi (D-057). Önerilen küçük işler: ISO seçeneklerini presete eklemek, taşınabilir preset (dosyalar yanında).
 - **Önceki adım (2026-09-30 akşam):** (`tools\lab_usb.ps1` MBR geçti; kalan `-Gpt` ve gerçek bellek) uygulamada P11 / P12 "imajda" gösterimini önceden Uygula'lanmış bir imajla ve
