@@ -241,6 +241,52 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-057 — WLM (WinLove Method) sıkıştırma araştırması; ESD yazma hatası düzeltildi (2026-10-01)
+Bağlam: Kullanıcı LZMS'den güçlü, uygulamaya özel bir sıkıştırma ("WinLove Method") istedi.
+Bulgular (25H2 TR Pro, yönetici gerekmeden ölçüldü, `build\lab\compress\results.txt`):
+- **Hata:** `exportImage(…, Lzms)` sıkıştırmasız dosya yazıyordu (13,0 GB); wimgapi'ye belgelenmemiş
+  `0x20000000` (solid) bayrağı gerekiyor. Düzeltildi + başlık denetimi; ISO sayfasının "ESD" yeniden
+  paketlemesi bundan etkileniyordu. Gerçek ESD: 4,872 GiB (5,23 GB), 657 sn; tek solid kaynak, **64 MiB'lık
+  bağımsız LZMS parçaları**. Ekleme (ikinci sürüm) çalışıyor: +51 MB.
+- **İçerik:** ham verinin %48,6'sı x64 PE, %14,3'ü x86 PE, %3,2 + %2,3 kaynak-yalnız PE (MUI), 646 MiB gömülü
+  WIM (WinRE.wim, LZX: ESD küçültemez). WinRE açılınca 1.585 MiB; %24,3'ü ana imajdaki dosyalarla bayt bayt aynı.
+- `cabinet.dll` LZMS'i wimgapi'nin ESD kodlayıcısından %26,5 kötü (aynı veri) → referans her zaman gerçek ESD.
+- **WLM v0** (içerik gruplama + WinRE açma + x86/x64'te BCJ2 + LZMA2 1 GiB sözlük): **4,245 GiB (4,56 GB),
+  ESD'den −%12,9**. Gruplar: x64 7,12→1,62 GiB, x86 1,92→0,39, kaynak 0,79→0,38, diğer 3,71→1,85 (0,50).
+  Sıkıştırma ~66 dk (7-Zip, 2 iş parçacığı); açma süresi ölçülmedi.
+Karar: WLM henüz ürün özelliği değil. Kurulum WLM'i okuyamaz; yol: boot.wim'de kendi kurucumuz
+(`winpeshl.ini` → wlsetup: disk düzeni, WLM'den sanal WIM ile `WIMApplyImage` — `WIMInitFileIOCallbacks`
+denenmedi —, `bcdboot`, Panther\unattend.xml). Yalnız temiz kurulum. Sıradaki adımlar: açma hızı, "diğer"
+grubun iyileştirilmesi, `WIMInitFileIOCallbacks` deneyi, VM'de prototip.
+
+## D-056 — Kişiselleştirme: OEM, varsayılan görseller, yazı tipleri; Wi-Fi; Compact OS; boot.wim sürücüleri (2026-10-01)
+Bağlam: Kullanıcı NTLite'a göre eksik kolay özelliklerden 1, 2, 3, 4, 5, 6, 8'i seçti. 2 (WinRE kaldırma, D-031)
+ve OEM metin alanları (Ayarlar › OEM bilgisi, D-041) zaten vardı — gözden kaçırılmıştı.
+Karar:
+- **Yeni sayfa Kişiselleştirme** (Hosts'un altı): OEM alanları (Ayarlar'dakiyle aynı işlemler, iki görünüm) + logo,
+  masaüstü / kilit ekranı / hesap resmi, yazı tipleri. Hepsi kuyruk işlemi → presetlere girer.
+- **Görseller Windows'un kendi varsayılanlarının yerine yazılır** (`SetPicture`): her hedef dosya imajdaki boyutu ve
+  biçimiyle yeniden üretilir (WIC, ortalanmış kırpma). 25H2: img0 / img19 (açık / koyu) + 1920×1200 eşleri,
+  Screen\img100.jpg (+ PersonalizationCSP değerleri), user*.png / user.bmp, System32\oemlogo.bmp (120×120) +
+  OEMInformation\Logo. Ayarlar'daki eski "Duvar kağıdı" ve "Kilit ekranı resmi" (ProgramData kopyası + HKCU yolu,
+  D-041) kaldırıldı: Windows 11 ilk oturumda temayı uygularken ezebiliyordu ve iki yol çakışırdı.
+- **Sabit bağlantılar:** Windows'un dosyalarının çoğu WinSxS'e hard link; yerinde yazmak bileşen deposunun kopyasını
+  da değiştirir. `replaceImageFile` önce bağı koparır (yalnız bu ad), sonra yeni dosyayı SeRestorePrivilege + backup
+  semantics ile yazar (TrustedInstaller ACL'si). `writeImageFile` / `copyImageFile` da artık bundan geçer.
+- **Yazı tipi** (`AddFont`): Windows\Fonts + Fonts değeri, ad dosyanın 'name' tablosundan ("Segoe UI (TrueType)",
+  koleksiyon "Cambria & Cambria Math (TrueType)", CFF "(OpenType)").
+- **Wi-Fi:** Kurulum Sonrası adım türü; SYSTEM olarak `netsh wlan add profile … user=all`, profil dosyası hemen silinir.
+  Elle (SSID, parola, WPA2 / WPA3 / açık, gizli) ya da bu bilgisayardan (wlanapi; anahtar yönetici olarak okunur).
+  Parola presette ve medyada açık metin — dialog söylüyor.
+- **Compact OS:** yanıt dosyasında windowsPE `ImageInstall\OSImage\Compact`.
+- **boot.wim sürücüleri:** Sürücüler › "Kurulum ortamı (boot.wim)" sekmesi; aynı tarama ağacı, seçim `AppState`'te,
+  `IsoController::bootPatch` → mevcut `patchBootImage`. Presetlere `bootDrivers` olarak girer.
+Kanıt: **`tools\lab_branding.ps1` ALL PASSED (yönetici, sessiz UAC, 2026-10-01)** — 11 görsel özgün boyutunda,
+her biri tek bağlantı; WinSxS eşi değişmedi; logo 120×120; WinRE kaldırıldı; yazı tipi + kayıt değerleri imajda;
+Wi-Fi betiği; DISM `/ScanHealth` "No component store corruption" (117 sn). Birim testleri (5 yeni), render'lar.
+**Görülmeyen:** kurulan sistemde etki (VM), boot.wim'e sürücü eklemenin bu seferki çalıştırması (`tools\lab_boot.ps1 -Driver` bunu
+sınıyor; bu turda çalıştırılmadı).
+
 ## D-055 — Kuyruğu WIM'in birden çok sürümüne uygulama (2026-10-01)
 Bağlam: Kullanıcı (ikinci özellik turu, 15. madde) aynı kuyruğun / presetin bir WIM'deki birkaç sürüme uygulanmasını istedi.
 Karar:

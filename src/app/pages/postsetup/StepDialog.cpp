@@ -40,7 +40,9 @@ StepDialog makeStepDialog(const Localization& strings, Step initial, bool editin
                       : initial.type == Step::Type::Copy     ? Str::PostsetupAddFile
                       : initial.type == Step::Type::Wifi     ? Str::PostsetupAddWifi
                                                              : Str::PostsetupAddCommand;
-    auto dialog = std::make_unique<ui::Dialog>(s(title), std::wstring(), std::nullopt, ui::tokens::Color::TextSecondary, kWidth);
+    // Wi-Fi: where the key ends up is said up front.
+    const std::wstring message = initial.type == Step::Type::Wifi ? s(Str::PostsetupWifiKeyHint) : std::wstring();
+    auto dialog = std::make_unique<ui::Dialog>(s(title), message, std::nullopt, ui::tokens::Color::TextSecondary, kWidth);
     ui::Dialog* raw = dialog.get();
     auto draft = std::make_shared<Step>(std::move(initial));
     if (draft->type == Step::Type::Copy && draft->destination.empty()) {
@@ -135,7 +137,7 @@ StepDialog makeStepDialog(const Localization& strings, Step initial, bool editin
         ssid.setPlain(true);
         ssid.setText(net->ssid);
         ssid.setAccessible(ui::AccessRole::Edit, s(Str::PostsetupWifiSsid));
-        auto& key = form.addRow<ui::SearchBox>(s(Str::PostsetupWifiPassword), s(Str::PostsetupWifiKeyHint), kFieldWidth, std::wstring());
+        auto& key = form.addRow<ui::SearchBox>(s(Str::PostsetupWifiPassword), std::wstring(), kFieldWidth, std::wstring());
         key.setPlain(true);
         key.setPassword(true);
         key.setText(net->password);

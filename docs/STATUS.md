@@ -11,10 +11,11 @@
   sonra doğrudan bir sonraki sayfa. Kullanıcı `dist\WinLove.exe`'yi paralel test ediyor.
 - **Faz 3'ün bütün sayfaları yazıldı** (P01–P04 onaylı, P05–P18 kullanıcı testi bekliyor). Kural 1 gereği Faz 4'e
   geçmeden önce bu sayfaların kullanıcı onayı gerekir.
-- **Bir sonraki somut adım (2026-10-01 öğle):** `tools\lab_features.ps1` ALL PASSED. Kullanıcı yeni sayfaları uygulamada (`dist\WinLove.exe`) dener — P19 spec §10 senaryosu; ardından ISO + VM ile kurulumdaki etki. Kalan öneriler: `memory`deki erteleme listesi.
+- **Bir sonraki somut adım (2026-10-01 akşam):** kullanıcı yeni sayfaları uygulamada dener (Kişiselleştirme, Wi-Fi, Compact OS, boot.wim sekmesi). WLM için karar bekleniyor: açma hızı ölçümü + kurucu prototipi (D-057). Önerilen küçük işler: ISO seçeneklerini presete eklemek, taşınabilir preset (dosyalar yanında).
 - **Önceki adım (2026-09-30 akşam):** (`tools\lab_usb.ps1` MBR geçti; kalan `-Gpt` ve gerçek bellek) uygulamada P11 / P12 "imajda" gösterimini önceden Uygula'lanmış bir imajla ve
   "Güncellemeleri bul" akışını dener. Ardından (önceki adım sürüyor) VM'de kendi imajını deniyor (`docs/TESTING.md` → "VM kabul testi");
   testten gelen düzeltmeler sırayla. Log: `%LOCALAPPDATA%\WinLove\logs\WinLove-*.log` (oturum başına bir dosya).
+- **Üçüncü tur (2026-10-01 akşam, kullanıcı seçimi 1,2,3,4,5,6,8):** yeni **Kişiselleştirme** sayfası (OEM + logo, varsayılan masaüstü / kilit ekranı / hesap resmi, yazı tipleri), Kurulum Sonrası'nda **Wi-Fi ağı**, Katılımsız Kurulum'da **Compact OS**, Sürücüler'de **Kurulum ortamı (boot.wim)** sekmesi (D-056). WinRE kaldırma ve OEM metin alanları zaten vardı. `tools\lab_branding.ps1` ALL PASSED (yönetici: bu makinede UAC "sormadan yükselt", testleri kendim çalıştırdım). **ESD hatası düzeltildi** (D-057): ESD yeniden paketleme sıkıştırmasız yazıyordu. **WLM araştırması:** ESD'den −%12,9 (D-057), ürün değil. Görülmeyen: kurulan sistemde etki (VM).
 - **İkinci özellik turu (2026-10-01, kullanıcı seçimi "1,2,3,4,6,7,8,15", gece otonom):** yeni sayfalar **Uygulamalar**
   (.appx / .msix provision + varsayılan uygulamalar, D-050 / D-054), **Diller** (dil paketleri + arayüz dili / yerel /
   klavye / saat dilimi, D-053), **Görevler** (zamanlanmış görevler, kurulum sonrası schtasks, D-048), **Hosts** (+ Ayarlar ›

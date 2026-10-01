@@ -369,7 +369,24 @@ TEST_CASE("form: OEM information is typed text, written as strings; clearing it 
 }
 
 TEST_CASE("form: a wallpaper is a JPEG of this PC copied into the image, with the values that point at it") {
-    Fixture f;
+    // The shipped catalog has no file setting since D-056 (Kişiselleştirme replaces Windows' own
+    // pictures); the File control stays, so it is tested with an entry of its own.
+    auto doc = nlohmann::json::parse(shippedJson(L"settings.json"));
+    doc["settings"].push_back(nlohmann::json::parse(R"({ "id": "wallpaper", "section": "desktop", "control": "file",
+        "tr": "Duvar kağıdı", "en": "Wallpaper", "copy": "ProgramData\\WinLove\\wallpaper.jpg",
+        "writes": [ { "key": "HKCU\\Control Panel\\Desktop", "name": "Wallpaper", "value": "\"C:\\\\ProgramData\\\\WinLove\\\\wallpaper.jpg\"" },
+                    { "key": "HKCU\\Control Panel\\Desktop", "name": "WallpaperStyle", "value": "\"10\"" },
+                    { "key": "HKCU\\Control Panel\\Desktop", "name": "TileWallpaper", "value": "\"0\"" } ] })"));
+    auto parsed = ImageSettingsCatalog::parse(doc.dump());
+    REQUIRE(parsed);
+    struct {
+        AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
+    } holder;
+    holder.state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});
+    struct Local {
+        AppState& state;
+        ImageSettingsController controller;
+    } f{holder.state, ImageSettingsController{holder.state, std::move(*parsed)}};
     const auto& catalog = f.controller.catalog();
     const auto& wallpaper = setting(catalog, "wallpaper");
     REQUIRE(wallpaper.control == ImageSetting::Control::File);

@@ -32,6 +32,7 @@
 #include "app/pages/FilesPage.h"
 #include "core/system/Privileges.h"
 #include "app/pages/HostsPage.h"
+#include "app/pages/BrandingPage.h"
 #include "app/pages/TasksPage.h"
 #include "app/pages/postsetup/StepDialog.h"
 #include "app/pages/SourcePage.h"
@@ -143,6 +144,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_serviceCtl = std::make_unique<ServiceController>(m_state, embeddedServiceCatalog(), m_services.postToUi);
     m_tasks = std::make_unique<TaskController>(m_state, embeddedTaskCatalog());
     m_hosts = std::make_unique<HostsController>(m_state, embeddedHostsCatalog());
+    m_branding = std::make_unique<BrandingController>(m_state);
     m_files = std::make_unique<FilesController>(m_state);
     m_languages = std::make_unique<LanguageController>(m_state, m_services.postToUi);
     m_apps = std::make_unique<AppsController>(m_state, AppsController::Events{
@@ -701,6 +703,25 @@ void Shell::addTaskDialog() {
     host()->pushModal(std::move(dialog), &path);
 }
 
+void Shell::addFonts(std::vector<std::filesystem::path> files) {
+    if (files.empty()) {
+        return;
+    }
+    if (!m_state.mounted()) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::BrandingNoMountTitle), m_strings.get(Str::BrandingNoMountBody));
+        return;
+    }
+    std::vector<std::wstring> refused;
+    m_branding->addFonts(files, &refused);
+    if (!refused.empty()) {
+        std::wstring names;
+        for (const auto& name : refused) {
+            names += (names.empty() ? L"" : L", ") + name;
+        }
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::BrandingNotFont), names);
+    }
+}
+
 void Shell::importHostsFile() {
     if (!m_state.mounted()) {
         showToast(ui::InfoKind::Warning, m_strings.get(Str::HostsNoMountTitle), m_strings.get(Str::HostsNoMountBody));
@@ -1126,6 +1147,7 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::PostSetup, static_cast<int>(m_postSetup->stepCount()));
     m_nav->setBadge(PageId::Tasks, m_tasks->changedCount());
     m_nav->setBadge(PageId::Hosts, m_hosts->changedCount());
+    m_nav->setBadge(PageId::Branding, m_branding->changedCount());
     m_nav->setBadge(PageId::Files, m_files->count());
     m_nav->setBadge(PageId::Languages, m_languages->changedCount());
     m_nav->setBadge(PageId::Apps, m_apps->appCount() + static_cast<int>(changes.count(core::ops::OpKind::SetDefaultApps)));
@@ -1571,6 +1593,26 @@ void Shell::showPage(PageId page) {
             };
             m_pageBody = &m_pageView->setBody<HostsPage>(m_state, *m_hosts, m_strings, m_language,
                                                          [this] { showPage(PageId::Images); }, [this] { importHostsFile(); });
+        } else if (page == PageId::Branding) {
+            auto pickFonts = [this] {
+                const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+                addFonts(ui::pickFiles(owner, m_strings.get(Str::BrandingAddFonts),
+                                       {{m_strings.get(Str::BrandingFontFiles), L"*.ttf;*.otf;*.ttc"}}));
+            };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::BrandingAddFonts), ui::icons::Icon::Add).onInvoke =
+                pickFonts;
+            BrandingPage::Intents intents;
+            intents.pickPicture = [this]() -> std::optional<std::filesystem::path> {
+                const HWND owner = m_services.ownerWindow ? m_services.ownerWindow() : nullptr;
+                return ui::pickFile(owner, m_strings.get(Str::BrandingChoosePicture),
+                                    {{m_strings.get(Str::BrandingPictureFiles), L"*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.tif;*.tiff;*.heic;*.webp"}});
+            };
+            intents.addFonts = pickFonts;
+            intents.refused = [this](const std::wstring& file) {
+                showToast(ui::InfoKind::Warning, m_strings.get(Str::BrandingNotPicture), file);
+            };
+            intents.goImages = [this] { showPage(PageId::Images); };
+            m_pageBody = &m_pageView->setBody<BrandingPage>(m_state, *m_branding, m_strings, m_language, std::move(intents));
         } else if (page == PageId::Services) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ServicesReset)).onInvoke = [this] {
                 m_serviceCtl->resetChanges();

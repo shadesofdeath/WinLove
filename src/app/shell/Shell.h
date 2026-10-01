@@ -18,6 +18,7 @@
 #include "app/controllers/AppsController.h"
 #include "app/controllers/FilesController.h"
 #include "app/controllers/HostsController.h"
+#include "app/controllers/BrandingController.h"
 #include "app/controllers/ImageDriverController.h"
 #include "app/controllers/LanguageController.h"
 #include "app/controllers/ImageValuesController.h"
@@ -111,6 +112,8 @@ public:
     LanguageController& languagesForDemo() { return *m_languages; }
     AppsPage* appsPageForDemo() const { return appsPage(); }
     HostsController& hosts() { return *m_hosts; }
+    BrandingController& branding() { return *m_branding; }
+    void addFonts(std::vector<std::filesystem::path> files); // D-056: queue, toast for the refused ones
     ImageSettingsController& imageSettings() { return *m_imageSettings; }
     UnattendController& unattend() { return *m_unattend; }
     PostSetupController& postSetup() { return *m_postSetup; }
@@ -203,6 +206,11 @@ private:
     void applyPreset(const Preset& preset);
     // P14: the add dialog for `type`, or the edit dialog of step `index`.
     void editPostSetupStep(core::PostSetupStep::Type type, std::optional<std::size_t> index);
+
+public:
+    void wifiDialogForDemo() { editPostSetupStep(core::PostSetupStep::Type::Wifi, std::nullopt); }
+
+private:
     void pickPostSetupApps(); // "Hazır uygulamalar": the winget catalog as a check list
     void pickPostSetupCommands(); // "Hazır komutlar": power plan, network
     void saveAnswerFile();
@@ -247,6 +255,7 @@ private:
     std::unique_ptr<UpdateCatalogController> m_updateCatalog;
     std::unique_ptr<TaskController> m_tasks;   // D-048
     std::unique_ptr<HostsController> m_hosts;  // D-049
+    std::unique_ptr<BrandingController> m_branding; // D-056
     std::unique_ptr<FilesController> m_files;  // D-051
     std::unique_ptr<ImageDriverController> m_imageDriverCtl; // D-052
     std::unique_ptr<AppsController> m_apps; // D-050 / D-054

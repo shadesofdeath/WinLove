@@ -191,6 +191,12 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoLanguages = true;
         } else if (a == L"--demo-editions") {
             options.demoEditions = true;
+        } else if (a == L"--demo-wifi") {
+            options.demoWifi = true;
+        } else if (a == L"--demo-branding") {
+            options.demoBranding = true;
+        } else if (a == L"--demo-boot-drivers") {
+            options.demoBootDrivers = true;
         } else if (a == L"--demo-hosts") {
             options.demoHosts = true;
         } else if (a == L"--demo-services") {
@@ -821,6 +827,27 @@ int App::renderOffscreen() {
             page->showImageTab();
         }
     }
+    if (m_options.demoWifi) {
+        m_state->setMounted(MountedImage{LR"(C:\WinLove\mount)", LR"(C:\WinLove\work\sources\install.wim)", 4,
+                                         L"Windows 11 Pro"});
+        m_shell->showPage(PageId::PostSetup);
+        m_shell->wifiDialogForDemo();
+    }
+    if (m_options.demoBranding) {
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,
+                                         L"Windows 11 Pro"});
+        auto& branding = m_shell->branding();
+        branding.setOem(L"Manufacturer", L"Kuzey Bilgisayar");
+        branding.setOem(L"Model", L"KB Ofis 2026");
+        branding.setOem(L"SupportPhone", L"+90 212 555 01 01");
+        branding.setOem(L"SupportURL", L"https://destek.example.com");
+        const std::filesystem::path web = L"C:\\Windows\\Web";
+        (void)branding.setPicture(core::PictureSlot::Wallpaper, web / L"Wallpaper" / L"Windows" / L"img0.jpg");
+        (void)branding.setPicture(core::PictureSlot::LockScreen, web / L"Screen" / L"img100.jpg");
+        branding.addFonts({L"C:\\Windows\\Fonts\\segoeui.ttf", L"C:\\Windows\\Fonts\\cambria.ttc",
+                           L"C:\\Windows\\Fonts\\consola.ttf"});
+        m_shell->showPage(m_options.page.value_or(PageId::Branding));
+    }
     if (m_options.demoTasks || m_options.demoHosts) {
         m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,
                                          L"Windows 11 Pro"});
@@ -910,6 +937,16 @@ int App::renderOffscreen() {
             }
         }
         m_shell->showPage(m_options.page.value_or(PageId::Drivers));
+    }
+    if (m_options.demoBootDrivers && !m_state->driverScan().infs.empty()) {
+        const auto& infs = m_state->driverScan().infs;
+        for (std::size_t i = 0; i < infs.size() && i < 3; ++i) {
+            m_state->setBootDriver(infs[i].path, true);
+        }
+        m_shell->showPage(PageId::Drivers);
+        if (auto* page = m_shell->driversPageForDemo()) {
+            page->showBootTab();
+        }
     }
     if (m_options.openPath) {
         // Headless: open synchronously so the frame shows the Images page with real data.
