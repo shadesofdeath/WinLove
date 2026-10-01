@@ -87,6 +87,14 @@ try {
     foreach ($file in $files) {
         Check "mounted image has $file" (Test-Path (Join-Path $mount $file))
     }
+    $winre = Join-Path $mount 'Windows\System32\Recovery\Winre.wim'
+    if (Test-Path $winre) {
+        # WLM v2 rebuilds the WinRE inside (LZX by wimgapi): it must be sound and still boot index 1.
+        Run @('verify', $winre) | Out-Null
+        Check 'Winre.wim inside verifies (every stream SHA-1)' ($script:lastExit -eq 0)
+        $re = (Native { & $Cli info $winre --json }) -join "`n" | ConvertFrom-Json
+        Check "Winre.wim boots index $($re.install.bootIndex) ($($re.install.compression), $([math]::Round((Get-Item $winre).Length / 1MB)) MB)" ($re.install.bootIndex -eq 1)
+    }
     if (-not $pe) {
         $edition = Native { dism.exe /English /Image:$mount /Get-CurrentEdition }
         Check ('DISM reads the edition of the mounted image: ' + (($edition | Where-Object { $_ -match 'Current Edition' }) -join ' ')) ([bool]($edition -match 'Current Edition'))
