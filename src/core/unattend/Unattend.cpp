@@ -23,7 +23,15 @@ std::wstring labConfig(std::wstring_view value) {
 }
 constexpr std::wstring_view kBypassNro =
     L"reg add HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OOBE /v BypassNRO /t REG_DWORD /d 1 /f";
-constexpr std::wstring_view kPasswordSuffix = L"Password";
+// specialize, as SYSTEM: what the options write besides elements. Read back by these texts.
+constexpr std::wstring_view kEnableAdministrator = L"net.exe user Administrator /active:yes";
+constexpr std::wstring_view kNeverExpire = L"net.exe accounts /maxpwage:UNLIMITED";
+constexpr std::wstring_view kNoLockout = L"net.exe accounts /lockoutthreshold:0";
+constexpr std::wstring_view kPreventEncryption =
+    L"reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\BitLocker /v PreventDeviceEncryption /t REG_DWORD /d 1 /f";
+constexpr std::wstring_view kRecoveryGpt = L"DE94BBA4-06D1-4D40-A16A-BFD50179D6AC"; // Windows RE partition type
+constexpr std::wstring_view kRecoveryMbr = L"0x27";
+constexpr int kRecoveryMb = 1000;
 
 struct GenericKey {
     std::wstring_view editionId;
@@ -100,16 +108,25 @@ private:
 
 constexpr int kBodyDepth = 3;
 
-void password(Xml& xml, std::wstring_view value) {
-    xml.open(L"Password");
+void password(Xml& xml, std::wstring_view value, std::wstring_view element = L"Password") {
+    xml.open(element);
     if (value.empty()) {
         xml.leaf(L"Value", L"");
         xml.flag(L"PlainText", true);
     } else {
-        xml.leaf(L"Value", encodeUnattendPassword(value));
+        xml.leaf(L"Value", encodeUnattendPassword(value, element));
         xml.flag(L"PlainText", false);
     }
-    xml.close(L"Password");
+    xml.close(element);
+}
+
+void localAccount(Xml& xml, std::wstring_view name, std::wstring_view secret, bool administrator) {
+    xml.open(L"LocalAccount", L"wcm:action=\"add\"");
+    password(xml, secret);
+    xml.leaf(L"DisplayName", name);
+    xml.leaf(L"Group", administrator ? L"Administrators" : L"Users");
+    xml.leaf(L"Name", name);
+    xml.close(L"LocalAccount");
 }
 
 void runSynchronous(Xml& xml, const std::vector<std::wstring>& commands) {
@@ -154,19 +171,31 @@ struct Partition {
     const wchar_t* label;
     bool active;
     bool windows;
+    const wchar_t* typeId = nullptr; // ModifyPartition TypeID (the recovery partition)
 };
 
-void diskConfiguration(Xml& xml, UnattendDisk disk) {
-    static constexpr Partition kGpt[] = {{L"EFI", 300, L"FAT32", L"System", false, false},
-                                         {L"MSR", 16, nullptr, nullptr, false, false},
-                                         {L"Primary", 0, L"NTFS", L"Windows", false, true}};
-    static constexpr Partition kMbr[] = {{L"Primary", 500, L"NTFS", L"System", true, false},
-                                         {L"Primary", 0, L"NTFS", L"Windows", false, true}};
-    const auto layout = disk == UnattendDisk::WipeGpt ? std::span<const Partition>(kGpt) : std::span<const Partition>(kMbr);
+std::vector<Partition> partitionLayout(UnattendDisk disk, bool recovery) {
+    std::vector<Partition> layout;
+    if (recovery) {
+        // First on the disk, as in Microsoft's sample layouts: Windows can then grow to the end.
+        layout.push_back({L"Primary", kRecoveryMb, L"NTFS", L"Recovery", false, false,
+                          disk == UnattendDisk::WipeGpt ? kRecoveryGpt.data() : kRecoveryMbr.data()});
+    }
+    if (disk == UnattendDisk::WipeGpt) {
+        layout.push_back({L"EFI", 300, L"FAT32", L"System", false, false});
+        layout.push_back({L"MSR", 16, nullptr, nullptr, false, false});
+    } else {
+        layout.push_back({L"Primary", 500, L"NTFS", L"System", true, false});
+    }
+    layout.push_back({L"Primary", 0, L"NTFS", L"Windows", false, true});
+    return layout;
+}
+
+void diskConfiguration(Xml& xml, UnattendDisk disk, int diskId, bool recovery) {
+    const auto layout = partitionLayout(disk, recovery);
     xml.open(L"DiskConfiguration");
-    xml.leaf(L"WillShowUI", L"OnError");
     xml.open(L"Disk", L"wcm:action=\"add\"");
-    xml.number(L"DiskID", 0);
+    xml.number(L"DiskID", diskId);
     xml.flag(L"WillWipeDisk", true);
     xml.open(L"CreatePartitions");
     int order = 0;
@@ -198,15 +227,19 @@ void diskConfiguration(Xml& xml, UnattendDisk disk) {
         if (p.windows) {
             xml.leaf(L"Letter", L"C");
         }
+        if (p.typeId) {
+            xml.leaf(L"TypeID", p.typeId);
+        }
         xml.close(L"ModifyPartition");
     }
     xml.close(L"ModifyPartitions");
     xml.close(L"Disk");
+    xml.leaf(L"WillShowUI", L"OnError");
     xml.close(L"DiskConfiguration");
 }
 
-int windowsPartition(UnattendDisk disk) {
-    return disk == UnattendDisk::WipeGpt ? 3 : 2;
+int windowsPartition(UnattendDisk disk, bool recovery) {
+    return static_cast<int>(partitionLayout(disk, recovery).size());
 }
 
 bool truthy(const char* text) {
@@ -230,9 +263,9 @@ std::wstring_view genericProductKey(std::wstring_view editionId) noexcept {
     return {};
 }
 
-std::wstring encodeUnattendPassword(std::wstring_view value) {
+std::wstring encodeUnattendPassword(std::wstring_view value, std::wstring_view element) {
     std::wstring text(value);
-    text += kPasswordSuffix;
+    text += element;
     const auto* bytes = reinterpret_cast<const unsigned char*>(text.data());
     const std::size_t size = text.size() * sizeof(wchar_t);
     std::wstring out;
@@ -248,7 +281,7 @@ std::wstring encodeUnattendPassword(std::wstring_view value) {
     return out;
 }
 
-std::wstring decodeUnattendPassword(std::wstring_view encoded) {
+std::wstring decodeUnattendPassword(std::wstring_view encoded, std::wstring_view element) {
     std::string digits; // the alphabet only: padding and line breaks are skipped
     for (const wchar_t c : encoded) {
         if (c < 128 && kBase64.find(static_cast<char>(c)) != std::string_view::npos) {
@@ -258,8 +291,8 @@ std::wstring decodeUnattendPassword(std::wstring_view encoded) {
     const auto bytes = base64Decode(digits);
     std::wstring text(bytes.size() / sizeof(wchar_t), L'\0');
     std::memcpy(text.data(), bytes.data(), text.size() * sizeof(wchar_t));
-    if (text.ends_with(kPasswordSuffix)) {
-        text.resize(text.size() - kPasswordSuffix.size());
+    if (text.ends_with(element)) {
+        text.resize(text.size() - element.size());
     }
     return text;
 }
@@ -307,7 +340,7 @@ std::wstring buildUnattendXml(const UnattendOptions& o) {
         }
         runSynchronous(setup, commands);
         if (o.disk != UnattendDisk::Ask) {
-            diskConfiguration(setup, o.disk);
+            diskConfiguration(setup, o.disk, o.diskId, o.recoveryPartition);
         }
         if (o.disk != UnattendDisk::Ask || o.imageIndex > 0 || o.compactOs) {
             setup.open(L"ImageInstall");
@@ -322,8 +355,8 @@ std::wstring buildUnattendXml(const UnattendOptions& o) {
             }
             if (o.disk != UnattendDisk::Ask) {
                 setup.open(L"InstallTo");
-                setup.number(L"DiskID", 0);
-                setup.number(L"PartitionID", windowsPartition(o.disk));
+                setup.number(L"DiskID", o.diskId);
+                setup.number(L"PartitionID", windowsPartition(o.disk, o.recoveryPartition));
                 setup.close(L"InstallTo");
             }
             if (o.compactOs) {
@@ -352,15 +385,36 @@ std::wstring buildUnattendXml(const UnattendOptions& o) {
 
     // ---- specialize ----
     Xml specializeShell(kBodyDepth);
-    if (!o.computerName.empty()) {
+    if (o.randomComputerName) {
+        specializeShell.leaf(L"ComputerName", L"*");
+    } else if (!o.computerName.empty()) {
         specializeShell.leaf(L"ComputerName", o.computerName);
+    }
+    if (!o.registeredOrganization.empty()) {
+        specializeShell.leaf(L"RegisteredOrganization", o.registeredOrganization);
+    }
+    if (!o.registeredOwner.empty()) {
+        specializeShell.leaf(L"RegisteredOwner", o.registeredOwner);
     }
     if (!o.timeZone.empty()) {
         specializeShell.leaf(L"TimeZone", o.timeZone);
     }
     Xml deployment(kBodyDepth);
-    if (o.bypassNro) {
-        runSynchronous(deployment, {std::wstring(kBypassNro)});
+    {
+        std::vector<std::wstring> commands;
+        for (const auto& [enabled, command] : {std::pair{o.bypassNro, kBypassNro}, std::pair{o.enableAdministrator, kEnableAdministrator},
+                                               std::pair{o.passwordsNeverExpire, kNeverExpire}, std::pair{o.disableLockout, kNoLockout},
+                                               std::pair{o.preventDeviceEncryption, kPreventEncryption}}) {
+            if (enabled) {
+                commands.emplace_back(command);
+            }
+        }
+        for (const auto& command : o.specializeCommands) {
+            if (!text::trim(command).empty()) {
+                commands.emplace_back(text::trim(command));
+            }
+        }
+        runSynchronous(deployment, commands);
     }
     pass(L"specialize",
          {{L"Microsoft-Windows-Shell-Setup", &specializeShell}, {L"Microsoft-Windows-Deployment", &deployment}});
@@ -371,13 +425,47 @@ std::wstring buildUnattendXml(const UnattendOptions& o) {
         international(oobeLanguage, o, /*setupLanguage=*/false);
     }
     Xml shell(kBodyDepth);
-    if (o.acceptEula || o.skipOnlineAccount || o.skipPrivacy) {
+    if (o.autoLogon && !o.accountName.empty()) {
+        shell.open(L"AutoLogon");
+        password(shell, o.password);
+        shell.flag(L"Enabled", true);
+        shell.number(L"LogonCount", 1);
+        shell.leaf(L"Username", o.accountName);
+        shell.close(L"AutoLogon");
+    }
+    {
+        std::vector<std::wstring> commands;
+        for (const auto& command : o.firstLogonCommands) {
+            if (!text::trim(command).empty()) {
+                commands.emplace_back(text::trim(command));
+            }
+        }
+        if (!commands.empty()) {
+            shell.open(L"FirstLogonCommands");
+            int order = 0;
+            for (const auto& command : commands) {
+                shell.open(L"SynchronousCommand", L"wcm:action=\"add\"");
+                shell.leaf(L"CommandLine", command);
+                shell.number(L"Order", ++order);
+                shell.flag(L"RequiresUserInput", false);
+                shell.close(L"SynchronousCommand");
+            }
+            shell.close(L"FirstLogonCommands");
+        }
+    }
+    const bool hideWifi = o.skipOnlineAccount || o.hideWifiSetup;
+    if (o.acceptEula || o.skipOnlineAccount || o.skipPrivacy || hideWifi || o.hideOemRegistration) {
         shell.open(L"OOBE");
         if (o.acceptEula) {
             shell.flag(L"HideEULAPage", true);
         }
+        if (o.hideOemRegistration) {
+            shell.flag(L"HideOEMRegistrationScreen", true);
+        }
         if (o.skipOnlineAccount) {
             shell.flag(L"HideOnlineAccountScreens", true);
+        }
+        if (hideWifi) {
             shell.flag(L"HideWirelessSetupInOOBE", true);
         }
         if (o.skipPrivacy) {
@@ -385,25 +473,25 @@ std::wstring buildUnattendXml(const UnattendOptions& o) {
         }
         shell.close(L"OOBE");
     }
-    if (!o.accountName.empty()) {
+    const bool anyAccount = !o.accountName.empty() || std::ranges::any_of(o.extraAccounts, [](const auto& a) { return !a.name.empty(); });
+    if (o.enableAdministrator || anyAccount) {
         shell.open(L"UserAccounts");
-        shell.open(L"LocalAccounts");
-        shell.open(L"LocalAccount", L"wcm:action=\"add\"");
-        shell.leaf(L"Name", o.accountName);
-        shell.leaf(L"DisplayName", o.accountName);
-        shell.leaf(L"Group", L"Administrators");
-        password(shell, o.password);
-        shell.close(L"LocalAccount");
-        shell.close(L"LocalAccounts");
-        shell.close(L"UserAccounts");
-        if (o.autoLogon) {
-            shell.open(L"AutoLogon");
-            shell.flag(L"Enabled", true);
-            shell.leaf(L"Username", o.accountName);
-            password(shell, o.password);
-            shell.number(L"LogonCount", 1);
-            shell.close(L"AutoLogon");
+        if (o.enableAdministrator) {
+            password(shell, o.administratorPassword, L"AdministratorPassword");
         }
+        if (anyAccount) {
+            shell.open(L"LocalAccounts");
+            if (!o.accountName.empty()) {
+                localAccount(shell, o.accountName, o.password, /*administrator=*/true);
+            }
+            for (const auto& account : o.extraAccounts) {
+                if (!account.name.empty()) {
+                    localAccount(shell, account.name, account.password, account.administrator);
+                }
+            }
+            shell.close(L"LocalAccounts");
+        }
+        shell.close(L"UserAccounts");
     }
     pass(L"oobeSystem", {{L"Microsoft-Windows-International-Core", &oobeLanguage}, {L"Microsoft-Windows-Shell-Setup", &shell}});
 
@@ -427,6 +515,18 @@ Result<UnattendOptions> parseUnattendXml(std::string_view utf8) {
     auto commands = [](const pugi::xml_node& component, std::string_view needle) {
         for (const auto& command : component.child("RunSynchronous").children("RunSynchronousCommand")) {
             if (std::string_view(command.child("Path").text().get()).find(needle) != std::string_view::npos) {
+                return true;
+            }
+        }
+        return false;
+    };
+    // The specialize commands WinLove writes for an option, read back as that option.
+    auto ownCommand = [&](const std::wstring& path) {
+        for (const auto& [flag, command] : {std::pair{&o.bypassNro, kBypassNro}, std::pair{&o.enableAdministrator, kEnableAdministrator},
+                                            std::pair{&o.passwordsNeverExpire, kNeverExpire}, std::pair{&o.disableLockout, kNoLockout},
+                                            std::pair{&o.preventDeviceEncryption, kPreventEncryption}}) {
+            if (text::iequals(path, command)) {
+                *flag = true;
                 return true;
             }
         }
@@ -461,10 +561,15 @@ Result<UnattendOptions> parseUnattendXml(std::string_view utf8) {
                 const auto disk = component.child("DiskConfiguration").child("Disk");
                 if (disk && truthy(disk.child("WillWipeDisk").text().as_string("false"))) {
                     o.disk = UnattendDisk::WipeMbr;
+                    o.diskId = disk.child("DiskID").text().as_int(0);
                     for (const auto& partition : disk.child("CreatePartitions").children("CreatePartition")) {
                         if (_stricmp(partition.child("Type").text().get(), "EFI") == 0) {
                             o.disk = UnattendDisk::WipeGpt;
                         }
+                    }
+                    for (const auto& partition : disk.child("ModifyPartitions").children("ModifyPartition")) {
+                        const std::wstring type = childText(partition, "TypeID");
+                        o.recoveryPartition = o.recoveryPartition || text::iequals(type, kRecoveryGpt) || text::iequals(type, kRecoveryMbr);
                     }
                 }
                 o.compactOs = o.compactOs ||
@@ -483,10 +588,29 @@ Result<UnattendOptions> parseUnattendXml(std::string_view utf8) {
                 }
                 o.acceptEula = o.acceptEula || truthy(user.child("AcceptEula").text().as_string("false"));
             } else if (name == "Microsoft-Windows-Deployment") {
-                o.bypassNro = o.bypassNro || commands(component, "BypassNRO");
+                for (const auto& command : component.child("RunSynchronous").children("RunSynchronousCommand")) {
+                    const std::wstring path = childText(command, "Path");
+                    if (!ownCommand(path) && path.find(L"BypassNRO") == std::wstring::npos && !path.empty()) {
+                        o.specializeCommands.push_back(path);
+                    }
+                    o.bypassNro = o.bypassNro || path.find(L"BypassNRO") != std::wstring::npos;
+                }
             } else if (name == "Microsoft-Windows-Shell-Setup") {
-                if (const auto computer = childText(component, "ComputerName"); !computer.empty()) {
+                if (const auto computer = childText(component, "ComputerName"); computer == L"*") {
+                    o.randomComputerName = true;
+                } else if (!computer.empty()) {
                     o.computerName = computer;
+                }
+                if (const auto owner = childText(component, "RegisteredOwner"); !owner.empty()) {
+                    o.registeredOwner = owner;
+                }
+                if (const auto organization = childText(component, "RegisteredOrganization"); !organization.empty()) {
+                    o.registeredOrganization = organization;
+                }
+                for (const auto& command : component.child("FirstLogonCommands").children("SynchronousCommand")) {
+                    if (auto line = childText(command, "CommandLine"); !line.empty()) {
+                        o.firstLogonCommands.push_back(std::move(line));
+                    }
                 }
                 if (const auto zone = childText(component, "TimeZone"); !zone.empty()) {
                     o.timeZone = zone;
@@ -495,10 +619,29 @@ Result<UnattendOptions> parseUnattendXml(std::string_view utf8) {
                 o.acceptEula = o.acceptEula || truthy(oobe.child("HideEULAPage").text().as_string("false"));
                 o.skipOnlineAccount =
                     o.skipOnlineAccount || truthy(oobe.child("HideOnlineAccountScreens").text().as_string("false"));
+                // Part of "skip the online account screens" when that is on; an option of its own otherwise.
+                o.hideWifiSetup = (o.hideWifiSetup || truthy(oobe.child("HideWirelessSetupInOOBE").text().as_string("false"))) &&
+                                  !o.skipOnlineAccount;
+                o.hideOemRegistration =
+                    o.hideOemRegistration || truthy(oobe.child("HideOEMRegistrationScreen").text().as_string("false"));
                 o.skipPrivacy = o.skipPrivacy || oobe.child("ProtectYourPC").text().as_int(0) == 3;
-                if (const auto account = component.child("UserAccounts").child("LocalAccounts").child("LocalAccount")) {
-                    o.accountName = childText(account, "Name");
-                    o.password = readPassword(account.child("Password"));
+                const auto accounts = component.child("UserAccounts");
+                if (const auto admin = accounts.child("AdministratorPassword")) {
+                    const std::wstring value = childText(admin, "Value");
+                    o.administratorPassword = truthy(admin.child("PlainText").text().as_string("true"))
+                                                  ? value
+                                                  : decodeUnattendPassword(value, L"AdministratorPassword");
+                }
+                bool first = true;
+                for (const auto& account : accounts.child("LocalAccounts").children("LocalAccount")) {
+                    if (first) {
+                        o.accountName = childText(account, "Name");
+                        o.password = readPassword(account.child("Password"));
+                        first = false;
+                    } else {
+                        o.extraAccounts.push_back({childText(account, "Name"), readPassword(account.child("Password")),
+                                                   text::iequals(childText(account, "Group"), L"Administrators")});
+                    }
                 }
                 o.autoLogon = o.autoLogon || truthy(component.child("AutoLogon").child("Enabled").text().as_string("false"));
             }
@@ -512,21 +655,36 @@ std::vector<UnattendProblem> validateUnattend(const UnattendOptions& o) {
     auto hasAny = [](std::wstring_view text, std::wstring_view chars) {
         return text.find_first_of(chars) != std::wstring_view::npos;
     };
-    if (!o.computerName.empty()) {
+    if (!o.randomComputerName && !o.computerName.empty()) {
         const bool digitsOnly = std::ranges::all_of(o.computerName, [](wchar_t c) { return std::iswdigit(c) != 0; });
         // Setup's own list for ComputerName (spaces included).
         if (o.computerName.size() > 15 || digitsOnly || hasAny(o.computerName, L" {|}~[\\]^':;<=>?@!\"#$%`()+/.,*&")) {
             problems.push_back(UnattendProblem::ComputerName);
         }
     }
-    if (!o.accountName.empty()) {
+    auto badAccountName = [&](const std::wstring& name) {
         static constexpr std::wstring_view kReserved[] = {L"administrator", L"guest", L"defaultaccount", L"system",
                                                           L"wdagutilityaccount"};
-        const std::wstring lower = text::lower(o.accountName);
-        if (o.accountName.size() > 20 || hasAny(o.accountName, L"\"/\\[]:;|=,+*?<>@") || o.accountName.ends_with(L'.') ||
-            std::ranges::find(kReserved, lower) != std::end(kReserved)) {
-            problems.push_back(UnattendProblem::AccountName);
+        const std::wstring lower = text::lower(name);
+        return name.size() > 20 || hasAny(name, L"\"/\\[]:;|=,+*?<>@") || name.ends_with(L'.') ||
+               std::ranges::find(kReserved, lower) != std::end(kReserved);
+    };
+    if (!o.accountName.empty() && badAccountName(o.accountName)) {
+        problems.push_back(UnattendProblem::AccountName);
+    }
+    {
+        std::vector<std::wstring> seen{text::lower(o.accountName)};
+        for (const auto& account : o.extraAccounts) {
+            const std::wstring lower = text::lower(account.name);
+            if (account.name.empty() || badAccountName(account.name) || std::ranges::find(seen, lower) != seen.end()) {
+                problems.push_back(UnattendProblem::ExtraAccountName);
+                break;
+            }
+            seen.push_back(lower);
         }
+    }
+    if (o.diskId < 0 || o.diskId > 63) {
+        problems.push_back(UnattendProblem::DiskId);
     }
     if (!o.productKey.empty()) {
         bool valid = o.productKey.size() == 29;
