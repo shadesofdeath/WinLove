@@ -1,5 +1,7 @@
 #include "app/pages/UnattendedPage.h"
 
+#include "base/Text.h"
+
 #include "ui/widget/Host.h"
 #include "ui/widgets/ScrollBar.h"
 
@@ -15,6 +17,50 @@ using ui::tokens::TypeStyle;
 using Problem = core::UnattendProblem;
 
 namespace {
+
+constexpr std::size_t kCommandSlots = 3; // per list: specialize / first logon
+
+// "ali=parola, ayse" <-> the further accounts; the administrator flag is one for all of them.
+std::wstring extraAccountsText(const std::vector<core::UnattendAccount>& accounts) {
+    std::wstring text;
+    for (const auto& a : accounts) {
+        if (!text.empty()) {
+            text += L", ";
+        }
+        text += a.password.empty() ? a.name : a.name + L"=" + a.password;
+    }
+    return text;
+}
+
+std::vector<core::UnattendAccount> parseExtraAccounts(std::wstring_view text, bool administrators) {
+    std::vector<core::UnattendAccount> accounts;
+    std::size_t start = 0;
+    while (start <= text.size()) {
+        const std::size_t comma = text.find(L',', start);
+        const std::wstring_view item = wl::text::trim(text.substr(start, comma == std::wstring_view::npos ? std::wstring_view::npos : comma - start));
+        if (!item.empty()) {
+            const std::size_t eq = item.find(L'=');
+            accounts.push_back({std::wstring(wl::text::trim(item.substr(0, eq))),
+                                eq == std::wstring_view::npos ? std::wstring() : std::wstring(item.substr(eq + 1)), administrators});
+        }
+        if (comma == std::wstring_view::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+    return accounts;
+}
+
+// One numbered command field: the list grows to it, and empty trailing slots are dropped.
+void setSlot(std::vector<std::wstring>& list, std::size_t index, const std::wstring& value) {
+    if (list.size() <= index) {
+        list.resize(index + 1);
+    }
+    list[index] = value;
+    while (!list.empty() && list.back().empty()) {
+        list.pop_back();
+    }
+}
 
 constexpr float kTop = 11.0f;          // page top → step bar / preview panel
 constexpr float kStepsHeight = 24.0f;
@@ -307,7 +353,8 @@ UnattendedPage::UnattendedPage(AppState& state, UnattendController& controller, 
     auto s = [&](Str key) { return strings.get(key); };
     m_steps = &add<StepBar>(std::vector<std::wstring>{s(Str::UnattendedStepsLocale), s(Str::UnattendedStepsAccount),
                                                       s(Str::UnattendedStepsDisk), s(Str::UnattendedStepsOobe),
-                                                      s(Str::UnattendedStepsKey), s(Str::UnattendedStepsRequirements)});
+                                                      s(Str::UnattendedStepsKey), s(Str::UnattendedStepsRequirements),
+                                                      s(Str::UnattendedStepsSystem)});
     m_steps->onSelect = [this](int index) { showStep(index); };
     m_form = &add<ui::FormView>(kLabelWidth);
     m_form->onScroll = [this] { m_steps->setCurrent(m_form->currentSection()); };
@@ -412,6 +459,35 @@ void UnattendedPage::buildForm() {
     m_computer = &addText(Str::UnattendedComputerName, Str::UnattendedComputerNameHint, kFieldWidth,
                           [](const Options& o) { return o.computerName; },
                           [](Options& o, const std::wstring& v) { o.computerName = v; });
+    addSwitch(Str::UnattendedRandomName, s(Str::UnattendedRandomNameHint), [](const Options& o) { return o.randomComputerName; },
+              [](Options& o, bool on) { o.randomComputerName = on; });
+    // Further accounts in one line: "ali=parola, ayse" (a name alone = no password).
+    m_extraAccounts = &addText(Str::UnattendedExtraAccounts, Str::UnattendedExtraAccountsHint, kFieldWidth,
+                               [](const Options& o) { return extraAccountsText(o.extraAccounts); },
+                               [](Options& o, const std::wstring& v) {
+                                   const bool admins = !o.extraAccounts.empty() && o.extraAccounts.front().administrator;
+                                   o.extraAccounts = parseExtraAccounts(v, admins);
+                               });
+    addSwitch(Str::UnattendedExtraAdmins, {},
+              [](const Options& o) { return !o.extraAccounts.empty() && o.extraAccounts.front().administrator; },
+              [](Options& o, bool on) {
+                  for (auto& account : o.extraAccounts) {
+                      account.administrator = on;
+                  }
+              });
+    addSwitch(Str::UnattendedBuiltInAdmin, s(Str::UnattendedBuiltInAdminHint), [](const Options& o) { return o.enableAdministrator; },
+              [](Options& o, bool on) { o.enableAdministrator = on; });
+    addText(Str::UnattendedAdminPassword, std::nullopt, kFieldWidth, [](const Options& o) { return o.administratorPassword; },
+            [](Options& o, const std::wstring& v) { o.administratorPassword = v; })
+        .setPassword(true);
+    addSwitch(Str::UnattendedNeverExpire, {}, [](const Options& o) { return o.passwordsNeverExpire; },
+              [](Options& o, bool on) { o.passwordsNeverExpire = on; });
+    addSwitch(Str::UnattendedNoLockout, {}, [](const Options& o) { return o.disableLockout; },
+              [](Options& o, bool on) { o.disableLockout = on; });
+    addText(Str::UnattendedOwner, std::nullopt, kFieldWidth, [](const Options& o) { return o.registeredOwner; },
+            [](Options& o, const std::wstring& v) { o.registeredOwner = v; });
+    addText(Str::UnattendedOrganization, std::nullopt, kFieldWidth, [](const Options& o) { return o.registeredOrganization; },
+            [](Options& o, const std::wstring& v) { o.registeredOrganization = v; });
 
     m_form->addSection(s(Str::UnattendedStepsDisk));
     m_disk = &m_form->addRow<ui::Dropdown>(s(Str::UnattendedDiskLayout), std::wstring(), kPickerWidth, std::wstring(),
@@ -421,6 +497,14 @@ void UnattendedPage::buildForm() {
     m_disk->onChange = [this](int index) {
         m_controller.edit([index](Options& o) { o.disk = static_cast<core::UnattendDisk>(std::clamp(index, 0, 2)); });
     };
+    m_diskId = &addText(Str::UnattendedDiskId, Str::UnattendedDiskIdHint, kPickerWidth,
+                        [](const Options& o) { return std::to_wstring(o.diskId); },
+                        [](Options& o, const std::wstring& v) {
+                            const bool digits = !v.empty() && v.size() <= 2 && std::ranges::all_of(v, [](wchar_t c) { return c >= L'0' && c <= L'9'; });
+                            o.diskId = digits ? std::stoi(v) : -1; // -1: shown as a problem until it is a number
+                        });
+    addSwitch(Str::UnattendedRecovery, s(Str::UnattendedRecoveryHint), [](const Options& o) { return o.recoveryPartition; },
+              [](Options& o, bool on) { o.recoveryPartition = on; });
     // D-056: Compact OS — Windows' own files stay compressed on the disk.
     addSwitch(Str::UnattendedCompactOs, s(Str::UnattendedCompactOsHint), [](const Options& o) { return o.compactOs; },
               [](Options& o, bool on) { o.compactOs = on; });
@@ -436,6 +520,10 @@ void UnattendedPage::buildForm() {
               [](Options& o, bool on) { o.bypassNro = on; });
     addSwitch(Str::UnattendedSkipOnline, {}, [](const Options& o) { return o.skipOnlineAccount; },
               [](Options& o, bool on) { o.skipOnlineAccount = on; });
+    addSwitch(Str::UnattendedHideWifi, {}, [](const Options& o) { return o.hideWifiSetup || o.skipOnlineAccount; },
+              [](Options& o, bool on) { o.hideWifiSetup = on; });
+    addSwitch(Str::UnattendedHideOem, {}, [](const Options& o) { return o.hideOemRegistration; },
+              [](Options& o, bool on) { o.hideOemRegistration = on; });
 
     m_form->addSection(s(Str::UnattendedStepsKey));
     m_key = &addText(Str::UnattendedProductKey, Str::UnattendedProductKeyHint, kPickerWidth,
@@ -457,6 +545,21 @@ void UnattendedPage::buildForm() {
               [](Options& o, bool on) { o.bypassCpu = on; });
     addSwitch(Str::UnattendedStorage, s(Str::UnattendedSkipLabConfig), [](const Options& o) { return o.bypassStorage; },
               [](Options& o, bool on) { o.bypassStorage = on; });
+
+    // Sistem ve komutlar: specialize (SYSTEM, before OOBE) and the first logon.
+    m_form->addSection(s(Str::UnattendedStepsSystem));
+    addSwitch(Str::UnattendedNoEncryption, s(Str::UnattendedNoEncryptionHint),
+              [](const Options& o) { return o.preventDeviceEncryption; }, [](Options& o, bool on) { o.preventDeviceEncryption = on; });
+    for (std::size_t i = 0; i < kCommandSlots; ++i) {
+        addText(Str::UnattendedSystemCommand, i == 0 ? std::optional<Str>(Str::UnattendedSystemCommandHint) : std::nullopt, kFieldWidth,
+                [i](const Options& o) { return i < o.specializeCommands.size() ? o.specializeCommands[i] : std::wstring(); },
+                [i](Options& o, const std::wstring& v) { setSlot(o.specializeCommands, i, v); });
+    }
+    for (std::size_t i = 0; i < kCommandSlots; ++i) {
+        addText(Str::UnattendedLogonCommand, i == 0 ? std::optional<Str>(Str::UnattendedLogonCommandHint) : std::nullopt, kFieldWidth,
+                [i](const Options& o) { return i < o.firstLogonCommands.size() ? o.firstLogonCommands[i] : std::wstring(); },
+                [i](Options& o, const std::wstring& v) { setSlot(o.firstLogonCommands, i, v); });
+    }
 
     sync();
     m_steps->setCurrent(m_form->currentSection());
@@ -485,6 +588,11 @@ void UnattendedPage::sync() {
         picker.box->setItems(std::move(items), static_cast<int>(at - picker.values.begin()));
     }
     for (const auto& field : m_texts) {
+        // Not the field being typed in: its text is the source (a half-typed "ali=" or disk number
+        // would be rewritten from the parsed value under the caret).
+        if (field.box->focused()) {
+            continue;
+        }
         if (const std::wstring value = field.get(o); field.box->text() != value) {
             field.box->setText(value);
         }
@@ -516,6 +624,9 @@ void UnattendedPage::sync() {
          emptyHint(o.computerName, Str::UnattendedComputerNameHint));
     hint(*m_key, Problem::ProductKey, Str::UnattendedProblemProductKey, emptyHint(o.productKey, Str::UnattendedProductKeyHint));
     hint(*m_autoLogon, Problem::AutoLogonNeedsAccount, Str::UnattendedProblemAutoLogon, std::nullopt);
+    hint(*m_extraAccounts, Problem::ExtraAccountName, Str::UnattendedProblemExtraAccounts,
+         o.extraAccounts.empty() ? std::optional<Str>(Str::UnattendedExtraAccountsHint) : std::nullopt);
+    hint(*m_diskId, Problem::DiskId, Str::UnattendedProblemDiskId, std::optional<Str>(Str::UnattendedDiskIdHint));
 
     m_include->setChecked(m_controller.includeInIso());
     m_preview->setText(m_controller.xml());

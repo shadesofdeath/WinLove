@@ -73,6 +73,8 @@ private:
     ui::SearchBox* m_account = nullptr;
     ui::SearchBox* m_computer = nullptr;
     ui::SearchBox* m_key = nullptr;
+    ui::SearchBox* m_extraAccounts = nullptr;
+    ui::SearchBox* m_diskId = nullptr;
     ui::CheckField* m_autoLogon = nullptr;
     ui::Dropdown* m_disk = nullptr;
 };
