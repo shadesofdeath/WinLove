@@ -34,6 +34,10 @@
   hilesi, gizlenen widget'ın odak / hover durumu, basılı Enter tekrarı, açık listeyle değişen Dropdown, Uygula'da yarım preset),
   ortak yardımcılar (`base/Text`, `base/File`, `base/Encoding`, `core/system/Files|Com|Handle|BackupFiles`, Shell modal /
   okuyucu yardımcıları, `PageBits`), ~85 kullanılmayan metin anahtarı ve ölü kod silindi. 271 test.
+- **Windows Spotlight (2026-10-02, kullanıcı isteği, test edilmeden eklendi):** Ayarlar › Kilit ekranı'nda "Windows Spotlight"
+  (CloudContent politikaları + kilit ekranı dönen resim değerleri, ilk oturumda yeniden) ve Ayarlar › Masaüstü'nde Spotlight
+  simgesi; aynıları Kayıt Defteri kataloğunda. Spotlight'ın ayrı bir paketi yok (yalnız duvar kağıdı paketinde 1,6 MB): kaldırma
+  = tamamen kapatma. Kullanıcı test istemedi: imajda / kurulan sistemde görülmedi.
 - **Bir sonraki somut adım (2026-10-02):** kullanıcı yeni bileşenleri ve derin kaldırmayı dener; VM'de derin kaldırılmış imajın
   kurulumu ve Windows Update davranışı görülmeli.
 - **Önceki adım (2026-10-01 gece):** kullanıcı yeni araçları uygulamada dener. Sonra ertelenen öneriler (`deferred-suggestions`).
