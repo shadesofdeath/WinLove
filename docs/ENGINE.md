@@ -151,6 +151,29 @@ Uygulama davranışı:
 - [2026-10-02] [Windows'la gelen sürücüler] DriverStore\FileRepository'deki 715 paket WinSxS'teki `amd64_dual_<inf>` bileşenlerinin hard link'leri; sahipleri çekirdek CBS paketleri (modemlerin 149'u Client-Desktop-Required-Package011120). Kopya imajda 153 modem bileşeninin WinSxS klasörü (28 MB) silinince `/ScanHealth`: "The component store is repairable" (önce temiz). Yani yükü silmek = bozuk depo; paket düzeyinde kaldırma yolu yok (D-059).
 - [2026-10-02] [sürücü veritabanı ikiye bölünmüş] 25H2: DRIVERS hive'ında 449 paket; önyüklenebilir sınıflar (flpydisk, fdc, pcmcia, 1394, sbp2 …) `SYSTEM\DriverDatabase`'de (aynı yapı: DriverPackages / DriverInfFiles / DeviceIds / DriverFiles). `DriverPackages\<paket>` "Version" değerinin 8..23. baytları sınıf GUID'i (little-endian), varsayılan değer INF adı.
 - [2026-10-02] [RegDeleteTree ve ACL] DriverPackages\<paket>\Configurations / Descriptors gibi alt anahtarlar yöneticiye kapalı: RegDeleteTree alt anahtarları düz erişimle açtığı için backup / restore tutamağında bile ilk kapalı anahtarda AccessDenied verir. `deleteKeyTree` her düzeyi REG_OPTION_BACKUP_RESTORE ile açıp tutamaktan siler (NtDeleteKey).
+- [2026-10-05] [.msu — DISM API ↔ dism.exe] Bu makinede (DISM 10.0.26100.8972) `DismAddPackage` ile 24H2+ LCU (.msu, UUP tabanlı)
+  her imajda ~12 sn'de düşüyor: DISM günlüğü "Active offline session not registered" (E_UNEXPECTED), "Failed to get CBS session:
+  0x800401E3", "Failed to apply the MSU unattend file to the image". Aynı dosya `dism.exe /Image /Add-Package` ile aynı türden kopyaya
+  359 sn'de kuruldu. 2026-10-02'de API ile kuruluyordu (lab_deep_removal -LcuFirst) — ana makine servis yığını değişmiş olabilir.
+  Motor 0x800401E3'te dism.exe'ye geçer (D-063).
+- [2026-10-05] [lang.ini] `dism /Image:<mount> /Gen-LangINI /Distribution:<kurulum klasörü>` 1–2 sn; yalnız `sources\lang.ini` yazar
+  (dağıtımda başka dosya gerekmez). en-US eklenmiş Türkçe imajda: `[Available UI Languages] en-US = 2, tr-TR = 3`,
+  `[Fallback Languages] tr-TR = en-us`; `/Set-UILang:en-US` sonrası da `tr-TR = 3` kalıyor (3 = kurulum ortamının dili).
+- [2026-10-05] [25H2 tema / duvar kağıdı] Yeni kullanıcı teması `InstallTheme = X:\Windows\resources\Themes\aero.theme` (koyu: dark.theme);
+  aero.theme: `Wallpaper=%SystemRoot%\web\wallpaper\Windows\img0.jpg` ve masaüstü simgeleri `imageres.dll,-109/-123/-25/-54/-55`.
+  Varsayılan profilde `ThemeChangesDesktopIcons = 1`, `WallPaper = X:\Windows\Web\Wallpaper\Windows\img0.jpg`. Spotlight
+  masaüstü ayarı imajda yok (ilk oturumda gelir); `Web\Wallpaper\Spotlight` klasörü var.
+- [2026-10-05] [Defender 25H2] Servisler: WinDefend (2), WdNisSvc (3), WdNisDrv (3), WdFilter (0), WdBoot (0), Sense (3),
+  SecurityHealthService (3), wscsvc (2), MsSecFlt / MsSecWfp (3), MsSecCore (0, dokunulmaz). Sürücüler System32\drivers kökünde
+  (`drivers\wd` boş). CBS'te yalnız tanım, ApplicationGuard ve Group Policy paketleri; motor çekirdek paketlerde; WinSxS'te
+  43 `*windows-defender*` bileşeni. Sağ tık: `*\shellex\ContextMenuHandlers\EPP` {09A47860-11B0-4DA5-AFA5-26D86198A780};
+  tepsi: `Run\SecurityHealth`. Görevler imajda yok (kurulumda kaydediliyor).
+- [2026-10-05] [Microsoft Store] Arama `POST storeedgefd.dsx.mp.microsoft.com/v9.0/manifestSearch {"Query":{"KeyWord":…,"MatchType":"Substring"}}`;
+  ürün `displaycatalog…/v7.0/products/<id>?market=US&languages=en-US&fieldsTemplate=Details` → `FulfillmentData.WuCategoryId`;
+  FE3 SyncUpdates yanıtında `NewUpdates/UpdateInfo` (sayısal ID + UpdateIdentity) ile `ExtendedUpdateInfo/Updates/Update` (aynı ID,
+  Files + `InstallerSpecificIdentifier` + `AppxPackageInstallData PackageFileName`) eşleşir; dosya adları GUID. Bazı uygulamaların
+  yeni sürümleri yalnız şifreli (`.emsixbundle`), eski sürümleri düz (Wikipedia 1.0.1.70 şifreli, 1.0.1.0 düz). store.rg-adguard.net
+  Cloudflare arkasında (HTTP 403).
 - [2026-10-04] [dil dosyaları — Windows Update (UUP) biçimi] 26200.8037: dil paketi `Microsoft-Windows-Client-LanguagePack-Package-amd64-<dil>.esd` (en-US 18,6 MB), tek imajlı solid ESD; içi genişletilmiş paket (12 872 dosya, `update.mum` + .mum/.cat + manifestler, sürüm 10.0.26100.1). `dism /Apply-Image` ya da `WIMApplyImage` ile klasöre (3 sn) açılınca `DismAddPackage(<klasör>)` kuruyor (19 sn); `Licenses-<Sürüm>-Package~…~en-US` de geliyor. Her cab'ın yanında iki express meta veri cab'ı var (`…_<8 hex>.cab`, mimarisiz `…-Package.cab`; içlerinde yalnız `express.psf.cix.xml`): paket değiller, DISM 0x80070002 verir.
 - [2026-10-04] [dil özellikleri — 0x800F0912] `LanguageFeatures-*` cab'ları DISM'de yetenek olarak planlanır ("Package planned as capability"); CBS cab'ın klasörünü `Addsource` ile ekler ve bağımlılıkları (Speech → `Language.Basic` + `Language.TextToSpeech`; diğerleri → Basic) **LoF adıyla** arar (`…-Package~31bf3856ad364e35~amd64~~.cab`). UUP adlı dosyalar orada dursa da "FOD: Missing payload" → `CBS_E_ONDEMAND_LOCALSOURCE_NOT_FOUND` (0x800F0912); dil paketi kurulu olsa bile. Aynı dosyalar LoF adıyla bir klasöre kopyalanınca 5 özellik + 15 bileşen dili hatasız kuruldu (3–10 sn / paket). Bileşen dillerinin LoF adı `<Paket>~31bf3856ad364e35~<amd64|wow64>~<dil>~.cab`.
 - [2026-10-04] [dil + toplu güncelleme] 26200.8037 imajında (LCU kurulu) eklenen dil paketi ve özellikler 10.0.26100.1 sürümünde kalır; `Get-Intl` en-US'i "Fully localized" gösterir. Microsoft'un yolu: dili LCU'dan önce eklemek ya da LCU'yu dilden sonra yeniden kurmak (sayfa uyarır). Home imajında Pro'dan fazla isteğe bağlı bileşen paketi (Telnet, TFTP, SimpleTCP, ProjFS, WinOcr, ADAM, EnterpriseClientSync, TerminalServices-AppServer, Hyper-V Platform) kurulu görünür; hepsinin en-US bileşen dili var (Home'da 26, Pro'da 15).

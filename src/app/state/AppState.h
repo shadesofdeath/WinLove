@@ -57,7 +57,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch, Intl, LanguageFetch };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch, Intl, LanguageFetch, SystemMounts, StoreFetch };
     using Listener = std::function<void(Change)>;
 
     // `answersFile`: where the answer file being edited is kept between runs (AnswerStore.h).
@@ -312,6 +312,31 @@ public:
     void setLanguageFetch(std::optional<LanguageFetch> fetch);
     void notifyLanguageFetch() { notify(Change::LanguageFetch); }
 
+    // D-066: "Mağazadan ekle…" — the running Store search / download (StoreController). Change::StoreFetch.
+    struct StoreFetch {
+        enum class Stage : std::uint8_t { Searching, Resolving, Downloading };
+        Stage stage = Stage::Searching;
+        std::wstring title; // the query, then the app
+        std::uint64_t doneBytes = 0;
+        std::uint64_t totalBytes = 0;
+        core::CancelToken cancel;
+    };
+    [[nodiscard]] const std::optional<StoreFetch>& storeFetch() const noexcept { return m_storeFetch; }
+    [[nodiscard]] std::optional<StoreFetch>& storeFetchMutable() noexcept { return m_storeFetch; }
+    void setStoreFetch(std::optional<StoreFetch> fetch);
+    void notifyStoreFetch() { notify(Change::StoreFetch); }
+
+    // D-064: every image DISM has mounted on this PC, in any folder (ImageController::scanSystemMounts),
+    // for the Kaynak page — WinLove can take over one mounted by another tool. Change::SystemMounts.
+    struct SystemMounts {
+        enum class Status : std::uint8_t { Loading, Ready, Failed };
+        Status status = Status::Loading;
+        std::vector<core::MountCheck> items;
+        Error error;
+    };
+    [[nodiscard]] const std::optional<SystemMounts>& systemMounts() const noexcept { return m_systemMounts; }
+    void setSystemMounts(std::optional<SystemMounts> mounts);
+
     // Last inspection of the WinLove mount folder (MountHealth.h); empty until first checked.
     [[nodiscard]] const std::optional<core::MountCheck>& mountFolder() const noexcept { return m_mountFolder; }
     void setMountFolder(std::optional<core::MountCheck> check);
@@ -364,6 +389,8 @@ private:
     std::optional<IsoRun> m_iso;
     std::optional<UpdateFetch> m_updateFetch;
     std::optional<LanguageFetch> m_languageFetch;
+    std::optional<SystemMounts> m_systemMounts;
+    std::optional<StoreFetch> m_storeFetch;
     std::filesystem::path m_settingsFile;
     std::filesystem::path m_answersFile;
     std::shared_ptr<log::RingBufferSink> m_logBuffer = std::make_shared<log::RingBufferSink>();

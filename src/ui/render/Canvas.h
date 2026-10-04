@@ -59,6 +59,10 @@ public:
                   float size = 0 /* 0 = the variant's grid size */, float rotationDegrees = 0);
     // 2px progress track (line.strong) with a fill (progress-skeleton-empty.md "ProgressBar").
     void progressBar(RectF track, float fraction, Ink fill = tokens::Color::AccentBase);
+    // An icon out of a file (.ico, .dll, .exe; `index` as PrivateExtractIcons takes it: >= 0 the
+    // n-th icon, < 0 a resource id), drawn into `rect` at its physical pixel size. Loaded once per
+    // file / index / size and kept (UI thread). False when the file has no such icon.
+    bool drawFileIcon(const std::wstring& file, int index, RectF rect, float opacity = 1.0f);
 
     void pushClip(RectF rect);
     void popClip();

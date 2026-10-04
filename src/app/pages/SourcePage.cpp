@@ -53,12 +53,40 @@ SourcePage::SourcePage(AppState& state, const Localization& strings, Language la
             m_intents.showInFolder(path);
         }
     };
+    m_mounts = &add<ui::TableView>(std::vector<ui::TableColumn>{
+        {strings.get(Str::SourceMountedFolder), 300},
+        {strings.get(Str::SourceMountedImage), 240},
+        {strings.get(Str::SourceMountedFile), 0},
+        {strings.get(Str::SourceMountedState), 170},
+    });
+    m_mounts->setAccessible(ui::AccessRole::Group, strings.get(Str::SourceMounted));
+    m_mounts->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
+        paintMountCell(c, row, column, rect, cell.selected);
+    };
+    m_mounts->onActivate = [this](int row) {
+        if (row >= 0 && row < static_cast<int>(m_mountRows.size()) && m_intents.adoptMount) {
+            m_intents.adoptMount(m_mountRows[static_cast<std::size_t>(row)].folder);
+        }
+    };
+    m_mounts->onKey = [this](const ui::KeyEvent& key) {
+        const int row = m_mounts->selected();
+        if (key.virtualKey == VK_DELETE && row >= 0 && row < static_cast<int>(m_mountRows.size()) && m_intents.discardMount) {
+            const auto& m = m_mountRows[static_cast<std::size_t>(row)];
+            m_intents.discardMount(m.folder, m.imageName);
+            return true;
+        }
+        return false;
+    };
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Recent) {
             refreshRecent();
         }
+        if (change == AppState::Change::SystemMounts || change == AppState::Change::Mount) {
+            refreshMounts();
+        }
     });
     refreshRecent();
+    refreshMounts();
 }
 
 SourcePage::~SourcePage() {
@@ -69,6 +97,56 @@ void SourcePage::refreshRecent() {
     m_recent->setEntries(m_state.recent().entries());
     m_recent->setVisible(!m_recent->empty());
     layout();
+}
+
+void SourcePage::refreshMounts() {
+    const auto& mounts = m_state.systemMounts();
+    m_mountRows = mounts ? mounts->items : std::vector<core::MountCheck>{};
+    m_mounts->setVisible(!m_mountRows.empty());
+    m_mounts->setRowCount(static_cast<int>(m_mountRows.size()));
+    m_mounts->refresh();
+    layout();
+    invalidate();
+}
+
+void SourcePage::paintMountCell(ui::Canvas& canvas, int row, int column, RectF rect, bool selected) {
+    if (row < 0 || row >= static_cast<int>(m_mountRows.size())) {
+        return;
+    }
+    const auto& m = m_mountRows[static_cast<std::size_t>(row)];
+    switch (column) {
+    case 0: canvas.drawText(m.folder.wstring(), rect, TypeStyle::Mono, Color::TextPrimary); break;
+    case 1: {
+        std::wstring name = m.imageName;
+        if (m.record) {
+            name = (name.empty() ? std::wstring() : name + L"  \u00b7  ") + L"#" + std::to_wstring(m.record->index);
+        }
+        canvas.drawText(name.empty() ? L"—" : name, rect, selected ? TypeStyle::BodyStrong : TypeStyle::Body, Color::TextPrimary);
+        break;
+    }
+    case 2:
+        canvas.drawText(m.record ? m.record->imagePath.wstring() : L"—", rect, TypeStyle::Caption, Color::TextSecondary);
+        break;
+    case 3: {
+        const auto& mounted = m_state.mounted();
+        const bool inUse = mounted && _wcsicmp(mounted->mountDir.c_str(), m.folder.c_str()) == 0;
+        Str state = Str::SourceMountedOk;
+        Color ink = Color::StatusSuccess;
+        switch (m.state) {
+        case core::MountState::Ok:
+            state = inUse ? Str::SourceMountedInUse : m.record && m.record->readOnly ? Str::SourceMountedReadOnly : Str::SourceMountedOk;
+            ink = inUse ? Color::AccentBase : Color::StatusSuccess;
+            break;
+        case core::MountState::NeedsRemount: state = Str::SourceMountedRemount; ink = Color::StatusWarning; break;
+        case core::MountState::ImageMissing: state = Str::SourceMountedMissing; ink = Color::StatusError; break;
+        case core::MountState::Orphaned: state = Str::SourceMountedOrphan; ink = Color::StatusWarning; break;
+        default: state = Str::SourceMountedInvalid; ink = Color::StatusError; break;
+        }
+        canvas.drawText(m_strings.get(state), rect, TypeStyle::Caption, ink);
+        break;
+    }
+    default: break;
+    }
 }
 
 void SourcePage::setLoading(bool loading) {
@@ -99,11 +177,25 @@ void SourcePage::layout() {
         m_error->setBounds({b.x, y, b.width, kInfoBarHeight});
         y += kInfoBarHeight;
     }
+    if (m_mounts->visible()) {
+        y += kSectionGap + kSectionLine + kSectionToTable;
+        const int rows = std::min(static_cast<int>(m_mountRows.size()), 5);
+        const float h = ui::TableView::kHeader + ui::TableView::kRow * static_cast<float>(rows) + 1;
+        m_mounts->setBounds({b.x, y, b.width, h});
+        y += h + 4 + kSectionLine; // the hint under it
+    }
     y += kSectionGap + kSectionLine + kSectionToTable;
     m_recent->setBounds({b.x, y, b.width, m_recent->contentHeight()});
 }
 
 void SourcePage::paint(ui::Canvas& canvas) {
+    if (m_mounts->visible()) {
+        const RectF r = m_mounts->bounds();
+        canvas.drawText(m_strings.get(Str::SourceMounted), {r.x, r.y - kSectionToTable - kSectionLine, r.width, kSectionLine},
+                        TypeStyle::Section, Color::TextSecondary);
+        canvas.drawText(m_strings.get(Str::SourceMountedHint), {r.x, r.bottom() + 4, r.width, kSectionLine}, TypeStyle::Caption,
+                        Color::TextTertiary);
+    }
     if (m_recent->visible()) {
         const RectF r = m_recent->bounds();
         canvas.drawText(m_strings.get(Str::SourceRecent), {r.x, r.y - kSectionToTable - kSectionLine, r.width, kSectionLine},

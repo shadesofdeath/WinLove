@@ -30,6 +30,8 @@
 #include "app/pages/postsetup/AppsDialog.h"
 #include "app/pages/updates/UpdateCatalogDialog.h"
 #include "app/pages/AppsPage.h"
+#include "app/pages/IconsPage.h"
+#include "app/pages/apps/StoreDialog.h"
 #include "app/pages/LanguagesPage.h"
 #include "app/pages/languages/LanguageAddDialog.h"
 #include "app/pages/FilesPage.h"
@@ -155,6 +157,30 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_tasks = std::make_unique<TaskController>(m_state, embeddedTaskCatalog());
     m_hosts = std::make_unique<HostsController>(m_state, embeddedHostsCatalog());
     m_branding = std::make_unique<BrandingController>(m_state);
+    m_icons = std::make_unique<IconController>(m_state);
+    m_store = std::make_unique<StoreController>(m_state, StoreController::Events{
+        m_services.postToUi,
+        [this](const std::wstring& query, std::vector<core::StoreSearchResult> results) {
+            if (m_storeDialog) {
+                m_storeDialog->setResults(query, std::move(results));
+            }
+        },
+        [this](const Error& e) {
+            if (m_storeDialog) {
+                m_storeDialog->setResults(L"", {});
+            }
+            showToast(ui::InfoKind::Error, m_strings.get(Str::AppsStoreFailed), errorText(e));
+        },
+        [this](std::wstring title, std::filesystem::path app) {
+            if (!m_state.mounted()) {
+                showToast(ui::InfoKind::Warning, m_strings.get(Str::AppsStoreDownloadedNoMount), app.parent_path().wstring());
+                return;
+            }
+            m_apps->addPackages({app}); // the frameworks are next to it
+            showToast(ui::InfoKind::Success, m_strings.format(Str::AppsStoreAdded, {{L"name", title}}), app.parent_path().wstring());
+        },
+        [this] { showToast(ui::InfoKind::Warning, m_strings.get(Str::AppsStoreStopped), L""); },
+    });
     m_files = std::make_unique<FilesController>(m_state);
     m_languages = std::make_unique<LanguageController>(m_state, m_services.postToUi);
     m_languageFetch = std::make_unique<LanguageFetchController>(m_state, LanguageFetchController::Events{
@@ -758,6 +784,65 @@ void Shell::showLanguageOffers(const LanguageTarget& target, const std::vector<c
     showModal(slot, std::move(built.dialog), built.initialFocus);
 }
 
+void Shell::showStoreDialog() {
+    if (!requireMount(Str::AppsNoMountTitle, Str::AppsNoMountBody)) {
+        return;
+    }
+    if (m_store->busy()) {
+        showToast(ui::InfoKind::Info, m_strings.get(Str::AppsStoreBusy), L"");
+        return;
+    }
+    if (!host()) {
+        return;
+    }
+    const ModalSlot slot = modalSlot();
+    StoreDialogActions actions;
+    actions.close = [this, close = slot.close] {
+        m_storeDialog = nullptr;
+        close();
+    };
+    actions.search = [this](std::wstring query) {
+        if (m_storeDialog) {
+            m_storeDialog->setSearching(true);
+        }
+        m_store->search(std::move(query));
+    };
+    actions.install = [this](core::StoreSearchResult app) { m_store->install(std::move(app)); };
+    StoreDialog built = makeStoreDialog(m_strings, m_store->architecture(), std::move(actions));
+    m_storeDialog = built.handle;
+    showModal(slot, std::move(built.dialog), built.initialFocus);
+}
+
+void Shell::storeResultsForDemo(const std::wstring& query, std::vector<core::StoreSearchResult> results) {
+    if (m_storeDialog) {
+        m_storeDialog->setResults(query, std::move(results));
+    }
+}
+
+void Shell::loadIconPack() {
+    if (!requireMount(Str::IconsNoMountTitle, Str::IconsNoMountBody)) {
+        return;
+    }
+    const auto folder = ui::pickFolder(owner(), m_strings.get(Str::IconsLoadPack));
+    if (!folder) {
+        return;
+    }
+    auto pack = m_icons->applyPack(*folder);
+    if (!pack) {
+        showToast(ui::InfoKind::Error, m_strings.get(Str::IconsPackFailed), errorText(pack.error()));
+        return;
+    }
+    if (pack->matched == 0) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::IconsPackNone), folder->wstring());
+        return;
+    }
+    std::wstring detail = pack->name;
+    if (!pack->unmatched.empty()) {
+        detail += L" \u00b7 " + m_strings.format(Str::IconsPackUnmatched, {{L"n", std::to_wstring(pack->unmatched.size())}});
+    }
+    showToast(ui::InfoKind::Success, m_strings.format(Str::IconsPackLoaded, {{L"n", std::to_wstring(pack->matched)}}), detail);
+}
+
 void Shell::scanLanguageFolder() {
     if (!requireMount(Str::LanguagesNoMountTitle, Str::LanguagesNoMountBody)) {
         return;
@@ -1140,6 +1225,7 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::Tasks, m_tasks->changedCount());
     m_nav->setBadge(PageId::Hosts, m_hosts->changedCount());
     m_nav->setBadge(PageId::Branding, m_branding->changedCount());
+    m_nav->setBadge(PageId::Icons, m_icons->changedCount());
     m_nav->setBadge(PageId::Files, m_files->count());
     m_nav->setBadge(PageId::Languages, m_languages->changedCount());
     m_nav->setBadge(PageId::Apps, m_apps->appCount() + static_cast<int>(changes.count(core::ops::OpKind::SetDefaultApps)));
@@ -1285,7 +1371,12 @@ void Shell::showPage(PageId page) {
                                     [](const std::filesystem::path& p) {
                                         revealInExplorer(p);
                                     },
-                                    [this](const std::filesystem::path& p) { verifyHash(p); }});
+                                    [this](const std::filesystem::path& p) { verifyHash(p); },
+                                    [this](const std::filesystem::path& folder) { m_images->adoptMount(folder); },
+                                    [this](const std::filesystem::path& folder, const std::wstring& edition) {
+                                        askDiscardMount(folder, edition);
+                                    }});
+            m_images->scanSystemMounts(); // D-064: what other tools mounted, read again each visit
         } else if (page == PageId::Images) {
             if (m_state.source()) {
                 m_actionTools = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesTools),
@@ -1526,6 +1617,8 @@ void Shell::showPage(PageId page) {
                 LanguagesPage::Intents{[this] { showPage(PageId::Images); }, [this] { m_languageFetch->cancel(); },
                                        [this] { findUpdates(); }});
         } else if (page == PageId::Apps) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::AppsStoreAction), ui::icons::Icon::Download).onInvoke =
+                [this] { showStoreDialog(); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::AppsFromHost), ui::icons::Icon::Import).onInvoke =
                 [this] {
                     if (!m_state.mounted() || m_apps->importingHost()) {
@@ -1564,7 +1657,7 @@ void Shell::showPage(PageId page) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::AppsAddPackage), ui::icons::Icon::Add).onInvoke =
                 [this] { pickAppPackages(); };
             m_pageBody = &m_pageView->setBody<AppsPage>(m_state, *m_apps, m_strings, m_language, [this] { pickAppPackages(); },
-                                                        [this] { showPage(PageId::Images); });
+                                                        [this] { showPage(PageId::Images); }, [this] { m_store->cancel(); });
         } else if (page == PageId::Files) {
             auto pickFiles = [this] {
                 auto files = ui::pickFiles(owner(), m_strings.get(Str::FilesAddFiles), {{m_strings.get(Str::FilesAllFiles), L"*.*"}});
@@ -1609,6 +1702,28 @@ void Shell::showPage(PageId page) {
             };
             intents.goImages = [this] { showPage(PageId::Images); };
             m_pageBody = &m_pageView->setBody<BrandingPage>(m_state, *m_branding, m_strings, m_language, std::move(intents));
+        } else if (page == PageId::Icons) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::IconsLoadPack), ui::icons::Icon::OpenFolder).onInvoke =
+                [this] { loadIconPack(); };
+            m_pageView->addAction(ui::ButtonKind::Secondary,
+                                  m_strings.get(m_icons->shortcutArrowRemoved() ? Str::IconsArrowBack : Str::IconsArrowRemove))
+                .onInvoke = [this] {
+                if (!requireMount(Str::IconsNoMountTitle, Str::IconsNoMountBody)) {
+                    return;
+                }
+                if (auto ok = m_icons->setShortcutArrowRemoved(!m_icons->shortcutArrowRemoved()); !ok) {
+                    showToast(ui::InfoKind::Error, m_strings.get(Str::IconsArrowRemove), errorText(ok.error()));
+                }
+                showPage(PageId::Icons); // the action's text follows
+            };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::IconsResetAll)).onInvoke = [this] { m_icons->resetAll(); };
+            IconsPage::Intents intents;
+            intents.goImages = [this] { showPage(PageId::Images); };
+            intents.pickIcon = [this]() -> std::optional<std::filesystem::path> {
+                return ui::pickFile(owner(), m_strings.get(Str::IconsPick), {{m_strings.get(Str::IconsFiles), L"*.ico"}});
+            };
+            intents.refused = [this](const std::wstring& file) { showToast(ui::InfoKind::Warning, m_strings.get(Str::IconsNotIcon), file); };
+            m_pageBody = &m_pageView->setBody<IconsPage>(m_state, *m_icons, m_strings, m_language, std::move(intents));
         } else if (page == PageId::Services) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ServicesReset)).onInvoke = [this] {
                 m_serviceCtl->resetChanges();
@@ -2122,6 +2237,24 @@ void Shell::askUnmount() {
                    [this, raw] {
                        host()->popModal(raw);
                        m_images->unmount(/*commit=*/true);
+                   },
+                   /*primary=*/true);
+    pushDialog(std::move(dialog));
+}
+
+void Shell::askDiscardMount(const std::filesystem::path& folder, const std::wstring& edition) {
+    if (!host()) {
+        return;
+    }
+    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::SourceDiscardTitle),
+                                               m_strings.format(Str::SourceDiscardBody, {{L"folder", folder.wstring()}}),
+                                               ui::icons::Icon::Unmount, ui::tokens::Color::StatusWarning);
+    ui::Dialog* raw = dialog.get();
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
+    raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::SourceDiscardAction),
+                   [this, raw, folder, edition] {
+                       host()->popModal(raw);
+                       m_images->discardMount(folder, edition);
                    },
                    /*primary=*/true);
     pushDialog(std::move(dialog));

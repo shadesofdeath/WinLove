@@ -218,6 +218,16 @@ void AppState::setUpdateFetch(std::optional<UpdateFetch> fetch) {
     notify(Change::UpdateFetch);
 }
 
+void AppState::setStoreFetch(std::optional<StoreFetch> fetch) {
+    m_storeFetch = std::move(fetch);
+    notify(Change::StoreFetch);
+}
+
+void AppState::setSystemMounts(std::optional<SystemMounts> mounts) {
+    m_systemMounts = std::move(mounts);
+    notify(Change::SystemMounts);
+}
+
 void AppState::setLanguageFetch(std::optional<LanguageFetch> fetch) {
     m_languageFetch = std::move(fetch);
     notify(Change::LanguageFetch);

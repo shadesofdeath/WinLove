@@ -11,6 +11,8 @@
 //   registry  offline writes (delete the Run value, the uninstall entry, the service key…).
 //   driverClasses  device class GUIDs whose inbox drivers are taken out of the image and its
 //             component store (deep removal, D-060: DeepRemoval.h; legacy classes only).
+//   appx      provisioned apps by name ("Microsoft.SecHealthUI"): every version is deprovisioned,
+//             natively when DISM refuses (Appx.h) — a component whose UI is an app (D-063).
 // In the queue a recipe is the value of one RemoveComponent operation (target = the catalog id),
 // so a preset carries what it does and the Applier needs no catalog.
 #include "core/image/RegistryEdit.h"
@@ -30,6 +32,10 @@ struct ComponentRecipe {
     std::vector<std::wstring> paths;
     std::vector<RegistryWrite> registry;
     std::vector<std::wstring> driverClasses;
+    std::vector<std::wstring> appx;
+    // Runs after the image's updates (Planner: DeepRemove): what it deletes a later cumulative
+    // update needs (0x800F0982), so in the same run the update goes first (D-063).
+    bool afterUpdates = false;
 
     [[nodiscard]] bool operator==(const ComponentRecipe&) const = default;
 };

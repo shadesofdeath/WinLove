@@ -26,6 +26,7 @@ enum class PageId : std::uint8_t {
     Tweaks,
     Hosts, // D-049
     Branding, // D-056 Kişiselleştirme
+    Icons, // D-065 Simgeler
     Unattended,
     PostSetup,
     Files, // D-051

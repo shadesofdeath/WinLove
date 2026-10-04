@@ -77,6 +77,10 @@ Result<ComponentCatalog> ComponentCatalog::parse(std::string_view json) {
                 for (const auto& item : c.value("driverClasses", Json::array())) {
                     entry.recipe.driverClasses.push_back(utf8::toWide(item.get<std::string>()));
                 }
+                for (const auto& item : c.value("appx", Json::array())) {
+                    entry.recipe.appx.push_back(utf8::toWide(item.get<std::string>()));
+                }
+                entry.recipe.afterUpdates = c.value("afterUpdates", false);
                 for (const auto& item : c.value("registry", Json::array())) {
                     auto write = writeFrom(item);
                     if (!write) {

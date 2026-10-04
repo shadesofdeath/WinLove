@@ -283,6 +283,133 @@ void ImageController::unmount(bool commit) {
         Failure::Unmount);
 }
 
+void ImageController::scanSystemMounts() {
+    if (!core::isElevated()) {
+        return;
+    }
+    if (const auto& current = m_state.systemMounts(); !current || current->status != AppState::SystemMounts::Status::Loading) {
+        AppState::SystemMounts loading;
+        if (current) {
+            loading.items = current->items; // the old list stays on screen while it is read again
+        }
+        m_state.setSystemMounts(std::move(loading));
+    }
+    auto post = m_events.postToUi;
+    std::weak_ptr<bool> alive = m_alive;
+    m_state.engine().run<std::vector<core::MountCheck>>(
+        [](const core::TaskContext&) -> Result<std::vector<core::MountCheck>> {
+            auto dism = core::Dism::instance();
+            if (!dism) {
+                return std::unexpected(dism.error());
+            }
+            return core::inspectMounts(**dism);
+        },
+        [this, post, alive](Result<std::vector<core::MountCheck>> result) {
+            post([this, alive, result = std::move(result)]() mutable {
+                if (const auto a = alive.lock(); !a || !*a) {
+                    return;
+                }
+                AppState::SystemMounts mounts;
+                if (!result) {
+                    log::warn("app", describe(result.error()));
+                    mounts.status = AppState::SystemMounts::Status::Failed;
+                    mounts.error = result.error();
+                } else {
+                    mounts.status = AppState::SystemMounts::Status::Ready;
+                    mounts.items = std::move(*result);
+                    log::info("app", std::format(L"{} image(s) mounted on this PC", mounts.items.size()));
+                }
+                m_state.setSystemMounts(std::move(mounts));
+            });
+        },
+        {});
+}
+
+void ImageController::adoptMount(const std::filesystem::path& folder) {
+    if (busy()) {
+        m_events.refused(Str::ImagesBusy);
+        return;
+    }
+    if (const auto& mounted = m_state.mounted()) {
+        if (_wcsicmp(nativePath(mounted->mountDir).c_str(), nativePath(folder).c_str()) != 0) {
+            m_events.refused(Str::SourceMountedBusy);
+        }
+        return; // the same mount: already the one WinLove works on
+    }
+    auto record = std::make_shared<std::optional<core::MountInfo>>();
+    run(EngineOperation{EngineOperation::Kind::Mounting, folder.filename().wstring(), folder, 0},
+        [folder, record](const core::TaskContext& task) -> Result<void> {
+            auto dism = core::Dism::instance();
+            if (!dism) {
+                return std::unexpected(dism.error());
+            }
+            auto check = core::inspectMount(**dism, folder);
+            if (!check) {
+                return std::unexpected(check.error());
+            }
+            if (check->state == core::MountState::NeedsRemount) { // after a reboot: the WIM filter let go
+                auto repaired = core::repairMount(**dism, *check, task);
+                if (!repaired) {
+                    return std::unexpected(repaired.error());
+                }
+                check = std::move(repaired);
+            }
+            if (check->state != core::MountState::Ok || !check->record) {
+                return fail(ErrorCode::InvalidArgument,
+                            std::format(L"this mount cannot be worked on ({})", core::mountStateName(check->state)),
+                            folder.wstring());
+            }
+            *record = check->record;
+            return {};
+        },
+        [this, record] {
+            // Handed over like a mount restored at startup: its source opens, it becomes the mounted image.
+            if (!*record || !m_events.restored) {
+                return;
+            }
+            const auto& m = **record;
+            log::info("app", std::format(L"taking over the mount {} <- {} [{}]", m.mountPath.wstring(), m.imagePath.wstring(), m.index));
+            m_events.restored(sourceForMountedImage(m.imagePath), MountedImage{m.mountPath, m.imagePath, m.index, {}, m.readOnly});
+        },
+        Failure::Mount);
+}
+
+void ImageController::discardMount(const std::filesystem::path& folder, std::wstring edition) {
+    if (busy()) {
+        m_events.refused(Str::ImagesBusy);
+        return;
+    }
+    if (const auto& mounted = m_state.mounted();
+        mounted && _wcsicmp(nativePath(mounted->mountDir).c_str(), nativePath(folder).c_str()) == 0) {
+        unmount(/*commit=*/false); // the one WinLove works on: its own path
+        return;
+    }
+    run(EngineOperation{EngineOperation::Kind::Unmounting, std::move(edition), folder, 0},
+        [folder](const core::TaskContext& task) -> Result<void> {
+            auto dism = core::Dism::instance();
+            if (!dism) {
+                return std::unexpected(dism.error());
+            }
+            auto check = core::inspectMount(**dism, folder);
+            if (!check) {
+                return std::unexpected(check.error());
+            }
+            if (check->state == core::MountState::Ok || check->state == core::MountState::NeedsRemount) {
+                auto outcome = core::unmountSafely(**dism, folder, /*commit=*/false, task);
+                return outcome ? Result<void>{} : std::unexpected(outcome.error());
+            }
+            // Invalid / image missing / leftovers: what repairMount does about them (discard, clean up).
+            auto repaired = core::repairMount(**dism, *check, task);
+            return repaired ? Result<void>{} : std::unexpected(repaired.error());
+        },
+        [this, folder] {
+            m_events.succeeded(Str::ImagesUnmountedToast, folder.wstring());
+            scanSystemMounts();
+            inspectMountFolder();
+        },
+        Failure::Unmount);
+}
+
 void ImageController::exportIndex(int index, const std::filesystem::path& destination) {
     if (busy()) {
         m_events.refused(Str::ImagesBusy);

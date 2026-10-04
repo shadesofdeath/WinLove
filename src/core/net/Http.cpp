@@ -182,6 +182,12 @@ Result<HttpResponse> httpGet(std::wstring_view url, const CancelToken& cancel) {
     return fetch(url, L"GET", {}, {}, cancel);
 }
 
+Result<HttpResponse> httpPost(std::wstring_view url, std::string_view body, std::wstring_view contentType,
+                              const CancelToken& cancel) {
+    const std::wstring headers = L"Content-Type: " + std::wstring(contentType) + L"\r\n";
+    return fetch(url, L"POST", headers, body, cancel);
+}
+
 Result<HttpResponse> httpPostForm(std::wstring_view url, std::string_view form, const CancelToken& cancel) {
     return fetch(url, L"POST", L"Content-Type: application/x-www-form-urlencoded\r\n", form, cancel);
 }

@@ -73,6 +73,9 @@ struct LaunchOptions {
     // render: fake 25H2 Pro mount with Turkish, English queued from Windows Update and a display language (D-053 / D-061);
     // "dialog": the "Dil ekle" check list; "fetch": a download running.
     std::optional<std::wstring> demoLanguages;
+    std::optional<std::wstring> demoStore; // render: "dialog" (search results) | "fetch" (a download on Uygulamalar), D-066
+    bool demoIcons = false; // render: the Simgeler page with a few icons assigned (D-065)
+    bool demoMounts = false; // render: images mounted on this PC by other tools, on the Kaynak page (D-064)
     std::optional<std::wstring> demoApps; // render: fake mount + the lab's Terminal package ("defaults": second tab) (D-050)
     bool demoImageDrivers = false; // render: fake mount + the image's third-party drivers, one queued for removal (D-052)
     bool demoTweaks = false;     // render: fake mount + the selections of screen 10

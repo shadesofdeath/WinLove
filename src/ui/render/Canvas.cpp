@@ -1,7 +1,11 @@
 #include "ui/render/Canvas.h"
 
+#include <wincodec.h>
+
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <tuple>
 
 namespace wl::ui {
 
@@ -9,6 +13,38 @@ namespace {
 
 D2D1_RECT_F toD2D(RectF r) {
     return D2D1::RectF(r.x, r.y, r.right(), r.bottom());
+}
+
+// File icons by (device, file, index, pixels); a failed load is kept too (nullptr), so a missing
+// icon is not looked for again every frame. Bitmaps belong to their device: another device
+// (after a device loss) starts a fresh cache.
+struct FileIconCache {
+    ID2D1Device* device = nullptr;
+    std::map<std::tuple<std::wstring, int, int>, ComPtr<ID2D1Bitmap>> bitmaps;
+};
+FileIconCache& fileIcons() {
+    static FileIconCache cache;
+    return cache;
+}
+
+ComPtr<ID2D1Bitmap> loadFileIcon(ID2D1DeviceContext2* context, const std::wstring& file, int index, int pixels) {
+    HICON icon = nullptr;
+    UINT id = 0;
+    if (PrivateExtractIconsW(file.c_str(), index, pixels, pixels, &icon, &id, 1, LR_DEFAULTCOLOR) != 1 || !icon) {
+        return nullptr;
+    }
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> bitmap;
+    ComPtr<IWICFormatConverter> converter;
+    ComPtr<ID2D1Bitmap> out;
+    if (SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic))) &&
+        SUCCEEDED(wic->CreateBitmapFromHICON(icon, &bitmap)) && SUCCEEDED(wic->CreateFormatConverter(&converter)) &&
+        SUCCEEDED(converter->Initialize(bitmap.Get(), GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, nullptr, 0,
+                                        WICBitmapPaletteTypeMedianCut))) {
+        context->CreateBitmapFromWicBitmap(converter.Get(), nullptr, &out);
+    }
+    DestroyIcon(icon);
+    return out;
 }
 
 } // namespace
@@ -168,6 +204,32 @@ void Canvas::drawIcon(icons::Icon icon, PointF topLeft, Ink ink, IconVariant var
     }
     m_context->DrawGeometry(entry.geometry, b, entry.strokeWidth, m_icons.strokeStyle());
     m_context->SetTransform(previous);
+}
+
+bool Canvas::drawFileIcon(const std::wstring& file, int index, RectF rect, float opacity) {
+    if (file.empty() || rect.width <= 0) {
+        return false;
+    }
+    auto& cache = fileIcons();
+    ComPtr<ID2D1Device> device;
+    m_context->GetDevice(&device);
+    if (cache.device != device.Get()) {
+        cache.bitmaps.clear();
+        cache.device = device.Get();
+    }
+    const int pixels = std::clamp(static_cast<int>(std::lround(rect.width * m_scale)), 8, 256);
+    const auto key = std::make_tuple(file, index, pixels);
+    auto it = cache.bitmaps.find(key);
+    if (it == cache.bitmaps.end()) {
+        it = cache.bitmaps.emplace(key, loadFileIcon(m_context, file, index, pixels)).first;
+    }
+    if (!it->second) {
+        return false;
+    }
+    const D2D1_RECT_F target = D2D1::RectF(snap(rect.x, m_scale), snap(rect.y, m_scale), snap(rect.x, m_scale) + rect.width,
+                                           snap(rect.y, m_scale) + rect.height);
+    m_context->DrawBitmap(it->second.Get(), target, opacity, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, nullptr, nullptr);
+    return true;
 }
 
 void Canvas::pushClip(RectF rect) {

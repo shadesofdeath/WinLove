@@ -11,6 +11,7 @@
 #include "core/image/RegistryRead.h"
 #include "core/updates/UpdateCatalog.h"
 #include "core/updates/UupLanguages.h"
+#include "core/store/MsStore.h"
 #include "core/usb/UsbMedia.h"
 #include "core/image/AppxInstall.h"
 #include "core/image/LanguagePacks.h"
@@ -1658,6 +1659,60 @@ int cmdUupLanguages(const std::wstring& buildText, const std::wstring& arch, con
     return 0;
 }
 
+// D-066: Microsoft Store apps through Microsoft's own services (no admin).
+int cmdStoreSearch(const std::wstring& query, bool asJson) {
+    auto results = core::searchStore(query, g_cancel);
+    if (!results) {
+        return reportError(results.error());
+    }
+    if (asJson) {
+        json out = json::array();
+        for (const auto& r : *results) {
+            out.push_back({{"id", narrow(r.productId)}, {"name", narrow(r.name)}, {"publisher", narrow(r.publisher)}});
+        }
+        printJson(out);
+        return 0;
+    }
+    for (const auto& r : *results) {
+        print(std::format(L"  {}  {:<40}  {}\n", r.productId, r.name, r.publisher));
+    }
+    print(std::format(L"\n  {} app(s)\n", results->size()));
+    return 0;
+}
+
+int cmdStoreGet(const std::wstring& productId, const std::wstring& arch, const std::wstring& downloadDir) {
+    auto product = core::storeProduct(productId, g_cancel);
+    if (!product) {
+        return reportError(product.error());
+    }
+    print(std::format(L"  {} · {} · {}\n", product->title, product->publisher, product->packageFamilyName));
+    auto all = core::storePackages(*product, g_cancel);
+    if (!all) {
+        return reportError(all.error());
+    }
+    const auto picked = core::pickStorePackages(*all, product->packageFamilyName, arch.empty() ? L"x64" : arch);
+    print(std::format(L"  {} package(s) on Windows Update, {} for {}:\n", all->size(), picked.size(), arch.empty() ? L"x64" : arch));
+    for (const auto& p : picked) {
+        print(std::format(L"    {:>9} KB  {}{}\n", p.size >> 10, p.fileName(), p.framework ? L"  (framework)" : L""));
+    }
+    if (picked.empty()) {
+        return 1;
+    }
+    if (downloadDir.empty()) {
+        return 0;
+    }
+    const auto task = progressTask(L"download");
+    auto saved = core::downloadStorePackages(picked, downloadDir, task);
+    print(L"\n");
+    if (!saved) {
+        return reportError(saved.error());
+    }
+    for (const auto& f : *saved) {
+        print(L"  " + f.wstring() + L"\n");
+    }
+    return 0;
+}
+
 int cmdLanguages(const std::wstring& folder) {
     const auto files = core::scanLanguageFiles(folder);
     for (const auto& f : files) {
@@ -1780,6 +1835,8 @@ void printUsage() {
           L"  wlcli uup-languages <build>[.<rev>] [--arch=x64] [--lang=en-us,...] [--parts=pack,basic,fonts,handwriting,ocr,\n"
           L"                                      tts,speech,components] [--packages-of=<mountdir>] [--download=<folder>] [--json]\n"
           L"                                      (the build's language files from Windows Update, via uupdump.net; D-061)\n"
+          L"  wlcli store-search <name> [--json]          (Microsoft Store apps; D-066)\n"
+          L"  wlcli store-get <product id> [--arch=x64] [--download=<folder>]   (the app + frameworks from Windows Update)\n"
           L"  wlcli usb-list [--all] [--json] [--allow-virtual]   USB disks a setup stick can go to (never the system\n"
           L"                                      disk; --allow-virtual: file-backed VHD(X) disks too, for the lab)\n"
           L"  wlcli usb-write <disk> <setup folder> --yes [--gpt] [--label=] [--unattend=<xml>] [--allow-virtual]\n"
@@ -2113,6 +2170,12 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"usb-write" && args.size() == 3) {
         return cmdUsbWrite(args[1], args[2], label, gpt, unattendFile, allowVirtual, yes);
+    }
+    if (command == L"store-search" && args.size() == 2) {
+        return cmdStoreSearch(args[1], asJson);
+    }
+    if (command == L"store-get" && args.size() == 2) {
+        return cmdStoreGet(args[1], arch, downloadDir);
     }
     if (command == L"uup-languages" && args.size() == 2) {
         return cmdUupLanguages(args[1], arch, langList, partList, packagesOf, downloadDir, asJson);
