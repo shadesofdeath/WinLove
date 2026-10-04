@@ -54,7 +54,26 @@
   kendim, 13:00 ALL PASSED): Pro'da kullanıcının UUP klasörü 22/22 adım, Home'da otomatik indirme (32 dosya) 33/33 adım, ikisinde de en-US kurulu
   ve arayüz dili. **Görülmeyen:** uygulamanın içinden indirme (gerçek pencerede ağ + dialog), kurulan sistemde İngilizce
   arayüz (VM), dilden sonra LCU'nun yeniden kurulması. Kapsam dışı: LXP dilleri, boot.wim / kurulum ekranı dili, lang.ini.
-- **Bir sonraki somut adım (2026-10-04):** kullanıcı Diller › "Dil ekle…" ile en-US'i uygulamanın içinden indirip Uygula'yı
+- **Gece turu (2026-10-05, kullanıcı uyurken, istek listesi; D-062 … D-066):**
+  - **lang.ini (D-062):** dil eklenen Uygula'da kurulum klasörünün `sources\lang.ini`'si `dism /Gen-LangINI` ile yenilenir → Setup'ın
+    "Yüklenecek dil" listesine eklenen dil gelir (kurulum ekranı dili hâlâ Türkçe: boot.wim'e WinPE dil paketi yok).
+  - **Ayarlar (D-062):** masaüstü simge boyutu, Denetim Masası görüntüleme ölçütü (kategori / büyük / küçük), sanal bellek (Windows
+    yönetsin / C: / kapalı + "D: 4096 8192" özel), Microsoft Defender anahtarı (servisler, politikalar, tepsi, sağ tık). `lab_settings_d062` ALL PASSED.
+  - **Duvar kağıdı (D-062):** özel duvar kağıdı seçilince Spotlight masaüstünden kapatılır (ilk oturum politikası), sayfa uyarır.
+  - **Defender tamamen (D-063):** Bileşenler › Güvenlik; tariflere `appx` alanı (Windows Güvenliği uygulaması). `lab_defender` kaldırma geçti.
+    **Önemli düzeltme:** "kaldırmadan sonra LCU kurulmuyor" (D-060'ta da) aslında DISM API'nin bu makinede .msu'yu kuramaması
+    (0x800401E3, dokunulmamış imajda da); dism.exe kuruyor → motor .msu'da otomatik dism.exe'ye geçer.
+  - **Bağlı imajlar (D-064):** Kaynak sayfasında bu bilgisayardaki bütün DISM mount'ları; çift tık ile benimse, Delete ile kaydetmeden ayır.
+  - **Simgeler (D-065):** yeni sayfa; 14 simge yuvası, ikon paketi klasörü (ad / iconpack.json), tek tek .ico, kısayol oku kaldır,
+    gerçek önizleme. DLL yamalanmaz (güncellemelere dayanıklı).
+  - **Mağaza (D-066):** Uygulamalar › "Mağazadan ekle…": Microsoft Store araması → Windows Update'ten uygulama + çerçeveler (SHA-256)
+    → kuyruk. rg-adguard bot korumalı olduğu için aynı veri doğrudan Microsoft'tan. Şifreli paketler elenir. `lab_store` ALL PASSED.
+  **Görülmeyen (hepsi):** kurulan sistemde etkiler (VM), uygulamanın içinden ağ akışları (Store, dil indirme), başka araçla bağlanmış
+  imajın uygulamada benimsenmesi.
+- **Bir sonraki somut adım (2026-10-05):** kullanıcı yeni sürümü dener: Simgeler (bir ikon paketi klasörü), Uygulamalar › Mağazadan
+  ekle, Kaynak'taki bağlı imajlar, Ayarlar'daki yeni satırlar; ardından VM'de kurulum (duvar kağıdı / Spotlight, simgeler, Defender,
+  sanal bellek, Setup'ın dil listesi).
+- **Önceki adım (2026-10-04):** kullanıcı Diller › "Dil ekle…" ile en-US'i uygulamanın içinden indirip Uygula'yı
   dener (imaj 26200.8037: uyarıdaki "Güncellemeleri bul" ile aynı LCU'yu da kuyruğa almak önerilir); ardından VM'de kurulum.
 - **Önceki adım (2026-10-02):** kullanıcı yeni bileşenleri ve derin kaldırmayı dener; VM'de derin kaldırılmış imajın
   kurulumu ve Windows Update davranışı görülmeli.

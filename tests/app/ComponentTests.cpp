@@ -6,6 +6,9 @@
 #include "base/Utf8.h"
 #include "core/image/dism/StoreCleanup.h"
 
+#include "base/Utf8.h"
+#include "core/ops/Planner.h"
+
 #include <doctest.h>
 
 #include <filesystem>
@@ -109,7 +112,7 @@ ComponentCatalog shippedComponents() {
 TEST_CASE("components catalog: the shipped file parses, every recipe is one the engine accepts") {
     const auto catalog = shippedComponents();
     REQUIRE(catalog.groups().size() == 9);
-    CHECK(catalog.components().size() == 42); // nothing skipped
+    CHECK(catalog.components().size() == 43); // nothing skipped
     for (const auto& entry : catalog.components()) {
         CAPTURE(entry.id);
         CHECK_FALSE(entry.notes.tr.empty());
@@ -164,6 +167,26 @@ TEST_CASE("components catalog: the shipped file parses, every recipe is one the 
     CHECK(update->recipe.registry.front().kind == core::RegistryWrite::Kind::DeleteKey);
     CHECK(catalog.find("component-store")->kind == ComponentCatalogEntry::Kind::Cleanup);
     CHECK_FALSE(catalog.find("defender")); // not a removable package on Windows 11 24H2+ (D-031)
+    // D-063: Defender from the root — packages, files, service keys, its app; a preset carries it all.
+    const auto* defender = catalog.find("defender-full");
+    REQUIRE(defender);
+    CHECK(defender->risk == core::ops::Risk::High);
+    CHECK(defender->recipe.appx == std::vector<std::wstring>{L"Microsoft.SecHealthUI"});
+    CHECK(std::ranges::count(defender->recipe.paths, std::wstring(L"Program Files\\Windows Defender")) == 1);
+    CHECK(std::ranges::any_of(defender->recipe.registry, [](const core::RegistryWrite& w) {
+        return w.kind == core::RegistryWrite::Kind::DeleteKey && w.key.ends_with(L"\\Services\\WinDefend");
+    }));
+    const auto json = core::componentRecipeToJson(defender->recipe);
+    const auto back = core::componentRecipeFromJson(json);
+    REQUIRE(back);
+    CHECK(*back == defender->recipe);
+    // What it deletes a later cumulative update needs: it runs after the updates of the same run.
+    CHECK(defender->recipe.afterUpdates);
+    CHECK(core::ops::phaseOf(core::ops::Operation{core::ops::OpKind::RemoveComponent, L"defender-full", utf8::toWide(json)}) ==
+          core::ops::Phase::DeepRemove);
+    core::ComponentRecipe bad = defender->recipe;
+    bad.appx = {L"..\\evil"};
+    CHECK_FALSE(core::validateComponentRecipe(bad));
 
     // Bad entries are dropped one by one, the rest of the file still loads.
     const auto partial = ComponentCatalog::parse(R"({"format":"winlove.catalog.components",

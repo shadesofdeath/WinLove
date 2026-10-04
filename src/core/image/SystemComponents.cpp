@@ -98,6 +98,12 @@ std::string componentRecipeToJson(const ComponentRecipe& recipe) {
     if (!recipe.driverClasses.empty()) {
         doc["driverClasses"] = list(recipe.driverClasses);
     }
+    if (!recipe.appx.empty()) {
+        doc["appx"] = list(recipe.appx);
+    }
+    if (recipe.afterUpdates) {
+        doc["afterUpdates"] = true;
+    }
     if (!recipe.registry.empty()) {
         Json writes = Json::array();
         for (const auto& write : recipe.registry) {
@@ -126,6 +132,10 @@ Result<ComponentRecipe> componentRecipeFromJson(std::string_view json) {
         for (const auto& item : doc.value("driverClasses", Json::array())) {
             recipe.driverClasses.push_back(utf8::toWide(item.get<std::string>()));
         }
+        for (const auto& item : doc.value("appx", Json::array())) {
+            recipe.appx.push_back(utf8::toWide(item.get<std::string>()));
+        }
+        recipe.afterUpdates = doc.value("afterUpdates", false);
         for (const auto& item : doc.value("registry", Json::array())) {
             auto write = registryWriteFrom(utf8::toWide(item.value("target", std::string{})),
                                            utf8::toWide(item.value("value", std::string{})));
@@ -150,7 +160,8 @@ std::wstring componentTitle(std::wstring_view operationValue) {
 }
 
 Result<void> validateComponentRecipe(const ComponentRecipe& recipe) {
-    if (recipe.packages.empty() && recipe.paths.empty() && recipe.registry.empty() && recipe.driverClasses.empty()) {
+    if (recipe.packages.empty() && recipe.paths.empty() && recipe.registry.empty() && recipe.driverClasses.empty() &&
+        recipe.appx.empty()) {
         return fail(ErrorCode::InvalidArgument, L"component recipe does nothing", recipe.title);
     }
     for (const auto& path : recipe.paths) {
@@ -170,6 +181,14 @@ Result<void> validateComponentRecipe(const ComponentRecipe& recipe) {
     for (const auto& write : recipe.registry) {
         if (auto mapped = mapOfflineKey(write.key); !mapped) {
             return std::unexpected(mapped.error());
+        }
+    }
+    for (const auto& name : recipe.appx) {
+        const bool plain = !name.empty() && name.size() <= 64 && std::ranges::all_of(name, [](wchar_t c) {
+            return c < 128 && (std::iswalnum(c) != 0 || c == L'.' || c == L'-');
+        });
+        if (!plain) {
+            return fail(ErrorCode::InvalidArgument, L"not an app name", name);
         }
     }
     // Deep removal never reaches beyond the legacy device classes, whatever a preset asks for.
@@ -454,6 +473,30 @@ Result<void> removeComponent(DismSession& session, const ComponentRecipe& recipe
         }
     }
     task.report(0.05, recipe.title);
+
+    // Apps (D-063): every provisioned version of each name; natively when DISM will not.
+    if (!recipe.appx.empty()) {
+        auto provisioned = session.appxPackages();
+        if (!provisioned) {
+            return std::unexpected(provisioned.error());
+        }
+        for (const auto& name : recipe.appx) {
+            for (const auto& app : *provisioned) {
+                if (_wcsicmp(app.displayName.c_str(), name.c_str()) != 0) {
+                    continue;
+                }
+                auto removed = session.removeAppx(app.packageName);
+                if (!removed && removed.error().hresult == kAppxRemovalRefused) {
+                    log::info("cbs", L"DISM refuses this app; removing it natively: " + app.packageName);
+                    removed = removeAppxNative(session, app.packageName, TaskContext{task.cancel, {}});
+                }
+                if (!removed) {
+                    return removed;
+                }
+                log::info("cbs", L"app removed: " + app.packageName);
+            }
+        }
+    }
 
     // Packages: 5 % … 80 % of the step.
     std::size_t removed = 0;

@@ -83,6 +83,23 @@
       "notes_en": "The virus definitions and scan engine shipped in the image are removed (one of the biggest savings for the ISO). Defender stays on; definitions and engine come back with the first Windows Update — until then the installed system cannot scan. Not recommended for systems installed without internet.",
       "packages": [ "Windows-Defender-AM-Default-Definitions-OptionalWrapper-Package", "Windows-Defender-AM-Default-Definitions-Package" ] },
 
+    { "id": "defender-full", "group": "security", "tr": "Microsoft Defender (tamamen)", "en": "Microsoft Defender (completely)", "risk": "high", "afterUpdates": true,
+      "notes_tr": "Defender kökünden kaldırılır: virüs motoru ve tanımları, ağ denetimi, Uç Nokta için Defender (Sense), önyükleme ve filtre sürücüleri, servis kayıtları, Windows Güvenliği uygulaması, tepsi simgesi ve sağ tık taraması. Kurulan sistemde virüs koruması olmaz — başka bir antivirüs kurun. Geri alınamaz. Ölçüldü: bundan sonra imaja toplu güncelleme EKLENEMEZ (0x800F0982) — güncellemeleri aynı Uygula'da kuyruğa al, WinLove onları önce kurar; kurulan sistemde Windows Update'in toplu güncellemesi de başarısız olabilir. Yalnız kapatmak için Ayarlar › Güvenlik › Microsoft Defender yeterlidir.",
+      "notes_en": "Defender is removed from the root: the antivirus engine and definitions, network inspection, Defender for Endpoint (Sense), the boot and filter drivers, the service entries, the Windows Security app, the tray icon and the right-click scan. The installed system has no virus protection — install another antivirus. Cannot be undone. Measured: afterwards a cumulative update can NO LONGER be added to the image (0x800F0982) — queue the updates in the same Uygula run, WinLove installs them first; on the installed system Windows Update's cumulative update may fail too. To only switch it off, Settings › Security › Microsoft Defender is enough.",
+      "packages": [ "Windows-Defender-AM-Default-Definitions-OptionalWrapper-Package", "Windows-Defender-AM-Default-Definitions-Package", "Windows-Defender-Group-Policy-Package" ],
+      "paths": [ "Program Files\\Windows Defender", "Program Files (x86)\\Windows Defender", "Program Files\\Windows Defender Advanced Threat Protection",
+                 "ProgramData\\Microsoft\\Windows Defender", "ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection",
+                 "Windows\\System32\\drivers\\WdBoot.sys", "Windows\\System32\\drivers\\WdFilter.sys", "Windows\\System32\\drivers\\WdNisDrv.sys" ],
+      "appx": [ "Microsoft.SecHealthUI" ],
+      "registry": [
+        { "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\WinDefend", "delete": true }, { "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\WdNisSvc", "delete": true }, { "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\WdNisDrv", "delete": true },
+        { "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\WdFilter", "delete": true }, { "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\WdBoot", "delete": true }, { "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Sense", "delete": true },
+        { "key": "HKLM\\SOFTWARE\\Classes\\*\\shellex\\ContextMenuHandlers\\EPP", "delete": true },
+        { "key": "HKLM\\SOFTWARE\\Classes\\Directory\\shellex\\ContextMenuHandlers\\EPP", "delete": true },
+        { "key": "HKLM\\SOFTWARE\\Classes\\Drive\\shellex\\ContextMenuHandlers\\EPP", "delete": true },
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", "name": "SecurityHealth", "value": "-" },
+        { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender Security Center\\Notifications", "name": "DisableNotifications", "value": "dword:00000001" } ] },
+
     { "id": "app-guard", "group": "security", "tr": "Application Guard", "en": "Application Guard", "risk": "low",
       "notes_tr": "Microsoft Defender Application Guard'ın yerleşik kısmı. Microsoft bu özelliği kullanımdan kaldırdı; Edge'de artık yok.",
       "notes_en": "The inbox part of Microsoft Defender Application Guard. Microsoft has deprecated the feature; Edge no longer has it.",

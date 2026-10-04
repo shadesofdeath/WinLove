@@ -57,6 +57,14 @@ public:
 
     void mount(int index);
     void unmount(bool commit);
+    // ---- D-064: images mounted by other tools, in any folder ----------------------------------
+    // Every DISM mount of this PC into AppState::systemMounts (elevated only; DISM needs it).
+    void scanSystemMounts();
+    // Work on the image mounted in `folder` (a remount first when DISM asks for one): its source is
+    // opened and it becomes the mounted image, as at startup. Refused while something is mounted.
+    void adoptMount(const std::filesystem::path& folder);
+    // Unmount `folder` without saving (another tool's mount that is broken or not wanted).
+    void discardMount(const std::filesystem::path& folder, std::wstring edition);
     void exportIndex(int index, const std::filesystem::path& destination);
     // Several editions, in this order, into one new WIM.
     void exportEditions(std::vector<int> indexes, const std::filesystem::path& destination);

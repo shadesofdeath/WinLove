@@ -15,6 +15,7 @@
 #include "core/image/LanguageInstall.h"
 #include "core/image/ScheduledTasks.h"
 #include "core/image/dism/DefaultApps.h"
+#include "core/image/dism/DismExe.h"
 #include "core/image/dism/Intl.h"
 #include "core/postsetup/PostSetup.h"
 #include "core/system/Files.h"
@@ -27,6 +28,29 @@
 namespace wl::core::ops {
 
 namespace {
+
+// D-063: a UUP-based .msu (24H2+ cumulative update) through the DISM API can fail on a host whose
+// servicing stack moved on — "An error occurred applying the Unattend.xml file from the .msu
+// package", CBS: "Active offline session not registered" (0x800401E3) — while dism.exe installs
+// the same file into the same image. That is then the way.
+Result<void> addUpdatePackage(DismSession& session, const std::wstring& package, const TaskContext& task) {
+    auto added = session.addPackage(package, task);
+    constexpr std::int32_t kSessionNotRegistered = static_cast<std::int32_t>(0x800401E3);
+    const bool msu = package.size() > 4 && _wcsicmp(package.c_str() + package.size() - 4, L".msu") == 0;
+    if (added || !msu || added.error().hresult != kSessionNotRegistered) {
+        return added;
+    }
+    log::warn("apply", L"the DISM API could not take the .msu (0x800401E3); dism.exe installs it: " + package);
+    auto run = runDismExe(session, L"/Add-Package /PackagePath:\"" + package + L"\"",
+                          [&](double fraction) { task.report(fraction, L"dism.exe"); });
+    if (!run) {
+        return std::unexpected(run.error());
+    }
+    if (run->exitCode != 0 && run->exitCode != 3010) { // 3010: done, restart pending (an offline image has none to do)
+        return std::unexpected(dismExeFailure(*run, L"add package " + package));
+    }
+    return {};
+}
 
 Result<void> runStep(const Operation& op, DismSession& session, const TaskContext& task, const ApplyOptions& options,
                      std::unique_ptr<OfflineRegistry>& registry, std::unique_ptr<DeferredRegistry>& deferred) {
@@ -74,7 +98,7 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
         if (op.value == L"language") {
             return addLanguagePackage(session, op.target, task);
         }
-        return session.addPackage(op.target, task);
+        return addUpdatePackage(session, op.target, task);
     case OpKind::AddDriver: return session.addDriver(op.target);
     case OpKind::SetServiceStart: {
         // The name comes from a preset file: it must stay one key under Services.

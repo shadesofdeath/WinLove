@@ -1,5 +1,6 @@
 #include "app/App.h"
 
+#include "app/catalog/IconCatalog.h"
 #include "core/updates/UupLanguages.h"
 
 #include "app/state/AnswerStore.h"
@@ -192,6 +193,12 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoApps = a == L"--demo-apps" ? std::wstring() : std::wstring(value(L"--demo-apps="));
         } else if (a == L"--demo-languages" || startsWith(a, L"--demo-languages=")) {
             options.demoLanguages = a == L"--demo-languages" ? std::wstring() : std::wstring(value(L"--demo-languages="));
+        } else if (startsWith(a, L"--demo-store=")) {
+            options.demoStore = std::wstring(value(L"--demo-store="));
+        } else if (a == L"--demo-icons") {
+            options.demoIcons = true;
+        } else if (a == L"--demo-mounts") {
+            options.demoMounts = true;
         } else if (a == L"--demo-editions") {
             options.demoEditions = true;
         } else if (a == L"--demo-wifi") {
@@ -816,6 +823,62 @@ int App::renderOffscreen() {
                 page->showDefaultsTab();
             }
         }
+    }
+    if (m_options.demoStore) {
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4, L"Windows 11 Pro"});
+        m_shell->showPage(PageId::Apps);
+        if (*m_options.demoStore == L"dialog") {
+            m_shell->showStoreDialog();
+            m_shell->storeResultsForDemo(L"whatsapp", {{L"9NKSQGP7F2NH", L"WhatsApp", L"WhatsApp Inc."},
+                                                       {L"9NBDXK71NK08", L"WhatsApp Beta", L"WhatsApp Inc."},
+                                                       {L"9WZDNCRFHWM4", L"Wikipedia", L"Wikimedia Foundation"},
+                                                       {L"9N3SQK8PDS8G", L"ScreenToGif", L"Nicke"}});
+        } else {
+            AppState::StoreFetch fetch;
+            fetch.stage = AppState::StoreFetch::Stage::Downloading;
+            fetch.title = L"WhatsApp";
+            fetch.doneBytes = 141'557'760;
+            fetch.totalBytes = 367'321'088;
+            m_state->setStoreFetch(std::move(fetch));
+        }
+    }
+    if (m_options.demoIcons) {
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4, L"Windows 11 Pro"});
+        // The app's own icon from the repository (build\<preset>\bin → resources\brand).
+        wchar_t exe[MAX_PATH] = {};
+        GetModuleFileNameW(nullptr, exe, MAX_PATH);
+        const auto brand = std::filesystem::path(exe).parent_path().parent_path().parent_path().parent_path() / L"resources" /
+                           L"brand" / L"WinLove.ico";
+        auto& icons = m_shell->iconsForDemo();
+        for (const char* id : {"this-pc", "recycle-empty", "folder", "drive"}) {
+            if (const auto* slot = findIconSlot(id)) {
+                (void)icons.assign(*slot, brand);
+            }
+        }
+        (void)icons.setShortcutArrowRemoved(true);
+        m_shell->showPage(PageId::Icons);
+    }
+    if (m_options.demoMounts) {
+        auto check = [](const wchar_t* folder, const wchar_t* wim, int index, const wchar_t* name, core::MountState state, bool readOnly) {
+            core::MountCheck c;
+            c.folder = folder;
+            c.imageName = name;
+            c.state = state;
+            if (state != core::MountState::Orphaned) {
+                c.record = core::MountInfo{folder, wim, index, readOnly};
+            }
+            return c;
+        };
+        AppState::SystemMounts mounts;
+        mounts.status = AppState::SystemMounts::Status::Ready;
+        mounts.items = {
+            check(L"C:\\NTLite\\Mount\\Win11_25H2", L"D:\\ISO\\Win11_25H2\\sources\\install.wim", 6, L"Windows 11 Pro", core::MountState::Ok, false),
+            check(L"D:\\Work\\mount", L"D:\\Work\\Win10_22H2.wim", 1, L"Windows 10 Home", core::MountState::NeedsRemount, false),
+            check(L"C:\\Mount\\boot", L"D:\\ISO\\Win11_25H2\\sources\\boot.wim", 2, L"Microsoft Windows Setup (amd64)", core::MountState::Ok, true),
+            check(L"E:\\old-mount", L"E:\\gone\\install.wim", 3, L"", core::MountState::ImageMissing, false),
+        };
+        m_state->setSystemMounts(std::move(mounts));
+        m_shell->showPage(PageId::Source);
     }
     if (m_options.demoLanguages) {
         // 25H2 Pro (26200.8037) with Turkish and the components 25H2 installs; English queued from

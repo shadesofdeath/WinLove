@@ -19,6 +19,8 @@
 #include "app/controllers/FilesController.h"
 #include "app/controllers/HostsController.h"
 #include "app/controllers/BrandingController.h"
+#include "app/controllers/IconController.h"
+#include "app/controllers/StoreController.h"
 #include "app/controllers/ImageDriverController.h"
 #include "app/controllers/LanguageController.h"
 #include "app/controllers/LanguageFetchController.h"
@@ -114,6 +116,10 @@ public:
     AppsPage* appsPageForDemo() const { return appsPage(); }
     HostsController& hosts() { return *m_hosts; }
     BrandingController& branding() { return *m_branding; }
+    IconController& iconsForDemo() { return *m_icons; }
+    void loadIconPack(); // D-065: a folder of .ico files
+    void showStoreDialog(); // D-066
+    void storeResultsForDemo(const std::wstring& query, std::vector<core::StoreSearchResult> results);
     void addFonts(std::vector<std::filesystem::path> files); // D-056: queue, toast for the refused ones
     ImageSettingsController& imageSettings() { return *m_imageSettings; }
     UnattendController& unattend() { return *m_unattend; }
@@ -156,6 +162,7 @@ public:
 
     // ---- images (P02) ---------------------------------------------------------------------
     void askUnmount();
+    void askDiscardMount(const std::filesystem::path& folder, const std::wstring& edition); // D-064
     // Confirms, then deletes the selected edition — or, with `keepOnly`, every other one.
     void askDeleteSelected(bool keepOnly = false);
     void askRenameSelected();
@@ -297,6 +304,9 @@ private:
     std::unique_ptr<TaskController> m_tasks;   // D-048
     std::unique_ptr<HostsController> m_hosts;  // D-049
     std::unique_ptr<BrandingController> m_branding; // D-056
+    std::unique_ptr<IconController> m_icons; // D-065
+    std::unique_ptr<StoreController> m_store; // D-066
+    class StoreDialogHandle* m_storeDialog = nullptr; // the open "Mağazadan ekle" dialog
     std::unique_ptr<FilesController> m_files;  // D-051
     std::unique_ptr<ImageDriverController> m_imageDriverCtl; // D-052
     std::unique_ptr<AppsController> m_apps; // D-050 / D-054

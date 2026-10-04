@@ -22,6 +22,9 @@ struct HttpResponse {
 [[nodiscard]] Result<HttpResponse> httpGet(std::wstring_view url, const CancelToken& cancel = {});
 [[nodiscard]] Result<HttpResponse> httpPostForm(std::wstring_view url, std::string_view form,
                                                 const CancelToken& cancel = {});
+// Any body with its content type ("application/json", "application/soap+xml; charset=utf-8").
+[[nodiscard]] Result<HttpResponse> httpPost(std::wstring_view url, std::string_view body, std::wstring_view contentType,
+                                            const CancelToken& cancel = {});
 
 // Downloads `url` to `target`. The bytes go to "<target>.part" first — an interrupted download
 // continues from there with a Range request (the server may refuse: then it starts over) — and

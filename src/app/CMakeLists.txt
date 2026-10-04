@@ -26,6 +26,8 @@ add_library(wl_app STATIC
     controllers/AppsController.cpp
     controllers/LanguageController.cpp
     controllers/LanguageFetchController.cpp
+    controllers/IconController.cpp
+    controllers/StoreController.cpp
     controllers/UpdateCatalogController.cpp
     ApplyReport.cpp
     Format.cpp
@@ -61,6 +63,10 @@ add_library(wl_app STATIC
     pages/postsetup/StepDialog.cpp
     pages/updates/UpdateCatalogDialog.cpp
     pages/languages/LanguageAddDialog.cpp
+    pages/IconsPage.cpp
+    pages/FetchStrip.cpp
+    pages/apps/StoreDialog.cpp
+    catalog/IconCatalog.cpp
     pages/SourcePage.cpp
     pages/TweaksPage.cpp
     pages/UnattendedPage.cpp

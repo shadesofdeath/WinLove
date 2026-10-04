@@ -1,5 +1,8 @@
 #include "app/pages/AppsPage.h"
 
+#include "app/Format.h"
+#include "app/pages/FetchStrip.h"
+
 #include "app/pages/PageBits.h"
 
 #include <algorithm>
@@ -23,8 +26,22 @@ enum AssocColumn : int { kKind, kApplication, kProgId };
 } // namespace
 
 AppsPage::AppsPage(AppState& state, AppsController& controller, const Localization& strings, Language language,
-                   std::function<void()> addPackages, std::function<void()> goImages)
+                   std::function<void()> addPackages, std::function<void()> goImages, std::function<void()> stopStore)
     : m_state(state), m_controller(controller), m_strings(strings), m_language(language) {
+    m_store = &add<FetchStrip>(strings, [this]() -> std::optional<FetchStrip::Status> {
+        const auto& fetch = m_state.storeFetch();
+        if (!fetch || fetch->stage == AppState::StoreFetch::Stage::Searching) {
+            return std::nullopt;
+        }
+        if (fetch->stage == AppState::StoreFetch::Stage::Resolving || fetch->totalBytes == 0) {
+            return FetchStrip::Status{m_strings.format(Str::AppsStoreResolving, {{L"name", fetch->title}}), -1};
+        }
+        return FetchStrip::Status{m_strings.format(Str::AppsStoreDownloading, {{L"name", fetch->title},
+                                                                               {L"done", formatBytes(fetch->doneBytes, m_language)},
+                                                                               {L"total", formatBytes(fetch->totalBytes, m_language)}}),
+                                  static_cast<double>(fetch->doneBytes) / static_cast<double>(fetch->totalBytes)};
+    });
+    m_store->onStop = std::move(stopStore);
     m_tabs = &add<ui::TabBar>(std::vector<std::wstring>{strings.get(Str::AppsTabAdd), strings.get(Str::AppsTabDefaults)}, 0);
     m_tabs->onChange = [this](int) { refresh(); };
     m_drop = &add<ui::DropZone>(strings.get(Str::AppsDrop), strings.get(Str::AppsDrop), strings.get(Str::AppsDropInvalid),
@@ -77,7 +94,7 @@ AppsPage::AppsPage(AppState& state, AppsController& controller, const Localizati
     m_empty->setAction(strings.get(Str::CommonGoImages)).onInvoke = std::move(goImages);
     setAccessible(ui::AccessRole::Group, strings.get(Str::AppsTitle));
     m_subscription = m_state.subscribe([this](AppState::Change change) {
-        if (change == AppState::Change::Mount || change == AppState::Change::Queue) {
+        if (change == AppState::Change::Mount || change == AppState::Change::Queue || change == AppState::Change::StoreFetch) {
             refresh();
         }
     });
@@ -98,11 +115,18 @@ void AppsPage::showDefaultsTab() {
 }
 
 void AppsPage::refresh() {
+    const bool storeRunning = m_state.mounted() && !defaultsTab() && m_state.storeFetch() &&
+                              m_state.storeFetch()->stage != AppState::StoreFetch::Stage::Searching;
+    if (storeRunning && !m_store->visible()) {
+        m_store->setVisible(true);
+        m_store->start();
+    }
+    m_store->setVisible(storeRunning);
     const bool mounted = m_state.mounted().has_value();
     const bool defaults = defaultsTab();
     m_empty->setVisible(!mounted);
     m_tabs->setVisible(mounted);
-    m_drop->setVisible(mounted && !defaults);
+    m_drop->setVisible(mounted && !defaults && !storeRunning); // the Store strip takes its place
     m_appTable->setVisible(mounted && !defaults);
     m_browser->setVisible(mounted && defaults);
     m_assocTable->setVisible(mounted && defaults);
@@ -181,6 +205,7 @@ void AppsPage::layout() {
     m_tabs->setBounds({b.x, b.y + kTabsTop, b.width, kTabsHeight});
     float y = b.y + kContentTop;
     m_drop->setBounds({b.x, y, b.width, kDrop});
+    m_store->setBounds({b.x, y, b.width, kDrop}); // over the drop zone while a Store download runs
     m_appTable->setBounds({b.x, y + kDrop + 16, b.width, std::max(b.bottom() - (y + kDrop + 16) - kDetailLine, 0.0f)});
     const float bw = std::min(m_browser->measure({}).width, 320.0f);
     m_browser->setBounds({b.x, y, bw, kToolbar});

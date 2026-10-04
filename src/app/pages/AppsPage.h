@@ -14,6 +14,7 @@
 #include "ui/widgets/TabBar.h"
 #include "ui/widgets/TableView.h"
 
+
 #include <functional>
 
 namespace wl::app {
@@ -21,7 +22,7 @@ namespace wl::app {
 class AppsPage : public ui::Widget {
 public:
     AppsPage(AppState& state, AppsController& controller, const Localization& strings, Language language,
-             std::function<void()> addPackages, std::function<void()> goImages);
+             std::function<void()> addPackages, std::function<void()> goImages, std::function<void()> stopStore = {});
     ~AppsPage() override;
 
     void setDragState(ui::DropZone::DragState state);
@@ -44,6 +45,7 @@ private:
     std::vector<core::AppAssociation> m_assoc;
     ui::TabBar* m_tabs = nullptr;
     ui::DropZone* m_drop = nullptr;
+    class FetchStrip* m_store = nullptr; // D-066: a Store download, where the drop zone is
     ui::TableView* m_appTable = nullptr;
     ui::Dropdown* m_browser = nullptr;
     ui::TableView* m_assocTable = nullptr;

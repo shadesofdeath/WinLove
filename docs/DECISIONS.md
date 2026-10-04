@@ -241,6 +241,69 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-066 — Uygulamalar: Microsoft Store'dan arayıp indirme (2026-10-05)
+Bağlam: Kullanıcı "store.rg-adguard.net'ten verileri aldır" dedi. rg-adguard Cloudflare bot denetimi arkasında (programdan
+istek: HTTP 403 "Just a moment…"); bot korumasını aşmak yapılmaz.
+Karar: rg-adguard'ın kullandığı kaynaklar doğrudan, yalnız Microsoft uç noktaları (`core/store/MsStore`):
+1. arama `storeedgefd.dsx.mp.microsoft.com/v9.0/manifestSearch` (yalnız 12 karakterli Store kimlikleri; winget kimlikleri değil),
+2. ürün `displaycatalog.mp.microsoft.com/v7.0/products/<id>` → `WuCategoryId`, paket ailesi,
+3. Windows Update FE3 `GetCookie` → `SyncUpdates` (kategori; anonim MSA bileti, Store istemcisinin gönderdiği gövde) → uygulamanın
+   ve çerçevelerinin bütün paketleri (`InstallerSpecificIdentifier` = tam ad, `AdditionalDigest` SHA-256),
+4. `GetExtendedUpdateInfo2` (…/secured) → dosya adresi (`tlu.dl.delivery.mp.microsoft.com`), indirme, SHA-256 denetimi,
+   `<tam ad>.<uzantı>` olarak `<çalışma kökü>\store\<ürün kimliği>`.
+Seçim: uygulamanın en yeni paketi (varsa bundle), çerçevelerden imaj mimarisi için en yenisi. **Şifreli paketler**
+(`.eappx`, `.emsixbundle` …: Store DRM) lisanssız imaja kurulamaz: seçilmez; uygulamanın yalnız şifreli paketi varsa açık hata.
+Uygulamalar'da "Mağazadan ekle…" penceresi (arama, sonuçlar, İndir ve ekle), indirme şeridi + Durdur; bitince uygulama mevcut
+`.appx/.msix` yolundan kuyruğa girer (bağımlılıklar yanında bulunur). `wlcli store-search`, `wlcli store-get`.
+Kanıt: birim testleri (arama, ürün, SyncUpdates ayrıştırma, seçim, şifreli paket, adres, URL güveni); `tools\lab_store.ps1`
+(yönetici, kendim, 2026-10-05 01:22 ALL PASSED: Wikipedia + VCLibs indirildi, SHA-256, imaja provision, listelendi).
+**Görülmeyen:** uygulamanın içinden (gerçek pencerede) arama / indirme; kurulan sistemde uygulamanın açılması.
+
+## D-065 — Simgeler: ikon paketi ve tek tek .ico ile Windows simgeleri (2026-10-05)
+Bağlam: Kullanıcı "profesyonel bir Windows ikonları yamalama ekranı, ikon paketi yükleyebilme" istedi.
+Karar: imageres.dll / shell32.dll **yamalanmaz** (kaynak düzenleme bileşen deposunu bozar, ilk toplu güncelleme orijinalleri geri
+koyar). Simgeler `ProgramData\WinLove\Icons\<yuva>.ico`'ya kopyalanır (CopyFile) ve kabuk onlara yönlendirilir: masaüstü
+öğeleri (Bu Bilgisayar, kullanıcı klasörü, Ağ, Geri Dönüşüm boş / dolu, Denetim Masası) `HKLM\SOFTWARE\Classes\CLSID\{…}\DefaultIcon`
++ varsayılan profilde ve ilk oturumda `Explorer\CLSID\{…}\DefaultIcon` + `ThemeChangesDesktopIcons = 0` (tema geri koymasın);
+Gezgin (klasör, açık klasör, sürücü, çıkarılabilir, CD/DVD, ağ sürücüsü, kısayol oku) `Explorer\Shell Icons`; sistem sürücüsü
+`DriveIcons\C\DefaultIcon`. 14 yuva. Paket: .ico klasörü, dosya adı / takma adla eşleşir (TR/EN, büyük-küçük harf, boşluk
+önemsiz) ya da `iconpack.json` ("name", "author", "icons": {yuva: dosya}); paket dışına çıkan yol reddedilir. "Kısayol okunu
+kaldır" saydam bir .ico üretir. Yeni sayfa **Simgeler** (Kişiselleştirme'nin altı): kartlar, şimdiki → yeni simge önizlemesi
+(`Canvas::drawFileIcon`: PrivateExtractIcons → WIC → D2D, imajın kendi imageres.dll'inden), tıkla = .ico seç, Delete = geri al.
+Kanıt: birim testleri (yuvalar, takma adlar, paket okuma, manifest, kuyruk işlemleri, ok, sıfırlama); render `--demo-icons`.
+**Görülmeyen:** kurulan sistemde simgelerin görünmesi (VM) — özellikle ilk oturum teması ile sıra.
+
+## D-064 — Bu bilgisayarda bağlı imajları tanıma ve onlarla çalışma (2026-10-05)
+Bağlam: "Başka Windows dizinlerinde mount edilmiş sistemleri algılasın, NTLite gibi."
+Karar: Kaynak sayfasında "Bu bilgisayarda bağlı imajlar" tablosu (yönetici gerekir: DISM): her DISM mount'u (`inspectMounts`),
+klasör, sürüm, WIM, durum (hazır / salt okunur / yeniden bağlanacak / bozuk / WIM yok / kayıtsız artık / WinLove'da açık). Çift
+tık / Enter: imaj benimsenir (gerekirse remount), kaynağı açılır ve bağlı imaj olur — başlangıçtaki kurtarmayla aynı yol;
+uygulama, kaydetme, ayırma o klasörde yapılır. Delete: onayla kaydetmeden ayırma (bozuk olanlar için onarım yolu). Bir imaj
+açıkken başka birine geçilmez. Kaynak sayfası her açılışta listeyi yeniden okur. `--demo-mounts`.
+Kanıt: render; motor parçaları (`inspectMounts`, `repairMount`, `unmountSafely`) mevcut lab'larla kanıtlı. **Görülmeyen:** başka
+araçla bağlanmış imajın uygulamada benimsenmesi.
+
+## D-063 — Defender'ı kökünden kaldırma; .msu'da DISM API → dism.exe yedeği; D-060'ın LCU sonucu düzeltildi (2026-10-05)
+Bağlam: Kullanıcı: "Defender'ın sadece veri tabanını siliyor, tamamını silmeyi eklemelisin, risk kullanıcıya ait."
+Karar:
+- Bileşenler › Güvenlik "Microsoft Defender (tamamen)" (yüksek risk): tanım + Group Policy paketleri, Program Files / ProgramData
+  Defender klasörleri, WdBoot / WdFilter / WdNisDrv, servis anahtarları (WinDefend, WdNisSvc, WdNisDrv, WdFilter, WdBoot, Sense),
+  sağ tık EPP anahtarları, tepsi Run değeri ve **Windows Güvenliği uygulaması** — tariflere yeni `appx` alanı (her sürüm; DISM
+  reddederse yerel kaldırma). Bileşen deposu kopyaları kalır (ScanHealth temiz); not, sonraki güncellemenin dosyaları kısmen geri
+  getirebileceğini söyler. Yalnız kapatmak için D-062'deki Ayarlar anahtarı.
+- **Ölçüm düzeltmesi:** D-060'ta ve bu kayıtta görülen "kaldırmadan sonra LCU eklenemiyor" hatası ("An error occurred applying the
+  Unattend.xml file from the .msu package") kaldırmadan değil: **dokunulmamış** kopyada da aynı (lab_lcu_after T1). DISM günlüğü:
+  "Active offline session not registered", `0x800401E3` — bu makinede DISM API (DismAddPackage) UUP tabanlı .msu'yu artık
+  kuramıyor; aynı dosyayı `dism.exe` aynı imaja 359 sn'de kurdu. → Applier: .msu API'de 0x800401E3 ile düşerse `dism.exe
+  /Add-Package` ile kurulur (ilerleme yüzdesi okunur). D-060'ın "önce güncelleme sonra derin kaldırma" sırası zararsız kaldı.
+- **Ölçülen kısıt (dism.exe yedeğiyle):** dokunulmamış kopyaya LCU kuruldu (lab_lcu_after T1, 360 sn); Defender tamamen
+  kaldırıldıktan **sonra** aynı LCU `0x800F0982` (PSFX: eşleşen bileşen yok — fark dosyaları silinen tabanı arıyor) ile düşüyor.
+  → tarifte `afterUpdates`: Planner onu güncellemelerden sonraki DeepRemove aşamasına koyar; not "bundan sonra toplu güncelleme
+  eklenemez, aynı Uygula'da kuyruğa al" der.
+Kanıt: `tools\lab_defender.ps1 -WithLcu` (yönetici, kendim, 2026-10-05): kaldırma adımları PASS (dosyalar / servisler / uygulama /
+paketler gitti, ScanHealth iki kez temiz), sonradan LCU FAIL 0x800F0982 (beklenen, belgelendi); `tools\lab_lcu_after.ps1 -Cases T1`
+yedek yolla INSTALLED. **Görülmeyen:** kurulan sistemde Defender'sız açılış ve Windows Update (VM).
+
 ## D-062 — Kurulumun dil listesi, yeni ayarlar (simge boyutu, Denetim Masası, sanal bellek, Defender kapalı), duvar kağıdında Spotlight (2026-10-05)
 Bağlam: Kullanıcı istekleri: Setup'ta eklenen dil seçilebilsin (lang.ini); masaüstü simge boyutu; Denetim Masası görüntüleme
 ölçütü; sanal bellek boyutu ve sürücüsü; Defender'ı pasife alma; "duvar kağıdı ayarlama başarılı olmadı, Windows'un kendi

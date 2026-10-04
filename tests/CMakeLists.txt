@@ -24,6 +24,7 @@ add_executable(wl_tests
     core/UpdateTests.cpp
     core/UpdateCatalogTests.cpp
     core/LanguageFilesTests.cpp
+    core/MsStoreTests.cpp
     core/UsbMediaTests.cpp
     core/ImageExtrasTests.cpp
     core/BrandingTests.cpp
@@ -53,7 +54,8 @@ add_executable(wl_tests
     app/UnattendControllerTests.cpp
     app/UpdateCatalogControllerTests.cpp
     app/NewPagesTests.cpp
-    app/BrandingControllerTests.cpp)
+    app/BrandingControllerTests.cpp
+    app/IconTests.cpp)
 wl_configure_target(wl_tests)
 target_include_directories(wl_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(wl_tests PRIVATE WL_SOURCE_DIR=L"${PROJECT_SOURCE_DIR}")
