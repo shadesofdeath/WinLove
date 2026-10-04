@@ -5,6 +5,7 @@
 #include "app/controllers/ImageDriverController.h"
 #include "app/controllers/LanguageController.h"
 #include "app/controllers/TaskController.h"
+#include "core/updates/UupLanguages.h"
 
 #include <doctest.h>
 #include <json.hpp>
@@ -228,7 +229,7 @@ TEST_CASE("languages page: packs of the image's architecture, the display langua
     languages.queuePacks(fitting); // once
     CHECK(languages.queuedPacks().size() == 2);
     CHECK(f.state.changes().find(OpKind::AddPackage, fitting[0].path.wstring())->value == L"language");
-    CHECK(languages.changedCount() == 2);
+    CHECK(languages.changedCount() == 1); // one language (its two files)
 
     // The image has tr-TR; the queued pack adds de-DE.
     core::ImageIntl intl;
@@ -241,7 +242,7 @@ TEST_CASE("languages page: packs of the image's architecture, the display langua
     s.timeZone = L"W. Europe Standard Time";
     languages.setSettings(s);
     CHECK(languages.settings() == s);
-    CHECK(languages.changedCount() == 3);
+    CHECK(languages.changedCount() == 2);
     languages.setSettings(core::IntlSettings{});
     CHECK(f.state.changes().find(OpKind::SetIntl, L"intl") == nullptr);
     languages.unqueuePack(fitting[0].path);
@@ -252,4 +253,149 @@ TEST_CASE("languages page: packs of the image's architecture, the display langua
     CHECK(LanguageController::timeZones().size() > 50);
     CHECK(!LanguageController::keyboards().empty());
     CHECK(LanguageController::localeName(L"tr-TR") != L"tr-TR");
+}
+
+namespace {
+
+core::UupFile uup(const wchar_t* name, std::uint64_t size = 1000) {
+    return core::UupFile{name, size, L"", std::wstring(64, L'0'), L"http://tlu.dl.delivery.mp.microsoft.com/x"};
+}
+
+} // namespace
+
+TEST_CASE("languages page (D-061): rows, picking from Windows Update, dependencies, taking a language out") {
+    Fixture f;
+    core::SourceInfo source;
+    source.path = L"C:\\iso\\x.iso";
+    core::ImageInfo pro;
+    pro.index = 1;
+    pro.architecture = core::Architecture::X64;
+    pro.build = 26200;
+    pro.spBuild = 8037;
+    source.install.images = {pro};
+    f.state.setSource(std::move(source));
+    f.state.setMounted(MountedImage{kMount, L"C:\\w\\install.wim", 1, L"Pro"});
+    LanguageController languages(f.state, [](std::function<void()> fn) { fn(); });
+
+    core::ImageIntl intl;
+    intl.current.uiLanguage = L"tr-TR";
+    intl.languages = {L"tr-TR"};
+    std::vector<std::wstring> packages{
+        L"Microsoft-Windows-Client-LanguagePack-Package~31bf3856ad364e35~amd64~tr-TR~10.0.26100.8037",
+        L"Microsoft-Windows-LanguageFeatures-Basic-tr-tr-Package~31bf3856ad364e35~amd64~~10.0.26100.8036",
+        L"Microsoft-Windows-LanguageFeatures-Handwriting-tr-tr-Package~31bf3856ad364e35~amd64~~10.0.26100.8036",
+        L"Microsoft-Windows-MediaPlayer-Package~31bf3856ad364e35~amd64~~10.0.26100.8036",
+        L"Microsoft-Windows-MediaPlayer-Package~31bf3856ad364e35~wow64~~10.0.26100.8036",
+        L"Microsoft-Windows-MediaPlayer-Package~31bf3856ad364e35~amd64~tr-TR~10.0.26100.7824"};
+    f.state.setImageIntl(AppState::ImageIntl{AppState::ImageIntl::Status::Ready, kMount, intl, packages, {}});
+
+    const auto rows0 = languages.rows();
+    REQUIRE(rows0.size() == 1);
+    CHECK(rows0[0].language == L"tr-TR");
+    CHECK(rows0[0].ui);
+    CHECK(rows0[0].installed == std::vector<core::LanguagePackFile::Kind>{core::LanguagePackFile::Kind::Basic,
+                                                                        core::LanguagePackFile::Kind::Handwriting});
+    CHECK(rows0[0].componentsInImage == 1);
+
+    const std::vector<core::UupFile> files{
+        uup(L"Microsoft-Windows-Client-LanguagePack-Package-amd64-en-us.esd", 19'000'000),
+        uup(L"Microsoft-Windows-LanguageFeatures-Basic-en-us-Package-amd64.cab"),
+        uup(L"Microsoft-Windows-LanguageFeatures-Handwriting-en-us-Package-amd64.cab"),
+        uup(L"Microsoft-Windows-LanguageFeatures-OCR-en-us-Package-amd64.cab"),
+        uup(L"Microsoft-Windows-LanguageFeatures-TextToSpeech-en-us-Package-amd64.cab"),
+        uup(L"Microsoft-Windows-LanguageFeatures-Speech-en-us-Package-amd64.cab"),
+        uup(L"Microsoft-Windows-MediaPlayer-Package-amd64-en-US.cab"),
+        uup(L"Microsoft-Windows-MediaPlayer-Package-wow64-en-US.cab"),
+        uup(L"Microsoft-Windows-WMIC-FoD-Package-amd64-en-US.cab"), // the image has no WMIC
+        uup(L"Microsoft-Windows-Client-LanguagePack-Package-amd64-tr-TR.esd"),
+        uup(L"Microsoft-Windows-LanguageFeatures-Basic-tr-tr-Package-amd64.cab"),
+        uup(L"Microsoft-Windows-LanguageFeatures-OCR-tr-tr-Package-amd64.cab"),
+        uup(L"Microsoft-Windows-MediaPlayer-Package-amd64-tr-TR.cab"),
+        uup(L"Microsoft-Windows-MediaPlayer-Package-wow64-tr-TR.cab"),
+        uup(L"Microsoft-Windows-Client-LanguagePack-Package-amd64-ja-JP.esd"),
+        uup(L"Microsoft-Windows-LanguageFeatures-Basic-ja-jp-Package-amd64.cab"),
+        uup(L"Microsoft-Windows-LanguageFeatures-Fonts-Jpan-Package-amd64.cab"),
+    };
+    const auto offered = core::uupLanguages(files, L"x64");
+    REQUIRE(offered.size() == 3);
+    const auto& en = offered[0];
+    const auto& ja = offered[1];
+    const auto& tr = offered[2];
+    REQUIRE(en.language == L"en-US");
+    REQUIRE(tr.language == L"tr-TR");
+
+    using K = core::LanguagePackFile::Kind;
+    auto kinds = [](const std::vector<core::UupLanguageFile>& picked) {
+        std::vector<K> out;
+        for (const auto& p : picked) {
+            out.push_back(p.file.kind);
+        }
+        return out;
+    };
+    // Everything: the components the image has only.
+    CHECK(kinds(languages.pick(en, LanguageParts{})) ==
+          std::vector<K>{K::LanguagePack, K::Basic, K::Handwriting, K::Ocr, K::TextToSpeech, K::Speech, K::Satellite, K::Satellite});
+    // Speech alone takes Text to speech with it.
+    CHECK(kinds(languages.pick(en, LanguageParts{false, false, false, true, false})) ==
+          std::vector<K>{K::LanguagePack, K::Basic, K::TextToSpeech, K::Speech});
+    // The image's own language: only what it lacks (OCR, the wow64 Media Player language).
+    const auto trPicked = languages.pick(tr, LanguageParts{});
+    CHECK(kinds(trPicked) == std::vector<K>{K::Ocr, K::Satellite});
+    CHECK(trPicked[1].file.packageArch == L"wow64");
+    // A script that needs fonts gets them.
+    CHECK(kinds(languages.pick(ja, LanguageParts{})) == std::vector<K>{K::LanguagePack, K::Basic, K::Fonts});
+
+    // Downloaded (under the names DISM wants) and queued, with the display language.
+    std::vector<std::filesystem::path> saved;
+    for (const auto& p : languages.pick(en, LanguageParts{})) {
+        saved.push_back(L"C:\\w\\languages\\" + core::uupSaveName(p));
+    }
+    languages.queueFiles(saved, L"en-US");
+    const auto rows1 = languages.rows();
+    REQUIRE(rows1.size() == 2);
+    CHECK(rows1[1].language == L"en-US");
+    CHECK_FALSE(rows1[1].inImage);
+    CHECK(rows1[1].queued == std::vector<K>{K::LanguagePack, K::Basic, K::Handwriting, K::Ocr, K::TextToSpeech, K::Speech});
+    CHECK(rows1[1].componentsQueued == 2);
+    CHECK(languages.settings().uiLanguage == L"en-US");
+    CHECK(languages.changedCount() == 2); // en-US + the display language
+    // The image has 26200.8037: its cumulative update should go in again after the languages.
+    CHECK(languages.cumulativeUpdateAdvised());
+    f.state.queue(Operation{OpKind::AddPackage, L"C:\\u\\windows11.0-kb5129195-x64.msu", L"lcu"});
+    CHECK_FALSE(languages.cumulativeUpdateAdvised());
+    f.state.unqueue(OpKind::AddPackage, L"C:\\u\\windows11.0-kb5129195-x64.msu");
+
+    // Taken out: every file, and the display language only it gave.
+    languages.unqueueLanguage(L"en-US");
+    CHECK(languages.rows().size() == 1);
+    CHECK(languages.queuedPacks().empty());
+    CHECK(languages.settings().uiLanguage.empty());
+    CHECK(languages.changedCount() == 0);
+
+    // From a folder: Speech picked alone brings what it needs.
+    std::vector<core::LanguagePackFile> folder;
+    for (const wchar_t* name : {L"D:\\l\\Microsoft-Windows-Client-LanguagePack-Package-amd64-de-DE.esd",
+                                L"D:\\l\\Microsoft-Windows-LanguageFeatures-Basic-de-de-Package-amd64.cab",
+                                L"D:\\l\\Microsoft-Windows-LanguageFeatures-TextToSpeech-de-de-Package-amd64.cab",
+                                L"D:\\l\\Microsoft-Windows-LanguageFeatures-Speech-de-de-Package-amd64.cab",
+                                L"D:\\l\\Microsoft-Windows-LanguageFeatures-OCR-de-de-Package-amd64.cab"}) {
+        folder.push_back(core::classifyLanguageName(name));
+    }
+    const auto completed = languages.withDependencies({folder[3]}, folder);
+    std::vector<K> got;
+    for (const auto& c : completed) {
+        got.push_back(c.kind);
+    }
+    std::ranges::sort(got);
+    CHECK(got == std::vector<K>{K::LanguagePack, K::Basic, K::TextToSpeech, K::Speech});
+
+    // Japanese with its fonts; taking it out takes the fonts too.
+    std::vector<std::filesystem::path> jaSaved;
+    for (const auto& p : languages.pick(ja, LanguageParts{})) {
+        jaSaved.push_back(L"C:\\w\\languages\\" + core::uupSaveName(p));
+    }
+    languages.queueFiles(jaSaved);
+    CHECK(languages.queuedPacks().size() == 3);
+    languages.unqueueLanguage(L"ja-JP");
+    CHECK(languages.queuedPacks().empty());
 }

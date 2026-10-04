@@ -13,7 +13,7 @@ WIM'in birden çok sürümüne uygulamak.
 | Sayfa (sol menü) | Bölgeler |
 |---|---|
 | Uygulamalar (Bileşenler'in altı) | Sekme 1 "Uygulama yükle": paket tablosu (ad, yayıncı, sürüm, mimari, bağımlılık durumu), sürükle-bırak; ayrıntı: bağımlılıklar, lisans. Sekme 2 "Varsayılan uygulamalar": tarayıcı düğmeleri, ilişkilendirme tablosu, XML içe aktar / bu bilgisayardan al |
-| Diller (Güncellemeler'in altı) | Üstte imajın dilleri + beş açılır menü (arayüz dili, sistem yereli, kullanıcı yereli, klavye, saat dilimi); altta "Klasör tara" ile bulunan dil paketleri / özellikleri |
+| Diller (Güncellemeler'in altı) | D-061: başlıkta "Klasörden ekle…" ve "Dil ekle…" (imajın build'i için Windows Update'ten); dil başına satır (Dil · Durum · Özellikler · Bileşen dilleri · Boyut), indirme şeridi, toplu güncelleme uyarısı; altta beş açılır menü (arayüz dili, sistem yereli, kullanıcı yereli, klavye, saat dilimi) |
 | Sürücüler › İmajdaki sürücüler | oemN.inf tablosu (sınıf, sağlayıcı, sürüm, tarih, imza, önyükleme kritik), kaldır işareti; "Bu bilgisayarın sürücüleri" |
 | Görevler (Servisler'in altı) | Kategori sekmeleri (telemetri, bakım, özellikler, güncelleme), görev tablosu (durum: imajda / kuyrukta), "Önerilenleri kapat", "Görev ekle" |
 | Hosts (Ayarlar / Tweaks'in altı) | Hazır listeler (açık / kapalı, girdi sayısı, imajda), özel girdiler (dosyadan / metinden); DNS ayarları Ayarlar › Ağ'da |
@@ -26,7 +26,8 @@ WIM'in birden çok sürümüne uygulamak.
 | Görev kataloğu, hosts listeleri | `resources/catalog/{tasks,hosts}.json` (RCDATA) | açılışta | uygulama ömrü |
 | İmajdaki görevler / hosts bölümleri | `tasks.cmd` / `hosts` dosyası okunur | bağlanınca (`ImageValues`) | bağlama başına |
 | İmajdaki sürücüler | `DismGetDrivers` | sekme açılınca (motor iş parçacığı) | `ImageDrivers`, bağlama başına |
-| Dil / bölge | `dism /Get-Intl` | sayfa açılınca | `ImageIntl`, bağlama başına |
+| Dil / bölge | `dism /Get-Intl` + kurulu paketler (`DismGetPackages`) | sayfa açılınca | `ImageIntl`, bağlama başına |
+| Sunulan diller (D-061) | api.uupdump.net (listid + get) | "Dil ekle…" | build başına, oturum boyunca |
 | Paket bilgisi | AppxPackaging COM | eklenince (okuyucu iş parçacığı) | kuyruk işleminin değerinde (JSON) |
 | Seçenek listeleri (yerel, klavye, saat dilimi) | bu bilgisayar | ilk açılışta | uygulama ömrü |
 

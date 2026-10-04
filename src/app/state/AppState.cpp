@@ -218,6 +218,11 @@ void AppState::setUpdateFetch(std::optional<UpdateFetch> fetch) {
     notify(Change::UpdateFetch);
 }
 
+void AppState::setLanguageFetch(std::optional<LanguageFetch> fetch) {
+    m_languageFetch = std::move(fetch);
+    notify(Change::LanguageFetch);
+}
+
 void AppState::setIsoRun(std::optional<IsoRun> run) {
     m_iso = std::move(run);
     notify(Change::Iso);

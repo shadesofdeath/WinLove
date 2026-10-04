@@ -70,7 +70,9 @@ struct LaunchOptions {
     bool demoWifi = false; // render: Kurulum Sonrası › Wi-Fi ağı ekle dialog (D-056)
     bool demoBootDrivers = false; // render, with --demo-drivers: Sürücüler › Kurulum ortamı
     bool demoEditions = false; // render, with a source: Apply summary with two other editions ticked (D-055)
-    bool demoLanguages = false; // render: fake mount, the image's languages, two packs and a display language queued (D-053)
+    // render: fake 25H2 Pro mount with Turkish, English queued from Windows Update and a display language (D-053 / D-061);
+    // "dialog": the "Dil ekle" check list; "fetch": a download running.
+    std::optional<std::wstring> demoLanguages;
     std::optional<std::wstring> demoApps; // render: fake mount + the lab's Terminal package ("defaults": second tab) (D-050)
     bool demoImageDrivers = false; // render: fake mount + the image's third-party drivers, one queued for removal (D-052)
     bool demoTweaks = false;     // render: fake mount + the selections of screen 10

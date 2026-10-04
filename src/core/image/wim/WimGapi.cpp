@@ -45,8 +45,11 @@ using SplitFileFn = BOOL(WINAPI*)(HANDLE, PCWSTR, PLARGE_INTEGER, DWORD);
 using SetReferenceFileFn = BOOL(WINAPI*)(HANDLE, PCWSTR, DWORD);
 using SetBootImageFn = BOOL(WINAPI*)(HANDLE, DWORD);
 using CaptureImageFn = HANDLE(WINAPI*)(HANDLE, PCWSTR, DWORD);
+using ApplyImageFn = BOOL(WINAPI*)(HANDLE, PCWSTR, DWORD);
 constexpr DWORD kReferenceAppend = 0x00010000;  // WIM_REFERENCE_APPEND
 constexpr DWORD kExportAllowDuplicates = 0x1;    // WIM_EXPORT_ALLOW_DUPLICATES
+// WIM_FLAG_NO_DIRACL | WIM_FLAG_NO_FILEACL: a scratch copy of a package, readable and deletable by the caller.
+constexpr DWORD kApplyNoAcls = 0x10 | 0x20;
 
 struct Api {
     CreateFileFn createFile = nullptr;
@@ -63,6 +66,7 @@ struct Api {
     SetReferenceFileFn setReferenceFile = nullptr;
     SetBootImageFn setBootImage = nullptr;
     CaptureImageFn captureImage = nullptr;
+    ApplyImageFn applyImage = nullptr;
 };
 
 template <class F>
@@ -93,7 +97,8 @@ Result<const Api*> api() {
                         load(m, "WIMUnregisterMessageCallback", instance.unregisterCallback) &&
                         load(m, "WIMSplitFile", instance.splitFile) &&
                         load(m, "WIMSetReferenceFile", instance.setReferenceFile) &&
-                        load(m, "WIMSetBootImage", instance.setBootImage) && load(m, "WIMCaptureImage", instance.captureImage);
+                        load(m, "WIMSetBootImage", instance.setBootImage) && load(m, "WIMCaptureImage", instance.captureImage) &&
+                        load(m, "WIMApplyImage", instance.applyImage);
         if (!ok) {
             return fail(ErrorCode::Unsupported, L"wimgapi.dll is missing expected entry points", path.wstring());
         }
@@ -748,6 +753,42 @@ Result<void> setBootImage(const std::filesystem::path& wimInput, int index) {
     if (!w->setBootImage(file.h, static_cast<DWORD>(index))) {
         return std::unexpected(lastError(std::format(L"set boot index {} of {}", index, wim.wstring())));
     }
+    return {};
+}
+
+Result<void> applyImage(const std::filesystem::path& wimInput, int index, const std::filesystem::path& folderInput,
+                        const TaskContext& task) {
+    const std::filesystem::path wim = nativePath(wimInput);
+    const std::filesystem::path folder = nativePath(folderInput);
+    auto a = api();
+    if (!a) {
+        return std::unexpected(a.error());
+    }
+    const Api* w = *a;
+    log::info("wim", std::format(L"apply {} [{}] -> {}", wim.wstring(), index, folder.wstring()));
+    std::error_code ec;
+    std::filesystem::create_directories(folder, ec);
+    WimHandle file{w, w->createFile(wim.c_str(), GENERIC_READ, kOpenExisting, 0, 0, nullptr)};
+    if (!file.h) {
+        return std::unexpected(lastError(L"open " + wim.wstring()));
+    }
+    w->setTemporaryPath(file.h, folder.parent_path().c_str());
+    WimHandle image{w, w->loadImage(file.h, static_cast<DWORD>(index))};
+    if (!image.h) {
+        return std::unexpected(lastError(std::format(L"load index {} of {}", index, wim.wstring())));
+    }
+    CallbackState state{&task};
+    w->registerCallback(file.h, reinterpret_cast<FARPROC>(&onMessage), &state);
+    const BOOL ok = w->applyImage(image.h, folder.c_str(), kApplyNoAcls);
+    const DWORD error = GetLastError();
+    w->unregisterCallback(file.h, reinterpret_cast<FARPROC>(&onMessage));
+    if (!ok) {
+        if (task.cancel.cancelled()) {
+            return fail(ErrorCode::Cancelled, L"apply cancelled", folder.wstring());
+        }
+        return fail(ErrorCode::WimFailure, L"apply failed", folder.wstring(), static_cast<std::int32_t>(HRESULT_FROM_WIN32(error)));
+    }
+    task.report(1.0, L"export");
     return {};
 }
 

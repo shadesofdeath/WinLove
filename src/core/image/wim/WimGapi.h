@@ -80,6 +80,12 @@ struct ImageText {
 [[nodiscard]] Result<int> captureImage(const std::filesystem::path& folder, const std::filesystem::path& wim,
                                        const ImageText& text, WimCompression compression, const TaskContext& task);
 
+// Edition `index` of `wim` (a WIM or an ESD) written out as files under `folder` (created when
+// missing), without security descriptors: for a UUP language pack, an ESD that holds the expanded
+// package DISM then adds from the folder (D-061). Applying a whole Windows is not what this is for.
+[[nodiscard]] Result<void> applyImage(const std::filesystem::path& wim, int index, const std::filesystem::path& folder,
+                                      const TaskContext& task);
+
 // The edition a WIM boots (WIMSetBootImage); 0 = none. boot.wim / WinRE.wim need it.
 [[nodiscard]] Result<void> setBootImage(const std::filesystem::path& wim, int index);
 
