@@ -241,6 +241,31 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-062 — Kurulumun dil listesi, yeni ayarlar (simge boyutu, Denetim Masası, sanal bellek, Defender kapalı), duvar kağıdında Spotlight (2026-10-05)
+Bağlam: Kullanıcı istekleri: Setup'ta eklenen dil seçilebilsin (lang.ini); masaüstü simge boyutu; Denetim Masası görüntüleme
+ölçütü; sanal bellek boyutu ve sürücüsü; Defender'ı pasife alma; "duvar kağıdı ayarlama başarılı olmadı, Windows'un kendi
+Bing duvar kağıdı değişiyor".
+Karar:
+- **lang.ini:** Uygula, kuyrukta dil paketi ya da arayüz dili varsa commit'ten önce `dism /Gen-LangINI /Distribution:<kurulum
+  klasörü>` çalıştırır (`ApplyJobOptions::setupFolder`; klasör `…\sources\install.wim`'in üstü, içinde `sources\lang.ini` varsa).
+  Ölçülen: en-US eklenince `en-US = 2`, `tr-TR = 3` (3 = kurulum ortamının dili, boot.wim Türkçe kaldığı için doğru); hata
+  ölümcül değil. Kurulum ekranının kendisi (boot.wim / WinPE dil paketi) hâlâ kapsam dışı. `wlcli apply --setup=<klasör>`.
+- **Ayarlar kataloğu:** Görünüm › Masaüstü "Masaüstü simge boyutu" (Shell\Bags\1\Desktop IconSize 32/48/96/128, ilk oturum);
+  Gezgin › Denetim Masası "Görüntüleme ölçütü" (StartupPage + AllItemsIconView: kategori / büyük / küçük simge);
+  Performans › Sanal bellek: açılır menü (Windows yönetsin / C:'de boyutu Windows / kapalı) + metin "Özel sanal bellek"
+  (yeni metin biçimi `"format": "pagefile"`: "D: 4096 8192" ya da "D:" → `PagingFiles` REG_MULTI_SZ; yarım yazılan değer
+  kuyruğa girmez, satır biçimi söyler; imajdaki değer okunup gösterilir); Sistem › Güvenlik "Microsoft Defender" anahtarı
+  (kapalı: WinDefend / WdNisSvc / WdNisDrv / WdFilter / WdBoot / Sense devre dışı, Defender politikaları, tepsi simgesi Run
+  değeri silinir, sağ tık taraması Shell Extensions\Blocked; dosyalar imajda kalır, geri açılabilir; yüksek risk).
+- **Duvar kağıdı:** 25H2'de yeni kullanıcının teması `aero.theme` (img0.jpg) — biz onu değiştiriyoruz; ama yeni cihazlarda
+  masaüstü Windows Spotlight ile başlayabiliyor ve resmin yerine Bing görselleri geliyor. Kişiselleştirme'de duvar kağıdı
+  seçilince ilk oturuma `CloudContent\DisableSpotlightCollectionOnDesktop = 1` ve Spotlight masaüstü simgesini gizleyen değer de
+  kuyruğa girer; ipucu bunu söyler. Resim kaldırılınca yalnız aynı değerdeki bu iki işlem de çıkar.
+Kanıt: birim testleri (pagefile biçimi, REG_MULTI_SZ, katalog satırları, duvar kağıdı işlemleri); `tools\lab_settings_d062.ps1`
+(yönetici, kendim, 2026-10-05 00:39 ALL PASSED, 16 işlem geri okundu); lang.ini `lab_languages` B bölümünde + araştırma imajında.
+**Görülmeyen:** kurulan sistemde (VM) simge boyutu, Denetim Masası, sanal bellek, Defender'ın gerçekten başlamaması ve
+Spotlight'ın masaüstüne gelmemesi; Setup'ın "Yüklenecek dil" listesinde İngilizce.
+
 ## D-061 — Diller: Windows Update (UUP) dil dosyaları, build'e göre otomatik bulma, dil odaklı sayfa (2026-10-04)
 Bağlam: Kullanıcı 26200.8037'nin en-us dosyalarını uupdump.net'ten elle indirip Diller'den ekledi; Uygula'da hepsi düştü.
 İki ayrı neden ölçüldü (kopya imaj, dism.exe ve CBS günlüğü):

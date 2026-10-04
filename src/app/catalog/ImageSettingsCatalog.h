@@ -14,6 +14,7 @@
 #include "core/image/Services.h"
 #include "core/ops/ChangeSet.h"
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -52,9 +53,13 @@ struct ImageSettingOption {
 
 struct ImageSetting {
     enum class Control : std::uint8_t { Toggle, Dropdown, Radio, Text, File };
+    // How a text setting's string becomes the value (D-062): as typed (REG_SZ), or "pagefile":
+    // "D: 4096 8192" → REG_MULTI_SZ "D:\pagefile.sys 4096 8192" ("D:" alone: size by Windows).
+    enum class Format : std::uint8_t { Plain, Pagefile };
     std::string id;
     std::string section;
     Control control = Control::Toggle;
+    Format format = Format::Plain;
     LocalizedText label;
     LocalizedText hint; // optional caption right of a toggle
     core::ops::Risk risk = core::ops::Risk::Low;
@@ -63,6 +68,12 @@ struct ImageSetting {
     int defaultOption = 0;
     int recommended = -1; // option "Önerilenleri uygula" picks; -1 = leave alone
 };
+
+// D-062: what the user types for the page file ↔ the PagingFiles entry. "d: 4096 8192" →
+// "D:\pagefile.sys 4096 8192", "D:" → "D:\pagefile.sys 0 0" (Windows sizes it); nullopt when it
+// is not a drive letter with no or two sizes in MB (16 … 1 TB, smallest first).
+[[nodiscard]] std::optional<std::wstring> pagefileEntry(std::wstring_view typed);
+[[nodiscard]] std::wstring pagefileTyped(std::wstring_view entry); // the other way; "" when it is not one
 
 class ImageSettingsCatalog {
 public:

@@ -529,7 +529,8 @@
     "recommendedApplied": "{n} ayar önerilen değere alındı",
     "recommendedNone": "Önerilen ayarların hepsi zaten seçili",
     "inImage": "imajda",
-    "noRevert": "burada geri alınamaz"
+    "noRevert": "burada geri alınamaz",
+    "pagefileProblem": "Biçim: sürücü ve iki boyut (MB), ör. \"D: 4096 8192\" ya da yalnız \"D:\""
   },
   "unattended": {
     "title": "Katılımsız Kurulum",
@@ -1259,7 +1260,7 @@
     "logoHint": "Sistem bilgisinde, 120×120'ye kırpılır",
     "pictures": "Varsayılan görseller",
     "wallpaper": "Masaüstü arka planı",
-    "wallpaperHint": "Açık ve koyu tema, her yeni kullanıcı",
+    "wallpaperHint": "Açık ve koyu tema, her yeni kullanıcı. Windows Spotlight masaüstünden kapatılır — yoksa Windows bu resmin yerine Bing görsellerini koyar",
     "lockScreen": "Kilit ekranı",
     "lockScreenHint": "Varsayılan kilit ekranı görseli",
     "account": "Hesap resmi",

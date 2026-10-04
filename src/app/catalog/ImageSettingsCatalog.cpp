@@ -7,6 +7,9 @@
 #include <json.hpp>
 
 #include <algorithm>
+#include <cwctype>
+#include <format>
+#include <sstream>
 
 namespace wl::app {
 
@@ -84,9 +87,17 @@ bool readOptions(const Json& j, ImageSetting& setting, std::wstring& why) {
         setting.defaultOption = 0;
         auto& value = setting.options[1];
         if (setting.control == ImageSetting::Control::Text) {
-            // Key and name only: the data is what the user types.
+            const std::string format = j.value("format", std::string{});
+            if (format == "pagefile") {
+                setting.format = ImageSetting::Format::Pagefile;
+            } else if (!format.empty()) {
+                why = L"unknown text format";
+                return false;
+            }
+            // Key and name only: the data is what the user types (a page file entry: REG_MULTI_SZ).
+            const wchar_t* empty = setting.format == ImageSetting::Format::Pagefile ? L"hex(7):00,00" : L"\"\"";
             for (const auto& w : j.value("writes", Json::array())) {
-                auto write = core::parseRegValue(wide(w, "key"), wide(w, "name"), L"\"\"");
+                auto write = core::parseRegValue(wide(w, "key"), wide(w, "name"), empty);
                 if (!write) {
                     why = describe(write.error());
                     return false;
@@ -136,6 +147,48 @@ bool readOptions(const Json& j, ImageSetting& setting, std::wstring& why) {
 }
 
 } // namespace
+
+std::optional<std::wstring> pagefileEntry(std::wstring_view typed) {
+    std::wstringstream in{std::wstring(typed)};
+    std::wstring drive;
+    in >> drive;
+    if (drive.size() == 2 && drive[1] == L':') {
+        drive.pop_back();
+    }
+    if (drive.size() != 1 || !std::iswalpha(drive[0])) {
+        return std::nullopt;
+    }
+    const wchar_t letter = static_cast<wchar_t>(std::towupper(drive[0]));
+    std::wstring rest;
+    std::vector<std::uint64_t> sizes;
+    for (std::wstring word; in >> word;) {
+        if (word.empty() || word.size() > 7 || !std::ranges::all_of(word, [](wchar_t c) { return std::iswdigit(c) != 0; })) {
+            return std::nullopt;
+        }
+        sizes.push_back(std::stoull(word));
+    }
+    if (sizes.empty()) {
+        return std::format(L"{}:\\pagefile.sys 0 0", letter);
+    }
+    constexpr std::uint64_t kMinMb = 16, kMaxMb = 1024 * 1024;
+    if (sizes.size() != 2 || sizes[0] < kMinMb || sizes[1] > kMaxMb || sizes[0] > sizes[1]) {
+        return std::nullopt;
+    }
+    return std::format(L"{}:\\pagefile.sys {} {}", letter, sizes[0], sizes[1]);
+}
+
+std::wstring pagefileTyped(std::wstring_view entry) {
+    // "D:\pagefile.sys 4096 8192"
+    if (entry.size() < 15 || entry[1] != L':' || _wcsnicmp(entry.data() + 2, L"\\pagefile.sys", 13) != 0) {
+        return {};
+    }
+    std::wstring sizes(entry.substr(15));
+    while (!sizes.empty() && sizes.front() == L' ') {
+        sizes.erase(sizes.begin());
+    }
+    const std::wstring drive = std::wstring(1, entry[0]) + L":";
+    return sizes.empty() || sizes == L"0 0" ? drive : drive + L" " + sizes;
+}
 
 Result<ImageSettingsCatalog> ImageSettingsCatalog::parse(std::string_view json) {
     const auto doc = Json::parse(json, nullptr, /*allow_exceptions=*/false);

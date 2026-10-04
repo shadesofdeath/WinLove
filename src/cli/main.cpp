@@ -501,7 +501,7 @@ int cmdPlan(const std::wstring& changeSetPath) {
 }
 
 int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bool commit, const std::wstring& source,
-             const std::wstring& also, const std::wstring& wim) {
+             const std::wstring& also, const std::wstring& wim, const std::wstring& setupFolder) {
     if (!also.empty() && (!commit || wim.empty())) {
         // Silently skipped before: the further editions are applied after a commit, from that WIM.
         return reportError(Error{ErrorCode::InvalidArgument, L"--also needs --commit and --wim=<file>", also});
@@ -518,6 +518,7 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
     const auto p = core::ops::plan(*set);
     core::ops::ApplyJobOptions options;
     options.commitAndUnmount = commit;
+    options.setupFolder = setupFolder; // D-062: <folder>\sources\lang.ini follows the languages
     if (!source.empty()) {
         options.apply.featureSources.push_back(source);
     }
@@ -540,6 +541,9 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
                                                        : std::wstring(L"skipped");
     print(std::format(L"  {} of {} step(s) ran, {} failed{}; commit: {} ({} ms)\n", report.results.size(), p.steps.size(),
                       report.failures(), report.completed ? L"" : L" (stopped)", commitText, job->elapsed.count()));
+    if (job->langIniWritten) {
+        print(L"  Setup's language list (sources\\lang.ini) written from the image\n");
+    }
     int result = report.completed && report.failures() == 0 && !job->commitError ? 0 : 3;
     // D-055: the same plan on further editions of `wim` (--also=2,3 --wim=<file>), after a commit.
     if (!also.empty() && job->committed && !wim.empty()) {
@@ -1797,7 +1801,7 @@ void printUsage() {
           L"                                      (Setup's image: LabConfig + drivers; mounts, commits)\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
           L"  wlcli apply <changeset.json> <mountdir> [--commit] [--source=<sources\\sxs>]\n"
-          L"                                      [--also=2,3 --wim=<file>]   (with --commit: then the same on further editions)\n"
+          L"                                      [--also=2,3 --wim=<file>] [--setup=<setup folder>]   (with --commit: then the same on further editions)\n"
           L"\n  Change sets (no admin):\n"
           L"  wlcli plan <changeset.json>              Show the ordered apply plan\n"
           L"  wlcli extract-all <iso> <dir>             Copy the whole ISO into a folder (resumable)\n"
@@ -1858,6 +1862,7 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring langList;
     std::wstring partList;
     std::wstring packagesOf;
+    std::wstring setupFolder;
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
@@ -1882,6 +1887,8 @@ int wmain(int argc, wchar_t** argv) {
             langList = std::wstring(a.substr(7));
         } else if (a.starts_with(L"--parts=")) {
             partList = std::wstring(a.substr(8));
+        } else if (a.starts_with(L"--setup=")) {
+            setupFolder = std::wstring(a.substr(8));
         } else if (a.starts_with(L"--packages-of=")) {
             packagesOf = std::wstring(a.substr(14));
         } else if (a.starts_with(L"--kb=")) {
@@ -2000,7 +2007,7 @@ int wmain(int argc, wchar_t** argv) {
         return cmdPlan(args[1]);
     }
     if (command == L"apply" && args.size() == 3) {
-        return cmdApply(args[1], args[2], commit == 1, source, alsoEditions, wimPath);
+        return cmdApply(args[1], args[2], commit == 1, source, alsoEditions, wimPath, setupFolder);
     }
     if (command == L"mounts") {
         return cmdMounts(asJson);

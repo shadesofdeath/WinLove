@@ -134,9 +134,14 @@ try {
     $listing = @(Native { & $Cli languages $downloads })
     Check 'downloaded files carry the names DISM wants' (@($listing | Where-Object { $_ -match 'UUP name' }).Count -eq 0)
     $n = LanguageChangeSet $downloads "$work\downloaded.json"
-    Run @('apply', "$work\downloaded.json", $mount) | Out-Null
+    # D-062: Setup's language list of a setup folder follows the image (dism /Gen-LangINI).
+    New-Item -ItemType Directory -Force "$work\setup\sources" | Out-Null
+    Copy-Item (Join-Path $Lab 'setup\sources\lang.ini') "$work\setup\sources\lang.ini"
+    Run @('apply', "$work\downloaded.json", $mount, "--setup=$work\setup") | Out-Null
     Check "apply from the download: $n language file(s) + UI language, no step failed" ($script:lastExit -eq 0)
     Verify 'Home (downloaded)' $n
+    $ini = Get-Content "$work\setup\sources\lang.ini" -Raw
+    Check "lang.ini lists $Language for Setup" ($ini -match ('(?im)^' + [regex]::Escape($Language) + '\s*='))
     Run @('unmount', $mount, '--discard') | Out-Null
     Check 'Home unmounted' ($script:lastExit -eq 0)
 } catch {

@@ -116,6 +116,10 @@ void ApplyController::start() {
         }
     }
     std::error_code ec;
+    // D-062: the setup folder of <folder>\sources\install.wim keeps Setup's language list in step.
+    if (_wcsicmp(mounted.imagePath.parent_path().filename().c_str(), L"sources") == 0) {
+        options.setupFolder = mounted.imagePath.parent_path().parent_path();
+    }
     const auto sxs = mounted.imagePath.parent_path() / L"sxs";
     if (std::filesystem::is_directory(sxs, ec)) {
         options.apply.featureSources.push_back(sxs);

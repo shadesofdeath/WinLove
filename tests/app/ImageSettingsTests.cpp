@@ -6,6 +6,7 @@
 #include <doctest.h>
 #include <json.hpp>
 
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -515,4 +516,60 @@ TEST_CASE("form: 'apply recommended' picks every recommended option once") {
     }
     CHECK(f.controller.changedCount() == expected);
     CHECK(f.controller.applyRecommended() == 0);
+}
+
+TEST_CASE("form (D-062): page file typed as a drive and sizes, written as REG_MULTI_SZ; the new desktop / Control Panel / Defender rows") {
+    CHECK(pagefileEntry(L"d: 4096 8192") == L"D:\\pagefile.sys 4096 8192");
+    CHECK(pagefileEntry(L"  E  ") == L"E:\\pagefile.sys 0 0");
+    CHECK_FALSE(pagefileEntry(L"D: 4096"));          // one size
+    CHECK_FALSE(pagefileEntry(L"D: 8192 4096"));     // largest first
+    CHECK_FALSE(pagefileEntry(L"D: 8 4096"));        // under 16 MB
+    CHECK_FALSE(pagefileEntry(L"DD: 4096 8192"));
+    CHECK_FALSE(pagefileEntry(L"D: 40x6 8192"));
+    CHECK(pagefileTyped(L"D:\\pagefile.sys 4096 8192") == L"D: 4096 8192");
+    CHECK(pagefileTyped(L"C:\\pagefile.sys 0 0") == L"C:");
+    CHECK(pagefileTyped(L"?:\\pagefile.sys").empty() == false); // the automatic entry: "?:" (shown as it is)
+
+    Fixture f;
+    const auto& catalog = f.controller.catalog();
+    const auto& custom = setting(catalog, "pagefile-custom");
+    REQUIRE(custom.format == ImageSetting::Format::Pagefile);
+    CHECK_FALSE(f.controller.setValue(custom, L"D: 40"));  // half typed: nothing queued, the row says so
+    CHECK(f.state.changes().empty());
+    CHECK(f.controller.setValue(custom, L"d: 2048 4096"));
+    CHECK(f.controller.value(custom) == L"D: 2048 4096");
+    REQUIRE(f.state.changes().size() == 1);
+    const auto& op = f.state.changes().operations().front();
+    CHECK(op.target == L"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management::PagingFiles");
+    const auto written = core::registryWriteFrom(op.target, op.value);
+    REQUIRE(written);
+    CHECK(written->type == REG_MULTI_SZ);
+    const std::wstring expected = std::wstring(L"D:\\pagefile.sys 2048 4096") + L'\0' + L'\0';
+    REQUIRE(written->data.size() == expected.size() * sizeof(wchar_t));
+    CHECK(std::memcmp(written->data.data(), expected.data(), written->data.size()) == 0);
+    const auto back = core::ops::ChangeSet::fromJson(f.state.changes().toJson());
+    REQUIRE(back);
+    CHECK(ImageSettingsController::valueIn(*back, custom) == L"D: 2048 4096");
+
+    // The dropdown and the typed value share the slot: the one set last wins.
+    const auto& mode = setting(catalog, "pagefile-mode");
+    f.controller.select(mode, option(mode, "off"));
+    CHECK(f.state.changes().size() == 1);
+    const auto off = core::registryWriteFrom(f.state.changes().operations().front().target, f.state.changes().operations().front().value);
+    REQUIRE(off);
+    CHECK(off->type == REG_MULTI_SZ);
+    CHECK(off->data.size() == 2 * sizeof(wchar_t)); // empty list: no page file
+
+    const auto& icons = setting(catalog, "desktop-icon-size");
+    CHECK(icons.firstLogon);
+    f.controller.select(icons, option(icons, "small"));
+    CHECK(f.state.changes().find(OpKind::SetRegistryFirstLogon, L"HKCU\\Software\\Microsoft\\Windows\\Shell\\Bags\\1\\Desktop::IconSize"));
+    const auto& view = setting(catalog, "control-panel-view");
+    f.controller.select(view, option(view, "small"));
+    CHECK(f.state.changes().find(OpKind::SetRegistryValue,
+                                 L"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ControlPanel::AllItemsIconView"));
+    const auto& defender = setting(catalog, "defender");
+    f.controller.select(defender, 0); // off
+    CHECK(f.state.changes().find(OpKind::SetServiceStart, L"WinDefend")->value == L"disabled");
+    CHECK(f.state.changes().find(OpKind::SetServiceStart, L"WdFilter"));
 }
