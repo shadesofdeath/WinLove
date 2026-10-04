@@ -14,6 +14,7 @@ add_library(wl_core STATIC
     image/ScheduledTasks.cpp
     image/HostsFile.cpp
     image/AppxInstall.cpp
+    image/LanguageInstall.cpp
     image/LanguagePacks.cpp
     image/ImageFiles.cpp
     image/ImageFormat.cpp
@@ -58,6 +59,7 @@ add_library(wl_core STATIC
     tasks/TaskRunner.cpp
     unattend/Unattend.cpp
     usb/UsbMedia.cpp
-    updates/UpdateCatalog.cpp)
+    updates/UpdateCatalog.cpp
+    updates/UupLanguages.cpp)
 wl_configure_target(wl_core)
 target_link_libraries(wl_core PUBLIC wl_base PRIVATE wl_pugixml wl_json advapi32 shell32 ole32 oleaut32 shlwapi rstrtmgr bcrypt winhttp ws2_32 windowscodecs wlanapi)

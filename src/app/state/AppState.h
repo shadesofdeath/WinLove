@@ -57,7 +57,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch, Intl };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch, Intl, LanguageFetch };
     using Listener = std::function<void(Change)>;
 
     // `answersFile`: where the answer file being edited is kept between runs (AnswerStore.h).
@@ -201,6 +201,9 @@ public:
         Status status = Status::Loading;
         std::filesystem::path mountDir;
         core::ImageIntl intl;
+        // D-061: identities of the installed packages ("…-Package~31bf3856ad364e35~amd64~~10.0…"):
+        // which language features each language has and which components take a language file.
+        std::vector<std::wstring> packages;
         Error error;
     };
     [[nodiscard]] const std::optional<ImageIntl>& imageIntl() const noexcept { return m_imageIntl; }
@@ -294,6 +297,21 @@ public:
     void setUpdateFetch(std::optional<UpdateFetch> fetch);
     void notifyUpdateFetch() { notify(Change::UpdateFetch); }
 
+    // D-061: "Dil ekle…" — the running uupdump.net lookup / language download
+    // (LanguageFetchController). Change::LanguageFetch.
+    struct LanguageFetch {
+        enum class Stage : std::uint8_t { Searching, Downloading, Verifying };
+        Stage stage = Stage::Searching;
+        std::vector<std::wstring> languages; // being downloaded ("en-US")
+        std::uint64_t doneBytes = 0;
+        std::uint64_t totalBytes = 0;
+        core::CancelToken cancel;
+    };
+    [[nodiscard]] const std::optional<LanguageFetch>& languageFetch() const noexcept { return m_languageFetch; }
+    [[nodiscard]] std::optional<LanguageFetch>& languageFetchMutable() noexcept { return m_languageFetch; }
+    void setLanguageFetch(std::optional<LanguageFetch> fetch);
+    void notifyLanguageFetch() { notify(Change::LanguageFetch); }
+
     // Last inspection of the WinLove mount folder (MountHealth.h); empty until first checked.
     [[nodiscard]] const std::optional<core::MountCheck>& mountFolder() const noexcept { return m_mountFolder; }
     void setMountFolder(std::optional<core::MountCheck> check);
@@ -345,6 +363,7 @@ private:
     Unattend m_unattend;
     std::optional<IsoRun> m_iso;
     std::optional<UpdateFetch> m_updateFetch;
+    std::optional<LanguageFetch> m_languageFetch;
     std::filesystem::path m_settingsFile;
     std::filesystem::path m_answersFile;
     std::shared_ptr<log::RingBufferSink> m_logBuffer = std::make_shared<log::RingBufferSink>();

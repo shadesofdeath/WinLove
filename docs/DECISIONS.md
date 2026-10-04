@@ -241,6 +241,44 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-061 — Diller: Windows Update (UUP) dil dosyaları, build'e göre otomatik bulma, dil odaklı sayfa (2026-10-04)
+Bağlam: Kullanıcı 26200.8037'nin en-us dosyalarını uupdump.net'ten elle indirip Diller'den ekledi; Uygula'da hepsi düştü.
+İki ayrı neden ölçüldü (kopya imaj, dism.exe ve CBS günlüğü):
+1. Tarayıcı yalnız LoF ISO adlarını tanıyordu: dil paketinin kendisi (`…Client-LanguagePack-Package-amd64-en-us.esd`) listeye
+   hiç girmedi; express (PSF) meta veri cab'ları (`…-Package-amd64_80a67e0b.cab`, `…-Package.cab`) paket sanıldı → 0x80070002.
+2. Dil özellikleri DISM'de yetenek (capability) olarak kuruluyor: CBS cab'ın klasörünü kaynak ekliyor ve bağımlılıkları
+   (Speech → Basic + TextToSpeech) **LoF adıyla** (`…-Package~31bf3856ad364e35~amd64~~.cab`) arıyor; UUP adını bulamayınca
+   `CBS_E_ONDEMAND_LOCALSOURCE_NOT_FOUND` (0x800F0912), dil paketi kuruluyken bile.
+Karar:
+- `LanguagePacks` iki adlandırmayı da tanır: dil paketi (LoF .cab / UUP .esd), özellikler, yazı tipleri, **bileşen dilleri**
+  (`<Paket>-Package-amd64-en-us.cab` ↔ `<Paket>~31bf…~amd64~en-US~.cab`, "satellite"); express meta veri atlanır.
+  `cbsFileName` DISM'in aradığı adı verir; `classifyPackageIdentity` imajın kurulu paketlerini aynı sınıflara çevirir.
+- Uygulama (`LanguageInstall`): UUP adlı cab `%TEMP%\WinLove\lang\…` altına LoF adıyla kopyalanıp oradan eklenir; .esd dil
+  paketi `WIMApplyImage` ile (ACL'siz) klasöre açılır, DISM klasörü genişletilmiş paket olarak alır. Planner dil
+  dosyalarını kurulum sırasına dizer: paket → Temel → yazı tipleri → el yazısı → OCR → metin okuma → konuşma → bileşen
+  dilleri (hepsi LCU'dan önce).
+- **"Dil ekle…" (otomatik bulma):** imajın build / revizyon / mimarisi → `api.uupdump.net/listid.php` (aynı revizyon, yoksa
+  aynı build'in en yeni Insider olmayan sürümü) → `get.php` dosya listesi (SHA-256 + Windows Update adresi). Yalnız dil
+  paketi olan diller sunulur (26200.8037 x64: 43). Seçilen dillerin paketi, Temel'i, yazısının yazı tipleri ve isteğe bağlı
+  el yazısı / OCR / metin okuma / konuşma / **imajda kurulu bileşenlerin** dilleri (`<çalışma kökü>\languages\<build>`)
+  doğrudan Microsoft sunucularından (yalnız *.microsoft.com / *.windowsupdate.com, kullanıcı-bilgisi hilesi reddedilir)
+  indirilir, SHA-256 denetlenir ve DISM'in istediği adla kaydedilir; önceden indirilmiş doğru dosya yeniden indirilmez.
+  uupdump.net yalnız listeyi verir; baytlar Microsoft'tan gelir. Liste oturum boyunca build başına önbellekte.
+- **Sayfa:** dil başına bir satır (Dil · Durum · Özellikler · Bileşen dilleri · Boyut); imajdakiler ikincil, eklenecekler
+  vurgu renginde; Delete bir dili tümüyle (yalnız ona gereken yazı tipleriyle) kuyruktan çıkarır, arayüz dili onu
+  gösteriyorsa sıfırlanır. İndirme sırasında listenin üstünde şerit + "Durdur" (.part dosyaları devam için kalır). İmajda
+  toplu güncelleme varken dil kuyruklanırsa uyarı + "Güncellemeleri bul" (Microsoft: sonradan eklenen dil, toplu güncelleme
+  yeniden kurulana dek temel sürümde kalır). Klasörden eklemede seçilenin bağımlılıkları kendiliğinden eklenir.
+- `wlcli uup-languages <build> [--lang= --parts= --packages-of=<mount> --download=]`.
+Kapsam dışı (şimdilik): LXP (yalnız appx'i olan 45 kısmi dil), boot.wim / WinRE / kurulum ekranı dili (WinPE dil
+paketleri UUP'ta yok), ISO'daki `lang.ini`.
+Kanıt: birim testleri (UUP / LoF adları, express ayıklama, standart ad, bağımlılık, yazı tipi, plan sırası, uupdump JSON,
+URL güveni; sayfa denetleyicisi: satırlar, seçim, kuyruktan çıkarma); render `--demo-languages[=dialog|fetch]`;
+`tools\lab_languages.ps1` (yönetici, kendim, 2026-10-04 13:00 ALL PASSED): A) kullanıcının UUP adlı klasörü → 22/22 adım, en-US kurulu ve arayüz dili;
+B) `uup-languages` ile Home imajına göre otomatik indirme (32 dosya, adlar DISM'in istediği gibi) → 33/33 adım.
+**Görülmeyen:** uygulamanın içinden indirme (gerçek pencerede ağ + dialog akışı), commit sonrası kurulan sistemde İngilizce
+arayüz (VM), dil sonrası LCU'nun yeniden kurulması.
+
 ## D-060 — Derin kaldırma: eski donanım sürücüleri, bileşen deposu tutarlı (2026-10-02)
 Bağlam: Kullanıcı NTLite'taki gibi derin kaldırmayı istedi ("uyarılarını da kullanıcıya söylemeliyiz"). D-059'daki ölçüm:
 sürücü yükünü WinSxS'ten silmek depoyu bozuyordu ("repairable").

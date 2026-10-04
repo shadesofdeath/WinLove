@@ -12,6 +12,7 @@
 #include "core/image/AppxInstall.h"
 #include "core/image/Branding.h"
 #include "core/image/HostsFile.h"
+#include "core/image/LanguageInstall.h"
 #include "core/image/ScheduledTasks.h"
 #include "core/image/dism/DefaultApps.h"
 #include "core/image/dism/Intl.h"
@@ -68,7 +69,12 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
         }
         return removed;
     }
-    case OpKind::AddPackage: return session.addPackage(op.target, task);
+    case OpKind::AddPackage:
+        // A language file may need staging first: UUP names, the pack as an ESD (D-061).
+        if (op.value == L"language") {
+            return addLanguagePackage(session, op.target, task);
+        }
+        return session.addPackage(op.target, task);
     case OpKind::AddDriver: return session.addDriver(op.target);
     case OpKind::SetServiceStart: {
         // The name comes from a preset file: it must stay one key under Services.

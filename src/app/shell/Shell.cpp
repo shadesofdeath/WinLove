@@ -31,6 +31,7 @@
 #include "app/pages/updates/UpdateCatalogDialog.h"
 #include "app/pages/AppsPage.h"
 #include "app/pages/LanguagesPage.h"
+#include "app/pages/languages/LanguageAddDialog.h"
 #include "app/pages/FilesPage.h"
 #include "core/system/Privileges.h"
 #include "app/pages/HostsPage.h"
@@ -98,6 +99,7 @@ constexpr float kToastMargin = 16.0f;
 
 Shell::Shell(const Localization& strings, Language language, AppState& state, Services services)
     : m_strings(strings), m_language(language), m_state(state), m_services(std::move(services)) {
+    LanguageController::setNameLanguage(language);
     auto s = [&](Str key) { return strings.get(key); };
     m_titleBar = &add<TitleBar>(TitleBar::Labels{s(Str::AppName), s(Str::TitleCmdk), s(Str::KbdCtrl), s(Str::TitleMinimize),
                                                  s(Str::TitleClose), s(Str::TitleMaximize), s(Str::TitleRestore)});
@@ -155,6 +157,24 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_branding = std::make_unique<BrandingController>(m_state);
     m_files = std::make_unique<FilesController>(m_state);
     m_languages = std::make_unique<LanguageController>(m_state, m_services.postToUi);
+    m_languageFetch = std::make_unique<LanguageFetchController>(m_state, LanguageFetchController::Events{
+        m_services.postToUi,
+        [this](const LanguageTarget& target, const std::vector<core::UupLanguage>& languages) { showLanguageOffers(target, languages); },
+        [this](const Error& e, bool download) {
+            showToast(ui::InfoKind::Error, m_strings.get(download ? Str::LanguagesDownloadFailed : Str::LanguagesFindFailed), errorText(e));
+        },
+        [this](std::vector<std::filesystem::path> files) {
+            const std::wstring n = std::to_wstring(files.size());
+            const auto folder = files.empty() ? std::wstring() : files.front().parent_path().wstring();
+            if (!m_state.mounted()) {
+                showToast(ui::InfoKind::Warning, m_strings.format(Str::LanguagesDownloadedNoMount, {{L"n", n}}), folder);
+                return;
+            }
+            m_languages->queueFiles(files, std::exchange(m_pendingUiLanguage, {}));
+            showToast(ui::InfoKind::Success, m_strings.format(Str::LanguagesDownloaded, {{L"n", n}}), folder);
+        },
+        [this] { showToast(ui::InfoKind::Warning, m_strings.get(Str::LanguagesDownloadStopped), L""); },
+    });
     m_apps = std::make_unique<AppsController>(m_state, AppsController::Events{
         m_services.postToUi,
         [this](int added, std::vector<Error> errors) {
@@ -708,6 +728,36 @@ void Shell::importHostsFile() {
               file->filename().wstring());
 }
 
+void Shell::addLanguages() {
+    if (!requireMount(Str::LanguagesNoMountTitle, Str::LanguagesNoMountBody)) {
+        return;
+    }
+    if (m_languageFetch->busy()) {
+        showToast(ui::InfoKind::Info, m_strings.get(Str::LanguagesBusy), L"");
+        return;
+    }
+    if (!LanguageFetchController::targetFor(m_state)) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::LanguagesNoTarget), L"");
+        return;
+    }
+    m_languageFetch->find();
+}
+
+void Shell::showLanguageOffers(const LanguageTarget& target, const std::vector<core::UupLanguage>& languages) {
+    if (!host() || !m_state.mounted()) {
+        return;
+    }
+    const ModalSlot slot = modalSlot();
+    LanguageAddActions actions;
+    actions.close = slot.close;
+    actions.download = [this](std::vector<core::UupLanguageFile> files, std::wstring uiLanguage) {
+        m_pendingUiLanguage = std::move(uiLanguage);
+        m_languageFetch->download(std::move(files));
+    };
+    LanguageAddDialog built = makeLanguageAddDialog(m_strings, m_language, *m_languages, target, languages, std::move(actions));
+    showModal(slot, std::move(built.dialog), built.initialFocus);
+}
+
 void Shell::scanLanguageFolder() {
     if (!requireMount(Str::LanguagesNoMountTitle, Str::LanguagesNoMountBody)) {
         return;
@@ -747,6 +797,7 @@ void Shell::scanLanguageFolder() {
                 for (const auto i : picked) {
                     chosen.push_back((*files)[i]);
                 }
+                chosen = m_languages->withDependencies(std::move(chosen), *files); // Speech takes Basic + TTS, …
                 m_languages->queuePacks(chosen);
                 showToast(ui::InfoKind::Success, m_strings.format(Str::LanguagesAdded, {{L"n", std::to_wstring(chosen.size())}}), L"");
             };
@@ -1468,8 +1519,12 @@ void Shell::showPage(PageId page) {
         } else if (page == PageId::Languages) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::LanguagesScan), ui::icons::Icon::OpenFolder).onInvoke =
                 [this] { scanLanguageFolder(); };
-            m_pageBody = &m_pageView->setBody<LanguagesPage>(m_state, *m_languages, m_strings, m_language,
-                                                             [this] { showPage(PageId::Images); });
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::LanguagesAdd), ui::icons::Icon::Download).onInvoke =
+                [this] { addLanguages(); };
+            m_pageBody = &m_pageView->setBody<LanguagesPage>(
+                m_state, *m_languages, m_strings, m_language,
+                LanguagesPage::Intents{[this] { showPage(PageId::Images); }, [this] { m_languageFetch->cancel(); },
+                                       [this] { findUpdates(); }});
         } else if (page == PageId::Apps) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::AppsFromHost), ui::icons::Icon::Import).onInvoke =
                 [this] {

@@ -1,12 +1,17 @@
 #include "app/pages/LanguagesPage.h"
 
 #include "app/Format.h"
+#include "app/controllers/LanguageFetchController.h"
 #include "app/pages/PageBits.h"
+#include "app/pages/languages/LanguageAddDialog.h"
+#include "ui/anim/Tween.h"
 
 #include <algorithm>
+#include <format>
 
 namespace wl::app {
 
+using Kind = core::LanguagePackFile::Kind;
 using ui::RectF;
 using ui::tokens::Color;
 using ui::tokens::TypeStyle;
@@ -17,31 +22,134 @@ constexpr float kSection = 36.0f;
 constexpr float kRow = 32.0f;
 constexpr float kLabelWidth = 220.0f;
 constexpr float kFieldWidth = 420.0f;
-constexpr int kMaxTableRows = 6;
-enum Column : int { kLang, kKind, kArch, kSize, kFile };
+constexpr float kStrip = 52.0f;
+constexpr float kInfo = 32.0f;
+constexpr int kMaxTableRows = 8;
+enum Column : int { kLang, kState, kParts, kComponents, kSize };
 enum Field : int { kUi, kSystem, kUser, kKeyboard, kZone };
+
+std::wstring languageList(const std::vector<std::wstring>& tags) {
+    std::wstring text;
+    for (const auto& t : tags) {
+        text += (text.empty() ? L"" : L", ") + LanguageController::localeName(t);
+    }
+    return text;
+}
 } // namespace
 
+// D-061: the lookup / download of "Dil ekle…", above the list: spinner, what is happening,
+// bytes, a 2px bar and "Durdur" (the .part files stay; the next download resumes).
+class LanguagesPage::FetchStrip : public ui::Widget {
+public:
+    FetchStrip(const Localization& strings, const AppState& state, Language language)
+        : m_strings(strings), m_state(state), m_language(language) {
+        m_stop = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::StatusStop), ui::icons::Icon::Stop);
+        m_stop->onInvoke = [this] {
+            if (onStop) {
+                onStop();
+            }
+        };
+    }
+    std::function<void()> onStop;
+
+    void start() {
+        m_now = ui::nowMs();
+        animate();
+    }
+    bool tick(double now) override {
+        m_now = now;
+        invalidate();
+        return visible() && m_state.languageFetch().has_value();
+    }
+    void layout() override {
+        const RectF b = bounds();
+        const ui::SizeF size = m_stop->measure({});
+        m_stop->setBounds({b.right() - 8 - size.width, b.y + (b.height - size.height) / 2, size.width, size.height});
+    }
+    void paint(ui::Canvas& canvas) override {
+        const auto& fetch = m_state.languageFetch();
+        if (!fetch) {
+            return;
+        }
+        const RectF b = bounds();
+        canvas.fillRect(b, Color::BgPanel);
+        const float angle = static_cast<float>(static_cast<int>(m_now / 100.0) % 8) * 45.0f;
+        canvas.drawIcon(ui::icons::Icon::Spinner, {b.x + 17, b.y + 12}, Color::AccentBase, ui::IconVariant::Regular16, 0,
+                        ui::reducedMotion() ? 0.0f : angle);
+        const float x = b.x + 40;
+        const float width = std::max(m_stop->bounds().x - x - 16, 0.0f);
+        using Stage = AppState::LanguageFetch::Stage;
+        std::wstring title;
+        if (fetch->stage == Stage::Searching) {
+            const auto target = LanguageFetchController::targetFor(m_state);
+            title = m_strings.format(Str::LanguagesFetchSearching,
+                                     {{L"build", target ? std::format(L"{}.{}", target->build, target->revision) : std::wstring()}});
+        } else if (fetch->stage == Stage::Verifying) {
+            title = m_strings.format(Str::LanguagesFetchVerifying, {{L"langs", languageList(fetch->languages)}});
+        } else {
+            title = m_strings.format(Str::LanguagesFetchDownloading, {{L"langs", languageList(fetch->languages)},
+                                                                      {L"done", formatBytes(fetch->doneBytes, m_language)},
+                                                                      {L"total", formatBytes(fetch->totalBytes, m_language)}});
+        }
+        canvas.drawText(title, {x, b.y + 10, width, 16}, TypeStyle::BodyStrong, Color::TextPrimary);
+        if (fetch->stage != Stage::Searching && fetch->totalBytes > 0) {
+            const float fraction = std::clamp(
+                static_cast<float>(static_cast<double>(fetch->doneBytes) / static_cast<double>(fetch->totalBytes)), 0.0f, 1.0f);
+            const float barWidth = std::max(width - 48, 0.0f);
+            canvas.progressBar({x, b.y + 34, barWidth, 2}, fraction);
+            canvas.drawText(std::to_wstring(static_cast<int>(fraction * 100)) + L"%", {x + barWidth + 8, b.y + 27, 40, 16},
+                            TypeStyle::Mono, Color::TextSecondary, ui::TextAlign::Trailing);
+        }
+    }
+
+private:
+    const Localization& m_strings;
+    const AppState& m_state;
+    Language m_language;
+    ui::Button* m_stop = nullptr;
+    double m_now = 0;
+};
+
 LanguagesPage::LanguagesPage(AppState& state, LanguageController& controller, const Localization& strings, Language language,
-                             std::function<void()> goImages)
-    : m_state(state), m_controller(controller), m_strings(strings), m_language(language) {
+                             Intents intents)
+    : m_state(state), m_controller(controller), m_strings(strings), m_language(language), m_intents(std::move(intents)) {
+    m_fetch = &add<FetchStrip>(strings, state, language);
+    m_fetch->onStop = [this] {
+        if (m_intents.stopFetch) {
+            m_intents.stopFetch();
+        }
+    };
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
-        {strings.get(Str::LanguagesLanguage), 220},
-        {strings.get(Str::CommonType), 180},
-        {strings.get(Str::ImagesArch), 90},
+        {strings.get(Str::LanguagesLanguage), 0},
+        {strings.get(Str::LanguagesColState), 210},
+        {strings.get(Str::LanguagesColParts), 300},
+        {strings.get(Str::LanguagesColComponents), 120, ui::TextAlign::Trailing},
         {strings.get(Str::CommonSize), 96, ui::TextAlign::Trailing},
-        {strings.get(Str::LanguagesFile), 0},
     });
-    m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState) {
-        paintCell(c, row, column, rect);
+    m_table->setAccessible(ui::AccessRole::Group, strings.get(Str::LanguagesList));
+    m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
+        paintCell(c, row, column, rect, cell.selected);
     };
     m_table->onKey = [this](const ui::KeyEvent& key) {
         const int row = m_table->selected();
-        if (key.virtualKey == VK_DELETE && row >= 0 && row < static_cast<int>(m_packs.size())) {
-            m_controller.unqueuePack(m_packs[static_cast<std::size_t>(row)].path);
+        if (key.virtualKey == VK_DELETE && row >= 0 && row < static_cast<int>(m_rows.size())) {
+            const auto& r = m_rows[static_cast<std::size_t>(row)];
+            if (!r.queued.empty() || r.componentsQueued > 0) {
+                m_controller.unqueueLanguage(r.language);
+            }
             return true;
         }
         return false;
+    };
+    m_lcu = &add<ui::InfoBar>(ui::InfoKind::Warning, strings.get(Str::LanguagesLcuTitle), L"", strings.get(Str::CommonClose));
+    m_lcu->setAction(strings.get(Str::LanguagesLcuAction), [this] {
+        if (m_intents.findUpdates) {
+            m_intents.findUpdates();
+        }
+    });
+    m_lcu->onClose = [this] {
+        m_lcuClosed = true;
+        refresh();
     };
     const Str labels[5] = {Str::LanguagesUi, Str::LanguagesSystem, Str::LanguagesUser, Str::LanguagesKeyboard, Str::LanguagesZone};
     for (int f = 0; f < 5; ++f) {
@@ -51,10 +159,15 @@ LanguagesPage::LanguagesPage(AppState& state, LanguageController& controller, co
     }
     m_empty = &add<ui::EmptyState>(ui::icons::Icon::LanguageGlobe, strings.get(Str::LanguagesNoMountTitle),
                                    strings.get(Str::LanguagesNoMountBody));
-    m_empty->setAction(strings.get(Str::CommonGoImages)).onInvoke = std::move(goImages);
+    m_empty->setAction(strings.get(Str::CommonGoImages)).onInvoke = [this] {
+        if (m_intents.goImages) {
+            m_intents.goImages();
+        }
+    };
     setAccessible(ui::AccessRole::Group, strings.get(Str::LanguagesTitle));
     m_subscription = m_state.subscribe([this](AppState::Change change) {
-        if (change == AppState::Change::Mount || change == AppState::Change::Intl || change == AppState::Change::Queue) {
+        if (change == AppState::Change::Mount || change == AppState::Change::Intl || change == AppState::Change::Queue ||
+            change == AppState::Change::LanguageFetch || change == AppState::Change::Source) {
             refresh();
         }
     });
@@ -67,15 +180,15 @@ LanguagesPage::~LanguagesPage() {
 }
 
 std::wstring LanguagesPage::kindLabel(const Localization& strings, core::LanguagePackFile::Kind kind) {
-    using K = core::LanguagePackFile::Kind;
     switch (kind) {
-    case K::LanguagePack: return strings.get(Str::LanguagesKindPack);
-    case K::Basic: return strings.get(Str::LanguagesKindBasic);
-    case K::Handwriting: return strings.get(Str::LanguagesKindHandwriting);
-    case K::Ocr: return strings.get(Str::LanguagesKindOcr);
-    case K::Speech: return strings.get(Str::LanguagesKindSpeech);
-    case K::TextToSpeech: return strings.get(Str::LanguagesKindTts);
-    case K::Fonts: return strings.get(Str::LanguagesKindFonts);
+    case Kind::LanguagePack: return strings.get(Str::LanguagesKindPack);
+    case Kind::Basic: return strings.get(Str::LanguagesKindBasic);
+    case Kind::Handwriting: return strings.get(Str::LanguagesKindHandwriting);
+    case Kind::Ocr: return strings.get(Str::LanguagesKindOcr);
+    case Kind::Speech: return strings.get(Str::LanguagesKindSpeech);
+    case Kind::TextToSpeech: return strings.get(Str::LanguagesKindTts);
+    case Kind::Fonts: return strings.get(Str::LanguagesKindFonts);
+    case Kind::Satellite: return strings.get(Str::LanguagesKindComponent);
     default: return strings.get(Str::LanguagesKindOther);
     }
 }
@@ -149,34 +262,99 @@ void LanguagesPage::refresh() {
     for (auto* f : m_fields) {
         f->setVisible(mounted);
     }
+    const bool fetching = mounted && m_state.languageFetch().has_value();
+    if (fetching && !m_fetch->visible()) {
+        m_fetch->setVisible(true);
+        m_fetch->start();
+    }
+    m_fetch->setVisible(fetching);
+    const bool lcu = mounted && !m_lcuClosed && m_controller.cumulativeUpdateAdvised();
+    m_lcu->setVisible(lcu);
+    if (lcu) {
+        const auto target = LanguageFetchController::targetFor(m_state);
+        m_lcu->set(ui::InfoKind::Warning, m_strings.get(Str::LanguagesLcuTitle),
+                   m_strings.format(Str::LanguagesLcuBody,
+                                    {{L"build", target ? std::format(L"{}.{}", target->build, target->revision) : std::wstring()}}));
+    }
     if (mounted) {
         m_controller.load();
     }
-    m_packs = m_controller.queuedPacks();
-    m_table->setRowCount(static_cast<int>(m_packs.size()));
+    m_rows = mounted ? m_controller.rows() : std::vector<LanguageRow>{};
+    m_table->setRowCount(static_cast<int>(m_rows.size()));
     m_table->refresh();
     rebuildDropdowns();
     layout();
     invalidate();
 }
 
-void LanguagesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect) {
-    if (row < 0 || row >= static_cast<int>(m_packs.size())) {
+void LanguagesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect, bool selected) {
+    if (row < 0 || row >= static_cast<int>(m_rows.size())) {
         return;
     }
-    const auto& f = m_packs[static_cast<std::size_t>(row)];
+    const auto& r = m_rows[static_cast<std::size_t>(row)];
+    const bool adding = !r.queued.empty() || r.componentsQueued > 0;
     switch (column) {
     case kLang: {
-        const std::wstring text = f.language.empty() ? L"—" : LanguageController::localeName(f.language) + L"  ·  " + f.language;
-        canvas.drawText(text, rect, TypeStyle::Body, Color::TextPrimary);
+        // A small mark: filled for the display language, accent for a language that is added.
+        const float cy = rect.y + rect.height / 2;
+        if (r.ui || !r.inImage) {
+            canvas.fillRoundRect({rect.x + 1, cy - 3, 6, 6}, 3, r.inImage ? Color::TextSecondary : Color::AccentBase);
+        } else {
+            canvas.strokeRoundRect({rect.x + 1.5f, cy - 2.5f, 5, 5}, 2.5f, Color::TextTertiary, 1.0f);
+        }
+        const float x = rect.x + 16;
+        const std::wstring name = LanguageController::localeName(r.language);
+        const TypeStyle style = selected || r.ui ? TypeStyle::BodyStrong : TypeStyle::Body;
+        const float nameW = std::min(std::max(rect.right() - x, 0.0f), std::ceil(canvas.text().measure(name, style)));
+        canvas.drawText(name, {x, rect.y, nameW, rect.height}, style, Color::TextPrimary);
+        const float tx = x + nameW + 8;
+        canvas.drawText(r.language, {tx, rect.y, std::max(rect.right() - tx, 0.0f), rect.height}, TypeStyle::Mono, Color::TextTertiary);
         break;
     }
-    case kKind: canvas.drawText(kindLabel(m_strings, f.kind), rect, TypeStyle::Caption, Color::TextSecondary); break;
-    case kArch: canvas.drawText(f.architecture, rect, TypeStyle::Mono, Color::TextSecondary); break;
-    case kSize:
-        canvas.drawText(formatBytes(f.size, m_language), rect, TypeStyle::Mono, Color::TextPrimary, ui::TextAlign::Trailing);
+    case kState: {
+        const Str state = r.inImage ? (adding ? Str::LanguagesStateMore : r.ui ? Str::LanguagesStateUi : Str::LanguagesStateImage)
+                                    : Str::LanguagesStateQueued;
+        canvas.drawText(m_strings.get(state), rect, TypeStyle::Caption, adding ? Color::AccentBase : Color::TextSecondary);
         break;
-    case kFile: canvas.drawText(f.path.filename().wstring(), rect, TypeStyle::Caption, Color::TextTertiary); break;
+    }
+    case kParts: {
+        // In the image: secondary ink; added by the queue: accent.
+        float x = rect.x;
+        bool first = true;
+        for (const Kind k : {Kind::Basic, Kind::Handwriting, Kind::Ocr, Kind::TextToSpeech, Kind::Speech}) {
+            const bool queued = std::ranges::find(r.queued, k) != r.queued.end();
+            const bool installed = std::ranges::find(r.installed, k) != r.installed.end();
+            if (!queued && !installed) {
+                continue;
+            }
+            const std::wstring text = (first ? L"" : L" · ") + languagePartsText(m_strings, {k});
+            const float w = std::ceil(canvas.text().measure(text, TypeStyle::Caption));
+            if (x + w > rect.right()) {
+                canvas.drawText(L"…", {x, rect.y, 12, rect.height}, TypeStyle::Caption, Color::TextTertiary);
+                break;
+            }
+            canvas.drawText(text, {x, rect.y, w, rect.height}, TypeStyle::Caption, queued ? Color::AccentBase : Color::TextSecondary);
+            x += w;
+            first = false;
+        }
+        if (first) {
+            canvas.drawText(L"—", rect, TypeStyle::Caption, Color::TextTertiary);
+        }
+        break;
+    }
+    case kComponents: {
+        std::wstring text = r.componentsInImage > 0 ? std::to_wstring(r.componentsInImage) : std::wstring();
+        if (r.componentsQueued > 0) {
+            text += (text.empty() ? L"+" : L" +") + std::to_wstring(r.componentsQueued);
+        }
+        canvas.drawText(text.empty() ? L"—" : text, rect, TypeStyle::Mono,
+                        r.componentsQueued > 0 ? Color::AccentBase : Color::TextSecondary, ui::TextAlign::Trailing);
+        break;
+    }
+    case kSize:
+        canvas.drawText(r.queuedBytes > 0 ? formatBytes(r.queuedBytes, m_language) : L"—", rect, TypeStyle::Mono,
+                        r.queuedBytes > 0 ? Color::TextPrimary : Color::TextTertiary, ui::TextAlign::Trailing);
+        break;
     default: break;
     }
 }
@@ -184,12 +362,21 @@ void LanguagesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rec
 void LanguagesPage::layout() {
     const RectF b = bounds();
     m_empty->setBounds(b);
-    float y = b.y + kTop + kSection + 24 + 12; // İMAJDAKİ DİLLER + its line
-    y += kSection;                              // EKLENECEK DİL PAKETLERİ
-    const int rows = std::clamp(static_cast<int>(m_packs.size()), 1, kMaxTableRows);
+    float y = b.y + kTop;
+    if (m_fetch->visible()) {
+        m_fetch->setBounds({b.x, y, b.width, kStrip});
+        y += kStrip + 12;
+    }
+    y += kSection; // DİLLER
+    const int rows = std::clamp(static_cast<int>(m_rows.size()), 1, kMaxTableRows);
     const float tableH = ui::TableView::kHeader + ui::TableView::kRow * static_cast<float>(rows) + 1;
     m_table->setBounds({b.x, y, b.width, tableH});
-    y += tableH + 12 + kSection; // BÖLGE VE DİL
+    y += tableH + 4 + 16 + 8; // the hint line
+    if (m_lcu->visible()) {
+        m_lcu->setBounds({b.x, y, b.width, kInfo});
+        y += kInfo + 8;
+    }
+    y += kSection; // BÖLGE VE DİL
     for (auto* f : m_fields) {
         f->setBounds({b.x + kLabelWidth, y + (kRow - ui::tokens::size::control) / 2, kFieldWidth, ui::tokens::size::control});
         y += kRow;
@@ -201,37 +388,22 @@ void LanguagesPage::paint(ui::Canvas& canvas) {
         return;
     }
     const RectF b = bounds();
-    float y = b.y + kTop;
-    auto section = [&](Str title) {
-        paintFormSection(canvas, {b.x, y, b.width, kSection}, m_strings.get(title));
-        y += kSection;
-    };
-    section(Str::LanguagesInImage);
+    const RectF table = m_table->bounds();
+    paintFormSection(canvas, {b.x, table.y - kSection, b.width, kSection}, m_strings.get(Str::LanguagesList));
     const auto& intl = m_state.imageIntl();
-    std::wstring line;
-    Color ink = Color::TextPrimary;
-    if (!intl || intl->status == AppState::ImageIntl::Status::Loading) {
-        line = m_strings.get(Str::LanguagesReading);
-        ink = Color::TextTertiary;
-    } else if (intl->status == AppState::ImageIntl::Status::Failed) {
-        line = m_strings.get(Str::LanguagesReadFailed) + L" — " + intl->error.message;
-        ink = Color::StatusError;
-    } else {
-        for (const auto& l : intl->intl.languages) {
-            line += (line.empty() ? L"" : L", ") + LanguageController::localeName(l) + L" (" + l + L")";
+    if (m_rows.empty()) {
+        std::wstring line = m_strings.get(Str::LanguagesReading);
+        Color ink = Color::TextTertiary;
+        if (intl && intl->status == AppState::ImageIntl::Status::Failed) {
+            line = m_strings.get(Str::LanguagesReadFailed) + L" — " + intl->error.message;
+            ink = Color::StatusError;
         }
-        line = m_strings.format(Str::LanguagesInstalled, {{L"list", line}, {L"ui", intl->intl.current.uiLanguage}});
+        canvas.drawText(line, {table.x, table.y + ui::TableView::kHeader, table.width, ui::TableView::kRow}, TypeStyle::Caption, ink,
+                        ui::TextAlign::Center);
     }
-    canvas.drawText(line, {b.x, y, b.width, 24}, TypeStyle::Body, ink);
-    y += 24 + 12;
-    section(Str::LanguagesPacks);
-    if (m_packs.empty()) {
-        const RectF t = m_table->bounds();
-        canvas.drawText(m_strings.get(Str::LanguagesPacksEmpty), {t.x, t.y + ui::TableView::kHeader, t.width, ui::TableView::kRow},
-                        TypeStyle::Caption, Color::TextTertiary, ui::TextAlign::Center);
-    }
-    y = m_table->bounds().bottom() + 12;
-    section(Str::LanguagesRegion);
+    canvas.drawText(m_strings.get(Str::LanguagesListHint), {b.x, table.bottom() + 4, b.width, 16}, TypeStyle::Caption, Color::TextTertiary);
+    float y = m_fields[0]->bounds().y - (kRow - ui::tokens::size::control) / 2;
+    paintFormSection(canvas, {b.x, y - kSection, b.width, kSection}, m_strings.get(Str::LanguagesRegion));
     const Str labels[5] = {Str::LanguagesUi, Str::LanguagesSystem, Str::LanguagesUser, Str::LanguagesKeyboard, Str::LanguagesZone};
     for (const Str label : labels) {
         canvas.drawText(m_strings.get(label), {b.x, y, kLabelWidth - 8, kRow}, TypeStyle::Body, Color::TextSecondary);

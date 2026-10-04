@@ -43,7 +43,20 @@
   (CloudContent politikaları + kilit ekranı dönen resim değerleri, ilk oturumda yeniden) ve Ayarlar › Masaüstü'nde Spotlight
   simgesi; aynıları Kayıt Defteri kataloğunda. Spotlight'ın ayrı bir paketi yok (yalnız duvar kağıdı paketinde 1,6 MB): kaldırma
   = tamamen kapatma. Kullanıcı test istemedi: imajda / kurulan sistemde görülmedi.
-- **Bir sonraki somut adım (2026-10-02):** kullanıcı yeni bileşenleri ve derin kaldırmayı dener; VM'de derin kaldırılmış imajın
+- **Diller: Windows Update dil dosyaları + otomatik bulma + yeni sayfa (2026-10-04, kullanıcı isteği, D-061):** kullanıcının
+  uupdump.net'ten indirdiği en-us dosyaları Uygula'da düşüyordu — dil paketi (.esd) tanınmıyordu, express meta veri cab'ları
+  paket sanılıyordu, özellikler UUP adıyla 0x800F0912 veriyordu (CBS bağımlılıkları LoF adıyla arıyor). Motor iki adlandırmayı
+  da tanıyor, .esd'yi klasöre açıp ekliyor, UUP adlı cab'ı LoF adıyla kopyalayıp ekliyor; Planner dil dosyalarını kurulum
+  sırasına diziyor. Yeni "Dil ekle…": imajın build'i için uupdump.net listesinden 43 dil, parça seçimi (el yazısı / OCR /
+  metin okuma / konuşma / imajdaki bileşenlerin dilleri), Microsoft sunucularından SHA-256 denetimli indirme, kuyruk.
+  Sayfa dil odaklı (satır = dil), indirme şeridi, toplu güncelleme uyarısı; dil adları uygulama dilinde. `wlcli uup-languages`.
+  **Kanıt:** 282 test / 7080 doğrulama; render `--demo-languages[=dialog|fetch]`; `tools\lab_languages.ps1` (yönetici,
+  kendim, 13:00 ALL PASSED): Pro'da kullanıcının UUP klasörü 22/22 adım, Home'da otomatik indirme (32 dosya) 33/33 adım, ikisinde de en-US kurulu
+  ve arayüz dili. **Görülmeyen:** uygulamanın içinden indirme (gerçek pencerede ağ + dialog), kurulan sistemde İngilizce
+  arayüz (VM), dilden sonra LCU'nun yeniden kurulması. Kapsam dışı: LXP dilleri, boot.wim / kurulum ekranı dili, lang.ini.
+- **Bir sonraki somut adım (2026-10-04):** kullanıcı Diller › "Dil ekle…" ile en-US'i uygulamanın içinden indirip Uygula'yı
+  dener (imaj 26200.8037: uyarıdaki "Güncellemeleri bul" ile aynı LCU'yu da kuyruğa almak önerilir); ardından VM'de kurulum.
+- **Önceki adım (2026-10-02):** kullanıcı yeni bileşenleri ve derin kaldırmayı dener; VM'de derin kaldırılmış imajın
   kurulumu ve Windows Update davranışı görülmeli.
 - **Önceki adım (2026-10-01 gece):** kullanıcı yeni araçları uygulamada dener. Sonra ertelenen öneriler (`deferred-suggestions`).
 - **Önceki adım (2026-10-01 akşam):** kullanıcı yeni sayfaları uygulamada dener (Kişiselleştirme, Wi-Fi, Compact OS, boot.wim sekmesi). WLM için karar bekleniyor: açma hızı ölçümü + kurucu prototipi (D-057). Önerilen küçük işler: ISO seçeneklerini presete eklemek, taşınabilir preset (dosyalar yanında).

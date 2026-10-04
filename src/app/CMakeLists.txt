@@ -25,6 +25,7 @@ add_library(wl_app STATIC
     controllers/ImageDriverController.cpp
     controllers/AppsController.cpp
     controllers/LanguageController.cpp
+    controllers/LanguageFetchController.cpp
     controllers/UpdateCatalogController.cpp
     ApplyReport.cpp
     Format.cpp
@@ -59,6 +60,7 @@ add_library(wl_app STATIC
     pages/postsetup/AppsDialog.cpp
     pages/postsetup/StepDialog.cpp
     pages/updates/UpdateCatalogDialog.cpp
+    pages/languages/LanguageAddDialog.cpp
     pages/SourcePage.cpp
     pages/TweaksPage.cpp
     pages/UnattendedPage.cpp

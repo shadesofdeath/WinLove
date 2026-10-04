@@ -10,6 +10,7 @@
 #include "core/image/RegistryEdit.h"
 #include "core/image/RegistryRead.h"
 #include "core/updates/UpdateCatalog.h"
+#include "core/updates/UupLanguages.h"
 #include "core/usb/UsbMedia.h"
 #include "core/image/AppxInstall.h"
 #include "core/image/LanguagePacks.h"
@@ -1519,13 +1520,147 @@ int cmdAppx(const std::wstring& file, const std::wstring& mountDir, const std::w
 }
 
 // D-053: language packs and features under a folder (no admin).
+const wchar_t* languageKindName(core::LanguagePackFile::Kind kind) {
+    static constexpr const wchar_t* kKinds[] = {L"language pack", L"basic", L"fonts", L"handwriting", L"ocr",
+                                                L"text-to-speech", L"speech", L"component", L"other"};
+    return kKinds[static_cast<int>(kind)];
+}
+
+// D-061: the language files of a build, from uupdump.net's index of Windows Update (no admin).
+// --lang=en-us[,de-de] picks languages; --parts=pack,basic,fonts,handwriting,ocr,tts,speech,components
+// (default: all but components); --packages-of=<mountdir> limits components to those the image has
+// (admin: DISM); --download=<folder> fetches them, SHA-256 checked, under the names DISM wants.
+int cmdUupLanguages(const std::wstring& buildText, const std::wstring& arch, const std::wstring& langs, const std::wstring& parts,
+                    const std::wstring& packagesOf, const std::wstring& downloadDir, bool asJson) {
+    int build = 0;
+    int revision = 0;
+    if (swscanf_s(buildText.c_str(), L"%d.%d", &build, &revision) < 1 || build < 10000) {
+        print(L"error: build must look like 26200 or 26200.8037\n");
+        return 1;
+    }
+    const std::wstring architecture = arch.empty() ? L"x64" : arch;
+    auto found = core::findUupBuild(build, revision, architecture, g_cancel);
+    if (!found) {
+        return reportError(found.error());
+    }
+    auto files = core::uupFiles(found->uuid, g_cancel);
+    if (!files) {
+        return reportError(files.error());
+    }
+    const auto languages = core::uupLanguages(*files, architecture);
+    using K = core::LanguagePackFile::Kind;
+    if (langs.empty()) {
+        if (asJson) {
+            json out = json::array();
+            for (const auto& l : languages) {
+                json items = json::array();
+                for (const auto& f : l.files) {
+                    items.push_back({{"kind", narrow(languageKindName(f.file.kind))}, {"name", narrow(f.source.name)}, {"size", f.source.size}});
+                }
+                out.push_back({{"language", narrow(l.language)}, {"files", items}});
+            }
+            printJson({{"build", narrow(found->title)}, {"uuid", narrow(found->uuid)}, {"languages", out}});
+            return 0;
+        }
+        print(std::format(L"  {} ({})\n\n", found->title, found->uuid));
+        for (const auto& l : languages) {
+            std::uint64_t main = 0;
+            int components = 0;
+            std::wstring kinds;
+            for (const auto& f : l.files) {
+                if (f.file.kind == K::Satellite) {
+                    ++components;
+                } else {
+                    main += f.source.size;
+                    kinds += (kinds.empty() ? L"" : L",") + std::wstring(languageKindName(f.file.kind));
+                }
+            }
+            print(std::format(L"  {:<11} {:>5} MB  {}  +{} component file(s)\n", l.language, main >> 20, kinds, components));
+        }
+        print(std::format(L"\n  {} language(s) with a language pack\n", languages.size()));
+        return 0;
+    }
+    std::vector<std::wstring> installed;
+    if (!packagesOf.empty()) {
+        auto dism = core::Dism::instance();
+        if (!dism) {
+            return reportError(dism.error());
+        }
+        auto session = (*dism)->openSession(packagesOf);
+        if (!session) {
+            return reportError(session.error());
+        }
+        auto packages = (*session)->packages();
+        if (!packages) {
+            return reportError(packages.error());
+        }
+        for (const auto& p : *packages) {
+            if (p.state == core::ServicingState::Installed) {
+                installed.push_back(p.name);
+            }
+        }
+    }
+    std::wstring wanted = L"," + (parts.empty() ? std::wstring(L"pack,basic,fonts,handwriting,ocr,tts,speech") : parts) + L",";
+    for (auto& c : wanted) {
+        c = static_cast<wchar_t>(std::towlower(c));
+    }
+    auto partOf = [](K k) -> const wchar_t* {
+        switch (k) {
+        case K::LanguagePack: return L"pack";
+        case K::Basic: return L"basic";
+        case K::Fonts: return L"fonts";
+        case K::Handwriting: return L"handwriting";
+        case K::Ocr: return L"ocr";
+        case K::TextToSpeech: return L"tts";
+        case K::Speech: return L"speech";
+        case K::Satellite: return L"components";
+        default: return L"other";
+        }
+    };
+    std::vector<core::UupLanguageFile> chosen;
+    std::wstringstream list(langs);
+    for (std::wstring tag; std::getline(list, tag, L',');) {
+        const auto it = std::ranges::find_if(languages, [&](const core::UupLanguage& l) { return _wcsicmp(l.language.c_str(), tag.c_str()) == 0; });
+        if (it == languages.end()) {
+            print(L"error: no language pack for " + tag + L" in this build\n");
+            return 1;
+        }
+        for (const auto& f : it->files) {
+            if (wanted.find(L"," + std::wstring(partOf(f.file.kind)) + L",") == std::wstring::npos) {
+                continue;
+            }
+            if (f.file.kind == K::Satellite && !packagesOf.empty() && !core::satelliteFits(f.file, installed)) {
+                continue;
+            }
+            chosen.push_back(f);
+        }
+    }
+    std::uint64_t total = 0;
+    for (const auto& f : chosen) {
+        total += f.source.size;
+        print(std::format(L"  {:<15} {:>8} KB  {}\n", languageKindName(f.file.kind), f.source.size >> 10, core::uupSaveName(f)));
+    }
+    print(std::format(L"\n  {} file(s), {} MB\n", chosen.size(), total >> 20));
+    if (downloadDir.empty()) {
+        return 0;
+    }
+    const auto task = progressTask(L"download");
+    auto saved = core::downloadUupFiles(chosen, downloadDir, task);
+    print(L"\n");
+    if (!saved) {
+        return reportError(saved.error());
+    }
+    print(std::format(L"  {} file(s) in {}\n", saved->size(), downloadDir));
+    return 0;
+}
+
 int cmdLanguages(const std::wstring& folder) {
-    static constexpr const wchar_t* kKinds[] = {L"language pack", L"basic", L"handwriting", L"ocr",
-                                                L"speech", L"text-to-speech", L"fonts", L"other"};
     const auto files = core::scanLanguageFiles(folder);
     for (const auto& f : files) {
-        print(std::format(L"  {:<8} {:<6} {:<15} {:>6} MB  {}\n", f.language.empty() ? L"-" : f.language, f.architecture,
-                          kKinds[static_cast<int>(f.kind)], f.size >> 20, f.path.filename().wstring()));
+        const std::wstring cbs = core::cbsFileName(f);
+        print(std::format(L"  {:<8} {:<6} {:<15} {:>6} MB  {}{}\n", f.language.empty() ? L"-" : f.language, f.architecture,
+                          languageKindName(f.kind), f.size >> 20, f.path.filename().wstring(),
+                          cbs.empty() || _wcsicmp(cbs.c_str(), f.path.filename().c_str()) == 0 ? L"" : L"  (UUP name)"));
     }
     print(std::format(L"\n  {} language file(s)\n", files.size()));
     return 0;
@@ -1638,6 +1773,9 @@ void printUsage() {
           L"  wlcli wifi-xml --ssid=<name> [--password=<key>] [--wpa3|--open] [--hidden]   (WLAN profile XML)\n"
           L"  wlcli appx-add <mountdir> <package> [--arch=x64]   (provision an .appx / .msix (bundle); admin)\n"
           L"  wlcli languages <folder>                   (language packs and features under a folder)\n"
+          L"  wlcli uup-languages <build>[.<rev>] [--arch=x64] [--lang=en-us,...] [--parts=pack,basic,fonts,handwriting,ocr,\n"
+          L"                                      tts,speech,components] [--packages-of=<mountdir>] [--download=<folder>] [--json]\n"
+          L"                                      (the build's language files from Windows Update, via uupdump.net; D-061)\n"
           L"  wlcli usb-list [--all] [--json] [--allow-virtual]   USB disks a setup stick can go to (never the system\n"
           L"                                      disk; --allow-virtual: file-backed VHD(X) disks too, for the lab)\n"
           L"  wlcli usb-write <disk> <setup folder> --yes [--gpt] [--label=] [--unattend=<xml>] [--allow-virtual]\n"
@@ -1717,6 +1855,9 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring expectHash;
     std::wstring sizeMb;
     std::wstring indexList;
+    std::wstring langList;
+    std::wstring partList;
+    std::wstring packagesOf;
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
@@ -1737,6 +1878,12 @@ int wmain(int argc, wchar_t** argv) {
             arch = std::wstring(a.substr(7));
         } else if (a.starts_with(L"--download=")) {
             downloadDir = std::wstring(a.substr(11));
+        } else if (a.starts_with(L"--lang=")) {
+            langList = std::wstring(a.substr(7));
+        } else if (a.starts_with(L"--parts=")) {
+            partList = std::wstring(a.substr(8));
+        } else if (a.starts_with(L"--packages-of=")) {
+            packagesOf = std::wstring(a.substr(14));
         } else if (a.starts_with(L"--kb=")) {
             onlyKb = std::wstring(a.substr(5));
         } else if (a.starts_with(L"--also=")) {
@@ -1959,6 +2106,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"usb-write" && args.size() == 3) {
         return cmdUsbWrite(args[1], args[2], label, gpt, unattendFile, allowVirtual, yes);
+    }
+    if (command == L"uup-languages" && args.size() == 2) {
+        return cmdUupLanguages(args[1], arch, langList, partList, packagesOf, downloadDir, asJson);
     }
     if (command == L"catalog" && args.size() == 2) {
         return cmdCatalog(args[1], arch, downloadDir, preview, onlyKb, asJson);

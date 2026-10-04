@@ -1,5 +1,7 @@
 #include "app/App.h"
 
+#include "core/updates/UupLanguages.h"
+
 #include "app/state/AnswerStore.h"
 
 #include "core/image/DriverInf.h"
@@ -13,6 +15,7 @@
 
 #include "app/Format.h"
 #include "app/Resources.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 #include "core/system/Privileges.h"
 #include "ui/anim/Tween.h"
@@ -187,8 +190,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoImageDrivers = true;
         } else if (a == L"--demo-apps" || startsWith(a, L"--demo-apps=")) {
             options.demoApps = a == L"--demo-apps" ? std::wstring() : std::wstring(value(L"--demo-apps="));
-        } else if (a == L"--demo-languages") {
-            options.demoLanguages = true;
+        } else if (a == L"--demo-languages" || startsWith(a, L"--demo-languages=")) {
+            options.demoLanguages = a == L"--demo-languages" ? std::wstring() : std::wstring(value(L"--demo-languages="));
         } else if (a == L"--demo-editions") {
             options.demoEditions = true;
         } else if (a == L"--demo-wifi") {
@@ -815,28 +818,111 @@ int App::renderOffscreen() {
         }
     }
     if (m_options.demoLanguages) {
-        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,
-                                         L"Windows 11 Pro"});
+        // 25H2 Pro (26200.8037) with Turkish and the components 25H2 installs; English queued from
+        // Windows Update (D-061): names and sizes as uupdump.net listed them on 2026-10-04.
+        core::SourceInfo source;
+        source.path = L"C:\\ISO\\Win11_25H2_Turkish_x64_v2.iso";
+        source.format = core::ImageFormat::Iso;
+        core::ImageInfo pro;
+        pro.index = 4;
+        pro.name = L"Windows 11 Pro";
+        pro.architecture = core::Architecture::X64;
+        pro.build = 26200;
+        pro.spBuild = 8037;
+        source.install.images = {pro};
+        m_state->setSource(std::move(source));
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4, L"Windows 11 Pro"});
+        static constexpr const wchar_t* kComponents[] = {
+            L"Microsoft-Windows-InternetExplorer-Optional-Package~amd64", L"Microsoft-Windows-MediaPlayer-Package~amd64",
+            L"Microsoft-Windows-MediaPlayer-Package~wow64",               L"Microsoft-Windows-Notepad-System-FoD-Package~amd64",
+            L"Microsoft-Windows-Notepad-System-FoD-Package~wow64",        L"Microsoft-Windows-PowerShell-ISE-FOD-Package~amd64",
+            L"Microsoft-Windows-PowerShell-ISE-FOD-Package~wow64",        L"Microsoft-Windows-Printing-PMCPPC-FoD-Package~amd64",
+            L"Microsoft-Windows-SenseClient-FoD-Package~amd64",           L"Microsoft-Windows-StepsRecorder-Package~amd64",
+            L"Microsoft-Windows-StepsRecorder-Package~wow64",             L"Microsoft-Windows-VBSCRIPT-FoD-Package~amd64",
+            L"Microsoft-Windows-VBSCRIPT-FoD-Package~wow64",              L"Microsoft-Windows-WMIC-FoD-Package~amd64",
+            L"Microsoft-Windows-WMIC-FoD-Package~wow64"};
+        auto split = [](const wchar_t* c) {
+            const std::wstring s = c;
+            return std::pair{s.substr(0, s.find(L'~')), s.substr(s.find(L'~') + 1)};
+        };
         core::ImageIntl intl;
         intl.current = {L"tr-TR", L"tr-TR", L"tr-TR", L"041f:0000041f", L"Turkey Standard Time"};
         intl.languages = {L"tr-TR"};
-        m_state->setImageIntl(AppState::ImageIntl{AppState::ImageIntl::Status::Ready, m_state->mounted()->mountDir, intl, {}});
-        auto& languages = m_shell->languagesForDemo();
-        std::vector<core::LanguagePackFile> packs;
-        for (const wchar_t* name : {L"D:\\LanguagesAndOptionalFeatures\\Microsoft-Windows-Client-Language-Pack_x64_en-us.cab",
-                                    L"D:\\LanguagesAndOptionalFeatures\\Microsoft-Windows-LanguageFeatures-Basic-en-us-Package~31bf3856ad364e35~amd64~~.cab",
-                                    L"D:\\LanguagesAndOptionalFeatures\\Microsoft-Windows-LanguageFeatures-Speech-en-us-Package~31bf3856ad364e35~amd64~~.cab"}) {
-            auto f = core::classifyLanguageFile(name);
-            f.size = 48ull << 20;
-            packs.push_back(f);
+        std::vector<std::wstring> packages{L"Microsoft-Windows-Client-LanguagePack-Package~31bf3856ad364e35~amd64~tr-TR~10.0.26100.8037"};
+        for (const wchar_t* f : {L"Basic", L"Handwriting", L"OCR", L"TextToSpeech"}) {
+            packages.push_back(std::format(L"Microsoft-Windows-LanguageFeatures-{}-tr-tr-Package~31bf3856ad364e35~amd64~~10.0.26100.8036", f));
         }
-        languages.queuePacks(packs);
-        core::IntlSettings settings;
-        settings.uiLanguage = L"en-US";
-        settings.inputLocale = L"041f:0000041f";
-        settings.timeZone = L"GMT Standard Time";
-        languages.setSettings(settings);
-        m_shell->showPage(PageId::Languages);
+        for (const wchar_t* c : kComponents) {
+            const auto [name, arch] = split(c);
+            packages.push_back(std::format(L"{}~31bf3856ad364e35~{}~~10.0.26100.8036", name, arch));
+            packages.push_back(std::format(L"{}~31bf3856ad364e35~{}~tr-TR~10.0.26100.7824", name, arch));
+        }
+        m_state->setImageIntl(AppState::ImageIntl{AppState::ImageIntl::Status::Ready, m_state->mounted()->mountDir, intl,
+                                                  std::move(packages), {}});
+        // What uupdump.net lists for a few languages of 26200.8037 (sizes as listed).
+        std::vector<core::UupFile> files;
+        auto file = [&](std::wstring name, std::uint64_t kb) {
+            files.push_back(core::UupFile{std::move(name), kb << 10, L"", std::wstring(64, L'0'), L"http://tlu.dl.delivery.mp.microsoft.com/x"});
+        };
+        struct Lang {
+            const wchar_t* tag;
+            std::uint64_t pack, basic, hand, ocr, tts, speech; // KB, 0 = none
+        };
+        static constexpr Lang kLangs[] = {
+            {L"de-DE", 22100, 23400, 12100, 160, 48700, 62300}, {L"en-GB", 18600, 21700, 11900, 155, 44200, 59100},
+            {L"en-US", 19008, 21795, 12288, 155, 49006, 62889}, {L"es-ES", 21000, 22600, 11700, 160, 42000, 31000},
+            {L"fr-FR", 21500, 22800, 11800, 158, 41500, 30900}, {L"it-IT", 20400, 22100, 11600, 156, 20100, 0},
+            {L"ja-JP", 31200, 61500, 24800, 210, 52100, 58400}, {L"nl-NL", 19800, 21900, 11400, 152, 6100, 0},
+            {L"pl-PL", 20100, 22000, 11300, 151, 5900, 0},      {L"pt-BR", 20900, 22300, 11500, 153, 20300, 6500},
+            {L"ru-RU", 20600, 22500, 11700, 157, 5600, 0},      {L"tr-TR", 20300, 21600, 11200, 150, 5400, 0},
+            {L"uk-UA", 19900, 14100, 0, 0, 0, 0},               {L"zh-CN", 33400, 72800, 31600, 230, 54400, 41000},
+        };
+        for (const auto& l : kLangs) {
+            const std::wstring lower = text::lower(l.tag);
+            file(std::format(L"Microsoft-Windows-Client-LanguagePack-Package-amd64-{}.esd", l.tag), l.pack);
+            const std::pair<const wchar_t*, std::uint64_t> features[] = {
+                {L"Basic", l.basic}, {L"Handwriting", l.hand}, {L"OCR", l.ocr}, {L"TextToSpeech", l.tts}, {L"Speech", l.speech}};
+            for (const auto& [name, kb] : features) {
+                if (kb > 0) {
+                    file(std::format(L"Microsoft-Windows-LanguageFeatures-{}-{}-Package-amd64.cab", name, lower), kb);
+                }
+            }
+            for (const wchar_t* c : kComponents) {
+                const auto [name, arch] = split(c);
+                file(std::format(L"{}-{}-{}.cab", name, arch, l.tag), 40);
+            }
+        }
+        file(L"Microsoft-Windows-LanguageFeatures-Fonts-Jpan-Package-amd64.cab", 81200);
+        file(L"Microsoft-Windows-LanguageFeatures-Fonts-Hans-Package-amd64.cab", 64100);
+        auto languages = core::uupLanguages(files, L"x64");
+        auto& controller = m_shell->languagesForDemo();
+        const LanguageTarget languageTarget{26200, 8037, L"x64"};
+        if (*m_options.demoLanguages == L"dialog") {
+            m_shell->showPage(PageId::Languages);
+            m_shell->languageOffersForDemo(languageTarget, languages);
+        } else {
+            const auto en = std::ranges::find_if(languages, [](const core::UupLanguage& l) { return l.language == L"en-US"; });
+            std::vector<core::LanguagePackFile> packs;
+            for (const auto& f : controller.pick(*en, LanguageParts{})) {
+                auto p = core::classifyLanguageName(L"C:\\WinLove\\work\\languages\\26200.8037-x64\\" + core::uupSaveName(f));
+                p.size = f.source.size;
+                packs.push_back(std::move(p));
+            }
+            controller.queuePacks(packs);
+            core::IntlSettings settings;
+            settings.uiLanguage = L"en-US";
+            settings.timeZone = L"GMT Standard Time";
+            controller.setSettings(settings);
+            if (*m_options.demoLanguages == L"fetch") {
+                AppState::LanguageFetch fetch;
+                fetch.stage = AppState::LanguageFetch::Stage::Downloading;
+                fetch.languages = {L"de-DE", L"ja-JP"};
+                fetch.doneBytes = 96'468'992;
+                fetch.totalBytes = 412'090'368;
+                m_state->setLanguageFetch(std::move(fetch));
+            }
+            m_shell->showPage(PageId::Languages);
+        }
     }
     if (m_options.demoImageDrivers) {
         m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,

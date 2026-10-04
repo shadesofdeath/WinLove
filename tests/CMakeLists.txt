@@ -23,6 +23,7 @@ add_executable(wl_tests
     core/UnattendPlacementTests.cpp
     core/UpdateTests.cpp
     core/UpdateCatalogTests.cpp
+    core/LanguageFilesTests.cpp
     core/UsbMediaTests.cpp
     core/ImageExtrasTests.cpp
     core/BrandingTests.cpp

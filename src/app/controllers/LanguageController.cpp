@@ -1,6 +1,7 @@
 #include "app/controllers/LanguageController.h"
 
 #include "base/Log.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 #include "core/image/UpdatePackage.h"
 #include "core/image/dism/Dism.h"
@@ -12,6 +13,7 @@
 #include <cstring>
 #include <cwctype>
 #include <format>
+#include <atomic>
 #include <map>
 
 namespace wl::app {
@@ -63,11 +65,15 @@ void LanguageController::load(bool force) {
         return;
     }
     const std::filesystem::path mountDir = mounted->mountDir;
-    m_state.setImageIntl(AppState::ImageIntl{AppState::ImageIntl::Status::Loading, mountDir, {}, {}});
+    m_state.setImageIntl(AppState::ImageIntl{AppState::ImageIntl::Status::Loading, mountDir, {}, {}, {}});
     auto post = m_post;
     std::weak_ptr<bool> alive = m_alive;
-    m_state.engine().run<core::ImageIntl>(
-        [mountDir](const core::TaskContext&) -> Result<core::ImageIntl> {
+    struct Read {
+        core::ImageIntl intl;
+        std::vector<std::wstring> packages;
+    };
+    m_state.engine().run<Read>(
+        [mountDir](const core::TaskContext&) -> Result<Read> {
             auto dism = core::Dism::instance();
             if (!dism) {
                 return std::unexpected(dism.error());
@@ -76,9 +82,24 @@ void LanguageController::load(bool force) {
             if (!session) {
                 return std::unexpected(session.error());
             }
-            return core::readIntl(**session);
+            auto intl = core::readIntl(**session);
+            if (!intl) {
+                return std::unexpected(intl.error());
+            }
+            Read read{std::move(*intl), {}};
+            // The installed packages (~3 s): a failure costs only the per-language details.
+            if (auto packages = (*session)->packages()) {
+                for (auto& p : *packages) {
+                    if (p.state == core::ServicingState::Installed) {
+                        read.packages.push_back(std::move(p.name));
+                    }
+                }
+            } else {
+                log::warn("app", describe(packages.error()));
+            }
+            return read;
         },
-        [this, post, alive, mountDir](Result<core::ImageIntl> result) {
+        [this, post, alive, mountDir](Result<Read> result) {
             post([this, alive, mountDir, result = std::move(result)]() mutable {
                 if (const auto a = alive.lock(); !a || !*a) {
                     return;
@@ -89,10 +110,11 @@ void LanguageController::load(bool force) {
                 }
                 if (!result) {
                     log::error("app", describe(result.error()));
-                    m_state.setImageIntl(AppState::ImageIntl{AppState::ImageIntl::Status::Failed, mountDir, {}, result.error()});
+                    m_state.setImageIntl(AppState::ImageIntl{AppState::ImageIntl::Status::Failed, mountDir, {}, {}, result.error()});
                     return;
                 }
-                m_state.setImageIntl(AppState::ImageIntl{AppState::ImageIntl::Status::Ready, mountDir, std::move(*result), {}});
+                m_state.setImageIntl(AppState::ImageIntl{AppState::ImageIntl::Status::Ready, mountDir, std::move(result->intl),
+                                                         std::move(result->packages), {}});
             });
         });
 }
@@ -113,10 +135,19 @@ std::wstring LanguageController::imageArchitecture() const {
 std::vector<core::LanguagePackFile> LanguageController::fitting(const std::vector<core::LanguagePackFile>& files) const {
     const std::wstring arch = imageArchitecture();
     std::vector<core::LanguagePackFile> out;
+    const auto& idx = index();
+    const bool known = !imagePackages().empty();
     for (const auto& f : files) {
-        if (f.architecture.empty() || f.architecture == arch) {
-            out.push_back(f);
+        if (!f.architecture.empty() && f.architecture != arch) {
+            continue;
         }
+        // A component's language only for a component the image has (D-061); everything while the
+        // package list is not read.
+        if (f.kind == core::LanguagePackFile::Kind::Satellite && known &&
+            !idx.neutral.contains(text::lower(f.component + L"~" + f.packageArch))) {
+            continue;
+        }
+        out.push_back(f);
     }
     return out;
 }
@@ -140,6 +171,60 @@ void LanguageController::queuePacks(const std::vector<core::LanguagePackFile>& f
         }
     }
     m_state.queueMany(std::move(ops));
+}
+
+std::vector<core::LanguagePackFile> LanguageController::withDependencies(std::vector<core::LanguagePackFile> chosen,
+                                                                         const std::vector<core::LanguagePackFile>& available) const {
+    using Kind = core::LanguagePackFile::Kind;
+    const auto& idx = index();
+    auto have = [&](const std::wstring& language, Kind kind) {
+        if (std::ranges::any_of(chosen, [&](const core::LanguagePackFile& f) { return f.kind == kind && sameTag(f.language, language); })) {
+            return true;
+        }
+        if (kind == Kind::LanguagePack) {
+            return imageHasLanguage(language);
+        }
+        const auto it = idx.features.find(text::lower(language));
+        return it != idx.features.end() && std::ranges::find(it->second, kind) != it->second.end();
+    };
+    auto take = [&](const std::wstring& language, Kind kind) {
+        if (have(language, kind)) {
+            return;
+        }
+        const auto it = std::ranges::find_if(available, [&](const core::LanguagePackFile& f) {
+            return f.kind == kind && sameTag(f.language, language);
+        });
+        if (it != available.end()) {
+            chosen.push_back(*it);
+        }
+    };
+    for (std::size_t i = 0; i < chosen.size(); ++i) { // grows while it runs: a dependency's own ones too
+        const auto f = chosen[i];
+        if (f.language.empty()) {
+            continue;
+        }
+        if (f.kind != Kind::LanguagePack) {
+            take(f.language, Kind::LanguagePack);
+        }
+        for (const Kind dep : core::featureDependencies(f.kind)) {
+            take(f.language, dep);
+        }
+        if (f.kind == Kind::LanguagePack) {
+            for (const auto& script : core::requiredFontScripts(f.language)) {
+                const bool installed = idx.fonts.contains(text::lower(script));
+                const bool picked = std::ranges::any_of(chosen, [&](const core::LanguagePackFile& c) {
+                    return c.kind == Kind::Fonts && _wcsicmp(c.component.c_str(), script.c_str()) == 0;
+                });
+                const auto it = std::ranges::find_if(available, [&](const core::LanguagePackFile& a) {
+                    return a.kind == Kind::Fonts && _wcsicmp(a.component.c_str(), script.c_str()) == 0;
+                });
+                if (!installed && !picked && it != available.end()) {
+                    chosen.push_back(*it);
+                }
+            }
+        }
+    }
+    return chosen;
 }
 
 std::vector<core::LanguagePackFile> LanguageController::queuedPacks() const {
@@ -193,17 +278,32 @@ std::vector<std::wstring> LanguageController::uiLanguages() const {
     return langs;
 }
 
+namespace {
+std::atomic<bool> g_englishNames{false};
+} // namespace
+
+void LanguageController::setNameLanguage(Language language) {
+    g_englishNames = language == Language::English;
+}
+
 std::wstring LanguageController::localeName(std::wstring_view tag) {
     wchar_t name[LOCALE_NAME_MAX_LENGTH * 4] = {};
     const std::wstring t(tag);
-    if (GetLocaleInfoEx(t.c_str(), LOCALE_SLOCALIZEDDISPLAYNAME, name, static_cast<int>(std::size(name))) > 0) {
+    const LCTYPE type = g_englishNames ? LOCALE_SENGLISHDISPLAYNAME : LOCALE_SLOCALIZEDDISPLAYNAME;
+    if (GetLocaleInfoEx(t.c_str(), type, name, static_cast<int>(std::size(name))) > 0) {
         return name;
     }
     return t;
 }
 
 const std::vector<IntlChoice>& LanguageController::locales() {
-    static const std::vector<IntlChoice> kLocales = [] {
+    // One list per name language (the app can switch language while it runs).
+    static std::vector<IntlChoice> lists[2];
+    auto& kLocales = lists[g_englishNames ? 1 : 0];
+    if (!kLocales.empty()) {
+        return kLocales;
+    }
+    kLocales = [] {
         std::vector<IntlChoice> list;
         EnumSystemLocalesEx(
             [](LPWSTR name, DWORD, LPARAM param) -> BOOL {
@@ -319,12 +419,227 @@ const std::vector<IntlChoice>& LanguageController::timeZones() {
     return kZones;
 }
 
-int LanguageController::changedCount() const {
-    int n = 0;
-    for (const auto& op : m_state.changes().operations()) {
-        n += (op.kind == OpKind::AddPackage && op.value == L"language") || op.kind == OpKind::SetIntl ? 1 : 0;
+bool LanguageRow::has(Kind k) const {
+    return std::ranges::find(installed, k) != installed.end() || std::ranges::find(queued, k) != queued.end();
+}
+
+std::span<const std::wstring> LanguageController::imagePackages() const {
+    const auto& intl = m_state.imageIntl();
+    if (intl && intl->status == AppState::ImageIntl::Status::Ready && m_state.mounted() && intl->mountDir == m_state.mounted()->mountDir) {
+        return intl->packages;
     }
-    return n;
+    return {};
+}
+
+bool LanguageController::imageHasLanguage(std::wstring_view language) const {
+    const auto& intl = m_state.imageIntl();
+    return intl && intl->status == AppState::ImageIntl::Status::Ready &&
+           std::ranges::any_of(intl->intl.languages, [&](const std::wstring& l) { return sameTag(l, language); });
+}
+
+const LanguageController::PackageIndex& LanguageController::index() const {
+    using Kind = core::LanguagePackFile::Kind;
+    const auto packages = imagePackages();
+    if (m_index.data == packages.data() && m_index.size == packages.size()) {
+        return m_index;
+    }
+    m_index = PackageIndex{packages.data(), packages.size()};
+    for (const auto& identity : packages) {
+        const auto f = core::classifyPackageIdentity(identity);
+        if (f.kind == Kind::Other) {
+            // A language-neutral package: "Name~31bf3856ad364e35~arch~~version".
+            const auto token = identity.find(L"~31bf3856ad364e35~");
+            if (token != std::wstring::npos) {
+                const std::wstring rest = identity.substr(token + 18);
+                const auto tilde = rest.find(L'~');
+                if (tilde != std::wstring::npos && rest.size() > tilde + 1 && rest[tilde + 1] == L'~') {
+                    m_index.neutral.insert(text::lower(identity.substr(0, token) + L"~" + rest.substr(0, tilde)));
+                }
+            }
+            continue;
+        }
+        const std::wstring lang = text::lower(f.language);
+        switch (f.kind) {
+        case Kind::Fonts: m_index.fonts.insert(text::lower(f.component)); break;
+        case Kind::Satellite:
+            m_index.localized.insert(text::lower(f.component + L"~" + f.packageArch + L"~" + f.language));
+            ++m_index.components[lang];
+            break;
+        case Kind::LanguagePack: break;
+        default: {
+            auto& kinds = m_index.features[lang];
+            if (std::ranges::find(kinds, f.kind) == kinds.end()) {
+                kinds.push_back(f.kind);
+            }
+        }
+        }
+    }
+    return m_index;
+}
+
+std::vector<LanguageRow> LanguageController::rows() const {
+    using Kind = core::LanguagePackFile::Kind;
+    std::vector<LanguageRow> rows;
+    auto row = [&](const std::wstring& tag) -> LanguageRow& {
+        for (auto& r : rows) {
+            if (sameTag(r.language, tag)) {
+                return r;
+            }
+        }
+        rows.push_back(LanguageRow{tag});
+        return rows.back();
+    };
+    if (const auto& intl = m_state.imageIntl(); intl && intl->status == AppState::ImageIntl::Status::Ready) {
+        const auto& idx = index();
+        for (const auto& l : intl->intl.languages) {
+            auto& r = row(l);
+            r.inImage = true;
+            r.ui = sameTag(l, intl->intl.current.uiLanguage);
+            if (const auto it = idx.features.find(text::lower(l)); it != idx.features.end()) {
+                r.installed = it->second;
+            }
+            if (const auto it = idx.components.find(text::lower(l)); it != idx.components.end()) {
+                r.componentsInImage = it->second;
+            }
+        }
+    }
+    for (const auto& f : queuedPacks()) {
+        if (f.language.empty()) {
+            continue; // fonts: part of the language that needs them, not a row
+        }
+        auto& r = row(f.language);
+        r.queuedBytes += f.size;
+        if (f.kind == Kind::Satellite) {
+            ++r.componentsQueued;
+        } else if (std::ranges::find(r.queued, f.kind) == r.queued.end()) {
+            r.queued.push_back(f.kind);
+        }
+    }
+    for (auto& r : rows) {
+        std::ranges::sort(r.installed);
+        std::ranges::sort(r.queued);
+    }
+    return rows;
+}
+
+void LanguageController::unqueueLanguage(std::wstring_view language) {
+    const std::wstring tag(language);
+    // The fonts its script needs go with it unless another queued language needs them too.
+    const auto scripts = core::requiredFontScripts(tag);
+    std::vector<std::wstring> otherScripts;
+    for (const auto& f : queuedPacks()) {
+        if (!f.language.empty() && !sameTag(f.language, tag) && f.kind == core::LanguagePackFile::Kind::LanguagePack) {
+            for (auto& s : core::requiredFontScripts(f.language)) {
+                otherScripts.push_back(std::move(s));
+            }
+        }
+    }
+    m_state.unqueueIf([&](const Operation& op) {
+        if (op.kind != OpKind::AddPackage || op.value != L"language") {
+            return false;
+        }
+        const auto f = core::classifyLanguageName(op.target);
+        if (f.kind == core::LanguagePackFile::Kind::Fonts) {
+            const auto mine = [&](const std::wstring& s) { return _wcsicmp(s.c_str(), f.component.c_str()) == 0; };
+            return std::ranges::any_of(scripts, mine) && std::ranges::none_of(otherScripts, mine);
+        }
+        return sameTag(f.language, tag);
+    });
+    // A display language nothing provides any more is no choice.
+    auto settings = this->settings();
+    if (sameTag(settings.uiLanguage, tag) && !imageHasLanguage(tag)) {
+        settings.uiLanguage.clear();
+        setSettings(settings);
+    }
+}
+
+std::vector<core::UupLanguageFile> LanguageController::pick(const core::UupLanguage& language, const LanguageParts& parts) const {
+    using Kind = core::LanguagePackFile::Kind;
+    const bool inImage = imageHasLanguage(language.language);
+    const auto& idx = index();
+    const auto features = idx.features.find(text::lower(language.language));
+    auto installed = [&](Kind k) {
+        return features != idx.features.end() && std::ranges::find(features->second, k) != features->second.end();
+    };
+    auto wanted = [&](Kind k) {
+        switch (k) {
+        case Kind::LanguagePack: return !inImage;
+        case Kind::Basic:
+        case Kind::Fonts: return true;
+        case Kind::Handwriting: return parts.handwriting;
+        case Kind::Ocr: return parts.ocr;
+        case Kind::TextToSpeech: return parts.textToSpeech || parts.speech; // Speech needs it
+        case Kind::Speech: return parts.speech;
+        case Kind::Satellite: return parts.components;
+        default: return false;
+        }
+    };
+    std::vector<core::UupLanguageFile> files;
+    for (const auto& f : language.files) {
+        const Kind k = f.file.kind;
+        if (!wanted(k) || installed(k)) {
+            continue;
+        }
+        if (k == Kind::Fonts && idx.fonts.contains(text::lower(f.file.component))) {
+            continue; // the image has these fonts
+        }
+        if (k == Kind::Satellite) {
+            const std::wstring component = text::lower(f.file.component + L"~" + f.file.packageArch);
+            if (!idx.neutral.contains(component) || idx.localized.contains(component + L"~" + text::lower(f.file.language))) {
+                continue; // a component the image does not have, or has in this language already
+            }
+        }
+        files.push_back(f);
+    }
+    return files;
+}
+
+void LanguageController::queueFiles(const std::vector<std::filesystem::path>& files, const std::wstring& uiLanguage) {
+    std::vector<core::LanguagePackFile> packs;
+    for (const auto& path : files) {
+        auto f = core::classifyLanguageFile(path);
+        if (f.kind != core::LanguagePackFile::Kind::Other) {
+            packs.push_back(std::move(f));
+        }
+    }
+    queuePacks(packs);
+    if (!uiLanguage.empty()) {
+        auto settings = this->settings();
+        settings.uiLanguage = uiLanguage;
+        setSettings(settings);
+    }
+}
+
+bool LanguageController::cumulativeUpdateAdvised() const {
+    bool languages = false;
+    for (const auto& op : m_state.changes().operations()) {
+        if (op.kind == OpKind::AddPackage && op.value == L"lcu") {
+            return false; // the planner puts it after the languages
+        }
+        languages = languages || (op.kind == OpKind::AddPackage && op.value == L"language");
+    }
+    if (!languages) {
+        return false;
+    }
+    const auto& mounted = m_state.mounted();
+    const auto& source = m_state.source();
+    if (mounted && source) {
+        for (const auto& image : source->install.images) {
+            if (image.index == mounted->index) {
+                return image.spBuild > 1;
+            }
+        }
+    }
+    return false;
+}
+
+int LanguageController::changedCount() const {
+    // Languages added (not their files: one language is ~20) + the region settings.
+    int n = 0;
+    for (const auto& r : rows()) {
+        n += !r.queued.empty() || r.componentsQueued > 0 ? 1 : 0;
+    }
+    return n + (m_state.changes().find(OpKind::SetIntl, kIntl) ? 1 : 0);
 }
 
 } // namespace wl::app

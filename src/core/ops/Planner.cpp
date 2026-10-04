@@ -1,11 +1,13 @@
 #include "core/ops/Planner.h"
 
 #include "base/Utf8.h"
+#include "core/image/LanguagePacks.h"
 
 #include <json.hpp>
 
 #include <algorithm>
 #include <format>
+#include <map>
 
 namespace wl::core::ops {
 
@@ -124,11 +126,26 @@ ApplyPlan plan(const ChangeSet& changes) {
         }
         return op.value == L"ssu" ? 0 : op.value == L"language" ? 1 : op.value == L"lcu" ? 2 : op.value == L"dotnet" ? 3 : 4;
     };
+    // Language files among themselves: the pack, then each feature after what it depends on
+    // (Basic before Speech, …), the components' languages last (LanguagePacks.h, D-061).
+    std::map<std::wstring, int> languageRanks; // classified once (the name is all it takes)
+    for (const auto& step : result.steps) {
+        if (step.operation.kind == OpKind::AddPackage && step.operation.value == L"language") {
+            languageRanks[step.operation.target] = static_cast<int>(classifyLanguageName(step.operation.target).kind);
+        }
+    }
+    const auto languageRank = [&](const Operation& op) {
+        const auto it = languageRanks.find(op.target);
+        return op.kind == OpKind::AddPackage && it != languageRanks.end() ? it->second : 0;
+    };
     std::ranges::stable_sort(result.steps, [&](const PlanStep& a, const PlanStep& b) {
         if (a.phase != b.phase) {
             return static_cast<int>(a.phase) < static_cast<int>(b.phase);
         }
-        return updateRank(a.operation) < updateRank(b.operation);
+        if (updateRank(a.operation) != updateRank(b.operation)) {
+            return updateRank(a.operation) < updateRank(b.operation);
+        }
+        return languageRank(a.operation) < languageRank(b.operation);
     });
 
     const auto highRisk = std::ranges::count_if(result.steps, [](const PlanStep& s) { return s.operation.risk == Risk::High; });
