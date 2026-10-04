@@ -241,7 +241,10 @@ void TweaksPage::sync() {
             }
             const ui::Widget& control = b.text ? static_cast<const ui::Widget&>(*b.text) : *b.file;
             if (b.problem) {
-                m_form->setHint(control, m_strings.get(Str::TweaksFileProblem), ui::tokens::Color::StatusError);
+                m_form->setHint(control,
+                                m_strings.get(b.setting->format == ImageSetting::Format::Pagefile ? Str::TweaksPagefileProblem
+                                                                                                  : Str::TweaksFileProblem),
+                                ui::tokens::Color::StatusError);
             } else {
                 std::wstring hint = mark;
                 if (const std::wstring& note = b.setting->hint.get(m_language); !note.empty()) {

@@ -47,9 +47,14 @@ std::vector<Operation> ImageSettingsController::operationsFor(const ImageSetting
     for (const auto& listed : chosen.writes) {
         core::RegistryWrite write = listed;
         if (typed) { // the catalog names the value, the user gives the string
-            write.data.resize((value.size() + 1) * sizeof(wchar_t));
-            std::memcpy(write.data.data(), value.data(), value.size() * sizeof(wchar_t));
-            std::memset(write.data.data() + value.size() * sizeof(wchar_t), 0, sizeof(wchar_t));
+            std::wstring text(value);
+            std::size_t terminators = 1;
+            if (setting.format == ImageSetting::Format::Pagefile) { // REG_MULTI_SZ: one entry, double NUL
+                text = pagefileEntry(value).value_or(std::wstring());
+                terminators = 2;
+            }
+            write.data.assign((text.size() + terminators) * sizeof(wchar_t), 0);
+            std::memcpy(write.data.data(), text.data(), text.size() * sizeof(wchar_t));
         }
         Operation op{kind, core::registryTarget(write), core::formatRegValue(write)};
         op.risk = setting.risk;
@@ -104,6 +109,9 @@ std::wstring ImageSettingsController::valueIn(const core::ops::ChangeSet& change
     while (!text.empty() && text.back() == L'\0') {
         text.pop_back();
     }
+    if (setting.format == ImageSetting::Format::Pagefile) {
+        return pagefileTyped(text.substr(0, text.find(L'\0')));
+    }
     return text;
 }
 
@@ -121,6 +129,15 @@ bool ImageSettingsController::setValue(const ImageSetting& setting, std::wstring
         std::erase_if(value, [](wchar_t c) { return c < 0x20 || c == 0x7f; });
         if (value.size() > kTextLimit) {
             value.resize(kTextLimit);
+        }
+        // A page file that is not "D:" or "D: min max" yet: nothing queued, the row says so.
+        if (setting.format == ImageSetting::Format::Pagefile && !value.empty()) {
+            if (const auto entry = pagefileEntry(value)) {
+                value = pagefileTyped(*entry);
+            } else {
+                accepted = false;
+                value.clear();
+            }
         }
     }
     if (value == this->value(setting)) {
@@ -280,7 +297,14 @@ std::wstring ImageSettingsController::imageValue(const ImageSetting& setting) co
         return {};
     }
     const auto it = values->texts.find(core::registryTarget(setting.options[1].writes.front()));
-    return it != values->texts.end() ? it->second : std::wstring();
+    if (it == values->texts.end()) {
+        return {};
+    }
+    if (setting.format == ImageSetting::Format::Pagefile) { // "?:\pagefile.sys" (automatic) shows as it is
+        const std::wstring typed = pagefileTyped(it->second);
+        return typed.empty() ? it->second : typed;
+    }
+    return it->second;
 }
 
 void ImageSettingsController::select(const ImageSetting& setting, int option) {

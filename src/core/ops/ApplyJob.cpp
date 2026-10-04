@@ -1,5 +1,7 @@
 #include "core/ops/ApplyJob.h"
 
+#include "core/image/dism/DismExe.h"
+
 #include "base/Log.h"
 #include "core/image/dism/MountHealth.h"
 #include "core/image/wim/WimGapi.h"
@@ -15,6 +17,33 @@ using Clock = std::chrono::steady_clock;
 std::chrono::milliseconds since(Clock::time_point start) {
     return std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
 }
+} // namespace
+
+namespace {
+
+// A language pack or the display language went in (D-062).
+bool languagesChanged(const ApplyReport& report) {
+    return std::ranges::any_of(report.results, [](const StepResult& r) {
+        const auto& op = r.step.operation;
+        return r.outcome.has_value() && ((op.kind == OpKind::AddPackage && op.value == L"language") || op.kind == OpKind::SetIntl);
+    });
+}
+
+// <setupFolder>\sources\lang.ini from the image's languages; never fatal (the image is fine either way).
+bool writeLangIni(DismSession& session, const std::filesystem::path& setupFolder) {
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(setupFolder / L"sources" / L"lang.ini", ec)) {
+        return false; // not a setup folder (a bare WIM): nothing to keep in step
+    }
+    auto run = runDismExe(session, L"/Gen-LangINI /Distribution:\"" + setupFolder.wstring() + L"\"");
+    if (!run || run->exitCode != 0) {
+        log::warn("apply", L"lang.ini not written: " + (run ? describe(dismExeFailure(*run, L"dism /Gen-LangINI")) : describe(run.error())));
+        return false;
+    }
+    log::info("apply", L"Setup's language list written: " + (setupFolder / L"sources" / L"lang.ini").wstring());
+    return true;
+}
+
 } // namespace
 
 Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& mountDir, const ApplyPlan& plan,
@@ -56,6 +85,9 @@ Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& moun
                                         task.report(fraction * stepsWeight / total, stage);
                                     }};
         result.report = apply(plan, **session, stepsTask, ErrorPolicy::Skip, steps, options.apply);
+        if (result.report.completed && !options.setupFolder.empty() && languagesChanged(result.report)) {
+            result.langIniWritten = writeLangIni(**session, options.setupFolder);
+        }
     } // session closed here: DISM refuses to unmount an image with an open session
 
     if (!result.report.completed) {

@@ -79,12 +79,16 @@ Result<AppState::ImageValues> ImageValuesController::readImage(const std::filesy
     }
     for (const auto& write : probes.texts) {
         auto value = reader.value(write.key, write.name);
-        if (!value || !*value || ((*value)->type != REG_SZ && (*value)->type != REG_EXPAND_SZ)) {
+        if (!value || !*value ||
+            ((*value)->type != REG_SZ && (*value)->type != REG_EXPAND_SZ && (*value)->type != REG_MULTI_SZ)) {
             continue;
         }
         const auto& data = (*value)->data;
         std::wstring text(data.size() / sizeof(wchar_t), L'\0');
         std::memcpy(text.data(), data.data(), text.size() * sizeof(wchar_t));
+        if ((*value)->type == REG_MULTI_SZ) {
+            text.resize(std::min(text.size(), text.find(L'\0'))); // its first string (the page file)
+        }
         while (!text.empty() && text.back() == L'\0') {
             text.pop_back();
         }

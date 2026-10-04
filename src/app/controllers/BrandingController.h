@@ -27,6 +27,8 @@ public:
     // Refused (the error) when Windows cannot read the file as a picture.
     [[nodiscard]] Result<void> setPicture(core::PictureSlot slot, const std::filesystem::path& file);
     void clearPicture(core::PictureSlot slot);
+    // What a wallpaper brings with it: Windows Spotlight kept off the desktop (D-062).
+    [[nodiscard]] static std::vector<core::ops::Operation> spotlightOffOperations();
 
     struct Font {
         std::wstring file;   // in Windows\Fonts

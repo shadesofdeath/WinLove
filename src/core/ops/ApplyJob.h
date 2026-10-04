@@ -23,6 +23,10 @@ struct ApplyJobOptions {
         ImageText text;
     };
     std::optional<EditionTexts> editionTexts;
+    // D-062: the setup folder the image belongs to (<folder>\sources\lang.ini). When the run
+    // changed languages, Setup's list of them is written again from the image before the commit
+    // (dism /Gen-LangINI), so "Language to install" offers the added ones. Empty: not touched.
+    std::filesystem::path setupFolder;
 };
 
 struct ApplyJobCallbacks {
@@ -36,6 +40,7 @@ struct ApplyJobResult {
     std::optional<Error> commitError; // steps ran but saving failed: the image is still mounted
     bool optimized = false;           // the WIM was rewritten without the commit's leftovers
     bool editionRenamed = false;      // the WIM names the new edition (ApplyJobOptions::editionTexts)
+    bool langIniWritten = false;      // <setupFolder>\sources\lang.ini generated from the image
     std::chrono::milliseconds elapsed{0};
     std::vector<std::chrono::milliseconds> stepTimes; // per plan step
     std::chrono::milliseconds commitTime{0};

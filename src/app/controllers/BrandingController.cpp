@@ -86,12 +86,41 @@ Result<void> BrandingController::setPicture(core::PictureSlot slot, const std::f
     if (auto size = core::pictureSize(file); !size) {
         return std::unexpected(size.error());
     }
-    m_state.queue(Operation{OpKind::SetPicture, std::wstring(core::pictureSlotKey(slot)), file.wstring()});
+    std::vector<Operation> ops{Operation{OpKind::SetPicture, std::wstring(core::pictureSlotKey(slot)), file.wstring()}};
+    if (slot == core::PictureSlot::Wallpaper) {
+        for (auto& op : spotlightOffOperations()) {
+            ops.push_back(std::move(op));
+        }
+    }
+    m_state.queueMany(std::move(ops));
     return {};
 }
 
 void BrandingController::clearPicture(core::PictureSlot slot) {
-    m_state.unqueue(OpKind::SetPicture, std::wstring(core::pictureSlotKey(slot)));
+    std::vector<std::pair<OpKind, std::wstring>> slots{{OpKind::SetPicture, std::wstring(core::pictureSlotKey(slot))}};
+    if (slot == core::PictureSlot::Wallpaper) {
+        for (const auto& op : spotlightOffOperations()) {
+            // Only what the wallpaper put there (the same value); a different one is someone else's.
+            if (const auto* queued = m_state.changes().find(op.kind, op.target); queued && queued->value == op.value) {
+                slots.emplace_back(op.kind, op.target);
+            }
+        }
+    }
+    m_state.unqueueMany(slots);
+}
+
+std::vector<Operation> BrandingController::spotlightOffOperations() {
+    // D-062: on 24H2+ a new user's desktop can start with Windows Spotlight (Bing pictures), which
+    // replaces the image's own wallpaper. The policy keeps Spotlight off the desktop; its "Learn
+    // about this picture" icon goes with it. First logon: Windows writes the user's settings then.
+    const auto write = [](const wchar_t* key, const wchar_t* name) {
+        Operation op{OpKind::SetRegistryFirstLogon, std::wstring(key) + L"::" + name, L"dword:00000001"};
+        op.risk = core::ops::Risk::Low;
+        return op;
+    };
+    return {write(L"HKCU\\Software\\Policies\\Microsoft\\Windows\\CloudContent", L"DisableSpotlightCollectionOnDesktop"),
+            write(L"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\HideDesktopIcons\\NewStartPanel",
+                  L"{2cc5ca98-6485-489a-920e-b3e88a6ccce3}")};
 }
 
 std::vector<BrandingController::Font> BrandingController::fonts() const {

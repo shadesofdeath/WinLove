@@ -529,7 +529,8 @@
     "recommendedApplied": "{n} settings set to the recommended value",
     "recommendedNone": "Every recommended setting is already selected",
     "inImage": "in the image",
-    "noRevert": "cannot be undone here"
+    "noRevert": "cannot be undone here",
+    "pagefileProblem": "Format: a drive and two sizes (MB), e.g. \"D: 4096 8192\", or \"D:\" alone"
   },
   "unattended": {
     "title": "Unattended Setup",
@@ -1259,7 +1260,7 @@
     "logoHint": "In system information, cropped to 120×120",
     "pictures": "Default pictures",
     "wallpaper": "Desktop background",
-    "wallpaperHint": "Light and dark theme, every new user",
+    "wallpaperHint": "Light and dark theme, every new user. Windows Spotlight is turned off on the desktop — otherwise Windows puts Bing pictures in its place",
     "lockScreen": "Lock screen",
     "lockScreenHint": "The default lock screen picture",
     "account": "Account picture",
