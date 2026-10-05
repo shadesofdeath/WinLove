@@ -7,6 +7,7 @@ add_library(wl_core STATIC
     image/OfflineHive.cpp
     image/RegistryEdit.cpp
     image/RegistryInput.cpp
+    image/StartMenu.cpp
     image/icons/PeResources.cpp
     image/icons/IconGroups.cpp
     image/icons/IconPatch.cpp

@@ -24,6 +24,7 @@ enum class PageId : std::uint8_t {
     Services,
     Tasks, // D-048
     Tweaks,
+    StartMenu, // D-069 Başlat menüsü
     Hosts, // D-049
     Branding, // D-056 Kişiselleştirme
     Icons, // D-065 Simgeler

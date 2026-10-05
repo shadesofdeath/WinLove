@@ -47,8 +47,9 @@ void PictureField::layout() {
 }
 
 TweaksPage::TweaksPage(AppState& state, ImageSettingsController& controller, const Localization& strings,
-                       Language language, std::function<void()> goImages, PickImage pickImage)
-    : m_state(state), m_controller(controller), m_strings(strings), m_language(language), m_pickImage(std::move(pickImage)) {
+                       Language language, std::function<void()> goImages, PickImage pickImage, std::string onlyTab)
+    : m_state(state), m_controller(controller), m_strings(strings), m_language(language), m_pickImage(std::move(pickImage)),
+      m_onlyTab(std::move(onlyTab)) {
     std::vector<std::wstring> tabs;
     for (const auto& tab : m_controller.catalog().tabs()) {
         tabs.push_back(tab.title.get(language));
@@ -69,7 +70,9 @@ TweaksPage::TweaksPage(AppState& state, ImageSettingsController& controller, con
             sync();
         }
     });
-    if (!m_controller.catalog().tabs().empty()) {
+    if (!m_onlyTab.empty()) {
+        showTab(m_onlyTab);
+    } else if (!m_controller.catalog().tabs().empty()) {
         showTab(m_controller.catalog().tabs().front().id);
     }
     refresh();
@@ -276,7 +279,7 @@ void TweaksPage::sync() {
 void TweaksPage::refresh() {
     const bool mounted = m_state.mounted().has_value();
     m_empty->setVisible(!mounted);
-    m_tabs->setVisible(mounted);
+    m_tabs->setVisible(mounted && m_onlyTab.empty());
     m_form->setVisible(mounted);
     sync();
     layout();
@@ -287,7 +290,7 @@ void TweaksPage::layout() {
     const RectF b = bounds();
     m_empty->setBounds(b);
     m_tabs->setBounds({b.x, b.y + kTabsTop, b.width, kTabsHeight});
-    const float top = b.y + kTabsTop + kTabsHeight + kFormGap;
+    const float top = m_onlyTab.empty() ? b.y + kTabsTop + kTabsHeight + kFormGap : b.y;
     m_form->setBounds({b.x, top, b.width, std::max(b.bottom() - top, 0.0f)});
 }
 

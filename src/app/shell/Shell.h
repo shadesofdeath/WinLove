@@ -8,6 +8,7 @@
 #include "app/controllers/ApplyController.h"
 #include "app/controllers/ComponentController.h"
 #include "app/controllers/IconPatchController.h"
+#include "app/controllers/StartPinsController.h"
 #include "app/controllers/RegistryController.h"
 #include "app/controllers/ServiceController.h"
 #include "app/controllers/UnattendController.h"
@@ -119,7 +120,9 @@ public:
     BrandingController& branding() { return *m_branding; }
     IconController& iconsForDemo() { return *m_icons; }
     IconPatchController& iconPatchForDemo() { return *m_iconPatch; }
+    StartPinsController& startPinsForDemo() { return *m_startPins; }
     class IconsPage* iconsPageForDemo() const;
+    class StartMenuPage* startMenuPageForDemo() const;
     void loadIconPack();
     void exportIconPack(); // D-065: a folder of .ico files
     void showStoreDialog(); // D-066
@@ -312,6 +315,7 @@ private:
     std::unique_ptr<BrandingController> m_branding; // D-056
     std::unique_ptr<IconController> m_icons; // D-065
     std::unique_ptr<IconPatchController> m_iconPatch; // D-068
+    std::unique_ptr<StartPinsController> m_startPins; // D-069
     std::unique_ptr<StoreController> m_store; // D-066
     class StoreDialogHandle* m_storeDialog = nullptr; // the open "Mağazadan ekle" dialog
     std::unique_ptr<FilesController> m_files;  // D-051

@@ -28,6 +28,7 @@
 #include "core/image/UdfImage.h"
 #include "core/image/BootImage.h"
 #include "core/image/icons/IconPatch.h"
+#include "core/image/StartMenu.h"
 #include "core/image/dism/Dism.h"
 #include "core/image/dism/Edition.h"
 #include "core/image/dism/Appx.h"
@@ -1329,6 +1330,25 @@ int cmdIconImage(const std::wstring& mountDir, const std::wstring& relative, con
     return 0;
 }
 
+int cmdStartApps(const std::wstring& root, bool asJson) {
+    const auto apps = core::listStartApps(root);
+    if (asJson) {
+        json list = json::array();
+        for (const auto& a : apps) {
+            list.push_back({{"kind", a.kind == core::StartApp::Kind::Packaged ? "packaged" : a.kind == core::StartApp::Kind::DesktopLink ? "link" : "id"},
+                            {"id", narrow(a.id)}, {"name", narrow(a.name)}, {"icon", narrow(a.icon)}});
+        }
+        printJson(list);
+        return 0;
+    }
+    for (const auto& a : apps) {
+        print(std::format(L"  {:<4} {:<40} {}\n", a.kind == core::StartApp::Kind::Packaged ? L"app" : a.kind == core::StartApp::Kind::DesktopLink ? L"lnk" : L"id",
+                          a.name, a.id));
+    }
+    print(std::format(L"\n  {} app(s) can be pinned\n", apps.size()));
+    return 0;
+}
+
 int cmdRegCheck(const std::wstring& file, const std::wstring& mountDir, bool asJson) {
     auto writes = core::readRegFile(file);
     if (!writes) {
@@ -2011,6 +2031,7 @@ void printUsage() {
           L"  wlcli catalog <build>[.<revision>] [--arch=x64|arm64] [--download=<folder>] [--preview] [--kb=KB…] [--json]\n"
           L"                                      (newest cumulative + .NET updates from the Microsoft Update\n"
           L"                                      Catalog; --download: fetch the recommended ones, SHA-256 checked)\n"
+          L"  wlcli start-apps <mountdir> [--json]       (apps the Start menu can pin; D-069)\n"
           L"  wlcli icons <file> [--json]               (icon groups of a .mun / .dll / .exe; D-068)\n"
           L"  wlcli icon-extract <file> <group> <out.ico>   (group: #3, 3 or a name)\n"
           L"  wlcli icon-patch <file> <group>=<ico>... --out=<file>   (writes a patched copy, checked by Windows)\n"
@@ -2360,6 +2381,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"catalog" && args.size() == 2) {
         return cmdCatalog(args[1], arch, downloadDir, preview, onlyKb, asJson);
+    }
+    if (command == L"start-apps" && args.size() == 2) {
+        return cmdStartApps(args[1], asJson);
     }
     if (command == L"icons" && args.size() == 2) {
         return cmdIcons(args[1], asJson);

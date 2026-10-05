@@ -1,5 +1,8 @@
 #include "core/image/ImageFiles.h"
 
+#include "base/Encoding.h"
+#include "base/Utf8.h"
+
 #include "base/Log.h"
 #include "core/image/SystemComponents.h"
 #include "core/system/Files.h"
@@ -100,6 +103,15 @@ void enableBackupRestore() {
 }
 
 } // namespace
+
+std::string imageFileBytes(std::wstring_view value) {
+    constexpr std::wstring_view kPrefix = L"base64:";
+    if (value.starts_with(kPrefix)) {
+        const auto bytes = base64Decode(utf8::fromWide(value.substr(kPrefix.size())));
+        return std::string(bytes.begin(), bytes.end());
+    }
+    return utf8::fromWide(value);
+}
 
 Result<void> unlinkImageFile(const std::filesystem::path& mountDir, std::wstring_view relative) {
     auto target = resolveImagePath(mountDir, relative);

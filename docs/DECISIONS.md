@@ -241,6 +241,42 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-069 — Başlat menüsü sayfası: Windows 11 sabitlemelerini temizleme ve kendi listesi, her sürümde (2026-10-05)
+Bağlam: Kullanıcı: "Windows 10'da XML ile Başlat'ı temizliyorduk, Windows 11'de olmuyor; kendimize has profesyonel bir yol
+bulalım, NTLite'ta bile yok. Başlat menüsünü kullanıcı istediği gibi özelleştirsin, temizlesin, uygulama sabitlesin; yüklü
+sistemde test et." Ardından: "Tüm Windows sürümlerinde çalışsın, sağlam bir altyapısı olsun."
+Araştırma (alt ajan): Microsoft'un `ConfigureStartPins` ilkesi (JSON, `applyOnce` 24H2 + KB5062660'tan), Grup İlkesi biçimi
+(`Policies\Microsoft\Windows\Explorer`: DWORD + JSON dosya yolu), OEM `LayoutModification.json` (yalnız ekler),
+Win11Debloat'ın boş `start2.bin`'i (Default profile). Hepsi VM'de ölçüldü (`tools\lab_vm.ps1`, VMware, 25H2 TR):
+| Deney | Sürüm / build | Ne yazıldı | Sonuç |
+|---|---|---|---|
+| 1 | Pro 26200.8037 | PolicyManager boş liste | Sabitlenenler boş |
+| 2 | Pro + KB5129195 (yeni Başlat) | iki ilke biçimi, özel liste, applyOnce | liste birebir, sırasıyla; Önerilenler gizli |
+| 3 | Home 26200.8037 | aynı | ilke **yok sayıldı**: Microsoft sabitlemeleri + reklam yer tutucuları |
+| 4 | Home + KB5129195 | aynı | liste birebir (güncel build Home'da da okuyor) |
+| 5 | Home 26200.8037 | + boş `start2.bin` | Sabitlenenler boş, reklam yok |
+| 6 | Home 26200.8037 | + OEM `LayoutModification.json` | OEM sabitlemeleri Microsoft'unkilerin yanına eklendi — kullanılmaz |
+| 7 | Home 26200.8037 | boş `start2.bin` + OEM JSON | boş (şablon OEM'i bastırır) |
+| 8 | Home + KB5129195 | boş `start2.bin` + özel liste | liste birebir |
+| 9 | Pro 26200.8037 | boş `start2.bin` + özel liste | boş (liste uygulanmadı) |
+| 10 | Pro 26200.8037 | özel liste, şablonsuz | Microsoft sabitlemeleri + reklam — eski build özel listeyi hiç uygulamıyor |
+| 11 | Pro 26200.8037 | şablon + özel liste, `applyOnce` yok | boş |
+Karar:
+- **Altyapı (her sürüm):** boş Başlat durumu (`start2.bin`, 972 bayt, Win11Debloat MIT — `third_party/win11debloat`,
+  koda Base64 gömülü) Default profile yazılır → hiçbir sürümde Microsoft sabitlemesi / reklam yer tutucusu gelmez; üstüne
+  ilkenin iki biçimi (PolicyManager JSON + Grup İlkesi DWORD + `%ProgramData%\WinLove\StartPins.json`) listeyi koyar.
+  Özel listeyi 26200.9457 (KB5129195) ve sonrası her sürümde (Pro, Home) birebir uyguluyor; 26200.8037 yalnız boş listeyi
+  uyguluyor — orada şablon sayesinde Başlat temiz, boş açılır (Microsoft'un reklamları yerine). Eşik `core::startAppliesCustomPins`
+  (26100/26200 UBR ≥ 9457); sayfa eski build + "Kendi listem" + kuyrukta güncelleme yoksa uyarır. Windows 10 için boş
+  `LayoutModification.xml` ("Boş" modunda).
+- `WriteFile` işlemi ikili dosya taşır: değer `base64:…` (`core::imageFileBytes`).
+- **Sayfa (P21):** Başlat menüsü — Sabitlenenler (Windows varsayılanı / Boş / Kendi listem, `applyOnce`; imajın
+  uygulamaları: paket bildirimleri, Ayarlar, Başlat kısayolları + hedef simgeleri, Edge; Başlat'a benzer önizleme =
+  sıralanabilir liste) ve Başlat ayarları (katalogun "start" sekmesi). Eski "Sabitlenmiş uygulamalar ve kutucuklar"
+  düğmesi katalogdan kalktı (yerini bu sayfa aldı). `wlcli start-apps`.
+Kanıt: 306 birim testi / 11.179 doğrulama; yukarıdaki on bir VM kurulumu (hepsi masaüstüne ulaştı, ekran görüntüleri `build\lab\out\vm-start*`).
+**Görülmeyen:** `applyOnce`'ın kullanıcı düzenlemesine izin verdiği (etkileşimli test), uygulamanın içinden liste kurup Uygula.
+
 ## D-068 — Simgeler: Windows'un simge dosyalarını yerinde yamalama (D-065'in "yamalanmaz" kararını genişletir) (2026-10-05)
 Bağlam: Kullanıcı: "Tek tek .ico eklemek yerine .dll.mun simge dosyalarını toplu okusun, bütün simgeleri listelesin, mun
 dosyasının içinden herhangi birini düzenleyebilsin, orijinali yedeklensin, ikon paketi eklenebilsin; Windows boot loop'a

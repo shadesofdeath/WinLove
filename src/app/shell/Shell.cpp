@@ -17,6 +17,7 @@
 #include "app/pages/DriversPage.h"
 #include "app/pages/ServicesPage.h"
 #include "app/pages/RegistryPage.h"
+#include "app/pages/StartMenuPage.h"
 #include "app/pages/SettingsPage.h"
 #include "app/pages/components/ComponentInspector.h"
 #include "app/pages/FeaturesPage.h"
@@ -154,6 +155,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_branding = std::make_unique<BrandingController>(m_state);
     m_icons = std::make_unique<IconController>(m_state);
     m_iconPatch = std::make_unique<IconPatchController>(m_state, m_services.postToUi);
+    m_startPins = std::make_unique<StartPinsController>(m_state, m_services.postToUi);
     m_store = std::make_unique<StoreController>(m_state, StoreController::Events{
         m_services.postToUi,
         [this](const std::wstring& query, std::vector<core::StoreSearchResult> results) {
@@ -380,6 +382,10 @@ ComponentsPage* Shell::componentsPage() const {
 
 UpdatesPage* Shell::updatesPage() const {
     return m_page == PageId::Updates ? dynamic_cast<UpdatesPage*>(m_pageBody) : nullptr;
+}
+
+StartMenuPage* Shell::startMenuPageForDemo() const {
+    return m_page == PageId::StartMenu ? dynamic_cast<StartMenuPage*>(m_pageBody) : nullptr;
 }
 
 IconsPage* Shell::iconsPageForDemo() const {
@@ -1278,6 +1284,7 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::Services, static_cast<int>(changes.count(core::ops::OpKind::SetServiceStart)));
     m_nav->setBadge(PageId::Registry, m_registry->checkedCount());
     m_nav->setBadge(PageId::Tweaks, m_imageSettings->changedCount());
+    m_nav->setBadge(PageId::StartMenu, m_startPins->changedCount());
     m_nav->setBadge(PageId::PostSetup, static_cast<int>(m_postSetup->stepCount()));
     m_nav->setBadge(PageId::Tasks, m_tasks->changedCount());
     m_nav->setBadge(PageId::Hosts, m_hosts->changedCount());
@@ -1635,6 +1642,9 @@ void Shell::showPage(PageId page) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UnattendedSaveXml), ui::icons::Icon::Save)
                 .onInvoke = [this] { saveAnswerFile(); };
             m_pageBody = &m_pageView->setBody<UnattendedPage>(m_state, *m_unattend, m_strings);
+        } else if (page == PageId::StartMenu) {
+            m_pageBody = &m_pageView->setBody<StartMenuPage>(m_state, *m_startPins, *m_imageSettings, m_strings, m_language,
+                                                             [this] { showPage(PageId::Images); });
         } else if (page == PageId::Tweaks) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TweaksApplyRecommended)).onInvoke = [this] {
                 if (!requireMount(Str::TweaksNoMountTitle, Str::TweaksNoMountBody)) {
