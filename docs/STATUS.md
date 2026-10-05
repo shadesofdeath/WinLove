@@ -70,6 +70,17 @@
     → kuyruk. rg-adguard bot korumalı olduğu için aynı veri doğrudan Microsoft'tan. Şifreli paketler elenir. `lab_store` ALL PASSED.
   **Görülmeyen (hepsi):** kurulan sistemde etkiler (VM), uygulamanın içinden ağ akışları (Store, dil indirme), başka araçla bağlanmış
   imajın uygulamada benimsenmesi.
+- **GitHub tweak seti + Kayıt Defteri sadeleşti (2026-10-05 öğlen, D-067):** 9 popüler projeden (winutil, Win11Debloat, Winhance,
+  Sophia, Optimizer, AtlasOS, ReviOS, xd-AntiSpy, schneegans) bizde olmayan 90 aday; kullanıcı hepsini seçti → Ayarlar'a 154 satır
+  (283 ayar), sekmeler 7 → 10 (Yapay zekâ, Uygulamalar, Güvenlik yeni), yanlış bölümdekiler taşındı. Kayıt Defteri artık yalnız
+  kullanıcının kendi girdileri: "Değer ekle / düzenle" diyaloğu (her tür, sil, kurulumdan sonra yeniden uygula) + .reg içe
+  aktarma; `tweaks.json` / `TweakCatalog` kaldırıldı (35 tweak'in hepsi Ayarlar'da vardı). Motor: imajda olmayan servis atlanır.
+  **Kanıt:** 289 test / 10.168 doğrulama; render (10 sekme 1280'de tr / en, Kayıt Defteri, diyalog); `tools\lab_settings_d067.ps1` (yönetici):
+  ALL PASSED (2026-10-05 12:11, Pro 26200): 275 ayar → 578 işlem hatasız; 557 / 557 değer motorun okuyucusuyla imajda, her tür ve hive için reg.exe örnekleri (DWORD, SZ, boş SZ, EXPAND_SZ, BINARY, QWORD, varsayılan değer, WOW6432Node, HKCR, UsrClass.dat, `%%Startup` adlı anahtar, anahtar silme), servis başlangıçları, ilk oturum dosyaları; `diagnosticshub.standardcollector.service` 25H2 imajında yok → atlandı, anahtar oluşmadı.
+  **Görülmeyen:** kurulan sistemde etkiler (VM), uygulamanın içinden değer ekleme / düzenleme (gerçek pencerede).
+- **Sıradaki iş (kullanıcı isteği, 2026-10-05):** Simgeler sayfası baştan, özenle: `.dll.mun` / `.dll` / `.exe` ikon kaynaklarını
+  toplu okuma, bütün simgeleri listeleme, dosyanın içindeki herhangi bir simgeyi değiştirme, orijinali yedekleme, ikon paketleri;
+  yamalamada önyükleme döngüsü / bileşen deposu bozulması / güncellemenin geri alması riskleri önce lab'da ölçülecek (kural 6).
 - **Bir sonraki somut adım (2026-10-05):** kullanıcı yeni sürümü dener: Simgeler (bir ikon paketi klasörü), Uygulamalar › Mağazadan
   ekle, Kaynak'taki bağlı imajlar, Ayarlar'daki yeni satırlar; ardından VM'de kurulum (duvar kağıdı / Spotlight, simgeler, Defender,
   sanal bellek, Setup'ın dil listesi).

@@ -1,7 +1,6 @@
 #include "app/controllers/ImageValuesController.h"
 
 #include "app/catalog/ImageSettingsCatalog.h"
-#include "app/catalog/TweakCatalog.h"
 #include "base/Log.h"
 #include "base/Utf8.h"
 #include "core/image/HostsFile.h"
@@ -20,11 +19,8 @@ namespace wl::app {
 using core::RegistryWrite;
 using core::ops::OpKind;
 
-ImageValueProbes ImageValueProbes::from(const TweakCatalog& tweaks, const ImageSettingsCatalog& settings) {
+ImageValueProbes ImageValueProbes::from(const ImageSettingsCatalog& settings) {
     ImageValueProbes probes;
-    for (const auto& tweak : tweaks.tweaks()) {
-        probes.writes.insert(probes.writes.end(), tweak.writes.begin(), tweak.writes.end());
-    }
     for (const auto& setting : settings.settings()) {
         const bool text = setting.control == ImageSetting::Control::Text;
         for (std::size_t i = 0; i < setting.options.size(); ++i) {

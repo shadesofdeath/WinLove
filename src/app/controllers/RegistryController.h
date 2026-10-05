@@ -1,59 +1,52 @@
 #pragma once
-// P11 logic (docs/pages/11-registry.md): catalog tweaks and imported .reg files ↔ SetRegistryValue
-// operations (target "<key>::<name>", value in .reg syntax). A tweak is "checked" when every one
-// of its writes is queued with its value; toggling queues or removes all of them. Imported .reg
-// files are queued whole on import and can be toggled or removed like a tweak. Their values are
-// always SetRegistryFirstLogon (written offline and re-imported after setup, D-026): nobody knows
-// which values of an arbitrary file Windows resets during OOBE / first logon.
-#include "app/catalog/TweakCatalog.h"
+// P11 logic (docs/pages/11-registry.md, D-067): the user's own registry entries ↔ registry
+// operations (target "<key>::<name>", value in .reg syntax). An entry is an imported .reg file
+// (queued whole on import) or one value typed in the page's dialog; either can be switched off
+// (its operations leave the queue), edited (a typed value) or removed. Ready-made tweaks live on
+// the Ayarlar page (settings.json).
+// Imported values are always SetRegistryFirstLogon (written offline and re-imported after setup,
+// D-026): nobody knows which values of an arbitrary file Windows resets during OOBE / first logon.
+// A typed value chooses: re-applied after setup (the default) or offline only.
 #include "app/state/AppState.h"
 
 namespace wl::app {
 
 class RegistryController {
 public:
-    RegistryController(AppState& state, TweakCatalog catalog);
-
-    [[nodiscard]] const TweakCatalog& catalog() const noexcept { return m_catalog; }
+    explicit RegistryController(AppState& state);
 
     [[nodiscard]] bool checked(const std::vector<core::RegistryWrite>& writes,
                                core::ops::OpKind kind = core::ops::OpKind::SetRegistryValue) const;
-    // D-045: a tweak is checked when each write holds — queued with its value, or (its slot and
-    // its way back not queued) already in the mounted image. inImage: the image alone.
-    [[nodiscard]] bool checked(const Tweak& tweak) const;
-    [[nodiscard]] bool inImage(const Tweak& tweak) const;
-    // Unchecking a tweak the image has queues its way back (values deleted); false when there
-    // is none (a deletion cannot be undone).
-    [[nodiscard]] bool canUncheck(const Tweak& tweak) const;
-    void toggle(const Tweak& tweak);
     void setChecked(const std::vector<core::RegistryWrite>& writes, bool on, core::ops::Risk risk,
                     core::ops::OpKind kind = core::ops::OpKind::SetRegistryValue);
-    [[nodiscard]] static core::ops::OpKind kindOf(const Tweak& tweak) {
-        return tweak.firstLogon ? core::ops::OpKind::SetRegistryFirstLogon : core::ops::OpKind::SetRegistryValue;
-    }
 
     static constexpr core::ops::OpKind kImportKind = core::ops::OpKind::SetRegistryFirstLogon;
+    [[nodiscard]] static core::ops::OpKind kindOf(const AppState::RegImport& entry) {
+        return entry.afterSetup ? core::ops::OpKind::SetRegistryFirstLogon : core::ops::OpKind::SetRegistryValue;
+    }
     // Can the image take this write: offline hive, or (no hive) at least the post-setup import.
     [[nodiscard]] static bool importable(const core::RegistryWrite& write);
 
-    // Checked / total tweaks of a category ("custom" = imported .reg files).
-    [[nodiscard]] std::pair<int, int> selection(std::string_view category) const;
-    [[nodiscard]] int checkedCount() const; // nav badge: tweaks Uygula changes + imports
+    [[nodiscard]] bool checked(std::size_t entry) const;
+    [[nodiscard]] std::pair<int, int> selection() const; // checked / all entries
+    [[nodiscard]] int checkedCount() const;              // nav badge
 
     // Imports: parsed on the reader thread by the caller, then added here (queued immediately).
     void addImport(const std::filesystem::path& file, std::vector<core::RegistryWrite> writes);
-    void toggleImport(std::size_t index);
-    void removeImport(std::size_t index);
+    // A typed value (queued immediately). False when the image cannot take it.
+    bool addValue(core::RegistryWrite write, bool afterSetup);
+    bool replaceValue(std::size_t entry, core::RegistryWrite write, bool afterSetup);
+    void toggle(std::size_t entry);
+    void remove(std::size_t entry);
 
     [[nodiscard]] static core::ops::Operation operationFor(const core::RegistryWrite& write, core::ops::Risk risk,
                                                            core::ops::OpKind kind = core::ops::OpKind::SetRegistryValue);
 
 private:
-    [[nodiscard]] bool holds(const core::RegistryWrite& write, core::ops::OpKind kind, bool withQueue, bool& asserts) const;
-    [[nodiscard]] static std::vector<core::RegistryWrite> revertWrites(const Tweak& tweak); // empty: none
+    // Slots the new writes take move to the end of the queue (an earlier entry or preset may hold them).
+    void requeue(const std::vector<core::RegistryWrite>& writes, core::ops::OpKind kind);
 
     AppState& m_state;
-    TweakCatalog m_catalog;
 };
 
 } // namespace wl::app

@@ -6,6 +6,7 @@
 #include "app/state/AnswerStore.h"
 
 #include "core/image/DriverInf.h"
+#include "core/image/RegistryInput.h"
 
 #include "app/pages/AppsPage.h"
 #include "app/pages/DriversPage.h"
@@ -181,8 +182,9 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             // handled in main.cpp (skip the startup UAC relaunch)
         } else if (startsWith(a, L"--demo-apply=")) {
             options.demoApply = std::wstring(value(L"--demo-apply="));
-        } else if (a == L"--demo-registry") {
+        } else if (a == L"--demo-registry" || a == L"--demo-registry=dialog") {
             options.demoRegistry = true;
+            options.demoRegistryDialog = a.ends_with(L"=dialog");
         } else if (a == L"--demo-tasks") {
             options.demoTasks = true;
         } else if (a == L"--demo-files" || startsWith(a, L"--demo-files=")) {
@@ -609,30 +611,33 @@ int App::renderOffscreen() {
         m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,
                                          L"Windows 11 Pro"});
         auto& registry = m_shell->registry();
-        if (m_options.demoImageValues) {
-            // The image has the first three privacy tweaks; the demo toggles take one of them back.
-            AppState::ImageValues values{AppState::ImageValues::Status::Ready, m_state->mounted()->mountDir, {}, {}, {}};
-            int n = 0;
-            for (const auto& tweak : registry.catalog().tweaks()) {
-                if (tweak.category == "privacy" && n++ < 3) {
-                    for (const auto& w : tweak.writes) {
-                        const auto op = RegistryController::operationFor(w, tweak.risk, RegistryController::kindOf(tweak));
-                        values.held.insert(AppState::imageValueKey(op.kind, op.target, op.value));
-                    }
-                }
+        // D-067: values typed in the dialog (one switched off) and an imported file.
+        const struct {
+            const wchar_t* key;
+            const wchar_t* name;
+            core::RegValueType type;
+            const wchar_t* data;
+            bool afterSetup;
+        } typed[] = {
+            {L"HKLM\\SOFTWARE\\Contoso\\Agent", L"UpdateChannel", core::RegValueType::String, L"stable", false},
+            {L"HKCU\\Software\\Contoso\\Agent", L"TrayIcon", core::RegValueType::Dword, L"0", true},
+            {L"HKLM\\SYSTEM\\CurrentControlSet\\Services\\Contoso", L"Start", core::RegValueType::Dword, L"0x4", false},
+            {L"HKCU\\Software\\Contoso\\Legacy", L"", core::RegValueType::DeleteKey, L"", true},
+        };
+        for (const auto& t : typed) {
+            if (auto write = core::registryWriteFromInput(t.key, t.name, t.type, t.data)) {
+                registry.addValue(std::move(*write), t.afterSetup);
             }
-            m_state->setImageValues(std::move(values));
         }
-        for (const auto& tweak : registry.catalog().tweaks()) {
-            if (tweak.recommended && tweak.category != "appearance") {
-                registry.toggle(tweak);
-            }
-        }
+        registry.toggle(1);
         if (auto sample = core::parseRegText(L"Windows Registry Editor Version 5.00\n[HKEY_CURRENT_USER\\Software\\Contoso]\n"
                                              L"\"Telemetry\"=dword:00000000\n\"Channel\"=\"stable\"\n")) {
             registry.addImport(L"C:\\Tweaks\\contoso-defaults.reg", std::move(*sample));
         }
         m_shell->showPage(m_options.page.value_or(PageId::Registry));
+        if (m_options.demoRegistryDialog) {
+            m_shell->editRegistryValue(0);
+        }
     }
     if (m_options.demoTweaks) {
         m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,

@@ -60,7 +60,8 @@ struct LaunchOptions {
     bool demoLogs = false;     // render: fill the log with the design's sample lines (screen 18)
     bool demoFeatures = false; // render: fake mount + screen 05 sample features
     bool demoComponents = false; // render: fake mount + sample provisioned apps (screen 04)
-    bool demoRegistry = false;   // render: fake mount + checked tweaks (08)
+    bool demoRegistry = false;   // render: fake mount + typed values and an imported .reg (D-067)
+    bool demoRegistryDialog = false; // --demo-registry=dialog: the first value open in "Değeri düzenle"
     bool demoServices = false;   // render: fake mount + sample services (09)
     bool demoTasks = false;      // render: fake mount, two tasks off in the image, the recommended queued (D-048)
     std::optional<std::wstring> demoFiles; // render: fake mount + queued files ("where": the destination dialog) (D-051)
@@ -79,7 +80,7 @@ struct LaunchOptions {
     std::optional<std::wstring> demoApps; // render: fake mount + the lab's Terminal package ("defaults": second tab) (D-050)
     bool demoImageDrivers = false; // render: fake mount + the image's third-party drivers, one queued for removal (D-052)
     bool demoTweaks = false;     // render: fake mount + the selections of screen 10
-    bool demoImageValues = false; // render (with --demo-tweaks / --demo-registry): the image already has a few (D-045)
+    bool demoImageValues = false; // render (with --demo-tweaks): the image already has a few (D-045)
     bool demoUnattended = false; // render: the answers of screen 11
     bool demoPostSetup = false;  // render: fake mount + the steps of screen 12
     bool demoPresets = false;    // render: an in-memory library like screen 17

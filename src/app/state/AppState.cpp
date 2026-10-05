@@ -245,9 +245,18 @@ void AppState::setApplyRun(std::optional<ApplyRun> run) {
 
 void AppState::addRegImport(RegImport import) {
     // Re-importing the same file replaces it.
-    std::erase_if(m_regImports, [&](const RegImport& r) { return r.file == import.file; });
+    if (!import.typed) {
+        std::erase_if(m_regImports, [&](const RegImport& r) { return !r.typed && r.file == import.file; });
+    }
     m_regImports.push_back(std::move(import));
     notify(Change::Registry);
+}
+
+void AppState::replaceRegImport(std::size_t index, RegImport import) {
+    if (index < m_regImports.size()) {
+        m_regImports[index] = std::move(import);
+        notify(Change::Registry);
+    }
 }
 
 void AppState::removeRegImport(std::size_t index) {

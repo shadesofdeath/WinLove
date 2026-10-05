@@ -1,5 +1,7 @@
-// P11: an imported .reg file is queued whole, as writes that are also re-imported after setup.
+// P11 (D-067): the user's own entries — an imported .reg file is queued whole, as writes that are
+// also re-imported after setup; a typed value is one write, re-applied after setup or offline only.
 #include "app/controllers/RegistryController.h"
+#include "core/image/RegistryInput.h"
 
 #include <doctest.h>
 
@@ -17,16 +19,12 @@ std::filesystem::path scratch(const wchar_t* name) {
     return dir / name;
 }
 
-TweakCatalog emptyCatalog() {
-    return *TweakCatalog::parse(R"({"format":"winlove.catalog.tweaks","categories":[],"tweaks":[]})");
-}
-
 } // namespace
 
 TEST_CASE("imported .reg: every usable value is queued for offline + post-setup; the rest is counted") {
     AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
     state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});
-    RegistryController controller{state, emptyCatalog()};
+    RegistryController controller{state};
 
     auto writes = core::parseRegText(L"Windows Registry Editor Version 5.00\n"
                                      L"[HKEY_CURRENT_USER\\Software\\Contoso]\n\"Theme\"=dword:00000001\n"
@@ -45,15 +43,15 @@ TEST_CASE("imported .reg: every usable value is queued for offline + post-setup;
     CHECK(state.changes().count(OpKind::SetRegistryFirstLogon) == 3);
     CHECK(state.changes().count(OpKind::SetRegistryValue) == 0);
     CHECK(state.changes().find(OpKind::SetRegistryFirstLogon, L"HKLM\\SOFTWARE\\Contoso\\Empty\\::") != nullptr);
-    CHECK(controller.selection("custom") == std::pair{1, 1});
+    CHECK(controller.selection() == std::pair{1, 1});
     CHECK(controller.checkedCount() == 1);
 
-    controller.toggleImport(0);
+    controller.toggle(0);
     CHECK(state.changes().empty());
-    CHECK(controller.selection("custom") == std::pair{0, 1});
-    controller.toggleImport(0);
+    CHECK(controller.selection() == std::pair{0, 1});
+    controller.toggle(0);
     CHECK(state.changes().size() == 3);
-    controller.removeImport(0);
+    controller.remove(0);
     CHECK(state.changes().empty());
     CHECK(state.regImports().empty());
 }
@@ -61,7 +59,7 @@ TEST_CASE("imported .reg: every usable value is queued for offline + post-setup;
 TEST_CASE("imported .reg: delete-then-set keeps both, in file order; a repeated value keeps its last entry") {
     AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
     state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});
-    RegistryController controller{state, emptyCatalog()};
+    RegistryController controller{state};
 
     // The usual context-menu tweak: wipe the key, write it again; plus x set before and after.
     auto writes = core::parseRegText(L"Windows Registry Editor Version 5.00\n"
@@ -78,7 +76,7 @@ TEST_CASE("imported .reg: delete-then-set keeps both, in file order; a repeated 
     CHECK(ops[1].target == L"HKCR\\Directory\\shell\\Tool::");
     CHECK(ops[1].value == L"\"Open tool\"");
     CHECK(ops[2].value == L"dword:00000002");
-    CHECK(controller.selection("custom") == std::pair{1, 1}); // shown as checked
+    CHECK(controller.selection() == std::pair{1, 1}); // shown as checked
 
     // Importing a newer copy moves its slots behind what is queued, in its own order.
     state.queue(core::ops::Operation{OpKind::SetServiceStart, L"DiagTrack", L"disabled"});
@@ -92,4 +90,71 @@ TEST_CASE("imported .reg: delete-then-set keeps both, in file order; a repeated 
     CHECK(after[1].kind == OpKind::SetServiceStart);
     CHECK(after[2].value == L"[-]");
     CHECK(after[3].value == L"\"Open tool 2\"");
+}
+
+TEST_CASE("typed values: queued with the chosen kind, edited in place, switched off and removed") {
+    AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
+    state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});
+    RegistryController controller{state};
+
+    auto policy = core::registryWriteFromInput(LR"(HKEY_LOCAL_MACHINE\SOFTWARE\Contoso)", L"Mode", core::RegValueType::Dword, L"0x10");
+    REQUIRE(policy);
+    REQUIRE(controller.addValue(*policy, /*afterSetup=*/false));
+    auto user = core::registryWriteFromInput(LR"(HKCU\Software\Contoso)", L"", core::RegValueType::String, L"hello");
+    REQUIRE(user);
+    REQUIRE(controller.addValue(*user, /*afterSetup=*/true));
+
+    REQUIRE(state.regImports().size() == 2);
+    CHECK(state.regImports()[0].typed);
+    const auto* mode = state.changes().find(OpKind::SetRegistryValue, LR"(HKLM\SOFTWARE\Contoso::Mode)");
+    REQUIRE(mode);
+    CHECK(mode->value == L"dword:00000010");
+    const auto* def = state.changes().find(OpKind::SetRegistryFirstLogon, LR"(HKCU\Software\Contoso::)");
+    REQUIRE(def);
+    CHECK(def->value == L"\"hello\"");
+    CHECK(controller.selection() == std::pair{2, 2});
+
+    // Edit: the new value (and kind) replaces the old one in the queue.
+    auto edited = core::registryWriteFromInput(LR"(HKLM\SOFTWARE\Contoso)", L"Mode", core::RegValueType::Dword, L"7");
+    REQUIRE(edited);
+    REQUIRE(controller.replaceValue(0, *edited, /*afterSetup=*/true));
+    CHECK_FALSE(state.changes().find(OpKind::SetRegistryValue, LR"(HKLM\SOFTWARE\Contoso::Mode)"));
+    REQUIRE(state.changes().find(OpKind::SetRegistryFirstLogon, LR"(HKLM\SOFTWARE\Contoso::Mode)"));
+    CHECK(state.changes().find(OpKind::SetRegistryFirstLogon, LR"(HKLM\SOFTWARE\Contoso::Mode)")->value == L"dword:00000007");
+    CHECK(state.regImports()[0].afterSetup);
+
+    // Off: out of the queue, still listed; an edit while off keeps it off.
+    controller.toggle(1);
+    CHECK_FALSE(controller.checked(1));
+    CHECK(state.changes().size() == 1);
+    auto other = core::registryWriteFromInput(LR"(HKCU\Software\Contoso)", L"", core::RegValueType::String, L"bye");
+    REQUIRE(controller.replaceValue(1, *other, true));
+    CHECK_FALSE(controller.checked(1));
+    CHECK(state.changes().size() == 1);
+    CHECK(controller.checkedCount() == 1);
+
+    controller.remove(0);
+    CHECK(state.changes().empty());
+    CHECK(state.regImports().size() == 1);
+
+    // A key no image has: refused.
+    auto sam = core::registryWriteFromInput(LR"(HKLM\SAM\SAM)", L"x", core::RegValueType::Dword, L"1");
+    REQUIRE(sam);
+    CHECK_FALSE(controller.addValue(*sam, true));
+    CHECK(state.regImports().size() == 1);
+}
+
+TEST_CASE("typed values: two values of one key are separate entries; a .reg file re-imported replaces its old copy") {
+    AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
+    state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});
+    RegistryController controller{state};
+    controller.addValue(*core::registryWriteFromInput(LR"(HKCU\Software\A)", L"x", core::RegValueType::Dword, L"1"), true);
+    controller.addValue(*core::registryWriteFromInput(LR"(HKCU\Software\A)", L"y", core::RegValueType::Dword, L"2"), true);
+    CHECK(state.regImports().size() == 2);
+
+    controller.addImport(L"C:\\t.reg", *core::parseRegText(L"REGEDIT4\n[HKEY_CURRENT_USER\\Software\\B]\n\"old\"=dword:00000001\n"));
+    controller.addImport(L"C:\\t.reg", *core::parseRegText(L"REGEDIT4\n[HKEY_CURRENT_USER\\Software\\B]\n\"new\"=dword:00000001\n"));
+    CHECK(state.regImports().size() == 3);
+    CHECK_FALSE(state.changes().find(OpKind::SetRegistryFirstLogon, LR"(HKCU\Software\B::old)"));
+    CHECK(state.changes().find(OpKind::SetRegistryFirstLogon, LR"(HKCU\Software\B::new)"));
 }

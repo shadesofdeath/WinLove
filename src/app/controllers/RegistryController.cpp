@@ -1,7 +1,5 @@
 #include "app/controllers/RegistryController.h"
 
-#include "app/controllers/ImageValuesController.h"
-
 #include <algorithm>
 #include <cwctype>
 #include <set>
@@ -12,8 +10,11 @@ using core::RegistryWrite;
 using core::ops::OpKind;
 using core::ops::Operation;
 
-RegistryController::RegistryController(AppState& state, TweakCatalog catalog)
-    : m_state(state), m_catalog(std::move(catalog)) {}
+namespace {
+constexpr auto kRisk = core::ops::Risk::Medium; // the user's own values: Uygula cannot judge them
+} // namespace
+
+RegistryController::RegistryController(AppState& state) : m_state(state) {}
 
 Operation RegistryController::operationFor(const RegistryWrite& write, core::ops::Risk risk, OpKind kind) {
     Operation op{kind, core::registryTarget(write), core::formatRegValue(write)};
@@ -53,113 +54,35 @@ void RegistryController::setChecked(const std::vector<RegistryWrite>& writes, bo
     m_state.unqueueMany(slots);
 }
 
-bool RegistryController::holds(const RegistryWrite& write, OpKind kind, bool withQueue, bool& asserts) const {
-    const Operation op = operationFor(write, core::ops::Risk::Low, kind);
-    if (withQueue) {
-        if (const auto* q = m_state.changes().find(op.kind, op.target)) {
-            asserts = true;
-            return q->value == op.value;
-        }
-        if (const auto back = revertWrite(write)) {
-            if (const auto* q = m_state.changes().find(kind, core::registryTarget(*back));
-                q && q->value == core::formatRegValue(*back)) {
-                return false;
-            }
-        }
-    }
-    if (!m_state.imageHas(op)) {
-        return false;
-    }
-    asserts = asserts || assertsSomething(write);
-    return true;
+bool RegistryController::checked(std::size_t entry) const {
+    const auto& entries = m_state.regImports();
+    return entry < entries.size() && checked(entries[entry].writes, kindOf(entries[entry]));
 }
 
-bool RegistryController::checked(const Tweak& tweak) const {
-    bool asserts = false;
-    return !tweak.writes.empty() && std::ranges::all_of(tweak.writes, [&](const RegistryWrite& w) {
-        return holds(w, kindOf(tweak), /*withQueue=*/true, asserts);
-    }) && asserts;
-}
-
-bool RegistryController::inImage(const Tweak& tweak) const {
-    bool asserts = false;
-    return !tweak.writes.empty() && std::ranges::all_of(tweak.writes, [&](const RegistryWrite& w) {
-        return holds(w, kindOf(tweak), /*withQueue=*/false, asserts);
-    }) && asserts;
-}
-
-std::vector<RegistryWrite> RegistryController::revertWrites(const Tweak& tweak) {
-    std::vector<RegistryWrite> back;
-    for (const auto& w : tweak.writes) {
-        auto revert = revertWrite(w);
-        if (!revert) {
-            return {};
-        }
-        back.push_back(std::move(*revert));
-    }
-    return back;
-}
-
-bool RegistryController::canUncheck(const Tweak& tweak) const {
-    return !inImage(tweak) || !revertWrites(tweak).empty();
-}
-
-void RegistryController::toggle(const Tweak& tweak) {
-    const OpKind kind = kindOf(tweak);
-    const auto reverts = revertWrites(tweak);
-    if (checked(tweak)) {
-        if (inImage(tweak) && reverts.empty()) {
-            return; // the image has it and there is no way back from here
-        }
-        std::vector<std::pair<OpKind, std::wstring>> slots;
-        for (const auto& w : tweak.writes) {
-            if (const auto* op = m_state.changes().find(kind, core::registryTarget(w));
-                op && op->value == core::formatRegValue(w)) {
-                slots.emplace_back(kind, core::registryTarget(w));
-            }
-        }
-        m_state.unqueueMany(slots);
-        if (inImage(tweak)) {
-            setChecked(reverts, true, tweak.risk, kind);
-        }
-        return;
-    }
-    // Unchecked: a queued way back is taken back first — the image may have the tweak.
-    setChecked(reverts, false, tweak.risk, kind);
-    if (!checked(tweak)) {
-        setChecked(tweak.writes, true, tweak.risk, kind);
-    }
-}
-
-std::pair<int, int> RegistryController::selection(std::string_view category) const {
+std::pair<int, int> RegistryController::selection() const {
     int on = 0;
-    int total = 0;
-    if (category == "custom") {
-        for (const auto& import : m_state.regImports()) {
-            ++total;
-            on += checked(import.writes, kImportKind) ? 1 : 0;
-        }
-        return {on, total};
+    const auto& entries = m_state.regImports();
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        on += checked(i) ? 1 : 0;
     }
-    for (const auto& tweak : m_catalog.tweaks()) {
-        if (tweak.category == category) {
-            ++total;
-            on += checked(tweak) ? 1 : 0;
-        }
-    }
-    return {on, total};
+    return {on, static_cast<int>(entries.size())};
 }
 
 int RegistryController::checkedCount() const {
-    int n = 0;
-    for (const auto& tweak : m_catalog.tweaks()) {
-        n += checked(tweak) != inImage(tweak) ? 1 : 0; // what Uygula changes
-    }
-    return n + selection("custom").first;
+    return selection().first;
 }
 
 bool RegistryController::importable(const RegistryWrite& write) {
     return core::mapOfflineKey(write.key).has_value() || core::isPostSetupOnlyKey(write.key);
+}
+
+void RegistryController::requeue(const std::vector<RegistryWrite>& writes, OpKind kind) {
+    std::vector<std::pair<OpKind, std::wstring>> slots;
+    for (const auto& w : writes) {
+        slots.emplace_back(kind, core::registryTarget(w));
+    }
+    m_state.unqueueMany(slots);
+    setChecked(writes, true, kRisk, kind);
 }
 
 void RegistryController::addImport(const std::filesystem::path& file, std::vector<RegistryWrite> writes) {
@@ -182,28 +105,58 @@ void RegistryController::addImport(const std::filesystem::path& file, std::vecto
         }
     }
     std::ranges::reverse(usable);
-    // Slots an earlier import or preset already queued move to this file's position in the queue.
-    std::vector<std::pair<OpKind, std::wstring>> slots;
-    for (const auto& w : usable) {
-        slots.emplace_back(kImportKind, core::registryTarget(w));
+    // Re-importing the same file: what the old copy queued goes first.
+    const auto& entries = m_state.regImports();
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        if (!entries[i].typed && entries[i].file == file) {
+            setChecked(entries[i].writes, false, kRisk, kindOf(entries[i]));
+        }
     }
-    m_state.unqueueMany(slots);
-    setChecked(usable, true, core::ops::Risk::Medium, kImportKind);
+    requeue(usable, kImportKind);
     m_state.addRegImport(AppState::RegImport{file, std::move(usable), skipped});
 }
 
-void RegistryController::toggleImport(std::size_t index) {
-    const auto& imports = m_state.regImports();
-    if (index < imports.size()) {
-        setChecked(imports[index].writes, !checked(imports[index].writes, kImportKind), core::ops::Risk::Medium,
-                   kImportKind);
+bool RegistryController::addValue(RegistryWrite write, bool afterSetup) {
+    if (!importable(write)) {
+        return false;
+    }
+    AppState::RegImport entry{{}, {std::move(write)}, 0, /*typed=*/true, afterSetup};
+    requeue(entry.writes, kindOf(entry));
+    m_state.addRegImport(std::move(entry));
+    return true;
+}
+
+bool RegistryController::replaceValue(std::size_t index, RegistryWrite write, bool afterSetup) {
+    const auto& entries = m_state.regImports();
+    if (index >= entries.size() || !entries[index].typed || !importable(write)) {
+        return false;
+    }
+    const bool on = checked(index);
+    setChecked(entries[index].writes, false, kRisk, kindOf(entries[index]));
+    AppState::RegImport entry{{}, {std::move(write)}, 0, /*typed=*/true, afterSetup};
+    if (on) {
+        requeue(entry.writes, kindOf(entry));
+    }
+    m_state.replaceRegImport(index, std::move(entry));
+    return true;
+}
+
+void RegistryController::toggle(std::size_t index) {
+    const auto& entries = m_state.regImports();
+    if (index < entries.size()) {
+        const bool on = checked(index);
+        if (on) {
+            setChecked(entries[index].writes, false, kRisk, kindOf(entries[index]));
+        } else {
+            requeue(entries[index].writes, kindOf(entries[index]));
+        }
     }
 }
 
-void RegistryController::removeImport(std::size_t index) {
-    const auto& imports = m_state.regImports();
-    if (index < imports.size()) {
-        setChecked(imports[index].writes, false, core::ops::Risk::Medium, kImportKind);
+void RegistryController::remove(std::size_t index) {
+    const auto& entries = m_state.regImports();
+    if (index < entries.size()) {
+        setChecked(entries[index].writes, false, kRisk, kindOf(entries[index]));
         m_state.removeRegImport(index);
     }
 }

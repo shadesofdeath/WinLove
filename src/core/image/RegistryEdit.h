@@ -146,6 +146,8 @@ public:
     OfflineRegistry& operator=(const OfflineRegistry&) = delete;
 
     [[nodiscard]] Result<void> apply(const RegistryWrite& write);
+    // Is the key there (live-system path, as in a write)? Loads its hive like a write would.
+    [[nodiscard]] Result<bool> keyExists(std::wstring_view key);
     // Unloads every loaded hive now (also done by the destructor).
     void close();
 

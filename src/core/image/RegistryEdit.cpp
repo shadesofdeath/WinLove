@@ -713,6 +713,23 @@ Result<std::wstring> OfflineRegistry::resolve(const OfflineKey& key) {
     return hive->keyName() + (path.empty() ? L"" : L"\\" + path);
 }
 
+Result<bool> OfflineRegistry::keyExists(std::wstring_view key) {
+    auto mapped = mapOfflineKey(key);
+    if (!mapped) {
+        return std::unexpected(mapped.error());
+    }
+    auto full = resolve(*mapped);
+    if (!full) {
+        return std::unexpected(full.error());
+    }
+    HKEY opened = nullptr;
+    const LSTATUS status = RegOpenKeyExW(HKEY_LOCAL_MACHINE, full->c_str(), 0, KEY_QUERY_VALUE, &opened);
+    if (status == ERROR_SUCCESS) {
+        RegCloseKey(opened);
+    }
+    return status != ERROR_FILE_NOT_FOUND && status != ERROR_PATH_NOT_FOUND;
+}
+
 Result<void> OfflineRegistry::apply(const RegistryWrite& write) {
     auto mapped = mapOfflineKey(write.key);
     if (!mapped) {

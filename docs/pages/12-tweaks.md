@@ -5,12 +5,13 @@
 ## 1. Amaç
 Windows ayarlarını "ayar" olarak göstermek (Reklam kimliği: açık/kapalı, Telemetri seviyesi: …) ve seçimi bağlı
 imajın kayıt defteri / servis değişikliklerine çevirmek (kuyruk → P05 Uygula). P11 aynı değerleri "tweak listesi"
-olarak gösterir; P12 aynı işlemleri form olarak sunar.
+olarak gösterirdi; D-067 ile hazır tweak'lerin tek yeri burası (P11 yalnız kullanıcının kendi kayıtları).
 
 ## 2. Ekran
 - Başlık eylemi: **Önerilenleri uygula** (katalogda önerilen seçeneği olan her ayarı toplu olarak o seçeneğe alır;
   kaç ayarın değiştiği toast ile bildirilir).
-- Sekmeler: Gizlilik · Performans · Görünüm · Gezgin · Başlat menüsü (←/→).
+- Sekmeler (D-067): Gizlilik · Yapay zekâ · Uygulamalar · Performans · Görünüm · Gezgin · Başlat ve görev çubuğu ·
+  Güncelleme · Güvenlik · Sistem (←/→).
 - Bölüm başlığı (büyük harf, alt çizgi) + 32 px satırlar: 240 px etiket sütunu, sonra kontrol:
   **toggle** (yanında ipucu metni), **dropdown** (280 px), **radio** grubu.
 - İçerik pencereye sığmazsa form kayar (tekerlek, kaydırma çubuğu; klavye odağı görünür alana getirilir).
@@ -57,6 +58,26 @@ etkisizdir. Kullanıcı sonradan kendi sabitlemelerini yapabilir (düzen kilitle
 bilgisayardaki bir JPEG, `CopyFile` işlemiyle imajdaki sabit yola + onu gösteren değerler). Boş değer = Windows
 varsayılanı. Dosya kutusuna JPEG olmayan / olmayan bir yol yazılırsa hiçbir şey kuyruğa girmez, ipucu kırmızı.
 
+### D-067 ile eklenenler (GitHub araştırması, 2026-10-05)
+winutil, Win11Debloat, Winhance, Sophia Script, Optimizer, AtlasOS, ReviOS, xd-AntiSpy ve schneegans üreticisinden,
+bizde olmayan ve yalnız kayıt değeri / servis başlangıcı olan 90 aday; kullanıcı hepsini seçti → 154 satır (katalog 283).
+| Sekme | Öne çıkanlar |
+|---|---|
+| Gizlilik | Program Uyumluluk Yardımcısı / uyumluluk motoru, deneme özellikleri ve Insider, KMS telemetrisi, el yazısı verisi, dmwappush / tanılama hub servisleri, ayar / mesaj eşitleme, yakın paylaşım, cihazlar arası devam, pano geçmişi (dropdown), kamera / mikrofon / hesap / tanılama / sesle etkinleştirme izinleri, "kuruluşum yönetsin" istemi, eski çevrimiçi sihirbazlar, web'den yazdırma |
+| Yapay zekâ | Click to Do, WSAIFabricSvc (elle / kapalı), yapay zekâ ajanları, model erişimi, Copilot kalıntıları, Not Defteri / Paint / Edge yapay zekâsı |
+| Uygulamalar | Edge reklam ve telemetri, OneDrive klasör yedekleme teklifi, Office / Visual Studio / Chrome / Firefox / NVIDIA telemetrisi, varsayılan terminal, PowerShell yürütme ilkesi, geliştirici modu |
+| Performans | Hızlı kapanış, uygulamaları zorla kapat, uykuda ağ, ön plan önceliği, NTFS son erişim / 8.3, Depolama Algısı, küçük resim önbelleği, otomatik bakım / uyandırma / zamanlanmış tanılama, MMCSS oyun önceliği, MPO, Xbox servisleri |
+| Görünüm | Görsel efektler (en iyi performans), kaydırma çubukları, kilit ekranı / kilit ekranında kamera, uygulamaları yeniden aç, netplwiz kutusu, duvar kağıdı kalitesi, başlangıç sesi, sistem sesleri, görüşmede ses kısma |
+| Gezgin | Onay kutuları, boş sürücüler, ayrı işlem, klasörleri geri yükle, açılır açıklamalar, paylaşım sihirbazı, ayrıntılı kopyalama, klasör türü algılama, bulut dosyaları, İndirilenler gruplaması, sürücü harfleri, çift çıkarılabilir sürücü, Bu Bilgisayar klasörleri, sağ tık temizliği / eklemeleri, "Birlikte aç", bozuk kısayol araması, düşük disk uyarısı |
+| Başlat ve görev çubuğu | Telefon Bağlantısı paneli, "Tüm uygulamalar" görünümü / listesi, en çok kullanılan / son eklenen, güç menüsü, rozetler, yanıp sönme, masaüstünü göster, pencere paylaşma, zil, pil yüzdesi, simge boyutu, çoklu monitör, son etkin pencere; **Pencereler**: yaslama, Aero Shake, Alt+Tab'da Edge sekmeleri, paylaşma tepsisi |
+| Güncelleme | "En son güncellemeleri hemen al", diğer Microsoft ürünleri, ölçülü bağlantı, yeniden başlatma bildirimi, "Güncelleştir ve kapat" |
+| Güvenlik | Windows Güvenliği sayfaları, UAC seviyesi, ARSO, İnternet işareti (MotW), Akıllı Uygulama Denetimi, HVCI, VBS, LSA koruması, anonim erişim, WPBT |
+| Sistem | Ayarlar'da gizlenen sayfalar (+ özel liste), M365 reklamları, Print Screen, düzen kısayolu, erişilebilirlik kısayolları, Caps Lock, dokunmatik klavye, yazma içgörüleri, üç bildirim, USB bildirimleri, varsayılan yazıcı, Yazdırma Biriktiricisi, sensör servisleri, üretici uygulamaları, SMB bant kısıtlaması, mavi ekran ayrıntısı / yeniden başlatma / döküm, UTC saati |
+
+Kurallar: iki ayar aynı değeri yalnız bilerek yazar (birim testi izin listesiyle denetler); imajda olmayan servis atlanır
+(anahtar oluşturulmaz); kurulumda sıfırlanabilen HKLM değerleri (Akıllı Uygulama Denetimi, HVCI, VBS) ilk oturumda da yazılır.
+Kanıt: `tools\lab_settings_d067.ps1` — katalogdaki her ayar varsayılan dışı hâliyle gerçek imaja uygulanıp geri okunur.
+
 ### D-044 ile eklenenler
 Sistem › **Ağ**: LLMNR, IPv6 (varsayılan / IPv4'ü tercih et / kapalı), Wi-Fi etkin noktalarına bağlanma, yeni ağda keşif
 sorusu, parolasız (konuk) SMB, SMB imzalama zorunluluğu. Sistem › Diğer: klasik Windows Fotoğraf Görüntüleyicisi.
@@ -96,7 +117,7 @@ light/EN, 1280×520'de kaydırma, tıklama ile toggle / radio / dropdown). `TabB
 ve 8 px içerden alt çizgi tasarım 10 / 16'ya göre düzeltildi.
 
 ## 7. Bilinçli sapmalar
-- İçerik tasarımdaki örnek 7 satır yerine gerçek katalog (39 ayar); "Cortana ve arama" bölümü "Arama" oldu
+- İçerik tasarımdaki örnek 7 satır yerine gerçek katalog (283 ayar, 10 sekme); "Cortana ve arama" bölümü "Arama" oldu
   (Windows 11'de Cortana yok), konumun üçüncü seçeneği "Uygulama bazlı" yerine "Yalnız sistem" (HKCU izni kapalı).
 - Her satırın yanında durumu yazar (D-032): toggle'da "Açık · Windows varsayılanı" / "Kapalı · değiştirilecek"
   (+ katalog ipucu), dropdown / radio'da yalnız işaret; değişenler vurgu renginde. Toggle, özelliğin kurulan

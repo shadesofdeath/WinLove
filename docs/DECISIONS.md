@@ -241,6 +241,41 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-067 — GitHub tweak seti, Ayarlar sekmeleri yeniden düzenlendi, Kayıt Defteri yalnız özel kayıtlar (2026-10-05)
+Bağlam: Kullanıcı: "Tweak sayfasına GitHub'daki en ünlü, güncel tweak'lerden bizde olmayanları seç, bana seçtir." Ardından:
+"Yanlış kategoride olanları taşı; Kayıt Defteri sayfasında neden tweak var? Orada yalnız özel kayıt ekleme / düzenleme olsun,
+tweak'ler tweak sayfasına."
+Karar:
+- **Araştırma:** winutil (Chris Titus), Win11Debloat, Winhance, Sophia Script, Optimizer, AtlasOS, ReviOS, xd-AntiSpy,
+  schneegans üreticisi kaynak dosyalarından tarandı (2026-10-05). Yalnız kayıt değeri / servis başlangıcı olanlar; plasebo ya da
+  güvenilmez olanlar (Max Cached Icons, Psched, PlatformAoAcOverride, Win11'de tepsi simgeleri) alınmadı. 90 aday 21 grupta
+  sunuldu, kullanıcı hepsini seçti → **154 yeni satır** (bazı adaylar birden çok satır: ör. dört uygulama izni, üç Windows
+  Güvenliği sayfası). Katalog 129 → 283 ayar.
+- **Sekmeler 7 → 10:** Gizlilik · Yapay zekâ · Uygulamalar · Performans · Görünüm · Gezgin · Başlat ve görev çubuğu ·
+  Güncelleme · Güvenlik · Sistem. Yeni bölümler: Eşitleme ve cihazlar, İnternet iletişimi, Windows yapay zekâ özellikleri,
+  Uygulamalarda yapay zekâ, Microsoft uygulamaları, Diğer uygulamalar, Geliştirici, Bakım, Sesler, Gezinti bölmesi ve Bu
+  Bilgisayar, Pencereler, Microsoft Defender ve SmartScreen, Hesap denetimi ve oturum, Sistem koruması, Ayarlar uygulaması,
+  Aygıtlar ve yazıcılar, Hata ve kurtarma. Yanlış yerdekiler taşındı (ör. Game DVR → Oyun, "Görevi sonlandır" ve saatte saniye →
+  Görev çubuğu, Copilot / Recall → Yapay zekâ, BitLocker → Güvenlik, Galeri / Giriş / OneDrive → Gezinti bölmesi, pano
+  eşitleme → Eşitleme). Sekmeler 1280 px'te iki dilde de sığıyor.
+- **İki ayar aynı değeri yalnız bilerek yazar** (yeni test): dropdown + metin kutusu çiftleri (sanal bellek, DNS, Ayarlar'da
+  gizlenen sayfalar) ve Spotlight / kilit ekranı ipuçları. Yoksa birini seçmek ötekinin değerini sessizce kuyruktan alırdı.
+  "Ayarlar'da gizlenen sayfalar" bu yüzden önerilenlerde değil.
+- **İmajda olmayan servis atlanır** (motor): `SetServiceStart` önce `Services\<ad>` anahtarına bakar (`OfflineRegistry::keyExists`);
+  yoksa günlüğe "skipped" yazar, anahtar oluşturmaz (ör. WSAIFabricSvc 24H2 öncesinde yok).
+- **Kayıt Defteri (P11) yalnız kullanıcının kendi girdileri:** `tweaks.json`, `TweakCatalog` ve kategori kartları kaldırıldı;
+  35 tweak'in hepsinin Ayarlar'da birebir karşılığı vardı (betikle denetlendi), hiçbir şey kaybolmadı. Sayfa tek tablo:
+  "Değer ekle…" diyaloğuyla yazılan değerler (anahtar, ad, tür: REG_SZ / EXPAND_SZ / MULTI_SZ / DWORD / QWORD / BINARY /
+  değeri sil / anahtarı sil, veri, "kurulumdan sonra yeniden uygula") ve içe aktarılan .reg dosyaları. Onay kutusu / Boşluk
+  aç-kapa, Enter / çift tık düzenle, Delete / ✕ kaldır. Metin ↔ değer çevirisi çekirdekte (`core/image/RegistryInput`,
+  gidiş-dönüş testli). İçe aktarılan değerler her zaman kurulumdan sonra da yazılır (D-026); elle eklenen değerde seçim
+  kullanıcının (varsayılan açık). D-045'in "imajdaki tweak" gösterimi P11'den kalktı, P12'de sürüyor.
+Kanıt: 289 birim testi / 10.168 doğrulama; render (`--demo-tweaks` 10 sekme, `--demo-registry`, `--demo-registry=dialog`, 1280 ve 1440, tr / en);
+`tools\lab_settings_d067.ps1` (yönetici): katalogdaki **her** ayar varsayılan dışı hâliyle gerçek imaja uygulanır, her değer
+motorun okuyucusuyla ve bir örnek reg.exe ile geri okunur. ALL PASSED (2026-10-05 12:11, Pro 26200): 275 ayar → 578 işlem hatasız; 557 / 557 değer motorun okuyucusuyla imajda, her tür ve hive için reg.exe örnekleri (DWORD, SZ, boş SZ, EXPAND_SZ, BINARY, QWORD, varsayılan değer, WOW6432Node, HKCR, UsrClass.dat, `%%Startup` adlı anahtar, anahtar silme), servis başlangıçları, ilk oturum dosyaları; `diagnosticshub.standardcollector.service` 25H2 imajında yok → atlandı, anahtar oluşmadı.
+**Görülmeyen:** kurulan sistemde etkiler (VM) — özellikle kurulumda sıfırlanabilenler (Akıllı Uygulama Denetimi, HVCI; ilk
+oturumda yeniden yazılıyor), yeni Başlat menüsü değerleri (25H2), Copilot / ajan politikalarının yeni sürümlerde adı.
+
 ## D-066 — Uygulamalar: Microsoft Store'dan arayıp indirme (2026-10-05)
 Bağlam: Kullanıcı "store.rg-adguard.net'ten verileri aldır" dedi. rg-adguard Cloudflare bot denetimi arkasında (programdan
 istek: HTTP 403 "Just a moment…"); bot korumasını aşmak yapılmaz.
