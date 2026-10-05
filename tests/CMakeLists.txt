@@ -13,6 +13,7 @@ add_executable(wl_tests
     core/EngineTests.cpp
     core/RegistryTests.cpp
     core/RegistryReadTests.cpp
+    core/IconPatchTests.cpp
     core/SystemComponentTests.cpp
     core/ImageEditionTests.cpp
     core/ImageFilesTests.cpp
@@ -46,6 +47,7 @@ add_executable(wl_tests
     app/PreloadTests.cpp
     app/PresetTests.cpp
     app/RegistryImportTests.cpp
+    app/IconPatchControllerTests.cpp
     app/ServiceTests.cpp
     app/SettingsTests.cpp
     app/LocalizationTests.cpp

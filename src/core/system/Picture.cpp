@@ -9,6 +9,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <cstring>
 #include <format>
 
 namespace wl::core {
@@ -172,6 +173,116 @@ Result<std::string> encodePicture(const std::filesystem::path& source, PictureFo
     hr = stream->Read(bytes.data(), static_cast<ULONG>(bytes.size()), &read);
     if (FAILED(hr) || read != bytes.size()) {
         return std::unexpected(wicError(hr, L"the encoded picture cannot be read", source));
+    }
+    return bytes;
+}
+
+Result<std::string> pictureBgraSquare(const std::filesystem::path& source, int size) {
+    if (size <= 0 || size > 1024) {
+        return fail(ErrorCode::InvalidArgument, L"bad icon size", source.wstring());
+    }
+    ComScope com;
+    auto d = decode(source);
+    if (!d) {
+        return std::unexpected(d.error());
+    }
+    // Contain: the longer side becomes `size`, the other is centred on transparency.
+    const double scale = std::min(static_cast<double>(size) / d->width, static_cast<double>(size) / d->height);
+    const UINT w = std::max<UINT>(1, static_cast<UINT>(d->width * scale + 0.5));
+    const UINT h = std::max<UINT>(1, static_cast<UINT>(d->height * scale + 0.5));
+    ComPtr<IWICBitmapScaler> scaler;
+    HRESULT hr = d->factory->CreateBitmapScaler(&scaler);
+    if (SUCCEEDED(hr)) {
+        hr = scaler->Initialize(d->frame.Get(), w, h, WICBitmapInterpolationModeHighQualityCubic);
+    }
+    ComPtr<IWICFormatConverter> converter;
+    if (SUCCEEDED(hr)) {
+        hr = d->factory->CreateFormatConverter(&converter);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = converter->Initialize(scaler.Get(), GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone, nullptr, 0.0,
+                                   WICBitmapPaletteTypeCustom);
+    }
+    std::string pixels(static_cast<std::size_t>(size) * size * 4, '\0');
+    if (SUCCEEDED(hr)) {
+        std::string scaled(static_cast<std::size_t>(w) * h * 4, '\0');
+        hr = converter->CopyPixels(nullptr, w * 4, static_cast<UINT>(scaled.size()), reinterpret_cast<BYTE*>(scaled.data()));
+        if (SUCCEEDED(hr)) {
+            const UINT left = (static_cast<UINT>(size) - w) / 2;
+            const UINT top = (static_cast<UINT>(size) - h) / 2;
+            for (UINT y = 0; y < h; ++y) {
+                std::memcpy(pixels.data() + ((top + y) * static_cast<std::size_t>(size) + left) * 4,
+                            scaled.data() + static_cast<std::size_t>(y) * w * 4, static_cast<std::size_t>(w) * 4);
+            }
+        }
+    }
+    if (FAILED(hr)) {
+        return std::unexpected(wicError(hr, L"the picture cannot be scaled to an icon", source));
+    }
+    return pixels;
+}
+
+Result<std::string> encodePngBgra(const std::string& pixels, int size) {
+    if (size <= 0 || pixels.size() != static_cast<std::size_t>(size) * size * 4) {
+        return fail(ErrorCode::InvalidArgument, L"bad pixel buffer", L"");
+    }
+    ComScope com;
+    ComPtr<IWICImagingFactory> factory;
+    HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory));
+    ComPtr<IWICBitmap> bitmap;
+    if (SUCCEEDED(hr)) {
+        hr = factory->CreateBitmapFromMemory(static_cast<UINT>(size), static_cast<UINT>(size), GUID_WICPixelFormat32bppBGRA,
+                                             static_cast<UINT>(size) * 4, static_cast<UINT>(pixels.size()),
+                                             reinterpret_cast<BYTE*>(const_cast<char*>(pixels.data())), &bitmap);
+    }
+    ComPtr<IStream> stream;
+    if (SUCCEEDED(hr)) {
+        hr = CreateStreamOnHGlobal(nullptr, TRUE, &stream);
+    }
+    ComPtr<IWICBitmapEncoder> encoder;
+    if (SUCCEEDED(hr)) {
+        hr = factory->CreateEncoder(GUID_ContainerFormatPng, nullptr, &encoder);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache);
+    }
+    ComPtr<IWICBitmapFrameEncode> frame;
+    if (SUCCEEDED(hr)) {
+        hr = encoder->CreateNewFrame(&frame, nullptr);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = frame->Initialize(nullptr);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = frame->SetSize(static_cast<UINT>(size), static_cast<UINT>(size));
+    }
+    WICPixelFormatGUID want = GUID_WICPixelFormat32bppBGRA;
+    if (SUCCEEDED(hr)) {
+        hr = frame->SetPixelFormat(&want);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = frame->WriteSource(bitmap.Get(), nullptr);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = frame->Commit();
+    }
+    if (SUCCEEDED(hr)) {
+        hr = encoder->Commit();
+    }
+    STATSTG stat{};
+    if (SUCCEEDED(hr)) {
+        hr = stream->Stat(&stat, STATFLAG_NONAME);
+    }
+    if (FAILED(hr)) {
+        return std::unexpected(wicError(hr, L"the icon cannot be encoded as PNG", L""));
+    }
+    std::string bytes(static_cast<std::size_t>(stat.cbSize.QuadPart), '\0');
+    const LARGE_INTEGER zero{};
+    stream->Seek(zero, STREAM_SEEK_SET, nullptr);
+    ULONG read = 0;
+    hr = stream->Read(bytes.data(), static_cast<ULONG>(bytes.size()), &read);
+    if (FAILED(hr) || read != bytes.size()) {
+        return std::unexpected(wicError(hr, L"the icon cannot be encoded as PNG", L""));
     }
     return bytes;
 }

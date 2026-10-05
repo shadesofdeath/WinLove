@@ -27,6 +27,7 @@
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
 #include "core/image/BootImage.h"
+#include "core/image/icons/IconPatch.h"
 #include "core/image/dism/Dism.h"
 #include "core/image/dism/Edition.h"
 #include "core/image/dism/Appx.h"
@@ -1163,6 +1164,171 @@ int cmdReg(const std::wstring& file, const std::wstring& mountDir, bool firstLog
 }
 
 // D-045: which writes of a .reg file the mounted image already has (offreg.dll, read only).
+// ---- D-068: icons inside PE files ---------------------------------------------------------------
+// "#3", "3" or a name.
+core::ResourceKey iconKey(const std::wstring& text) {
+    std::wstring t = text;
+    if (!t.empty() && t.front() == L'#') {
+        t.erase(t.begin());
+    }
+    if (!t.empty() && std::ranges::all_of(t, [](wchar_t c) { return std::iswdigit(c) != 0; }) && t.size() <= 5) {
+        const unsigned long v = std::wcstoul(t.c_str(), nullptr, 10);
+        if (v <= 0xFFFF) {
+            return core::ResourceKey{static_cast<std::uint16_t>(v), {}};
+        }
+    }
+    return core::ResourceKey{0, text};
+}
+
+int cmdIcons(const std::wstring& file, bool asJson) {
+    auto bytes = readFileBytes(file);
+    if (!bytes) {
+        return reportError(bytes.error());
+    }
+    auto pe = core::PeImage::parse(std::move(*bytes));
+    if (!pe) {
+        return reportError(pe.error());
+    }
+    const auto groups = core::listIconGroups(pe->resources());
+    if (asJson) {
+        json list = json::array();
+        for (const auto& g : groups) {
+            json sizes = json::array();
+            for (const auto& img : g.images) {
+                sizes.push_back({{"w", img.width}, {"h", img.height}, {"bpp", img.bitCount}, {"png", img.png}, {"bytes", img.data.size()}});
+            }
+            list.push_back({{"index", g.index}, {"key", narrow(g.key.text())}, {"languages", g.languages}, {"images", sizes}});
+        }
+        printJson({{"machine", pe->machine()}, {"pe64", pe->is64()}, {"hasCode", pe->hasCode()},
+                   {"signed", pe->hasEmbeddedSignature()}, {"sections", pe->sections().size()}, {"groups", list}});
+        return 0;
+    }
+    print(std::format(L"  {} · machine 0x{:04x} · {} section(s) · {} · {}{}\n", file, pe->machine(), pe->sections().size(),
+                      pe->hasCode() ? L"has code" : L"resources only", groups.size(),
+                      pe->hasEmbeddedSignature() ? L" · embedded signature" : L""));
+    for (const auto& s : pe->sections()) {
+        print(std::format(L"    section {:<8} va 0x{:08x} vsize {:>9} raw 0x{:08x} rsize {:>9} flags 0x{:08x}\n",
+                          std::wstring(s.name.begin(), s.name.end()), s.virtualAddress, s.virtualSize, s.rawPointer,
+                          s.rawSize, s.characteristics));
+    }
+    for (const auto& g : groups) {
+        std::wstring sizes;
+        for (const auto& img : g.images) {
+            sizes += std::format(L" {}{}", img.width, img.png ? L"p" : L"");
+        }
+        print(std::format(L"  [{:>4}] {:<12}{}\n", g.index, g.key.text(), sizes));
+    }
+    return 0;
+}
+
+int cmdIconExtract(const std::wstring& file, const std::wstring& group, const std::wstring& out) {
+    auto bytes = readFileBytes(file);
+    if (!bytes) {
+        return reportError(bytes.error());
+    }
+    auto pe = core::PeImage::parse(std::move(*bytes));
+    if (!pe) {
+        return reportError(pe.error());
+    }
+    const auto key = iconKey(group);
+    for (const auto& g : core::listIconGroups(pe->resources())) {
+        if (g.key == key) {
+            if (auto ok = writeFileAtomic(out, core::makeIco(g.images)); !ok) {
+                return reportError(ok.error());
+            }
+            print(std::format(L"  {} → {} ({} image(s))\n", key.text(), out, g.images.size()));
+            return 0;
+        }
+    }
+    print(L"no such icon group: " + key.text() + L"\n");
+    return 2;
+}
+
+// "<group>=<file.ico>" arguments → replacements.
+Result<std::vector<core::IconReplacement>> iconReplacements(const std::vector<std::wstring>& specs) {
+    std::vector<core::IconReplacement> out;
+    for (const auto& spec : specs) {
+        const auto eq = spec.find(L'=');
+        if (eq == std::wstring::npos) {
+            return fail(ErrorCode::InvalidArgument, L"expected <group>=<file.ico>", spec);
+        }
+        auto ico = readFileBytes(spec.substr(eq + 1));
+        if (!ico) {
+            return std::unexpected(ico.error());
+        }
+        auto images = core::parseIco(*ico);
+        if (!images) {
+            return std::unexpected(Error{images.error().code, images.error().message, spec.substr(eq + 1), 0});
+        }
+        out.push_back({iconKey(spec.substr(0, eq)), std::move(*images)});
+    }
+    return out;
+}
+
+int cmdIconPatch(const std::wstring& file, const std::vector<std::wstring>& specs, const std::wstring& out) {
+    auto bytes = readFileBytes(file);
+    if (!bytes) {
+        return reportError(bytes.error());
+    }
+    auto replacements = iconReplacements(specs);
+    if (!replacements) {
+        return reportError(replacements.error());
+    }
+    const auto started = std::chrono::steady_clock::now();
+    auto patched = core::patchIconBytes(*bytes, *replacements);
+    if (!patched) {
+        return reportError(patched.error());
+    }
+    if (auto ok = writeFileAtomic(out, *patched); !ok) {
+        return reportError(ok.error());
+    }
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
+    print(std::format(L"  wrote {} ({} → {} bytes, {} ms)\n", out, bytes->size(), patched->size(), ms));
+    auto check = core::verifyIconFileWithWindows(out);
+    if (!check) {
+        return reportError(check.error());
+    }
+    print(std::format(L"  Windows loads {} group(s), {} image(s), {} failed{}\n", check->groups, check->images, check->failed,
+                      check->failed ? L": " + check->firstFailure : L""));
+    return check->failed == 0 ? 0 : 3;
+}
+
+int cmdIconVerify(const std::wstring& file) {
+    auto check = core::verifyIconFileWithWindows(file);
+    if (!check) {
+        return reportError(check.error());
+    }
+    print(std::format(L"  Windows loads {} group(s), {} image(s), {} failed{}\n", check->groups, check->images, check->failed,
+                      check->failed ? L": " + check->firstFailure : L""));
+    return check->failed == 0 ? 0 : 3;
+}
+
+int cmdIconImage(const std::wstring& mountDir, const std::wstring& relative, const std::vector<std::wstring>& specs, bool restore) {
+    if (restore) {
+        if (auto ok = core::restoreImageIcons(mountDir, relative); !ok) {
+            return reportError(ok.error());
+        }
+        print(L"  restored " + relative + L"\n");
+        return 0;
+    }
+    if (specs.empty()) {
+        for (const auto& f : core::patchedIconFiles(mountDir)) {
+            print(L"  patched: " + f + L"\n");
+        }
+        return 0;
+    }
+    auto replacements = iconReplacements(specs);
+    if (!replacements) {
+        return reportError(replacements.error());
+    }
+    auto backup = core::patchImageIcons(mountDir, relative, *replacements);
+    if (!backup) {
+        return reportError(backup.error());
+    }
+    print(L"  patched " + relative + L"; original kept as " + *backup + L"\n");
+    return 0;
+}
+
 int cmdRegCheck(const std::wstring& file, const std::wstring& mountDir, bool asJson) {
     auto writes = core::readRegFile(file);
     if (!writes) {
@@ -1845,6 +2011,12 @@ void printUsage() {
           L"  wlcli catalog <build>[.<revision>] [--arch=x64|arm64] [--download=<folder>] [--preview] [--kb=KB…] [--json]\n"
           L"                                      (newest cumulative + .NET updates from the Microsoft Update\n"
           L"                                      Catalog; --download: fetch the recommended ones, SHA-256 checked)\n"
+          L"  wlcli icons <file> [--json]               (icon groups of a .mun / .dll / .exe; D-068)\n"
+          L"  wlcli icon-extract <file> <group> <out.ico>   (group: #3, 3 or a name)\n"
+          L"  wlcli icon-patch <file> <group>=<ico>... --out=<file>   (writes a patched copy, checked by Windows)\n"
+          L"  wlcli icon-verify <file>                   (Windows loads every icon image of the file)\n"
+          L"  wlcli icon-image <mountdir> <path under the image> [<group>=<ico>...] [--restore]   (admin; patch in\n"
+          L"                                      place with backup + restore script, or put the original back)\n"
           L"  wlcli reg-check <file.reg> <mountdir> [--json]   (which writes the image already has; read only,\n"
           L"                                      offreg.dll — also works on hive files copied into a folder)\n"
           L"  wlcli services <mountdir> [--set=Name=auto|autoDelayed|manual|disabled]   (P10)\n"
@@ -1892,6 +2064,8 @@ int wmain(int argc, wchar_t** argv) {
     bool sha = false;
     bool noPrompt = false;
     bool firstLogon = false;
+    std::wstring outPath;
+    bool restoreIcons = false;
     bool remove = false;
     bool resetBase = false;
     std::wstring arch;
@@ -2012,6 +2186,10 @@ int wmain(int argc, wchar_t** argv) {
             commit = 1;
         } else if (a == L"--discard") {
             commit = 0;
+        } else if (a.starts_with(L"--out=")) {
+            outPath = std::wstring(a.substr(6));
+        } else if (a == L"--restore") {
+            restoreIcons = true;
         } else if (a == L"--verbose") {
             log::addSink(log::makeStdoutSink());
         } else {
@@ -2182,6 +2360,21 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"catalog" && args.size() == 2) {
         return cmdCatalog(args[1], arch, downloadDir, preview, onlyKb, asJson);
+    }
+    if (command == L"icons" && args.size() == 2) {
+        return cmdIcons(args[1], asJson);
+    }
+    if (command == L"icon-extract" && args.size() == 4) {
+        return cmdIconExtract(args[1], args[2], args[3]);
+    }
+    if (command == L"icon-verify" && args.size() == 2) {
+        return cmdIconVerify(args[1]);
+    }
+    if (command == L"icon-patch" && args.size() >= 3 && !outPath.empty()) {
+        return cmdIconPatch(args[1], std::vector<std::wstring>(args.begin() + 2, args.end()), outPath);
+    }
+    if (command == L"icon-image" && args.size() >= 3) {
+        return cmdIconImage(args[1], args[2], std::vector<std::wstring>(args.begin() + 3, args.end()), restoreIcons);
     }
     if (command == L"reg-check" && args.size() == 3) {
         return cmdRegCheck(args[1], args[2], asJson);

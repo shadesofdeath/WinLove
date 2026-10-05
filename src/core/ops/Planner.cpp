@@ -38,6 +38,7 @@ Phase phaseOf(OpKind kind) noexcept {
     case OpKind::SetIntl:
     case OpKind::SetPicture:
     case OpKind::AddFont:
+    case OpKind::PatchIcons: // after the updates: a cumulative update would put the originals back
     case OpKind::SetServiceStart: return Phase::Settings;
     }
     return Phase::Settings;
@@ -90,6 +91,7 @@ double estimateSeconds(OpKind kind) noexcept {
     case OpKind::SetIntl: return 15.0;         // dism.exe
     case OpKind::SetPicture: return 3.0;       // a few encodes (WIC)
     case OpKind::AddFont: return 0.5;
+    case OpKind::PatchIcons: return 4.0; // read, rebuild, check with Windows, write (imageres: 24 MB)
     }
     return 5.0;
 }

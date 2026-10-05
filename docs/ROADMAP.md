@@ -60,5 +60,7 @@ Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **
 
 > **Ek sayfalar (2026-10-01, kullanıcı isteği; tasarım paketinde karşılıkları yok, mevcut sayfaların dilinde):** Uygulamalar (D-050, D-054), Diller (D-053), Görevler (D-048), Hosts (D-049), Dosyalar (D-051); Uygula'da diğer sürümler (D-055). Hepsi 🟨 test — motor kanıtlandı (`tools\lab_features.ps1`, 2026-10-01 ALL PASSED); uygulama içi ve VM testi bekliyor. Spec: `pages/19-extras.md`.
 
+> **Simgeler (P20, 2026-10-05; D-065 yönlendirme + D-068 dosya yaması):** `.mun` simge dosyalarını okuma, her simgeyi değiştirme, yedek + geri yükleme betiği, paketler. 🟨 test — motor `tools\lab_icons.ps1` (+ `-Lcu`) ve `tools\lab_icons_vm.ps1` (VM önyükleme) ile; spec: `pages/20-icons.md`.
+
 ## Faz 4 — Sağlamlaştırma ve yayın
 Performans profili, erişilebilirlik (Narrator) turu, installer/portable paket, imzalama, sürüm notları.

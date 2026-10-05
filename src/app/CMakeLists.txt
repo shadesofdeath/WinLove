@@ -26,6 +26,8 @@ add_library(wl_app STATIC
     controllers/LanguageController.cpp
     controllers/LanguageFetchController.cpp
     controllers/IconController.cpp
+    controllers/IconPatchController.cpp
+    pages/icons/IconFilesView.cpp
     controllers/StoreController.cpp
     controllers/UpdateCatalogController.cpp
     ApplyReport.cpp

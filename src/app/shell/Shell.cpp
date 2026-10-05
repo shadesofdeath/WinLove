@@ -153,6 +153,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_hosts = std::make_unique<HostsController>(m_state, embeddedHostsCatalog());
     m_branding = std::make_unique<BrandingController>(m_state);
     m_icons = std::make_unique<IconController>(m_state);
+    m_iconPatch = std::make_unique<IconPatchController>(m_state, m_services.postToUi);
     m_store = std::make_unique<StoreController>(m_state, StoreController::Events{
         m_services.postToUi,
         [this](const std::wstring& query, std::vector<core::StoreSearchResult> results) {
@@ -379,6 +380,10 @@ ComponentsPage* Shell::componentsPage() const {
 
 UpdatesPage* Shell::updatesPage() const {
     return m_page == PageId::Updates ? dynamic_cast<UpdatesPage*>(m_pageBody) : nullptr;
+}
+
+IconsPage* Shell::iconsPageForDemo() const {
+    return m_page == PageId::Icons ? dynamic_cast<IconsPage*>(m_pageBody) : nullptr;
 }
 
 RegistryPage* Shell::registryPage() const {
@@ -850,20 +855,49 @@ void Shell::loadIconPack() {
     if (!folder) {
         return;
     }
+    // One folder may carry both kinds (D-065 slots, D-068 files): each takes what is its.
     auto pack = m_icons->applyPack(*folder);
-    if (!pack) {
+    auto files = m_iconPatch->applyPack(*folder);
+    if (!pack && !files) {
         showToast(ui::InfoKind::Error, m_strings.get(Str::IconsPackFailed), errorText(pack.error()));
         return;
     }
-    if (pack->matched == 0) {
+    const int slots = pack ? pack->matched : 0;
+    const int patched = files ? files->matched : 0;
+    if (slots == 0 && patched == 0) {
         showToast(ui::InfoKind::Warning, m_strings.get(Str::IconsPackNone), folder->wstring());
         return;
     }
-    std::wstring detail = pack->name;
-    if (!pack->unmatched.empty()) {
-        detail += L" \u00b7 " + m_strings.format(Str::IconsPackUnmatched, {{L"n", std::to_wstring(pack->unmatched.size())}});
+    std::wstring detail = files && patched > 0 ? files->name : pack ? pack->name : folder->filename().wstring();
+    const std::size_t unmatched = (pack ? pack->unmatched.size() : 0) + (files ? files->unmatched.size() : 0);
+    if (unmatched > 0) {
+        detail += L" \u00b7 " + m_strings.format(Str::IconsPackUnmatched, {{L"n", std::to_wstring(unmatched)}});
     }
-    showToast(ui::InfoKind::Success, m_strings.format(Str::IconsPackLoaded, {{L"n", std::to_wstring(pack->matched)}}), detail);
+    std::wstring title;
+    if (slots > 0) {
+        title = m_strings.format(Str::IconsPackLoaded, {{L"n", std::to_wstring(slots)}});
+    }
+    if (patched > 0) {
+        title += (title.empty() ? L"" : L" \u00b7 ") + m_strings.format(Str::IconsPackPatchLoaded, {{L"n", std::to_wstring(patched)}});
+    }
+    showToast(ui::InfoKind::Success, title, detail);
+}
+
+void Shell::exportIconPack() {
+    if (m_iconPatch->changedCount() == 0) {
+        showToast(ui::InfoKind::Info, m_strings.get(Str::IconsExportNothing), L"");
+        return;
+    }
+    const auto folder = ui::pickFolder(owner(), m_strings.get(Str::IconsExportPack));
+    if (!folder) {
+        return;
+    }
+    auto written = m_iconPatch->exportPack(*folder);
+    if (!written) {
+        showToast(ui::InfoKind::Error, m_strings.get(Str::IconsExportPack), errorText(written.error()));
+        return;
+    }
+    showToast(ui::InfoKind::Success, m_strings.format(Str::IconsExportedPack, {{L"n", std::to_wstring(*written)}}), folder->wstring());
 }
 
 void Shell::scanLanguageFolder() {
@@ -1248,7 +1282,7 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::Tasks, m_tasks->changedCount());
     m_nav->setBadge(PageId::Hosts, m_hosts->changedCount());
     m_nav->setBadge(PageId::Branding, m_branding->changedCount());
-    m_nav->setBadge(PageId::Icons, m_icons->changedCount());
+    m_nav->setBadge(PageId::Icons, m_icons->changedCount() + m_iconPatch->changedCount());
     m_nav->setBadge(PageId::Files, m_files->count());
     m_nav->setBadge(PageId::Languages, m_languages->changedCount());
     m_nav->setBadge(PageId::Apps, m_apps->appCount() + static_cast<int>(changes.count(core::ops::OpKind::SetDefaultApps)));
@@ -1742,14 +1776,31 @@ void Shell::showPage(PageId page) {
                 }
                 showPage(PageId::Icons); // the action's text follows
             };
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::IconsResetAll)).onInvoke = [this] { m_icons->resetAll(); };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::IconsExportPack), ui::icons::Icon::Save).onInvoke =
+                [this] { exportIconPack(); };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::IconsResetAll)).onInvoke = [this] {
+                m_icons->resetAll();
+                m_iconPatch->resetAll();
+            };
             IconsPage::Intents intents;
             intents.goImages = [this] { showPage(PageId::Images); };
             intents.pickIcon = [this]() -> std::optional<std::filesystem::path> {
                 return ui::pickFile(owner(), m_strings.get(Str::IconsPick), {{m_strings.get(Str::IconsFiles), L"*.ico"}});
             };
             intents.refused = [this](const std::wstring& file) { showToast(ui::InfoKind::Warning, m_strings.get(Str::IconsNotIcon), file); };
-            m_pageBody = &m_pageView->setBody<IconsPage>(m_state, *m_icons, m_strings, m_language, std::move(intents));
+            intents.files.pickSource = [this]() -> std::optional<std::filesystem::path> {
+                return ui::pickFile(owner(), m_strings.get(Str::IconsPickTitle),
+                                    {{m_strings.get(Str::IconsFilterIcons), L"*.ico;*.png;*.jpg;*.jpeg;*.bmp"}});
+            };
+            intents.files.saveIco = [this](std::wstring name) -> std::optional<std::filesystem::path> {
+                return ui::pickSaveFile(owner(), m_strings.get(Str::IconsSaveOriginal), {{m_strings.get(Str::IconsFiles), L"*.ico"}},
+                                        name, L"ico");
+            };
+            intents.files.toast = [this](Str title, std::wstring detail, bool error) {
+                showToast(error ? ui::InfoKind::Warning : ui::InfoKind::Success, m_strings.get(title), std::move(detail));
+            };
+            m_pageBody =
+                &m_pageView->setBody<IconsPage>(m_state, *m_icons, *m_iconPatch, m_strings, m_language, std::move(intents));
         } else if (page == PageId::Services) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ServicesReset)).onInvoke = [this] {
                 m_serviceCtl->resetChanges();

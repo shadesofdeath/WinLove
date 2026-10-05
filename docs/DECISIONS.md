@@ -241,6 +241,42 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-068 — Simgeler: Windows'un simge dosyalarını yerinde yamalama (D-065'in "yamalanmaz" kararını genişletir) (2026-10-05)
+Bağlam: Kullanıcı: "Tek tek .ico eklemek yerine .dll.mun simge dosyalarını toplu okusun, bütün simgeleri listelesin, mun
+dosyasının içinden herhangi birini düzenleyebilsin, orijinali yedeklensin, ikon paketi eklenebilsin; Windows boot loop'a
+düşmesin, profesyonel özen göster." Ardından: "Yamalamalı olanı da ekleyelim (diğer araçlar gibi)." D-065 bileşen deposu
+ve güncellemeler yüzünden yamayı reddetmişti; ölçünce ikisi de çözülebilir çıktı.
+Karar:
+- **Kendi PE kaynak okuyucu / yazıcımız** (`core/image/icons/PeResources`): UpdateResource / LoadLibrary yok (imaj başka
+  mimaride olabilir, dosya bayt bayt korunmalı). Kaynak bölümü dosyanın sonundaysa (bütün `.mun`'lar: x86 PE, `.rdata` +
+  `.rsrc`, kod yok) yerinde yeniden yazılır; değilse `.rsrc2` bölümü eklenir. Gömülü imza düşer, sonda başka veri varsa
+  reddedilir; SizeOfImage, bölüm boyları, PE sağlama toplamı güncellenir (Windows'un sağlama toplamıyla aynı, testli).
+- **Simge grupları** (`IconGroups`): RT_GROUP_ICON ↔ .ico; değiştirme grubun RT_ICON kimliklerini yeniden kullanır, fazlası
+  için en büyüğün üstünden yeni kimlik alır, yalnız o grubun kullandığı artıklar silinir; başka grupla paylaşılan simge
+  korunur. Kaynak: .ico ya da WIC'in okuduğu her resim → Windows'un kendi yapısı (16–64 px 32 bit bitmap + 256 px PNG).
+- **Güvenli yazma** (`IconPatch`), her adım tutmazsa hiçbir şey yazılmaz: yalnız `Windows\` altında, WinSxS / servicing /
+  boot / drivers / config hariç, **kod içermeyen** PE'ler (kod içeren dosyanın katalog karması bozulur, Akıllı Uygulama
+  Denetimi / WDAC çalıştırmayı engelleyebilir → onlar için yönlendirme sekmesi); temel = dosyanın şimdiki hâli, ilk yamada
+  orijinal `Windows\WinLove\IconBackup`'a; yeni bayt bizim ayrıştırıcımızla (simge dışı her kaynak aynı, yeni gruplar
+  tam istenen) **ve Windows'un yükleyicisiyle** (`LoadLibraryEx(AS_IMAGE_RESOURCE)` + her görüntüye
+  `CreateIconFromResourceEx`) denetlenir; geçici adla, orijinalin güvenlik tanımlayıcısı aynen (`SetKernelObjectSecurity`,
+  sahip TrustedInstaller — `SetSecurityInfo` miras bayraklarını yeniden hesaplıyordu, SDDL değişiyordu) yazılıp yeniden
+  adlandırılır: yalnız bu ad değişir, WinSxS'teki sabit bağlantı orijinal kalır. `restore-icons.cmd` (WinRE'den de) her
+  orijinali geri koyar. Bir güncelleme dosyayı yenilemişse (bağlantı sayısı yine > 1) geri yükleme dokunmaz (eski yedek
+  sürümü düşürürdü), yeni yama yedeği güncel orijinalle değiştirir.
+- **Kuyruk:** `OpKind::PatchIcons` (dosya başına bir işlem; değer `{"groups": {"#3": kaynak}}` / `{"restore": true}`),
+  Ayarlar aşamasında = güncellemelerden sonra. Risk orta.
+- **Sayfa:** Simgeler iki sekme: "Sistem simgeleri (dosya yaması)" (dosya listesi + arama, ızgara, değiştir / orijinale
+  döndür / .ico kaydet / imajdaki orijinali geri yükle) ve D-065'in yönlendirmesi. Paket klasörü iki türü birden taşıyabilir
+  (`<dosya>\<id>.ico` / `iconpack.json` "files"); "Paketi dışa aktar…". `drawFileIcon` resim dosyalarını da çizer.
+  Çalışan sistem yamalanmaz (D-021).
+Kanıt: 301 birim testi / 11.012 doğrulama (gerçek imageres / shell32 / explorer.exe kopyaları: gidiş-dönüş, büyüme / küçülme, paylaşılan
+kimlik, bölüm ekleme, sağlama toplamı, Windows yükleyicisi, PNG'den simge, kuyruk, paketler);
+`tools\lab_icons.ps1` (yönetici, 25H2 Pro) **ALL PASSED**: sahip + DACL birebir, WinSxS kopyası orijinal, yedek, geri yükleme
+betiği, Windows bütün simgeleri açıyor, üst üste yama, geri yükleme, explorer.exe ve WinSxS reddi, `DISM /ScanHealth` temiz;
+`-Lcu` ile: yamadan sonra KB5129195 kuruluyor, ScanHealth yine temiz, bu güncelleme `imageres.dll.mun`'a dokunmadı (yama
+kaldı). **VM (`tools\lab_icons_vm.ps1`, VMware 17.6, 2026-10-05 13:13) ALL PASSED:** imageres.dll.mun'da klasör / Bu Bilgisayar / Geri Dönüşüm / sürücü simgeleri yamalı Pro imajı katılımsız kuruldu, ilk oturumda masaüstüne ulaştı (önyükleme döngüsü yok) ve kendini kapattı; ekran görüntüsünde Geri Dönüşüm Kutusu ve Bu Bilgisayar yeni simgeyle. VMware bu diskte NVMe'yi reddetti ("Failed to configure virtual device 'nvme0'") → SATA. **Görülmeyen:** uygulamanın içinden yama + Uygula (gerçek pencerede), güncellemenin dosyayı yenilediği durumda geri yükleme, Akıllı Uygulama Denetimi açıkken .mun yaması.
+
 ## D-067 — GitHub tweak seti, Ayarlar sekmeleri yeniden düzenlendi, Kayıt Defteri yalnız özel kayıtlar (2026-10-05)
 Bağlam: Kullanıcı: "Tweak sayfasına GitHub'daki en ünlü, güncel tweak'lerden bizde olmayanları seç, bana seçtir." Ardından:
 "Yanlış kategoride olanları taşı; Kayıt Defteri sayfasında neden tweak var? Orada yalnız özel kayıt ekleme / düzenleme olsun,
@@ -296,7 +332,7 @@ Kanıt: birim testleri (arama, ürün, SyncUpdates ayrıştırma, seçim, şifre
 
 ## D-065 — Simgeler: ikon paketi ve tek tek .ico ile Windows simgeleri (2026-10-05)
 Bağlam: Kullanıcı "profesyonel bir Windows ikonları yamalama ekranı, ikon paketi yükleyebilme" istedi.
-Karar: imageres.dll / shell32.dll **yamalanmaz** (kaynak düzenleme bileşen deposunu bozar, ilk toplu güncelleme orijinalleri geri
+Karar (D-068 dosya yamasını ekledi; bu yönlendirme ikinci sekme olarak kaldı): imageres.dll / shell32.dll **yamalanmaz** (kaynak düzenleme bileşen deposunu bozar, ilk toplu güncelleme orijinalleri geri
 koyar). Simgeler `ProgramData\WinLove\Icons\<yuva>.ico`'ya kopyalanır (CopyFile) ve kabuk onlara yönlendirilir: masaüstü
 öğeleri (Bu Bilgisayar, kullanıcı klasörü, Ağ, Geri Dönüşüm boş / dolu, Denetim Masası) `HKLM\SOFTWARE\Classes\CLSID\{…}\DefaultIcon`
 + varsayılan profilde ve ilk oturumda `Explorer\CLSID\{…}\DefaultIcon` + `ThemeChangesDesktopIcons = 0` (tema geri koymasın);

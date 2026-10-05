@@ -938,7 +938,8 @@
     "item": "Öğe",
     "valueUpgrade": "yükselt",
     "noSuch": "Böyle bir preset yok",
-    "deleteFailed": "Preset silinemedi"
+    "deleteFailed": "Preset silinemedi",
+    "valueOriginal": "orijinal"
   },
   "logs": {
     "title": "Loglar",
@@ -1333,7 +1334,7 @@
   },
   "icons": {
     "title": "Simgeler",
-    "desc": "Masaüstü ve Gezgin simgelerini bir ikon paketiyle ya da tek tek .ico dosyalarıyla değiştir.",
+    "desc": "Windows'un simge dosyalarındaki (imageres, shell32 …) her simgeyi değiştir ya da masaüstü / Gezgin simgelerini yönlendir.",
     "note": "Simgeler ProgramData\\WinLove\\Icons altına kopyalanır, Windows dosyalarına (imageres.dll) dokunulmaz — güncellemeler geri almaz. Karta tıkla: .ico seç · Delete: Windows simgesine dön",
     "desktop": "Masaüstü",
     "explorer": "Gezgin",
@@ -1366,6 +1367,35 @@
     "packFailed": "İkon paketi okunamadı",
     "noMountTitle": "Bağlı imaj yok",
     "noMountBody": "Simgeleri değiştirmek için İmajlar sayfasından bir sürüm bağla.",
-    "arrowNone": "Ok yok"
+    "arrowNone": "Ok yok",
+    "tabFiles": "Sistem simgeleri (dosya yaması)",
+    "tabRedirect": "Masaüstü ve Gezgin (yönlendirme)",
+    "patchNote": "Simge Windows dosyasının içinde değişir. Orijinali imajda yedeklenir (Windows\\WinLove\\IconBackup + geri yükleme betiği), WinSxS'e dokunulmaz. Bir güncelleme ya da sfc dosyayı yenilerse simgeler eskiye döner.",
+    "searchFiles": "Dosya ara",
+    "filesN": "{n} dosya",
+    "loading": "Simgeler okunuyor…",
+    "noIcons": "Bu dosyada simge yok",
+    "noFiles": "İmajda simge dosyası (Windows\\SystemResources\\*.mun) yok",
+    "pickFile": "Soldan bir dosya seç",
+    "iconsN": "{n} simge",
+    "replace": "Değiştir…",
+    "revert": "Orijinale döndür",
+    "saveOriginal": "Simgeyi kaydet…",
+    "restoreFile": "İmajdaki orijinali geri yükle",
+    "restoreCancel": "Geri yüklemeyi iptal et",
+    "patchedBadge": "imajda yamalı",
+    "restoreBadge": "geri yüklenecek",
+    "changedN": "{n} değişiklik",
+    "tooltip": "{ref} · {n} boyut, en büyük {px} px",
+    "tooltipNew": "{ref} → {file}",
+    "pickTitle": "Simge ya da resim seç",
+    "filterIcons": "Simgeler ve resimler",
+    "notSource": "Bu bir simge ya da okunabilir bir resim değil",
+    "exportPack": "Paketi dışa aktar…",
+    "exportedPack": "{n} simge pakete yazıldı",
+    "exportNothing": "Dışa aktarılacak simge değişikliği yok",
+    "savedIco": "Simge .ico olarak kaydedildi",
+    "saveFailed": "Simge kaydedilemedi",
+    "packPatchLoaded": "{n} sistem simgesi paketten alındı"
   }
 }

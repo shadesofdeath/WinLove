@@ -10,6 +10,7 @@
 
 #include "app/pages/AppsPage.h"
 #include "app/pages/DriversPage.h"
+#include "app/pages/IconsPage.h"
 #include "app/pages/IsoPage.h"
 #include "app/pages/UpdatesPage.h"
 
@@ -197,8 +198,9 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoLanguages = a == L"--demo-languages" ? std::wstring() : std::wstring(value(L"--demo-languages="));
         } else if (startsWith(a, L"--demo-store=")) {
             options.demoStore = std::wstring(value(L"--demo-store="));
-        } else if (a == L"--demo-icons") {
+        } else if (a == L"--demo-icons" || a == L"--demo-icons=redirect") {
             options.demoIcons = true;
+            options.demoIconsRedirect = a.ends_with(L"=redirect");
         } else if (a == L"--demo-mounts") {
             options.demoMounts = true;
         } else if (a == L"--demo-editions") {
@@ -848,7 +850,8 @@ int App::renderOffscreen() {
         }
     }
     if (m_options.demoIcons) {
-        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4, L"Windows 11 Pro"});
+        // D-068: this PC's own Windows stands in for the mounted image (read only: nothing is applied).
+        m_state->setMounted(MountedImage{L"C:\\", L"C:\\WinLove\\work\\sources\\install.wim", 4, L"Windows 11 Pro"});
         // The app's own icon from the repository (build\<preset>\bin → resources\brand).
         wchar_t exe[MAX_PATH] = {};
         GetModuleFileNameW(nullptr, exe, MAX_PATH);
@@ -861,7 +864,15 @@ int App::renderOffscreen() {
             }
         }
         (void)icons.setShortcutArrowRemoved(true);
+        auto& patches = m_shell->iconPatchForDemo();
+        const std::wstring imageres = L"Windows\\SystemResources\\imageres.dll.mun";
+        patches.preload(imageres);
+        (void)patches.replace(imageres, core::ResourceKey{3, {}}, brand);
+        (void)patches.replace(imageres, core::ResourceKey{109, {}}, brand);
         m_shell->showPage(PageId::Icons);
+        if (auto* page = m_shell->iconsPageForDemo()) {
+            page->showTab(m_options.demoIconsRedirect ? 1 : 0);
+        }
     }
     if (m_options.demoMounts) {
         auto check = [](const wchar_t* folder, const wchar_t* wim, int index, const wchar_t* name, core::MountState state, bool readOnly) {

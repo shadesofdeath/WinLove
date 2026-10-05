@@ -7,6 +7,7 @@
 #include "app/Localization.h"
 #include "app/controllers/ApplyController.h"
 #include "app/controllers/ComponentController.h"
+#include "app/controllers/IconPatchController.h"
 #include "app/controllers/RegistryController.h"
 #include "app/controllers/ServiceController.h"
 #include "app/controllers/UnattendController.h"
@@ -117,7 +118,10 @@ public:
     HostsController& hosts() { return *m_hosts; }
     BrandingController& branding() { return *m_branding; }
     IconController& iconsForDemo() { return *m_icons; }
-    void loadIconPack(); // D-065: a folder of .ico files
+    IconPatchController& iconPatchForDemo() { return *m_iconPatch; }
+    class IconsPage* iconsPageForDemo() const;
+    void loadIconPack();
+    void exportIconPack(); // D-065: a folder of .ico files
     void showStoreDialog(); // D-066
     void storeResultsForDemo(const std::wstring& query, std::vector<core::StoreSearchResult> results);
     void addFonts(std::vector<std::filesystem::path> files); // D-056: queue, toast for the refused ones
@@ -307,6 +311,7 @@ private:
     std::unique_ptr<HostsController> m_hosts;  // D-049
     std::unique_ptr<BrandingController> m_branding; // D-056
     std::unique_ptr<IconController> m_icons; // D-065
+    std::unique_ptr<IconPatchController> m_iconPatch; // D-068
     std::unique_ptr<StoreController> m_store; // D-066
     class StoreDialogHandle* m_storeDialog = nullptr; // the open "Mağazadan ekle" dialog
     std::unique_ptr<FilesController> m_files;  // D-051

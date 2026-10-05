@@ -62,6 +62,7 @@ Category categoryOf(OpKind kind) {
     case OpKind::SetIntl:
     case OpKind::SetPicture:
     case OpKind::AddFont:
+    case OpKind::PatchIcons:
     case OpKind::SetPostSetup: return kTweaks;
     }
     return kTweaks;
