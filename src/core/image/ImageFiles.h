@@ -32,6 +32,9 @@ inline constexpr std::size_t kImageFileLimit = 1u << 20; // 1 MiB: these are con
 [[nodiscard]] Result<void> unlinkImageFile(const std::filesystem::path& mountDir, std::wstring_view relative);
 
 [[nodiscard]] Result<void> validateImageFile(std::wstring_view relative, std::size_t bytes);
+// A WriteFile operation's value as the file's bytes: UTF-8 text, or "base64:…" for a binary file
+// (D-069: the empty Start layout).
+[[nodiscard]] std::string imageFileBytes(std::wstring_view value);
 
 // Writes `content` as it is (UTF-8 from the caller) to <mountDir>\<relative>, replacing a file
 // that is there; missing folders below the accepted root are created. The root itself

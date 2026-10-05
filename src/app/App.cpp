@@ -11,6 +11,7 @@
 #include "app/pages/AppsPage.h"
 #include "app/pages/DriversPage.h"
 #include "app/pages/IconsPage.h"
+#include "app/pages/StartMenuPage.h"
 #include "app/pages/IsoPage.h"
 #include "app/pages/UpdatesPage.h"
 
@@ -198,6 +199,9 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoLanguages = a == L"--demo-languages" ? std::wstring() : std::wstring(value(L"--demo-languages="));
         } else if (startsWith(a, L"--demo-store=")) {
             options.demoStore = std::wstring(value(L"--demo-store="));
+        } else if (a == L"--demo-startmenu" || a == L"--demo-startmenu=settings") {
+            options.demoStartMenu = true;
+            options.demoStartMenuSettings = a.ends_with(L"=settings");
         } else if (a == L"--demo-icons" || a == L"--demo-icons=redirect") {
             options.demoIcons = true;
             options.demoIconsRedirect = a.ends_with(L"=redirect");
@@ -847,6 +851,30 @@ int App::renderOffscreen() {
             fetch.doneBytes = 141'557'760;
             fetch.totalBytes = 367'321'088;
             m_state->setStoreFetch(std::move(fetch));
+        }
+    }
+    if (m_options.demoStartMenu) {
+        m_state->setMounted(MountedImage{L"C:\\", L"C:\\WinLove\\work\\sources\\install.wim", 4, L"Windows 11 Pro"});
+        auto& pins = m_shell->startPinsForDemo();
+        pins.preload();
+        std::vector<core::StartApp> list;
+        if (const auto* apps = pins.apps()) {
+            for (const wchar_t* id : {L"File Explorer", L"Microsoft.WindowsTerminal_8wekyb3d8bbwe!App",
+                                      L"Microsoft.WindowsNotepad_8wekyb3d8bbwe!App", L"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App",
+                                      L"windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel", L"MSEdge",
+                                      L"Microsoft.Paint_8wekyb3d8bbwe!App", L"Microsoft.ScreenSketch_8wekyb3d8bbwe!App"}) {
+                const auto it = std::ranges::find_if(*apps, [&](const core::StartApp& a) { return a.id == id || a.name == id; });
+                if (it != apps->end()) {
+                    list.push_back(*it);
+                }
+            }
+        }
+        pins.setPins(std::move(list));
+        m_shell->showPage(PageId::StartMenu);
+        if (m_options.demoStartMenuSettings) {
+            if (auto* page = m_shell->startMenuPageForDemo()) {
+                page->showTab(1);
+            }
         }
     }
     if (m_options.demoIcons) {

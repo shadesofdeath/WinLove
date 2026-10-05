@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace wl::app {
@@ -40,8 +41,9 @@ private:
 class TweaksPage : public ui::Widget {
 public:
     using PickImage = std::function<std::optional<std::filesystem::path>()>;
+    // onlyTab: one tab of the catalog, without the tab bar (D-069: the Başlat menüsü page shows "start").
     TweaksPage(AppState& state, ImageSettingsController& controller, const Localization& strings, Language language,
-               std::function<void()> goImages, PickImage pickImage = {});
+               std::function<void()> goImages, PickImage pickImage = {}, std::string onlyTab = {});
     ~TweaksPage() override;
 
     // Command palette: shows the setting's tab and puts the focus on its control (the form
@@ -75,6 +77,7 @@ private:
     std::vector<Binding> m_bindings;
     std::size_t m_typing = static_cast<std::size_t>(-1); // the binding whose box is being typed into
     PickImage m_pickImage;
+    std::string m_onlyTab;
     ui::TabBar* m_tabs = nullptr;
     ui::FormView* m_form = nullptr;
     ui::EmptyState* m_empty = nullptr;

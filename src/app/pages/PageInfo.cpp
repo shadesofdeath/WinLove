@@ -22,6 +22,7 @@ constexpr std::array<PageInfo, static_cast<std::size_t>(PageId::Count)> kPages =
     {PageId::Services, "services", Str::NavServices, Str::ServicesTitle, Str::ServicesDesc, Icon::ServicesGear, 2, "P10"},
     {PageId::Tasks, "tasks", Str::NavTasks, Str::TasksTitle, Str::TasksDesc, Icon::QueueClock, 2, "D-048"},
     {PageId::Tweaks, "tweaks", Str::NavTweaks, Str::TweaksTitle, Str::TweaksDesc, Icon::TweaksSliders, 2, "P12"},
+    {PageId::StartMenu, "startmenu", Str::NavStartmenu, Str::StartmenuTitle, Str::StartmenuDesc, Icon::Pin, 2, "D-069"},
     {PageId::Hosts, "hosts", Str::NavHosts, Str::HostsTitle, Str::HostsDesc, Icon::Network, 2, "D-049"},
     {PageId::Branding, "branding", Str::NavBranding, Str::BrandingTitle, Str::BrandingDesc, Icon::WindowsLogoGeneric, 2, "D-056"},
     {PageId::Icons, "icons", Str::NavIcons, Str::IconsTitle, Str::IconsDesc, Icon::DensityComfortable, 2, "D-065"},

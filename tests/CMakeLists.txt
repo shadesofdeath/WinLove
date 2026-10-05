@@ -48,6 +48,7 @@ add_executable(wl_tests
     app/PresetTests.cpp
     app/RegistryImportTests.cpp
     app/IconPatchControllerTests.cpp
+    app/StartPinsTests.cpp
     app/ServiceTests.cpp
     app/SettingsTests.cpp
     app/LocalizationTests.cpp

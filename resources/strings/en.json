@@ -28,7 +28,8 @@
     "apps": "Apps",
     "languages": "Languages",
     "branding": "Personalization",
-    "icons": "Icons"
+    "icons": "Icons",
+    "startmenu": "Start menu"
   },
   "title": {
     "cmdk": "Search commands, pages or components",
@@ -1397,5 +1398,40 @@
     "savedIco": "Icon saved as .ico",
     "saveFailed": "The icon could not be saved",
     "packPatchLoaded": "{n} system icons taken from the pack"
+  },
+  "startmenu": {
+    "title": "Start menu",
+    "desc": "Clean up the Windows 11 Start, pin the apps you want, switch off suggestions and ads.",
+    "tabPins": "Pinned",
+    "tabSettings": "Start settings",
+    "modeLabel": "Pinned",
+    "modeWindows": "Windows default",
+    "modeEmpty": "Empty",
+    "modeCustom": "My list",
+    "applyOnce": "Users may change it later",
+    "applyOnceHint": "Off: the list comes back at every sign-in",
+    "noteWindows": "Windows pins its own: Edge, Microsoft Store, Microsoft 365 and promoted placeholders (Spotify, WhatsApp …).",
+    "noteEmpty": "Start's Pinned section opens empty; no promoted placeholders. No tiles on Windows 10 either.",
+    "noteCustom": "Only the apps on the right, in this order. Add from the left with a double click / Enter; on the right Delete removes, Ctrl+Left/Right moves.",
+    "noteEdition": "Every edition starts Start from an empty state with no ads; the list applies on Pro / Enterprise / Education, and on Home with a current cumulative update (an old Home build opens Start empty).",
+    "apps": "Apps",
+    "searchApps": "Search apps",
+    "loadingApps": "Reading the image's apps…",
+    "kindApp": "app",
+    "kindLink": "shortcut",
+    "preview": "Start preview",
+    "pinned": "Pinned",
+    "previewWindows": "Windows' default pins",
+    "previewEmpty": "No pinned apps",
+    "previewCustomEmpty": "Add apps from the left",
+    "add": "Add",
+    "remove": "Remove",
+    "moveLeft": "Move earlier",
+    "moveRight": "Move later",
+    "clear": "Clear",
+    "pinsN": "{n} pinned",
+    "noMountTitle": "No image mounted",
+    "noMountBody": "Mount an edition on the Images page to customize its Start menu.",
+    "oldBuild": "This image's build ({build}) does not apply your list: Start opens empty (no ads). The list applies from 26200.9457 / 26100.9457 — add the latest cumulative update on the Updates page."
   }
 }

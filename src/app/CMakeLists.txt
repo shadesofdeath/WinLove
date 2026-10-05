@@ -27,6 +27,7 @@ add_library(wl_app STATIC
     controllers/LanguageFetchController.cpp
     controllers/IconController.cpp
     controllers/IconPatchController.cpp
+    controllers/StartPinsController.cpp
     pages/icons/IconFilesView.cpp
     controllers/StoreController.cpp
     controllers/UpdateCatalogController.cpp
@@ -45,6 +46,7 @@ add_library(wl_app STATIC
     pages/DriversPage.cpp
     pages/ServicesPage.cpp
     pages/RegistryPage.cpp
+    pages/StartMenuPage.cpp
     pages/registry/ValueDialog.cpp
     pages/SettingsPage.cpp
     pages/FeaturesPage.cpp

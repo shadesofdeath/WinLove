@@ -28,7 +28,8 @@
     "apps": "Uygulamalar",
     "languages": "Diller",
     "branding": "Kişiselleştirme",
-    "icons": "Simgeler"
+    "icons": "Simgeler",
+    "startmenu": "Başlat menüsü"
   },
   "title": {
     "cmdk": "Komut, sayfa veya bileşen ara",
@@ -1397,5 +1398,40 @@
     "savedIco": "Simge .ico olarak kaydedildi",
     "saveFailed": "Simge kaydedilemedi",
     "packPatchLoaded": "{n} sistem simgesi paketten alındı"
+  },
+  "startmenu": {
+    "title": "Başlat menüsü",
+    "desc": "Windows 11 Başlat'ını temizle, istediğin uygulamaları sabitle, öneri ve reklamları kapat.",
+    "tabPins": "Sabitlenenler",
+    "tabSettings": "Başlat ayarları",
+    "modeLabel": "Sabitlenenler",
+    "modeWindows": "Windows varsayılanı",
+    "modeEmpty": "Boş",
+    "modeCustom": "Kendi listem",
+    "applyOnce": "Kullanıcı sonra değiştirebilsin",
+    "applyOnceHint": "Kapalı: liste her oturum açılışında geri gelir",
+    "noteWindows": "Windows kendi sabitlemelerini koyar: Edge, Microsoft Store, Microsoft 365 ve reklam yer tutucuları (Spotify, WhatsApp …).",
+    "noteEmpty": "Başlat'ın Sabitlenenler bölümü boş açılır; reklam yer tutucuları gelmez. Windows 10'da kutucuk da olmaz.",
+    "noteCustom": "Yalnız sağdaki uygulamalar, bu sırayla. Soldan çift tıkla / Enter ile ekle; sağda Delete kaldırır, Ctrl+←/→ taşır.",
+    "noteEdition": "Her sürümde Başlat reklamsız, boş bir durumdan başlar; liste Pro / Enterprise / Education'da ve güncel bir toplu güncellemeyle Home'da da uygulanır (eski Home build'inde Başlat boş açılır).",
+    "apps": "Uygulamalar",
+    "searchApps": "Uygulama ara",
+    "loadingApps": "İmajın uygulamaları okunuyor…",
+    "kindApp": "uygulama",
+    "kindLink": "kısayol",
+    "preview": "Başlat önizlemesi",
+    "pinned": "Sabitlenenler",
+    "previewWindows": "Windows'un varsayılan sabitlemeleri",
+    "previewEmpty": "Sabitlenmiş uygulama yok",
+    "previewCustomEmpty": "Soldan uygulama ekle",
+    "add": "Ekle",
+    "remove": "Kaldır",
+    "moveLeft": "Öne al",
+    "moveRight": "Geriye al",
+    "clear": "Temizle",
+    "pinsN": "{n} sabit",
+    "noMountTitle": "Bağlı imaj yok",
+    "noMountBody": "Başlat menüsünü özelleştirmek için İmajlar sayfasından bir sürüm bağla.",
+    "oldBuild": "Bu imajın build'i ({build}) kendi listeni uygulamaz: Başlat boş (reklamsız) açılır. Liste 26200.9457 / 26100.9457 ve sonrasında uygulanır — Güncellemeler'den son toplu güncellemeyi ekle."
   }
 }

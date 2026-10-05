@@ -216,41 +216,9 @@ TEST_CASE("form: first-logon settings, service settings and options on different
     CHECK(locationOps == 1);
 }
 
-TEST_CASE("form: an empty Start is a policy value (Windows 11) and a layout file (Windows 10)") {
+TEST_CASE("form: promoted apps are a policy and the default profile's values (first logon)") {
     Fixture f;
     const auto& catalog = f.controller.catalog();
-    const auto& pins = setting(catalog, "start-pins");
-    CHECK(f.controller.current(pins) == option(pins, "on"));
-    f.controller.select(pins, option(pins, "off"));
-    REQUIRE(f.state.changes().size() == 2);
-
-    // The value the Applier will write is the JSON Windows expects, quotes and all.
-    const auto& policy = f.state.changes().operations()[0];
-    CHECK(policy.kind == OpKind::SetRegistryValue);
-    const auto written = core::registryWriteFrom(policy.target, policy.value);
-    REQUIRE(written);
-    CHECK(written->name == L"ConfigureStartPins");
-    CHECK(written->type == REG_SZ);
-    CHECK(std::wstring(reinterpret_cast<const wchar_t*>(written->data.data()), written->data.size() / 2 - 1) ==
-          LR"({"pinnedList":[]})");
-
-    const auto* file = f.state.changes().find(
-        OpKind::WriteFile, L"Users\\Default\\AppData\\Local\\Microsoft\\Windows\\Shell\\LayoutModification.xml");
-    REQUIRE(file);
-    CHECK(file->value.starts_with(L"<LayoutModificationTemplate "));
-    CHECK(file->value.find(L"<defaultlayout:StartLayout GroupCellWidth=\"6\" />") != std::wstring::npos);
-    CHECK(file->value.find(L"start:Tile") == std::wstring::npos); // no tile: that is the point
-    CHECK(f.controller.current(pins) == option(pins, "off"));
-    CHECK(f.controller.changedCount() == 1);
-
-    // A preset keeps the file: the queue survives the trip through its JSON.
-    const auto back = core::ops::ChangeSet::fromJson(f.state.changes().toJson());
-    REQUIRE(back);
-    CHECK(ImageSettingsController::optionIn(*back, pins) == option(pins, "off"));
-
-    f.controller.select(pins, pins.defaultOption);
-    CHECK(f.state.changes().empty());
-
     // The promoted apps: the policy alone only counts on Enterprise, the default profile's values do the work.
     const auto& promoted = setting(catalog, "consumer-features");
     f.controller.select(promoted, option(promoted, "off"));
@@ -278,12 +246,6 @@ TEST_CASE("form: the taskbar comes with File Explorer only — a layout file and
     CHECK(written->type == REG_EXPAND_SZ);
     CHECK(std::wstring(reinterpret_cast<const wchar_t*>(written->data.data()), written->data.size() / 2 - 1) ==
           L"%ProgramData%\\WinLove\\TaskbarLayoutModification.xml");
-    // The Start layout is another file: both settings can be off together.
-    const auto& start = setting(catalog, "start-pins");
-    f.controller.select(start, option(start, "off"));
-    CHECK(f.state.changes().count(OpKind::WriteFile) == 2);
-    CHECK(f.controller.current(pins) == option(pins, "off"));
-    CHECK(f.controller.current(start) == option(start, "off"));
 }
 
 TEST_CASE("form: Windows Update options share the AU key without stepping on each other") {
