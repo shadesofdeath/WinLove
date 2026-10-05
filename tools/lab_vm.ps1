@@ -10,6 +10,13 @@
     powershell -ExecutionPolicy Bypass -File tools\lab_vm.ps1 -Changes <changeset.json> -Tag start1   (elevated; ~40 min)
 
   -OpenThisPc: Explorer opens "This PC" at the first sign-in (icons tests).
+  -Network: a NAT network card, e1000 (e1000e and vmxnet3 crash this VMware at power-on; Windows Update, Store and OOBE downloads happen; the default is none).
+  -FirstLogon <command>: run at the first sign-in instead (e.g. a diagnostics script the changeset put
+   into ProgramData); -ShutdownAfter <seconds> after that (default 150).
+  -Diag: first-boot diagnostics (tools\vm_diag.ps1): the guest records what gets installed, by which
+   process, and what lands on the desktop, from the specialize pass until -DiagMinutes after the first
+   sign-in, onto a second virtual disk (a fixed VHD the host mounts afterwards) -> out\vm-<Tag>\diag.
+   The guest shuts itself down when it is done.
   Keep this file plain ASCII: Windows PowerShell reads a BOM-less script as ANSI.
 #>
 param(
@@ -22,6 +29,11 @@ param(
     [int] $VncPort = 5917,
     [string] $ProductKey = 'VK7JG-NPHTM-C97JM-9MPGT-3V66T', # generic install key of the edition (Pro; Home: YTMG3-N6DKC-DKB77-7M9GH-8HVX7)
     [switch] $OpenThisPc,
+    [switch] $Network,
+    [string] $FirstLogon = '',
+    [int] $ShutdownAfter = 150,
+    [switch] $Diag,
+    [int] $DiagMinutes = 30,
     [switch] $KeepVm
 )
 $ErrorActionPreference = 'Stop'
@@ -110,6 +122,7 @@ $unattend = @'
     <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <RunSynchronous>
         <RunSynchronousCommand wcm:action="add"><Order>1</Order><Path>reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE /v BypassNRO /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+SPECIALIZE
       </RunSynchronous>
     </component>
   </settings>
@@ -128,8 +141,8 @@ $unattend = @'
       </LocalAccounts></UserAccounts>
       <AutoLogon><Enabled>true</Enabled><Username>lab</Username><Password><Value>lab</Value><PlainText>true</PlainText></Password><LogonCount>2</LogonCount></AutoLogon>
       <FirstLogonCommands>
-        <SynchronousCommand wcm:action="add"><Order>1</Order><CommandLine>cmd /c OPENTHISPC</CommandLine></SynchronousCommand>
-        <SynchronousCommand wcm:action="add"><Order>2</Order><CommandLine>cmd /c timeout /t 150 /nobreak &amp; shutdown /s /t 0</CommandLine></SynchronousCommand>
+        <SynchronousCommand wcm:action="add"><Order>1</Order><CommandLine>OPENTHISPC</CommandLine></SynchronousCommand>
+        <SynchronousCommand wcm:action="add"><Order>2</Order><CommandLine>SHUTDOWNCMD</CommandLine></SynchronousCommand>
       </FirstLogonCommands>
     </component>
   </settings>
@@ -137,7 +150,10 @@ $unattend = @'
 '@
 
 $unattend = $unattend.Replace('PRODUCTKEY', $ProductKey)
-$unattend = $unattend.Replace('OPENTHISPC', $(if ($OpenThisPc) { 'start explorer.exe shell:MyComputerFolder' } else { 'echo first sign-in' }))
+$first = if ($FirstLogon) { [System.Security.SecurityElement]::Escape($FirstLogon) } elseif ($OpenThisPc) { 'cmd /c start explorer.exe shell:MyComputerFolder' } else { 'cmd /c echo first sign-in' }
+$shutdownCmd = if ($Diag -or $ShutdownAfter -le 0) { 'cmd /c echo the guest shuts itself down' } else { "cmd /c timeout /t $ShutdownAfter /nobreak &amp; shutdown /s /t 0" }
+$specialize = if ($Diag) { '        <RunSynchronousCommand wcm:action="add"><Order>2</Order><Path>cmd /c C:\ProgramData\WinLoveDiag\setup.cmd</Path></RunSynchronousCommand>' } else { '' }
+$unattend = $unattend.Replace('OPENTHISPC', $first).Replace('SHUTDOWNCMD', $shutdownCmd).Replace("SPECIALIZE`r`n", "$specialize`r`n").Replace("SPECIALIZE`n", "$specialize`n")
 Say ("=== lab_vm $Tag " + (Get-Date -Format s))
 $vmx = Join-Path $vmDir "wl-$Tag.vmx"
 try {
@@ -148,6 +164,23 @@ try {
     if ($Changes) {
         Run @('apply', $Changes, $mount)
         Check "changeset applied: $Changes" ($script:lastExit -eq 0)
+    }
+    if ($Diag) {
+        $setupCmd = "@echo off`r`nset D=C:\ProgramData\WinLoveDiag`r`n" +
+            "auditpol /set /subcategory:{0CCE922B-69AE-11D9-BED3-505054503030} /success:enable > `"%D%\setup.txt`" 2>&1`r`n" +
+            "reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit /v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1 /f >> `"%D%\setup.txt`" 2>&1`r`n" +
+            "wevtutil sl Security /ms:268435456 >> `"%D%\setup.txt`" 2>&1`r`n" +
+            "wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true >> `"%D%\setup.txt`" 2>&1`r`n" +
+            "wevtutil sl Microsoft-Windows-AppXDeploymentServer/Operational /ms:67108864 >> `"%D%\setup.txt`" 2>&1`r`n" +
+            "schtasks /create /tn WinLoveDiag /ru SYSTEM /sc onstart /rl highest /f /tr `"powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File C:\ProgramData\WinLoveDiag\diag.ps1 -DiagMinutes $DiagMinutes`" >> `"%D%\setup.txt`" 2>&1`r`n" +
+            "schtasks /run /tn WinLoveDiag >> `"%D%\setup.txt`" 2>&1`r`nexit /b 0`r`n"
+        $diagOps = @{ format = 'winlove.changeset'; version = 1; operations = @(
+            @{ kind = 'writeFile'; target = 'ProgramData\WinLoveDiag\diag.ps1'; value = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'vm_diag.ps1')); risk = 'low' },
+            @{ kind = 'writeFile'; target = 'ProgramData\WinLoveDiag\setup.cmd'; value = $setupCmd; risk = 'low' }) }
+        $diagJson = Join-Path $work 'diag-changes.json'
+        [System.IO.File]::WriteAllText($diagJson, ($diagOps | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding $false))
+        Run @('apply', $diagJson, $mount)
+        Check 'diagnostics put into the image' ($script:lastExit -eq 0 -and (Test-Path (Join-Path $mount 'ProgramData\WinLoveDiag\setup.cmd')))
     }
     Run @('unmount', $mount, '--commit')
     Check 'committed' ($script:lastExit -eq 0)
@@ -162,6 +195,23 @@ try {
 
     # 3. The VM.
     Native { & $vdisk -c -s 64GB -a lsilogic -t 0 (Join-Path $vmDir 'disk.vmdk') } | Out-Null
+    $diagVhd = Join-Path $vmDir 'diag.vhd'
+    $diagDisk = ''
+    if ($Diag) {
+        # A fixed VHD is raw sectors + a 512-byte footer: VMware sees the sectors as a flat extent, the
+        # host mounts the VHD afterwards. GPT "no drive letter" attribute: Setup and the host leave it alone.
+        $dp = Join-Path $work 'diag-diskpart.txt'
+        Set-Content -Path $dp -Encoding ASCII -Value @(
+            "create vdisk file=`"$diagVhd`" maximum=512 type=fixed", "select vdisk file=`"$diagVhd`"", 'attach vdisk', 'convert gpt',
+            'create partition primary', 'gpt attributes=0x8000000000000000', 'format fs=ntfs label=WLDIAG quick', 'detach vdisk')
+        Native { diskpart.exe /s $dp } | Out-Null
+        Set-Content -Path (Join-Path $vmDir 'diag.vmdk') -Encoding ASCII -Value @(
+            '# Disk DescriptorFile', 'version=1', 'encoding="UTF-8"', 'CID=fffffffe', 'parentCID=ffffffff', 'createType="monolithicFlat"', '',
+            'RW 1048576 FLAT "diag.vhd" 0', '', 'ddb.virtualHWVersion = "21"', 'ddb.geometry.cylinders = "1024"', 'ddb.geometry.heads = "16"',
+            'ddb.geometry.sectors = "63"', 'ddb.adapterType = "lsilogic"')
+        Check 'diag disk created' ((Test-Path $diagVhd) -and (Get-Item $diagVhd).Length -eq 536871424)
+        $diagDisk = "sata0:2.present = `"TRUE`"`r`nsata0:2.fileName = `"diag.vmdk`""
+    }
     $vmxText = @"
 .encoding = "UTF-8"
 config.version = "8"
@@ -178,7 +228,8 @@ sata0:0.fileName = "disk.vmdk"
 sata0:1.present = "TRUE"
 sata0:1.deviceType = "cdrom-image"
 sata0:1.fileName = "$work\wl-$Tag.iso"
-ethernet0.present = "FALSE"
+NETWORKCARD
+DIAGDISK
 usb.present = "FALSE"
 sound.present = "FALSE"
 floppy0.present = "FALSE"
@@ -188,10 +239,13 @@ RemoteDisplay.vnc.port = "$vncPort"
 RemoteDisplay.vnc.ip = "127.0.0.1"
 tools.upgrade.policy = "manual"
 "@
+    $card = if ($Network) { "ethernet0.present = `"TRUE`"`r`nethernet0.connectionType = `"nat`"`r`nethernet0.virtualDev = `"e1000`"`r`nethernet0.addressType = `"generated`"" } else { 'ethernet0.present = "FALSE"' }
+    $vmxText = $vmxText.Replace('NETWORKCARD', $card).Replace('DIAGDISK', $diagDisk)
     [System.IO.File]::WriteAllText($vmx, $vmxText, (New-Object System.Text.UTF8Encoding $false))
     Say "`n> vmrun start $vmx nogui"
     Native { & $vmrun -T ws start $vmx nogui } | ForEach-Object { Say "  $_" }
     Check 'VM started' (VmRunning $vmx)
+    if (-not (VmRunning $vmx)) { throw 'the VM did not start (see vmware.log / vmware-vmx.dmp in the VM folder)' }
 
     # 4. Watch it: a screenshot every 30 s until the guest powers itself off.
     $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
@@ -207,12 +261,26 @@ tools.upgrade.policy = "manual"
     $taken = @(Get-ChildItem $shots -Filter 'shot-*.png')
     Say ("screenshots: " + $taken.Count + " (" + $shots + ")")
     Check "the guest reached the desktop and shut itself down within $TimeoutMinutes min (no boot loop)" $poweredOff
+    if ($Diag -and $poweredOff) {
+        $image = Mount-DiskImage -ImagePath $diagVhd -NoDriveLetter -PassThru
+        $part = Get-Partition -DiskNumber ($image | Get-Disk).Number | Where-Object { $_.Type -eq 'Basic' } | Select-Object -First 1
+        $at = Join-Path $work 'diag-mount'
+        New-Item -ItemType Directory -Force $at | Out-Null
+        Add-PartitionAccessPath -DiskNumber $part.DiskNumber -PartitionNumber $part.PartitionNumber -AccessPath ($at + '\')
+        Native { robocopy.exe $at (Join-Path $shots 'diag') /E /XD 'System Volume Information' /R:0 /W:0 /NFL /NDL /NJH /NJS /NP } | Out-Null
+        Remove-PartitionAccessPath -DiskNumber $part.DiskNumber -PartitionNumber $part.PartitionNumber -AccessPath ($at + '\')
+        Dismount-DiskImage -ImagePath $diagVhd | Out-Null
+        Check "diagnostics collected ($shots\diag)" (Test-Path (Join-Path $shots 'diag\done.txt'))
+    }
 } catch {
     Say ("ERROR  " + $_.Exception.Message + " (line " + $_.InvocationInfo.ScriptLineNumber + ")")
     $failed++
 } finally {
     if (Test-Path (Join-Path $mount 'Windows')) { Run @('unmount', $mount, '--discard') }
     if ((Test-Path $vmx) -and (VmRunning $vmx)) { Native { & $vmrun -T ws stop $vmx hard } | Out-Null }
+    if ($Diag -and (Test-Path $diagVhd) -and (Get-DiskImage -ImagePath $diagVhd -ErrorAction SilentlyContinue).Attached) {
+        Dismount-DiskImage -ImagePath $diagVhd | Out-Null
+    }
     if (-not $KeepVm) {
         if (Test-Path $vmx) { Native { & $vmrun -T ws deleteVM $vmx } | Out-Null }
         Remove-Item $vmDir -Recurse -Force -ErrorAction SilentlyContinue

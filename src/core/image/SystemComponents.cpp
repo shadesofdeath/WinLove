@@ -496,6 +496,13 @@ Result<void> removeComponent(DismSession& session, const ComponentRecipe& recipe
                 log::info("cbs", L"app removed: " + app.packageName);
             }
         }
+        // Listing the provisioned apps leaves the image's SOFTWARE hive loaded by DISM until the
+        // session closes: every later registry step of the run then fails with 0x80070020
+        // (measured: a recipe with "appx" + one HKLM value). A new session lets go of it.
+        session.suspend();
+        if (auto reopened = session.reload(); !reopened) {
+            return reopened;
+        }
     }
 
     // Packages: 5 % … 80 % of the step.
