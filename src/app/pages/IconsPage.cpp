@@ -14,7 +14,9 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
+int g_lastTab = 0; // the tab shown when the page opens again
 constexpr float kTop = 12.0f;
+constexpr float kTabs = 24.0f;
 constexpr float kNote = 20.0f;
 constexpr float kSection = 36.0f;
 constexpr float kCardW = 172.0f;
@@ -217,8 +219,13 @@ private:
     bool m_downReset = false;
 };
 
-IconsPage::IconsPage(AppState& state, IconController& controller, const Localization& strings, Language, Intents intents)
+IconsPage::IconsPage(AppState& state, IconController& controller, IconPatchController& patches, const Localization& strings,
+                     Language, Intents intents)
     : m_state(state), m_controller(controller), m_strings(strings), m_intents(std::move(intents)) {
+    m_tabs = &add<ui::TabBar>(std::vector<std::wstring>{strings.get(Str::IconsTabFiles), strings.get(Str::IconsTabRedirect)},
+                              g_lastTab);
+    m_tabs->onChange = [this](int tab) { showTab(tab); };
+    m_files = &add<IconFilesView>(state, patches, strings, m_intents.files);
     m_grid = &add<Grid>(controller, strings);
     m_grid->onPick = [this](const IconSlot& slot) {
         if (!m_intents.pickIcon) {
@@ -239,10 +246,16 @@ IconsPage::IconsPage(AppState& state, IconController& controller, const Localiza
     };
     setAccessible(ui::AccessRole::Group, strings.get(Str::IconsTitle));
     m_subscription = m_state.subscribe([this](AppState::Change change) {
-        if (change == AppState::Change::Queue || change == AppState::Change::Mount) {
+        if (change == AppState::Change::Queue || change == AppState::Change::Mount || change == AppState::Change::Apply) {
             refresh();
         }
     });
+    refresh();
+}
+
+void IconsPage::showTab(int tab) {
+    g_lastTab = std::clamp(tab, 0, 1);
+    m_tabs->setSelected(g_lastTab);
     refresh();
 }
 
@@ -253,7 +266,12 @@ IconsPage::~IconsPage() {
 void IconsPage::refresh() {
     const bool mounted = m_state.mounted().has_value();
     m_empty->setVisible(!mounted);
-    m_grid->setVisible(mounted);
+    m_tabs->setVisible(mounted);
+    m_files->setVisible(mounted && g_lastTab == 0);
+    m_grid->setVisible(mounted && g_lastTab == 1);
+    if (m_files->visible()) {
+        m_files->refresh();
+    }
     layout();
     invalidate();
 }
@@ -261,16 +279,20 @@ void IconsPage::refresh() {
 void IconsPage::layout() {
     const RectF b = bounds();
     m_empty->setBounds(b);
-    const float y = b.y + kTop + kNote;
+    m_tabs->setBounds({b.x, b.y + kTop, b.width, kTabs});
+    const float content = b.y + kTop + kTabs + 12;
+    m_files->setBounds({b.x, content, b.width, std::max(b.bottom() - content, 0.0f)});
+    const float y = content + kNote;
     m_grid->setBounds({b.x, y, b.width, m_grid->contentHeight(b.width)});
 }
 
 void IconsPage::paint(ui::Canvas& canvas) {
-    if (!m_state.mounted()) {
+    if (!m_state.mounted() || g_lastTab != 1) {
         return;
     }
     const RectF b = bounds();
-    canvas.drawText(m_strings.get(Str::IconsNote), {b.x, b.y + kTop - 4, b.width, kNote}, TypeStyle::Caption, Color::TextTertiary);
+    const float content = b.y + kTop + kTabs + 12;
+    canvas.drawText(m_strings.get(Str::IconsNote), {b.x, content - 4, b.width, kNote}, TypeStyle::Caption, Color::TextTertiary);
 }
 
 } // namespace wl::app

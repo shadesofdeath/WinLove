@@ -938,7 +938,8 @@
     "item": "Item",
     "valueUpgrade": "upgrade",
     "noSuch": "No such preset",
-    "deleteFailed": "Could not delete the preset"
+    "deleteFailed": "Could not delete the preset",
+    "valueOriginal": "original"
   },
   "logs": {
     "title": "Logs",
@@ -1333,7 +1334,7 @@
   },
   "icons": {
     "title": "Icons",
-    "desc": "Replace desktop and File Explorer icons with an icon pack or with .ico files one by one.",
+    "desc": "Change any icon inside Windows' icon files (imageres, shell32 …) or redirect the desktop / File Explorer icons.",
     "note": "The icons are copied to ProgramData\\WinLove\\Icons; Windows' own files (imageres.dll) are not touched — updates do not undo it. Click a card: pick an .ico · Delete: back to Windows' icon",
     "desktop": "Desktop",
     "explorer": "File Explorer",
@@ -1366,6 +1367,35 @@
     "packFailed": "Could not read the icon pack",
     "noMountTitle": "No image mounted",
     "noMountBody": "Mount an edition on the Images page to change its icons.",
-    "arrowNone": "No arrow"
+    "arrowNone": "No arrow",
+    "tabFiles": "System icons (file patch)",
+    "tabRedirect": "Desktop and Explorer (redirect)",
+    "patchNote": "The icon changes inside the Windows file. The original is kept in the image (Windows\\WinLove\\IconBackup + a restore script), WinSxS is not touched. If an update or sfc renews the file, the icons go back.",
+    "searchFiles": "Search files",
+    "filesN": "{n} files",
+    "loading": "Reading the icons…",
+    "noIcons": "This file has no icons",
+    "noFiles": "The image has no icon files (Windows\\SystemResources\\*.mun)",
+    "pickFile": "Pick a file on the left",
+    "iconsN": "{n} icons",
+    "replace": "Replace…",
+    "revert": "Back to the original",
+    "saveOriginal": "Save icon…",
+    "restoreFile": "Restore the image's original",
+    "restoreCancel": "Cancel the restore",
+    "patchedBadge": "patched in the image",
+    "restoreBadge": "to be restored",
+    "changedN": "{n} changes",
+    "tooltip": "{ref} · {n} sizes, largest {px} px",
+    "tooltipNew": "{ref} → {file}",
+    "pickTitle": "Pick an icon or a picture",
+    "filterIcons": "Icons and pictures",
+    "notSource": "This is not an icon or a picture Windows can read",
+    "exportPack": "Export pack…",
+    "exportedPack": "{n} icons written to the pack",
+    "exportNothing": "No icon changes to export",
+    "savedIco": "Icon saved as .ico",
+    "saveFailed": "The icon could not be saved",
+    "packPatchLoaded": "{n} system icons taken from the pack"
   }
 }

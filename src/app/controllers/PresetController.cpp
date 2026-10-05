@@ -1,6 +1,7 @@
 #include "app/controllers/PresetController.h"
 
 #include "core/image/dism/Edition.h"
+#include "core/image/icons/IconPatch.h"
 
 #include "app/controllers/ImageSettingsController.h"
 #include "base/Log.h"
@@ -241,6 +242,14 @@ std::vector<PresetController::Item> PresetController::items(const Preset& preset
         case OpKind::CopyFile:
         case OpKind::WriteFile: // one that no known setting owns (a preset written by hand)
             result.push_back({kTweaks, L"file|" + wl::text::lower(op.target), file, s(Str::PresetsValueAdd), {}});
+            break;
+        case OpKind::PatchIcons: // D-068: one item per file, "3 simge" or "orijinal"
+            if (const auto request = core::iconPatchRequest(op.value)) {
+                result.push_back({kTweaks, L"icons|" + wl::text::lower(op.target), file,
+                                  request->restore ? s(Str::PresetsValueOriginal)
+                                                   : m_strings.format(Str::IconsIconsN, {{L"n", std::to_wstring(request->groups.size())}}),
+                                  {}});
+            }
             break;
         case OpKind::SetPostSetup:
             if (const auto plan = core::postSetupFromJson(utf8::fromWide(op.value))) {

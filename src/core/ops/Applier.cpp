@@ -12,6 +12,7 @@
 #include "core/image/AppxInstall.h"
 #include "core/image/Branding.h"
 #include "core/image/HostsFile.h"
+#include "core/image/icons/IconPatch.h"
 #include "core/image/LanguageInstall.h"
 #include "core/image/ScheduledTasks.h"
 #include "core/image/dism/DefaultApps.h"
@@ -214,6 +215,13 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
             }
         }
         return {};
+    }
+    case OpKind::PatchIcons: {
+        auto request = iconPatchRequest(op.value);
+        if (!request) {
+            return std::unexpected(request.error());
+        }
+        return applyIconPatch(session.mountPath(), op.target, *request);
     }
     case OpKind::AddFont: {
         auto write = applyFont(session.mountPath(), op.value);

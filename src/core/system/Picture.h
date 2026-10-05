@@ -3,6 +3,7 @@
 // format Windows can decode in, JPEG / PNG / BMP out, scaled to cover a size (centre crop).
 #include "base/Result.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 
@@ -22,5 +23,11 @@ struct PictureSize {
 // JPEG quality 0.95; BMP 24-bit (what OEMInformation\Logo reads); PNG 32-bit with alpha.
 [[nodiscard]] Result<std::string> encodePicture(const std::filesystem::path& source, PictureFormat format, int width = 0,
                                                 int height = 0);
+
+// D-068: the picture fitted into a size × size square (aspect kept, transparent margins), as
+// straight-alpha BGRA pixels, top row first (size * size * 4 bytes).
+[[nodiscard]] Result<std::string> pictureBgraSquare(const std::filesystem::path& source, int size);
+// size × size BGRA pixels (top row first) as a PNG file.
+[[nodiscard]] Result<std::string> encodePngBgra(const std::string& pixels, int size);
 
 } // namespace wl::core

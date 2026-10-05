@@ -27,11 +27,39 @@ FileIconCache& fileIcons() {
     return cache;
 }
 
+// A picture file (PNG, JPEG …) fitted into pixels × pixels — what an icon picked as a picture becomes.
+ComPtr<ID2D1Bitmap> loadPictureIcon(ID2D1DeviceContext2* context, const std::wstring& file, int pixels) {
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmapDecoder> decoder;
+    ComPtr<IWICBitmapFrameDecode> frame;
+    UINT w = 0;
+    UINT h = 0;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic))) ||
+        FAILED(wic->CreateDecoderFromFilename(file.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &decoder)) ||
+        FAILED(decoder->GetFrame(0, &frame)) || FAILED(frame->GetSize(&w, &h)) || w == 0 || h == 0) {
+        return nullptr;
+    }
+    const double scale = std::min(static_cast<double>(pixels) / w, static_cast<double>(pixels) / h);
+    ComPtr<IWICBitmapScaler> scaler;
+    ComPtr<IWICFormatConverter> converter;
+    ComPtr<ID2D1Bitmap> out;
+    if (SUCCEEDED(wic->CreateBitmapScaler(&scaler)) &&
+        SUCCEEDED(scaler->Initialize(frame.Get(), std::max<UINT>(1, static_cast<UINT>(w * scale + 0.5)),
+                                     std::max<UINT>(1, static_cast<UINT>(h * scale + 0.5)),
+                                     WICBitmapInterpolationModeHighQualityCubic)) &&
+        SUCCEEDED(wic->CreateFormatConverter(&converter)) &&
+        SUCCEEDED(converter->Initialize(scaler.Get(), GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, nullptr, 0,
+                                        WICBitmapPaletteTypeMedianCut))) {
+        context->CreateBitmapFromWicBitmap(converter.Get(), nullptr, &out);
+    }
+    return out;
+}
+
 ComPtr<ID2D1Bitmap> loadFileIcon(ID2D1DeviceContext2* context, const std::wstring& file, int index, int pixels) {
     HICON icon = nullptr;
     UINT id = 0;
     if (PrivateExtractIconsW(file.c_str(), index, pixels, pixels, &icon, &id, 1, LR_DEFAULTCOLOR) != 1 || !icon) {
-        return nullptr;
+        return index == 0 ? loadPictureIcon(context, file, pixels) : nullptr;
     }
     ComPtr<IWICImagingFactory> wic;
     ComPtr<IWICBitmap> bitmap;

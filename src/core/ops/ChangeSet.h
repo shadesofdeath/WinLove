@@ -47,6 +47,8 @@ enum class OpKind : std::uint8_t {
     // 2026-10-01 (D-056):
     SetPicture,            // default picture: target = "wallpaper" | "lockscreen" | "account" | "oemlogo", value = source file
     AddFont,               // font: target = file name in Windows\Fonts, value = source file
+    // 2026-10-05 (D-068):
+    PatchIcons,            // icons inside a Windows file: target = its path from the image root, value = JSON (IconPatch.h)
 };
 
 enum class Risk : std::uint8_t { Low, Medium, High };

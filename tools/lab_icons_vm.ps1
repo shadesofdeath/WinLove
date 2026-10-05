@@ -1,0 +1,219 @@
+<#
+.SYNOPSIS
+  Boot proof for D-068: an image whose icons were patched inside imageres.dll.mun is installed in a
+  VMware VM and must reach the desktop (no boot loop, no broken shell).
+    1. edition 4 of build\lab\setup is exported, mounted, patched with wlcli icon-image (folder #3,
+       This PC #109, Recycle Bin #55, drive #32 -> WinLove's own icon) and committed;
+    2. a setup folder (the lab's, with this install.wim) + autounattend.xml (TPM / Secure Boot / RAM
+       checks bypassed, local account "lab", no network) becomes an ISO without the "press any key";
+    3. a new VM (EFI, SATA 64 GB (VMware refuses NVMe on this disk), 4 GB, no network, VNC on 127.0.0.1:5917) installs from it; at the
+       first sign-in Explorer opens "This PC" and the guest shuts itself down two minutes later;
+    4. the VM's own screen is captured every 30 s through VNC (tools\vnc_shot.py) into
+       build\lab\out\vm-icons - the host's screen is never captured.
+  PASS = the guest powered itself off (that command only runs after a successful first sign-in)
+  before the timeout. The VM, the ISO and the work files are deleted at the end; the screenshots stay.
+
+    powershell -ExecutionPolicy Bypass -File tools\lab_icons_vm.ps1      (elevated; ~45 min)
+
+  Keep this file plain ASCII: Windows PowerShell reads a BOM-less script as ANSI.
+#>
+param(
+    [string] $Lab = (Join-Path $PSScriptRoot '..\build\lab'),
+    [string] $Cli = "$PSScriptRoot\..\build\x64-debug\bin\wlcli.exe",
+    [int] $Edition = 4,
+    [int] $TimeoutMinutes = 80,
+    [switch] $KeepVm
+)
+$ErrorActionPreference = 'Stop'
+$Lab = [System.IO.Path]::GetFullPath($Lab)
+$repo = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$setup = Join-Path $Lab 'setup'
+$work = Join-Path $Lab 'work\vm-icons'
+$mount = Join-Path $Lab 'mount\vm-icons'
+$vmDir = Join-Path $Lab 'vm\icons'
+$shots = Join-Path $Lab 'out\vm-icons'
+$log = Join-Path $Lab 'out\icons-vm-test.log'
+$vmware = 'C:\Program Files (x86)\VMware\VMware Workstation'
+$vmrun = Join-Path $vmware 'vmrun.exe'
+$vdisk = Join-Path $vmware 'vmware-vdiskmanager.exe'
+$icon = Join-Path $repo 'resources\brand\WinLove.ico'
+$vncPort = 5917
+$admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $admin) { throw 'Run this from an elevated (Administrator) PowerShell.' }
+foreach ($need in $Cli, $vmrun, $vdisk, $icon, (Join-Path $setup 'sources\install.wim'), (Join-Path $setup 'efi\microsoft\boot\efisys_noprompt.bin')) {
+    if (-not (Test-Path $need)) { throw "missing: $need" }
+}
+foreach ($dir in 'out', 'mount', 'vm') { New-Item -ItemType Directory -Force (Join-Path $Lab $dir) | Out-Null }
+if (Test-Path (Join-Path $mount 'Windows')) { & $Cli unmount $mount --discard | Out-Null }
+foreach ($dir in $work, $vmDir, $shots) { if (Test-Path $dir) { Remove-Item $dir -Recurse -Force } }
+New-Item -ItemType Directory -Force $work, $mount, $vmDir, $shots | Out-Null
+Remove-Item $log -ErrorAction SilentlyContinue
+
+$failed = 0
+function Say([string] $text) { Add-Content -Path $log -Value $text -Encoding UTF8; Write-Host $text }
+function Native([scriptblock] $command) {
+    $previous = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $output = & $command 2>&1 | ForEach-Object { "$_" }
+    $ErrorActionPreference = $previous
+    return $output
+}
+function Run([string[]] $arguments) {
+    Say ("`n> wlcli " + ($arguments -join ' '))
+    $output = @(Native { & $Cli @arguments })
+    $script:lastExit = $LASTEXITCODE
+    $output | Where-Object { $_.Trim() -and $_ -notmatch '^\s*((mount|commit|discard|export|iso)\s+)?\d+%\s*$' } | Select-Object -Last 8 | ForEach-Object { Say ("  " + $_.TrimEnd()) }
+    Say ("  (exit $script:lastExit)")
+}
+function Check([string] $what, [bool] $ok) { if ($ok) { Say "PASS  $what" } else { Say "FAIL  $what"; $script:failed++ } }
+function VmRunning([string] $vmx) { (@(Native { & $vmrun -T ws list }) -join "`n") -match [regex]::Escape($vmx) }
+
+$unattend = @'
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+  <settings pass="windowsPE">
+    <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <SetupUILanguage><UILanguage>tr-TR</UILanguage></SetupUILanguage>
+      <InputLocale>041f:0000041f</InputLocale><SystemLocale>tr-TR</SystemLocale><UILanguage>tr-TR</UILanguage><UserLocale>tr-TR</UserLocale>
+    </component>
+    <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add"><Order>1</Order><Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add"><Order>2</Order><Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add"><Order>3</Order><Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+      </RunSynchronous>
+      <DiskConfiguration>
+        <Disk wcm:action="add">
+          <DiskID>0</DiskID><WillWipeDisk>true</WillWipeDisk>
+          <CreatePartitions>
+            <CreatePartition wcm:action="add"><Order>1</Order><Type>EFI</Type><Size>300</Size></CreatePartition>
+            <CreatePartition wcm:action="add"><Order>2</Order><Type>MSR</Type><Size>16</Size></CreatePartition>
+            <CreatePartition wcm:action="add"><Order>3</Order><Type>Primary</Type><Extend>true</Extend></CreatePartition>
+          </CreatePartitions>
+          <ModifyPartitions>
+            <ModifyPartition wcm:action="add"><Order>1</Order><PartitionID>1</PartitionID><Format>FAT32</Format><Label>System</Label></ModifyPartition>
+            <ModifyPartition wcm:action="add"><Order>2</Order><PartitionID>2</PartitionID></ModifyPartition>
+            <ModifyPartition wcm:action="add"><Order>3</Order><PartitionID>3</PartitionID><Format>NTFS</Format><Label>Windows</Label><Letter>C</Letter></ModifyPartition>
+          </ModifyPartitions>
+        </Disk>
+      </DiskConfiguration>
+      <ImageInstall><OSImage>
+        <InstallTo><DiskID>0</DiskID><PartitionID>3</PartitionID></InstallTo>
+        <InstallFrom><MetaData wcm:action="add"><Key>/IMAGE/INDEX</Key><Value>1</Value></MetaData></InstallFrom>
+      </OSImage></ImageInstall>
+      <UserData><AcceptEula>true</AcceptEula><ProductKey><Key>VK7JG-NPHTM-C97JM-9MPGT-3V66T</Key><WillShowUI>Never</WillShowUI></ProductKey></UserData>
+    </component>
+  </settings>
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <ComputerName>WL-ICONS</ComputerName>
+    </component>
+    <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add"><Order>1</Order><Path>reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE /v BypassNRO /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+      </RunSynchronous>
+    </component>
+  </settings>
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <InputLocale>041f:0000041f</InputLocale><SystemLocale>tr-TR</SystemLocale><UILanguage>tr-TR</UILanguage><UserLocale>tr-TR</UserLocale>
+    </component>
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage><HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens><HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <ProtectYourPC>3</ProtectYourPC>
+      </OOBE>
+      <UserAccounts><LocalAccounts>
+        <LocalAccount wcm:action="add"><Name>lab</Name><Group>Administrators</Group><Password><Value>lab</Value><PlainText>true</PlainText></Password></LocalAccount>
+      </LocalAccounts></UserAccounts>
+      <AutoLogon><Enabled>true</Enabled><Username>lab</Username><Password><Value>lab</Value><PlainText>true</PlainText></Password><LogonCount>2</LogonCount></AutoLogon>
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add"><Order>1</Order><CommandLine>cmd /c start explorer.exe shell:MyComputerFolder</CommandLine></SynchronousCommand>
+        <SynchronousCommand wcm:action="add"><Order>2</Order><CommandLine>cmd /c timeout /t 150 /nobreak &amp; shutdown /s /t 0</CommandLine></SynchronousCommand>
+      </FirstLogonCommands>
+    </component>
+  </settings>
+</unattend>
+'@
+
+Say ("=== lab_icons_vm " + (Get-Date -Format s))
+$vmx = Join-Path $vmDir 'wl-icons.vmx'
+try {
+    # 1. The patched image.
+    Run @('export', (Join-Path $setup 'sources\install.wim'), "$Edition", "$work\install.wim")
+    Run @('mount', "$work\install.wim", '1', $mount)
+    Check "mount edition $Edition" ($script:lastExit -eq 0)
+    Run @('icon-image', $mount, 'Windows\SystemResources\imageres.dll.mun', "3=$icon", "109=$icon", "55=$icon", "32=$icon")
+    Check 'imageres.dll.mun patched (folder, This PC, Recycle Bin, drive)' ($script:lastExit -eq 0)
+    Run @('unmount', $mount, '--commit')
+    Check 'committed' ($script:lastExit -eq 0)
+
+    # 2. Setup folder + ISO.
+    $media = Join-Path $work 'media'
+    Native { robocopy.exe $setup $media /E /XF install.wim /NFL /NDL /NJH /NJS /NP } | Out-Null
+    Move-Item "$work\install.wim" (Join-Path $media 'sources\install.wim')
+    [System.IO.File]::WriteAllText((Join-Path $media 'autounattend.xml'), $unattend, (New-Object System.Text.UTF8Encoding $false))
+    Run @('iso', $media, "$work\wl-icons.iso", '--label=WL_ICONS', '--boot=uefi', '--no-prompt')
+    Check 'ISO built' ($script:lastExit -eq 0 -and (Test-Path "$work\wl-icons.iso"))
+
+    # 3. The VM.
+    Native { & $vdisk -c -s 64GB -a lsilogic -t 0 (Join-Path $vmDir 'disk.vmdk') } | Out-Null
+    $vmxText = @"
+.encoding = "UTF-8"
+config.version = "8"
+virtualHW.version = "21"
+displayName = "WinLove icons lab"
+guestOS = "windows11-64"
+firmware = "efi"
+uefi.secureBoot.enabled = "FALSE"
+memsize = "4096"
+numvcpus = "2"
+sata0.present = "TRUE"
+sata0:0.present = "TRUE"
+sata0:0.fileName = "disk.vmdk"
+sata0:1.present = "TRUE"
+sata0:1.deviceType = "cdrom-image"
+sata0:1.fileName = "$work\wl-icons.iso"
+ethernet0.present = "FALSE"
+usb.present = "FALSE"
+sound.present = "FALSE"
+floppy0.present = "FALSE"
+svga.graphicsMemoryKB = "262144"
+RemoteDisplay.vnc.enabled = "TRUE"
+RemoteDisplay.vnc.port = "$vncPort"
+RemoteDisplay.vnc.ip = "127.0.0.1"
+tools.upgrade.policy = "manual"
+"@
+    [System.IO.File]::WriteAllText($vmx, $vmxText, (New-Object System.Text.UTF8Encoding $false))
+    Say "`n> vmrun start $vmx nogui"
+    Native { & $vmrun -T ws start $vmx nogui } | ForEach-Object { Say "  $_" }
+    Check 'VM started' (VmRunning $vmx)
+
+    # 4. Watch it: a screenshot every 30 s until the guest powers itself off.
+    $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
+    $n = 0
+    $poweredOff = $false
+    while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 30
+        $n++
+        $png = Join-Path $shots ('shot-{0:D3}.png' -f $n)
+        Native { python (Join-Path $repo 'tools\vnc_shot.py') $vncPort $png } | Out-Null
+        if (-not (VmRunning $vmx)) { $poweredOff = $true; break }
+    }
+    $taken = @(Get-ChildItem $shots -Filter 'shot-*.png')
+    Say ("screenshots: " + $taken.Count + " (" + $shots + ")")
+    Check "the guest reached the desktop and shut itself down within $TimeoutMinutes min (no boot loop)" $poweredOff
+} catch {
+    Say ("ERROR  " + $_.Exception.Message + " (line " + $_.InvocationInfo.ScriptLineNumber + ")")
+    $failed++
+} finally {
+    if (Test-Path (Join-Path $mount 'Windows')) { Run @('unmount', $mount, '--discard') }
+    if ((Test-Path $vmx) -and (VmRunning $vmx)) { Native { & $vmrun -T ws stop $vmx hard } | Out-Null }
+    if (-not $KeepVm) {
+        if (Test-Path $vmx) { Native { & $vmrun -T ws deleteVM $vmx } | Out-Null }
+        Remove-Item $vmDir -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+Say ("`n=== " + $(if ($failed -eq 0) { 'ALL PASSED' } else { "$failed FAILED" }) + " (log: $log)")
