@@ -4,6 +4,7 @@
   "comment": "System components outside the provisioned-app list (docs/pages/07-components.md, D-031, D-059, D-060). driverClasses: device class GUIDs whose inbox drivers are deep-removed (image and component store; legacy classes only, the engine refuses others); deep: shown with the deep-removal warning. packages: CBS package families (unlocked in the offline registry, then DismRemovePackage; best effort when the component also has paths). paths: relative to the image root, removed whole. registry: offline writes; {key, delete:true} removes a key, value \"-\" removes a value, \"[+]\" creates the key. always: offered whether or not a path is present (a preventive change: on some Windows versions there is nothing on disk to find). Paths and names checked against Windows 11 25H2 (26200.8037) and Windows 10 22H2 (19045.6456).",
   "groups": [
     { "id": "components", "tr": "Sistem Bileşenleri", "en": "System Components" },
+    { "id": "autoinstall", "tr": "Windows'un Kendiliğinden Kurdukları", "en": "What Windows Installs by Itself" },
     { "id": "privacy", "tr": "Gizlilik", "en": "Privacy" },
     { "id": "security", "tr": "Güvenlik", "en": "Security" },
     { "id": "multimedia", "tr": "Multimedya", "en": "Multimedia" },
@@ -46,7 +47,7 @@
         { "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\edgeupdatem", "delete": true }
       ] },
 
-    { "id": "onedrive", "group": "components", "tr": "OneDrive kurulumu", "en": "OneDrive setup", "risk": "low",
+    { "id": "onedrive", "group": "autoinstall", "tr": "OneDrive kurulumu", "en": "OneDrive setup", "risk": "low",
       "notes_tr": "Yeni kullanıcılara ilk oturumda OneDrive kurulmaz; isteyen sonradan kendisi kurar. Kurulum dosyası (Windows 11'de System32, Windows 10'da SysWOW64), ilk oturumdaki başlangıç kaydı ve Windows 10'un Başlat menüsü kısayolu silinir. Paket DISM ile kaldırılamazsa yalnız bunlar silinir (logda uyarı).",
       "notes_en": "New users no longer get OneDrive at first sign-in; it can still be installed by hand. The setup file (System32 on Windows 11, SysWOW64 on Windows 10), its first-logon startup entry and Windows 10's Start menu shortcut are removed. When DISM refuses the package, only these are removed (a warning in the log).",
       "packages": [ "Microsoft-Windows-OneDrive-Setup-Package", "Microsoft-Windows-OneDrive-Setup-WOW64-Package" ],
@@ -56,16 +57,66 @@
         { "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "name": "OneDriveSetup", "value": "-" }
       ] },
 
-    { "id": "outlook-install", "group": "components", "always": true, "risk": "low",
+    { "id": "outlook-install", "group": "autoinstall", "always": true, "risk": "low",
       "tr": "Yeni Outlook'un kendiliğinden kurulması", "en": "Automatic install of the new Outlook",
-      "notes_tr": "Windows, internet varken ilk kurulumda (OOBE) yeni Outlook'u kendiliğinden indirip kurar; bu seçenek onu durdurur: güncelleme zamanlayıcısındaki Outlook görevi ve kaydı silinir, uygulama \"istenmiyor\" olarak işaretlenir. İmajda Outlook (yeni) uygulaması varsa onu Ofis ve Verimlilik grubundan ayrıca kaldır. İsteyen Outlook'u sonradan Store'dan kurabilir.",
-      "notes_en": "With internet, Windows downloads and installs the new Outlook by itself during first setup (OOBE); this stops it: the Outlook task and registration of the update scheduler are removed and the app is marked as not wanted. If the image has the Outlook (new) app, remove that too in the Office group. Outlook can still be installed from the Store later.",
+      "notes_tr": "Windows, internet varken ilk kurulumda (OOBE) yeni Outlook'u kendiliğinden indirip kurar; bu seçenek onu durdurur: güncelleme zamanlayıcısındaki Outlook görevi ve kaydı silinir, uygulama \"istenmiyor\" olarak işaretlenir. İmajdaki 1.0.0.0 sürümlü yer tutucu Outlook paketi de kaldırılır (zamanlayıcı onu gerçek Outlook'la değiştiriyordu). İsteyen Outlook'u sonradan Store'dan kurabilir.",
+      "notes_en": "With internet, Windows downloads and installs the new Outlook by itself during first setup (OOBE); this stops it: the Outlook task and registration of the update scheduler are removed and the app is marked as not wanted. The 1.0.0.0 placeholder Outlook package in the image goes too (the scheduler replaced it with the real Outlook). Outlook can still be installed from the Store later.",
       "paths": [ "ProgramData\\USOPrivate\\ExpeditedAppRegistrations\\MS_Outlook" ],
+      "appx": [ "Microsoft.OutlookForWindows" ],
       "registry": [
         { "key": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\Orchestrator\\UScheduler_Oobe\\OutlookUpdate", "delete": true },
         { "key": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\Orchestrator\\UScheduler_Oobe", "name": "BlockedOobeUpdaters", "value": "\"[\\\"MS_Outlook\\\"]\"" },
         { "key": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\Orchestrator\\UScheduler\\OutlookUpdate", "name": "workCompleted", "value": "dword:00000001" },
         { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Appx\\AppxAllUserStore\\Deprovisioned\\Microsoft.OutlookForWindows_8wekyb3d8bbwe", "name": "", "value": "[+]" }
+      ] },
+
+    { "id": "teams-install", "group": "autoinstall", "always": true, "risk": "low",
+      "tr": "Teams'in kendiliğinden kurulması", "en": "Automatic install of Teams",
+      "notes_tr": "Windows Update'in uygulama zamanlayıcısı internet varken ilk kurulumda ve sonrasında Microsoft Teams uygulamasını kendiliğinden indirip kurar. Bu seçenek zamanlayıcıdaki görevi (TFLUpdate) siler ve tamamlanmış sayar, imajdaki yer tutucu paketi kaldırır, uygulamayı \"istenmiyor\" olarak işaretler (özellik güncellemeleri geri getirmez). İsteyen sonradan Store'dan kurabilir. Windows 11'in ilk sürümündeki Sohbet otomatik kurulumu da kapatılır.",
+      "notes_en": "With internet, the app scheduler of Windows Update downloads and installs Microsoft Teams by itself during first setup and after it. This removes its task (TFLUpdate) and marks it done, removes the placeholder package from the image and marks the app as not wanted (feature updates do not bring it back). It can still be installed from the Store later. The Chat auto-install of the first Windows 11 release is turned off too.",
+      "appx": [ "MSTeams", "MicrosoftTeams" ],
+      "registry": [
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\Orchestrator\\UScheduler_Oobe\\TFLUpdate", "delete": true },
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\Orchestrator\\UScheduler\\TFLUpdate", "name": "workCompleted", "value": "dword:00000001" },
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Appx\\AppxAllUserStore\\Deprovisioned\\MSTeams_8wekyb3d8bbwe", "name": "", "value": "[+]" },
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Communications", "name": "ConfigureChatAutoInstall", "value": "dword:00000000" },
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Appx\\AppxAllUserStore\\Deprovisioned\\MicrosoftTeams_8wekyb3d8bbwe", "name": "", "value": "[+]" }
+      ] },
+    { "id": "devhome-install", "group": "autoinstall", "always": true, "risk": "low",
+      "tr": "Dev Home'un kendiliğinden kurulması", "en": "Automatic install of Dev Home",
+      "notes_tr": "Windows Update'in uygulama zamanlayıcısı internet varken ilk kurulumda ve sonrasında Dev Home uygulamasını kendiliğinden indirip kurar. Bu seçenek zamanlayıcıdaki görevi (DevHomeUpdate) siler ve tamamlanmış sayar, imajdaki yer tutucu paketi kaldırır, uygulamayı \"istenmiyor\" olarak işaretler (özellik güncellemeleri geri getirmez). İsteyen sonradan Store'dan kurabilir.",
+      "notes_en": "With internet, the app scheduler of Windows Update downloads and installs Dev Home by itself during first setup and after it. This removes its task (DevHomeUpdate) and marks it done, removes the placeholder package from the image and marks the app as not wanted (feature updates do not bring it back). It can still be installed from the Store later.",
+      "appx": [ "Microsoft.Windows.DevHome" ],
+      "registry": [
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\Orchestrator\\UScheduler_Oobe\\DevHomeUpdate", "delete": true },
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\Orchestrator\\UScheduler\\DevHomeUpdate", "name": "workCompleted", "value": "dword:00000001" },
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Appx\\AppxAllUserStore\\Deprovisioned\\Microsoft.Windows.DevHome_8wekyb3d8bbwe", "name": "", "value": "[+]" }
+      ] },
+    { "id": "crossdevice-install", "group": "autoinstall", "always": true, "risk": "low",
+      "tr": "Telefon bağlantısı deneyiminin kendiliğinden kurulması", "en": "Automatic install of the phone link experience",
+      "notes_tr": "Windows Update'in uygulama zamanlayıcısı internet varken ilk kurulumda ve sonrasında Cihazlar Arası Deneyim (Telefon Bağlantısı'nın Başlat ve Ayarlar'daki parçası) uygulamasını kendiliğinden indirip kurar. Bu seçenek zamanlayıcıdaki görevi (CrossDeviceUpdate) siler ve tamamlanmış sayar, imajdaki yer tutucu paketi kaldırır, uygulamayı \"istenmiyor\" olarak işaretler (özellik güncellemeleri geri getirmez). İsteyen sonradan Store'dan kurabilir.",
+      "notes_en": "With internet, the app scheduler of Windows Update downloads and installs Cross Device Experience (the part of Phone Link in Start and Settings) by itself during first setup and after it. This removes its task (CrossDeviceUpdate) and marks it done, removes the placeholder package from the image and marks the app as not wanted (feature updates do not bring it back). It can still be installed from the Store later.",
+      "appx": [ "MicrosoftWindows.CrossDevice" ],
+      "registry": [
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\Orchestrator\\UScheduler_Oobe\\CrossDeviceUpdate", "delete": true },
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\Orchestrator\\UScheduler\\CrossDeviceUpdate", "name": "workCompleted", "value": "dword:00000001" },
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Appx\\AppxAllUserStore\\Deprovisioned\\MicrosoftWindows.CrossDevice_cw5n1h2txyewy", "name": "", "value": "[+]" }
+      ] },
+    { "id": "m365-install", "group": "autoinstall", "always": true, "risk": "low",
+      "tr": "Microsoft 365 Copilot uygulaması", "en": "Microsoft 365 Copilot app",
+      "notes_tr": "İmajda hazır gelen ve ilk oturumda her kullanıcıya kurulup görev çubuğuna sabitlenen Microsoft 365 Copilot (Office) uygulaması kaldırılır ve \"istenmiyor\" olarak işaretlenir (özellik güncellemeleri geri getirmez). Görev çubuğundaki sabitlemesi için Başlat menüsü sayfasına bak. İsteyen sonradan Store'dan kurabilir.",
+      "notes_en": "The Microsoft 365 Copilot (Office) app that ships in the image and is installed for every user and pinned to the taskbar at first sign-in is removed and marked as not wanted (feature updates do not bring it back). For its taskbar pin see the Start menu page. It can still be installed from the Store later.",
+      "appx": [ "Microsoft.MicrosoftOfficeHub" ],
+      "registry": [
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Appx\\AppxAllUserStore\\Deprovisioned\\Microsoft.MicrosoftOfficeHub_8wekyb3d8bbwe", "name": "", "value": "[+]" }
+      ] },
+    { "id": "copilot-app", "group": "autoinstall", "always": true, "risk": "low",
+      "tr": "Copilot uygulaması", "en": "Copilot app",
+      "notes_tr": "Bazı sürümlerde (Home) imajda hazır gelen, ilk oturumda her kullanıcıya kurulup görev çubuğuna sabitlenen Copilot uygulaması kaldırılır ve \"istenmiyor\" olarak işaretlenir (özellik güncellemeleri geri getirmez). Copilot düğmesi ve önerileri için Ayarlar / Tweaks'e bak. İsteyen sonradan Store'dan kurabilir.",
+      "notes_en": "The Copilot app that ships in the image on some editions (Home), is installed for every user and pinned to the taskbar at first sign-in is removed and marked as not wanted (feature updates do not bring it back). For the Copilot button and suggestions see Settings / Tweaks. It can still be installed from the Store later.",
+      "appx": [ "Microsoft.Copilot" ],
+      "registry": [
+        { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Appx\\AppxAllUserStore\\Deprovisioned\\Microsoft.Copilot_8wekyb3d8bbwe", "name": "", "value": "[+]" }
       ] },
 
     { "id": "winre", "group": "components", "tr": "Windows Kurtarma Ortamı (WinRE)", "en": "Windows Recovery Environment (WinRE)", "risk": "high",

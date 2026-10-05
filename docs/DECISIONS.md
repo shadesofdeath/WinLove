@@ -241,6 +241,32 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-070 — Windows'un kendiliğinden kurdukları: OneDrive, Outlook, Teams, Dev Home, Telefon, M365, Copilot (2026-10-05)
+Bağlam: Kullanıcı: "Ne yaparsak yapalım OneDrive ve Outlook bir şekilde kuruluyor ve masaüstüne geliyor; derinlemesine incele,
+kökünden kazı." Ardından: "Bir çok uygulama oradan kuruluyor; yalnız Outlook ve OneDrive için değil, hepsini kapsamlı kaldırsın."
+Ölçüm (VMware, 25H2 TR 26200.8037, ağ açık, `tools\lab_vm.ps1 -Network -Diag`: konukta `tools\vm_diag.ps1` specialize
+aşamasından ilk oturumdan 30–35 dk sonrasına kadar işlem oluşturma denetimi (komut satırlarıyla), AppX dağıtım günlüğü, 30 sn'de
+bir masaüstü / Başlat / Run / zamanlayıcı / uygulama farkı; sonuçlar ikinci bir sanal diske — VHD — yazılır):
+| Deney | İmaj | Sonuç |
+|---|---|---|
+| A | dokunulmamış Pro | OneDrive: ilk oturumda Gezgin, Default profildeki Run kaydını çalıştırıyor (`OneDriveSetup.exe /thfirstsetup`), kullanıcıya kurup kendini güncelliyor. Outlook: imajda 1.0.0.0 **yer tutucu** paket; oturumdan ~15 dk sonra `MoUsoCoreWorker` → `usoclient OutlookUpdate` gerçek Outlook'u indirip **tüm kullanıcılara provision** ediyor. Aynı zamanlayıcı (UScheduler_Oobe): `TFLUpdate` (Teams), `DevHomeUpdate`, `CrossDeviceUpdate`, `EdgeUpdate`, `IA` (Store "iş açısından kritik" güncellemeleri), `LXP` (dil paketleri). Masaüstüne yalnız Edge geldi (yerel hesap). |
+| B | Pro + eski `onedrive` / `outlook-install` + Outlook uygulaması | OneDrive ve Outlook **kurulmadı**; ama Başlat'ta ve görev çubuğunda Outlook / M365 **yer tutucu sabitlemeleri** duruyor (tıklanınca Store'dan kurar) |
+| C, D | B + Başlat "Boş" + görev çubuğu düzeni (Pro, Home) | **WinLove hatası bulundu:** bileşen tarifi `appx` listesini okuyunca DISM, imajın SOFTWARE hive'ını oturum kapanana dek tutuyor → aynı Uygula'daki sonraki her HKLM yazımı 0x80070020 |
+| E, F | yeni grup (7 kanal) + Başlat "Boş" + görev çubuğu düzeni (Pro, Home) | 20/20 adım; **hiçbiri kurulmadı** (OneDrive, Outlook, Teams, Dev Home, Cihazlar Arası, M365; Home'da imajdaki Copilot uygulaması görev çubuğunda — `copilot-app` bundan sonra eklendi); Başlat temiz. Görev çubuğu: `LayoutXMLPath` düzeni varsayılanların **yerine geçmiyor, üstüne ekliyor** (Edge, Store, Outlook yer tutucusu kalıyor) → görev çubuğu işinde çözülecek |
+Karar:
+- Bileşenler sayfasında yeni grup **"Windows'un Kendiliğinden Kurdukları"**: `onedrive` (taşındı), `outlook-install`, `teams-install`,
+  `devhome-install`, `crossdevice-install`, `m365-install`, `copilot-app`. Her kanal (zamanlayıcısı olanlar): `UScheduler_Oobe\<görev>`
+  silinir + `UScheduler\<görev>\workCompleted = 1` + imajdaki yer tutucu / hazır paket kaldırılır (`appx`) + `Deprovisioned\<aile>`
+  (özellik güncellemeleri geri getirmez). Teams'e ek `ConfigureChatAutoInstall = 0`. Hepsi `always` (her imajda sunulur);
+  katalog kuralı `always` girdilerde "yol / paket / sürücü sınıfı" istemez. İçerik listesinde kaldırılan uygulamalar da görünür.
+- `EdgeUpdate`, `IA`, `LXP` kanal olarak sunulmaz: yeni uygulama kurmuyorlar (ölçüldü: IA yalnız mevcut uygulamaları kaydetti / güncelledi).
+- **Düzeltme (`removeComponent`):** `appx` adımından sonra DISM oturumu kapatılıp yeniden açılır (hive serbest kalır). Gerçek imajda
+  doğrulandı: 20 adım, 0 hata (önce 3 hata).
+- Laboratuvar: `lab_vm.ps1 -Network` (NAT, `e1000`: bu VMware'de `e1000e` ve `vmxnet3` açılışta çöküyor), `-Diag`, `-FirstLogon`,
+  `-ShutdownAfter`; VM hiç açılmazsa artık "PASS" yazmaz.
+Kanıt: 306 test / 11.217 doğrulama; altı VM kurulumu (A–F), raporlar `build\lab\out\vm-od-*\diag`. **Görülmeyen:** Microsoft hesabıyla OneDrive'ın
+masaüstünü kendi klasörüne taşıması (yerel hesapla ölçüldü; `onedrive-kfm` ayarı var); 35 dk'dan uzun süre / sonraki toplu güncellemeler.
+
 ## D-069 — Başlat menüsü sayfası: Windows 11 sabitlemelerini temizleme ve kendi listesi, her sürümde (2026-10-05)
 Bağlam: Kullanıcı: "Windows 10'da XML ile Başlat'ı temizliyorduk, Windows 11'de olmuyor; kendimize has profesyonel bir yol
 bulalım, NTLite'ta bile yok. Başlat menüsünü kullanıcı istediği gibi özelleştirsin, temizlesin, uygulama sabitlesin; yüklü

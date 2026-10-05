@@ -92,8 +92,10 @@ Result<ComponentCatalog> ComponentCatalog::parse(std::string_view json) {
                 if (why.empty()) {
                     if (auto valid = core::validateComponentRecipe(entry.recipe); !valid) {
                         why = describe(valid.error());
-                    } else if (entry.recipe.paths.empty() && entry.recipe.packages.empty() && entry.recipe.driverClasses.empty()) {
-                        // Presence is read from the paths or from the component store (D-059, D-060).
+                    } else if (!entry.always && entry.recipe.paths.empty() && entry.recipe.packages.empty() &&
+                               entry.recipe.driverClasses.empty()) {
+                        // Presence is read from the paths or from the component store (D-059, D-060);
+                        // "always" entries are offered without it (D-070: the scheduler's apps).
                         why = L"needs a path, a package or a driver class";
                     } else if (entry.deep != !entry.recipe.driverClasses.empty()) {
                         why = L"\"deep\" goes with driverClasses (the page warns for exactly these)";

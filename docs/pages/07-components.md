@@ -57,6 +57,11 @@ Bağlı imajdan kaldırılacak bileşenleri seçmek; seçimler kuyruğa girer (P
   Geleneksel Çince 26 / Korece 17 MB yazı tipleri, App-V 24, Fotoğraf Görüntüleyici 19, UE-V 15, DLNA 12, telemetri
   11, Edge DevTools 11 MB … Hepsi birlikte ISO'da ~690 MB.
 
+## 2b. Windows'un kendiliğinden kurdukları (D-070)
+Grup `autoinstall`: OneDrive kurulumu, yeni Outlook, Teams, Dev Home, Cihazlar Arası Deneyim, Microsoft 365 Copilot, Copilot.
+Zamanlayıcı kanalları (`UScheduler_Oobe\<görev>`) silinir ve tamamlanmış sayılır, imajdaki yer tutucu / hazır paket kaldırılır,
+aile "istenmiyor" işaretlenir. Hepsi her imajda sunulur (`always`). VM'de ölçüldü (Pro ve Home): hiçbiri kurulmadı.
+
 ## 3. Kataloglar
 - `resources/catalog/appx.json` (IDR_CATALOG_APPX): grup, TR / EN ad, risk, notlar; eşleşme paket kimliğinin önekiyle
   (en uzun kazanır). Bilinmeyen uygulama → "Diğer", orta risk.

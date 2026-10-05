@@ -218,6 +218,7 @@ std::vector<ComponentController::Group> ComponentController::groups() const {
             item.contents = entry.recipe.packages;
             item.contents.insert(item.contents.end(), entry.recipe.driverClasses.begin(), entry.recipe.driverClasses.end());
             item.contents.insert(item.contents.end(), entry.recipe.paths.begin(), entry.recipe.paths.end());
+            item.contents.insert(item.contents.end(), entry.recipe.appx.begin(), entry.recipe.appx.end());
             if (entry.always) { // mostly registry: what it changes is what there is to show
                 for (const auto& write : entry.recipe.registry) {
                     item.contents.push_back(write.name.empty() ? write.key : write.key + L" : " + write.name);

@@ -111,16 +111,18 @@ ComponentCatalog shippedComponents() {
 
 TEST_CASE("components catalog: the shipped file parses, every recipe is one the engine accepts") {
     const auto catalog = shippedComponents();
-    REQUIRE(catalog.groups().size() == 9);
-    CHECK(catalog.components().size() == 43); // nothing skipped
+    REQUIRE(catalog.groups().size() == 10);
+    CHECK(catalog.components().size() == 48); // nothing skipped
     for (const auto& entry : catalog.components()) {
         CAPTURE(entry.id);
         CHECK_FALSE(entry.notes.tr.empty());
         CHECK_FALSE(entry.notes.en.empty());
         if (entry.kind == ComponentCatalogEntry::Kind::Remove) {
             CHECK(core::validateComponentRecipe(entry.recipe));
-            // Something to find in the image: a path, or a package the component store knows (D-059).
-            CHECK((!entry.recipe.paths.empty() || !entry.recipe.packages.empty() || !entry.recipe.driverClasses.empty()));
+            // Something to find in the image: a path, or a package the component store knows (D-059);
+            // or offered on every image (D-070: what the update scheduler installs).
+            CHECK((entry.always || !entry.recipe.paths.empty() || !entry.recipe.packages.empty() ||
+                   !entry.recipe.driverClasses.empty()));
             CHECK(entry.deep == !entry.recipe.driverClasses.empty());
             // What a working PC needs is never on offer (user, 2026-10-02): network and storage
             // drivers, phones / cameras (MTP), BitLocker.
@@ -217,29 +219,38 @@ TEST_CASE("ComponentController: system components the image has, the cleanup, an
     state.setAppxList(AppState::AppxList{AppState::AppxList::Status::Ready, L"C:\\m", {makeApp(L"Microsoft.GamingApp", 400)}, {}});
 
     const auto groups = controller.groups();
-    REQUIRE(groups.size() == 3); // Sistem Bileşenleri, Temizlik, then the apps (xbox)
+    REQUIRE(groups.size() == 4); // Sistem Bileşenleri, Windows'un Kendiliğinden Kurdukları, Temizlik, then the apps (xbox)
     const auto& system = groups[0];
     CHECK(system.name == L"Sistem Bileşenleri");
-    REQUIRE(system.items.size() == 3); // what is present, in catalog order, and what is always on offer
+    REQUIRE(system.items.size() == 1); // what is present
     CHECK(system.items[0].name == L"Microsoft Edge");
     CHECK(system.items[0].kind == ComponentController::Item::Kind::System);
     CHECK(system.items[0].size == 800);
-    CHECK(system.size == 890);
-    CHECK(system.items[1].contents.size() == 5); // two packages, the setup file of either Windows, the shortcut
-    CHECK_FALSE(system.items[1].notes.empty());
+    CHECK(system.size == 800);
+    // D-070: OneDrive (present) and every app the update scheduler installs (always on offer), in catalog order.
+    const auto& self = groups[1];
+    CHECK(self.name == L"Windows'un Kendiliğinden Kurdukları");
+    REQUIRE(self.items.size() == 7);
+    CHECK(self.size == 90);
+    CHECK(self.items[0].system->id == "onedrive");
+    CHECK(self.items[0].contents.size() == 5); // two packages, the setup file of either Windows, the shortcut
+    CHECK_FALSE(self.items[0].notes.empty());
     // Nothing of it on disk in this image, offered all the same; what it changes is listed.
-    CHECK(system.items[2].system->id == "outlook-install");
-    CHECK(system.items[2].size == 0);
-    CHECK(system.items[2].contents.size() == 5); // the registration folder and four registry changes
-    const auto& cleanup = groups[1].items.front();
+    CHECK(self.items[1].system->id == "outlook-install");
+    CHECK(self.items[1].size == 0);
+    CHECK(self.items[1].contents.size() == 6); // the registration folder, the placeholder app and four registry changes
+    CHECK(self.items[2].system->id == "teams-install");
+    CHECK(self.items[5].system->id == "m365-install");
+    const auto& cleanup = groups[2].items.front();
     CHECK(cleanup.kind == ComponentController::Item::Kind::Cleanup);
     CHECK(cleanup.size == 0);
     // Group indexes never collide with the AppX catalog's.
-    CHECK(groups[2].name == L"Xbox ve Oyun");
-    CHECK(system.catalogIndex != groups[2].catalogIndex);
-    CHECK(groups[1].catalogIndex != system.catalogIndex);
+    CHECK(groups[3].name == L"Xbox ve Oyun");
+    CHECK(system.catalogIndex != groups[3].catalogIndex);
+    CHECK(self.catalogIndex != system.catalogIndex);
+    CHECK(self.catalogIndex != groups[3].catalogIndex);
 
-    controller.toggle(system.items[1]);
+    controller.toggle(self.items[0]);
     const auto* op = state.changes().find(OpKind::RemoveComponent, L"onedrive");
     REQUIRE(op);
     CHECK(op->risk == core::ops::Risk::Low);
@@ -251,9 +262,9 @@ TEST_CASE("ComponentController: system components the image has, the cleanup, an
     CHECK(recipe->paths.size() == 3);
     CHECK(recipe->paths.front() == L"Windows\\System32\\OneDriveSetup.exe");
     CHECK(ApplyPage::displayName(state, *op) == L"OneDrive kurulumu");
-    CHECK(controller.queued(system.items[1]));
-    CHECK_FALSE(controller.queued(system.items[0]));
-    CHECK(controller.check(system) == ComponentController::Check::Partial);
+    CHECK(controller.queued(self.items[0]));
+    CHECK_FALSE(controller.queued(self.items[1]));
+    CHECK(controller.check(self) == ComponentController::Check::Partial);
 
     controller.toggle(cleanup);
     const auto* clean = state.changes().find(OpKind::CleanupImage, L"component-store");
@@ -263,10 +274,10 @@ TEST_CASE("ComponentController: system components the image has, the cleanup, an
     CHECK(controller.queuedCount() == 2);
     CHECK(controller.queuedBytes() == 90);
 
-    controller.toggle(system.items[1]); // again: out of the queue
+    controller.toggle(self.items[0]); // again: out of the queue
     CHECK_FALSE(state.changes().find(OpKind::RemoveComponent, L"onedrive"));
-    controller.toggleGroup(system);
-    CHECK(controller.check(system) == ComponentController::Check::On);
+    controller.toggleGroup(self);
+    CHECK(controller.check(self) == ComponentController::Check::On);
     controller.resetChanges();
     CHECK(state.changes().empty());
 
