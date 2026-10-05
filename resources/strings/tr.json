@@ -995,7 +995,7 @@
   },
   "about": {
     "title": "Hakkında",
-    "version": "Sürüm {v} (build {b}) · {arch}",
+    "version": "Sürüm {v} · build {b} · {arch}",
     "dism": "DISM",
     "workDir": "Çalışma dizini",
     "fonts": "Yazı tipleri",
@@ -1003,8 +1003,17 @@
     "licenses": "Lisanslar",
     "openLogFolder": "Log klasörünü aç",
     "fontsValue": "IBM Plex Sans, JetBrains Mono (OFL 1.1)",
-    "thirdPartyValue": "nlohmann/json (MIT), pugixml (MIT)",
-    "licensesBody": "WinLove.exe içinde gelen bileşenler:\n\nIBM Plex Sans — SIL Open Font License 1.1\nJetBrains Mono — SIL Open Font License 1.1\nnlohmann/json — MIT License\npugixml — MIT License\n\nDISM ve IMAPI2FS Windows'un kendi bileşenleridir; WinLove onları dağıtmaz, sistemden yükler."
+    "thirdPartyValue": "nlohmann/json (MIT), pugixml (MIT), Win11Debloat Başlat şablonu (MIT)",
+    "licensesBody": "WinLove — GNU General Public License v3.0\n\nWinLove.exe içinde gelen bileşenler:\n\nIBM Plex Sans — SIL Open Font License 1.1\nJetBrains Mono — SIL Open Font License 1.1\nnlohmann/json — MIT License\npugixml — MIT License\nWin11Debloat boş Başlat şablonu (start2.bin) — MIT License\n\nDISM ve IMAPI2FS Windows'un kendi bileşenleridir; WinLove onları dağıtmaz, sistemden yükler.",
+    "madeWithLove": "Türkiye'de sevgiyle yapıldı",
+    "freeBody": "WinLove tamamen ücretsizdir ve her zaman ücretsiz kalacak: reklam yok, hesap yok, ücretli sürüm yok. Hiçbir kullanım verisi toplamaz, kimseye bir şey göndermez. Kaynak kodu GPL-3.0 lisansıyla herkese açık. Windows'unu kendi istediği gibi kurmak isteyen herkes için, sevgiyle yapıldı.",
+    "sectionLinks": "Bağlantılar",
+    "sectionSystem": "Sistem",
+    "developer": "Geliştirici",
+    "project": "Proje",
+    "issues": "Sorun bildir",
+    "license": "Lisans",
+    "licenseValue": "GNU GPL v3.0"
   },
   "palette": {
     "placeholder": "Komut, sayfa veya bileşen ara",
@@ -1413,7 +1422,7 @@
     "noteWindows": "Windows kendi sabitlemelerini koyar: Edge, Microsoft Store, Microsoft 365 ve reklam yer tutucuları (Spotify, WhatsApp …).",
     "noteEmpty": "Başlat'ın Sabitlenenler bölümü boş açılır; reklam yer tutucuları gelmez. Windows 10'da kutucuk da olmaz.",
     "noteCustom": "Yalnız sağdaki uygulamalar, bu sırayla. Soldan çift tıkla / Enter ile ekle; sağda Delete kaldırır, Ctrl+←/→ taşır.",
-    "noteEdition": "Her sürümde Başlat reklamsız, boş bir durumdan başlar; liste Pro / Enterprise / Education'da ve güncel bir toplu güncellemeyle Home'da da uygulanır (eski Home build'inde Başlat boş açılır).",
+    "noteEdition": "Her sürümde Başlat reklamsız, boş bir durumdan başlar. Kendi listen 26100 / 26200.9457 ve sonrasında her sürümde (Home dahil) birebir uygulanır; daha eski bir build'de Başlat boş açılır.",
     "apps": "Uygulamalar",
     "searchApps": "Uygulama ara",
     "loadingApps": "İmajın uygulamaları okunuyor…",

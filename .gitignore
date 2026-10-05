@@ -13,3 +13,6 @@ __pycache__/
 *.vhd
 *.vhdx
 /dist/
+
+# Windows folder settings
+desktop.ini

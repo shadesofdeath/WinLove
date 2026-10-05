@@ -1,6 +1,6 @@
 # P17 — Hakkında
 
-> Durum: 🟨 geliştirme bitti, kullanıcı testi bekliyor (2026-09-30). Tasarım: 20. Erişim: `F1`.
+> Durum: 🟨 geliştirme bitti, kullanıcı testi bekliyor (2026-10-05, D-072). Tasarım: 20 (+ bayrak, söz, bağlantılar). Erişim: gezinme çubuğu, `F1`.
 
 ## 1. Amaç
 Hangi WinLove sürümünün, hangi DISM ile çalıştığını göstermek; paketlenen bileşenlerin lisanslarına ve log
@@ -22,9 +22,13 @@ klasörüne tek tıkla ulaşmak. Sayfada kuyruğa eklenen ya da uygulanan bir ş
   `buildArchitecture()`. Uygulama Ayarları'ndaki DISM satırı da buradan okur (tek kaynak).
 - `AboutPage` yalnız `Change::Settings`'i dinler.
 
+## 3b. D-072 eklemeleri
+- Türk bayrağı (kanundaki oran ve renklerle çizilir) + "Türkiye'de sevgiyle yapıldı" + söz paragrafı (ölçülerek sarılır).
+- **Bağlantılar**: Geliştirici `github.com/shadesofdeath`, Proje `github.com/shadesofdeath/WinLove`, Sorun bildir (`/issues`),
+  Lisans GNU GPL v3.0 (`/blob/main/LICENSE`) — tarayıcıda açılır.
+- Sürüm satırı `WL_VERSION_LABEL` ("1.0 Alpha").
+
 ## 4. Bu sürümde olmayanlar (tasarım 20'de var)
-- **Lisans satırı**: depoda proje lisans dosyası yok; olmayan bir lisansı yazmak yanlış bilgi olur. Lisans
-  seçilince satır eklenir.
 - **Güncellemeleri denetle**: güncelleme servisi / sürüm kanalı yok; çalışmayan bir düğme konmadı.
 - Üçüncü taraf satırı tasarımdaki örnek listeyi değil, depoda gerçekten bulunanları sayar.
 

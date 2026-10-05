@@ -995,7 +995,7 @@
   },
   "about": {
     "title": "About",
-    "version": "Version {v} (build {b}) · {arch}",
+    "version": "Version {v} · build {b} · {arch}",
     "dism": "DISM",
     "workDir": "Working directory",
     "fonts": "Fonts",
@@ -1003,8 +1003,17 @@
     "licenses": "Licenses",
     "openLogFolder": "Open log folder",
     "fontsValue": "IBM Plex Sans, JetBrains Mono (OFL 1.1)",
-    "thirdPartyValue": "nlohmann/json (MIT), pugixml (MIT)",
-    "licensesBody": "Bundled inside WinLove.exe:\n\nIBM Plex Sans — SIL Open Font License 1.1\nJetBrains Mono — SIL Open Font License 1.1\nnlohmann/json — MIT License\npugixml — MIT License\n\nDISM and IMAPI2FS are Windows' own components; WinLove does not ship them, it loads them from the system."
+    "thirdPartyValue": "nlohmann/json (MIT), pugixml (MIT), Win11Debloat Start template (MIT)",
+    "licensesBody": "WinLove — GNU General Public License v3.0\n\nComponents shipped inside WinLove.exe:\n\nIBM Plex Sans — SIL Open Font License 1.1\nJetBrains Mono — SIL Open Font License 1.1\nnlohmann/json — MIT License\npugixml — MIT License\nWin11Debloat empty Start template (start2.bin) — MIT License\n\nDISM and IMAPI2FS are parts of Windows; WinLove does not ship them, it loads them from the system.",
+    "madeWithLove": "Made with love in Türkiye",
+    "freeBody": "WinLove is completely free and will always stay free: no ads, no account, no paid edition. It collects no usage data and sends nothing to anyone. The source code is open to everyone under GPL-3.0. Made with love for everyone who wants to set up Windows their own way.",
+    "sectionLinks": "Links",
+    "sectionSystem": "System",
+    "developer": "Developer",
+    "project": "Project",
+    "issues": "Report an issue",
+    "license": "License",
+    "licenseValue": "GNU GPL v3.0"
   },
   "palette": {
     "placeholder": "Search commands, pages or components",
@@ -1413,7 +1422,7 @@
     "noteWindows": "Windows pins its own: Edge, Microsoft Store, Microsoft 365 and promoted placeholders (Spotify, WhatsApp …).",
     "noteEmpty": "Start's Pinned section opens empty; no promoted placeholders. No tiles on Windows 10 either.",
     "noteCustom": "Only the apps on the right, in this order. Add from the left with a double click / Enter; on the right Delete removes, Ctrl+Left/Right moves.",
-    "noteEdition": "Every edition starts Start from an empty state with no ads; the list applies on Pro / Enterprise / Education, and on Home with a current cumulative update (an old Home build opens Start empty).",
+    "noteEdition": "On every edition Start begins from an empty state with no ads. Your list applies exactly from 26100 / 26200.9457 on, on every edition (Home included); on an older build Start opens empty.",
     "apps": "Apps",
     "searchApps": "Search apps",
     "loadingApps": "Reading the image's apps…",
