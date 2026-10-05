@@ -1,7 +1,5 @@
 // P12: the settings catalog (shipped file, malformed entries) and the form ↔ queue mapping.
-#include "app/catalog/TweakCatalog.h"
 #include "app/controllers/ImageSettingsController.h"
-#include "app/controllers/RegistryController.h"
 
 #include <doctest.h>
 #include <json.hpp>
@@ -9,6 +7,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <set>
 #include <sstream>
 
@@ -66,7 +65,7 @@ TEST_CASE("settings catalog: every shipped entry is valid and placed in a known 
     // Nothing was skipped as malformed.
     const auto raw = nlohmann::json::parse(shippedJson(L"settings.json"));
     CHECK(catalog.settings().size() == raw["settings"].size());
-    CHECK(catalog.tabs().size() == 7);
+    CHECK(catalog.tabs().size() == 10);
     // Every tab has something in it.
     for (const auto& tab : catalog.tabs()) {
         CAPTURE(tab.id);
@@ -134,24 +133,31 @@ TEST_CASE("settings catalog: malformed settings are skipped, the rest loads") {
     CHECK_FALSE(ImageSettingsCatalog::parse(R"({"format":"winlove.catalog.settings","settings":[{"id":5}]})"));
 }
 
-TEST_CASE("settings and registry tweaks that write the same values use the same operation kind") {
-    // Otherwise the Registry page and this form would queue the same value twice, in two slots.
-    const auto settings = shippedCatalog();
-    const auto tweaks = TweakCatalog::parse(shippedJson(L"tweaks.json"));
-    REQUIRE(tweaks);
-    int shared = 0;
-    for (const auto& tweak : tweaks->tweaks()) {
-        for (const auto& s : settings.settings()) {
-            for (const auto& o : s.options) {
-                if (o.writes == tweak.writes && o.services.empty()) {
-                    CAPTURE(tweak.id);
-                    CHECK(s.firstLogon == tweak.firstLogon);
-                    ++shared;
-                }
+TEST_CASE("settings catalog: two settings write the same value only where meant to") {
+    // Otherwise choosing one silently takes the other's value out of the queue. Shared on purpose:
+    // a dropdown and a text box for one value, and Spotlight with its lock-screen tips.
+    const std::set<std::wstring> allowed{
+        LR"(HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management::PagingFiles)",
+        LR"(HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer::SettingsPageVisibility)",
+        LR"(HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient::NameServer)",
+        LR"(HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager::RotatingLockScreenOverlayEnabled)",
+    };
+    const auto catalog = shippedCatalog();
+    std::map<std::wstring, std::set<std::string>> owners;
+    for (const auto& s : catalog.settings()) {
+        for (const auto& o : s.options) {
+            for (const auto& w : o.writes) {
+                owners[core::registryTarget(w)].insert(s.id);
+            }
+            for (const auto& [service, start] : o.services) {
+                owners[L"service:" + service].insert(s.id);
             }
         }
     }
-    CHECK(shared >= 25);
+    for (const auto& [slot, ids] : owners) {
+        CAPTURE(slot);
+        CHECK((ids.size() == 1 || allowed.contains(slot)));
+    }
 }
 
 TEST_CASE("form: the selected option is read from the queue; default removes the operations") {
@@ -208,27 +214,6 @@ TEST_CASE("form: first-logon settings, service settings and options on different
         locationOps += op.target.find(L"ConsentStore\\location") != std::wstring::npos ? 1 : 0;
     }
     CHECK(locationOps == 1);
-}
-
-TEST_CASE("form and Registry page share the queue: a tweak checked there shows here, and back") {
-    Fixture f;
-    auto tweaks = TweakCatalog::parse(shippedJson(L"tweaks.json"));
-    REQUIRE(tweaks);
-    RegistryController registry{f.state, std::move(*tweaks)};
-    const auto& catalog = f.controller.catalog();
-
-    const auto darkTweak = std::ranges::find(registry.catalog().tweaks(), std::string("dark-mode"), &Tweak::id);
-    REQUIRE(darkTweak != registry.catalog().tweaks().end());
-    registry.toggle(*darkTweak);
-    const auto& theme = setting(catalog, "theme");
-    CHECK(f.controller.current(theme) == option(theme, "dark"));
-
-    const auto& widgets = setting(catalog, "widgets");
-    f.controller.select(widgets, option(widgets, "off"));
-    const auto widgetTweak = std::ranges::find(registry.catalog().tweaks(), std::string("widgets"), &Tweak::id);
-    REQUIRE(widgetTweak != registry.catalog().tweaks().end());
-    CHECK(registry.checked(*widgetTweak));
-    CHECK(f.state.changes().size() == 4); // two theme values + the widget policies of either Windows: no duplicates
 }
 
 TEST_CASE("form: an empty Start is a policy value (Windows 11) and a layout file (Windows 10)") {

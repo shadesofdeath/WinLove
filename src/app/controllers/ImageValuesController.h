@@ -1,8 +1,7 @@
 #pragma once
-// D-045: reads which catalog operations the mounted image already has, so P11 / P12 show the
-// image as it is instead of the Windows default: every registry write of the tweak and settings
-// catalogs (offreg.dll, no hive is loaded), the text files of settings, and the string values of
-// text settings. Once per mount — queued ahead of the preload on the engine thread (~0.4 s for a
+// D-045: reads which catalog operations the mounted image already has, so P12 shows the image as
+// it is instead of the Windows default: every registry write of the settings catalog (offreg.dll,
+// no hive is loaded), its text files, and the string values of text settings. Once per mount — queued ahead of the preload on the engine thread (~0.4 s for a
 // 25H2 image) — and again when an Uygula run ends with the image still mounted.
 // Results land in AppState::imageValues(); AppState::imageHas() answers per operation.
 #include "app/state/AppState.h"
@@ -16,14 +15,13 @@
 namespace wl::app {
 
 class ImageSettingsCatalog;
-class TweakCatalog;
 
 struct ImageValueProbes {
     std::vector<core::RegistryWrite> writes;                   // does the image have this write
     std::vector<std::pair<std::wstring, std::wstring>> files; // path in the image → text
     std::vector<core::RegistryWrite> texts;                    // string values to read (text settings)
 
-    [[nodiscard]] static ImageValueProbes from(const TweakCatalog& tweaks, const ImageSettingsCatalog& settings);
+    [[nodiscard]] static ImageValueProbes from(const ImageSettingsCatalog& settings);
 };
 
 class ImageValuesController {

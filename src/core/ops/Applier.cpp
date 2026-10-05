@@ -109,6 +109,12 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
         if (!start) {
             return fail(ErrorCode::InvalidArgument, L"unknown service start type", op.value);
         }
+        // A catalog setting may name a service this Windows does not have (WSAIFabricSvc before
+        // 24H2): writing Start would leave a key without a service behind.
+        if (auto exists = reg().keyExists(L"HKLM\\SYSTEM\\CurrentControlSet\\Services\\" + op.target); exists && !*exists) {
+            log::info("apply", L"service not in the image, skipped: " + op.target);
+            return {};
+        }
         for (const auto& write : serviceStartWrites(op.target, *start)) {
             if (auto r = reg().apply(write); !r) {
                 return r;

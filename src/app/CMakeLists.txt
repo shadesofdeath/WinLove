@@ -4,7 +4,6 @@ add_library(wl_app STATIC
     catalog/AppxCatalog.cpp
     catalog/ComponentCatalog.cpp
     catalog/ImageSettingsCatalog.cpp
-    catalog/TweakCatalog.cpp
     controllers/ApplyController.cpp
     controllers/ComponentController.cpp
     controllers/FeatureController.cpp
@@ -44,6 +43,7 @@ add_library(wl_app STATIC
     pages/DriversPage.cpp
     pages/ServicesPage.cpp
     pages/RegistryPage.cpp
+    pages/registry/ValueDialog.cpp
     pages/SettingsPage.cpp
     pages/FeaturesPage.cpp
     pages/ImagesPage.cpp
@@ -107,7 +107,6 @@ set(WL_EMBEDDED_RESOURCES
     ${PROJECT_SOURCE_DIR}/resources/fonts/JetBrainsMono-Regular.ttf
     ${PROJECT_SOURCE_DIR}/resources/catalog/appx.json
     ${PROJECT_SOURCE_DIR}/resources/catalog/services.json
-    ${PROJECT_SOURCE_DIR}/resources/catalog/tweaks.json
     ${PROJECT_SOURCE_DIR}/resources/catalog/settings.json
     ${PROJECT_SOURCE_DIR}/resources/catalog/components.json
     ${PROJECT_SOURCE_DIR}/resources/strings/tr.json

@@ -1,9 +1,7 @@
 // D-045: P11 / P12 show what the mounted image already has. The image side is faked through
 // AppState::setImageValues / setServiceList; the reader itself is tested in core/RegistryReadTests.
-#include "app/catalog/TweakCatalog.h"
 #include "app/controllers/ImageSettingsController.h"
 #include "app/controllers/ImageValuesController.h"
-#include "app/controllers/RegistryController.h"
 
 #include <doctest.h>
 
@@ -47,18 +45,11 @@ int option(const ImageSetting& s, std::string_view id) {
     return static_cast<int>(it - s.options.begin());
 }
 
-const Tweak& tweak(const TweakCatalog& catalog, std::string_view id) {
-    const auto it = std::ranges::find(catalog.tweaks(), id, &Tweak::id);
-    REQUIRE(it != catalog.tweaks().end());
-    return *it;
-}
-
 const std::filesystem::path kMount = L"C:\\m";
 
 struct Fixture {
     AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
     ImageSettingsController settings{state, *ImageSettingsCatalog::parse(shipped(L"settings.json"))};
-    RegistryController registry{state, *TweakCatalog::parse(shipped(L"tweaks.json"))};
     Fixture() { state.setMounted(MountedImage{kMount, L"C:\\w\\install.wim", 1, L"Pro"}); }
 
     // The image has every operation of `ops` (registry values and files).
@@ -81,12 +72,10 @@ const wchar_t* const kTelemetry = L"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows
 
 } // namespace
 
-TEST_CASE("image values: probes cover both catalogs, text settings are read as strings") {
-    const auto tweaks = TweakCatalog::parse(shipped(L"tweaks.json"));
+TEST_CASE("image values: probes cover the settings catalog, text settings are read as strings") {
     const auto settings = ImageSettingsCatalog::parse(shipped(L"settings.json"));
-    REQUIRE(tweaks);
     REQUIRE(settings);
-    const auto probes = ImageValueProbes::from(*tweaks, *settings);
+    const auto probes = ImageValueProbes::from(*settings);
     CHECK(probes.writes.size() > 200);
     CHECK(probes.files.size() >= 2);
     CHECK(probes.texts.size() >= 5); // OEM information
@@ -180,35 +169,6 @@ TEST_CASE("image values: text settings show the image's string") {
     f.state.setImageValues(std::move(values));
     CHECK(f.settings.imageValue(manufacturer) == L"Contoso");
     CHECK(f.settings.value(manufacturer).empty()); // the queue still has nothing
-}
-
-TEST_CASE("image values: registry tweaks — checked from the image, unchecking queues the way back") {
-    Fixture f;
-    const auto& t = tweak(f.registry.catalog(), "telemetry-min");
-    CHECK_FALSE(f.registry.checked(t));
-    std::vector<Operation> ops;
-    for (const auto& w : t.writes) {
-        ops.push_back(RegistryController::operationFor(w, t.risk, RegistryController::kindOf(t)));
-    }
-    f.imageHas(ops);
-    CHECK(f.registry.inImage(t));
-    CHECK(f.registry.checked(t));
-    CHECK(f.registry.canUncheck(t));
-    CHECK(f.registry.checkedCount() == 0);
-
-    f.registry.toggle(t); // off: delete from the image
-    CHECK_FALSE(f.registry.checked(t));
-    REQUIRE(f.queued(RegistryController::kindOf(t), kTelemetry));
-    CHECK(f.queued(RegistryController::kindOf(t), kTelemetry)->value == L"-");
-    CHECK(f.registry.checkedCount() == 1);
-
-    f.registry.toggle(t); // on again: the image has it, the queue is empty
-    CHECK(f.registry.checked(t));
-    CHECK(f.state.changes().empty());
-
-    // The same value is the P12 telemetry setting: both pages agree.
-    const auto& telemetry = setting(f.settings.catalog(), "telemetry");
-    CHECK(f.settings.current(telemetry) == option(telemetry, "security"));
 }
 
 TEST_CASE("image values: the controller reads once per mount and ignores a stale answer") {

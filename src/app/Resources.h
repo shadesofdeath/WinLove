@@ -18,8 +18,6 @@ namespace wl::app {
 [[nodiscard]] std::string_view embeddedAppxCatalog();
 // resources/catalog/services.json (P10 risk / notes).
 [[nodiscard]] std::string_view embeddedServiceCatalog();
-// resources/catalog/tweaks.json (P11 registry tweaks).
-[[nodiscard]] std::string_view embeddedTweakCatalog();
 // resources/catalog/settings.json (P12 form).
 [[nodiscard]] std::string_view embeddedSettingsCatalog();
 // resources/catalog/components.json (P07 system components and cleanup).

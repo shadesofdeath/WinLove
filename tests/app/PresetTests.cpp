@@ -145,7 +145,7 @@ TEST_CASE("preset library: save the current state, list by name, import, export,
 TEST_CASE("preset items: settings by name, components by identity, steps one by one, no password") {
     Fixture f;
     Preset preset;
-    preset.changes.addAll({appx(L"Microsoft.XboxGamingOverlay"), Operation{OpKind::SetServiceStart, L"Spooler", L"manual"},
+    preset.changes.addAll({appx(L"Microsoft.XboxGamingOverlay"), Operation{OpKind::SetServiceStart, L"Fax", L"manual"},
                            Operation{OpKind::SetRegistryValue, L"HKLM\\SOFTWARE\\Contoso::Mode", L"dword:00000001"},
                            Operation{OpKind::EnableFeature, L"NetFx3", L""}});
     f.choose(preset.changes, "advertising-id", "off"); // two registry writes, first-logon kind
@@ -172,8 +172,8 @@ TEST_CASE("preset items: settings by name, components by identity, steps one by 
     // The rest as it is.
     REQUIRE(find(items, L"Microsoft.XboxGamingOverlay"));
     CHECK(find(items, L"Microsoft.XboxGamingOverlay")->value == L"remove");
-    REQUIRE(find(items, L"Spooler"));
-    CHECK(find(items, L"Spooler")->value == f.strings.get(Str::ServicesStartManual));
+    REQUIRE(find(items, L"Fax"));
+    CHECK(find(items, L"Fax")->value == f.strings.get(Str::ServicesStartManual));
     REQUIRE(find(items, L"HKLM\\SOFTWARE\\Contoso::Mode"));
     REQUIRE(find(items, L"NetFx3"));
     CHECK(find(items, L"NetFx3")->value == L"enable");

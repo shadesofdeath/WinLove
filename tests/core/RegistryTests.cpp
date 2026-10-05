@@ -1,5 +1,6 @@
 // P11: .reg syntax, key normalization / offline hive mapping, ChangeSet round trip.
 #include "core/image/RegistryEdit.h"
+#include "core/image/RegistryInput.h"
 #include "core/image/Services.h"
 
 #include <doctest.h>
@@ -249,4 +250,49 @@ TEST_CASE("parseRegText: values under [-key] are skipped; comments never continu
     REQUIRE(legacy->size() == 1);
     CHECK(formatRegValue(legacy->front()) == L"hex(2):25,00,41,00,00,00"); // "%A\0" as UTF-16
     CHECK_FALSE(parseRegValue(L"HKCU\\A", L"x", L"dword:-1"));
+}
+
+TEST_CASE("typed registry values: each type from the dialog's text, and back") {
+    using core::RegValueType;
+    auto make = [](RegValueType type, std::wstring_view data, std::wstring_view name = L"v") {
+        return core::registryWriteFromInput(LR"(HKEY_CURRENT_USER\Software\X)", name, type, data);
+    };
+    auto dword = make(RegValueType::Dword, L"0x1F");
+    REQUIRE(dword);
+    CHECK(dword->key == LR"(HKCU\Software\X)");
+    CHECK(core::formatRegValue(*dword) == L"dword:0000001f");
+    CHECK(make(RegValueType::Dword, L"4294967295"));
+    CHECK_FALSE(make(RegValueType::Dword, L"4294967296"));
+    CHECK_FALSE(make(RegValueType::Dword, L"12a"));
+    CHECK_FALSE(make(RegValueType::Dword, L""));
+    auto qword = make(RegValueType::Qword, L"1");
+    REQUIRE(qword);
+    CHECK(core::formatRegValue(*qword) == L"hex(b):01,00,00,00,00,00,00,00");
+    auto text = make(RegValueType::String, L"a \"b\"");
+    REQUIRE(text);
+    CHECK(core::formatRegValue(*text) == L"\"a \\\"b\\\"\"");
+    CHECK(make(RegValueType::String, L""));
+    auto multi = make(RegValueType::MultiString, L"one;two;;three;");
+    REQUIRE(multi);
+    CHECK(core::registryWriteInput(*multi).data == L"one;two;;three");
+    auto binary = make(RegValueType::Binary, L"01 0a,FF");
+    REQUIRE(binary);
+    CHECK(core::formatRegValue(*binary) == L"hex:01,0a,ff");
+    CHECK_FALSE(make(RegValueType::Binary, L"0x1"));
+    auto delKey = make(RegValueType::DeleteKey, L"", L"ignored");
+    REQUIRE(delKey);
+    CHECK(core::formatRegValue(*delKey) == L"[-]");
+    CHECK(delKey->name.empty());
+    CHECK(core::formatRegValue(*make(RegValueType::DeleteValue, L"")) == L"-");
+
+    CHECK_FALSE(core::registryWriteFromInput(L"HKLM", L"v", RegValueType::String, L"x"));
+    CHECK_FALSE(core::registryWriteFromInput(LR"(HKXX\Software)", L"v", RegValueType::String, L"x"));
+    CHECK_FALSE(core::registryWriteFromInput(LR"(HKCU\A::B)", L"v", RegValueType::String, L"x"));
+
+    for (const auto& w : {*dword, *qword, *text, *multi, *binary, *delKey}) {
+        const auto input = core::registryWriteInput(w);
+        auto again = core::registryWriteFromInput(w.key, w.name, input.type, input.data);
+        REQUIRE(again);
+        CHECK(*again == w);
+    }
 }

@@ -40,6 +40,7 @@
 #include "app/pages/BrandingPage.h"
 #include "app/pages/TasksPage.h"
 #include "app/pages/postsetup/StepDialog.h"
+#include "app/pages/registry/ValueDialog.h"
 #include "app/pages/SourcePage.h"
 #include "app/pages/TweaksPage.h"
 #include "app/pages/UnattendedPage.h"
@@ -139,13 +140,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         m_components = std::make_unique<ComponentController>(m_state, std::move(*catalog), m_language, m_services.postToUi,
                                                              system ? std::move(*system) : ComponentCatalog{});
     }
-    {
-        auto tweaks = TweakCatalog::parse(embeddedTweakCatalog());
-        if (!tweaks) {
-            tweaks = TweakCatalog::parse(R"({"format":"winlove.catalog.tweaks","categories":[],"tweaks":[]})");
-        }
-        m_registry = std::make_unique<RegistryController>(m_state, std::move(*tweaks));
-    }
+    m_registry = std::make_unique<RegistryController>(m_state);
     {
         auto settings = ImageSettingsCatalog::parse(embeddedSettingsCatalog());
         if (!settings) {
@@ -228,7 +223,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
                                                    PresetController::defaultFolder());
     m_preload = std::make_unique<PreloadController>(m_state, m_services.postToUi);
     m_imageValues = std::make_unique<ImageValuesController>(
-        m_state, ImageValueProbes::from(m_registry->catalog(), m_imageSettings->catalog()), m_services.postToUi);
+        m_state, ImageValueProbes::from(m_imageSettings->catalog()), m_services.postToUi);
     m_palette = std::make_unique<PaletteIndex>(PaletteIndex::Sources{
         m_state, m_strings, m_language, *m_imageSettings, *m_components, *m_features, *m_serviceCtl,
         [this](PaletteCommand command) { return paletteCommandAvailable(command); },
@@ -424,10 +419,38 @@ void Shell::importRegFiles(const std::vector<std::filesystem::path>& files) {
                 showToast(ui::InfoKind::Success,
                           m_strings.format(Str::RegistryImported, {{L"n", std::to_wstring(values)}}), L"");
             }
-            if (auto* page = registryPage()) {
-                page->showCustom();
-            }
         });
+}
+
+void Shell::editRegistryValue(std::optional<std::size_t> entry) {
+    if (!host()) {
+        return;
+    }
+    if (!requireMount(Str::RegistryNoMountTitle, Str::RegistryNoMountBody)) {
+        return;
+    }
+    std::optional<core::RegistryWrite> initial;
+    bool afterSetup = true;
+    if (entry) {
+        const auto& entries = m_state.regImports();
+        if (*entry >= entries.size() || !entries[*entry].typed || entries[*entry].writes.empty()) {
+            return;
+        }
+        initial = entries[*entry].writes.front();
+        afterSetup = entries[*entry].afterSetup;
+    }
+    const ModalSlot slot = modalSlot();
+    ValueDialogActions actions;
+    actions.close = slot.close;
+    actions.accept = [this, entry](core::RegistryWrite write, bool later) {
+        if (entry) {
+            m_registry->replaceValue(*entry, std::move(write), later);
+        } else {
+            m_registry->addValue(std::move(write), later);
+        }
+    };
+    ValueDialog built = makeValueDialog(m_strings, initial, afterSetup, std::move(actions));
+    showModal(slot, std::move(built.dialog), built.initialFocus);
 }
 
 void Shell::editPostSetupStep(core::PostSetupStep::Type type, std::optional<std::size_t> index) {
@@ -1457,9 +1480,12 @@ void Shell::showPage(PageId page) {
             };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::RegistryImportReg), ui::icons::Icon::RegFile)
                 .onInvoke = std::move(pick);
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::RegistryAddValue), ui::icons::Icon::Add)
+                .onInvoke = [this] { editRegistryValue(std::nullopt); };
             m_pageBody = &m_pageView->setBody<RegistryPage>(
                 m_state, *m_registry, m_strings, m_language,
-                RegistryPage::Intents{[this] { showPage(PageId::Images); }});
+                RegistryPage::Intents{[this] { showPage(PageId::Images); },
+                                      [this](std::size_t entry) { editRegistryValue(entry); }});
         } else if (page == PageId::About) {
             m_pageBody = &m_pageView->setBody<AboutPage>(
                 m_state, m_strings,

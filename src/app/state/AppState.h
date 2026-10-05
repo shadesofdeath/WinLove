@@ -172,14 +172,18 @@ public:
     // type, file)? False while nothing is read and for every other kind.
     [[nodiscard]] bool imageHas(const core::ops::Operation& op) const;
 
-    // P11: .reg files the user imported (kept across mounts; queued writes live in the ChangeSet).
+    // P11: the user's own registry entries — imported .reg files and values typed in the page's
+    // dialog (kept across mounts; queued writes live in the ChangeSet).
     struct RegImport {
-        std::filesystem::path file;
-        std::vector<core::RegistryWrite> writes; // those the image can take
+        std::filesystem::path file;              // empty for a typed value
+        std::vector<core::RegistryWrite> writes; // those the image can take (a typed value: one)
         std::size_t skipped = 0;                 // unsupported roots (HKLM\SAM, other users…)
+        bool typed = false;
+        bool afterSetup = true; // SetRegistryFirstLogon (also re-applied after setup), else offline only
     };
     [[nodiscard]] const std::vector<RegImport>& regImports() const noexcept { return m_regImports; }
     void addRegImport(RegImport import);
+    void replaceRegImport(std::size_t index, RegImport import);
     void removeRegImport(std::size_t index);
 
     // D-052: the third-party drivers of the mounted image (ImageDriverController), read once per

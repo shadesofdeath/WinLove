@@ -1,10 +1,10 @@
 # P11 — Kayıt Defteri
 
-> Durum: 🟨 bitti, kullanıcı testi bekliyor (2026-09-28). Tasarım: 08.
+> Durum: 🟨 bitti, kullanıcı testi bekliyor (2026-09-28; D-067 ile yalnız özel kayıtlar, 2026-10-05). Tasarım: 08.
 
 ## 1. Amaç
-Hazır tweak kategorilerini ve kullanıcının .reg dosyalarını bağlı imajın çevrimdışı hive'larına yazmak
-(kuyruk → P05 Uygula).
+Kullanıcının kendi kayıt defteri girdilerini — elle yazdığı değerleri ve .reg dosyalarını — bağlı imajın çevrimdışı
+hive'larına yazmak (kuyruk → P05 Uygula). Hazır tweak'ler burada değil, **Ayarlar / Tweaks** (P12) sayfasında (D-067).
 
 ## 2. Motor (`core/image/RegistryEdit`)
 - `RegistryWrite` canlı sistem yoluyla ifade edilir; `mapOfflineKey` imaj dosyasına çevirir:
@@ -21,35 +21,43 @@ Hazır tweak kategorilerini ve kullanıcının .reg dosyalarını bağlı imajı
 - `OfflineRegistry`: Uygula boyunca hive'lar bir kez yüklenir (servis işlemleri de aynı oturumu kullanır — aynı hive
   iki kez yüklenemez), sonda boşaltılır. ACL'li anahtarlarda `REG_OPTION_BACKUP_RESTORE` (SeRestore) ile yazar.
 - **İlk oturumda yeniden uygulama (D-026):** `SetRegistryFirstLogon` — çevrimdışı yazım + `Windows\Setup\Scripts\WinLove\`
-  altında setupcomplete.reg (SetupComplete.cmd) / firstlogon-user.reg (Default RunOnce). Katalogda `firstLogon`
-  işaretli tweak'ler **ve içe aktarılan .reg dosyalarının tüm değerleri** bu yoldan gider (NTLite ile aynı yol).
+  altında setupcomplete.reg (SetupComplete.cmd) / firstlogon-user.reg (Default RunOnce). Ayarlar kataloğunda `firstLogon`
+  işaretli ayarlar, **içe aktarılan .reg dosyalarının tüm değerleri** ve öyle işaretlenmiş elle eklenen değerler bu yoldan gider (NTLite ile aynı yol).
   `DeferredRegistry`: her değer dosyaya eklenir (son girdi kazanır), Uygula sonunda dosya sıkıştırılır.
 - CLI: `wlcli reg <dosya.reg> [<mount>] [--first-logon]`. Testler: `tests/core/RegistryTests.cpp`,
   `tests/app/RegistryImportTests.cpp`.
 
 ## 3. Ekran
-- Başlık: .reg içe aktar… (çoklu seçim; sayfadayken sürükle-bırak). İçe aktarılan dosya "Özel .reg" altında,
-  tüm değerleri kuyrukta; onay kutusu ile aç/kapat, ✕ ile kaldır. İmajda karşılığı olmayan değerler atlanır ("n atlandı").
-  Satırda "kurulumdan sonra yeniden uygulanır" notu (her değer kurulum sonunda yeniden içe aktarılır).
-- 2 sütun kategori kartı: ad, açıklama, "{s} / {n} seçili", seçili kartta vurgu çizgisi; ok tuşlarıyla gezinme.
-- Tablo: Tweak (onay kutusu; Space/Enter) · Anahtar (ilk anahtar, "+n") · Kapsam (Sistem / Kullanıcı; "İlk oturumda" etiketi).
-- Katalog: `resources/catalog/tweaks.json` (gömülü IDR_CATALOG_TWEAKS), 5 kategori, 34 tweak. Nav rozeti = seçili tweak + .reg.
-- Render: `--demo-registry`.
+- Başlık eylemleri: **.reg içe aktar…** (çoklu seçim; sayfadayken sürükle-bırak) ve **Değer ekle…**.
+- "ÖZEL KAYITLAR" başlığı, sağda "{s} / {n} açık". Tek tablo: Girdi (onay kutusu + ad) · Anahtar · Değer · Kapsam
+  (Sistem / Kullanıcı rozeti, "Kurulumdan sonra da" etiketi, satır sonunda ✕).
+  - Elle eklenen değer: ad (boşsa "(Varsayılan)", anahtar silmede "(anahtarın tamamı)"), anahtar, `REG_DWORD  0x1` gibi değer.
+  - .reg dosyası: dosya adı + "n değer · m atlandı", ilk anahtar ("+n"), değer sütununda değer sayısı.
+- Onay kutusu / Boşluk: aç-kapa (işlemler kuyruktan çıkar, girdi listede kalır). Enter / çift tık: elle eklenen değeri
+  düzenle (.reg dosyasında aç-kapa). Delete / ✕: kaldır.
+- **Değer ekle / düzenle diyaloğu:** Anahtar (`HKLM\…`, `HKEY_LOCAL_MACHINE\…` de olur), Ad (boş = varsayılan değer),
+  Tür (REG_SZ, REG_EXPAND_SZ, REG_MULTI_SZ, REG_DWORD, REG_QWORD, REG_BINARY, Değeri sil, Anahtarı sil), Veri (türe göre:
+  metin; `;` ile satırlar, `;;` = `;`; ondalık ya da `0x` onaltılık; `01 0a ff` baytlar), "Kurulumdan sonra yeniden uygula"
+  (varsayılan açık). Altta türün biçim ipucu ya da kırmızı hata ("anahtar HKLM\… ile başlamalı", "veri bu türe uymuyor",
+  "bu anahtar imaja yazılamaz"); hata varken Ekle / Kaydet kapalı. Çeviri `core/image/RegistryInput` (gidiş-dönüş testli).
+- Boş liste: "Henüz kayıt yok…" ve "Hazır tweak'ler Ayarlar / Tweaks sayfasında".
+- Nav rozeti = açık girdi sayısı. Render: `--demo-registry`, `--demo-registry=dialog`.
 
 ## 4. Sınırlar
-- İmajdaki mevcut değerler okunur (D-045): imajda olan tweak işaretli ve "imajda" etiketli görünür; işareti
-  kaldırmak değerleri silen işlemleri kuyruğa koyar ("imajdan geri alınacak"). Yalnız silmelerden oluşan tweak
-  imajdan tanınmaz. İçe aktarılan .reg dosyaları imajla karşılaştırılmaz.
+- İçe aktarılan .reg değerleri her zaman kurulumdan sonra da yazılır (D-026); elle eklenen değerde seçim kullanıcının.
+- Girdiler imajla karşılaştırılmaz (D-045'in imaj okuması P12'de).
 - HKCU yalnız Default profile (yeni hesaplar); kurulumda oluşturulan ilk hesap da buradan türetilir.
 - OEM anahtarlı sürümlerde SetupComplete.cmd çalışmaz (D-026).
 - Kurulum sonrası içe aktarma normal yetkiyle çalışır: TrustedInstaller'a ait HKLM anahtarları ve (yükseltilmemiş
   oturumda) `HKCU\Software\Policies` yeniden yazılamaz — bu girdiler atlanır, kalanı uygulanır; çevrimdışı yazılan
   değer zaten imajdadır.
-- Bir .reg dosyasında aynı değer iki kez geçerse yalnız sonuncusu (kendi sırasında) kuyruğa girer — içe aktarmanın
-  sonucu da budur.
+- Bir .reg dosyasında aynı değer iki kez geçerse yalnız sonuncusu (kendi sırasında) kuyruğa girer. Aynı dosyayı yeniden
+  içe aktarmak eski kopyanın yerini alır.
 - Anahtar adında `::` geçen girdiler desteklenmez (ChangeSet hedef ayırıcısı).
+- Girdiler oturumda tutulur; kalıcı olan kuyruktur (preset). Preset'ten gelen değerler bu listede görünmez.
 
 ## 5. Kabul
-- [ ] Tweak işaretle → Uygula → `wlcli reg` ile / yeniden bağlayınca değerler hive'da.
-- [ ] "İlk oturumda" tweak'i → imajda `Windows\Setup\Scripts\WinLove\*.reg` ve SetupComplete.cmd satırı; kurulumdan sonra değer kalıcı.
-- [ ] .reg sürükle-bırak → Özel .reg'de görünür, hatalı dosyada satır numaralı hata.
+- [ ] Değer ekle (her tür) → Uygula → yeniden bağlayınca / `wlcli reg-check` ile değer hive'da.
+- [ ] "Kurulumdan sonra yeniden uygula" açık değer → imajda `Windows\Setup\Scripts\WinLove\*.reg`; kurulumdan sonra kalıcı.
+- [ ] Değeri düzenle → kuyrukta eskisinin yerine yenisi; kapalıyken düzenlenen kapalı kalır.
+- [ ] .reg sürükle-bırak → listede görünür, hatalı dosyada satır numaralı hata.

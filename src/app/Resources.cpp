@@ -46,10 +46,6 @@ std::string_view embeddedServiceCatalog() {
     return resourceBytes(IDR_CATALOG_SERVICES);
 }
 
-std::string_view embeddedTweakCatalog() {
-    return resourceBytes(IDR_CATALOG_TWEAKS);
-}
-
 std::string_view embeddedSettingsCatalog() {
     return resourceBytes(IDR_CATALOG_SETTINGS);
 }

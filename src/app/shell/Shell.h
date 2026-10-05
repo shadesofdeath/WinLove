@@ -226,6 +226,8 @@ private:
 
 public:
     void wifiDialogForDemo() { editPostSetupStep(core::PostSetupStep::Type::Wifi, std::nullopt); }
+    // P11: add (nullopt) or edit a typed registry value (D-067).
+    void editRegistryValue(std::optional<std::size_t> entry);
     void toolDialogForDemo(const std::wstring& which, const std::filesystem::path& file); // D-058 renders
 
 private:
