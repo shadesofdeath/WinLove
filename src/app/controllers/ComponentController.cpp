@@ -75,6 +75,11 @@ void ComponentController::load(bool force) {
                 if (!m_state.mounted() || m_state.mounted()->mountDir != mountDir) {
                     return;
                 }
+                // Only the read that is still awaited: a list set meanwhile (a newer read) stays.
+                if (const auto& now = m_state.appxList();
+                    !now || now->mountDir != mountDir || now->status != AppState::AppxList::Status::Loading) {
+                    return;
+                }
                 if (!result) {
                     log::error("app", describe(result.error()));
                     m_state.setAppxList(AppState::AppxList{AppState::AppxList::Status::Failed, mountDir, {}, result.error()});

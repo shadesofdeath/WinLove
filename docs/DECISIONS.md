@@ -241,6 +241,24 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-072 — Hakkında sayfası, 1.0 Alpha, GPL-3.0 ve GitHub (2026-10-05)
+Bağlam: Kullanıcı: "Hakkında sayfası oluştur; Türkiye bayrağı, benim GitHub'ım, proje GitHub sayfası; tatlı, profesyonel.
+Projenin tamamen ücretsiz kalacağını ve sevgiyle yapıldığını yaz. GitHub'a 1.0 Alpha adıyla yükleyip paylaşabilirsin."
+Lisans ve depo görünürlüğü soruldu: **GPL-3.0**, **herkese açık `shadesofdeath/WinLove`**.
+Karar:
+- Hakkında (P17) gezinme çubuğunda (Uygulama ayarları'nın altında; `F1` de açar). Sıra: marka işareti + WinLove + "Sürüm 1.0 Alpha ·
+  build · mimari"; **Türk bayrağı** + "Türkiye'de sevgiyle yapıldı"; söz paragrafı (ücretsiz, reklam / hesap / ücretli sürüm yok, veri
+  toplamaz, GPL-3.0); **Bağlantılar** (Geliştirici, Proje, Sorun bildir, Lisans — dış bağlantı simgeli sade düğmeler, tarayıcıda açılır;
+  yalnız `https://`); **Sistem** (DISM, çalışma dizini, yazı tipleri, üçüncü taraf); Lisanslar / Log klasörü.
+- **Tasarımdan sapma:** bayrak renkleri tema belirteci değil, Türk Bayrağı Kanunu'nun renkleri (al `#E30A17`, beyaz): `AboutPage.cpp`
+  içinde sabit. Bayrak kanundaki oranlarla Direct2D ile çizilir (2:3; ay dış çemberi 1/2 G'de çap 1/2 G, iç çember 1/16 G ötede çap 2/5 G;
+  yıldız çapı 1/4 G, merkezi 0.8208 G, bir ucu uçkurluğa). Bunun için `Canvas` sabit renkli daire ve çokgen dolgusu kazandı.
+- Sürüm: `PROJECT_VERSION 1.0.0` (dosya sürümü), görünen etiket `WL_VERSION_LABEL = "1.0 Alpha"` (Hakkında, exe ProductVersion, GitHub).
+- `LICENSE` (GPL-3.0 tam metni), `README.md` (Türkçe; özellikler, ekran görüntüleri `docs/screenshots/`, kurulum, söz, derleme).
+- Lisanslar dialogu WinLove'un kendi lisansını ve Win11Debloat şablonunu (MIT) da sayar.
+- Bileşenler sayfası: imaj bağlanınca başlayan uygulama okuması, o arada hazır gelmiş listeyi (örnek veri / yeni okuma) "okunamadı" ile
+  eziyordu; sonuç artık yalnız liste hâlâ "yükleniyor"ken uygulanır.
+
 ## D-070 — Windows'un kendiliğinden kurdukları: OneDrive, Outlook, Teams, Dev Home, Telefon, M365, Copilot (2026-10-05)
 Bağlam: Kullanıcı: "Ne yaparsak yapalım OneDrive ve Outlook bir şekilde kuruluyor ve masaüstüne geliyor; derinlemesine incele,
 kökünden kazı." Ardından: "Bir çok uygulama oradan kuruluyor; yalnız Outlook ve OneDrive için değil, hepsini kapsamlı kaldırsın."

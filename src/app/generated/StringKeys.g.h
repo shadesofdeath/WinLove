@@ -7,12 +7,21 @@
 namespace wl::app {
 
 enum class Str : std::uint16_t {
+    AboutDeveloper,
     AboutDism,
     AboutFonts,
     AboutFontsValue,
+    AboutFreeBody,
+    AboutIssues,
+    AboutLicense,
+    AboutLicenseValue,
     AboutLicenses,
     AboutLicensesBody,
+    AboutMadeWithLove,
     AboutOpenLogFolder,
+    AboutProject,
+    AboutSectionLinks,
+    AboutSectionSystem,
     AboutThirdParty,
     AboutThirdPartyValue,
     AboutTitle,
@@ -1353,14 +1362,23 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1343;
+inline constexpr std::size_t kStrCount = 1352;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
+    "about.developer",
     "about.dism",
     "about.fonts",
     "about.fontsValue",
+    "about.freeBody",
+    "about.issues",
+    "about.license",
+    "about.licenseValue",
     "about.licenses",
     "about.licensesBody",
+    "about.madeWithLove",
     "about.openLogFolder",
+    "about.project",
+    "about.sectionLinks",
+    "about.sectionSystem",
     "about.thirdParty",
     "about.thirdPartyValue",
     "about.title",

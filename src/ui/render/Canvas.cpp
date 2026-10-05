@@ -151,6 +151,37 @@ void Canvas::fillEllipse(PointF center, float radius, Ink ink) {
     m_context->FillEllipse(D2D1::Ellipse({center.x, center.y}, radius, radius), brush(ink));
 }
 
+void Canvas::fillEllipse(PointF center, float radius, Rgba color) {
+    m_brush->SetColor(D2D1::ColorF(color.r, color.g, color.b, color.a));
+    m_context->FillEllipse(D2D1::Ellipse({center.x, center.y}, radius, radius), m_brush.Get());
+}
+
+void Canvas::fillPolygon(std::span<const PointF> points, Rgba color) {
+    if (points.size() < 3) {
+        return;
+    }
+    ComPtr<ID2D1Factory> factory;
+    m_context->GetFactory(&factory);
+    ComPtr<ID2D1PathGeometry> path;
+    if (FAILED(factory->CreatePathGeometry(&path))) {
+        return;
+    }
+    ComPtr<ID2D1GeometrySink> sink;
+    if (FAILED(path->Open(&sink))) {
+        return;
+    }
+    sink->BeginFigure({points[0].x, points[0].y}, D2D1_FIGURE_BEGIN_FILLED);
+    for (std::size_t i = 1; i < points.size(); ++i) {
+        sink->AddLine({points[i].x, points[i].y});
+    }
+    sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+    if (FAILED(sink->Close())) {
+        return;
+    }
+    m_brush->SetColor(D2D1::ColorF(color.r, color.g, color.b, color.a));
+    m_context->FillGeometry(path.Get(), m_brush.Get());
+}
+
 void Canvas::panel(RectF rect, float radius, std::span<const tokens::Shadow> elevation) {
     dropShadow(rect, radius, elevation);
     fillRoundRect(rect, radius, tokens::Color::BgOverlay);

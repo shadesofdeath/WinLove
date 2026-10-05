@@ -45,6 +45,9 @@ public:
     // Straight line in DIPs with round caps (glyph drawing, e.g. caption buttons).
     void line(PointF from, PointF to, Ink ink, float widthPx = 1.0f);
     void fillEllipse(PointF center, float radius, Ink ink);
+    // Colors that are not tokens of the theme (a national flag): a circle and a closed polygon.
+    void fillEllipse(PointF center, float radius, Rgba color);
+    void fillPolygon(std::span<const PointF> points, Rgba color);
     // Elevation shadow (tokens::elevation::menu/dialog/toast) under a rounded rect.
     void dropShadow(RectF rect, float radius, std::span<const tokens::Shadow> layers);
     // A floating surface (dialog, menu, toast, tooltip, chip): shadow, overlay fill, strong line.

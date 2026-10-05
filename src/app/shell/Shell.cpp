@@ -1542,7 +1542,13 @@ void Shell::showPage(PageId page) {
                                                       closer(raw), /*primary=*/true);
                                        pushDialog(std::move(dialog));
                                    },
-                                   [this] { openLogFolder(); }});
+                                   [this] { openLogFolder(); },
+                                   [](const std::wstring& url) {
+                                       // Only the page's own https addresses reach here.
+                                       if (url.starts_with(L"https://")) {
+                                           ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                                       }
+                                   }});
         } else if (page == PageId::Settings) {
             auto& body = m_pageView->setBody<SettingsPage>(
                 m_state, m_strings,
