@@ -81,6 +81,9 @@
 - **Sıradaki iş (kullanıcı isteği, 2026-10-05):** Simgeler sayfası baştan, özenle: `.dll.mun` / `.dll` / `.exe` ikon kaynaklarını
   toplu okuma, bütün simgeleri listeleme, dosyanın içindeki herhangi bir simgeyi değiştirme, orijinali yedekleme, ikon paketleri;
   yamalamada önyükleme döngüsü / bileşen deposu bozulması / güncellemenin geri alması riskleri önce lab'da ölçülecek (kural 6).
+  Kullanıcı iki modu da istedi: güvenli (kayıt yönlendirmesi, D-065) **ve** dosya yaması (D-065'teki "yamalanmaz" kararı
+  yeni bir kararla değişecek). Gözlem: bu makinede 142 `.mun` (imageres 23 MB, shell32 17 MB, DDORes 16 MB); `SystemResources\*.mun`
+  WinSxS'teki dosyaya sabit bağlantı (2 bağlantı) → yama yeni dosya yazıp bağlantıyı koparmalı, WinSxS'e dokunmamalı.
 - **Bir sonraki somut adım (2026-10-05):** kullanıcı yeni sürümü dener: Simgeler (bir ikon paketi klasörü), Uygulamalar › Mağazadan
   ekle, Kaynak'taki bağlı imajlar, Ayarlar'daki yeni satırlar; ardından VM'de kurulum (duvar kağıdı / Spotlight, simgeler, Defender,
   sanal bellek, Setup'ın dil listesi).
