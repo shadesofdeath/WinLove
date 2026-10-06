@@ -50,6 +50,10 @@ public:
     [[nodiscard]] std::vector<Group> groups() const;
     [[nodiscard]] const AppxCatalog& catalog() const noexcept { return m_catalog; }
     [[nodiscard]] const ComponentCatalog& systemCatalog() const noexcept { return m_systemCatalog; }
+    // A preset carries the recipes it was saved with; each system component the catalog still has
+    // gets its current recipe (D-076: fixes reach old presets — D-075's telemetry, the InboxApps
+    // spare packages of the taskbar pins). Unknown ids keep their own recipe.
+    [[nodiscard]] core::ops::ChangeSet withCurrentRecipes(core::ops::ChangeSet changes) const;
 
     [[nodiscard]] bool queued(const Item& item) const;
     [[nodiscard]] Check check(const Group& group) const;

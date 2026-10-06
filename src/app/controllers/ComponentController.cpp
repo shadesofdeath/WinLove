@@ -262,6 +262,26 @@ Operation ComponentController::operationFor(const Item& item) {
     return op;
 }
 
+core::ops::ChangeSet ComponentController::withCurrentRecipes(core::ops::ChangeSet changes) const {
+    const std::vector<Operation> saved = changes.operations();
+    for (const auto& op : saved) {
+        if (op.kind != OpKind::RemoveComponent) {
+            continue;
+        }
+        const auto* entry = m_systemCatalog.find(utf8::fromWide(op.target));
+        if (!entry || entry->kind != ComponentCatalogEntry::Kind::Remove) {
+            continue;
+        }
+        Operation current = op;
+        core::ComponentRecipe recipe = entry->recipe;
+        recipe.title = entry->name.get(m_language);
+        current.value = utf8::toWide(core::componentRecipeToJson(recipe));
+        current.risk = entry->risk;
+        changes.add(std::move(current));
+    }
+    return changes;
+}
+
 bool ComponentController::queued(const Item& item) const {
     return m_state.changes().find(kindOf(item), item.packageName) != nullptr;
 }

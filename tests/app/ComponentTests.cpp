@@ -17,6 +17,7 @@
 
 using namespace wl;
 using namespace wl::app;
+using core::ops::ChangeSet;
 using core::ops::OpKind;
 
 namespace {
@@ -322,4 +323,31 @@ TEST_CASE("ComponentController: the apps DISM refuses are picked like any other 
     controller.toggleGroup(system);
     CHECK(state.changes().size() == 3);
     CHECK(controller.check(system) == ComponentController::Check::On);
+}
+
+TEST_CASE("ComponentController: a preset's saved recipes are replaced by the catalog's current ones (D-076)") {
+    AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
+    ComponentController controller(state, shippedCatalog(), Language::Turkish, [](std::function<void()> fn) { fn(); },
+                                   shippedComponents());
+    // As the user's preset of 2026-10-06 carried them: Outlook without the InboxApps spare
+    // package, telemetry still removing the TroubleShooting package.
+    ChangeSet saved;
+    saved.add({OpKind::RemoveComponent, L"outlook-install",
+               LR"({"appx":["Microsoft.OutlookForWindows"],"paths":["ProgramData\\USOPrivate\\ExpeditedAppRegistrations\\MS_Outlook"],"title":"Outlook"})"});
+    saved.add({OpKind::RemoveComponent, L"telemetry",
+               LR"({"packages":["Microsoft-OneCore-TroubleShooting-Package"],"title":"Telemetri"})"});
+    saved.add({OpKind::RemoveComponent, L"gone-from-catalog", LR"({"paths":["Program Files\\Old"],"title":"Old"})"});
+    saved.add({OpKind::RemoveAppx, L"Microsoft.GamingApp_1_neutral__8wekyb3d8bbwe", L"Xbox"});
+
+    const ChangeSet current = controller.withCurrentRecipes(saved);
+    REQUIRE(current.size() == 4);
+    const auto outlook = core::componentRecipeFromJson(utf8::fromWide(current.find(OpKind::RemoveComponent, L"outlook-install")->value));
+    REQUIRE(outlook);
+    CHECK(std::ranges::find(outlook->paths, L"Windows\\InboxApps\\OutlookPWA.msix") != outlook->paths.end());
+    CHECK(outlook->title == L"Yeni Outlook'un kendiliğinden kurulması");
+    const auto telemetry = core::componentRecipeFromJson(utf8::fromWide(current.find(OpKind::RemoveComponent, L"telemetry")->value));
+    REQUIRE(telemetry);
+    CHECK(telemetry->packages.empty());
+    CHECK(current.find(OpKind::RemoveComponent, L"gone-from-catalog")->value == saved.operations()[2].value);
+    CHECK(current.find(OpKind::RemoveAppx, L"Microsoft.GamingApp_1_neutral__8wekyb3d8bbwe"));
 }

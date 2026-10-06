@@ -241,6 +241,16 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-076 — Preset uygulanırken bileşen tarifleri güncel katalogdan gelir (2026-10-06)
+Bağlam: D-075'ten sonra kullanıcının kurulumunda görev çubuğunda Outlook vardı. Preset'teki `outlook-install` tarifi 1.0.1'den
+eski (`Windows\InboxApps\OutlookPWA.msix` yok; "Bulutun eklediği sabitlemeler" ayarı da preset'te yok). Ağsız lab kurulumunda
+(`fixed`) Outlook yok: sabitleme ağ varken ilk oturumda geliyor. Tarif operasyonun içinde taşındığından katalog düzeltmeleri
+eski preset'lere hiç ulaşmıyordu.
+Karar: `ComponentController::withCurrentRecipes` — Shell::applyPreset'te katalogda kimliği olan her RemoveComponent'in tarifi,
+başlığı ve riski güncel katalogdan; katalogda olmayan kimlik kendi tarifini korur (çekirdek yine doğrular, D-075 dönüşümü de
+kalır — wlcli / eski kuyruk için). Kanıt: birim testi (314 / 11.392). **Görülmeyen:** ağlı VM'de güncel Outlook tarifi +
+`cloud-content` ile görev çubuğunun Outlook'suz kalması.
+
 ## D-075 — Telemetri bileşeni paketi kaldırmaz; TroubleShooting paketi hiçbir tarifle kaldırılamaz (2026-10-06)
 Bağlam: Kullanıcının "her şey işaretli" preset'iyle (515 işlem, HSL) kurulan sistem, dosya kopyalamadan sonraki ilk açılışta
 (specialize) logosuz siyah ekran + dönen halkada takılıyordu. VM diski: `IMAGE_STATE_GENERALIZE_RESEAL_TO_OOBE`, setupapi /
