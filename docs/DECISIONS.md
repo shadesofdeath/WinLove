@@ -241,6 +241,28 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-077 — AIO: Win10 + Win11 karışık ISO Win10 kurulum ortamıyla kurulur; sürüm sıralama, ad çakışması (2026-10-06)
+Bağlam: Kullanıcı AIO ISO istedi (Win10 + Win11 karışık, tek mimari — kullanıcı seçimi). Sürüm ekleme / yeniden adlandırma /
+silme zaten vardı (D-033, D-035, D-058); bilinmeyen kurulum tarafıydı.
+Ölçüm (`tools\lab_aio.ps1`, AIO = Win11 25H2 Pro + Win10 22H2 Pro; Win10 resmî MCT ESD'si, SHA-1 doğrulandı; misafirin
+kendisinin kapandığı `vmware.log` "PIIX4: PM Soft Off" ile doğrulandı):
+| Kurulum ortamı | Kurulan | Sonuç |
+|---|---|---|
+| Win11 25H2 (yeni kurulum) | Win11 | masaüstü |
+| Win11 25H2 (yeni kurulum) | Win10 | "Windows 11 yüklemesi başarısız oldu" |
+| Win11 25H2 (önceki kurulum, D-074) | Win10 | dosyalar kopyalandı, "önyüklenecek şekilde hazırlayamadı" |
+| Win10 22H2 (ESD'den MCT medyası: index 1 dosyalar, 2+3 boot.wim) | Win10 | masaüstü |
+| Win10 22H2 | Win11 25H2 | masaüstü (yanıt dosyasında LabConfig atlatmaları vardı) |
+Karar: karışık AIO'nun kurulum ortamı **Win10'unki** olmalı (24H2+ ortamı Win10 kuramaz). Motor: `core::reorderImages`
+(`wlcli reorder`, Setup sürümleri dosya sırasıyla listeler), İmajlar satır menüsünde "Yukarı / Aşağı taşı"; sürüm eklerken
+aynı ada sahip yeni sürüm sürüm etiketini alır ("Windows 11 Pro (24H2)", aynı sürümse tam sürüm numarası —
+`core::distinctEditionNames`). Laboratuvar: `lab_vm.ps1 -InstallWim/-ImageIndex/-BootWim/-SetupFolder`, lab VM'lerinde
+`logging = "TRUE"` (bu makinede VMware günlüğü genel olarak kapalı) ve **geçme koşulu artık ACPI soft-off**: elle
+`vmrun stop` edilen VM bundan sonra "geçti" sayılmaz (D-075 bölmesinde elle kapatılanlar yanlışlıkla PASS yazmıştı).
+Kanıt: 316 test; `lab_aio.ps1` iki tur (yukarıdaki tablo). **Açık:** ISO sayfasında karışık AIO + 24H2 ortamı uyarısı /
+kurulum ortamını Win10'dan alma; Win11'in Win10 ortamından yanıt dosyası olmadan (TPM / Secure Boot denetimi) kurulması;
+ESD'deki Win10 22H2'nin XML'de 19041 görünmesi ("10 2004" etiketi).
+
 ## D-076 — Preset uygulanırken bileşen tarifleri güncel katalogdan gelir (2026-10-06)
 Bağlam: D-075'ten sonra kullanıcının kurulumunda görev çubuğunda Outlook vardı. Preset'teki `outlook-install` tarifi 1.0.1'den
 eski (`Windows\InboxApps\OutlookPWA.msix` yok; "Bulutun eklediği sabitlemeler" ayarı da preset'te yok). Ağsız lab kurulumunda

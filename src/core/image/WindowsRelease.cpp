@@ -1,5 +1,8 @@
 #include "core/image/WindowsRelease.h"
 
+#include "base/Text.h"
+#include "core/image/ImageInfo.h"
+
 #include <array>
 #include <format>
 #include <string_view>
@@ -30,6 +33,35 @@ std::wstring releaseLabel(int build) {
         }
     }
     return std::format(L"{} build {}", major, build);
+}
+
+std::vector<std::pair<int, std::wstring>> distinctEditionNames(const std::vector<ImageInfo>& images, int firstNew) {
+    std::vector<std::pair<int, std::wstring>> renames;
+    for (const auto& image : images) {
+        if (image.index < firstNew) {
+            continue;
+        }
+        bool clash = false;
+        bool sameBuild = false;
+        bool sameVersion = false;
+        for (const auto& other : images) {
+            if (other.index == image.index || !text::iequals(other.name, image.name)) {
+                continue;
+            }
+            clash = true;
+            sameBuild = sameBuild || other.build == image.build;
+            sameVersion = sameVersion || other.versionString() == image.versionString();
+        }
+        if (!clash || sameVersion) {
+            continue; // unique, or the very same Windows twice (a duplicate the user made)
+        }
+        // "11 24H2" → "24H2"; a build without a release name, or two of one release: the version.
+        const std::wstring label = releaseLabel(image.build);
+        const bool named = label.find(L"build") == std::wstring::npos;
+        const std::wstring suffix = named && !sameBuild ? label.substr(label.find(L' ') + 1) : image.versionString();
+        renames.emplace_back(image.index, std::format(L"{} ({})", image.name, suffix));
+    }
+    return renames;
 }
 
 std::wstring releaseSummary(int build, int spBuild, const wchar_t* architecture) {

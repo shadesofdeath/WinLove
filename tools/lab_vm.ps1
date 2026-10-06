@@ -9,6 +9,9 @@
 
     powershell -ExecutionPolicy Bypass -File tools\lab_vm.ps1 -Changes <changeset.json> -Tag start1   (elevated; ~40 min)
 
+  -InstallWim <wim> -ImageIndex N: install edition N of a ready install.wim (no changeset; AIO tests);
+   -BootWim <wim>: the media's boot.wim replaced (e.g. one patched for the previous Setup);
+   -SetupFolder <dir>: the setup media files from there instead of build\lab\setup (another Windows).
   -Cpus / -MemMB: the vCPU count and memory (default 2, 4096). (An NVMe disk does not start under vmrun here.)
   -OpenThisPc: Explorer opens "This PC" at the first sign-in (icons tests).
   -Network: a NAT network card, e1000 (e1000e and vmxnet3 crash this VMware at power-on; Windows Update, Store and OOBE downloads happen; the default is none).
@@ -37,12 +40,16 @@ param(
     [int] $DiagMinutes = 30,
     [switch] $KeepVm,
     [int] $Cpus = 2,
-    [int] $MemMB = 4096
+    [int] $MemMB = 4096,
+    [string] $InstallWim = '',
+    [int] $ImageIndex = 1,
+    [string] $BootWim = '',
+    [string] $SetupFolder = ''
 )
 $ErrorActionPreference = 'Stop'
 $Lab = [System.IO.Path]::GetFullPath($Lab)
 $repo = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$setup = Join-Path $Lab 'setup'
+$setup = if ($SetupFolder) { [System.IO.Path]::GetFullPath($SetupFolder) } else { Join-Path $Lab 'setup' }
 $work = Join-Path $Lab "work\vm-$Tag"
 $mount = Join-Path $Lab "mount\vm-$Tag"
 $vmDir = Join-Path $Lab "vm\$Tag"
@@ -113,7 +120,7 @@ $unattend = @'
       </DiskConfiguration>
       <ImageInstall><OSImage>
         <InstallTo><DiskID>0</DiskID><PartitionID>3</PartitionID></InstallTo>
-        <InstallFrom><MetaData wcm:action="add"><Key>/IMAGE/INDEX</Key><Value>1</Value></MetaData></InstallFrom>
+        <InstallFrom><MetaData wcm:action="add"><Key>/IMAGE/INDEX</Key><Value>IMAGEINDEX</Value></MetaData></InstallFrom>
       </OSImage></ImageInstall>
       <UserData><AcceptEula>true</AcceptEula><ProductKey><Key>PRODUCTKEY</Key><WillShowUI>Never</WillShowUI></ProductKey></UserData>
     </component>
@@ -152,7 +159,7 @@ SPECIALIZE
 </unattend>
 '@
 
-$unattend = $unattend.Replace('PRODUCTKEY', $ProductKey)
+$unattend = $unattend.Replace('PRODUCTKEY', $ProductKey).Replace('IMAGEINDEX', "$ImageIndex")
 $first = if ($FirstLogon) { [System.Security.SecurityElement]::Escape($FirstLogon) } elseif ($OpenThisPc) { 'cmd /c start explorer.exe shell:MyComputerFolder' } else { 'cmd /c echo first sign-in' }
 $shutdownCmd = if ($Diag -or $ShutdownAfter -le 0) { 'cmd /c echo the guest shuts itself down' } else { "cmd /c timeout /t $ShutdownAfter /nobreak &amp; shutdown /s /t 0" }
 $specialize = if ($Diag) { '        <RunSynchronousCommand wcm:action="add"><Order>2</Order><Path>cmd /c C:\ProgramData\WinLoveDiag\setup.cmd</Path></RunSynchronousCommand>' } else { '' }
@@ -160,15 +167,20 @@ $unattend = $unattend.Replace('OPENTHISPC', $first).Replace('SHUTDOWNCMD', $shut
 Say ("=== lab_vm $Tag " + (Get-Date -Format s))
 $vmx = Join-Path $vmDir "wl-$Tag.vmx"
 try {
-    # 1. The patched image.
+    # 1. The patched image (or a ready one: -InstallWim, installed as it is).
+    if ($InstallWim) {
+        Copy-Item $InstallWim "$work\install.wim"
+        Check "install.wim taken as it is: $InstallWim (index $ImageIndex)" (Test-Path "$work\install.wim")
+    } else {
     Run @('export', (Join-Path $setup 'sources\install.wim'), "$Edition", "$work\install.wim")
     Run @('mount', "$work\install.wim", '1', $mount)
     Check "mount edition $Edition" ($script:lastExit -eq 0)
-    if ($Changes) {
+    }
+    if ($Changes -and -not $InstallWim) {
         Run @('apply', $Changes, $mount)
         Check "changeset applied: $Changes" ($script:lastExit -eq 0)
     }
-    if ($Diag) {
+    if ($Diag -and -not $InstallWim) {
         $setupCmd = "@echo off`r`nset D=C:\ProgramData\WinLoveDiag`r`n" +
             "auditpol /set /subcategory:{0CCE922B-69AE-11D9-BED3-505054503030} /success:enable > `"%D%\setup.txt`" 2>&1`r`n" +
             "reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit /v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1 /f >> `"%D%\setup.txt`" 2>&1`r`n" +
@@ -185,13 +197,16 @@ try {
         Run @('apply', $diagJson, $mount)
         Check 'diagnostics put into the image' ($script:lastExit -eq 0 -and (Test-Path (Join-Path $mount 'ProgramData\WinLoveDiag\setup.cmd')))
     }
-    Run @('unmount', $mount, '--commit')
-    Check 'committed' ($script:lastExit -eq 0)
+    if (-not $InstallWim) {
+        Run @('unmount', $mount, '--commit')
+        Check 'committed' ($script:lastExit -eq 0)
+    }
 
     # 2. Setup folder + ISO.
     $media = Join-Path $work 'media'
     Native { robocopy.exe $setup $media /E /XF install.wim /NFL /NDL /NJH /NJS /NP } | Out-Null
     Move-Item "$work\install.wim" (Join-Path $media 'sources\install.wim')
+    if ($BootWim) { Copy-Item $BootWim (Join-Path $media 'sources\boot.wim') -Force }
     [System.IO.File]::WriteAllText((Join-Path $media 'autounattend.xml'), $unattend, (New-Object System.Text.UTF8Encoding $false))
     Run @('iso', $media, "$work\wl-$Tag.iso", '--label=WL_LAB', '--boot=uefi', '--no-prompt')
     Check 'ISO built' ($script:lastExit -eq 0 -and (Test-Path "$work\wl-$Tag.iso"))
@@ -241,6 +256,7 @@ RemoteDisplay.vnc.enabled = "TRUE"
 RemoteDisplay.vnc.port = "$vncPort"
 RemoteDisplay.vnc.ip = "127.0.0.1"
 tools.upgrade.policy = "manual"
+logging = "TRUE"
 "@
     $card = if ($Network) { "ethernet0.present = `"TRUE`"`r`nethernet0.connectionType = `"nat`"`r`nethernet0.virtualDev = `"e1000`"`r`nethernet0.addressType = `"generated`"" } else { 'ethernet0.present = "FALSE"' }
     $vmxText = $vmxText.Replace('NETWORKCARD', $card).Replace('DIAGDISK', $diagDisk)
@@ -263,7 +279,14 @@ tools.upgrade.policy = "manual"
     }
     $taken = @(Get-ChildItem $shots -Filter 'shot-*.png')
     Say ("screenshots: " + $taken.Count + " (" + $shots + ")")
-    Check "the guest reached the desktop and shut itself down within $TimeoutMinutes min (no boot loop)" $poweredOff
+    # A guest that powers itself off leaves an ACPI soft-off in vmware.log; a VM stopped from outside
+    # (vmrun stop by hand) does not - that must never read as a pass.
+    $vmLogs = @(Get-ChildItem $vmDir -Filter 'vmware*.log' -ErrorAction SilentlyContinue)
+    $vmLogs | Copy-Item -Destination $shots -ErrorAction SilentlyContinue # kept: the VM folder goes
+    $byGuest = $poweredOff -and ($vmLogs.Count -eq 0 -or [bool]($vmLogs | Select-String -Pattern 'Soft Off' -SimpleMatch -Quiet))
+    if ($poweredOff -and $vmLogs.Count -eq 0) { Say 'no vmware.log: who powered the VM off cannot be told' }
+    if ($poweredOff -and -not $byGuest) { Say 'the VM went off without an ACPI soft-off in vmware.log: stopped from outside' }
+    Check "the guest reached the desktop and shut itself down within $TimeoutMinutes min (no boot loop)" $byGuest
     if ($Diag -and $poweredOff) {
         $image = Mount-DiskImage -ImagePath $diagVhd -NoDriveLetter -PassThru
         $part = Get-Partition -DiskNumber ($image | Get-Disk).Number | Where-Object { $_.Type -eq 'Basic' } | Select-Object -First 1

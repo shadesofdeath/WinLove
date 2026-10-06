@@ -579,6 +579,9 @@ enum class Str : std::uint16_t {
     ImagesMounting,
     ImagesMountingHint,
     ImagesMountingState,
+    ImagesMoveDown,
+    ImagesMoveUp,
+    ImagesMovedToast,
     ImagesNoMountToExplore,
     ImagesNone,
     ImagesPartCd,
@@ -1373,7 +1376,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1363;
+inline constexpr std::size_t kStrCount = 1366;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -1947,6 +1950,9 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "images.mounting",
     "images.mountingHint",
     "images.mountingState",
+    "images.moveDown",
+    "images.moveUp",
+    "images.movedToast",
     "images.noMountToExplore",
     "images.none",
     "images.partCd",

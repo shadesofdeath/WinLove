@@ -821,6 +821,16 @@ int cmdDuplicate(const std::wstring& wim, const std::wstring& index, const std::
     return 0;
 }
 
+int cmdReorder(const std::wstring& wim, const std::wstring& order) {
+    auto done = core::reorderImages(wim, parseIndexList(order), progressTask(L"reorder"));
+    print(L"\n");
+    if (!done) {
+        return reportError(done.error());
+    }
+    print(L"  editions reordered\n");
+    return 0;
+}
+
 int cmdAppend(const std::wstring& sourcePath, const std::wstring& destination, const std::wstring& indexes, const std::wstring& compress) {
     auto source = core::openSource(sourcePath);
     if (!source) {
@@ -2132,6 +2142,7 @@ void printUsage() {
           L"  wlcli recompress <wim|esd> --compress=lzx|xpress|none|esd   (required; every edition, the file replaced)\n"
           L"  wlcli swm-split <wim> <first.swm> [--size-mb=3800]  ·  wlcli swm-merge <first.swm> <out.wim>\n"
           L"  wlcli duplicate <wim> <index> <name>       (a copy of an edition in the same WIM)\n"
+          L"  wlcli reorder <wim> <2,1,3>                (the editions in a new order: Setup's list, AIO)\n"
           L"  wlcli append <iso|wim|esd|swm> <dest.wim> [--index=1,3] [--compress=lzx]   (editions added)\n"
           L"  wlcli capture <folder> <wim> <name> [--compress=lzx|xpress]   (admin; new or appended edition)\n"
           L"  wlcli picture <src> <dst> [--size=WxH] [--format=jpg|png|bmp]   (WIC: cover-scale + encode)\n"
@@ -2466,6 +2477,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"duplicate" && args.size() == 4) {
         return cmdDuplicate(args[1], args[2], args[3]);
+    }
+    if (command == L"reorder" && args.size() == 3) {
+        return cmdReorder(args[1], args[2]);
     }
     if (command == L"append" && args.size() == 3) {
         return cmdAppend(args[1], args[2], indexList, compress);

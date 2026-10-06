@@ -245,6 +245,13 @@ bool ImagesPage::showRowMenu(ui::PointF at) {
             item(Str::ImagesDuplicate, onDuplicate);
         }
         if (m_controller.canDelete()) {
+            // D-077: Setup lists the editions in file order (an AIO).
+            if (*index > 1) {
+                item(Str::ImagesMoveUp, [&controller = m_controller, i = *index] { controller.moveEdition(i, -1); });
+            }
+            if (static_cast<std::size_t>(*index) < editions) {
+                item(Str::ImagesMoveDown, [&controller = m_controller, i = *index] { controller.moveEdition(i, +1); });
+            }
             item(Str::ImagesDeleteIndex, onDelete);
             if (editions > 2) {
                 item(Str::ImagesKeepOnly, onKeepOnly);
