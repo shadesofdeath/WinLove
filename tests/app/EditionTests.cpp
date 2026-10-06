@@ -166,8 +166,8 @@ TEST_CASE("editions: right click → \"Yalnız bu sürümü tut…\" → confirm
     REQUIRE(host.onContextMenu({400, 244}));
     host.layout({1440, 900});
     CHECK(state.selectedIndex() == 4);
-    // Bağla · Dışa aktar · Yeniden adlandır… · Çoğalt… · Sürümü sil… · Yalnız bu sürümü tut…
-    for (int i = 0; i < 6; ++i) {
+    // Bağla · Dışa aktar · Yeniden adlandır… · Çoğalt… · Yukarı taşı · Aşağı taşı · Sürümü sil… · Yalnız bu sürümü tut…
+    for (int i = 0; i < 8; ++i) {
         key(VK_DOWN);
     }
     key(VK_RETURN);

@@ -1,5 +1,7 @@
 // Removing editions from a WIM: the index arithmetic and the refusals. The rewrite itself needs
 // a real image (capturing a WIM takes admin): tools/lab_editions.ps1 runs it on the lab copy.
+#include "core/image/ImageInfo.h"
+#include "core/image/WindowsRelease.h"
 #include "core/image/wim/WimGapi.h"
 
 #include <doctest.h>
@@ -24,6 +26,41 @@ TEST_CASE("indexAfterRemoval: what stays is renumbered from 1") {
     CHECK(indexAfterRemoval(5, others) == std::nullopt);
 
     CHECK(indexAfterRemoval(3, {}) == 3);
+}
+
+TEST_CASE("reorderImages: the new order names every edition once (D-077)") {
+    CHECK(isPermutation(std::vector<int>{2, 1, 3}, 3));
+    CHECK(isPermutation(std::vector<int>{1}, 1));
+    CHECK_FALSE(isPermutation(std::vector<int>{1, 2}, 3));    // one left out
+    CHECK_FALSE(isPermutation(std::vector<int>{1, 1, 2}, 3)); // twice
+    CHECK_FALSE(isPermutation(std::vector<int>{0, 1, 2}, 3)); // out of range
+    CHECK_FALSE(isPermutation(std::vector<int>{1, 2, 4}, 3));
+    const auto missing = std::filesystem::temp_directory_path() / L"wl-tests" / L"no-such-image.wim";
+    CHECK_FALSE(reorderImages(missing, std::vector<int>{2, 1}, {}));
+}
+
+TEST_CASE("AIO: an added edition named like one already there gets its release (D-077)") {
+    auto image = [](int index, const wchar_t* name, int build, int sp) {
+        ImageInfo i;
+        i.index = index;
+        i.name = name;
+        i.major = 10;
+        i.build = build;
+        i.spBuild = sp;
+        return i;
+    };
+    const std::vector<ImageInfo> images{
+        image(1, L"Windows 11 Pro", 26200, 8037),  // already there
+        image(2, L"Windows 10 Pro", 19045, 3803),  // added, unique
+        image(3, L"windows 11 pro", 26100, 1742),  // added, same name (case aside), 24H2
+        image(4, L"Windows 11 Pro", 26200, 7000),  // added, same release as 1: the version tells them apart
+        image(5, L"Windows 11 Pro", 26200, 8037),  // added, the very same Windows: left alone
+    };
+    const auto renames = distinctEditionNames(images, 2);
+    REQUIRE(renames.size() == 2);
+    CHECK(renames[0] == std::pair<int, std::wstring>{3, L"windows 11 pro (24H2)"});
+    CHECK(renames[1] == std::pair<int, std::wstring>{4, L"Windows 11 Pro (10.0.26200.7000)"});
+    CHECK(distinctEditionNames(images, 6).empty()); // nothing added
 }
 
 TEST_CASE("removeImages: a missing file is an error, not a silent success") {

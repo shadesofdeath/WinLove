@@ -94,6 +94,9 @@ public:
     void mergeSwm(const std::filesystem::path& destination);
     // A copy of edition `index` at the end of the same WIM, named `name`.
     void duplicateEdition(int index, std::wstring name);
+    // Edition `index` one place up (-1) or down (+1): Setup lists the editions in file order (AIO,
+    // D-077). The WIM is rewritten (core::reorderImages); same conditions as deleting.
+    void moveEdition(int index, int delta);
     // Editions of another ISO / WIM / ESD / SWM added to this one.
     void appendFrom(const std::filesystem::path& other, std::vector<int> indexes);
     // A folder captured into `wim` (new or appended), which becomes the source. Needs elevation.

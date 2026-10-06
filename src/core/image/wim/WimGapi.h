@@ -33,6 +33,14 @@ namespace wl::core {
 [[nodiscard]] Result<void> removeImages(const std::filesystem::path& wim, std::span<const int> indexes,
                                         const TaskContext& task);
 
+// The editions in a new order — Setup lists them in file order (an AIO, D-077). `order` names
+// every index once ({2,1,3}: the second edition first). Rewritten like removeImages: the original
+// is replaced only once the new file is complete. Not for ESD / split / boot images.
+[[nodiscard]] Result<void> reorderImages(const std::filesystem::path& wim, std::span<const int> order,
+                                         const TaskContext& task);
+// Every index 1..count exactly once.
+[[nodiscard]] bool isPermutation(std::span<const int> order, int count);
+
 // The texts of an edition: what DISM and Setup's edition list show. Written into the image's XML
 // (NAME / DISPLAYNAME, DESCRIPTION / DISPLAYDESCRIPTION, FLAGS); the file grows by the difference,
 // nothing else in it changes. Control characters and outer spaces are dropped.

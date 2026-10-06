@@ -382,6 +382,41 @@ Result<void> removeImages(const std::filesystem::path& wimInput, std::span<const
     return rewriteWith(wim, info->header.compression, keep, task, L"remove");
 }
 
+Result<void> reorderImages(const std::filesystem::path& wimInput, std::span<const int> order, const TaskContext& task) {
+    const std::filesystem::path wim = nativePath(wimInput);
+    auto info = readInfo(wim);
+    if (!info) {
+        return std::unexpected(info.error());
+    }
+    if (!isPermutation(order, static_cast<int>(info->images.size()))) {
+        return fail(ErrorCode::InvalidArgument, L"the new order must name every edition once", wim.wstring());
+    }
+    if (std::ranges::is_sorted(order)) {
+        return {};
+    }
+    if (!plainWim(info->header) || info->header.bootIndex != 0) {
+        return fail(ErrorCode::Unsupported,
+                    L"editions can only be reordered in a plain install WIM (not an ESD, a split or a boot image)",
+                    wim.wstring());
+    }
+    log::info("wim", std::format(L"reorder the {} editions of {}", info->images.size(), wim.wstring()));
+    return rewriteWith(wim, info->header.compression, order, task, L"reorder");
+}
+
+bool isPermutation(std::span<const int> order, int count) {
+    if (static_cast<int>(order.size()) != count) {
+        return false;
+    }
+    std::vector<bool> seen(static_cast<std::size_t>(count), false);
+    for (const int index : order) {
+        if (index < 1 || index > count || seen[static_cast<std::size_t>(index - 1)]) {
+            return false;
+        }
+        seen[static_cast<std::size_t>(index - 1)] = true;
+    }
+    return true;
+}
+
 Result<void> setImageText(const std::filesystem::path& wimInput, int index, const ImageText& text) {
     const std::filesystem::path wim = nativePath(wimInput);
     auto clean = [](std::wstring value) {

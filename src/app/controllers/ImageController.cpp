@@ -3,6 +3,7 @@
 #include "base/Log.h"
 #include "base/Path.h"
 #include "core/image/UdfImage.h"
+#include "core/image/WindowsRelease.h"
 #include "core/image/dism/Dism.h"
 #include "core/image/dism/DismErrors.h"
 #include "core/image/dism/MountHealth.h"
@@ -12,6 +13,7 @@
 
 #include <cmath>
 #include <format>
+#include <numeric>
 
 namespace wl::app {
 
@@ -756,8 +758,9 @@ void ImageController::appendFrom(const std::filesystem::path& other, std::vector
         const std::filesystem::path scratch = m_state.settings().workDirectoryFor(sourcePath) / L"append";
         auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
         const std::size_t count = indexes.size();
+        const int firstNew = static_cast<int>(m_state.source()->install.images.size()) + 1;
         run(EngineOperation{EngineOperation::Kind::Exporting, other.filename().wstring(), *wim, 0},
-            [wim = *wim, other, indexes, compression, scratch, sourcePath, reopened](const core::TaskContext& task) -> Result<void> {
+            [wim = *wim, other, indexes, compression, scratch, sourcePath, reopened, firstNew](const core::TaskContext& task) -> Result<void> {
                 auto from = core::openSource(other);
                 if (!from) {
                     return std::unexpected(from.error());
@@ -778,6 +781,16 @@ void ImageController::appendFrom(const std::filesystem::path& other, std::vector
                 }
                 if (!added) {
                     return added;
+                }
+                // D-077: an added edition named like one already there gets its release in brackets.
+                if (const auto now = core::openSource(sourcePath)) {
+                    const auto& images = now->install.images;
+                    for (const auto& [index, name] : core::distinctEditionNames(images, firstNew)) {
+                        const auto image = std::ranges::find(images, index, &core::ImageInfo::index);
+                        if (auto r = core::setImageText(wim, index, {name, image->description, std::nullopt}); !r) {
+                            log::warn("images", describe(r.error()));
+                        }
+                    }
                 }
                 auto info = core::openSource(sourcePath);
                 if (!info) {
@@ -823,6 +836,51 @@ void ImageController::capture(const std::filesystem::path& folder, const std::fi
             m_events.succeeded(Str::ImagesCapturedToast, wim.filename().wstring());
         },
         Failure::Export);
+}
+
+void ImageController::moveEdition(int index, int delta) {
+    if (const auto refusal = deleteRefusal()) {
+        m_events.refused(*refusal);
+        return;
+    }
+    const int count = static_cast<int>(m_state.source()->install.images.size());
+    const int target = index + delta;
+    if (index < 1 || index > count || target < 1 || target > count || target == index) {
+        return;
+    }
+    // The two editions trade places; the rest stay where they are.
+    std::vector<int> order(static_cast<std::size_t>(count));
+    std::iota(order.begin(), order.end(), 1);
+    std::swap(order[static_cast<std::size_t>(index - 1)], order[static_cast<std::size_t>(target - 1)]);
+    const std::wstring name = editionName(index);
+    withWritableSource(index, [this, order, index, target, name] {
+        const auto wim = installWimPath();
+        const std::filesystem::path sourcePath = m_state.source()->path;
+        auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
+        run(EngineOperation{EngineOperation::Kind::Exporting, name, *wim, index},
+            [wim = *wim, order, sourcePath, reopened](const core::TaskContext& task) -> Result<void> {
+                if (auto r = core::reorderImages(wim, order, task); !r) {
+                    return r;
+                }
+                auto info = core::openSource(sourcePath);
+                if (!info) {
+                    return std::unexpected(info.error());
+                }
+                *reopened = std::move(*info);
+                return {};
+            },
+            [this, reopened, index, target, name] {
+                m_state.setSource(std::move(**reopened));
+                m_state.selectMany({target}, target);
+                // The answer file's edition follows its edition.
+                if (auto unattend = m_state.unattend(); unattend.options.imageIndex == index || unattend.options.imageIndex == target) {
+                    unattend.options.imageIndex = unattend.options.imageIndex == index ? target : index;
+                    m_state.setUnattend(std::move(unattend));
+                }
+                m_events.succeeded(Str::ImagesMovedToast, name);
+            },
+            Failure::Export);
+    });
 }
 
 void ImageController::removeEditions(std::vector<int> indexes, std::wstring label) {
