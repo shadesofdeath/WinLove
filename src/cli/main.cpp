@@ -738,6 +738,26 @@ int cmdVerify(const std::wstring& path) {
     return report->sound() ? 0 : 3;
 }
 
+// Whether a file is in an edition, from its file list (no mount). Exit 0: there, 1: not there.
+int cmdWimFile(const std::wstring& path, const std::wstring& index, const std::wstring& file) {
+    auto source = core::openSource(path);
+    if (!source) {
+        return reportError(source.error());
+    }
+    auto bytes = core::openInstallImage(*source);
+    if (!bytes) {
+        return reportError(bytes.error());
+    }
+    const auto started = GetTickCount64();
+    const auto found = core::wimFileExists(**bytes, _wtoi(index.c_str()), file);
+    if (!found) {
+        return reportError(found.error());
+    }
+    print(std::format(L"  [{}] {}: {} ({:.1f} s)\n", index, file, *found ? L"present" : L"MISSING",
+                      static_cast<double>(GetTickCount64() - started) / 1000.0));
+    return *found ? 0 : 1;
+}
+
 // D-058: Images page tools (no admin except capture).
 
 int cmdHash(const std::wstring& file, const std::wstring& expect) {
@@ -989,12 +1009,14 @@ int cmdAppxRemove(const std::wstring& dir, const std::wstring& package, bool nat
 }
 
 // Setup's own image (sources\boot.wim): LabConfig bypasses and drivers, mounted in `mountDir`,
-// committed (BootImage.h). `bypass`: "tpm,secureboot,ram,cpu,storage" or "all".
+// committed (BootImage.h). `bypass`: "tpm,secureboot,ram,cpu,storage" or "all"; `legacySetup`: the
+// media boots into the previous Setup (24H2+, D-074).
 int cmdBootPatch(const std::wstring& bootWim, const std::wstring& mountDir, const std::wstring& bypass,
-                 const std::vector<std::wstring>& drivers) {
+                 const std::vector<std::wstring>& drivers, bool legacySetup) {
     core::BootPatch patch;
+    patch.legacySetup = legacySetup;
     std::wstringstream parts(bypass);
-    for (std::wstring part; std::getline(parts, part, L',');) {
+    for (std::wstring part; !bypass.empty() && std::getline(parts, part, L',');) {
         const bool all = part == L"all";
         if (!all && part != L"tpm" && part != L"secureboot" && part != L"ram" && part != L"cpu" && part != L"storage") {
             return reportError(Error{ErrorCode::InvalidArgument, L"--bypass takes tpm,secureboot,ram,cpu,storage or all", part});
@@ -1009,7 +1031,7 @@ int cmdBootPatch(const std::wstring& bootWim, const std::wstring& mountDir, cons
         patch.drivers.emplace_back(driver);
     }
     if (patch.empty()) {
-        return reportError(Error{ErrorCode::InvalidArgument, L"nothing to do: give --bypass= and / or --driver=", bootWim});
+        return reportError(Error{ErrorCode::InvalidArgument, L"nothing to do: give --bypass=, --driver= and / or --legacy-setup", bootWim});
     }
     auto d = dism();
     if (!d) {
@@ -1021,8 +1043,9 @@ int cmdBootPatch(const std::wstring& bootWim, const std::wstring& mountDir, cons
     if (!report) {
         return reportError(report.error());
     }
-    print(std::format(L"  boot image index {} patched: {} LabConfig value(s), {} driver(s) added\n", report->index,
-                      patch.labConfigValues().size(), report->driversAdded));
+    print(std::format(L"  boot image index {} patched: {} LabConfig value(s), {} driver(s) added{}\n", report->index,
+                      patch.labConfigValues().size(), report->driversAdded,
+                      legacySetup ? L", boots into the previous Setup" : L""));
     for (const auto& refused : report->driversRefused) {
         print(std::format(L"  driver not added: {}\n", refused));
     }
@@ -2148,7 +2171,7 @@ void printUsage() {
           L"  wlcli edition <mountdir> [--set=<EditionId>] [--json]   (current + target editions; --set: dism /Set-Edition)\n"
           L"  wlcli appx-remove <mountdir> <PackageFullName> [--native]   (DISM; natively when DISM refuses the app)\n"
           L"  wlcli boot-patch <boot.wim> <mountdir> [--bypass=tpm,secureboot,ram,cpu,storage|all] [--driver=<inf>]...\n"
-          L"                                      (Setup's image: LabConfig + drivers; mounts, commits)\n"
+          L"                                      [--legacy-setup]   (Setup's image: LabConfig, drivers, previous Setup; mounts, commits)\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
           L"  wlcli apply <changeset.json> <mountdir> [--commit] [--source=<sources\\sxs>]\n"
           L"                                      [--also=2,3 --wim=<file>] [--setup=<setup folder>]   (with --commit: then the same on further editions)\n"
@@ -2159,6 +2182,7 @@ void printUsage() {
           L"  wlcli delete-index <wim> <index>[,<index>...]   Remove editions; the WIM is rewritten with the rest\n"
           L"  wlcli optimize <wim>                      Rewrite a WIM without what commits left behind\n"
           L"  wlcli verify <iso|wim|folder>             Read every stream and check its SHA-1 (exit 3: damaged)\n"
+          L"  wlcli wim-file <iso|wim|folder> <index> <path>   Is the file in the edition? (file list, no mount; exit 1: no)\n"
           L"  wlcli set-info <wim> <index> <name> [<description>] [--flags=<EditionId>]\n"
           L"  wlcli version | help\n"
           L"\n"
@@ -2181,6 +2205,7 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring bypass;
     std::vector<std::wstring> drivers;
     bool native = false;
+    bool legacySetup = false;
     std::wstring boot;
     bool sha = false;
     bool noPrompt = false;
@@ -2223,6 +2248,8 @@ int wmain(int argc, wchar_t** argv) {
             compress = std::wstring(a.substr(11));
         } else if (a == L"--native") {
             native = true;
+        } else if (a == L"--legacy-setup") {
+            legacySetup = true;
         } else if (a.starts_with(L"--bypass=")) {
             bypass = std::wstring(a.substr(9));
         } else if (a.starts_with(L"--driver=")) {
@@ -2347,6 +2374,9 @@ int wmain(int argc, wchar_t** argv) {
     if (command == L"verify" && args.size() == 2) {
         return cmdVerify(args[1]);
     }
+    if (command == L"wim-file" && args.size() == 4) {
+        return cmdWimFile(args[1], args[2], args[3]);
+    }
     if (command == L"set-info" && (args.size() == 4 || args.size() == 5)) {
         return cmdSetInfo(args[1], args[2], args[3], args.size() == 5 ? args[4] : L"", flags);
     }
@@ -2384,7 +2414,7 @@ int wmain(int argc, wchar_t** argv) {
         return cmdAppxRemove(args[1], args[2], native);
     }
     if (command == L"boot-patch" && args.size() == 3) {
-        return cmdBootPatch(args[1], args[2], bypass, drivers);
+        return cmdBootPatch(args[1], args[2], bypass, drivers, legacySetup);
     }
     if (command == L"edition" && args.size() == 2) {
         return cmdEdition(args[1], serviceSet, asJson);

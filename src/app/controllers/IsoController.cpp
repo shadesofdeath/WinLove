@@ -119,7 +119,8 @@ void IsoController::start(Request request) {
     }
     const std::filesystem::path workFolder = m_state.settings().workDirectoryFor(source.path);
     const std::string answerFile = UnattendController::isoFile(m_state); // empty: not asked for
-    const core::BootPatch boot = request.bootBypass ? bootPatch(m_state) : core::BootPatch{};
+    core::BootPatch boot = request.bootBypass ? bootPatch(m_state) : core::BootPatch{};
+    boot.legacySetup = request.legacySetup; // D-074
     const std::filesystem::path bootFolder = m_state.settings().workRoot / L"boot"; // the copy and its mount folder
     const BootPatcher patcher = m_patcher ? m_patcher : BootPatcher{patchWithDism};
     const UsbWriter usbWriter = m_usbWriter ? m_usbWriter : UsbWriter{core::writeUsb};
@@ -151,8 +152,8 @@ void IsoController::start(Request request) {
         log::info("iso", std::format(L"answer file: autounattend.xml ({} bytes) goes to the ISO root", answerFile.size()));
     }
     if (!boot.empty()) {
-        log::info("iso", std::format(L"setup image: {} requirement check(s) are switched off in boot.wim as well",
-                                     boot.labConfigValues().size()));
+        log::info("iso", std::format(L"setup image: {} requirement check(s) are switched off in boot.wim as well{}",
+                                     boot.labConfigValues().size(), boot.legacySetup ? L"; it boots into the previous Setup" : L""));
     }
 
     auto post = m_events.postToUi;
@@ -221,7 +222,7 @@ void IsoController::start(Request request) {
             const std::filesystem::path original = folder / L"sources" / L"boot.wim";
             std::error_code ec;
             if (!boot.empty() && !std::filesystem::exists(original, ec)) {
-                log::warn("iso", L"no sources\\boot.wim in the setup files: the requirement bypass stays out of Setup's image");
+                log::warn("iso", L"no sources\\boot.wim in the setup files: Setup's image is left as it is");
             } else if (!boot.empty()) {
                 const std::filesystem::path mountDir = bootFolder / L"mount";
                 std::filesystem::create_directories(mountDir, ec);
@@ -242,8 +243,8 @@ void IsoController::start(Request request) {
                 if (!done) {
                     return std::unexpected(done.error());
                 }
-                log::info("iso", std::format(L"boot.wim index {}: {} requirement check(s) switched off", done->index,
-                                             boot.labConfigValues().size()));
+                log::info("iso", std::format(L"boot.wim index {}: {} requirement check(s) switched off{}", done->index,
+                                             boot.labConfigValues().size(), boot.legacySetup ? L", previous Setup" : L""));
                 options.replacedFiles.push_back({L"sources\\boot.wim", patched.file});
             }
             if (request.usb) {

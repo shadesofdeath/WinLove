@@ -251,3 +251,139 @@ TEST_CASE("verify: what is not a plain WIM is refused, not reported as sound") {
     REQUIRE_FALSE(cancelled.has_value());
     CHECK(cancelled.error().code == ErrorCode::Cancelled);
 }
+
+// D-074: one edition's file list, as wimgapi lays it out (security data, then directory entries).
+namespace {
+
+struct Node {
+    std::u16string name;
+    bool directory = false;
+    std::vector<Node> children;
+    std::uint16_t extraStreams = 0; // named data streams after the entry, to be skipped
+};
+
+void putAt(std::vector<std::byte>& out, std::size_t at, const void* value, std::size_t size) {
+    std::memcpy(out.data() + at, value, size);
+}
+
+void pad8(std::vector<std::byte>& out) {
+    out.resize((out.size() + 7) & ~std::size_t{7});
+}
+
+// One entry at the end of `out`; its offset.
+std::size_t writeDentry(std::vector<std::byte>& out, const Node& node) {
+    const std::size_t at = out.size();
+    const std::uint64_t length = 102 + node.name.size() * 2 + 2;
+    out.resize(at + length);
+    putAt(out, at, &length, 8);
+    const std::uint32_t attributes = node.directory ? 0x10 : 0x80;
+    putAt(out, at + 8, &attributes, 4);
+    const auto nameBytes = static_cast<std::uint16_t>(node.name.size() * 2);
+    putAt(out, at + 96, &node.extraStreams, 2);
+    putAt(out, at + 100, &nameBytes, 2);
+    putAt(out, at + 102, node.name.data(), nameBytes);
+    pad8(out);
+    for (std::uint16_t i = 0; i < node.extraStreams; ++i) {
+        const std::size_t s = out.size();
+        const std::uint64_t streamLength = 40;
+        out.resize(s + streamLength);
+        putAt(out, s, &streamLength, 8);
+    }
+    return at;
+}
+
+// The children of `node` as a run ending in a zero length; their own children after it.
+std::size_t writeChildren(std::vector<std::byte>& out, const Node& node) {
+    const std::size_t list = out.size();
+    std::vector<std::size_t> at;
+    for (const auto& child : node.children) {
+        at.push_back(writeDentry(out, child));
+    }
+    out.resize(out.size() + 8); // end of the directory
+    for (std::size_t i = 0; i < node.children.size(); ++i) {
+        if (node.children[i].directory) {
+            const std::uint64_t subdir = writeChildren(out, node.children[i]);
+            putAt(out, at[i] + 16, &subdir, 8);
+        }
+    }
+    return list;
+}
+
+std::vector<std::byte> metadataOf(const Node& root) {
+    std::vector<std::byte> out(8);
+    const std::uint32_t security = 8; // no descriptors
+    putAt(out, 0, &security, 4);
+    const std::size_t rootAt = writeDentry(out, root);
+    const std::uint64_t subdir = writeChildren(out, root);
+    putAt(out, rootAt + 16, &subdir, 8);
+    return out;
+}
+
+Node edition(bool winre) {
+    Node recovery{u"Recovery", true, {{u"ReAgent.xml"}}};
+    if (winre) {
+        recovery.children.push_back({u"Winre.wim"});
+    }
+    Node system32{u"System32", true, {{u"notepad.exe"}, std::move(recovery)}};
+    Node windows{u"Windows", true, {std::move(system32)}};
+    Node programs{u"Program Files", true, {}, 2};
+    return Node{u"", true, {std::move(programs), std::move(windows)}};
+}
+
+} // namespace
+
+TEST_CASE("wim file list: a path is found in the edition it is in, by name in any case and either slash") {
+    const auto first = metadataOf(edition(true));
+    const auto second = metadataOf(edition(false));
+    // Runs of a byte become matches at distance 1 (the first recent offset): the zeros of the entries
+    // make it smaller than it is, as a WIM keeps a compressed chunk only then.
+    std::vector<LzxToken> tokens;
+    for (std::size_t i = 0; i < second.size();) {
+        const auto b = second[i];
+        if (i > 0 && i + 3 <= second.size() && second[i - 1] == b && second[i + 1] == b && second[i + 2] == b) {
+            tokens.push_back(LzxToken::repeat3());
+            i += 3;
+        } else {
+            tokens.push_back(LzxToken::literal(static_cast<std::uint8_t>(b)));
+            ++i;
+        }
+    }
+    const Stream plain{bytesOf("a file"), bytesOf("a file"), false, false};
+    const Stream one{first, first, false, true};
+    const Stream two{wl::test::lzxChunk(tokens), wl::test::lzxPlain(tokens), true, true}; // read through LZX
+    REQUIRE(two.plain == second);
+    REQUIRE(two.stored.size() < second.size());
+    const MemorySource wim = buildWim({plain, one, two});
+
+    auto has = [&](int index, std::wstring_view path) {
+        const auto found = wimFileExists(wim, index, path);
+        REQUIRE(found.has_value());
+        return *found;
+    };
+    CHECK(has(1, L"Windows\\System32\\Recovery\\Winre.wim"));
+    CHECK(has(1, L"\\windows/system32/RECOVERY/winre.WIM"));
+    CHECK(has(1, L"Windows\\System32\\notepad.exe"));
+    CHECK_FALSE(has(1, L"Windows\\System32\\Recovery\\Winre.wim\\x"));
+    CHECK_FALSE(has(1, L"Windows\\System32"));          // a folder is not a file
+    CHECK_FALSE(has(1, L"Windows\\System32\\nope.exe"));
+    CHECK_FALSE(has(1, L"Program Files\\Winre.wim"));   // past an entry with named streams
+    CHECK_FALSE(has(2, L"Windows\\System32\\Recovery\\Winre.wim"));
+    CHECK(has(2, L"Windows\\System32\\Recovery\\ReAgent.xml"));
+
+    const auto third = wimFileExists(wim, 3, L"Windows");
+    REQUIRE_FALSE(third.has_value());
+    CHECK(third.error().code == ErrorCode::NotFound);
+
+    // An entry that claims to run past the list ends the search there (not found, no overread):
+    // root 8..112, "Program Files" 136 bytes + two 40-byte streams, then "Windows" at 328.
+    MemorySource damaged = wim;
+    const std::size_t windowsAt = 208 + plain.stored.size() + 328;
+    std::uint64_t length = 0;
+    std::memcpy(&length, damaged.data.data() + windowsAt, 8);
+    REQUIRE(length == 102 + 7 * 2 + 2);
+    const std::uint64_t huge = 1ull << 40;
+    std::memcpy(damaged.data.data() + windowsAt, &huge, 8);
+    const auto cut = wimFileExists(damaged, 1, L"Windows\\System32\\notepad.exe");
+    REQUIRE(cut.has_value());
+    CHECK_FALSE(*cut);
+}

@@ -221,18 +221,21 @@ TEST_CASE("ISO: the requirement bypasses go into a patched copy of boot.wim, the
 
     IsoController iso{f.state, IsoController::Events{[](std::function<void()> fn) { fn(); }, {}, {}}};
     std::vector<std::wstring> asked;       // the LabConfig values of each patch
+    bool askedLegacy = false;              // and whether it boots into the previous Setup (D-074)
     std::filesystem::path patchedFile;
     iso.setBootPatcher([&](const std::filesystem::path& bootWim, const std::filesystem::path& mountDir,
                            const core::BootPatch& patch, const core::TaskContext&) -> Result<core::BootPatchReport> {
         asked = patch.labConfigValues();
+        askedLegacy = patch.legacySetup;
         patchedFile = bootWim;
         CHECK(std::filesystem::is_directory(mountDir));
         std::ofstream out(bootWim, std::ios::binary | std::ios::app);
         out << " + LabConfig";
         return core::BootPatchReport{2, 0, {}};
     });
-    auto build = [&](bool bootBypass, const wchar_t* name) {
+    auto build = [&](bool bootBypass, const wchar_t* name, bool legacySetup = false) {
         IsoController::Request request;
+        request.legacySetup = legacySetup;
         request.output = dir / name;
         request.label = L"WL_BOOT";
         request.boot = core::BootMode::BiosOnly;
@@ -273,6 +276,15 @@ TEST_CASE("ISO: the requirement bypasses go into a patched copy of boot.wim, the
     asked.clear();
     CHECK(build(false, L"plain.iso") == "the boot image as Microsoft made it");
     CHECK(asked.empty());
+
+    // The previous Setup alone is a patch of its own, with or without the bypass box.
+    CHECK(build(false, L"legacy.iso", true) == "the boot image as Microsoft made it + LabConfig");
+    CHECK(asked.empty());
+    CHECK(askedLegacy);
+    CHECK(build(true, L"both.iso", true) == "the boot image as Microsoft made it + LabConfig");
+    CHECK(asked == std::vector<std::wstring>{L"BypassTPMCheck", L"BypassCPUCheck"});
+    CHECK(askedLegacy);
+    CHECK(readFile(media / L"sources" / L"boot.wim") == "the boot image as Microsoft made it");
 
     // A patch that fails is a build that fails: an ISO without the bypass that was asked for is not "done".
     iso.setBootPatcher([](const std::filesystem::path&, const std::filesystem::path&, const core::BootPatch&,

@@ -16,6 +16,7 @@
 #include <cstring>
 #include <format>
 #include <mutex>
+#include <optional>
 #include <thread>
 
 namespace wl::core {
@@ -121,8 +122,15 @@ struct Worker {
     std::vector<std::byte> plain;    // one chunk, uncompressed
     std::vector<std::byte> table;    // chunk table of the stream
     std::vector<std::byte> workspace;
+    std::vector<std::byte>* sink = nullptr; // read(): the bytes are kept instead of hashed
 
-    void consume(std::span<const std::byte> data) noexcept { sha.update(data); }
+    void consume(std::span<const std::byte> data) {
+        if (sink) {
+            sink->insert(sink->end(), data.begin(), data.end());
+        } else {
+            sha.update(data);
+        }
+    }
 
     Worker(const ByteSource& s, WimCompression c, std::uint32_t chunk)
         : source(s), compression(c), chunkSize(chunk), plain(chunk), workspace(xpress().workspace) {}
@@ -168,6 +176,24 @@ struct Worker {
             return {}; // stopped by the caller, or nothing to compare against
         }
         return digest == entry.hash ? std::wstring() : std::wstring(L"content does not match its SHA-1");
+    }
+
+    // The whole stream, uncompressed, into `out`. Empty: read; otherwise what is wrong with it.
+    [[nodiscard]] std::wstring read(const Entry& entry, std::vector<std::byte>& out) {
+        out.clear();
+        if (entry.offset > source.size() || entry.size > source.size() - entry.offset) {
+            return L"lies outside the file (truncated?)";
+        }
+        if ((entry.flags & kCompressed) == 0) {
+            out.resize(static_cast<std::size_t>(entry.size));
+            return out.empty() || source.read(entry.offset, out) ? std::wstring() : std::wstring(L"cannot be read");
+        }
+        out.reserve(static_cast<std::size_t>(entry.original));
+        const std::atomic<bool> stop{false};
+        sink = &out;
+        std::wstring problem = hashChunks(entry, stop);
+        sink = nullptr;
+        return problem;
     }
 
     [[nodiscard]] std::wstring hashChunks(const Entry& entry, const std::atomic<bool>& stop) {
@@ -296,7 +322,135 @@ Result<Table> readTable(const ByteSource& wim) {
     return Table{*header, chunkSize, std::move(entries), total}; // lookup order: callers sort a copy to read in sequence
 }
 
+// An edition's metadata resource: the security data (its length first, 8-aligned), then the root
+// directory entry. A directory entry (wimlib's wim_dentry_on_disk) is 102 bytes before its UTF-16
+// name; its children are a run of entries from `subdir`, ended by a length of 0 (or under 8); each
+// entry is followed by its extra stream entries, every one 8-aligned.
+constexpr std::size_t kDentryName = 102;
+constexpr std::uint32_t kDirectory = 0x10; // FILE_ATTRIBUTE_DIRECTORY
+
+std::uint64_t align8(std::uint64_t v) {
+    return (v + 7) & ~std::uint64_t{7};
+}
+
+struct Dentry {
+    std::uint64_t next = 0; // the sibling after it (streams skipped)
+    std::uint64_t subdir = 0;
+    std::uint32_t attributes = 0;
+    std::wstring_view name;
+};
+
+// nullopt: the end of the directory, or an entry that does not fit (a damaged list ends there).
+std::optional<Dentry> dentryAt(std::span<const std::byte> meta, std::uint64_t at) {
+    if (at > meta.size() || meta.size() - at < 8) {
+        return std::nullopt;
+    }
+    const std::uint64_t length = le<std::uint64_t>(meta.data() + at);
+    if (length < kDentryName || length > meta.size() - at) {
+        return std::nullopt;
+    }
+    const std::byte* p = meta.data() + at;
+    Dentry d;
+    d.attributes = le<std::uint32_t>(p + 8);
+    d.subdir = le<std::uint64_t>(p + 16);
+    const auto streams = le<std::uint16_t>(p + 96);
+    const auto nameBytes = le<std::uint16_t>(p + 100);
+    if (kDentryName + nameBytes > length) {
+        return std::nullopt;
+    }
+    d.name = std::wstring_view(reinterpret_cast<const wchar_t*>(p + kDentryName), nameBytes / sizeof(wchar_t));
+    std::uint64_t next = at + align8(length);
+    for (std::uint16_t i = 0; i < streams; ++i) {
+        if (next > meta.size() || meta.size() - next < 8) {
+            return std::nullopt;
+        }
+        const std::uint64_t streamLength = le<std::uint64_t>(meta.data() + next);
+        if (streamLength < 8) {
+            return std::nullopt;
+        }
+        next += align8(streamLength);
+    }
+    d.next = next;
+    return d;
+}
+
+bool sameName(std::wstring_view a, std::wstring_view b) {
+    return CompareStringOrdinal(a.data(), static_cast<int>(a.size()), b.data(), static_cast<int>(b.size()), TRUE) ==
+           CSTR_EQUAL;
+}
+
+bool fileInMetadata(std::span<const std::byte> meta, std::wstring_view path) {
+    if (meta.size() < 8) {
+        return false;
+    }
+    const std::uint32_t security = le<std::uint32_t>(meta.data());
+    const auto root = dentryAt(meta, security == 0 ? 8 : align8(security));
+    if (!root) {
+        return false;
+    }
+    std::uint64_t dir = root->subdir;
+    std::size_t start = 0;
+    while (start <= path.size()) {
+        std::size_t end = path.find_first_of(L"\\/", start);
+        if (end == std::wstring_view::npos) {
+            end = path.size();
+        }
+        const std::wstring_view part = path.substr(start, end - start);
+        start = end + 1;
+        if (part.empty()) {
+            continue; // "\Windows" or a doubled slash
+        }
+        const bool last = end == path.size();
+        std::optional<Dentry> found;
+        // Bounded: a damaged list could point back into itself.
+        for (std::uint64_t at = dir, guard = 0; dir != 0 && guard < 1'000'000; ++guard) {
+            const auto d = dentryAt(meta, at);
+            if (!d || d->next <= at) {
+                break;
+            }
+            if (sameName(d->name, part)) {
+                found = d;
+                break;
+            }
+            at = d->next;
+        }
+        if (!found) {
+            return false;
+        }
+        if (last) {
+            return (found->attributes & kDirectory) == 0;
+        }
+        dir = found->subdir;
+    }
+    return false;
+}
+
 } // namespace
+
+Result<bool> wimFileExists(const ByteSource& wim, int index, std::wstring_view path) {
+    auto table = readTable(wim);
+    if (!table) {
+        return std::unexpected(table.error());
+    }
+    // Editions are the metadata resources in the order the lookup table lists them.
+    const Entry* metadata = nullptr;
+    int seen = 0;
+    for (const auto& entry : table->entries) {
+        if ((entry.flags & kMetadata) && ++seen == index) {
+            metadata = &entry;
+            break;
+        }
+    }
+    if (!metadata) {
+        return fail(ErrorCode::NotFound, std::format(L"no file list for edition {} in this file", index), L"WIM");
+    }
+    Worker worker(wim, table->header.compression, table->chunkSize);
+    std::vector<std::byte> meta;
+    if (auto problem = worker.read(*metadata, meta); !problem.empty()) {
+        return fail(ErrorCode::ParseError, L"the file list of the edition " + problem, std::to_wstring(index));
+    }
+    return fileInMetadata(meta, path);
+}
 
 Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task) {
     auto table = readTable(wim);

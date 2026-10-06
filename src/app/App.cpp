@@ -240,6 +240,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoDrivers = true;
         } else if (a == L"--demo-updates") {
             options.demoUpdates = true;
+        } else if (a == L"--demo-no-winre") {
+            options.demoNoWinre = true;
         } else if (a == L"--demo-usb" || startsWith(a, L"--demo-usb=")) {
             options.demoUsbGiven = true;
             options.demoUsb = a == L"--demo-usb" ? std::wstring() : std::wstring(value(L"--demo-usb="));
@@ -1272,6 +1274,14 @@ int App::renderOffscreen() {
             if (m_options.demoUsb == L"confirm") {
                 m_shell->startIsoForDemo();
             }
+        }
+    }
+    if (m_options.demoNoWinre && m_state->source()) {
+        if (!m_options.demoUsbGiven) {
+            m_shell->showPage(PageId::Iso); // (showing it again would build the USB tab anew)
+        }
+        if (auto* page = m_shell->isoPageForDemo()) {
+            page->setEditionsWithoutWinre({1});
         }
     }
     if (m_options.fakeOperation && m_state->source()) {

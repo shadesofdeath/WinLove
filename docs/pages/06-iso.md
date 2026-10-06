@@ -20,6 +20,10 @@ Açık kaynaktan (kurulum klasörü veya ISO) önyüklenebilir Windows kurulum I
 - **Kurulum ortamı (D-038):** `core::patchBootImage` — `sources\boot.wim`'in önyükleme index'ine
   `HKLM\SYSTEM\Setup\LabConfig` atlamalarını yazar (yönetici + DISM). ISO üretimi bunu dosyanın bir kopyasında yapar ve
   `IsoOptions::replacedFiles` ile ISO'ya kopyayı koyar; kurulum klasörü değişmez. CLI: `wlcli boot-patch`.
+- **Önceki kurulum (D-074):** `BootPatch::legacySetup` — aynı yamada `HKLM\SYSTEM\Setup\CmdLine` =
+  `cmd /c start /min wpeinit && \sources\setup` (özgünü `winpeshl.exe`, o da `X:\setup.exe` → yeni kurulum). CLI:
+  `wlcli boot-patch <boot.wim> <mount> --legacy-setup`. `core::editionsWithoutWinre` install.wim'in dosya listesinden
+  (bağlamadan, `wimFileExists`, sürüm başına ~0,2 sn; `wlcli wim-file`) 24H2+ sürümlerde `Winre.wim` var mı bakar.
 
 ## 3. Ekran
 Sekmeler ISO / USB · ÇIKTI (dosya adı, klasör + gözat, birim etiketi) · ÖNYÜKLEME (UEFI+BIOS / UEFI / BIOS radyo,
@@ -29,6 +33,9 @@ Engeller InfoBar'da: kaynak yok / tek WIM / bağlı imaj / başka işlem. ISO ka
 ÖNYÜKLEME'de ayrıca **Kurulum ortamı**: "Gereksinim atlamalarını boot.wim'e de yaz" (varsayılan açık). Katılımsız
 Kurulum'da atlama seçili değilse pasif + ipucu. Özette "Kurulum ortamı: N gereksinim denetimi atlanıyor / değiştirilmiyor";
 çalışırken "Kurulum ortamı (boot.wim) hazırlanıyor" aşaması (~30 sn). Yama başarısızsa ISO üretilmez (hata bandı).
+ÖNYÜKLEME'de **Kurulum ekranı** satırı (D-074): "Önceki kurulumu kullan (24H2+)" — varsayılan kapalı; install.wim'in 24H2+
+bir sürümünde WinRE yoksa kendiliğinden açılır (kullanıcı dokunduysa seçimi korunur), yanında turuncu "install.wim'de WinRE yok"
+uyarısı; özette "Kurulum ekranı: önceki kurulum / yeni kurulum / yeni kurulum — WinRE yok, hata verir". Aynısı USB sekmesinde.
 Sapma: tasarımdaki "4 GB üstü WIM → ESD" satırı sıkıştırma listesindeki ESD seçeneğine taşındı; yerine önyükleme
 istemi seçeneği geldi (USB/FAT32 konusu USB sekmesiyle ele alınacak).
 
@@ -49,6 +56,9 @@ istemi seçeneği geldi (USB/FAT32 konusu USB sekmesiyle ele alınacak).
 - [ ] Katılımsız Kurulum'da TPM / Secure Boot atlaması seçili, "ISO'ya ekle" kapalı → ISO üret → log'da
       `boot.wim index 2: N requirement check(s) switched off`; TPM'siz VM'de Setup gereksinim uyarısı vermez.
 - [ ] Aynı kaynakla kutu kapalı ISO → boot.wim özgün (kurulum klasöründeki dosyanın boyutu / tarihi hiç değişmedi).
+- [x] `tools\lab_legacy_setup.ps1`: boot.wim'e CmdLine yazılır, geri okunur, akışlar sağlam (2026-10-06).
+- [x] WinRE'si silinmiş sürüm: yeni kurulum VM'de hata verir, önceki kurulum masaüstüne kurar (`lab_legacy_setup.ps1 -Vm`, 2026-10-06).
+- [ ] Uygulamada: WinRE'siz kaynakla ISO Oluştur → kutu kendiliğinden açık → ISO gerçek bilgisayarda / VM'de kurulur.
 - [x] `tools\lab_usb.ps1` (MBR): ALL PASSED (26 / 26, 2026-09-30).
 - [ ] `tools\lab_usb.ps1 -Gpt`: ALL PASSED.
 - [ ] Gerçek USB bellek: uygulamada yaz → aynı bellekten bir bilgisayar / VM UEFI ve BIOS ile kurulum başlatır;

@@ -21,6 +21,7 @@
 //      --verified=sound|damaged   (render: the result of "Doğrula" on the Images page)
 //      --demo-upgrade=dialog|queued   (render, with a source: the edition upgrade of the Images page)
 //      --demo-<page>          (render: sample state for a page; see LaunchOptions)
+//      --demo-no-winre        (render, with a source: the ISO page as when an edition has no WinRE, D-074)
 //      --demo-catalog=dialog|download   (render, with --demo-updates: the update catalog, D-046)
 //      --switch-lang=tr|en    (render: rebuild the UI in another language, as the settings page does)
 //      --palette[=query]      (render: open the command palette, optionally with text typed)
@@ -92,6 +93,7 @@ struct LaunchOptions {
     bool demoUpdates = false;    // render: with a source path — fake mount + sample update packages (06)
     std::wstring demoUsb;         // render (with a source): "" | "confirm" — the USB tab with a sample drive (D-047)
     bool demoUsbGiven = false;
+    bool demoNoWinre = false;     // render (with a source): ISO page, edition 1 has no WinRE (D-074)
     std::wstring demoCatalog;     // render (with --demo-updates): "dialog" | "download" — the update catalog (D-046)
     std::wstring demoApply;    // render (with --demo-features): "running" | "done" | "skipped" — fake Uygula run; "confirm" — the risk dialog, 40 rows
     bool maximized = false;

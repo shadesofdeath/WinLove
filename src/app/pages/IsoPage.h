@@ -4,6 +4,8 @@
 // While building: progress row instead of the result bar, the form is disabled.
 // USB tab (D-047): drive (USB / SD only, never the system disk), partition scheme, FAT32 label;
 // the same boot and setup-image options; the header button writes the stick after a confirmation.
+// D-074: "Önceki kurulumu kullan" — on by itself when an edition of a 24H2+ image has no WinRE (the
+// new Setup cannot install it), read from install.wim's file lists on the reader thread.
 #include "app/Localization.h"
 #include "app/controllers/IsoController.h"
 #include "ui/widgets/Button.h"
@@ -36,6 +38,8 @@ public:
     [[nodiscard]] const core::UsbDisk* selectedDisk() const;
     void refreshDisks(); // re-reads the USB drives (reader thread)
     void setDisks(std::vector<core::UsbDisk> disks); // the list as read (also the render demo)
+    // The 24H2+ editions without WinRE, as read (also the render demo): the box goes on by itself.
+    void setEditionsWithoutWinre(std::vector<int> editions);
     void showUsbTab();
 
     void layout() override;
@@ -45,6 +49,9 @@ private:
     void refresh();
     void updateBlocker();
     void computeSize();
+    void checkWinre(); // editions the new Setup cannot install (reader thread)
+    void paintLegacyHint(ui::Canvas& canvas, float formRight);
+    [[nodiscard]] std::wstring setupImageText() const;
     void notifyChanged();
     void paintIsoForm(ui::Canvas& canvas, float y, float formRight);
     void paintUsbForm(ui::Canvas& canvas, float y, float formRight);
@@ -69,6 +76,9 @@ private:
     ui::Dropdown* m_repack = nullptr;
     ui::CheckField* m_noPrompt = nullptr;
     ui::CheckField* m_bootBypass = nullptr;
+    ui::CheckField* m_legacySetup = nullptr;
+    bool m_legacyTouched = false;  // the user's choice is kept from then on
+    std::vector<int> m_noWinre;    // 24H2+ editions without Winre.wim
     ui::CheckField* m_sha = nullptr;
     ui::CheckField* m_open = nullptr;
     // USB tab
