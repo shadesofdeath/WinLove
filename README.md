@@ -17,7 +17,7 @@
 
 ---
 
-> **1.0.1 Alpha.** WinLove erken bir sürüm. Değişiklikleri önce bir sanal makinede dene; asıl imajının yedeğini tut.
+> **1.0.2 Alpha.** WinLove erken bir sürüm. Değişiklikleri önce bir sanal makinede dene; asıl imajının yedeğini tut.
 > WinLove yalnızca **çevrimdışı imajlarla** çalışır (ISO / WIM / ESD); çalışan sistemine dokunmaz.
 
 ![WinLove](docs/screenshots/components.png)
