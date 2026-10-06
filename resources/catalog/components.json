@@ -125,10 +125,13 @@
       "notes_en": "The installed system has no recovery environment: \"Reset this PC\", startup repair and advanced startup do not work; the BitLocker recovery screen and WinRE updates fail. The new Setup of 24H2 and later cannot install an image without WinRE (\"installation failed\" at about 5%); Build ISO turns \"Use the previous Setup\" on by itself for that reason.",
       "paths": [ "Windows\\System32\\Recovery\\Winre.wim" ] },
 
-    { "id": "telemetry", "group": "privacy", "tr": "Telemetri ve tanılama (DiagTrack)", "en": "Telemetry and diagnostics (DiagTrack)", "risk": "medium",
-      "notes_tr": "Bağlı Kullanıcı Deneyimleri ve Telemetri hizmeti (DiagTrack), tanılama verisi toplayıcıları (UTC), OneSettings istemcisi ve Windows Performans Kaydedicisi (wpr.exe) kaldırılır. Microsoft'a tanılama verisi gönderilmez. Ayarlar'daki 'Tanılama verileri' sayfası ve Geri Bildirim Merkezi'nin tanılama kısmı çalışmaz.",
-      "notes_en": "The Connected User Experiences and Telemetry service (DiagTrack), the diagnostic data collectors (UTC), the OneSettings client and Windows Performance Recorder (wpr.exe) are removed. No diagnostic data is sent to Microsoft. The Diagnostic data page of Settings and the diagnostics part of Feedback Hub stop working.",
-      "packages": [ "Microsoft-OneCore-TroubleShooting-Package", "Microsoft-OneCore-TroubleShooting-WOW64-Package" ] },
+    { "id": "telemetry", "group": "privacy", "always": true, "tr": "Telemetri ve tanılama (DiagTrack)", "en": "Telemetry and diagnostics (DiagTrack)", "risk": "low",
+      "notes_tr": "Bağlı Kullanıcı Deneyimleri ve Telemetri hizmeti (DiagTrack) ile WAP itme iletisi hizmeti kapatılır, tanılama verisi ilkeyle en aza indirilir; Microsoft'a tanılama verisi gönderilmez. Paket kaldırılmaz: tanılama paketi (TroubleShooting) imajdan çıkarıldığında kurulan sistem ilk açılışta logosuz siyah ekranda takılıyor (ölçüldü, D-075).",
+      "notes_en": "The Connected User Experiences and Telemetry service (DiagTrack) and the WAP push message service are switched off and diagnostic data is limited by policy; no diagnostic data is sent to Microsoft. No package is removed: without the diagnostics package (TroubleShooting) the installed system hangs at its first boot on a black screen without the logo (measured, D-075).",
+      "registry": [
+        { "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\DiagTrack", "name": "Start", "value": "dword:00000004" },
+        { "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\dmwappushservice", "name": "Start", "value": "dword:00000004" },
+        { "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "name": "AllowTelemetry", "value": "dword:00000000" } ] },
 
     { "id": "defender-definitions", "group": "security", "tr": "Defender hazır virüs tanımları", "en": "Defender default definitions", "risk": "medium",
       "notes_tr": "İmajla gelen virüs tanımları ve tarama motoru kaldırılır (ISO'da en büyük kazançlardan biri). Defender açık kalır; tanımlar ve motor ilk Windows Update'te yeniden iner — o zamana kadar kurulan sistem virüs taraması yapamaz. İnternetsiz kurulacak sistemlerde önerilmez.",

@@ -128,6 +128,35 @@ TEST_CASE("component recipe: what a preset must never be able to remove") {
     CHECK_FALSE(validateComponentRecipe(recipe)); // no such hive to write
 }
 
+TEST_CASE("component recipe: the TroubleShooting package is never removed; an old telemetry recipe switches services off (D-075)") {
+    ComponentRecipe recipe;
+    recipe.packages = {L"Microsoft-OneCore-TroubleShooting-Package"};
+    CHECK_FALSE(validateComponentRecipe(recipe)); // the first boot hangs without it
+    recipe.packages = {L"microsoft-onecore-troubleshooting-wow64-package"};
+    CHECK_FALSE(validateComponentRecipe(recipe));
+
+    // The value a preset saved before D-075 carries (the user's "Windows 11 Home Single Language").
+    const auto old = componentRecipeFromJson(
+        R"({"packages":["Microsoft-OneCore-TroubleShooting-Package","Microsoft-OneCore-TroubleShooting-WOW64-Package"],)"
+        R"x("title":"Telemetri ve tanılama (DiagTrack)"})x");
+    REQUIRE(old);
+    CHECK(old->packages.empty());
+    REQUIRE(old->registry.size() == 3);
+    CHECK(old->registry[0].key == L"HKLM\\SYSTEM\\CurrentControlSet\\Services\\DiagTrack");
+    CHECK(old->registry[0].name == L"Start");
+    CHECK(old->registry[1].key == L"HKLM\\SYSTEM\\CurrentControlSet\\Services\\dmwappushservice");
+    CHECK(old->registry[2].name == L"AllowTelemetry");
+    CHECK(validateComponentRecipe(*old));
+
+    // Other packages of the same recipe stay; the writes are not added twice.
+    const auto mixed = componentRecipeFromJson(utf8::fromWide(
+        utf8::toWide(componentRecipeToJson(*old)).insert(1, L"\"packages\":[\"Microsoft-OneCore-TroubleShooting-Package\","
+                                                            L"\"Microsoft-Windows-Help-ClientUA-Client-Package\"],")));
+    REQUIRE(mixed);
+    CHECK(mixed->packages == std::vector<std::wstring>{L"Microsoft-Windows-Help-ClientUA-Client-Package"});
+    CHECK(mixed->registry.size() == 3);
+}
+
 TEST_CASE("component paths stay inside the image: a link on the way is refused") {
     const fs::path image = scratch(L"image");
     const fs::path outside = scratch(L"outside");

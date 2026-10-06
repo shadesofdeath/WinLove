@@ -101,6 +101,7 @@ Uygulama davranışı:
 
 ## 5. Saha notları (öğrendikçe EKLE — AI oturumları buraya yazar)
 > Format: `- [tarih] [konu] gözlem → çözüm`
+- [2026-10-06] [CBS / ilk açılış] `Microsoft-OneCore-TroubleShooting-Package` kaldırılınca kurulan sistem specialize'da sonsuza dek takılır (logosuz siyah ekran, olay günlüğü bile oluşmaz). Defender'ı kökünden kaldırmak bunu yapmıyor. → Bu aile hiçbir tarifle kaldırılmaz (D-075). Bir VM diskini yönetici olmadan okumak: `7z e disk.vmdk "2.Basic data partition.ntfs"` → `7z x part.ntfs Windows\Panther\*`; `setup.etl` `tracerpt` ile XML'e açılır (servis başlangıç sırası görünür).
 - [2026-09-28] [DISM init] `DismInitialize` log dosyasının klasörünü oluşturmaz; klasör yoksa `0xC0040009 DISMAPI_E_LOGGING_DISABLED` döner. → Klasörü önce oluştur; bu kodu uyarı say (DISM log'suz çalışır).
 - [2026-09-28] [DISM header] `dismapi.h/.lib` Windows SDK'da yok, yalnızca ADK'da (`Deployment Tools\SDKs\DismApi`). → Kendi bildirimlerimiz (`core/image/dism/DismApi.h`) + System32 `dismapi.dll` çalışma anında yüklenir (D-017).
 - [2026-09-28] [UDF] Win11 25H2 TR ISO: UDF 1.02, tek Type-1 partition map, bölüm başlangıcı sektör 304; `install.wim` LZX, 6 index, 6.72 GB. ISO içinden okuma 72 ms; 700 MB/s çıkarma.

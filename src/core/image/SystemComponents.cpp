@@ -34,6 +34,26 @@ constexpr std::array<std::wstring_view, 14> kProtected = {
     L"program files\\windowsapps", L"users\\default",
 };
 
+// Package families no recipe may remove. Measured (D-075): without TroubleShooting (WDI, the
+// troubleshooters, DiagTrack) the installed system never leaves the first boot's specialize pass
+// (black screen, spinner, no logo) — 3 of 3 lab installs with it hung, 11 of 11 without it passed.
+constexpr std::array<std::wstring_view, 2> kNeverRemovedFamilies = {
+    L"microsoft-onecore-troubleshooting-package",
+    L"microsoft-onecore-troubleshooting-wow64-package",
+};
+
+bool neverRemoved(std::wstring_view family) {
+    return std::ranges::find(kNeverRemovedFamilies, std::wstring_view(text::lower(family))) != kNeverRemovedFamilies.end();
+}
+
+// What the "telemetry" component does since D-075 (resources/catalog/components.json): the
+// services are switched off instead. A recipe of an older preset that removed the package gets these.
+constexpr std::array<std::pair<std::wstring_view, std::wstring_view>, 3> kTelemetryOff = {{
+    {L"HKLM\\SYSTEM\\CurrentControlSet\\Services\\DiagTrack::Start", L"dword:00000004"},
+    {L"HKLM\\SYSTEM\\CurrentControlSet\\Services\\dmwappushservice::Start", L"dword:00000004"},
+    {L"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection::AllowTelemetry", L"dword:00000000"},
+}};
+
 // "a\b/c" → {"a","b","c"}; an empty part (leading, trailing or doubled separator) is kept so the
 // caller can refuse it.
 std::vector<std::wstring_view> splitPath(std::wstring_view path) {
@@ -147,6 +167,17 @@ Result<ComponentRecipe> componentRecipeFromJson(std::string_view json) {
     } catch (const Json::exception& e) {
         return fail(ErrorCode::ParseError, L"malformed component recipe", utf8::toWide(e.what()));
     }
+    // A preset saved before D-075 still asks for the package: what the component does now instead.
+    if (std::erase_if(recipe.packages, [](const std::wstring& family) { return neverRemoved(family); }) > 0) {
+        log::warn("components", L"the TroubleShooting package stays (removing it hangs the first boot, D-075): "
+                                L"the telemetry services are switched off instead · " + recipe.title);
+        for (const auto& [target, value] : kTelemetryOff) {
+            auto write = registryWriteFrom(std::wstring(target), std::wstring(value));
+            if (write && std::ranges::find(recipe.registry, *write) == recipe.registry.end()) {
+                recipe.registry.push_back(std::move(*write));
+            }
+        }
+    }
     return recipe;
 }
 
@@ -176,6 +207,9 @@ Result<void> validateComponentRecipe(const ComponentRecipe& recipe) {
         });
         if (!plain) {
             return fail(ErrorCode::InvalidArgument, L"not a package family name", family);
+        }
+        if (neverRemoved(family)) {
+            return fail(ErrorCode::InvalidArgument, L"a package Windows cannot finish setup without (D-075)", family);
         }
     }
     for (const auto& write : recipe.registry) {

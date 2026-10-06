@@ -219,7 +219,7 @@ TEST_CASE("ComponentController: system components the image has, the cleanup, an
     state.setAppxList(AppState::AppxList{AppState::AppxList::Status::Ready, L"C:\\m", {makeApp(L"Microsoft.GamingApp", 400)}, {}});
 
     const auto groups = controller.groups();
-    REQUIRE(groups.size() == 4); // Sistem Bileşenleri, Windows'un Kendiliğinden Kurdukları, Temizlik, then the apps (xbox)
+    REQUIRE(groups.size() == 5); // Sistem Bileşenleri, Windows'un Kendiliğinden Kurdukları, Gizlilik, Temizlik, then the apps (xbox)
     const auto& system = groups[0];
     CHECK(system.name == L"Sistem Bileşenleri");
     REQUIRE(system.items.size() == 1); // what is present
@@ -241,14 +241,20 @@ TEST_CASE("ComponentController: system components the image has, the cleanup, an
     CHECK(self.items[1].contents.size() == 7); // the registration folder, the spare PWA, the placeholder app, four registry changes
     CHECK(self.items[2].system->id == "teams-install");
     CHECK(self.items[5].system->id == "m365-install");
-    const auto& cleanup = groups[2].items.front();
+    // D-075: telemetry is always on offer and switches services off; it never removes a package.
+    const auto& privacy = groups[2];
+    REQUIRE(privacy.items.size() == 1);
+    CHECK(privacy.items[0].system->id == "telemetry");
+    CHECK(privacy.items[0].system->recipe.packages.empty());
+    CHECK(privacy.items[0].system->recipe.registry.size() == 3);
+    const auto& cleanup = groups[3].items.front();
     CHECK(cleanup.kind == ComponentController::Item::Kind::Cleanup);
     CHECK(cleanup.size == 0);
     // Group indexes never collide with the AppX catalog's.
-    CHECK(groups[3].name == L"Xbox ve Oyun");
-    CHECK(system.catalogIndex != groups[3].catalogIndex);
+    CHECK(groups[4].name == L"Xbox ve Oyun");
+    CHECK(system.catalogIndex != groups[4].catalogIndex);
     CHECK(self.catalogIndex != system.catalogIndex);
-    CHECK(self.catalogIndex != groups[3].catalogIndex);
+    CHECK(self.catalogIndex != groups[4].catalogIndex);
 
     controller.toggle(self.items[0]);
     const auto* op = state.changes().find(OpKind::RemoveComponent, L"onedrive");

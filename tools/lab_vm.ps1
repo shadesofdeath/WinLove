@@ -9,6 +9,7 @@
 
     powershell -ExecutionPolicy Bypass -File tools\lab_vm.ps1 -Changes <changeset.json> -Tag start1   (elevated; ~40 min)
 
+  -Cpus / -MemMB: the vCPU count and memory (default 2, 4096). (An NVMe disk does not start under vmrun here.)
   -OpenThisPc: Explorer opens "This PC" at the first sign-in (icons tests).
   -Network: a NAT network card, e1000 (e1000e and vmxnet3 crash this VMware at power-on; Windows Update, Store and OOBE downloads happen; the default is none).
   -FirstLogon <command>: run at the first sign-in instead (e.g. a diagnostics script the changeset put
@@ -34,7 +35,9 @@ param(
     [int] $ShutdownAfter = 150,
     [switch] $Diag,
     [int] $DiagMinutes = 30,
-    [switch] $KeepVm
+    [switch] $KeepVm,
+    [int] $Cpus = 2,
+    [int] $MemMB = 4096
 )
 $ErrorActionPreference = 'Stop'
 $Lab = [System.IO.Path]::GetFullPath($Lab)
@@ -220,8 +223,8 @@ displayName = "WinLove lab $Tag"
 guestOS = "windows11-64"
 firmware = "efi"
 uefi.secureBoot.enabled = "FALSE"
-memsize = "4096"
-numvcpus = "2"
+memsize = "$MemMB"
+numvcpus = "$Cpus"
 sata0.present = "TRUE"
 sata0:0.present = "TRUE"
 sata0:0.fileName = "disk.vmdk"
