@@ -2,6 +2,7 @@
 
 #include "ui/widget/Host.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace wl::ui {
@@ -13,6 +14,8 @@ constexpr float kTitleGap = 12.0f;
 constexpr float kButtonsGap = 24.0f;
 constexpr float kButtonGap = 4.0f;
 constexpr float kIconGap = 8.0f;
+constexpr float kWindowMargin = 24.0f; // least space kept between the box and the window edge
+constexpr float kMinContent = 48.0f;
 } // namespace
 
 Dialog::Dialog(std::wstring title, std::wstring body, std::optional<icons::Icon> icon, tokens::Color iconColor,
@@ -38,13 +41,20 @@ void Dialog::layout() {
     if (host()) {
         m_bodyHeight = std::ceil(host()->text().measureWrapped(m_body, tokens::TypeStyle::Body, contentWidth));
     }
-    const float content = m_content ? kTitleGap + m_contentHeight : 0.0f;
-    const float height =
-        kPadding + kTitleLine + kTitleGap + m_bodyHeight + content + kButtonsGap + tokens::size::control + kPadding;
+    const float chrome = kPadding + kTitleLine + kTitleGap + m_bodyHeight + kButtonsGap + tokens::size::control + kPadding;
+    // The box never outgrows the window: tall content (a long list) gets what is left and
+    // scrolls inside itself, so the title and the buttons stay reachable.
+    float contentHeight = m_contentHeight;
+    if (m_content && b.height > 0) {
+        const float room = b.height - 2 * kWindowMargin - chrome - kTitleGap;
+        contentHeight = std::max(std::min(contentHeight, std::floor(room)), kMinContent);
+    }
+    const float content = m_content ? kTitleGap + contentHeight : 0.0f;
+    const float height = chrome + content;
     m_box = {b.x + std::round((b.width - m_width) / 2), b.y + std::round((b.height - height) / 2), m_width, height};
     if (m_content) {
         m_content->setBounds({m_box.x + kPadding, m_box.y + kPadding + kTitleLine + kTitleGap + m_bodyHeight + kTitleGap,
-                              contentWidth, m_contentHeight});
+                              contentWidth, contentHeight});
     }
 
     // Buttons right-aligned on the last row.

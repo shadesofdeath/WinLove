@@ -566,7 +566,15 @@ int App::renderOffscreen() {
                                                                 std::move(items), {}});
         m_state->queue(FeatureController::operationFor(m_state->optionalFeatures()->items[4]));
         m_state->queue(FeatureController::operationFor(m_state->optionalFeatures()->items[7]));
-        if (!m_options.demoApply.empty()) {
+        if (m_options.demoApply == L"confirm") {
+            // "--demo-apply=confirm": the risk dialog with a list taller than the window (it scrolls).
+            for (int i = 0; i < 40; ++i) {
+                m_state->queue(core::ops::Operation{core::ops::OpKind::SetServiceStart, L"WdDemoService" + std::to_wstring(i),
+                                                    L"4", core::ops::Risk::High, -(i + 1) * 1'048'576LL});
+            }
+            m_shell->showPage(m_options.page.value_or(PageId::Apply));
+            m_shell->requestApply();
+        } else if (!m_options.demoApply.empty()) {
             AppState::ApplyRun run;
             run.changes = m_state->changes();
             run.plan = core::ops::plan(run.changes);
@@ -611,7 +619,9 @@ int App::renderOffscreen() {
         }
         // A finished run is shown on the Apply page; a running one (and no run) on Features.
         const bool finished = m_options.demoApply == L"done" || m_options.demoApply == L"skipped";
-        m_shell->showPage(m_options.page.value_or(finished ? PageId::Apply : PageId::Features));
+        if (m_options.demoApply != L"confirm") {
+            m_shell->showPage(m_options.page.value_or(finished ? PageId::Apply : PageId::Features));
+        }
     }
     if (m_options.demoRegistry) {
         m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,

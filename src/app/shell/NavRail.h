@@ -2,10 +2,12 @@
 // Navigation rail per 03_components/navigation-rail.md: 200 / 44 wide, groups separated by
 // 1px line.subtle, 24px items (icon 16, label, mono badge), active item bg.raised inset 4 + 2×12
 // accent bar, footer "Daralt · Ctrl B". Keyboard: the rail is one Tab stop (the active item);
-// ↑↓ move, Enter/Space select (roving focus).
+// ↑↓ move, Enter/Space select (roving focus). When the items outgrow the rail (short windows)
+// they scroll under the wheel above the pinned footer, with an overlay ScrollBar.
 #include "app/pages/PageInfo.h"
 #include "ui/anim/Tween.h"
 #include "ui/widget/Widget.h"
+#include "ui/widgets/ScrollBar.h"
 
 #include <functional>
 #include <string>
@@ -14,6 +16,7 @@
 namespace wl::app {
 
 class NavRail;
+class NavList;
 
 class NavItem : public ui::Widget {
 public:
@@ -75,15 +78,24 @@ public:
     [[nodiscard]] float expansion() const noexcept { return m_expansion; }
     [[nodiscard]] bool collapsed() const noexcept { return m_expansion < 0.5f; }
     void focusSibling(NavItem& from, int direction);
+    // Scroll the item list (clamped); `reveal` brings an item fully into view.
+    void scrollTo(float offset);
+    void reveal(const NavItem& item);
+    [[nodiscard]] float scrollOffset() const noexcept { return m_offset; }
 
     void layout() override;
     void paint(ui::Canvas& canvas) override;
     [[nodiscard]] bool clipsChildren() const noexcept override { return true; }
 
 private:
+    friend class NavList;
+    NavList* m_list = nullptr;
     std::vector<NavItem*> m_items;
-    std::vector<float> m_separators; // y of group separators
+    std::vector<float> m_separators; // content y of group separators (before the scroll offset)
     NavFooter* m_footer = nullptr;
+    ui::ScrollBar* m_scroll = nullptr;
+    float m_content = 0;  // height of the item list
+    float m_offset = 0;   // scroll offset of the item list
     float m_expansion = 1.0f;
 };
 

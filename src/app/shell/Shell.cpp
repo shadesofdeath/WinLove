@@ -853,17 +853,41 @@ void Shell::storeResultsForDemo(const std::wstring& query, std::vector<core::Sto
     }
 }
 
-void Shell::loadIconPack() {
+void Shell::showIconPackMenu(ui::RectF anchor) {
+    if (!host()) {
+        return;
+    }
+    auto popup = std::make_unique<ui::MenuPopup>(
+        anchor, std::vector<std::wstring>{m_strings.get(Str::IconsPackFromArchive), m_strings.get(Str::IconsPackFromFolder)}, -1,
+        [this](int picked) {
+            if (picked == 0 || picked == 1) {
+                loadIconPack(picked == 0);
+            }
+        },
+        [] {});
+    ui::Widget* raw = popup.get();
+    host()->pushModal(std::move(popup), raw, /*scrim=*/false);
+}
+
+void Shell::loadIconPack(bool archive) {
     if (!requireMount(Str::IconsNoMountTitle, Str::IconsNoMountBody)) {
         return;
     }
-    const auto folder = ui::pickFolder(owner(), m_strings.get(Str::IconsLoadPack));
+    const auto folder = archive ? ui::pickFile(owner(), m_strings.get(Str::IconsLoadPack),
+                                               {{m_strings.get(Str::IconsPackArchives), L"*.7z;*.zip;*.rar"}})
+                                : ui::pickFolder(owner(), m_strings.get(Str::IconsLoadPack));
     if (!folder) {
         return;
     }
-    // One folder may carry both kinds (D-065 slots, D-068 files): each takes what is its.
-    auto pack = m_icons->applyPack(*folder);
-    auto files = m_iconPatch->applyPack(*folder);
+    // One folder may carry both kinds (D-065 slots, D-068 files): each takes what is its. An
+    // archive is a 7TSP pack or a D-068 pack (importPack keeps it under the pack root).
+    auto pack = archive ? Result<IconController::PackResult>(std::unexpected(Error{ErrorCode::NotFound, L"", L""}))
+                        : m_icons->applyPack(*folder);
+    auto files = m_iconPatch->importPack(*folder);
+    if (!pack && !files && archive) {
+        showToast(ui::InfoKind::Error, m_strings.get(Str::IconsPackFailed), errorText(files.error()));
+        return;
+    }
     if (!pack && !files) {
         showToast(ui::InfoKind::Error, m_strings.get(Str::IconsPackFailed), errorText(pack.error()));
         return;
@@ -1779,8 +1803,8 @@ void Shell::showPage(PageId page) {
             intents.goImages = [this] { showPage(PageId::Images); };
             m_pageBody = &m_pageView->setBody<BrandingPage>(m_state, *m_branding, m_strings, m_language, std::move(intents));
         } else if (page == PageId::Icons) {
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::IconsLoadPack), ui::icons::Icon::OpenFolder).onInvoke =
-                [this] { loadIconPack(); };
+            ui::Button& loadPack = m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::IconsLoadPack), ui::icons::Icon::OpenFolder);
+            loadPack.onInvoke = [this, &loadPack] { showIconPackMenu(loadPack.bounds()); };
             m_pageView->addAction(ui::ButtonKind::Secondary,
                                   m_strings.get(m_icons->shortcutArrowRemoved() ? Str::IconsArrowBack : Str::IconsArrowRemove))
                 .onInvoke = [this] {

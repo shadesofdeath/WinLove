@@ -28,6 +28,7 @@
 #include "core/image/UdfImage.h"
 #include "core/image/BootImage.h"
 #include "core/image/icons/IconPatch.h"
+#include "core/image/icons/ResFile.h"
 #include "core/image/StartMenu.h"
 #include "core/image/dism/Dism.h"
 #include "core/image/dism/Edition.h"
@@ -1294,6 +1295,103 @@ int cmdIconPatch(const std::wstring& file, const std::vector<std::wstring>& spec
     return check->failed == 0 ? 0 : 3;
 }
 
+// 7TSP pack (archive or folder) → WinLove pack in <out>; with --source=<folder of .mun files> every
+// target found there is patched into <out>\patched\ with all the pack's groups it has, and
+// checked by Windows' loader (the run never writes outside <out>).
+int cmdIconPack(const std::wstring& source, const std::wstring& out, const std::wstring& from) {
+    std::filesystem::path folder = source;
+    std::error_code ec;
+    const std::filesystem::path outDir = out;
+    if (std::filesystem::is_regular_file(folder, ec)) {
+        const auto extracted = outDir / L"extracted";
+        std::filesystem::remove_all(extracted, ec);
+        if (auto ok = core::extractArchive(folder, extracted); !ok) {
+            return reportError(ok.error());
+        }
+        folder = extracted;
+    }
+    auto pack = core::read7tspPack(folder);
+    if (!pack) {
+        return reportError(pack.error());
+    }
+    print(std::format(L"  {} by {} — {} file(s)\n", pack->name, pack->author.empty() ? L"?" : pack->author, pack->files.size()));
+    std::vector<std::wstring> skipped;
+    const auto packDir = outDir / L"pack";
+    auto written = core::convert7tspPack(*pack, packDir, &skipped);
+    if (!written) {
+        return reportError(written.error());
+    }
+    print(std::format(L"  {} icon(s) → {}\n", *written, packDir.wstring()));
+    for (const auto& s : skipped) {
+        print(L"    skipped " + s + L"\n");
+    }
+    if (from.empty()) {
+        return 0;
+    }
+    int failures = 0;
+    for (const auto& file : pack->files) {
+        const auto target = std::filesystem::path(from) / file.target;
+        auto bytes = readFileBytes(target);
+        if (!bytes) {
+            print(std::format(L"  {}: not in {}\n", file.target, from));
+            continue;
+        }
+        auto pe = core::PeImage::parse(*bytes);
+        if (!pe) {
+            print(std::format(L"  {}: {}\n", file.target, pe.error().message));
+            continue;
+        }
+        if (pe->hasCode()) {
+            print(std::format(L"  {}: has code — refused (D-068)\n", file.target));
+            continue;
+        }
+        std::vector<core::ResourceKey> existing;
+        for (const auto& g : core::listIconGroups(pe->resources())) {
+            existing.push_back(g.key);
+        }
+        std::vector<core::IconReplacement> replacements;
+        int missing = 0;
+        for (const auto& entry : std::filesystem::directory_iterator(packDir / file.target, ec)) {
+            const std::wstring stem = entry.path().stem().wstring();
+            const bool digits = !stem.empty() && std::ranges::all_of(stem, [](wchar_t c) { return c >= L'0' && c <= L'9'; });
+            const core::ResourceKey key = digits ? core::ResourceKey{static_cast<std::uint16_t>(std::stoul(stem)), {}} : core::ResourceKey{0, stem};
+            if (std::ranges::find(existing, key) == existing.end()) {
+                ++missing;
+                continue;
+            }
+            auto ico = readFileBytes(entry.path());
+            auto images = ico ? core::parseIco(*ico) : Result<std::vector<core::IconImage>>(std::unexpected(ico.error()));
+            if (!images) {
+                return reportError(images.error());
+            }
+            replacements.push_back({key, std::move(*images)});
+        }
+        const auto started = std::chrono::steady_clock::now();
+        auto patched = core::patchIconBytes(*bytes, replacements);
+        if (!patched) {
+            print(std::format(L"  {}: ", file.target));
+            reportError(patched.error());
+            ++failures;
+            continue;
+        }
+        const auto outFile = outDir / L"patched" / file.target;
+        std::filesystem::create_directories(outFile.parent_path(), ec);
+        if (auto ok = writeFileAtomic(outFile, *patched); !ok) {
+            return reportError(ok.error());
+        }
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
+        auto check = core::verifyIconFileWithWindows(outFile);
+        if (!check) {
+            return reportError(check.error());
+        }
+        print(std::format(L"  {}: {} group(s) replaced, {} not in this build, {} → {} bytes, {} ms; Windows loads {} group(s), {} image(s), {} failed\n",
+                          file.target, replacements.size(), missing, bytes->size(), patched->size(), ms, check->groups,
+                          check->images, check->failed));
+        failures += check->failed > 0 ? 1 : 0;
+    }
+    return failures == 0 ? 0 : 3;
+}
+
 int cmdIconVerify(const std::wstring& file) {
     auto check = core::verifyIconFileWithWindows(file);
     if (!check) {
@@ -2036,6 +2134,8 @@ void printUsage() {
           L"  wlcli icon-extract <file> <group> <out.ico>   (group: #3, 3 or a name)\n"
           L"  wlcli icon-patch <file> <group>=<ico>... --out=<file>   (writes a patched copy, checked by Windows)\n"
           L"  wlcli icon-verify <file>                   (Windows loads every icon image of the file)\n"
+          L"  wlcli icon-pack <pack.7z|zip|folder> <outdir> [--source=<folder of .mun files>]   (7TSP pack -> WinLove\n"
+          L"                                             pack; with --source each target is patched into <outdir>\\patched)\n"
           L"  wlcli icon-image <mountdir> <path under the image> [<group>=<ico>...] [--restore]   (admin; patch in\n"
           L"                                      place with backup + restore script, or put the original back)\n"
           L"  wlcli reg-check <file.reg> <mountdir> [--json]   (which writes the image already has; read only,\n"
@@ -2390,6 +2490,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"icon-extract" && args.size() == 4) {
         return cmdIconExtract(args[1], args[2], args[3]);
+    }
+    if (command == L"icon-pack" && args.size() == 3) {
+        return cmdIconPack(args[1], args[2], source);
     }
     if (command == L"icon-verify" && args.size() == 2) {
         return cmdIconVerify(args[1]);

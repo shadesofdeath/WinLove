@@ -3,6 +3,7 @@
 #include "ui/widget/Host.h"
 #include "ui/widgets/Kbd.h"
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
@@ -28,6 +29,35 @@ bool isActivationKey(const ui::KeyEvent& key) {
 }
 
 } // namespace
+
+// ---- NavList -----------------------------------------------------------------------------------
+
+// The scrolling viewport above the footer: clips the items (paint and hit test both stop at its
+// bounds), draws the group separators and takes the wheel.
+class NavList : public ui::Widget {
+public:
+    explicit NavList(NavRail& rail) : m_rail(rail) {}
+
+    void paint(ui::Canvas& canvas) override {
+        const RectF b = bounds();
+        canvas.pushClip(b);
+        for (const float y : m_rail.m_separators) {
+            canvas.hairlineH(b.x, b.y + y - m_rail.m_offset, b.width - 1.0f / canvas.scale(), Color::LineSubtle);
+        }
+        canvas.popClip();
+    }
+    [[nodiscard]] bool clipsChildren() const noexcept override { return true; }
+    bool onWheel(ui::PointF /*p*/, float lines) override {
+        if (m_rail.m_content <= bounds().height + 0.5f) {
+            return false;
+        }
+        m_rail.scrollTo(m_rail.m_offset - lines * size::row);
+        return true;
+    }
+
+private:
+    NavRail& m_rail;
+};
 
 // ---- NavItem -----------------------------------------------------------------------------------
 
@@ -166,11 +196,14 @@ void NavFooter::paint(ui::Canvas& canvas) {
 
 NavRail::NavRail(const Labels& labels, const std::function<std::wstring(Str)>& label) {
     setAccessible(ui::AccessRole::List, L"Navigation");
+    m_list = &add<NavList>(*this);
     for (const auto& page : allPages()) {
         if (page.navGroup >= 0) {
-            m_items.push_back(&add<NavItem>(*this, page.id, label(page.navLabel), page.icon));
+            m_items.push_back(&m_list->add<NavItem>(*this, page.id, label(page.navLabel), page.icon));
         }
     }
+    m_scroll = &m_list->add<ui::ScrollBar>(); // added last: above the items
+    m_scroll->onScroll = [this](float offset) { scrollTo(offset); };
     m_footer = &add<NavFooter>(*this, labels.collapse, labels.expand, labels.ctrlKey, labels.collapseTooltip);
 }
 
@@ -204,19 +237,45 @@ void NavRail::focusSibling(NavItem& from, int direction) {
         if (m_items[i] == &from) {
             const auto next = static_cast<std::ptrdiff_t>(i) + direction;
             if (next >= 0 && next < static_cast<std::ptrdiff_t>(m_items.size()) && host()) {
-                host()->setFocus(m_items[static_cast<std::size_t>(next)], /*visible=*/true);
+                NavItem* target = m_items[static_cast<std::size_t>(next)];
+                reveal(*target);
+                host()->setFocus(target, /*visible=*/true);
             }
             return;
         }
     }
 }
 
+void NavRail::scrollTo(float offset) {
+    const float viewport = m_list ? m_list->bounds().height : 0.0f;
+    offset = std::clamp(offset, 0.0f, std::max(m_content - viewport, 0.0f));
+    if (offset != m_offset) {
+        m_offset = offset;
+        layout();
+        invalidate();
+    }
+}
+
+void NavRail::reveal(const NavItem& item) {
+    const RectF list = m_list->bounds();
+    const RectF r = item.bounds();
+    if (r.y < list.y) {
+        scrollTo(m_offset - (list.y - r.y));
+    } else if (r.bottom() > list.bottom()) {
+        scrollTo(m_offset + r.bottom() - list.bottom());
+    }
+}
+
 void NavRail::layout() {
     const RectF b = bounds();
     const float row = size::row;
-    float y = b.y + kPaddingY;
+    // Content coordinates (0 = top of the list); the list scrolls when it is taller than the
+    // space above the footer.
+    float y = kPaddingY;
     int group = -1;
     m_separators.clear();
+    std::vector<float> tops;
+    tops.reserve(m_items.size());
     for (auto* item : m_items) {
         const int itemGroup = pageInfo(item->page()).navGroup;
         if (itemGroup != group) {
@@ -228,20 +287,34 @@ void NavRail::layout() {
             y += kGroupPadding;
             group = itemGroup;
         }
-        item->setBounds({b.x, y, b.width, row});
+        tops.push_back(y);
         y += row;
     }
     y += kGroupPadding;
     m_separators.push_back(y);
-    m_footer->setBounds({b.x, b.bottom() - kPaddingY - row, b.width, row});
+    m_content = y + 1;
+
+    const float footerTop = b.bottom() - kPaddingY - row;
+    m_footer->setBounds({b.x, footerTop, b.width, row});
+    const RectF list{b.x, b.y, b.width, std::max(footerTop - kGroupPadding - b.y, 0.0f)};
+    m_list->setBounds(list);
+    m_offset = std::clamp(m_offset, 0.0f, std::max(m_content - list.height, 0.0f));
+    for (std::size_t i = 0; i < m_items.size(); ++i) {
+        m_items[i]->setBounds({b.x, list.y + tops[i] - m_offset, b.width, row});
+    }
+    m_scroll->setBounds({list.right() - ui::ScrollBar::kWidth, list.y, ui::ScrollBar::kWidth, list.height});
+    m_scroll->setRange(m_content, list.height);
+    m_scroll->setOffset(m_offset);
+    m_scroll->setVisible(m_scroll->needed());
 }
 
 void NavRail::paint(ui::Canvas& canvas) {
     const RectF b = bounds();
     canvas.fillRect(b, Color::BgPanel);
     canvas.hairlineV(b.right() - 1.0f / canvas.scale(), b.y, b.height, Color::LineSubtle);
-    for (const float y : m_separators) {
-        canvas.hairlineH(b.x, y, b.width - 1.0f / canvas.scale(), Color::LineSubtle);
+    if (m_scroll->needed()) {
+        // Scrolled list: a fixed line keeps the footer apart from the items passing under it.
+        canvas.hairlineH(b.x, m_list->bounds().bottom(), b.width - 1.0f / canvas.scale(), Color::LineSubtle);
     }
 }
 

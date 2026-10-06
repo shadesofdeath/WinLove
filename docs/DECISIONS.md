@@ -241,6 +241,33 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-073 — 7TSP simge paketleri; uzun gezinme çubuğu ve risk dialogu kaydırılır (2026-10-06)
+Bağlam: Kullanıcı: "Simgeler sayfasında tek tek değiştirmek yerine bu gibi paketleri de direkt uygulatabilmeli"
+(`7TSP Lumicons Symbols.7z`). Aynı oturumda iki hata: kategori sayısı arttıkça gezinme çubuğunun altında öğeler "Daralt" ile üst
+üste biniyordu; Uygula'nın risk onayı uzun listede pencereye sığmıyor, onay kutusu ve düğmeler ekran dışında kalıyordu.
+Karar:
+- **7TSP biçimi** (`core/image/icons/ResFile`): `Pack.ini` (`Pack=`, `Base by=`) + `Resources\<hedef>.res` — hedef başına bir
+  derlenmiş kaynak dosyası (`imageres.dll.mun.res` …). `.res` kendi okuyucumuzla `ResourceTree`'ye okunur (sınır denetimli),
+  `listIconGroups` aynen çalışır; her simge grubu WinLove paket düzenine `.ico` olur (`<hedef>\<id>.ico`, adlı gruplar adıyla)
+  ve D-068'in denetimli yama yolundan geçer — yeni yazma yolu yok. Simge dışı kaynak türleri yok sayılır.
+- **Arşiv:** Windows'un kendi `tar.exe`'si (libarchive 3.8: Windows 11'de 7z + zip), olmazsa kurulu 7-Zip; ikisi de mutlak yol
+  ve `..` reddeder. Dönüştürülen paket `%LOCALAPPDATA%\WinLove\IconPacks\<paket adı>`'da kalır (kuyruktaki kaynaklar oraya
+  bakar); açılan geçici kopya silinir. Klasör olarak seçilen 7TSP paketi de tanınır.
+- **Eşleşmeyenler kuyruğa girmez, sayılır:** imajın dosyasında olmayan grup (başka build için yapılmış paket) — **düzeltme:**
+  klasör paketleri de bunu kuyruğa alıyordu, Uygula'da o dosyanın bütün yaması düşerdi; kod içeren hedefler (`Display.dll`) ve
+  `.mun` olmayanlar (`explorer.exe.mui`) D-068 gereği yamalanmaz.
+- **Sayfa:** "İkon paketi yükle…" artık küçük bir menü: "Arşivden (.7z / .zip · 7TSP)…" / "Klasörden…".
+- **Gezinme çubuğu:** öğeler bir kaydırma alanında (tekerlek + ince kaydırma çubuğu, klavyeyle gidilen öğe görünür kalır);
+  "Daralt" altta sabit, liste kaydırılabiliyorsa üstünde sabit bir ayırıcı. Yeterince yüksek pencerede görünüm aynı.
+- **Dialog:** kutu pencereden büyümez (kenarlarda en az 24 px); fazla içerik kendi içinde kayar. Risk onayında liste kayar,
+  "Riskleri anladım" ve düğmeler her zaman görünür. `--demo-apply=confirm` (40 satır).
+Kanıt: `wlcli icon-pack "7TSP Lumicons Symbols.7z" build\lab\iconpack7tsp --source=C:\Windows\SystemResources` (yalnız okuma):
+241 simge; imageres 225 grup (1'i bu build'de yok), imagesp1 9, shell32 1, themecpl 1, zipfldr 2 — her yamalı kopyayı Windows
+yükleyicisi açıyor, 0 hata; çıkarılan #3 Lumicons klasörü. 311 birim testi / 11.321 doğrulama (.res gidiş-dönüş, bozuk / taşan
+girdi, Pack.ini, dönüştürme, tar ile zip, kuyruk + eksik grup + kod içeren hedef). Render: kısa pencerede gezinme ve risk dialogu.
+**Görülmeyen:** paketin uygulamanın içinden yüklenip gerçek imaja Uygula'yla yazılması (yönetici) ve kurulan sistemde görünüşü;
+Windows 10'un eski `tar.exe`'siyle 7z.
+
 ## D-072 — Hakkında sayfası, 1.0 Alpha, GPL-3.0 ve GitHub (2026-10-05)
 Bağlam: Kullanıcı: "Hakkında sayfası oluştur; Türkiye bayrağı, benim GitHub'ım, proje GitHub sayfası; tatlı, profesyonel.
 Projenin tamamen ücretsiz kalacağını ve sevgiyle yapıldığını yaz. GitHub'a 1.0 Alpha adıyla yükleyip paylaşabilirsin."

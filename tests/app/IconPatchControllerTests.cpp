@@ -2,9 +2,13 @@
 // in and out. This PC's C:\ stands in for the mounted image (only read).
 #include "app/controllers/IconPatchController.h"
 #include "base/File.h"
+#include "core/image/icons/ResFile.h"
+#include "core/system/Process.h"
 
 #include <doctest.h>
 
+#include <algorithm>
+#include <cstring>
 #include <filesystem>
 
 using namespace wl;
@@ -120,4 +124,75 @@ TEST_CASE("icon files: a pack folder in, the queue out as a pack, and back in th
     CHECK(again->matched == 3);
     CHECK(again->unmatched.empty());
     CHECK(g.controller.changedCount() == 3);
+}
+
+TEST_CASE("icon files: a 7TSP pack (folder or archive) is converted and queued; missing groups stay out") {
+    if (!std::filesystem::exists(L"C:\\Windows\\SystemResources\\imageres.dll.mun")) {
+        return;
+    }
+    Fixture f(L"state7tsp");
+    const auto root = scratch(L"packroot");
+    f.controller.setPackRoot(root);
+    // imageres: group 3 (exists) and 60000 (no such group); Display.dll: a program's file, not patched.
+    auto bytes = readFileBytes(kBrand);
+    REQUIRE(bytes);
+    auto images = core::parseIco(*bytes);
+    REQUIRE(images);
+    auto tree = [&](std::initializer_list<std::uint16_t> ids) {
+        core::ResourceTree t;
+        t.ensureType(core::kRtIcon);
+        t.ensureType(core::kRtGroupIcon);
+        std::uint16_t next = 1;
+        for (const auto id : ids) {
+            std::string dir("\0\0\1\0\1\0", 6);
+            const auto& img = images->front();
+            const std::uint16_t iconId = next++;
+            core::ensureName(*t.type(core::kRtIcon), iconId).languages.push_back({0x409, 0, img.data});
+            char e[14]{};
+            e[0] = static_cast<char>(img.width >= 256 ? 0 : img.width);
+            e[1] = static_cast<char>(img.height >= 256 ? 0 : img.height);
+            std::memcpy(e + 4, &img.planes, 2);
+            std::memcpy(e + 6, &img.bitCount, 2);
+            const auto size = static_cast<std::uint32_t>(img.data.size());
+            std::memcpy(e + 8, &size, 4);
+            std::memcpy(e + 12, &iconId, 2);
+            dir.append(e, 14);
+            core::ensureName(*t.type(core::kRtGroupIcon), id).languages.push_back({0x409, 0, dir});
+        }
+        return core::writeResFile(t);
+    };
+    const auto pack = scratch(L"seventsp");
+    std::filesystem::create_directories(pack / L"Resources");
+    REQUIRE(writeFileAtomic(pack / L"Pack.ini", "[Base Pack]\nPack=Test 7TSP\n"));
+    REQUIRE(writeFileAtomic(pack / L"Resources" / L"imageres.dll.mun.res", tree({3, 60000})));
+    REQUIRE(writeFileAtomic(pack / L"Resources" / L"Display.dll.res", tree({1})));
+
+    auto result = f.controller.importPack(pack);
+    REQUIRE(result);
+    CHECK(result->name == L"Test 7TSP");
+    CHECK(result->matched == 1);
+    CHECK(std::ranges::find(result->unmatched, L"imageres.dll.mun/#60000") != result->unmatched.end());
+    CHECK(std::ranges::find(result->unmatched, L"Display.dll") != result->unmatched.end());
+    CHECK(f.controller.changedIn(kImageres) == 1);
+    const auto source = f.controller.replacement(kImageres, core::ResourceKey{3, {}});
+    REQUIRE(source);
+    CHECK(source->wstring().starts_with((root / L"Test 7TSP").wstring())); // kept under the pack root
+    CHECK(std::filesystem::exists(*source));
+
+    // The same pack zipped: opened, converted, queued the same; nothing extracted is left behind.
+    const auto tar = core::systemTool(L"tar.exe");
+    if (!tar || !std::filesystem::exists(*tar)) {
+        return;
+    }
+    const auto zip = scratch(L"zipped") / L"Test pack.zip";
+    auto made = core::runProcess(L"\"" + *tar + L"\" -a -c -f \"" + zip.wstring() + L"\" -C \"" + pack.wstring() + L"\" Pack.ini Resources", {});
+    REQUIRE(made);
+    REQUIRE(*made == 0);
+    Fixture g(L"state7tspzip");
+    g.controller.setPackRoot(root);
+    auto zipped = g.controller.importPack(zip);
+    REQUIRE(zipped);
+    CHECK(zipped->matched == 1);
+    CHECK(g.controller.changedIn(kImageres) == 1);
+    CHECK_FALSE(std::filesystem::exists(root / L"~Test pack"));
 }

@@ -449,7 +449,10 @@ enum class Str : std::uint16_t {
     IconsNotIcon,
     IconsNotSource,
     IconsNote,
+    IconsPackArchives,
     IconsPackFailed,
+    IconsPackFromArchive,
+    IconsPackFromFolder,
     IconsPackLoaded,
     IconsPackNone,
     IconsPackPatchLoaded,
@@ -1362,7 +1365,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1352;
+inline constexpr std::size_t kStrCount = 1355;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -1806,7 +1809,10 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "icons.notIcon",
     "icons.notSource",
     "icons.note",
+    "icons.packArchives",
     "icons.packFailed",
+    "icons.packFromArchive",
+    "icons.packFromFolder",
     "icons.packLoaded",
     "icons.packNone",
     "icons.packPatchLoaded",
