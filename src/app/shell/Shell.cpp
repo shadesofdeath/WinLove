@@ -696,7 +696,9 @@ void Shell::applyPreset(const Preset& preset) {
         showToast(ui::InfoKind::Warning, m_strings.get(Str::ComponentsPresetNeedsMount), L"");
         return;
     }
-    const std::size_t queued = m_presets->apply(preset);
+    Preset current = preset;
+    current.changes = m_components->withCurrentRecipes(preset.changes);
+    const std::size_t queued = m_presets->apply(current);
     showToast(ui::InfoKind::Success, m_strings.format(Str::PresetsLoaded, {{L"n", std::to_wstring(queued)}}), preset.name);
 }
 
