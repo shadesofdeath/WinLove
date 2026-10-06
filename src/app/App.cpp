@@ -242,6 +242,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoUpdates = true;
         } else if (a == L"--demo-no-winre") {
             options.demoNoWinre = true;
+        } else if (a == L"--demo-aio") {
+            options.demoAio = true;
         } else if (a == L"--demo-usb" || startsWith(a, L"--demo-usb=")) {
             options.demoUsbGiven = true;
             options.demoUsb = a == L"--demo-usb" ? std::wstring() : std::wstring(value(L"--demo-usb="));
@@ -1282,6 +1284,12 @@ int App::renderOffscreen() {
         }
         if (auto* page = m_shell->isoPageForDemo()) {
             page->setEditionsWithoutWinre({1});
+        }
+    }
+    if (m_options.demoAio && m_state->source()) {
+        m_shell->showPage(PageId::Iso);
+        if (auto* page = m_shell->isoPageForDemo()) {
+            page->setMediaCannotInstallDemo({2});
         }
     }
     if (m_options.fakeOperation && m_state->source()) {

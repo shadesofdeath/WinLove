@@ -1,6 +1,7 @@
 # wl_core — image engine: sources, sessions, backends, change sets, tasks. Knows nothing about UI.
 add_library(wl_core STATIC
     image/BootImage.cpp
+    image/SetupMedia.cpp
     image/Branding.cpp
     image/Fonts.cpp
     image/DriverInf.cpp

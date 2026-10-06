@@ -3,6 +3,7 @@
 #include "base/Log.h"
 #include "base/Path.h"
 #include "core/image/UdfImage.h"
+#include "core/image/SetupMedia.h"
 #include "core/image/WindowsRelease.h"
 #include "core/image/dism/Dism.h"
 #include "core/image/dism/DismErrors.h"
@@ -802,6 +803,34 @@ void ImageController::appendFrom(const std::filesystem::path& other, std::vector
             [this, reopened, count] {
                 m_state.setSource(std::move(**reopened));
                 m_events.succeeded(Str::ImagesAppendedToast, std::to_wstring(count));
+            },
+            Failure::Export);
+    });
+}
+
+void ImageController::replaceSetupMedia(const std::filesystem::path& from) {
+    if (const auto refusal = editRefusal()) {
+        m_events.refused(*refusal);
+        return;
+    }
+    withWritableSource(m_state.selectedIndex().value_or(1), [this, from] {
+        const std::filesystem::path folder = m_state.source()->path;
+        auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
+        run(EngineOperation{EngineOperation::Kind::Preparing, from.filename().wstring(), folder, 0},
+            [folder, from, reopened](const core::TaskContext& task) -> Result<void> {
+                if (auto r = core::replaceSetupMedia(folder, from, task); !r) {
+                    return r;
+                }
+                auto info = core::openSource(folder);
+                if (!info) {
+                    return std::unexpected(info.error());
+                }
+                *reopened = std::move(*info);
+                return {};
+            },
+            [this, reopened] {
+                m_state.setSource(std::move(**reopened));
+                m_events.succeeded(Str::IsoAioReplaced, L"");
             },
             Failure::Export);
     });

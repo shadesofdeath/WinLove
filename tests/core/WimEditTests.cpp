@@ -1,6 +1,7 @@
 // Removing editions from a WIM: the index arithmetic and the refusals. The rewrite itself needs
 // a real image (capturing a WIM takes admin): tools/lab_editions.ps1 runs it on the lab copy.
 #include "core/image/ImageInfo.h"
+#include "core/image/SetupMedia.h"
 #include "core/image/WindowsRelease.h"
 #include "core/image/wim/WimGapi.h"
 
@@ -61,6 +62,34 @@ TEST_CASE("AIO: an added edition named like one already there gets its release (
     CHECK(renames[0] == std::pair<int, std::wstring>{3, L"windows 11 pro (24H2)"});
     CHECK(renames[1] == std::pair<int, std::wstring>{4, L"Windows 11 Pro (10.0.26200.7000)"});
     CHECK(distinctEditionNames(images, 6).empty()); // nothing added
+}
+
+TEST_CASE("AIO: what the setup media can install (D-077, measured)") {
+    auto image = [](int index, int build) {
+        ImageInfo i;
+        i.index = index;
+        i.name = build < 22000 ? L"Windows 10 Pro" : L"Windows 11 Pro";
+        i.build = build;
+        return i;
+    };
+    SourceInfo aio;
+    aio.install.images = {image(1, 26200), image(2, 19045), image(3, 22631)};
+    CHECK(setupMediaBuild(aio) == 0);           // a bare image: no media to judge
+    CHECK(editionsMediaCannotInstall(aio).empty());
+
+    WimFile boot;
+    boot.images = {image(1, 26100), image(2, 26100)};
+    boot.header.bootIndex = 2;
+    aio.boot = boot;                            // Windows 11 24H2 media
+    CHECK(setupMediaBuild(aio) == 26100);
+    CHECK(editionsMediaCannotInstall(aio) == std::vector<int>{2});
+
+    aio.boot->images = {image(1, 19041), image(2, 19041)}; // Windows 10 media installs them all
+    CHECK(editionsMediaCannotInstall(aio).empty());
+    aio.boot->images = {image(1, 22631)};                  // 23H2: no measurement says otherwise
+    aio.boot->header.bootIndex = 0;                        // no boot index: the last image
+    CHECK(setupMediaBuild(aio) == 22631);
+    CHECK(editionsMediaCannotInstall(aio).empty());
 }
 
 TEST_CASE("removeImages: a missing file is an error, not a silent success") {
