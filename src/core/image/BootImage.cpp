@@ -5,6 +5,7 @@
 #include "core/image/RegistryEdit.h"
 #include "core/image/WimFile.h"
 #include "core/image/dism/MountHealth.h"
+#include "core/image/wim/WimVerify.h"
 #include "core/io/ByteSource.h"
 
 #include <format>
@@ -13,6 +14,7 @@ namespace wl::core {
 
 namespace {
 
+constexpr const wchar_t* kSetupKey = L"HKLM\\SYSTEM\\Setup";
 constexpr const wchar_t* kLabConfigKey = L"HKLM\\SYSTEM\\Setup\\LabConfig";
 
 // What is done to the mounted image; the caller unmounts.
@@ -30,6 +32,25 @@ Result<void> applyPatch(Dism& dism, const std::filesystem::path& mountDir, const
                 return written;
             }
             log::info("boot", L"LabConfig " + value + L" = 1");
+        }
+        if (patch.legacySetup) {
+            // Without it the command line would start nothing: the image is not a Setup one.
+            if (!std::filesystem::exists(mountDir / L"sources" / L"setup.exe")) {
+                return fail(ErrorCode::NotFound, L"the boot image has no sources\\setup.exe (not a Windows Setup image)",
+                            mountDir.wstring());
+            }
+            std::wstring text = L"\"";
+            for (const wchar_t c : kLegacySetupCmdLine) {
+                text += c == L'\\' ? std::wstring(L"\\\\") : std::wstring(1, c);
+            }
+            auto write = parseRegValue(kSetupKey, L"CmdLine", text + L"\"");
+            if (!write) {
+                return std::unexpected(write.error());
+            }
+            if (auto written = registry.apply(*write); !written) {
+                return written;
+            }
+            log::info("boot", L"Setup CmdLine = " + std::wstring(kLegacySetupCmdLine) + L" (previous Setup)");
         }
     } // unloaded here
     if (patch.drivers.empty()) {
@@ -73,6 +94,34 @@ std::vector<std::wstring> BootPatch::labConfigValues() const {
     return values;
 }
 
+Result<std::vector<int>> editionsWithoutWinre(const SourceInfo& source) {
+    std::vector<int> missing;
+    std::shared_ptr<const ByteSource> bytes;
+    for (const auto& image : source.install.images) {
+        if (image.build < 26100) {
+            continue; // before 24H2 there is only the previous Setup
+        }
+        if (!bytes) {
+            auto opened = openInstallImage(source);
+            if (!opened) {
+                return std::unexpected(opened.error());
+            }
+            bytes = *opened;
+        }
+        auto found = wimFileExists(*bytes, image.index, L"Windows\\System32\\Recovery\\Winre.wim");
+        if (!found) {
+            return std::unexpected(found.error());
+        }
+        if (!*found) {
+            missing.push_back(image.index);
+        }
+    }
+    if (!missing.empty()) {
+        log::info("boot", std::format(L"{} edition(s) without WinRE: the new Setup cannot install them", missing.size()));
+    }
+    return missing;
+}
+
 Result<int> setupImageIndex(const std::filesystem::path& bootWim) {
     auto file = DiskFile::open(nativePath(bootWim));
     if (!file) {
@@ -102,8 +151,9 @@ Result<BootPatchReport> patchBootImage(Dism& dism, const std::filesystem::path& 
         return std::unexpected(index.error());
     }
     report.index = *index;
-    log::info("boot", std::format(L"patch {} [{}]: {} LabConfig value(s), {} driver(s)", bootWim.wstring(), *index,
-                                  patch.labConfigValues().size(), patch.drivers.size()));
+    log::info("boot", std::format(L"patch {} [{}]: {} LabConfig value(s), {} driver(s){}", bootWim.wstring(), *index,
+                                  patch.labConfigValues().size(), patch.drivers.size(),
+                                  patch.legacySetup ? L", previous Setup" : L""));
 
     // Shares of the run: mount 35 %, the patch 15 %, commit 50 %.
     const TaskContext mountTask{task.cancel, [&](double f, std::wstring_view s) { task.report(0.35 * f, s); }};

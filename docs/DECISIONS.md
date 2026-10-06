@@ -241,6 +241,31 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-074 — Önceki kurulum (24H2+) ve WinRE'siz imaj (2026-10-06)
+Bağlam: Kullanıcı: "boot setup yeni arayüze geçti, eski düzene geçirebilir miyiz, ISO oluştur'a özellik olarak ekleyelim";
+aynı oturumda: "hazırladığım ISO %5'te hata veriyor, eski sürüm setup'ta sorun yok". Kullanıcının ISO'sunda `removeComponent winre`
+uygulanmıştı: install.wim'de `Recovery\ReAgent.xml` var, `Winre.wim` yok. 24H2'den beri boot.wim'de
+`HKLM\SYSTEM\Setup\CmdLine = winpeshl.exe`, winpeshl `X:\setup.exe`'yi (yeni kurulum) başlatıyor; "Kurulumun önceki
+sürümü" `X:\sources\setup.exe`. Yeni kurulum kurduğu imajın WinRE'sini kullanıyor (NTLite: "Modern setup uses winre.wim").
+Karar:
+- **Motor:** `BootPatch::legacySetup` — D-038'in boot.wim yamasına bir değer: `Setup\CmdLine = cmd /c start /min wpeinit &&
+  \sources\setup` (NTLite topluluğunda gerçek donanım + Ventoy/YUMI ile denenmiş biçim; yalın `X:\sources\setup.exe` çoklu
+  önyükleme çubuklarında sürücü yüklemesini bozuyordu: wpeinit'i winpeshl çalıştırıyordu). İmajda `sources\setup.exe` yoksa hata
+  (kurulum imajı değil). `wlcli boot-patch --legacy-setup` (yalnız başına da).
+- **WinRE algılama, bağlamadan:** `wimFileExists` (WimVerify'ın kaynak okuyucusu + dizin girdisi ayrıştırıcı: güvenlik verisi,
+  102 baytlık girdi, ek akışlar 8'e hizalı) bir sürümün dosya listesinden yol arar; ~0,2 sn, yönetici gerekmez, ISO içinde de
+  çalışır. `editionsWithoutWinre` 26100+ sürümlerde `Windows\System32\Recovery\Winre.wim`'e bakar. `wlcli wim-file`.
+- **Arayüz:** ISO / USB sekmelerinde ÖNYÜKLEME › "Kurulum ekranı: Önceki kurulumu kullan (24H2+)", varsayılan kapalı; WinRE'siz
+  sürüm varsa kendiliğinden açılır (kullanıcı dokunduysa seçimi korunur), yanında uyarı; özette "Kurulum ekranı" satırı, kapalı
+  ve WinRE yoksa turuncu "yeni kurulum — WinRE yok, hata verir". Bileşenler'deki WinRE notuna bu bilgi eklendi.
+**Kanıt:** 312+ test; `tools\lab_legacy_setup.ps1` (yönetici, kendim): CmdLine yazıldı, geri okundu (özgünü `winpeshl.exe`),
+13 869 akış sağlam. `-Vm`: test ISO'sunun 4. sürümünden **yalnız** `Winre.wim` silindi, iki ISO yalnız boot.wim'de farklı —
+yeni kurulum ilk 30 sn'de "Windows 11 yüklemesi başarısız oldu" (hata yeniden üretildi); önceki kurulum aynı ISO'yu kesintisiz kurdu, ilk oturumdan sonra
+kendini kapattı (ALL PASSED, ~25 dk; kareler `build\lab\out\vm-legacy-*`).
+Kullanıcının ISO'sunda `wlcli wim-file … Winre.wim` → MISSING. Render `--demo-no-winre` (ISO / USB, tr / en).
+**Görülmeyen:** kullanıcının kendi ISO'sunun (520 değişiklik) önceki kurulumla kurulması — öteki değişiklikler ayrıca
+denenmedi; gerçek donanım / Ventoy; ESD kaynakta WinRE algılama (desteklenmiyor: kutu kendiliğinden açılmaz).
+
 ## D-073 — 7TSP simge paketleri; uzun gezinme çubuğu ve risk dialogu kaydırılır (2026-10-06)
 Bağlam: Kullanıcı: "Simgeler sayfasında tek tek değiştirmek yerine bu gibi paketleri de direkt uygulatabilmeli"
 (`7TSP Lumicons Symbols.7z`). Aynı oturumda iki hata: kategori sayısı arttıkça gezinme çubuğunun altında öğeler "Daralt" ile üst

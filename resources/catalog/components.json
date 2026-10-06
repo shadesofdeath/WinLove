@@ -121,8 +121,8 @@
       ] },
 
     { "id": "winre", "group": "components", "tr": "Windows Kurtarma Ortamı (WinRE)", "en": "Windows Recovery Environment (WinRE)", "risk": "high",
-      "notes_tr": "Kurulan sistemde kurtarma ortamı olmaz: \"Bu bilgisayarı sıfırla\", başlangıç onarımı ve gelişmiş başlangıç çalışmaz; BitLocker kurtarma ekranı ve WinRE güncellemeleri hata verir.",
-      "notes_en": "The installed system has no recovery environment: \"Reset this PC\", startup repair and advanced startup do not work; the BitLocker recovery screen and WinRE updates fail.",
+      "notes_tr": "Kurulan sistemde kurtarma ortamı olmaz: \"Bu bilgisayarı sıfırla\", başlangıç onarımı ve gelişmiş başlangıç çalışmaz; BitLocker kurtarma ekranı ve WinRE güncellemeleri hata verir. 24H2 ve sonrasının yeni kurulum ekranı WinRE'siz imajı kuramaz (%5 civarında \"yükleme başarısız oldu\"); ISO Oluştur'da \"Önceki kurulumu kullan\" bu yüzden kendiliğinden açılır.",
+      "notes_en": "The installed system has no recovery environment: \"Reset this PC\", startup repair and advanced startup do not work; the BitLocker recovery screen and WinRE updates fail. The new Setup of 24H2 and later cannot install an image without WinRE (\"installation failed\" at about 5%); Build ISO turns \"Use the previous Setup\" on by itself for that reason.",
       "paths": [ "Windows\\System32\\Recovery\\Winre.wim" ] },
 
     { "id": "telemetry", "group": "privacy", "tr": "Telemetri ve tanılama (DiagTrack)", "en": "Telemetry and diagnostics (DiagTrack)", "risk": "medium",

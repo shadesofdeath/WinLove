@@ -2,6 +2,7 @@
 
 #include "app/Format.h"
 #include "app/pages/PageBits.h"
+#include "base/Log.h"
 #include "core/usb/UsbMedia.h"
 #include "ui/anim/Tween.h"
 
@@ -102,6 +103,11 @@ IsoPage::IsoPage(AppState& state, IsoController& controller, const Localization&
     m_noPrompt = &add<ui::CheckField>(strings.get(Str::IsoNoPrompt), false);
     m_bootBypass = &add<ui::CheckField>(strings.get(Str::IsoBootBypass), true);
     m_bootBypass->onChange = [this](bool) { invalidate(); };
+    m_legacySetup = &add<ui::CheckField>(strings.get(Str::IsoLegacySetup), false);
+    m_legacySetup->onChange = [this](bool) {
+        m_legacyTouched = true;
+        invalidate();
+    };
     // The row label says it: the boxes stand alone (screen 16).
     m_sha = &add<ui::CheckField>(L"", true);
     m_sha->setAccessible(ui::AccessRole::CheckBox, strings.get(Str::IsoSha));
@@ -128,6 +134,7 @@ IsoPage::IsoPage(AppState& state, IsoController& controller, const Localization&
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Source) {
             computeSize(); // a re-read source (after a commit) is another size: USB check, estimate
+            checkWinre();  // and maybe WinRE is gone now
         }
         if (change == AppState::Change::Iso || change == AppState::Change::Mount || change == AppState::Change::Source ||
             change == AppState::Change::Apply || change == AppState::Change::Operation ||
@@ -136,6 +143,7 @@ IsoPage::IsoPage(AppState& state, IsoController& controller, const Localization&
         }
     });
     computeSize();
+    checkWinre();
     refresh();
 }
 
@@ -178,6 +186,45 @@ void IsoPage::computeSize() {
         });
 }
 
+void IsoPage::checkWinre() {
+    const auto& source = m_state.source();
+    if (!source) {
+        m_noWinre.clear();
+        return;
+    }
+    std::weak_ptr<bool> alive = m_alive;
+    auto missing = std::make_shared<std::vector<int>>();
+    m_state.reader().run<bool>(
+        [info = *source, missing](const core::TaskContext&) -> Result<bool> {
+            auto editions = core::editionsWithoutWinre(info);
+            if (!editions) {
+                // ESD, damaged: nothing known, the box stays as the user leaves it.
+                log::warn("iso", L"cannot tell whether the editions have WinRE: " + describe(editions.error()));
+                return false;
+            }
+            *missing = std::move(*editions);
+            return true;
+        },
+        [this, alive, missing, post = m_intents.postToUi](Result<bool>) {
+            if (!post) {
+                return;
+            }
+            post([this, alive, missing] {
+                if (const auto a = alive.lock(); a && *a) {
+                    setEditionsWithoutWinre(std::move(*missing));
+                }
+            });
+        });
+}
+
+void IsoPage::setEditionsWithoutWinre(std::vector<int> editions) {
+    m_noWinre = std::move(editions);
+    if (!m_noWinre.empty() && !m_legacyTouched) {
+        m_legacySetup->setChecked(true);
+    }
+    refresh();
+}
+
 IsoController::Request IsoPage::request() const {
     IsoController::Request r;
     std::wstring name = m_fileName->text();
@@ -195,6 +242,7 @@ IsoController::Request IsoPage::request() const {
     r.sha256 = m_sha->checked();
     r.openFolder = m_open->checked();
     r.bootBypass = m_bootBypass->checked();
+    r.legacySetup = m_legacySetup->checked();
     if (usbTab()) {
         if (const auto* disk = selectedDisk()) {
             r.usb = IsoController::Request::UsbTarget{disk->number, disk->identity(), disk->name(),
@@ -302,7 +350,7 @@ double IsoPage::estimateSeconds() const {
     if (m_sha->checked() && !usbTab()) {
         seconds += mb / 800.0;
     }
-    if (m_bootBypass->checked() && !IsoController::bootPatch(m_state).empty()) {
+    if ((m_bootBypass->checked() && !IsoController::bootPatch(m_state).empty()) || m_legacySetup->checked()) {
         seconds += 30; // mount + commit of boot.wim's setup image
     }
     return seconds;
@@ -400,6 +448,7 @@ void IsoPage::refresh() {
         w->setEnabled(!running && (w != m_disk || !m_disks.empty()));
     }
     // Shared by both tabs.
+    m_legacySetup->setEnabled(!running);
     for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_repack, m_bootBypass, m_open}) {
         w->setEnabled(!running && (w != m_repack || m_controller.canRepack()) && (w != m_bootBypass || bypasses));
     }
@@ -440,6 +489,8 @@ void IsoPage::layout() {
         place(m_repack, 240);
         y += kRow;
         place(m_bootBypass, 0);
+        y += kRow;
+        place(m_legacySetup, 0);
         y += kRow + kSection; // BİTİNCE
         place(m_open, 0);
         return;
@@ -459,6 +510,8 @@ void IsoPage::layout() {
     place(m_noPrompt, 0);
     y += kRow;
     place(m_bootBypass, 0);
+    y += kRow;
+    place(m_legacySetup, 0);
     y += kRow + kSection; // DOĞRULAMA
     place(m_sha, 0);
     y += kRow;
@@ -509,6 +562,8 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
     label(Str::IsoCompression);
     label(Str::IsoPrompt);
     label(Str::IsoSetupImage);
+    label(Str::IsoSetupUi);
+    paintLegacyHint(canvas, formRight);
     section(Str::IsoVerify);
     label(Str::IsoSha);
     label(Str::IsoOpenWhenDone);
@@ -519,7 +574,7 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
     const auto& unattend = m_state.unattend();
     const bool answersUnused = !unattend.includeInIso && !(unattend.options == core::UnattendOptions{});
     const RectF box{b.right() - kSummaryWidth, b.y + kTop + ui::tokens::size::control + 2 + 12, kSummaryWidth,
-                    136 + 2 * kSummaryRow};
+                    136 + 3 * kSummaryRow};
     canvas.fillRoundRect(box, ui::tokens::radius::r3, Color::BgPanel);
     canvas.strokeRoundRect(box, ui::tokens::radius::r3, Color::LineSubtle);
     float sy = box.y + 12;
@@ -550,16 +605,46 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
     } else {
         row(Str::IsoUnattend, m_strings.get(Str::IsoUnattendNone), false, Color::TextSecondary);
     }
-    // Setup's own image: what the build writes into boot.wim (D-038).
-    const std::size_t checks = m_bootBypass->checked() ? IsoController::bootPatch(m_state).labConfigValues().size() : 0;
-    if (checks > 0) {
-        row(Str::IsoSetupImage, m_strings.format(Str::IsoBootBypassN, {{L"n", std::to_wstring(checks)}}), false);
+    // Setup's own image: what the build writes into boot.wim (D-038, D-074).
+    {
+        const std::wstring text = setupImageText();
+        row(Str::IsoSetupImage, text.empty() ? m_strings.get(Str::IsoBootUntouched) : text, false,
+            text.empty() ? Color::TextSecondary : Color::TextPrimary);
+    }
+    if (m_legacySetup->checked()) {
+        row(Str::IsoSetupUi, m_strings.get(Str::IsoLegacySetupPrevious), false);
+    } else if (!m_noWinre.empty()) {
+        row(Str::IsoSetupUi, m_strings.get(Str::IsoLegacySetupNewFails), false, Color::StatusWarning);
     } else {
-        row(Str::IsoSetupImage, m_strings.get(Str::IsoBootUntouched), false, Color::TextSecondary);
+        row(Str::IsoSetupUi, m_strings.get(Str::IsoLegacySetupNew), false, Color::TextSecondary);
     }
     row(Str::IsoEstIso, m_sourceBytes ? formatBytes(m_sourceBytes, m_language) : std::wstring(L"…"), true);
     row(Str::IsoDuration, m_sourceBytes ? formatDuration(estimateSeconds(), m_language, true) : std::wstring(L"…"),
         true);
+}
+
+// What the build writes into boot.wim; empty: nothing.
+std::wstring IsoPage::setupImageText() const {
+    const std::size_t checks = m_bootBypass->checked() ? IsoController::bootPatch(m_state).labConfigValues().size() : 0;
+    if (checks > 0) {
+        return m_strings.format(Str::IsoBootBypassN, {{L"n", std::to_wstring(checks)}});
+    }
+    // The previous Setup has a row of its own ("Kurulum ekranı").
+    return m_legacySetup->checked() ? m_strings.get(Str::IsoBootPatched) : std::wstring();
+}
+
+// Beside the box: what it does, or why it is on by itself.
+void IsoPage::paintLegacyHint(ui::Canvas& canvas, float formRight) {
+    const RectF box = m_legacySetup->bounds();
+    const float x = box.right() + 12;
+    if (x >= formRight) {
+        return;
+    }
+    const bool noWinre = !m_noWinre.empty();
+    canvas.drawText(m_strings.get(noWinre ? Str::IsoLegacySetupNoWinre : Str::IsoLegacySetupHint),
+                    {x, box.y, formRight - x, box.height}, TypeStyle::Caption,
+                    noWinre && !m_legacySetup->checked() ? Color::StatusWarning
+                                                         : (noWinre ? Color::TextSecondary : Color::TextTertiary));
 }
 
 void IsoPage::paintUsbForm(ui::Canvas& canvas, float y, float formRight) {
@@ -584,6 +669,8 @@ void IsoPage::paintUsbForm(ui::Canvas& canvas, float y, float formRight) {
     label(Str::IsoUsbScheme);
     label(Str::IsoCompression);
     label(Str::IsoSetupImage);
+    label(Str::IsoSetupUi);
+    paintLegacyHint(canvas, formRight);
     section(Str::IsoUsbWhenDone);
     label(Str::IsoUsbOpenWhenDone);
 
@@ -591,7 +678,7 @@ void IsoPage::paintUsbForm(ui::Canvas& canvas, float y, float formRight) {
     const auto& unattend = m_state.unattend();
     const bool answersUnused = !unattend.includeInIso && !(unattend.options == core::UnattendOptions{});
     const RectF box{b.right() - kSummaryWidth, b.y + kTop + ui::tokens::size::control + 2 + 12, kSummaryWidth,
-                    136 + 3 * kSummaryRow};
+                    136 + 4 * kSummaryRow};
     canvas.fillRoundRect(box, ui::tokens::radius::r3, Color::BgPanel);
     canvas.strokeRoundRect(box, ui::tokens::radius::r3, Color::LineSubtle);
     float sy = box.y + 12;
@@ -626,11 +713,17 @@ void IsoPage::paintUsbForm(ui::Canvas& canvas, float y, float formRight) {
     } else {
         row(Str::IsoUnattend, m_strings.get(Str::IsoUnattendNone), false, Color::TextSecondary);
     }
-    const std::size_t checks = m_bootBypass->checked() ? IsoController::bootPatch(m_state).labConfigValues().size() : 0;
-    if (checks > 0) {
-        row(Str::IsoSetupImage, m_strings.format(Str::IsoBootBypassN, {{L"n", std::to_wstring(checks)}}), false);
+    {
+        const std::wstring text = setupImageText();
+        row(Str::IsoSetupImage, text.empty() ? m_strings.get(Str::IsoBootUntouched) : text, false,
+            text.empty() ? Color::TextSecondary : Color::TextPrimary);
+    }
+    if (m_legacySetup->checked()) {
+        row(Str::IsoSetupUi, m_strings.get(Str::IsoLegacySetupPrevious), false);
+    } else if (!m_noWinre.empty()) {
+        row(Str::IsoSetupUi, m_strings.get(Str::IsoLegacySetupNewFails), false, Color::StatusWarning);
     } else {
-        row(Str::IsoSetupImage, m_strings.get(Str::IsoBootUntouched), false, Color::TextSecondary);
+        row(Str::IsoSetupUi, m_strings.get(Str::IsoLegacySetupNew), false, Color::TextSecondary);
     }
     row(Str::IsoDuration, m_sourceBytes ? formatDuration(estimateSeconds(), m_language, true) : std::wstring(L"…"),
         true);

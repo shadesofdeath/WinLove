@@ -40,5 +40,9 @@ struct WimVerifyReport {
 // cancelled); a damaged image is a report with `damaged` > 0. Progress is by stored bytes.
 [[nodiscard]] Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task);
 
+// The same reading, for one edition's file list (its metadata resource): whether `path`
+// ("Windows\System32\Recovery\Winre.wim", either slash, any case) is a file in edition `index`.
+// Unsupported for ESD; a part of a split image other than the first has no file lists.
+[[nodiscard]] Result<bool> wimFileExists(const ByteSource& wim, int index, std::wstring_view path);
 
 } // namespace wl::core

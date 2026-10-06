@@ -78,6 +78,20 @@ TEST_CASE("boot image: the checks that are on become LabConfig values; an empty 
     CHECK_FALSE(drivers.empty());
     CHECK(drivers.labConfigValues().empty());
 
+    // D-074: the previous Setup alone is something to write; it is no LabConfig value.
+    BootPatch legacy;
+    legacy.legacySetup = true;
+    CHECK_FALSE(legacy.empty());
+    CHECK(legacy.labConfigValues().empty());
+    CHECK(kLegacySetupCmdLine == L"cmd /c start /min wpeinit && \\sources\\setup");
+
+    // Before 24H2 there is no new Setup: nothing to read, nothing missing.
+    SourceInfo old;
+    old.install.images.push_back(ImageInfo{.index = 1, .build = 22631});
+    const auto none = editionsWithoutWinre(old);
+    REQUIRE(none.has_value());
+    CHECK(none->empty());
+
     const auto missing = setupImageIndex(std::filesystem::temp_directory_path() / L"wl-tests" / L"no-boot.wim");
     CHECK_FALSE(missing.has_value());
 }

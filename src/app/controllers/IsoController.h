@@ -26,6 +26,7 @@ public:
         bool sha256 = true;
         bool openFolder = true;
         bool bootBypass = true; // the answers' requirement bypasses also go into boot.wim
+        bool legacySetup = false; // D-074: the media boots into the previous Setup (24H2+)
         // D-047: a setup stick instead of an ISO file (same pipeline, the last step writes the
         // disk: output / sha256 / noPrompt do not apply).
         struct UsbTarget {

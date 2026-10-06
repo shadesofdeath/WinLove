@@ -659,6 +659,7 @@ enum class Str : std::uint16_t {
     IsoBootBypassN,
     IsoBootBypassNone,
     IsoBootMode,
+    IsoBootPatched,
     IsoBootSummaryBios,
     IsoBootSummaryBoth,
     IsoBootSummaryUefi,
@@ -677,6 +678,12 @@ enum class Str : std::uint16_t {
     IsoFileName,
     IsoFolder,
     IsoLabel,
+    IsoLegacySetup,
+    IsoLegacySetupHint,
+    IsoLegacySetupNew,
+    IsoLegacySetupNewFails,
+    IsoLegacySetupNoWinre,
+    IsoLegacySetupPrevious,
     IsoNoPrompt,
     IsoOpenFolder,
     IsoOpenWhenDone,
@@ -688,6 +695,7 @@ enum class Str : std::uint16_t {
     IsoRepackOnlyWork,
     IsoRepackXpress,
     IsoSetupImage,
+    IsoSetupUi,
     IsoSha,
     IsoSource,
     IsoSourceLine,
@@ -1365,7 +1373,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1355;
+inline constexpr std::size_t kStrCount = 1363;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -2019,6 +2027,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "iso.bootBypassN",
     "iso.bootBypassNone",
     "iso.bootMode",
+    "iso.bootPatched",
     "iso.bootSummaryBios",
     "iso.bootSummaryBoth",
     "iso.bootSummaryUefi",
@@ -2037,6 +2046,12 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "iso.fileName",
     "iso.folder",
     "iso.label",
+    "iso.legacySetup",
+    "iso.legacySetupHint",
+    "iso.legacySetupNew",
+    "iso.legacySetupNewFails",
+    "iso.legacySetupNoWinre",
+    "iso.legacySetupPrevious",
     "iso.noPrompt",
     "iso.openFolder",
     "iso.openWhenDone",
@@ -2048,6 +2063,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "iso.repackOnlyWork",
     "iso.repackXpress",
     "iso.setupImage",
+    "iso.setupUi",
     "iso.sha",
     "iso.source",
     "iso.sourceLine",
