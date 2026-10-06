@@ -129,8 +129,8 @@ TEST_CASE("deep removal runs after the updates in one Apply (an update needs the
     deep.title = L"Modem";
     deep.driverClasses = {L"{4D36E96D-E325-11CE-BFC1-08002BE10318}"};
     core::ComponentRecipe plain;
-    plain.title = L"Telemetry";
-    plain.packages = {L"Microsoft-OneCore-TroubleShooting-Package"};
+    plain.title = L"Help";
+    plain.packages = {L"Microsoft-Windows-Help-ClientUA-Client-Package"};
     ChangeSet changes;
     changes.add(Operation{OpKind::RemoveComponent, L"deep-modem", utf8::toWide(core::componentRecipeToJson(deep))});
     changes.add(Operation{OpKind::RemoveComponent, L"telemetry", utf8::toWide(core::componentRecipeToJson(plain))});

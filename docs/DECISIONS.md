@@ -241,6 +241,21 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-075 — Telemetri bileşeni paketi kaldırmaz; TroubleShooting paketi hiçbir tarifle kaldırılamaz (2026-10-06)
+Bağlam: Kullanıcının "her şey işaretli" preset'iyle (515 işlem, HSL) kurulan sistem, dosya kopyalamadan sonraki ilk açılışta
+(specialize) logosuz siyah ekran + dönen halkada takılıyordu. VM diski: `IMAGE_STATE_GENERALIZE_RESEAL_TO_OOBE`, setupapi /
+olay günlüğü yok, açılış izinde LSM ~110 sn start-pending.
+Ölçüm (lab_vm, 14 kurulum, ikiye bölme): kayıt + servisler (397), diller (31), eski sürücü sınıfları + ResetBase, Store
+uygulamaları, Edge/OneDrive/yer tutucular, medya, yazı tipleri/Yardım/Uzaktan Yardım, Defender tanımları, **Defender tamamen**
+(servis anahtarları silinerek de) → masaüstü. Yalnız `telemetry` (`Microsoft-OneCore-TroubleShooting-Package` + WOW64) içeren
+3 kurulumun 3'ü de takıldı (31 / 11 / 7+ dk siyah ekran; geçenlerde 1-4 dk).
+Karar: `telemetry` artık paket kaldırmaz: DiagTrack + dmwappushservice Start=4, AllowTelemetry=0 (`always`, düşük risk).
+Çekirdek (`SystemComponents`): bu iki aile `validateComponentRecipe`'te reddedilir; eski preset'in tarifi okunurken paket
+düşürülür, yerine aynı üç yazım eklenir (uyarı günlüğe). Tarif operasyonun içinde taşındığı için katalog tek başına yetmezdi.
+Kanıt: birim testleri (313 / 11.382). **Görülmeyen:** düzeltilmiş motorla kullanıcının preset'inin kurulumu (lab `fixed`
+koşusu başlatıldı, sonucu kullanıcı testiyle birlikte); kullanıcının çalışma klasöründeki imajdan paket zaten silinmiş —
+orijinal ISO'dan yeniden uygulanmalı.
+
 ## D-074 — Önceki kurulum (24H2+) ve WinRE'siz imaj (2026-10-06)
 Bağlam: Kullanıcı: "boot setup yeni arayüze geçti, eski düzene geçirebilir miyiz, ISO oluştur'a özellik olarak ekleyelim";
 aynı oturumda: "hazırladığım ISO %5'te hata veriyor, eski sürüm setup'ta sorun yok". Kullanıcının ISO'sunda `removeComponent winre`
