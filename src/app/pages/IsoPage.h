@@ -8,6 +8,7 @@
 // new Setup cannot install it), read from install.wim's file lists on the reader thread.
 #include "app/Localization.h"
 #include "app/controllers/IsoController.h"
+#include "core/image/SetupMedia.h"
 #include "ui/widgets/Button.h"
 #include "ui/widgets/Checkbox.h"
 #include "ui/widgets/Dropdown.h"
@@ -27,6 +28,7 @@ public:
         std::function<void(const std::filesystem::path&)> openFolder; // Explorer, file selected
         std::function<void(std::function<void()>)> postToUi;
         std::function<void()> changed; // tab / drive / form: the header button follows
+        std::function<void()> replaceMedia; // D-077: pick Windows 10 media for the setup files
     };
 
     IsoPage(AppState& state, IsoController& controller, const Localization& strings, Language language, Intents intents);
@@ -40,6 +42,8 @@ public:
     void setDisks(std::vector<core::UsbDisk> disks); // the list as read (also the render demo)
     // The 24H2+ editions without WinRE, as read (also the render demo): the box goes on by itself.
     void setEditionsWithoutWinre(std::vector<int> editions);
+    // Render demo (D-077): the editions the setup media "cannot install", whatever the source says.
+    void setMediaCannotInstallDemo(std::vector<int> editions);
     void showUsbTab();
 
     void layout() override;
@@ -51,6 +55,7 @@ private:
     void computeSize();
     void checkWinre(); // editions the new Setup cannot install (reader thread)
     void paintLegacyHint(ui::Canvas& canvas, float formRight);
+    [[nodiscard]] std::vector<int> mediaCannotInstall() const; // D-077 (or the render demo's)
     [[nodiscard]] std::wstring setupImageText() const;
     void notifyChanged();
     void paintIsoForm(ui::Canvas& canvas, float y, float formRight);
@@ -79,6 +84,7 @@ private:
     ui::CheckField* m_legacySetup = nullptr;
     bool m_legacyTouched = false;  // the user's choice is kept from then on
     std::vector<int> m_noWinre;    // 24H2+ editions without Winre.wim
+    std::optional<std::vector<int>> m_cannotInstallDemo; // D-077 render demo
     ui::CheckField* m_sha = nullptr;
     ui::CheckField* m_open = nullptr;
     // USB tab

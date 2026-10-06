@@ -8,6 +8,8 @@
     w11-new     Windows 11 (index 1) from the same AIO with the new Setup (the AIO breaks nothing)
     w10base-w10 / w10base-w11   the same AIO on Windows 10 setup media (built from the ESD: index 1 =
                 the media files, 2 + 3 = boot.wim), installing Windows 10 / Windows 11
+    swap-w10 / swap-w11   Windows 11 media + the AIO, its media replaced by wlcli setup-media (the
+                app's way), installing Windows 10 / Windows 11
   PASS of a case = its guest reached the desktop and shut itself down.
 
     powershell -ExecutionPolicy Bypass -File tools\lab_aio.ps1 -Esd build\lab\win10\<file>.esd   (elevated; ~45 min)
@@ -88,6 +90,19 @@ if (@($Cases | Where-Object { $_ -like 'w10base-*' }).Count -gt 0) {
     Copy-Item $wim (Join-Path $w10Media 'sources\install.wim')
 }
 
+# 2c. The app's way (wlcli setup-media): Windows 11 media + the AIO, flagged, then its media swapped
+# for Windows 10's straight out of the ESD.
+$swap = Join-Path $aio 'swap'
+if (@($Cases | Where-Object { $_ -like 'swap-*' }).Count -gt 0) {
+    Native { robocopy.exe (Join-Path $Lab 'setup') $swap /E /XF install.wim /NFL /NDL /NJH /NJS /NP } | Out-Null
+    Copy-Item $wim (Join-Path $swap 'sources\install.wim')
+    Native { & $Cli media-check $swap } | ForEach-Object { Say "  $_" }
+    Check 'media-check: Windows 10 cannot be installed from the 24H2 media (exit 1)' ($LASTEXITCODE -eq 1)
+    Native { & $Cli setup-media $swap $Esd } | ForEach-Object { Say "  $_" }
+    Check 'setup-media: Windows 10 media in place, every edition installable (exit 0)' ($LASTEXITCODE -eq 0)
+    Check 'the AIO install.wim stayed' ((Get-Item (Join-Path $swap 'sources\install.wim')).Length -eq (Get-Item $wim).Length)
+}
+
 # 3. The installs, in parallel.
 $runs = @{
     'w10-new'     = @('-ImageIndex', '2')
@@ -95,6 +110,8 @@ $runs = @{
     'w11-new'     = @('-ImageIndex', '1')
     'w10base-w10' = @('-ImageIndex', '2', '-SetupFolder', $w10Media)
     'w10base-w11' = @('-ImageIndex', '1', '-SetupFolder', $w10Media)
+    'swap-w10'    = @('-ImageIndex', '2', '-SetupFolder', $swap)
+    'swap-w11'    = @('-ImageIndex', '1', '-SetupFolder', $swap)
 }
 $port = 5960
 $procs = @()

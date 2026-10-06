@@ -356,6 +356,19 @@ double IsoPage::estimateSeconds() const {
     return seconds;
 }
 
+std::vector<int> IsoPage::mediaCannotInstall() const {
+    if (m_cannotInstallDemo) {
+        return *m_cannotInstallDemo;
+    }
+    const auto& source = m_state.source();
+    return source ? core::editionsMediaCannotInstall(*source) : std::vector<int>{};
+}
+
+void IsoPage::setMediaCannotInstallDemo(std::vector<int> editions) {
+    m_cannotInstallDemo = std::move(editions);
+    refresh();
+}
+
 void IsoPage::updateBlocker() {
     const auto& run = m_state.isoRun();
     if (run && run->running) {
@@ -409,6 +422,25 @@ void IsoPage::updateBlocker() {
         }
         m_bar->set(ui::InfoKind::Warning, m_strings.get(text), L"");
         m_bar->setAction(L"", nullptr);
+        m_bar->setVisible(true);
+        return;
+    }
+    // D-077: Windows 10 editions under 24H2+ setup media would fail at install time.
+    const auto& source = m_state.source();
+    const std::vector<int> cannot = mediaCannotInstall();
+    if (!cannot.empty() && source) {
+        std::wstring list;
+        for (const int index : cannot) {
+            const auto image = std::ranges::find(source->install.images, index, &core::ImageInfo::index);
+            list += (list.empty() ? L"" : L", ") +
+                    (image != source->install.images.end() ? image->name : std::format(L"index {}", index));
+        }
+        m_bar->set(ui::InfoKind::Warning, m_strings.get(Str::IsoAioTitle), m_strings.format(Str::IsoAioBody, {{L"list", list}}));
+        if (m_intents.replaceMedia) {
+            m_bar->setAction(m_strings.get(Str::IsoAioAction), [this] { m_intents.replaceMedia(); });
+        } else {
+            m_bar->setAction(L"", nullptr);
+        }
         m_bar->setVisible(true);
         return;
     }
@@ -611,7 +643,10 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
         row(Str::IsoSetupImage, text.empty() ? m_strings.get(Str::IsoBootUntouched) : text, false,
             text.empty() ? Color::TextSecondary : Color::TextPrimary);
     }
-    if (m_legacySetup->checked()) {
+    if (!mediaCannotInstall().empty()) {
+        // D-077: neither the new nor the previous Setup of 24H2+ media installs Windows 10.
+        row(Str::IsoSetupUi, m_strings.get(Str::IsoAioSummary), false, Color::StatusWarning);
+    } else if (m_legacySetup->checked()) {
         row(Str::IsoSetupUi, m_strings.get(Str::IsoLegacySetupPrevious), false);
     } else if (!m_noWinre.empty()) {
         row(Str::IsoSetupUi, m_strings.get(Str::IsoLegacySetupNewFails), false, Color::StatusWarning);
@@ -718,7 +753,10 @@ void IsoPage::paintUsbForm(ui::Canvas& canvas, float y, float formRight) {
         row(Str::IsoSetupImage, text.empty() ? m_strings.get(Str::IsoBootUntouched) : text, false,
             text.empty() ? Color::TextSecondary : Color::TextPrimary);
     }
-    if (m_legacySetup->checked()) {
+    if (!mediaCannotInstall().empty()) {
+        // D-077: neither the new nor the previous Setup of 24H2+ media installs Windows 10.
+        row(Str::IsoSetupUi, m_strings.get(Str::IsoAioSummary), false, Color::StatusWarning);
+    } else if (m_legacySetup->checked()) {
         row(Str::IsoSetupUi, m_strings.get(Str::IsoLegacySetupPrevious), false);
     } else if (!m_noWinre.empty()) {
         row(Str::IsoSetupUi, m_strings.get(Str::IsoLegacySetupNewFails), false, Color::StatusWarning);

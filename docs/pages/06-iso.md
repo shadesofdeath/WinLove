@@ -49,7 +49,18 @@ istemi seçeneği geldi (USB/FAT32 konusu USB sekmesiyle ele alınacak).
   .swm), yanıt dosyası, kurulum ortamı, süre (~40 MB/sn). Başlık düğmesi "USB'ye yaz" → onay dialogu → aynı ilerleme
   satırı ("USB belleğe yazılıyor"). Yönetici değilse UAC.
 
+## 3c. AIO: Windows 10 + 11 (D-077)
+- Ölçüldü: 24H2+ kurulum ortamı (yeni ya da önceki kurulum) Windows 10 kuramaz; Windows 10 ortamı ikisini de kurar.
+- install.wim'de Windows 10 sürümü varken ortam 24H2+ ise (`core::editionsMediaCannotInstall`) bilgi şeridinde uyarı:
+  "Windows 10 sürümleri kurulamaz — <sürümler>: 24H2+ kurulum ortamı Windows 10 kuramaz" + **Windows 10 ortamını al…**
+  (ISO / MCT ESD → `ImageController::replaceSetupMedia` → `core::replaceSetupMedia`; install.wim, `$OEM$`,
+  autounattend.xml kalır). ÖZET "Kurulum ekranı": "Windows 10 sürümleri kurulamaz" (uyarı rengi). CLI: `wlcli media-check`,
+  `wlcli setup-media`. Lab: `tools\lab_aio.ps1`.
+- Sürüm sırası (Kurulumun listesi) İmajlar'da "Yukarı / Aşağı taşı"; eklenen aynı adlı sürüm sürüm etiketini alır.
+
 ## 4. Kabul
+- [ ] AIO (D-077): Win11 ISO aç → İmajlar › Araçlar › Başka imajdan sürüm ekle (Win10 ISO / ESD) → ISO Oluştur'da uyarı +
+      "Windows 10 ortamını al…" → aynı Win10 kaynağını seç → uyarı kalkar → ISO → VM'de Win10 ve Win11 kurulur.
 - [ ] Kaynak açıkken ISO Oluştur → ilerleme → ISO + .sha256; klasör açılır.
 - [ ] ISO'yu VM'de UEFI ve BIOS ile başlat → Windows kurulumu açılır.
 - [ ] Uygula sonrası LZX yeniden paketle → install.wim küçülür.

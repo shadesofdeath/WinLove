@@ -1956,7 +1956,15 @@ void Shell::showPage(PageId page) {
                                      revealInExplorer(file);
                                  },
                                  m_services.postToUi,
-                                 [this] { updateIsoChrome(); }});
+                                 [this] { updateIsoChrome(); },
+                                 [this] {
+                                     // D-077: the setup files from Windows 10 media.
+                                     const auto file = ui::pickFile(owner(), m_strings.get(Str::IsoAioPick),
+                                                                    {{m_strings.get(Str::IsoAioPick), L"*.iso;*.esd;*.wim"}});
+                                     if (file) {
+                                         m_images->replaceSetupMedia(*file);
+                                     }
+                                 }});
         } else if (page == PageId::Logs) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::LogsClear)).onInvoke = [this] {
                 if (auto* logs = logsPage()) {

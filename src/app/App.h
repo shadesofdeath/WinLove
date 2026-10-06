@@ -22,6 +22,7 @@
 //      --demo-upgrade=dialog|queued   (render, with a source: the edition upgrade of the Images page)
 //      --demo-<page>          (render: sample state for a page; see LaunchOptions)
 //      --demo-no-winre        (render, with a source: the ISO page as when an edition has no WinRE, D-074)
+//      --demo-aio             (render, with a source: the ISO page as when the media cannot install an edition, D-077)
 //      --demo-catalog=dialog|download   (render, with --demo-updates: the update catalog, D-046)
 //      --switch-lang=tr|en    (render: rebuild the UI in another language, as the settings page does)
 //      --palette[=query]      (render: open the command palette, optionally with text typed)
@@ -94,6 +95,7 @@ struct LaunchOptions {
     std::wstring demoUsb;         // render (with a source): "" | "confirm" — the USB tab with a sample drive (D-047)
     bool demoUsbGiven = false;
     bool demoNoWinre = false;     // render (with a source): ISO page, edition 1 has no WinRE (D-074)
+    bool demoAio = false;         // render (with a source): ISO page, edition 2 cannot be installed by the media (D-077)
     std::wstring demoCatalog;     // render (with --demo-updates): "dialog" | "download" — the update catalog (D-046)
     std::wstring demoApply;    // render (with --demo-features): "running" | "done" | "skipped" — fake Uygula run; "confirm" — the risk dialog, 40 rows
     bool maximized = false;

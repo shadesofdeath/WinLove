@@ -259,9 +259,17 @@ aynı ada sahip yeni sürüm sürüm etiketini alır ("Windows 11 Pro (24H2)", a
 `core::distinctEditionNames`). Laboratuvar: `lab_vm.ps1 -InstallWim/-ImageIndex/-BootWim/-SetupFolder`, lab VM'lerinde
 `logging = "TRUE"` (bu makinede VMware günlüğü genel olarak kapalı) ve **geçme koşulu artık ACPI soft-off**: elle
 `vmrun stop` edilen VM bundan sonra "geçti" sayılmaz (D-075 bölmesinde elle kapatılanlar yanlışlıkla PASS yazmıştı).
-Kanıt: 316 test; `lab_aio.ps1` iki tur (yukarıdaki tablo). **Açık:** ISO sayfasında karışık AIO + 24H2 ortamı uyarısı /
-kurulum ortamını Win10'dan alma; Win11'in Win10 ortamından yanıt dosyası olmadan (TPM / Secure Boot denetimi) kurulması;
-ESD'deki Win10 22H2'nin XML'de 19041 görünmesi ("10 2004" etiketi).
+**2. adım (aynı gün):** `core::setupMediaBuild` / `editionsMediaCannotInstall` (boot.wim'in build'i `SourceInfo.boot`'tan,
+dosya okumadan) ve `core::replaceSetupMedia` (ISO / kurulum klasörü / MCT ESD'si → önce yanındaki `.media` klasöründe
+tamamlanır; `sources\install.*`, `sources\$OEM$`, `autounattend.xml` kalır; yeni ortam 24H2+ ya da başka mimariyse
+reddedilir); `wlcli media-check`, `wlcli setup-media`. ISO sayfası: karışık AIO 24H2+ ortamdaysa uyarı şeridi
+("Windows 10 sürümleri kurulamaz: <sürümler>") + **"Windows 10 ortamını al…"** (dosya seçici → `ImageController::
+replaceSetupMedia`, ISO kaynak önce çalışma klasörüne) ve ÖZET'te "Kurulum ekranı: Windows 10 sürümleri kurulamaz"
+(önceki kurulum da çözmez — ölçüldü). Render `--demo-aio`.
+Kanıt: 317 test / 11.411 doğrulama; `lab_aio.ps1 -Cases swap-w10,swap-w11` ALL PASSED: Win11 medyası + AIO →
+media-check 1 (Win10 Pro işaretli) → setup-media (ESD) → media-check 0, install.wim aynı → Win10 ve Win11 masaüstü.
+**Açık:** uygulamanın içinden düğmeyle değiştirme (render'da görüldü, tıklanarak değil); Win11'in Win10 ortamından yanıt
+dosyası olmadan (TPM / Secure Boot denetimi) kurulması; ESD'deki Win10 22H2'nin XML'de 19041 görünmesi ("10 2004" etiketi).
 
 ## D-076 — Preset uygulanırken bileşen tarifleri güncel katalogdan gelir (2026-10-06)
 Bağlam: D-075'ten sonra kullanıcının kurulumunda görev çubuğunda Outlook vardı. Preset'teki `outlook-install` tarifi 1.0.1'den

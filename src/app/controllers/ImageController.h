@@ -99,6 +99,10 @@ public:
     void moveEdition(int index, int delta);
     // Editions of another ISO / WIM / ESD / SWM added to this one.
     void appendFrom(const std::filesystem::path& other, std::vector<int> indexes);
+    // AIO (D-077): the setup files of the source's folder taken from Windows 10 media (an ISO, a
+    // Media Creation Tool ESD or a setup folder) — core::replaceSetupMedia; the install image
+    // stays. An ISO source is first copied to the work folder.
+    void replaceSetupMedia(const std::filesystem::path& from);
     // A folder captured into `wim` (new or appended), which becomes the source. Needs elevation.
     void capture(const std::filesystem::path& folder, const std::filesystem::path& wim, core::ImageText text,
                  core::WimCompression compression);

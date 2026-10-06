@@ -27,6 +27,7 @@
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
 #include "core/image/BootImage.h"
+#include "core/image/SetupMedia.h"
 #include "core/image/icons/IconPatch.h"
 #include "core/image/icons/ResFile.h"
 #include "core/image/StartMenu.h"
@@ -819,6 +820,37 @@ int cmdDuplicate(const std::wstring& wim, const std::wstring& index, const std::
     }
     print(std::format(L"  copied as index {}\n", *added));
     return 0;
+}
+
+// D-077: what the source's setup media can install (Windows 10 on 24H2+ media: no). Exit 1 when
+// some edition cannot be installed.
+int cmdMediaCheck(const std::wstring& path) {
+    auto source = core::openSource(path);
+    if (!source) {
+        return reportError(source.error());
+    }
+    const int build = core::setupMediaBuild(*source);
+    print(build ? std::format(L"  setup media: build {} ({})\n", build, core::releaseLabel(build))
+                : std::wstring(L"  no setup media (a bare image)\n"));
+    const auto refused = core::editionsMediaCannotInstall(*source);
+    for (const int index : refused) {
+        const auto image = std::ranges::find(source->install.images, index, &core::ImageInfo::index);
+        print(std::format(L"  cannot install: {}  {}  ({})\n", index, image->name, image->versionString()));
+    }
+    if (refused.empty()) {
+        print(L"  every edition can be installed\n");
+    }
+    return refused.empty() ? 0 : 1;
+}
+
+int cmdSetupMedia(const std::wstring& folder, const std::wstring& from) {
+    auto done = core::replaceSetupMedia(folder, from, progressTask(L"media"));
+    print(L"\n");
+    if (!done) {
+        return reportError(done.error());
+    }
+    print(L"  setup media replaced\n");
+    return cmdMediaCheck(folder);
 }
 
 int cmdReorder(const std::wstring& wim, const std::wstring& order) {
@@ -2143,6 +2175,8 @@ void printUsage() {
           L"  wlcli swm-split <wim> <first.swm> [--size-mb=3800]  ·  wlcli swm-merge <first.swm> <out.wim>\n"
           L"  wlcli duplicate <wim> <index> <name>       (a copy of an edition in the same WIM)\n"
           L"  wlcli reorder <wim> <2,1,3>                (the editions in a new order: Setup's list, AIO)\n"
+          L"  wlcli media-check <iso|folder>             (editions the setup media cannot install: Win10 on 24H2+, D-077)\n"
+          L"  wlcli setup-media <folder> <iso|esd|folder>  (setup files from Windows 10 media; install image kept)\n"
           L"  wlcli append <iso|wim|esd|swm> <dest.wim> [--index=1,3] [--compress=lzx]   (editions added)\n"
           L"  wlcli capture <folder> <wim> <name> [--compress=lzx|xpress]   (admin; new or appended edition)\n"
           L"  wlcli picture <src> <dst> [--size=WxH] [--format=jpg|png|bmp]   (WIC: cover-scale + encode)\n"
@@ -2477,6 +2511,12 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"duplicate" && args.size() == 4) {
         return cmdDuplicate(args[1], args[2], args[3]);
+    }
+    if (command == L"media-check" && args.size() == 2) {
+        return cmdMediaCheck(args[1]);
+    }
+    if (command == L"setup-media" && args.size() == 3) {
+        return cmdSetupMedia(args[1], args[2]);
     }
     if (command == L"reorder" && args.size() == 3) {
         return cmdReorder(args[1], args[2]);
