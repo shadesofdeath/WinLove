@@ -8,6 +8,12 @@
 // or "imageres.dll.mun") holding "<id>.ico|png" ("3.ico", "#3.png") or "<NAME>.ico" for named
 // groups — and / or an iconpack.json: {"name", "author", "files": {"imageres.dll": {"3": "a.ico"}}}.
 // exportPack writes the queued replacements in that layout.
+//
+// 7TSP packs (core/image/icons/ResFile.h) — a folder, or an archive (.7z / .zip) importPack opens —
+// are turned into that layout under the pack root (%LOCALAPPDATA%\WinLove\IconPacks\<pack name>),
+// which the queued operations then point at. Groups the image's file does not have, and files
+// WinLove does not patch (a program's own .dll, a .mui), are reported as unmatched, never queued.
+#include "app/state/AppSettings.h"
 #include "app/state/AppState.h"
 #include "core/image/icons/IconPatch.h"
 
@@ -71,6 +77,10 @@ public:
         std::vector<std::wstring> unmatched; // entries naming a file / group the image does not have
     };
     Result<PackResult> applyPack(const std::filesystem::path& folder);
+    // A folder (as applyPack) or an archive of either kind of pack.
+    Result<PackResult> importPack(const std::filesystem::path& source);
+    // Where converted / extracted packs are kept (tests point it elsewhere).
+    void setPackRoot(std::filesystem::path root) { m_packRoot = std::move(root); }
     // The queued replacements as a pack in `folder` (created); how many icons were written.
     Result<int> exportPack(const std::filesystem::path& folder) const;
     // A group of the image's file as a .ico of this PC.
@@ -88,6 +98,7 @@ private:
     [[nodiscard]] std::optional<core::IconPatchRequest> request(const std::wstring& relative) const;
     void store(const std::wstring& relative, const core::IconPatchRequest& request);
     void forgetMount();
+    Result<PackResult> apply7tsp(const std::filesystem::path& folder);
 
     AppState& m_state;
     std::function<void(std::function<void()>)> m_post;
@@ -98,6 +109,7 @@ private:
     std::optional<std::set<std::wstring>> m_patched;
     std::map<std::wstring, std::vector<Group>> m_groups;
     std::set<std::wstring> m_loading;
+    std::filesystem::path m_packRoot = AppSettings::defaultWorkRoot() / L"IconPacks";
 };
 
 } // namespace wl::app

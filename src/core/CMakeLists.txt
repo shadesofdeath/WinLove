@@ -12,6 +12,7 @@ add_library(wl_core STATIC
     image/icons/IconGroups.cpp
     image/icons/IconPatch.cpp
     image/icons/IconSource.cpp
+    image/icons/ResFile.cpp
     image/RegistryRead.cpp
     image/OffReg.cpp
     image/ComponentStore.cpp

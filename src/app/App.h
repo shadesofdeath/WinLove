@@ -93,7 +93,7 @@ struct LaunchOptions {
     std::wstring demoUsb;         // render (with a source): "" | "confirm" — the USB tab with a sample drive (D-047)
     bool demoUsbGiven = false;
     std::wstring demoCatalog;     // render (with --demo-updates): "dialog" | "download" — the update catalog (D-046)
-    std::wstring demoApply;    // render (with --demo-features): "running" | "done" | "skipped" — fake Uygula run
+    std::wstring demoApply;    // render (with --demo-features): "running" | "done" | "skipped" — fake Uygula run; "confirm" — the risk dialog, 40 rows
     bool maximized = false;
     std::optional<ui::PointF> hoverAt;
     std::optional<ui::PointF> contextAt; // --context-at=x,y: right click (context menu)

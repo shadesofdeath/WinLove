@@ -123,7 +123,9 @@ public:
     StartPinsController& startPinsForDemo() { return *m_startPins; }
     class IconsPage* iconsPageForDemo() const;
     class StartMenuPage* startMenuPageForDemo() const;
-    void loadIconPack();
+    // "Paket yükle…": a menu under the action — an archive (.7z / .zip, 7TSP or WinLove layout) or a folder.
+    void showIconPackMenu(ui::RectF anchor);
+    void loadIconPack(bool archive);
     void exportIconPack(); // D-065: a folder of .ico files
     void showStoreDialog(); // D-066
     void storeResultsForDemo(const std::wstring& query, std::vector<core::StoreSearchResult> results);

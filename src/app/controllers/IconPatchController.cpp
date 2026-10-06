@@ -4,7 +4,9 @@
 #include "base/Log.h"
 #include "base/Text.h"
 #include "base/Utf8.h"
+#include "app/state/AppSettings.h"
 #include "core/image/icons/IconSource.h"
+#include "core/image/icons/ResFile.h"
 #include "core/system/Picture.h"
 
 #include <json.hpp>
@@ -30,6 +32,21 @@ std::wstring lower(std::wstring_view text) {
 // "#3" for an id, the name otherwise — the file name of a group in a pack.
 std::wstring packStem(const core::ResourceKey& key) {
     return key.named() ? key.name : std::to_wstring(key.id);
+}
+
+// A pack's name as a folder name under the pack root.
+std::wstring safeName(std::wstring_view name) {
+    std::wstring out;
+    for (const wchar_t c : name) {
+        out.push_back(c < 32 || std::wstring_view(L"<>:\"/\\|?*").find(c) != std::wstring_view::npos ? L'_' : c);
+    }
+    while (!out.empty() && (out.back() == L'.' || out.back() == L' ')) {
+        out.pop_back();
+    }
+    if (out.size() > 80) {
+        out.resize(80);
+    }
+    return out.empty() || out.find_first_not_of(L'.') == std::wstring::npos ? std::wstring(L"pack") : out;
 }
 
 // A pack path must stay inside the pack.
@@ -340,10 +357,72 @@ core::ResourceKey IconPatchController::keyFromPackName(std::wstring_view stem) {
     return core::ResourceKey{0, std::wstring(stem)};
 }
 
+Result<IconPatchController::PackResult> IconPatchController::importPack(const std::filesystem::path& source) {
+    std::error_code ec;
+    if (std::filesystem::is_directory(source, ec)) {
+        return applyPack(source);
+    }
+    // An archive: opened under the pack root, then kept there (the queue's sources point at it).
+    std::filesystem::create_directories(m_packRoot, ec);
+    const auto temp = m_packRoot / (L"~" + safeName(source.stem().wstring()));
+    std::filesystem::remove_all(temp, ec);
+    if (auto ok = core::extractArchive(source, temp); !ok) {
+        std::filesystem::remove_all(temp, ec);
+        return std::unexpected(ok.error());
+    }
+    if (core::is7tspPack(temp)) {
+        auto result = applyPack(temp); // converted into its own folder; the extracted copy goes
+        std::filesystem::remove_all(temp, ec);
+        return result;
+    }
+    const auto kept = m_packRoot / safeName(source.stem().wstring());
+    std::filesystem::remove_all(kept, ec);
+    std::filesystem::rename(temp, kept, ec);
+    if (ec) {
+        std::filesystem::remove_all(temp, ec);
+        return fail(ErrorCode::IoError, L"could not keep the pack", kept.wstring(), ec.value());
+    }
+    return applyPack(kept);
+}
+
+Result<IconPatchController::PackResult> IconPatchController::apply7tsp(const std::filesystem::path& folder) {
+    auto pack = core::read7tspPack(folder);
+    if (!pack) {
+        return std::unexpected(pack.error());
+    }
+    std::error_code ec;
+    const auto out = m_packRoot / safeName(pack->name);
+    std::filesystem::remove_all(out, ec);
+    std::vector<std::wstring> skipped;
+    auto written = core::convert7tspPack(*pack, out, &skipped);
+    if (!written) {
+        return std::unexpected(written.error());
+    }
+    auto result = applyPack(out);
+    if (!result) {
+        return result;
+    }
+    result->name = pack->name;
+    // Files of the pack WinLove does not patch (a program's own file, a .mui): named, not dropped silently.
+    const auto& list = files();
+    for (const auto& file : pack->files) {
+        if (!fileNamed(list, file.target)) {
+            result->unmatched.push_back(file.target);
+        }
+    }
+    for (auto& s : skipped) {
+        result->unmatched.push_back(std::move(s));
+    }
+    return result;
+}
+
 Result<IconPatchController::PackResult> IconPatchController::applyPack(const std::filesystem::path& folder) {
     std::error_code ec;
     if (!std::filesystem::is_directory(folder, ec)) {
         return fail(ErrorCode::NotFound, L"not a folder", folder.wstring());
+    }
+    if (core::is7tspPack(folder)) {
+        return apply7tsp(folder);
     }
     const auto& list = files();
     PackResult result;
@@ -406,9 +485,24 @@ Result<IconPatchController::PackResult> IconPatchController::applyPack(const std
             add(fileName, keyFromPackName(entry.path().stem().wstring()), entry.path(), fileName + L"/" + entry.path().filename().wstring());
         }
     }
-    // Groups the files do not have are unmatched too (the pack is for another Windows build).
+    // Groups the files do not have are unmatched too (the pack is for another Windows build): one
+    // of them in the operation would fail the whole file at Uygula.
     std::vector<Operation> ops;
     for (auto& [relative, entries] : plan) {
+        if (!m_groups.contains(relative)) {
+            preload(relative);
+        }
+        const auto& have = m_groups[relative];
+        std::erase_if(entries, [&](const auto& e) {
+            if (std::ranges::find(have, e.first, &Group::key) != have.end()) {
+                return false;
+            }
+            result.unmatched.push_back(std::filesystem::path(relative).filename().wstring() + L"/" + e.first.text());
+            return true;
+        });
+        if (entries.empty()) {
+            continue;
+        }
         auto r = request(relative).value_or(core::IconPatchRequest{});
         r.restore = false;
         for (auto& [key, source] : entries) {
