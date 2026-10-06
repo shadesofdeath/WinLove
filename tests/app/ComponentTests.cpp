@@ -238,7 +238,7 @@ TEST_CASE("ComponentController: system components the image has, the cleanup, an
     // Nothing of it on disk in this image, offered all the same; what it changes is listed.
     CHECK(self.items[1].system->id == "outlook-install");
     CHECK(self.items[1].size == 0);
-    CHECK(self.items[1].contents.size() == 6); // the registration folder, the placeholder app and four registry changes
+    CHECK(self.items[1].contents.size() == 7); // the registration folder, the spare PWA, the placeholder app, four registry changes
     CHECK(self.items[2].system->id == "teams-install");
     CHECK(self.items[5].system->id == "m365-install");
     const auto& cleanup = groups[2].items.front();

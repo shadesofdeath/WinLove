@@ -61,7 +61,7 @@
       "tr": "Yeni Outlook'un kendiliğinden kurulması", "en": "Automatic install of the new Outlook",
       "notes_tr": "Windows, internet varken ilk kurulumda (OOBE) yeni Outlook'u kendiliğinden indirip kurar; bu seçenek onu durdurur: güncelleme zamanlayıcısındaki Outlook görevi ve kaydı silinir, uygulama \"istenmiyor\" olarak işaretlenir. İmajdaki 1.0.0.0 sürümlü yer tutucu Outlook paketi de kaldırılır (zamanlayıcı onu gerçek Outlook'la değiştiriyordu). İsteyen Outlook'u sonradan Store'dan kurabilir.",
       "notes_en": "With internet, Windows downloads and installs the new Outlook by itself during first setup (OOBE); this stops it: the Outlook task and registration of the update scheduler are removed and the app is marked as not wanted. The 1.0.0.0 placeholder Outlook package in the image goes too (the scheduler replaced it with the real Outlook). Outlook can still be installed from the Store later.",
-      "paths": [ "ProgramData\\USOPrivate\\ExpeditedAppRegistrations\\MS_Outlook" ],
+      "paths": [ "ProgramData\\USOPrivate\\ExpeditedAppRegistrations\\MS_Outlook", "Windows\\InboxApps\\OutlookPWA.msix" ],
       "appx": [ "Microsoft.OutlookForWindows" ],
       "registry": [
         { "key": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\Orchestrator\\UScheduler_Oobe\\OutlookUpdate", "delete": true },
@@ -112,8 +112,9 @@
       ] },
     { "id": "copilot-app", "group": "autoinstall", "always": true, "risk": "low",
       "tr": "Copilot uygulaması", "en": "Copilot app",
-      "notes_tr": "Bazı sürümlerde (Home) imajda hazır gelen, ilk oturumda her kullanıcıya kurulup görev çubuğuna sabitlenen Copilot uygulaması kaldırılır ve \"istenmiyor\" olarak işaretlenir (özellik güncellemeleri geri getirmez). Copilot düğmesi ve önerileri için Ayarlar / Tweaks'e bak. İsteyen sonradan Store'dan kurabilir.",
-      "notes_en": "The Copilot app that ships in the image on some editions (Home), is installed for every user and pinned to the taskbar at first sign-in is removed and marked as not wanted (feature updates do not bring it back). For the Copilot button and suggestions see Settings / Tweaks. It can still be installed from the Store later.",
+      "notes_tr": "Bazı sürümlerde (Home) imajda hazır gelen, ilk oturumda her kullanıcıya kurulup görev çubuğuna sabitlenen Copilot uygulaması ve görev çubuğundaki sabitleme için kabuğun kullanıcıya eklediği yedek paket (Windows\\InboxApps) kaldırılır, uygulama \"istenmiyor\" olarak işaretlenir (özellik güncellemeleri geri getirmez). Copilot düğmesi ve önerileri için Ayarlar / Tweaks'e bak. İsteyen sonradan Store'dan kurabilir.",
+      "notes_en": "The Copilot app that ships in the image on some editions (Home), is installed for every user and pinned to the taskbar at first sign-in and the spare package the shell installs for the taskbar pin (Windows\\InboxApps) are removed and the app is marked as not wanted (feature updates do not bring it back). For the Copilot button and suggestions see Settings / Tweaks. It can still be installed from the Store later.",
+      "paths": [ "Windows\\InboxApps\\Microsoft.Copilot_8wekyb3d8bbwe.msix", "Windows\\InboxApps\\Microsoft.Copilot_8wekyb3d8bbwe.xml" ],
       "appx": [ "Microsoft.Copilot" ],
       "registry": [
         { "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Appx\\AppxAllUserStore\\Deprovisioned\\Microsoft.Copilot_8wekyb3d8bbwe", "name": "", "value": "[+]" }
