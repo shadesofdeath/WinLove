@@ -338,6 +338,20 @@ TEST_CASE("plan: component removals with the other removals, the store cleanup r
     REQUIRE(quick.size() == 4);
     CHECK(quick[2].phase == ops::Phase::Cleanup);
 
+    // Language files are no update: the cleanup stays quick, and each is seconds (2026-10-07, measured).
+    set.add({OpKind::AddPackage, L"C:\\lang\\Microsoft-Windows-Client-LanguagePack-Package-amd64-en-us.esd", L"language"});
+    set.add({OpKind::AddPackage, L"C:\\lang\\Microsoft-Windows-LanguageFeatures-Basic-en-us-Package~31bf3856ad364e35~amd64~~.cab",
+             L"language"});
+    plan = ops::plan(set);
+    REQUIRE(plan.steps.size() == 7);
+    CHECK(plan.steps[3].operation.value == L"language");
+    CHECK(ops::estimateSeconds(plan, 3) == doctest::Approx(20.0)); // the pack
+    CHECK(ops::estimateSeconds(plan, 4) == doctest::Approx(3.0));  // a feature
+    CHECK(plan.steps[5].operation.kind == OpKind::CleanupImage);
+    CHECK(ops::estimateSeconds(plan, 5) < 60);
+    set.remove(OpKind::AddPackage, L"C:\\lang\\Microsoft-Windows-Client-LanguagePack-Package-amd64-en-us.esd");
+    set.remove(OpKind::AddPackage, L"C:\\lang\\Microsoft-Windows-LanguageFeatures-Basic-en-us-Package~31bf3856ad364e35~amd64~~.cab");
+
     set.add({OpKind::AddPackage, L"C:\\updates\\lcu.msu", L"lcu"});
     plan = ops::plan(set);
     REQUIRE(plan.steps.size() == 6);

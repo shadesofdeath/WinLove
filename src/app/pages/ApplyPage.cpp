@@ -45,10 +45,10 @@ Category categoryOf(OpKind kind) {
     case OpKind::EnableFeature:
     case OpKind::DisableFeature:
     case OpKind::RemoveCapability: return kFeatures;
-    case OpKind::AddPackage: return kUpdates;
+    case OpKind::AddPackage:
+    case OpKind::AddAppx: return kUpdates; // what is added to the image ("Kaldırılan bileşen" said +52 MB for an app)
     case OpKind::AddDriver:
     case OpKind::RemoveDriver: return kDrivers;
-    case OpKind::AddAppx: return kComponents;
     case OpKind::SetRegistryValue:
     case OpKind::SetRegistryFirstLogon: return kRegistry;
     case OpKind::SetServiceStart: return kServices;

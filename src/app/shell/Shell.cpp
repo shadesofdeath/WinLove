@@ -56,6 +56,7 @@
 #include "core/image/UpdatePackage.h"
 #include "core/image/dism/DismErrors.h"
 #include "ui/platform/FileDialog.h"
+#include "ui/render/Canvas.h"
 #include "ui/widget/Host.h"
 #include "ui/widgets/Dialog.h"
 #include "ui/widgets/EmptyState.h"
@@ -324,6 +325,11 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         if (change == AppState::Change::Apply || change == AppState::Change::Queue ||
             change == AppState::Change::Mount) {
             updateApplyChrome();
+        }
+        if (change == AppState::Change::Mount) {
+            // A new mount reuses the mount folder: the icons drawn from its files (Simgeler, Başlat
+            // menüsü) may have changed since, e.g. an icon pack applied and the edition mounted again.
+            ui::Canvas::forgetFileIcons();
         }
         if (change == AppState::Change::Iso || change == AppState::Change::Mount ||
             change == AppState::Change::Operation || change == AppState::Change::Source) {
