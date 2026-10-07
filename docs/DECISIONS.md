@@ -241,6 +241,41 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-080 — Kurulum ortamı da güncellenir: WinRE (Safe OS), boot.wim, kurulum dosyaları (2026-10-07)
+Bağlam: NTLite karşılaştırmasında kullanıcının seçtiği eksik: toplu güncelleme yalnız install.wim'e gidiyordu; WinRE ve
+kurulum ekranı (boot.wim) medyanın yaşında kalıyordu. Katalog Safe OS ve Setup dinamik güncellemelerini tanıyor ama
+kullanmıyordu. Yol: Microsoft'un "Update Windows installation media with Dynamic Update" sırası.
+Karar:
+- **Katalog:** `CatalogTarget::dynamicUpdates` → Safe OS ve Setup sorguları da yapılır (uygulamada açık; `wlcli catalog
+  --dynamic`). İndirme sonucu katalog türünü taşır (`DownloadedUpdate::kind`): Safe OS paketinin dosya adı ne olduğunu söylemez.
+- **WinRE (Uygula):** Safe OS paketi kuyruğa `AddPackage` "safeos" olarak girer (Güncellemeler'de "WinRE (Safe OS)"),
+  Planner onu imajın güncellemelerinden sonraya koyar. `updateWinRe`: `Windows\System32\Recovery\Winre.wim` dışarı
+  kopyalanır, bağlanır, aynı çalıştırmadaki toplu güncelleme (servis yığını için; bilinen 0x8007007E yok sayılır) ve Safe OS
+  eklenir, `/ResetBase /Defer`, dışa aktarılır (önyükleme sürümü korunur), gizli + sistem olarak geri konur
+  (`replaceImageFileFrom`). İmajda WinRE yoksa adım atlanır. `wlcli winre-update`.
+- **boot.wim (ISO Oluştur):** toplu güncelleme boot.wim'in bütün sürümlerine (`BootPatch::lcu`; 0x8007007E'de ikinci
+  geçiş), temizlik, sonra kurulum sürümünün **bütün `sources\` klasörü** ve önyükleme yöneticisi (`bootmgfw.efi`,
+  `bootmgr.efi`, `boot.stl`) alınır, boot.wim dışa aktarılıp önyükleme sürümü işaretlenir. `wlcli boot-patch --lcu
+  --setup-files`.
+- **Kurulum dosyaları:** Setup güncellemesi açılır (`expand -F:*`; ortamda olmayan dillerin klasörleri alınmaz), üstüne
+  boot.wim'in `sources\`'ı, önyükleme yöneticisi ortamdaki her `bootmgfw/bootx64/bootia32/bootaa64.efi` ve `bootmgr.efi`
+  yerine. Kurulum klasörü değişmez: ISO / USB yazıcısının değiştirilen dosyaları (`isNew`: yeni dosya ve klasörler de).
+  `wlcli iso --setup-du --boot-files`.
+- **Microsoft'tan sapma (ölçüldü):** Microsoft yalnız `setup.exe` + `setuphost.exe`'yi boot.wim'den kopyalıyor. Bizim
+  denememizde (Eylül toplu güncellemesi 14 Eylül, Setup güncellemesi 22 Eylül) kurulum "Windows 11 yüklemesi başarısız
+  oldu" dedi; günlük: ikinci aşama ortamın diske kopyasından çalışır ve SetupHost başka yapının Setup Platform'unu reddeder
+  ("Determine if the expected version of Setup Platform has been loaded" → 0xC1900100). Yalnız boot.wim güncellenince
+  "medya sürücüsü eksik" hatası. → ortamın `sources\`'ı boot.wim'inkiyle bütünüyle eşitlenir.
+- **Arayüz:** Güncellemeler › Katalog'da dört tür; Setup güncellemesi ve toplu güncelleme `AppState::mediaUpdate`'e
+  (kuyruğa değil: Uygula'dan sonra da ISO için durur). ISO Oluştur / USB: "Ortam güncellemesi — boot.wim ve kurulum
+  dosyalarını güncelle" (yanında KB'ler, özette satır, süreye +450 sn).
+Kanıt: 332 test; WinRE lab 26100.8031 → 9545 (80 sn), VM'de `reagentc /boottore` ile güncel WinRE açıldı; boot.wim lab iki
+sürüm 8037 → 9457 (443 sn); ISO'da `setup.exe` / `bootx64.efi` boot.wim'inkiyle aynı; ayrıştırma VM'leri yukarıdaki iki
+hatayı gösterdi, kurulum günlüğü `tools\lab_setup_logs.ps1` ile WinPE'den alındı; eşitlemeyle `wlcli iso --setup-du
+--boot-files` yolu iki VM'de masaüstüne kadar kurdu (WinRE'si güncel ve özgün install.wim). Uygula yolu (`wlcli apply`,
+"safeos" işlemi): WinRE 8031 → 9545, 75 sn.
+Görülmeyen: ARM64; Windows 10 ortamı; aynı haftanın Setup güncellemesiyle Microsoft'un dar yöntemi.
+
 ## D-079 — WinSxS en aza indirilir (tiny11 "core" yöntemi), geri dönüşsüz; Bileşenler › Temizlik (2026-10-07)
 Bağlam: Kullanıcı: "winsxs boyutunu maksimum seviyede düşürmeye çalış… tiny iso dosyaları yapıyorlar"; uyarıyla, hangi
 sayfaya konacağı bana bırakıldı. Ölçüm (25H2 Pro, bağlı imaj): gezginde WinSxS 10,33 GB / 18 058 klasör, bunun 7,22 GB'ı
@@ -263,8 +298,10 @@ Karar:
 Kanıt: 330 test; kuru çalıştırma (25H2 Pro): 17 642 klasör / 50 154 dosya / 10,12 GB gider, 416 klasör kalır, 2,97 GB
 açılır (~5 sn). Lab: temizlik + küçültme 22 sn, sonrasında DISM oturumu hâlâ açılıyor; tek sürüm install.wim 6,96 → 4,90 GB.
 VM `shrink-max` (ağlı, -Diag): kurulum + ilk oturum + masaüstü, WinSxS 427 klasör, SideBySide olayı 0, sistem ve
-kurulan programlar açılıyor, winget 4/4 (VC++ MSI dahil), `dism /online /get-packages` çalışıyor (STATUS).
-Görülmeyen: kurulu sistemde aylar içinde ne bozulduğu; Windows Update elle çalıştırılınca ne olduğu; ARM64 / Windows 10
+kurulan programlar açılıyor, winget 4/4 (VC++ MSI dahil), `dism /online /get-packages` çalışıyor. Aynı koşullu çift:
+kurulu sistemde C: 17,46 GB / 19,66 GB → −2,20 GB (STATUS).
+Görülmeyen: kurulu sistemde aylar içinde ne bozulduğu; Windows Update elle çalıştırılınca ne olduğu; otomatik güncellemeler
+kapalıyken Defender imzalarının ne zaman güncellendiği (25 dk'da ikisinde de güncellenmedi); ARM64 / Windows 10
 imajı; küçültülmüş imaja sonradan bir şey eklenmesi (DISM'in reddetmesi beklenir).
 
 ## D-078 — Programlar: winget deposu winget'siz okunur, ilk oturumda WinLove'un penceresiyle kurulur; hazır paketler (2026-10-07)

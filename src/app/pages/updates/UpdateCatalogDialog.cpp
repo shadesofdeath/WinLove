@@ -15,7 +15,7 @@ using ui::tokens::TypeStyle;
 namespace {
 
 constexpr float kWidth = 720.0f;
-constexpr int kVisibleRows = 4; // at most: LCU, its preview, .NET, its preview
+constexpr int kVisibleRows = 6; // at most: LCU, its preview, .NET, its preview, Safe OS, Setup (D-080)
 
 enum Column : int { kName, kKb, kDate, kSize, kNote };
 
@@ -102,7 +102,10 @@ UpdateCatalogDialog makeUpdateCatalogDialog(const Localization& strings, Languag
                 canvas.popOpacity();
             }
             const float x = rect.x + ui::Checkbox::kBox + 8;
-            std::wstring name = text->get(e.kind == core::CatalogKind::DotNet ? Str::UpdatesKindDotnet : Str::UpdatesKindLcu);
+            std::wstring name = text->get(e.kind == core::CatalogKind::DotNet   ? Str::UpdatesKindDotnet
+                                          : e.kind == core::CatalogKind::SafeOs ? Str::UpdatesKindSafeOs
+                                          : e.kind == core::CatalogKind::Setup  ? Str::UpdatesKindSetupDu
+                                                                                : Str::UpdatesKindLcu);
             const std::wstring month = std::format(L"{:04}-{:02}", e.year, e.month);
             name = month + L" " + name;
             const float nameW = std::min(rect.right() - x, std::ceil(canvas.text().measure(name, TypeStyle::Body)));

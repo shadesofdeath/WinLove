@@ -131,4 +131,24 @@ Error dismExeFailure(const DismExeRun& run, std::wstring message) {
                  static_cast<std::int32_t>(run.exitCode)};
 }
 
+Result<void> addPackageOrDismExe(DismSession& session, const std::filesystem::path& package, const TaskContext& task) {
+    auto added = session.addPackage(package, task);
+    constexpr std::int32_t kSessionNotRegistered = static_cast<std::int32_t>(0x800401E3);
+    const std::wstring name = package.wstring();
+    const bool msu = name.size() > 4 && _wcsicmp(name.c_str() + name.size() - 4, L".msu") == 0;
+    if (added || !msu || added.error().hresult != kSessionNotRegistered) {
+        return added;
+    }
+    log::warn("dism", L"the DISM API could not take the .msu (0x800401E3); dism.exe installs it: " + name);
+    auto run = runDismExe(session, L"/Add-Package /PackagePath:\"" + name + L"\"",
+                          [&](double fraction) { task.report(fraction, L"dism.exe"); });
+    if (!run) {
+        return std::unexpected(run.error());
+    }
+    if (run->exitCode != 0 && run->exitCode != 3010) { // 3010: done, restart pending (an offline image has none to do)
+        return std::unexpected(dismExeFailure(*run, L"add package " + name));
+    }
+    return {};
+}
+
 } // namespace wl::core

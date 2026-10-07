@@ -3,6 +3,7 @@
 // store cleanup (StoreCleanup.h) and editions (Edition.h). It opens its own session on the image,
 // so ours is suspended while it runs (DismSession::suspend / reload).
 #include "base/Result.h"
+#include "core/tasks/Task.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -39,5 +40,11 @@ struct DismExeRun {
 
 [[nodiscard]] Result<DismExeRun> runDismExe(DismSession& session, std::wstring_view arguments,
                                             const std::function<void(double)>& onPercent = {});
+
+// D-063: a package through the DISM API; a UUP-based .msu (24H2+ cumulative update) the API refuses
+// on a host whose servicing stack moved on ("Active offline session not registered", 0x800401E3)
+// goes in through dism.exe /Add-Package, which installs the same file into the same image.
+[[nodiscard]] Result<void> addPackageOrDismExe(DismSession& session, const std::filesystem::path& package,
+                                               const TaskContext& task);
 
 } // namespace wl::core

@@ -235,7 +235,8 @@ std::vector<CatalogFile> parseCatalogDownload(std::string_view script) {
 }
 
 bool matchesTarget(const CatalogEntry& entry, const CatalogTarget& target) {
-    if (entry.kind != CatalogKind::Cumulative && entry.kind != CatalogKind::DotNet) {
+    const bool dynamic = entry.kind == CatalogKind::SafeOs || entry.kind == CatalogKind::Setup;
+    if (entry.kind != CatalogKind::Cumulative && entry.kind != CatalogKind::DotNet && !(dynamic && target.dynamicUpdates)) {
         return false;
     }
     if (target.release.empty()) {
@@ -259,8 +260,13 @@ std::vector<std::wstring> catalogQueries(const CatalogTarget& target) {
         return {};
     }
     const std::wstring product = std::format(L"Windows {} Version {}", target.windows, target.release);
-    return {std::format(L"Cumulative Update for {} for {}", product, target.architecture),
-            std::format(L"Cumulative Update .NET Framework {} {}", product, target.architecture)};
+    std::vector<std::wstring> queries{std::format(L"Cumulative Update for {} for {}", product, target.architecture),
+                                      std::format(L"Cumulative Update .NET Framework {} {}", product, target.architecture)};
+    if (target.dynamicUpdates) {
+        queries.push_back(std::format(L"Safe OS Dynamic Update {} {}", product, target.architecture));
+        queries.push_back(std::format(L"Setup Dynamic Update {} {}", product, target.architecture));
+    }
+    return queries;
 }
 
 std::vector<CatalogOffer> pickCatalogOffers(const std::vector<CatalogEntry>& entries, const CatalogTarget& target) {
@@ -282,7 +288,7 @@ std::vector<CatalogOffer> pickCatalogOffers(const std::vector<CatalogEntry>& ent
         return a->title.size() > b->title.size();
     };
     std::vector<CatalogOffer> offers;
-    for (const CatalogKind kind : {CatalogKind::Cumulative, CatalogKind::DotNet}) {
+    for (const CatalogKind kind : {CatalogKind::Cumulative, CatalogKind::DotNet, CatalogKind::SafeOs, CatalogKind::Setup}) {
         std::vector<const CatalogEntry*> released;
         std::vector<const CatalogEntry*> previews;
         for (const auto& [id, e] : unique) {
@@ -386,6 +392,7 @@ Result<DownloadedUpdate> downloadCatalogUpdate(const CatalogEntry& entry, const 
         return std::unexpected(files.error());
     }
     DownloadedUpdate result;
+    result.kind = entry.kind;
     const std::wstring kb = text::lower(entry.kb);
     std::uint64_t base = 0;
     const double total = static_cast<double>(std::max<std::uint64_t>(entry.size, 1));

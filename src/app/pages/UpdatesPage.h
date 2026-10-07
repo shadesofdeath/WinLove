@@ -26,7 +26,8 @@ public:
     ~UpdatesPage() override;
 
     // Queue the given packages (analysed, ordered by the planner). Returns how many were new.
-    static std::size_t queuePackages(AppState& state, const std::vector<std::filesystem::path>& files);
+    static std::size_t queuePackages(AppState& state, const std::vector<std::filesystem::path>& files,
+                                     std::optional<core::UpdateKind> kind = std::nullopt);
     void setDragState(ui::DropZone::DragState state);
 
     void layout() override;

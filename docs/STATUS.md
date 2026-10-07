@@ -107,7 +107,17 @@
   sürüm install.wim 6,96 → 4,90 GB. `wlcli store-shrink [--dry-run]`. **VM `shrink-max`** (ResetBase + küçültme + 4 program,
   ağlı, -Diag): ALL PASSED — kurulum, ilk oturum, masaüstü; WinSxS 427 klasör; SideBySide olayı 0; regedit, mmc, control,
   msinfo32, cleanmgr, notepad, 32 bit cmd, 7-Zip, Notepad++, VLC açılıyor; winget 4/4 (VC++ MSI dahil); `dism /online
-  /get-packages` çalışıyor. C: kullanımı 18,42 GB (karşılaştırma: VMDIAG_BASE). taskmgr SYSTEM'den 0x80070005 — küçültmesiz sistemde de aynı (tanılamanın oturum dışından başlatması).
+  /get-packages` çalışıyor. Aynı koşullu çift (`shrink-max2` / `shrink-base`: aynı 4 program, 25 dk, ikisinde de ResetBase +
+  güncellemeler kapalı): **C: 17,46 GB / 19,66 GB → kurulu sistemde −2,20 GB**, ikisi de ALL PASSED, SideBySide 0. taskmgr SYSTEM'den 0x80070005 — küçültmesiz sistemde de aynı (tanılamanın oturum dışından başlatması).
+- **NTLite eksik listesi (2026-10-07 akşam, kullanıcı seçimi):** (1) sürücü deposu temizliği ölçüldü — 715 paket 443 MB,
+  238 MB'ı ağ (kural gereği yok), Hello yüz zaten Özellikler'de yetenek, yazıcı çekirdeği kaldırılırsa sonradan yazıcı
+  kurulamaz → kullanıcıyla anlaşılarak yapılmadı. (2) **Kurulum ortamı güncellemesi (D-080):** Safe OS → WinRE (Uygula),
+  toplu güncelleme → boot.wim'in iki sürümü + kurulum dosyaları (ISO Oluştur › "Ortam güncellemesi"), Setup güncellemesi →
+  `sources\`. Microsoft'un yalnız setup.exe/setuphost.exe kopyalayan yöntemi bizde kurulumu bozdu (0xC1900100, Setup
+  Platform sürümü) → ortamın `sources\`'ı boot.wim'inkiyle eşitlenir; iki VM masaüstüne kurdu. Yeni lab araçları:
+  `lab_winre.ps1`, `lab_media.ps1`, `lab_setup_logs.ps1` (WinPE'deki kurulum günlükleri), `lab_vm.ps1 -LogDisk -IsoArgs`.
+  Sırada (kullanıcı): (3) uyumluluk korumaları, (4) görev çubuğu sabitlemeleri; araya: modlu Windows'ta DISM/wimgapi yedeği
+  (bir kullanıcıda ESD→WIM 0x8007000B); sonra **kendi OOBE'miz** (kullanıcı seçti).
 - **Çökme izi + düzeltme (2026-10-07):** yakalanmayan istisna `logs\crash-*.txt` (sembollü yığın) + `.dmp` yazar. İlk
   bulduğu: açılır liste açıkken kapanışta `Dropdown` yıkıcısı ölü menüye erişiyordu (render'da her açık listede) — düzeltildi.
 - **AIO, 1. adım (2026-10-06, D-077):** ölçüldü: Win11 25H2 kurulum ortamı Win10 kuramaz (yeni ve önceki kurulum), Win10 ortamı ikisini de kurar. İmajlar'da "Yukarı / Aşağı taşı" (`wlcli reorder`), sürüm eklemede ad çakışmasına sürüm etiketi. Win10 22H2 TR ESD: `build\lab\win10\win10_22h2_tr_consumer.esd` (kullanıcı da kullanacak, silinmez). Lab: geçme = ACPI soft-off. **2. adım bitti:** ISO sayfası karışık AIO'yu uyarır, "Windows 10 ortamını al…" kurulum dosyalarını değiştirir (`wlcli setup-media`, lab'da Win10 + Win11 kuruldu). **Bir sonraki adım:** kullanıcı uygulamadan dener (Win11 ISO aç → Win10 ESD'den sürüm ekle → ISO Oluştur'da uyarı + düğme); ardından kullanıcının seçeceği tasarım iyileştirmeleri (öneri listesi: Özet sayfası, gezinme grupları, tablo iyileştirmeleri, Tweaks arama/filtre, Kaynak sayfası, animasyon, tema).

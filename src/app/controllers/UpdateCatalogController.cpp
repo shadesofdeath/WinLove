@@ -39,7 +39,9 @@ std::optional<core::CatalogTarget> UpdateCatalogController::targetFor(const AppS
     }
     for (const auto& image : source->install.images) {
         if (image.index == mounted->index) {
-            return core::catalogTarget(image.build, image.spBuild, core::architectureName(image.architecture));
+            auto target = core::catalogTarget(image.build, image.spBuild, core::architectureName(image.architecture));
+            target.dynamicUpdates = true; // D-080: WinRE (Safe OS) and the setup media (Setup) too
+            return target;
         }
     }
     return std::nullopt;

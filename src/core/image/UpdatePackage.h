@@ -15,7 +15,9 @@ namespace wl::core {
 
 // Language: a language pack or a language feature (LanguagePacks.h, D-053) — after the servicing
 // stack, before the cumulative update (Microsoft's order: the LCU updates what the pack adds).
-enum class UpdateKind : std::uint8_t { Ssu, Lcu, DotNet, Other, Language };
+// SafeOs: the Safe OS dynamic update — for the image's WinRE, not the image (D-080). Its file name
+// does not say so: only the update catalog does.
+enum class UpdateKind : std::uint8_t { Ssu, Lcu, DotNet, Other, Language, SafeOs };
 
 struct UpdateInfo {
     std::filesystem::path path;
@@ -27,7 +29,7 @@ struct UpdateInfo {
 };
 
 [[nodiscard]] UpdateInfo analyzeUpdate(const std::filesystem::path& file);
-[[nodiscard]] const wchar_t* updateKindKey(UpdateKind kind) noexcept; // "ssu" "lcu" "dotnet" "other"
+[[nodiscard]] const wchar_t* updateKindKey(UpdateKind kind) noexcept; // "ssu" "lcu" "dotnet" "other" "language" "safeos"
 [[nodiscard]] UpdateKind updateKindFromKey(std::wstring_view key) noexcept;
 [[nodiscard]] bool isUpdateFile(const std::filesystem::path& file);    // .msu / .cab
 // *.msu / *.cab under `folder` (recursive), sorted by name.

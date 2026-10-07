@@ -61,6 +61,7 @@ const wchar_t* updateKindKey(UpdateKind kind) noexcept {
     case UpdateKind::DotNet: return L"dotnet";
     case UpdateKind::Other: return L"other";
     case UpdateKind::Language: return L"language";
+    case UpdateKind::SafeOs: return L"safeos";
     }
     return L"other";
 }
@@ -77,6 +78,9 @@ UpdateKind updateKindFromKey(std::wstring_view key) noexcept {
     }
     if (key == L"language") {
         return UpdateKind::Language;
+    }
+    if (key == L"safeos") {
+        return UpdateKind::SafeOs;
     }
     return UpdateKind::Other;
 }

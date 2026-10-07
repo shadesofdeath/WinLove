@@ -277,17 +277,30 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
                       errorText(e));
         },
         [this](std::vector<core::DownloadedUpdate> downloaded) {
+            // D-080: the image's updates are queued; the Safe OS update goes to its WinRE; the Setup
+            // update and the cumulative update are kept for the setup media (ISO Oluştur).
             std::vector<std::filesystem::path> packages;
+            std::vector<std::filesystem::path> safeOs;
+            auto media = m_state.mediaUpdate();
             for (const auto& d : downloaded) {
-                packages.push_back(d.main); // prerequisites (24H2 checkpoint) stay next to it for DISM
+                if (d.kind == core::CatalogKind::Setup) {
+                    media.setupDu = d.main;
+                    continue;
+                }
+                if (d.kind == core::CatalogKind::Cumulative) {
+                    media.lcu = d.main;
+                }
+                (d.kind == core::CatalogKind::SafeOs ? safeOs : packages).push_back(d.main); // a checkpoint stays next to it for DISM
             }
-            const std::wstring n = std::to_wstring(packages.size());
+            m_state.setMediaUpdate(std::move(media));
+            const std::wstring n = std::to_wstring(downloaded.size());
             if (!m_state.mounted()) {
                 showToast(ui::InfoKind::Warning, m_strings.format(Str::UpdatesDownloadedNoMount, {{L"n", n}}),
                           m_updateCatalog->folder().wstring());
                 return;
             }
             UpdatesPage::queuePackages(m_state, packages);
+            UpdatesPage::queuePackages(m_state, safeOs, core::UpdateKind::SafeOs);
             showToast(ui::InfoKind::Success, m_strings.format(Str::UpdatesDownloaded, {{L"n", n}}),
                       m_updateCatalog->folder().wstring());
         },

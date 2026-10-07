@@ -28,6 +28,11 @@ inline constexpr std::size_t kImageFileLimit = 1u << 20; // 1 MiB: these are con
 // The folder must exist; the new file inherits its ACL.
 [[nodiscard]] Result<void> replaceImageFile(const std::filesystem::path& mountDir, std::wstring_view relative,
                                             std::string_view bytes);
+// The same with the content of `source` (any size, streamed) and the file attributes given
+// (Winre.wim is hidden + system). For files WinLove itself names (D-080: the serviced WinRE).
+[[nodiscard]] Result<void> replaceImageFileFrom(const std::filesystem::path& mountDir, std::wstring_view relative,
+                                                const std::filesystem::path& source, std::uint32_t attributes,
+                                                const TaskContext& task);
 // Removes <mountDir>\<relative> (only this name: a hard link's other names stay). Missing = success.
 [[nodiscard]] Result<void> unlinkImageFile(const std::filesystem::path& mountDir, std::wstring_view relative);
 

@@ -1,4 +1,5 @@
 #include "app/pages/IsoPage.h"
+#include "core/image/UpdatePackage.h"
 
 #include "app/Format.h"
 #include "app/pages/PageBits.h"
@@ -107,6 +108,12 @@ IsoPage::IsoPage(AppState& state, IsoController& controller, const Localization&
     m_legacySetup->onChange = [this](bool) {
         m_legacyTouched = true;
         invalidate();
+    };
+    m_mediaUpdate = &add<ui::CheckField>(strings.get(Str::IsoMediaUpdateBox), true);
+    m_mediaUpdate->onChange = [this](bool on) {
+        auto media = m_state.mediaUpdate();
+        media.enabled = on;
+        m_state.setMediaUpdate(std::move(media));
     };
     // The row label says it: the boxes stand alone (screen 16).
     m_sha = &add<ui::CheckField>(L"", true);
@@ -245,6 +252,7 @@ IsoController::Request IsoPage::request() const {
     r.openFolder = m_open->checked();
     r.bootBypass = m_bootBypass->checked();
     r.legacySetup = m_legacySetup->checked();
+    r.mediaUpdate = m_mediaUpdate->checked() && m_state.mediaUpdate().any();
     if (usbTab()) {
         if (const auto* disk = selectedDisk()) {
             r.usb = IsoController::Request::UsbTarget{disk->number, disk->identity(), disk->name(),
@@ -354,6 +362,10 @@ double IsoPage::estimateSeconds() const {
     }
     if ((m_bootBypass->checked() && !IsoController::bootPatch(m_state).empty()) || m_legacySetup->checked()) {
         seconds += 30; // mount + commit of boot.wim's setup image
+    }
+    if (m_mediaUpdate->checked() && m_state.mediaUpdate().any()) {
+        // Lab, 2026-10-07: the cumulative update into both images of boot.wim took 430 s.
+        seconds += (m_state.mediaUpdate().lcu.empty() ? 0 : 450) + (m_state.mediaUpdate().setupDu.empty() ? 0 : 10);
     }
     return seconds;
 }
@@ -488,6 +500,12 @@ void IsoPage::refresh() {
         m_legacySetup->setChecked(false);
     }
     m_legacySetup->setEnabled(!running && !previousMedia);
+    {
+        const auto& media = m_state.mediaUpdate();
+        m_mediaUpdate->setChecked(media.any() && media.enabled);
+        m_mediaUpdate->setEnabled(!running && media.any());
+        m_mediaUpdate->setTooltip(media.any() ? std::wstring() : m_strings.get(Str::IsoMediaUpdateNone));
+    }
     for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_repack, m_bootBypass, m_open}) {
         w->setEnabled(!running && (w != m_repack || m_controller.canRepack()) && (w != m_bootBypass || bypasses));
     }
@@ -530,6 +548,8 @@ void IsoPage::layout() {
         place(m_bootBypass, 0);
         y += kRow;
         place(m_legacySetup, 0);
+        y += kRow;
+        place(m_mediaUpdate, 0);
         y += kRow + kSection; // BİTİNCE
         place(m_open, 0);
         return;
@@ -551,6 +571,8 @@ void IsoPage::layout() {
     place(m_bootBypass, 0);
     y += kRow;
     place(m_legacySetup, 0);
+    y += kRow;
+    place(m_mediaUpdate, 0);
     y += kRow + kSection; // DOĞRULAMA
     place(m_sha, 0);
     y += kRow;
@@ -603,6 +625,8 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
     label(Str::IsoSetupImage);
     label(Str::IsoSetupUi);
     paintLegacyHint(canvas, formRight);
+    label(Str::IsoMediaUpdate);
+    paintMediaHint(canvas, formRight);
     section(Str::IsoVerify);
     label(Str::IsoSha);
     label(Str::IsoOpenWhenDone);
@@ -613,7 +637,7 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
     const auto& unattend = m_state.unattend();
     const bool answersUnused = !unattend.includeInIso && !(unattend.options == core::UnattendOptions{});
     const RectF box{b.right() - kSummaryWidth, b.y + kTop + ui::tokens::size::control + 2 + 12, kSummaryWidth,
-                    136 + 3 * kSummaryRow};
+                    136 + 4 * kSummaryRow};
     canvas.fillRoundRect(box, ui::tokens::radius::r3, Color::BgPanel);
     canvas.strokeRoundRect(box, ui::tokens::radius::r3, Color::LineSubtle);
     float sy = box.y + 12;
@@ -654,6 +678,10 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
         const auto [text, ink] = setupUiSummary();
         row(Str::IsoSetupUi, text, false, ink);
     }
+    {
+        const auto [text, ink] = mediaUpdateSummary();
+        row(Str::IsoMediaUpdateShort, text, false, ink);
+    }
     row(Str::IsoEstIso, m_sourceBytes ? formatBytes(m_sourceBytes, m_language) : std::wstring(L"…"), true);
     row(Str::IsoDuration, m_sourceBytes ? formatDuration(estimateSeconds(), m_language, true) : std::wstring(L"…"),
         true);
@@ -667,6 +695,43 @@ std::wstring IsoPage::setupImageText() const {
     }
     // The previous Setup has a row of its own ("Kurulum ekranı").
     return m_legacySetup->checked() ? m_strings.get(Str::IsoBootPatched) : std::wstring();
+}
+
+std::wstring IsoPage::mediaUpdateSource() const {
+    const auto& media = m_state.mediaUpdate();
+    std::wstring text;
+    if (!media.lcu.empty()) {
+        const auto kb = core::analyzeUpdate(media.lcu).kb;
+        text = kb.empty() ? media.lcu.filename().wstring() : kb;
+    }
+    if (!media.setupDu.empty()) {
+        const auto kb = core::analyzeUpdate(media.setupDu).kb;
+        text += (text.empty() ? L"" : L" \u00b7 ") + std::wstring(L"Setup ") + (kb.empty() ? media.setupDu.filename().wstring() : kb);
+    }
+    return text;
+}
+
+std::pair<std::wstring, Color> IsoPage::mediaUpdateSummary() const {
+    const auto& media = m_state.mediaUpdate();
+    if (!media.any() || !m_mediaUpdate->checked()) {
+        return {m_strings.get(Str::IsoBootUntouched), Color::TextSecondary};
+    }
+    const Str what = media.lcu.empty()       ? Str::IsoMediaUpdateFilesOnly
+                     : media.setupDu.empty() ? Str::IsoMediaUpdateBootOnly
+                                             : Str::IsoMediaUpdateSummary;
+    return {m_strings.get(what), Color::TextPrimary};
+}
+
+// Beside the box: which updates it takes, or where they come from.
+void IsoPage::paintMediaHint(ui::Canvas& canvas, float formRight) {
+    const RectF box = m_mediaUpdate->bounds();
+    const float x = box.right() + 12;
+    if (x >= formRight) {
+        return;
+    }
+    const std::wstring source = mediaUpdateSource();
+    canvas.drawText(source.empty() ? m_strings.get(Str::IsoMediaUpdateNone) : source, {x, box.y, formRight - x, box.height},
+                    source.empty() ? TypeStyle::Caption : TypeStyle::Mono, Color::TextTertiary);
 }
 
 std::pair<std::wstring, Color> IsoPage::setupUiSummary() const {
@@ -731,6 +796,8 @@ void IsoPage::paintUsbForm(ui::Canvas& canvas, float y, float formRight) {
     label(Str::IsoSetupImage);
     label(Str::IsoSetupUi);
     paintLegacyHint(canvas, formRight);
+    label(Str::IsoMediaUpdate);
+    paintMediaHint(canvas, formRight);
     section(Str::IsoUsbWhenDone);
     label(Str::IsoUsbOpenWhenDone);
 
@@ -738,7 +805,7 @@ void IsoPage::paintUsbForm(ui::Canvas& canvas, float y, float formRight) {
     const auto& unattend = m_state.unattend();
     const bool answersUnused = !unattend.includeInIso && !(unattend.options == core::UnattendOptions{});
     const RectF box{b.right() - kSummaryWidth, b.y + kTop + ui::tokens::size::control + 2 + 12, kSummaryWidth,
-                    136 + 4 * kSummaryRow};
+                    136 + 5 * kSummaryRow};
     canvas.fillRoundRect(box, ui::tokens::radius::r3, Color::BgPanel);
     canvas.strokeRoundRect(box, ui::tokens::radius::r3, Color::LineSubtle);
     float sy = box.y + 12;
@@ -781,6 +848,10 @@ void IsoPage::paintUsbForm(ui::Canvas& canvas, float y, float formRight) {
     {
         const auto [text, ink] = setupUiSummary();
         row(Str::IsoSetupUi, text, false, ink);
+    }
+    {
+        const auto [text, ink] = mediaUpdateSummary();
+        row(Str::IsoMediaUpdateShort, text, false, ink);
     }
     row(Str::IsoDuration, m_sourceBytes ? formatDuration(estimateSeconds(), m_language, true) : std::wstring(L"…"),
         true);

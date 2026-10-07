@@ -164,6 +164,14 @@ bool AppState::isBootDriver(const std::filesystem::path& inf) const {
     return std::ranges::find(m_bootDrivers, inf) != m_bootDrivers.end();
 }
 
+void AppState::setMediaUpdate(MediaUpdate update) {
+    if (update == m_mediaUpdate) {
+        return;
+    }
+    m_mediaUpdate = std::move(update);
+    notify(Change::Iso);
+}
+
 void AppState::setBootDriver(const std::filesystem::path& inf, bool on) {
     if (isBootDriver(inf) == on) {
         return;

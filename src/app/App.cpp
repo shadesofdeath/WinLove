@@ -240,6 +240,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoDrivers = true;
         } else if (a == L"--demo-updates") {
             options.demoUpdates = true;
+        } else if (a == L"--demo-media-update") {
+            options.demoMediaUpdate = true;
         } else if (a == L"--demo-no-winre") {
             options.demoNoWinre = true;
         } else if (a == L"--demo-aio") {
@@ -1257,6 +1259,9 @@ int App::renderOffscreen() {
                 {entry(L"LCU", L"KB5129195", core::CatalogKind::Cumulative, false, 9, 14, 5173184334, 9457), true, false},
                 {entry(L"LCU preview", L"KB5124010", core::CatalogKind::Cumulative, true, 9, 22, 5223465117, 9550), false, false},
                 {entry(L".NET", L"KB5126052", core::CatalogKind::DotNet, false, 9, 8, 96738688, 0), true, false},
+                // D-080: the dynamic updates of the same release.
+                {entry(L"Safe OS", L"KB5125758", core::CatalogKind::SafeOs, false, 9, 22, 182857835, 0), true, false},
+                {entry(L"Setup", L"KB5127216", core::CatalogKind::Setup, false, 9, 22, 18316225, 0), true, false},
             };
             m_shell->showUpdateOffers(core::catalogTarget(26200, 8037, L"x64"), std::move(offers));
         }
@@ -1295,6 +1300,11 @@ int App::renderOffscreen() {
         if (auto* page = m_shell->isoPageForDemo()) {
             page->setEditionsWithoutWinre({1});
         }
+    }
+    if (m_options.demoMediaUpdate && m_state->source()) {
+        m_state->setMediaUpdate({L"C:\\WinLove\\updates\\windows11.0-kb5129195-x64_ed361878.msu",
+                                 L"C:\\WinLove\\updates\\windows11.0-kb5127216-x64_902338a7.cab", true});
+        m_shell->showPage(PageId::Iso);
     }
     if (m_options.demoAio && m_state->source()) {
         m_shell->showPage(PageId::Iso);
