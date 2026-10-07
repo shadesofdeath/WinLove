@@ -91,6 +91,7 @@ struct LaunchOptions {
     bool demoTweaks = false;     // render: fake mount + the selections of screen 10
     bool demoImageValues = false; // render (with --demo-tweaks): the image already has a few (D-045)
     bool demoUnattended = false; // render: the answers of screen 11
+    bool demoWelcome = false;    // --demo-unattended=welcome: with WinLove's welcome on (D-084)
     bool demoPostSetup = false;  // render: fake mount + the steps of screen 12
     bool demoPresets = false;    // render: an in-memory library like screen 17
     std::optional<Language> switchLanguage; // render: rebuild the UI in this language after the demo setup (P16)

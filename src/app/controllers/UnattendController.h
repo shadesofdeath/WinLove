@@ -2,7 +2,9 @@
 // P13 logic (docs/pages/13-unattended.md): the answer file options live in AppState (they survive
 // page switches and are picked up by the ISO build); this edits them, builds the XML text for the
 // preview, saves / imports a file and lists the choices the form offers.
+#include "app/Localization.h"
 #include "app/state/AppState.h"
+#include "core/unattend/Welcome.h"
 
 #include <filesystem>
 #include <functional>
@@ -47,6 +49,28 @@ public:
 
     // The bytes written to the ISO root; empty when "ISO'ya ekle" is off.
     [[nodiscard]] static std::string isoFile(const AppState& state);
+
+    // ---- D-084: WinLove's welcome in place of the account ------------------------------------
+    // On: the answer file writes the setup account (a fresh random password) and the queue puts the
+    // script and its oobe.json into the image; off: both go. The plan (pages, pre-selected choices)
+    // lives in the queue's oobe.json; its texts are in the language of the answer file's UI
+    // language (Turkish → Turkish, otherwise English; none given: the app's).
+    [[nodiscard]] bool welcome() const { return m_state.unattend().options.welcome; }
+    void setWelcome(bool on);
+    [[nodiscard]] core::WelcomePlan welcomePlan() const; // from the queue; the defaults without one
+    void setWelcomePlan(core::WelcomePlan plan);          // queued again (texts filled in here)
+    [[nodiscard]] bool welcomeQueued() const;            // the image gets the script on the next Apply
+    // The window's texts of one language (the "welcome" section of the strings).
+    [[nodiscard]] static std::vector<std::pair<std::string, std::wstring>> welcomeTexts(const Localization& strings);
+    // Supplied by the app: the strings of a language (both are in the executable).
+    std::function<const Localization*(Language)> stringsOf;
+    // The window on this PC as a preview (%TEMP%\WinLove\welcome-preview): windowed, nothing done.
+    [[nodiscard]] Result<void> previewWelcome() const;
+
+private:
+    [[nodiscard]] std::vector<std::pair<std::string, std::wstring>> welcomeTextsNow() const;
+
+public:
 
 private:
     AppState& m_state;

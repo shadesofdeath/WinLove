@@ -1,8 +1,11 @@
 // P13: answer file generation, reading it back, validation, Setup's password encoding.
 #include "base/Utf8.h"
 #include "core/unattend/Unattend.h"
+#include "core/unattend/Welcome.h"
 
 #include <doctest.h>
+
+#include <algorithm>
 
 using namespace wl;
 using namespace wl::core;
@@ -262,4 +265,72 @@ TEST_CASE("unattend: a generic key or the placeholder read from a file is not th
     CHECK(genericProductKey(L"Core") == L"YTMG3-N6DKC-DKB77-7M9GH-8HVX7");
     CHECK(genericProductKey(L"Professional") == L"VK7JG-NPHTM-C97JM-9MPGT-3V66T");
     CHECK(genericProductKey(L"Nope").empty());
+}
+
+TEST_CASE("welcome (D-084): the setup account, its one sign-in, the welcome first; read back as the welcome") {
+    UnattendOptions o;
+    o.accountName = L"Berkay"; // kept for when the welcome is switched off again
+    o.password = L"secret";
+    o.firstLogonCommands = {L"cmd /c echo mine"};
+    o.welcome = true;
+    o.welcomePassword = L"Xy7pQ2mN8rT4vW6zK3bC";
+    const std::string xml = utf8::fromWide(buildUnattendXml(o));
+    CHECK(xml.find("<Name>WinLoveSetup</Name>") != std::string::npos);
+    CHECK(xml.find("<Name>Berkay</Name>") == std::string::npos);
+    CHECK(xml.find("<LogonCount>1</LogonCount>") != std::string::npos);
+    CHECK(xml.find("<HideOnlineAccountScreens>true</HideOnlineAccountScreens>") != std::string::npos);
+    CHECK(xml.find("<ProtectYourPC>3</ProtectYourPC>") != std::string::npos);
+    CHECK(xml.find("<HideEULAPage>true</HideEULAPage>") != std::string::npos);
+    const auto welcomeAt = xml.find("oobe.ps1");
+    const auto mineAt = xml.find("echo mine");
+    REQUIRE(welcomeAt != std::string::npos);
+    CHECK(welcomeAt < mineAt); // the welcome is the first command
+    CHECK(validateUnattend(o).empty());
+
+    const auto back = parseUnattendXml(xml);
+    REQUIRE(back);
+    CHECK(back->welcome);
+    CHECK(back->welcomePassword == L"Xy7pQ2mN8rT4vW6zK3bC");
+    CHECK(back->accountName.empty());
+    CHECK_FALSE(back->autoLogon);
+    CHECK(back->firstLogonCommands == std::vector<std::wstring>{L"cmd /c echo mine"});
+
+    // Off: the account written as it was.
+    o.welcome = false;
+    const std::string plain = utf8::fromWide(buildUnattendXml(o));
+    CHECK(plain.find("<Name>Berkay</Name>") != std::string::npos);
+    CHECK(plain.find("oobe.ps1") == std::string::npos);
+}
+
+TEST_CASE("welcome: oobe.json carries the pages, the defaults and the texts; the plan reads back from the queue") {
+    WelcomePlan plan;
+    plan.computerPage = false;
+    plan.theme = L"light";
+    plan.accent = L"#107C10";
+    plan.privacy = L"windows";
+    plan.computerName = L"OFIS-PC";
+    plan.texts = {{"accountHeading", L"Hoş geldin"}, {"themeDark", L"Koyu"}, {"accentGreen", L"Yeşil"}, {"privacyStrict", L"Az veri"}};
+    const std::string json = welcomeJson(plan);
+    CHECK(json.find("\"setupAccount\": \"WinLoveSetup\"") != std::string::npos);
+    CHECK(json.find("\"computer\"") == std::string::npos); // not among the pages
+    CHECK(json.find("\"OFIS-PC\"") != std::string::npos);
+    CHECK(json.find("AllowTelemetry") != std::string::npos);
+    CHECK(json.find(utf8::fromWide(L"Yeşil")) != std::string::npos);
+
+    const auto ops = welcomeOperations(plan);
+    REQUIRE(ops.size() == 2);
+    CHECK(ops[0].target == LR"(ProgramData\WinLove\Oobe\oobe.ps1)");
+    CHECK(ops[0].value.find(L"WinLove: its own welcome") != std::wstring::npos);
+    CHECK(ops[0].value.find(L"@@dark.") == std::wstring::npos); // the colours were filled in at build time
+    CHECK(welcomeSlots().size() == 2);
+    const auto back = welcomePlanFromOperations(ops);
+    REQUIRE(back);
+    std::ranges::sort(plan.texts); // oobe.json keeps them by key
+    CHECK(*back == plan);
+    CHECK_FALSE(welcomePlanFromOperations({}).has_value());
+
+    const std::wstring password = randomWelcomePassword();
+    CHECK(password.size() == 20);
+    CHECK(password != randomWelcomePassword());
+    CHECK(welcomeFirstLogonCommand().find(L"start \"\" powershell.exe") != std::wstring::npos);
 }

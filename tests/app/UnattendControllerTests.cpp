@@ -1,6 +1,8 @@
 // P13: answer file options in the app state — editing, save / import, what goes into the ISO.
 #include "app/controllers/IsoController.h"
 #include "app/controllers/UnattendController.h"
+#include "app/Localization.h"
+#include "core/unattend/Welcome.h"
 #include "core/image/UdfImage.h"
 
 #include <doctest.h>
@@ -8,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <sstream>
 
 using namespace wl;
 using namespace wl::app;
@@ -414,4 +417,56 @@ TEST_CASE("unattend controller: the file is built for the edition the image will
     // Picked on the form: that edition's key.
     f.controller.edit([](core::UnattendOptions& o) { o.imageIndex = 2; });
     CHECK(f.controller.xml().find(L"<Key>VK7JG-NPHTM-C97JM-9MPGT-3V66T</Key>") != std::wstring::npos);
+}
+
+TEST_CASE("unattend controller: the welcome (D-084) — the setup account in the file, the script in the queue, texts in the file's language") {
+    auto load = [](const wchar_t* lang) {
+        std::ifstream in(std::filesystem::path(WL_SOURCE_DIR) / L"resources/strings" / lang, std::ios::binary);
+        std::stringstream text;
+        text << in.rdbuf();
+        return Localization::fromJson(text.str()).value();
+    };
+    const Localization tr = load(L"tr.json");
+    const Localization en = load(L"en.json");
+    AppState state{scratch(L"welcome-recent.json"), scratch(L"welcome-settings.json")};
+    UnattendController controller(state);
+    controller.stringsOf = [&](Language language) { return language == Language::Turkish ? &tr : &en; };
+
+    // The window's texts: every "welcome." key, without its prefix.
+    const auto texts = UnattendController::welcomeTexts(tr);
+    CHECK(texts.size() == 45);
+    CHECK(std::ranges::find(texts, std::pair<std::string, std::wstring>{"accountHeading", L"Hoş geldin"}) != texts.end());
+
+    CHECK_FALSE(controller.welcome());
+    controller.setWelcome(true);
+    CHECK(controller.welcome());
+    CHECK(controller.options().welcomePassword.size() == 20);
+    CHECK(controller.welcomeQueued());
+    CHECK(controller.xml().find(L"<Name>WinLoveSetup</Name>") != std::wstring::npos);
+    // No UI language in the file: the app's (Turkish by default).
+    CHECK(controller.welcomePlan().texts.size() == 45);
+    const auto title = [&] {
+        for (const auto& [k, v] : controller.welcomePlan().texts) {
+            if (k == "accountHeading") {
+                return v;
+            }
+        }
+        return std::wstring();
+    };
+    CHECK(title() == L"Hoş geldin");
+
+    // An English setup: English texts; the plan's choices stay.
+    auto plan = controller.welcomePlan();
+    plan.computerPage = false;
+    controller.setWelcomePlan(plan);
+    controller.edit([](core::UnattendOptions& o) { o.uiLanguage = L"en-US"; });
+    controller.setWelcomePlan(controller.welcomePlan());
+    CHECK(title() == L"Welcome");
+    CHECK_FALSE(controller.welcomePlan().computerPage);
+    const std::wstring password = controller.options().welcomePassword;
+    controller.setWelcome(false);
+    CHECK_FALSE(controller.welcomeQueued());
+    CHECK(controller.xml().find(L"WinLoveSetup") == std::wstring::npos);
+    controller.setWelcome(true);
+    CHECK(controller.options().welcomePassword == password); // made once
 }

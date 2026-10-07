@@ -1,4 +1,5 @@
 #include "core/unattend/Unattend.h"
+#include "core/unattend/Welcome.h"
 
 #include "base/Encoding.h"
 #include "base/Text.h"
@@ -297,7 +298,24 @@ std::wstring decodeUnattendPassword(std::wstring_view encoded, std::wstring_view
     return text;
 }
 
-std::wstring buildUnattendXml(const UnattendOptions& o) {
+UnattendOptions withWelcome(const UnattendOptions& options) {
+    if (!options.welcome) {
+        return options;
+    }
+    UnattendOptions o = options;
+    o.accountName = kWelcomeAccount;
+    o.password = o.welcomePassword;
+    o.autoLogon = true;
+    o.acceptEula = true;
+    o.skipOnlineAccount = true;
+    o.skipPrivacy = true;
+    o.hideOemRegistration = true;
+    o.firstLogonCommands.insert(o.firstLogonCommands.begin(), welcomeFirstLogonCommand());
+    return o;
+}
+
+std::wstring buildUnattendXml(const UnattendOptions& options) {
+    const UnattendOptions o = withWelcome(options);
     const std::wstring componentAttributes = std::format(
         L"processorArchitecture=\"{}\" publicKeyToken=\"31bf3856ad364e35\" language=\"neutral\" versionScope=\"nonSxS\"",
         architectureAttribute(o.architecture));
@@ -647,10 +665,21 @@ Result<UnattendOptions> parseUnattendXml(std::string_view utf8) {
             }
         }
     }
+    // D-084: the welcome's setup account and command read back as the welcome.
+    if (text::lower(o.accountName) == text::lower(std::wstring(kWelcomeAccount)) && !o.firstLogonCommands.empty() &&
+        o.firstLogonCommands.front() == welcomeFirstLogonCommand()) {
+        o.welcome = true;
+        o.welcomePassword = o.password;
+        o.accountName.clear();
+        o.password.clear();
+        o.autoLogon = false;
+        o.firstLogonCommands.erase(o.firstLogonCommands.begin());
+    }
     return o;
 }
 
-std::vector<UnattendProblem> validateUnattend(const UnattendOptions& o) {
+std::vector<UnattendProblem> validateUnattend(const UnattendOptions& options) {
+    const UnattendOptions o = withWelcome(options);
     std::vector<UnattendProblem> problems;
     auto hasAny = [](std::wstring_view text, std::wstring_view chars) {
         return text.find_first_of(chars) != std::wstring_view::npos;

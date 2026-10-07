@@ -5,6 +5,7 @@
 // The steps are anchors into one scrolling form, not wizard pages.
 #include "app/Localization.h"
 #include "app/controllers/UnattendController.h"
+#include "ui/widgets/Button.h"
 #include "ui/widgets/Checkbox.h"
 #include "ui/widgets/Dropdown.h"
 #include "ui/widgets/FormView.h"
@@ -77,6 +78,20 @@ private:
     ui::SearchBox* m_diskId = nullptr;
     ui::CheckField* m_autoLogon = nullptr;
     ui::Dropdown* m_disk = nullptr;
+    // D-084: the welcome and what it asks; the account rows it replaces.
+    ui::Toggle* m_welcome = nullptr;
+    ui::Toggle* m_askComputer = nullptr;
+    ui::Toggle* m_askLook = nullptr;
+    ui::Toggle* m_askPrivacy = nullptr;
+    ui::Toggle* m_emptyPassword = nullptr;
+    ui::Dropdown* m_welcomeTheme = nullptr;
+    ui::Dropdown* m_welcomePrivacy = nullptr;
+    ui::Button* m_welcomePreview = nullptr;
+    ui::SearchBox* m_password = nullptr;
+    void editWelcome(const std::function<void(core::WelcomePlan&)>& change);
+
+public:
+    std::function<void()> onPreviewWelcome; // the Shell opens the window as a preview
 };
 
 } // namespace wl::app

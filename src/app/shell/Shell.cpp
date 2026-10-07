@@ -227,6 +227,17 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::DriversHostFailed), errorText(e)); },
     });
     m_unattend = std::make_unique<UnattendController>(m_state);
+    m_unattend->stringsOf = [this](Language language) -> const Localization* { // D-084 welcome texts
+        if (language == m_language) {
+            return &m_strings;
+        }
+        if (!m_otherStrings) {
+            if (auto loaded = embeddedStrings(language)) {
+                m_otherStrings = std::move(*loaded);
+            }
+        }
+        return m_otherStrings ? &*m_otherStrings : nullptr;
+    };
     m_postSetup = std::make_unique<PostSetupController>(m_state);
     {
         // Without the resource (tools, tests): no catalog, the search still works.
@@ -386,6 +397,11 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
             // A new mount reuses the mount folder: the icons drawn from its files (Simgeler, Başlat
             // menüsü) may have changed since, e.g. an icon pack applied and the edition mounted again.
             ui::Canvas::forgetFileIcons();
+            // D-084: the welcome's script goes into every image mounted while the answer file has it
+            // (a queue made before the mount is not this image's).
+            if (m_state.mounted() && m_unattend->welcome() && !m_unattend->welcomeQueued()) {
+                m_unattend->setWelcomePlan(m_unattend->welcomePlan());
+            }
         }
         if (change == AppState::Change::Iso || change == AppState::Change::Mount ||
             change == AppState::Change::Operation || change == AppState::Change::Source) {
@@ -1199,6 +1215,21 @@ void Shell::startIso() {
         return;
     }
     const auto request = page->request();
+    // D-084: an answer file with the welcome needs the script in the edition Setup installs.
+    if (m_unattend->welcome() && m_unattend->includeInIso() && m_state.source()) {
+        const int index = m_unattend->options().imageIndex;
+        if (auto missing = core::editionsWithoutWelcome(*m_state.source(), index); missing && !missing->empty()) {
+            std::wstring editions;
+            for (const int i : *missing) {
+                editions += (editions.empty() ? L"" : L", ") + std::to_wstring(i);
+            }
+            showToast(ui::InfoKind::Error, m_strings.get(Str::IsoWelcomeMissingTitle),
+                      m_strings.format(Str::IsoWelcomeMissingBody, {{L"editions", editions}}));
+            return;
+        } else if (!missing) {
+            log::warn("iso", L"cannot tell whether the image has the welcome: " + describe(missing.error()));
+        }
+    }
     if (request.usb) {
         confirmUsbWrite(request);
         return;
@@ -1791,7 +1822,13 @@ void Shell::showPage(PageId page) {
                 .onInvoke = [this] { importAnswerFile(); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UnattendedSaveXml), ui::icons::Icon::Save)
                 .onInvoke = [this] { saveAnswerFile(); };
-            m_pageBody = &m_pageView->setBody<UnattendedPage>(m_state, *m_unattend, m_strings);
+            auto& unattended = m_pageView->setBody<UnattendedPage>(m_state, *m_unattend, m_strings);
+            unattended.onPreviewWelcome = [this] { // D-084
+                if (auto shown = m_unattend->previewWelcome(); !shown) {
+                    showToast(ui::InfoKind::Error, m_strings.get(Str::UnattendedWelcome), errorText(shown.error()));
+                }
+            };
+            m_pageBody = &unattended;
         } else if (page == PageId::StartMenu) {
             m_pageBody = &m_pageView->setBody<StartMenuPage>(m_state, *m_startPins, *m_taskbarPins, *m_imageSettings, m_strings, m_language,
                                                              [this] { showPage(PageId::Images); });
