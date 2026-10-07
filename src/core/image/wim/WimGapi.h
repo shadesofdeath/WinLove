@@ -2,6 +2,9 @@
 // WimgApiBackend (docs/ENGINE.md §1): export / delete editions through wimgapi.dll, loaded at
 // runtime from System32 like dismapi.dll (the header ships only with the ADK — D-017).
 // No admin needed: these write WIM files, they do not mount.
+// D-081: when this PC's copy is missing or cannot read a file (a "modded" Windows, an ESD written
+// by another tool), the other Microsoft-signed copies at hand are tried — the Windows ADK's, then
+// the one next to the file (a setup media's sources\wimgapi.dll). Errors name the copy used.
 #include "core/image/WimFile.h"
 #include "core/tasks/Task.h"
 
@@ -11,6 +14,17 @@
 #include <string>
 
 namespace wl::core {
+
+// The wimgapi.dll that works on `file` (it is opened to find out; remembered per file version).
+struct WimLibraryInfo {
+    std::filesystem::path path;
+    std::wstring version;
+    std::wstring origin; // "system", "adk", "media", "forced"
+    bool usable = false;
+};
+[[nodiscard]] WimLibraryInfo wimgapiFor(const std::filesystem::path& file);
+// wlcli --wimgapi=<dll>: that copy in place of System32's (to prove the fallback). Before the first call.
+void forceWimgapi(std::filesystem::path dll);
 
 // Copies edition `index` of `source` (WIM or ESD) into `destination`: creates the file if missing,
 // otherwise appends as a new index. ESD → WIM = export with Lzx (or Xpress) compression.

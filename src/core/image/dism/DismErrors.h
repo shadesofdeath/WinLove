@@ -21,6 +21,7 @@ enum class Remedy : std::uint8_t {
     WaitForOther,       // another DISM operation / process is using the image
     FreeDiskSpace,
     NotSupported,       // split WIM mount, read-only commit, ...
+    WimLibrary,         // no wimgapi at hand reads the file: another tool's ESD, or a changed DISM (D-081)
 };
 
 struct ErrorInfo {

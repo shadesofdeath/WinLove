@@ -38,6 +38,7 @@ public:
 private:
     void refreshRecent();
     void refreshMounts();
+    void refreshHost(); // D-081: a warning when this PC's DISM files are not whole
     void paintMountCell(ui::Canvas& canvas, int row, int column, ui::RectF rect, bool selected);
 
     AppState& m_state;
@@ -46,6 +47,7 @@ private:
     std::size_t m_subscription = 0;
     ui::DropZone* m_drop = nullptr;
     ui::InfoBar* m_error = nullptr;
+    ui::InfoBar* m_host = nullptr;
     RecentList* m_recent = nullptr;
     ui::TableView* m_mounts = nullptr;
     std::vector<core::MountCheck> m_mountRows;

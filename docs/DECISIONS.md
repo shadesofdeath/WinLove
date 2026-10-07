@@ -241,6 +241,38 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-081 — Modlu Windows: DISM / wimgapi yedeği, sağlık uyarısı, okunamayan ESD'nin açıklaması (2026-10-07)
+Bağlam: bir kullanıcıda ESD → WIM "İşlem başarısız (0x8007000B) wimgapi call failed" (install.esd, iki sürüm, 22631.3007).
+WinLove `dismapi.dll` / `wimgapi.dll`'i ana makinenin System32'sinden yükler (D-017); kullanıcının sorusu: "modlu
+windowslarda uygulama düzgün çalışmayabilir". 0x8007000B (ERROR_BAD_FORMAT) iki yoldan gelir: dosyanın biçimini o
+wimgapi bilmiyor (eski / değiştirilmiş kopya ya da Windows'un yazmadığı bir ESD) ya da kopya bozuk.
+Karar:
+- **wimgapi dosya başına seçilir** (`WimGapi.cpp`): her genel işlem önce bu PC'ninkiyle dosyayı açıp ilk sürümün dosya
+  listesini okur (`WIMCreateFile` + `WIMLoadImage(1)`, ~50 ms, dosya sürümü başına hatırlanır); okuyamazsa sırayla
+  **Windows ADK'nınki**, sonra **dosyanın yanındaki** (`sources\wimgapi.dll`, kurulum ortamının kendi kopyası) denenir.
+  System32 dışındaki kopya yalnız Microsoft imzalıysa yüklenir (gömülü ya da bu PC'nin kataloğu — WinLove yönetici
+  çalışır, ortam kullanıcının dosyasıdır). Dönüşüm (`exportImages`: ESD → WIM, SWM → WIM, sıkıştırma değişimi) yeni
+  dosyaya yazarken yarıda kalırsa da diğer kopyalarla baştan dener.
+- **Hata metni kopyayı söyler:** "wimgapi call failed: wimgapi.dll 10.0.26100.8972 (system)". Hiçbiri okuyamazsa:
+  "no wimgapi could read the image (tried …)" + ESD ise katı kaynaklarının kendi başlıkları (`solidResources`):
+  sıkıştırma ve parça boyu; LZMS dışıysa "Windows writes LZMS only: this ESD was made by another tool". Yarım dosya kalmaz.
+  0x8007000B'nin arayüzdeki açıklaması (`Remedy::WimLibrary`).
+- **DISM:** System32'de `dismapi.dll`, `dism.exe` ya da `Dism\` altındaki çekirdek parçalardan biri (DismCore, DismProv,
+  Wim/Folder/Imaging/LogProvider) yoksa ve ADK kuruluysa onun DISM'i kullanılır (`dismLocation()`; `dism.exe` çağrıları
+  da). Ayarlar / Hakkında'daki DISM satırı yüklenen kopyayı gösterir ("· Windows ADK").
+- **Sağlık denetimi** (`checkHostDism`, açılışta, ~0.1 sn): dismapi, wimgapi, dism.exe, 12 DISM sağlayıcısı, wimmount.sys
+  var mı, Microsoft imzalı mı; WIMMount hizmeti devre dışı mı. Kendi kernel32.dll'i doğrulanamayan bir PC'de (katalog
+  silinmiş) yalnız eksikler. Sorun varsa Kaynak sayfasında uyarı şeridi: ilk sorun + sayı + ne yapıldığı (ADK kullanılıyor /
+  ADK kurulu / "ADK Deployment Tools kurulursa onun DISM'i kullanılır").
+- `wlcli host-check`, `wlcli wimgapi <dosya>`, seçenekler `--wimgapi=<dll>` (System32'ninkinin yerine; yedeği kanıtlamak
+  için), `--dism=adk`.
+Kanıt: 335 test (imza: kernel32 katalogdan "Microsoft Windows", sahte dll imzasız; sahte LZX-solid ESD'de hata metni ve
+yarım dosya yok). Lab: `--wimgapi=version.dll` (giriş noktaları yok) ile Win10 ESD'nin 2. sürümü ADK kopyasıyla 21 sn'de
+WIM'e döndü, `wlcli verify` 12 185 akış sağlam. `--dism=adk` ile 25H2 install.wim salt okunur bağlandı: paketler,
+özellikler, uygulamalar System32 DISM'iyle birebir aynı (591 satır, fark yok).
+Görülmeyen: kullanıcının dosyası (elimizde yok) — 0x8007000B'nin onda hangi yoldan geldiği; ADK'sız modlu bir PC'de ortam
+kopyasının bu PC'nin kataloğuyla doğrulanması (bu PC'de 26100.1 kopyası doğrulandı); Windows 10 ana makine.
+
 ## D-080 — Kurulum ortamı da güncellenir: WinRE (Safe OS), boot.wim, kurulum dosyaları (2026-10-07)
 Bağlam: NTLite karşılaştırmasında kullanıcının seçtiği eksik: toplu güncelleme yalnız install.wim'e gidiyordu; WinRE ve
 kurulum ekranı (boot.wim) medyanın yaşında kalıyordu. Katalog Safe OS ve Setup dinamik güncellemelerini tanıyor ama

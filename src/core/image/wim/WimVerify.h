@@ -48,4 +48,15 @@ struct WimVerifyReport {
 // folder). Same reading and limits as wimFileExists.
 [[nodiscard]] Result<std::vector<std::wstring>> wimFolderNames(const ByteSource& wim, int index, std::wstring_view folder);
 
+// The solid resources of an ESD as their own headers describe them (compression, chunk size): what
+// tells an ESD Windows wrote (LZMS, 64 MiB chunks) from one another tool wrote in a form this PC's
+// wimgapi may refuse — the explanation when every wimgapi failed on it. Empty for a plain WIM.
+struct SolidResource {
+    std::uint64_t offset = 0;
+    std::uint64_t size = 0; // as stored
+    WimCompression compression = WimCompression::Unknown;
+    std::uint32_t chunkSize = 0;
+};
+[[nodiscard]] Result<std::vector<SolidResource>> solidResources(const ByteSource& wim);
+
 } // namespace wl::core

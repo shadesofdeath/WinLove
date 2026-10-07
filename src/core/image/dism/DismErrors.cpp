@@ -61,6 +61,7 @@ constexpr std::array kCatalog{
     Entry{0x80070070, L"disk full", Remedy::FreeDiskSpace},
     Entry{0x80070027, L"disk full", Remedy::FreeDiskSpace},
     Entry{0x800702E4, L"elevation required", Remedy::CheckPermissions},
+    Entry{0x8007000B, L"image format this wimgapi cannot read", Remedy::WimLibrary},
 };
 
 std::wstring fromModule(const wchar_t* module, DWORD code) {
@@ -104,6 +105,7 @@ const wchar_t* remedyName(Remedy remedy) noexcept {
     case Remedy::WaitForOther: return L"wait for the other operation";
     case Remedy::FreeDiskSpace: return L"free disk space";
     case Remedy::NotSupported: return L"not supported";
+    case Remedy::WimLibrary: return L"no wimgapi reads it";
     }
     return L"?";
 }

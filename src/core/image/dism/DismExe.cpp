@@ -2,6 +2,7 @@
 
 #include "base/Log.h"
 #include "core/image/dism/Dism.h"
+#include "core/image/dism/HostDism.h"
 #include "core/system/Process.h"
 
 #include <windows.h>
@@ -14,11 +15,8 @@
 namespace wl::core {
 
 Result<std::filesystem::path> dismExePath() {
-    auto exe = systemTool(L"dism.exe");
-    if (!exe) {
-        return std::unexpected(exe.error());
-    }
-    return std::filesystem::path(*exe);
+    // System32's, or the ADK's when this PC's DISM is missing a part (HostDism.h).
+    return dismLocation().dismExe;
 }
 
 std::wstring dismExeCommandLine(const std::filesystem::path& dismExe, const std::filesystem::path& mountDir,

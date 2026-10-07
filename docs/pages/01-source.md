@@ -32,6 +32,9 @@ Açma sonrası: `AppState.source` dolar, başlıkta breadcrumb = dosya adı, P02
 - **Boş:** son kullanılanlar yoksa bölüm gizlenir (yerine hiçbir şey; DropZone yeterli).
 - **Yükleniyor:** ISO ~70 ms; bekleme göstergesi yok. Uzun sürerse (ağ yolu) DropZone metni "Yükleniyor…".
 - **Hata:** DropZone altında error InfoBar ("Açılamadı: …", kapatılabilir) + log.
+- **Bu PC'nin DISM'i eksik / değiştirilmiş (D-081):** açılıştaki denetim sorun bulursa DropZone altında warning InfoBar
+  (kapatılabilir): ilk sorun ("CbsProvider.dll — eksik (+1 sorun daha)") ve ne yapıldığı (ADK'nın DISM'i kullanılıyor /
+  ADK kurulu / ADK Deployment Tools önerisi). Sağlıklı PC'de görünmez.
 - **Sürükleme:** geçerli → DropZone accent + accent.subtle; geçersiz → status.error sınır + "Desteklenmeyen dosya".
 - **Admin gerekli:** bu sayfada yok (s4 dialogu P02'de bağlarken kullanılır).
 

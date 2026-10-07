@@ -109,6 +109,11 @@
   msinfo32, cleanmgr, notepad, 32 bit cmd, 7-Zip, Notepad++, VLC açılıyor; winget 4/4 (VC++ MSI dahil); `dism /online
   /get-packages` çalışıyor. Aynı koşullu çift (`shrink-max2` / `shrink-base`: aynı 4 program, 25 dk, ikisinde de ResetBase +
   güncellemeler kapalı): **C: 17,46 GB / 19,66 GB → kurulu sistemde −2,20 GB**, ikisi de ALL PASSED, SideBySide 0. taskmgr SYSTEM'den 0x80070005 — küçültmesiz sistemde de aynı (tanılamanın oturum dışından başlatması).
+- **Modlu Windows yedeği (D-081, 2026-10-07):** wimgapi dosya başına seçilir (bu PC'ninki → Windows ADK'nınki → kurulum
+  ortamının `sources\wimgapi.dll`'i, Microsoft imzası şart); DISM'in bir parçası eksikse ADK'nın DISM'i; açılışta sağlık
+  denetimi → Kaynak sayfasında uyarı; hata metinleri kullanılan kopyayı ve okunamayan ESD'nin katı kaynaklarını söyler.
+  `wlcli host-check`, `wlcli wimgapi`, `--wimgapi=`, `--dism=adk`. Sırada: (3) uyumluluk korumaları, (4) görev çubuğu
+  sabitlemeleri, sonra kendi OOBE'miz.
 - **NTLite eksik listesi (2026-10-07 akşam, kullanıcı seçimi):** (1) sürücü deposu temizliği ölçüldü — 715 paket 443 MB,
   238 MB'ı ağ (kural gereği yok), Hello yüz zaten Özellikler'de yetenek, yazıcı çekirdeği kaldırılırsa sonradan yazıcı
   kurulamaz → kullanıcıyla anlaşılarak yapılmadı. (2) **Kurulum ortamı güncellemesi (D-080):** Safe OS → WinRE (Uygula),

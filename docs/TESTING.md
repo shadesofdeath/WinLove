@@ -53,6 +53,9 @@ build\lab\
    Kurulum WinPE'de başarısızsa `tools\lab_setup_logs.ps1 -Tag x -SetupFolder <ortam> -InstallWim <wim>`: Setup'ı bir
    betiğe sarar, günlükleri (`$WINDOWS.~BT` her sürücüde, `X:\Windows\Panther`) `lab_vm.ps1 -LogDisk` diskine yazar →
    `build\lab\out\vm-setuplogs-<Tag>\diag`.
+4e. Modlu Windows (D-081): `wlcli host-check` (çıkış 3: sorun), `wlcli wimgapi <wim|esd>` (seçilen kopya, katı kaynaklar).
+   Yedeği kanıtlamak: `wlcli export <esd> 2 <out.wim> --wimgapi=C:\Windows\System32\version.dll --verbose` (bozuk kopya
+   → ADK'nınki); `wlcli mount … --dism=adk` (yönetici) ADK'nın DISM'iyle. Arayüz: `--render … --page=source --demo-host-dism`.
 5. **Yasak:** tüm ekranı yakalamak (`ImageGrab`, ekran görüntüsü). Kullanıcının diğer pencereleri görüntüye girer (D-013).
 6. Farklar sayfa spec'ine not edilir; bilinçli sapmalar `DECISIONS.md`'ye.
 7. Render testleri (`tests/ui/RenderTests.cpp`) piksel düzeyinde kontrol eder: token rengi, 1px çizginin %150'de tam bir fiziksel satır olması.

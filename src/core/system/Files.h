@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <string>
 
 namespace wl::core {
 
@@ -23,5 +24,8 @@ namespace wl::core {
 // deleted once `fresh` is in place; on failure it is renamed back and `fresh` is removed.
 [[nodiscard]] Result<void> swapIntoPlace(const std::filesystem::path& original, const std::filesystem::path& fresh,
                                          const std::filesystem::path& destination);
+
+// "10.0.26100.1" from a file's version resource; empty when it has none.
+[[nodiscard]] std::wstring fileVersion(const std::filesystem::path& file);
 
 } // namespace wl::core

@@ -574,4 +574,54 @@ Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task
     return report;
 }
 
+Result<std::vector<SolidResource>> solidResources(const ByteSource& wim) {
+    auto header = readWimHeader(wim);
+    if (!header) {
+        return std::unexpected(header.error());
+    }
+    if (header->lookupCompressed || header->lookupSize % kEntrySize != 0 || header->lookupOffset > wim.size() ||
+        header->lookupSize > wim.size() - header->lookupOffset || header->lookupSize > (1ull << 31)) {
+        return fail(ErrorCode::ParseError, L"the stream table of the image cannot be read", L"WIM");
+    }
+    std::vector<std::byte> raw(static_cast<std::size_t>(header->lookupSize));
+    if (!raw.empty()) {
+        if (auto read = wim.read(header->lookupOffset, raw); !read) {
+            return std::unexpected(read.error());
+        }
+    }
+    // A solid resource's own entry has this "uncompressed size"; the streams in it point into it.
+    constexpr std::uint64_t kSolidMagic = 0x100000000ull;
+    std::vector<SolidResource> out;
+    for (std::size_t at = 0; at + kEntrySize <= raw.size(); at += kEntrySize) {
+        const std::byte* p = raw.data() + at;
+        const auto packed = le<std::uint64_t>(p);
+        const auto flags = static_cast<std::uint8_t>(packed >> 56);
+        const auto part = le<std::uint16_t>(p + 24);
+        if (!(flags & kSolid) || (flags & kFree) || le<std::uint64_t>(p + 16) != kSolidMagic || part != header->partNumber) {
+            continue;
+        }
+        SolidResource resource;
+        resource.size = packed & 0x00FFFFFFFFFFFFFFull;
+        resource.offset = le<std::uint64_t>(p + 8);
+        // Its header: uncompressed size (8), chunk size (4), compression (4: 1 XPRESS, 2 LZX, 3 LZMS).
+        std::array<std::byte, 16> head{};
+        if (resource.offset > wim.size() || wim.size() - resource.offset < head.size()) {
+            return fail(ErrorCode::ParseError, L"a solid resource lies past the end of the file", L"WIM");
+        }
+        if (auto read = wim.read(resource.offset, head); !read) {
+            return std::unexpected(read.error());
+        }
+        resource.chunkSize = le<std::uint32_t>(head.data() + 8);
+        switch (le<std::uint32_t>(head.data() + 12)) {
+        case 0: resource.compression = WimCompression::None; break;
+        case 1: resource.compression = WimCompression::Xpress; break;
+        case 2: resource.compression = WimCompression::Lzx; break;
+        case 3: resource.compression = WimCompression::Lzms; break;
+        default: resource.compression = WimCompression::Unknown; break;
+        }
+        out.push_back(resource);
+    }
+    return out;
+}
+
 } // namespace wl::core

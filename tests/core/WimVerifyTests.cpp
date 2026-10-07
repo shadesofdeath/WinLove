@@ -2,6 +2,7 @@
 // own small encoder (support/LzxChunk.h) and a WIM assembled in memory. The real image — 94 409
 // streams of the 25H2 install.wim, every SHA-1 matching — is checked with `wlcli verify`.
 #include "core/image/wim/Lzx.h"
+#include "core/image/wim/WimGapi.h"
 #include "core/image/wim/WimVerify.h"
 #include "support/LzxChunk.h"
 
@@ -13,6 +14,8 @@
 
 #include <array>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <string_view>
 
 using namespace wl;
@@ -399,4 +402,114 @@ TEST_CASE("wim file list: a path is found in the edition it is in, by name in an
     const auto cut = wimFileExists(damaged, 1, L"Windows\\System32\\notepad.exe");
     REQUIRE(cut.has_value());
     CHECK_FALSE(*cut);
+}
+
+namespace {
+
+// An ESD (version 3584: solid) with one solid resource of each kind seen in the wild — LZMS in 64 MiB
+// chunks as Windows writes it, LZX in 32 KiB chunks as wimlib can be told to — a stream that lives
+// inside the first one, the lookup table and an empty XML. `lookupAt` is where the table starts.
+MemorySource solidEsd(std::uint64_t& lookupAtOut) {
+    MemorySource esd;
+    auto& out = esd.data;
+    out.resize(208);
+    auto put = [&](std::size_t at, auto value) { std::memcpy(out.data() + at, &value, sizeof(value)); };
+    std::memcpy(out.data(), "MSWIM\0\0\0", 8);
+    put(8, std::uint32_t{208});
+    put(12, std::uint32_t{0x00000E00});
+    put(16, std::uint32_t{0x00000002 | 0x00080000}); // compressed, LZMS
+    put(20, std::uint32_t{0});
+    put(40, std::uint16_t{1});
+    put(42, std::uint16_t{1});
+    struct Solid {
+        std::uint32_t chunk;
+        std::uint32_t format;
+    };
+    std::vector<std::byte> lookup;
+    auto entry = [&](std::uint64_t size, std::uint8_t flags, std::uint64_t offset, std::uint64_t original) {
+        std::array<std::byte, 50> e{};
+        const std::uint64_t packed = size | (static_cast<std::uint64_t>(flags) << 56);
+        std::memcpy(e.data(), &packed, 8);
+        std::memcpy(e.data() + 8, &offset, 8);
+        std::memcpy(e.data() + 16, &original, 8);
+        const std::uint16_t part = 1;
+        std::memcpy(e.data() + 24, &part, 2);
+        lookup.insert(lookup.end(), e.begin(), e.end());
+    };
+    for (const Solid s : {Solid{64u << 20, 3}, Solid{32768, 2}}) {
+        const std::uint64_t offset = out.size();
+        const std::uint64_t plain = 1000;
+        std::array<std::byte, 16> head{};
+        std::memcpy(head.data(), &plain, 8);
+        std::memcpy(head.data() + 8, &s.chunk, 4);
+        std::memcpy(head.data() + 12, &s.format, 4);
+        out.insert(out.end(), head.begin(), head.end());
+        out.resize(out.size() + 24); // "compressed" data
+        entry(40, 0x10 | 0x04, offset, 0x100000000ull);
+    }
+    entry(1000, 0x10, 0, 1000); // a file inside the first solid resource: not a resource itself
+    const std::uint64_t lookupAt = out.size();
+    const std::uint64_t lookupSize = lookup.size();
+    put(48, lookupSize | (std::uint64_t{0x02} << 56));
+    put(56, lookupAt);
+    put(64, lookupSize);
+    out.insert(out.end(), lookup.begin(), lookup.end());
+    const std::u16string xml = u"<WIM></WIM>";
+    put(72, std::uint64_t{xml.size() * 2} | (std::uint64_t{0x02} << 56));
+    put(80, std::uint64_t{out.size()});
+    put(88, std::uint64_t{xml.size() * 2});
+    const auto* xmlBytes = reinterpret_cast<const std::byte*>(xml.data());
+    out.insert(out.end(), xmlBytes, xmlBytes + xml.size() * 2);
+
+    lookupAtOut = lookupAt;
+    return esd;
+}
+
+} // namespace
+
+TEST_CASE("solid resources: an ESD's are read from their own headers; a plain WIM has none") {
+    std::uint64_t lookupAt = 0;
+    const MemorySource esd = solidEsd(lookupAt);
+    const auto solid = solidResources(esd);
+    REQUIRE(solid.has_value());
+    REQUIRE(solid->size() == 2);
+    CHECK((*solid)[0].offset == 208);
+    CHECK((*solid)[0].size == 40);
+    CHECK((*solid)[0].compression == WimCompression::Lzms);
+    CHECK((*solid)[0].chunkSize == (64u << 20));
+    CHECK((*solid)[1].compression == WimCompression::Lzx); // what wimlib can be told to write
+    CHECK((*solid)[1].chunkSize == 32768);
+
+    // Pointing past the end is an error, not a read out of bounds.
+    MemorySource cut = esd;
+    const std::uint64_t beyond = cut.data.size() + 100;
+    std::memcpy(cut.data.data() + static_cast<std::size_t>(lookupAt) + 8, &beyond, 8);
+    CHECK_FALSE(solidResources(cut).has_value());
+
+    const auto plain = solidResources(buildWim({}));
+    REQUIRE(plain.has_value());
+    CHECK(plain->empty());
+}
+
+TEST_CASE("an ESD no wimgapi can read: the error names the copies tried and the foreign solid resources (D-081)") {
+    std::uint64_t lookupAt = 0;
+    const MemorySource esd = solidEsd(lookupAt);
+    const auto dir = std::filesystem::temp_directory_path() / L"wl-tests" / L"wim-foreign";
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    std::filesystem::create_directories(dir);
+    {
+        std::ofstream out(dir / L"install.esd", std::ios::binary);
+        out.write(reinterpret_cast<const char*>(esd.data.data()), static_cast<std::streamsize>(esd.data.size()));
+    }
+    const std::vector<int> first{1};
+    const auto done = exportImages(dir / L"install.esd", first, dir / L"install.wim", WimCompression::Lzx, TaskContext{});
+    REQUIRE_FALSE(done.has_value());
+    CHECK(done.error().code == ErrorCode::WimFailure);
+    CHECK(done.error().message.find(L"no wimgapi could read the image (tried wimgapi.dll") != std::wstring::npos);
+    CHECK(done.error().message.find(L"(system)") != std::wstring::npos);
+    CHECK(done.error().message.find(L"1 × lzx 32 KiB") != std::wstring::npos);
+    CHECK(done.error().message.find(L"this ESD was made by another tool") != std::wstring::npos);
+    CHECK_FALSE(std::filesystem::exists(dir / L"install.wim")); // nothing half-written is left
+    std::filesystem::remove_all(dir, ec);
 }

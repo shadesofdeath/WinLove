@@ -3,8 +3,11 @@
 #include "base/Encoding.h"
 #include "core/image/Services.h"
 #include "core/system/Files.h"
+#include "core/system/Signature.h"
 
 #include <doctest.h>
+
+#include <windows.h>
 
 #include <filesystem>
 #include <fstream>
@@ -77,4 +80,21 @@ TEST_CASE("service names from a preset stay one key under Services") {
     CHECK_FALSE(validServiceName(L".."));
     CHECK_FALSE(validServiceName(L"Svc\\Parameters"));
     CHECK_FALSE(validServiceName(L"Svc/Parameters"));
+}
+
+TEST_CASE("signatures: Windows' own files verify through its catalogs; a file of ours does not") {
+    wchar_t system[MAX_PATH] = {};
+    REQUIRE(GetSystemDirectoryW(system, MAX_PATH) > 0);
+    const std::filesystem::path kernel = std::filesystem::path(system) / L"kernel32.dll";
+    CHECK(catalogSigner(kernel) == L"Microsoft Windows"); // listed in a catalog of this PC (CatRoot)
+    CHECK(signedByMicrosoft(kernel));
+    CHECK(signedByMicrosoft(std::filesystem::path(system) / L"wimgapi.dll"));
+    CHECK_FALSE(fileVersion(kernel).empty());
+
+    const auto dir = scratch(L"signature");
+    write(dir / L"wimgapi.dll", "MZ not really");
+    CHECK(trustedSigner(dir / L"wimgapi.dll").empty());
+    CHECK_FALSE(signedByMicrosoft(dir / L"wimgapi.dll"));
+    CHECK(fileVersion(dir / L"wimgapi.dll").empty());
+    CHECK_FALSE(signedByMicrosoft(dir / L"missing.dll"));
 }

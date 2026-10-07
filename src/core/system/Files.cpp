@@ -4,6 +4,9 @@
 
 #include <windows.h>
 
+#include <format>
+#include <vector>
+
 namespace wl::core {
 
 std::filesystem::path tempFolder() {
@@ -54,6 +57,23 @@ Result<void> swapIntoPlace(const std::filesystem::path& original, const std::fil
     }
     std::filesystem::remove(old, ec);
     return {};
+}
+
+std::wstring fileVersion(const std::filesystem::path& file) {
+    DWORD handle = 0;
+    const DWORD size = GetFileVersionInfoSizeW(file.c_str(), &handle);
+    if (size == 0) {
+        return {};
+    }
+    std::vector<BYTE> data(size);
+    VS_FIXEDFILEINFO* info = nullptr;
+    UINT infoSize = 0;
+    if (!GetFileVersionInfoW(file.c_str(), 0, size, data.data()) ||
+        !VerQueryValueW(data.data(), L"\\", reinterpret_cast<void**>(&info), &infoSize) || !info) {
+        return {};
+    }
+    return std::format(L"{}.{}.{}.{}", HIWORD(info->dwFileVersionMS), LOWORD(info->dwFileVersionMS),
+                       HIWORD(info->dwFileVersionLS), LOWORD(info->dwFileVersionLS));
 }
 
 } // namespace wl::core

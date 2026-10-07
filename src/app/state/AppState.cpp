@@ -236,6 +236,11 @@ void AppState::setSystemMounts(std::optional<SystemMounts> mounts) {
     notify(Change::SystemMounts);
 }
 
+void AppState::setHostDism(core::HostDismReport report) {
+    m_hostDism = std::move(report);
+    notify(Change::Host);
+}
+
 void AppState::setLanguageFetch(std::optional<LanguageFetch> fetch) {
     m_languageFetch = std::move(fetch);
     notify(Change::LanguageFetch);

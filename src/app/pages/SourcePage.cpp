@@ -32,6 +32,12 @@ SourcePage::SourcePage(AppState& state, const Localization& strings, Language la
         m_error->setVisible(false);
         layout();
     };
+    m_host = &add<ui::InfoBar>(ui::InfoKind::Warning, strings.get(Str::SourceHostTitle), L"", strings.get(Str::CommonClose));
+    m_host->setVisible(false);
+    m_host->onClose = [this] {
+        m_host->setVisible(false);
+        layout();
+    };
     m_recent = &add<RecentList>(strings, language);
     m_recent->onOpen = [this](const std::filesystem::path& path) {
         if (m_intents.openPath) {
@@ -84,9 +90,13 @@ SourcePage::SourcePage(AppState& state, const Localization& strings, Language la
         if (change == AppState::Change::SystemMounts || change == AppState::Change::Mount) {
             refreshMounts();
         }
+        if (change == AppState::Change::Host) {
+            refreshHost();
+        }
     });
     refreshRecent();
     refreshMounts();
+    refreshHost();
 }
 
 SourcePage::~SourcePage() {
@@ -107,6 +117,33 @@ void SourcePage::refreshMounts() {
     m_mounts->refresh();
     layout();
     invalidate();
+}
+
+void SourcePage::refreshHost() {
+    const auto& report = m_state.hostDism();
+    if (!report || report->healthy()) {
+        m_host->setVisible(false);
+        layout();
+        return;
+    }
+    const auto& first = report->problems.front();
+    const Str what = first.what == L"missing" || first.what == L"service missing" ? Str::SourceHostMissing
+                     : first.what == L"service disabled"                           ? Str::SourceHostDisabled
+                                                                                    : Str::SourceHostUnsigned;
+    const std::wstring more = report->problems.size() > 1
+                                  ? m_strings.format(Str::SourceHostMore, {{L"n", std::to_wstring(report->problems.size() - 1)}})
+                                  : std::wstring();
+    const Str action = report->usingAdk ? Str::SourceHostUsingAdk
+                       : report->adk    ? Str::SourceHostAdkInstalled
+                                        : Str::SourceHostInstallAdk;
+    const std::wstring file = std::filesystem::path(first.file).filename().wstring();
+    m_host->set(ui::InfoKind::Warning, m_strings.get(Str::SourceHostTitle),
+                m_strings.format(Str::SourceHostBody, {{L"file", file.empty() ? first.file : file},
+                                                       {L"what", m_strings.get(what)},
+                                                       {L"more", more},
+                                                       {L"action", m_strings.get(action)}}));
+    m_host->setVisible(true);
+    layout();
 }
 
 void SourcePage::paintMountCell(ui::Canvas& canvas, int row, int column, RectF rect, bool selected) {
@@ -175,6 +212,11 @@ void SourcePage::layout() {
     if (m_error->visible()) {
         y += kGap;
         m_error->setBounds({b.x, y, b.width, kInfoBarHeight});
+        y += kInfoBarHeight;
+    }
+    if (m_host->visible()) {
+        y += kGap;
+        m_host->setBounds({b.x, y, b.width, kInfoBarHeight});
         y += kInfoBarHeight;
     }
     if (m_mounts->visible()) {

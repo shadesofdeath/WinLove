@@ -218,7 +218,8 @@ SettingsPage::SettingsPage(AppState& state, const Localization& strings, Intents
     m_mount = folder(Str::SettingsMountDir, s(Str::SettingsMountDefault), &AppSettings::mountFolder, /*allowEmpty=*/true);
     const std::wstring dismVersion = dismLibraryVersion();
     m_form->addRow<ui::Label>(s(Str::SettingsDismPath), std::wstring(), 0.0f,
-                              dismVersion.empty() ? dismLibraryPath() : dismLibraryPath() + L" \u00b7 " + dismVersion,
+                              (dismVersion.empty() ? dismLibraryPath() : dismLibraryPath() + L" \u00b7 " + dismVersion) +
+                                  (dismFromAdk() ? L" \u00b7 " + s(Str::SettingsDismAdk) : std::wstring()),
                               ui::tokens::TypeStyle::Mono,
                               Color::TextSecondary);
     setAccessible(ui::AccessRole::Group, s(Str::SettingsTitle));

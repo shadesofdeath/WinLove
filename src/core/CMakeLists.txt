@@ -35,6 +35,7 @@ add_library(wl_core STATIC
     image/WindowsRelease.cpp
     image/dism/Appx.cpp
     image/dism/Dism.cpp
+    image/dism/HostDism.cpp
     image/dism/DismErrors.cpp
     image/dism/DismExe.cpp
     image/dism/Edition.cpp
@@ -67,6 +68,7 @@ add_library(wl_core STATIC
     system/Picture.cpp
     system/Privileges.cpp
     system/Process.cpp
+    system/Signature.cpp
     system/HostExport.cpp
     tasks/Task.cpp
     tasks/TaskRunner.cpp
@@ -76,4 +78,4 @@ add_library(wl_core STATIC
     updates/UupLanguages.cpp
     store/MsStore.cpp)
 wl_configure_target(wl_core)
-target_link_libraries(wl_core PUBLIC wl_base PRIVATE wl_pugixml wl_json advapi32 user32 shell32 ole32 oleaut32 shlwapi rstrtmgr bcrypt winhttp ws2_32 windowscodecs wlanapi wintrust crypt32 cabinet winsqlite3)
+target_link_libraries(wl_core PUBLIC wl_base PRIVATE wl_pugixml wl_json advapi32 user32 shell32 ole32 oleaut32 shlwapi rstrtmgr bcrypt winhttp ws2_32 windowscodecs wlanapi wintrust crypt32 cabinet winsqlite3 version)
