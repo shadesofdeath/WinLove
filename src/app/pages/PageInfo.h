@@ -16,6 +16,7 @@ enum class PageId : std::uint8_t {
     Images,
     Components,
     Apps, // D-050 / D-054
+    Programs, // D-078 winget programs at the first sign-in
     Features,
     Updates,
     Languages, // D-053

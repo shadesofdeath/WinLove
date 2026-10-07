@@ -30,6 +30,10 @@ Bağlı imajdan kaldırılacak bileşenleri seçmek; seçimler kuyruğa girer (P
   Yol ve adlar Windows 11 25H2 (26200.8037) imajında doğrulandı. Gizli paket önce kayıt defterinde açılır
   (`Visibility = 1`, `Owners` silinir), sonra DISM ile kaldırılır; DISM reddederse dosya ve kayıtlar yine silinir,
   logda uyarı kalır (WinSxS kopyası durur).
+- **Temizlik → WinSxS'i en aza indir (geri dönüşsüz)** (D-079, 2026-10-07): tiny11 "core" izin listesi dışındaki WinSxS
+  klasörleri silinir (`ShrinkStore`, Uygula'nın son aşaması). Boyut sütunu bağlanan imajda ölçülen açılacak alan (25H2
+  Pro: 2,97 GB). Seçilince otomatik güncellemeler de kapatılır (Ayarlar'da görünür). Sonrası: güncelleme / özellik / dil
+  eklenemez, sfc onaramaz.
 - **Temizlik → Bileşen deposu temizliği (ResetBase)**: `dism.exe /Cleanup-Image /StartComponentCleanup /ResetBase`.
   Güncellemelerden hemen sonra, kayıt defteri / servis yazımlarından önce çalışır (kendi aşaması). Asıl kazanç bu
   çalıştırmada güncelleme eklendiyse olur (5–20 dk); Microsoft'un dokunulmamış imajında temizlenecek bir şey yoktur

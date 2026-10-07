@@ -28,6 +28,11 @@ public:
 
     [[nodiscard]] const core::PostSetupPlan& plan() const; // parsed once per queue version
     [[nodiscard]] std::size_t stepCount() const { return plan().steps.size(); }
+    // D-078: the programs of the Programlar page — in the same plan, so in the same queue operation
+    // (a preset carries them, Uygula writes them with the steps).
+    [[nodiscard]] const std::vector<core::PostSetupProgram>& programs() const { return plan().programs; }
+    // `texts`: the install window's texts in the app's language; they travel with the plan.
+    void setPrograms(std::vector<core::PostSetupProgram> programs, std::vector<std::pair<std::wstring, std::wstring>> texts);
 
     void add(core::PostSetupStep step);
     // Ready command steps ("Hazır komutlar"): power plan and network settings that are commands,
@@ -46,11 +51,6 @@ public:
     [[nodiscard]] bool hasCommand(std::size_t index) const; // the same command line is a step already
     std::size_t addCommands(const std::vector<std::size_t>& indexes, Language language);
 
-    // popularApps()[index] is a winget step of the plan already (ids compare without case).
-    [[nodiscard]] bool hasApp(std::size_t index) const;
-    // One queue edit for the whole pick; apps that are a step already are left out. Returns how
-    // many steps were added.
-    std::size_t addApps(const std::vector<std::size_t>& indexes);
     void replace(std::size_t index, core::PostSetupStep step);
     void remove(std::size_t index);
     // Moves a step up (-1) or down (+1); false at the ends.

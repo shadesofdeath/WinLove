@@ -4,6 +4,7 @@
 #include "ui/widget/Host.h"
 
 #include <algorithm>
+#include <utility>
 #include <cmath>
 #include <cwctype>
 
@@ -31,7 +32,10 @@ Dropdown::Dropdown(std::wstring label, std::vector<std::wstring> items, int sele
 }
 
 Dropdown::~Dropdown() {
-    closePopup();
+    if (m_popup) {
+        m_popup->detach();
+        m_popup->close();
+    }
 }
 
 void Dropdown::popupClosed() noexcept {
@@ -150,7 +154,14 @@ MenuPopup::MenuPopup(RectF anchor, std::vector<std::wstring> items, int selected
     setAccessible(AccessRole::List, L"");
 }
 
-MenuPopup::~MenuPopup() = default;
+// Destroyed without close() or pick() — the host tears its modals down before the widget tree
+// (the window closes with the list open; a render ends with it open): the owner still holds a
+// pointer to it and must hear that it is gone.
+MenuPopup::~MenuPopup() {
+    if (auto closed = std::exchange(m_closed, nullptr)) {
+        closed();
+    }
+}
 
 void MenuPopup::layout() {
     const RectF window = bounds();
@@ -261,7 +272,7 @@ bool MenuPopup::onContextMenu(PointF /*p*/) {
 }
 
 void MenuPopup::close() {
-    auto closed = m_closed;
+    auto closed = std::exchange(m_closed, nullptr); // once: the destructor runs it otherwise
     if (Host* h = host()) {
         h->popModal(this); // destroys this
     }
@@ -272,7 +283,7 @@ void MenuPopup::close() {
 
 void MenuPopup::pick(int index) {
     auto picked = m_picked;
-    auto closed = m_closed;
+    auto closed = std::exchange(m_closed, nullptr);
     if (Host* h = host()) {
         h->popModal(this); // destroys this
     }

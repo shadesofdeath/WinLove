@@ -43,6 +43,7 @@ public:
     [[nodiscard]] int rowCount() const noexcept { return m_count; }
     void setSelected(int row, bool reveal = true);
     void clearSelection(); // no row selected (rows were rebuilt and the old one is gone)
+    void scrollToTop() { setOffset(0); } // other rows than before: shown from the first
     [[nodiscard]] int selected() const noexcept { return m_selected; }
     void refresh() { invalidate(); } // data changed, same rows
 

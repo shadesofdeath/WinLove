@@ -96,7 +96,7 @@ function OneDriveFiles {
     foreach ($p in $paths) { if (Test-Path -LiteralPath $p) { $p } }
 }
 
-$watch = 'onedrive|outlook|olk|office|m365|teams|setup|install|uscheduler|usoclient|moussocoreworker|appinstaller|winget|bcilauncher|devhome'
+$watch = 'onedrive|outlook|olk|office|m365|teams|setup|install|uscheduler|usoclient|moussocoreworker|appinstaller|winget|bcilauncher|devhome|programs\.ps1'
 $loop = 0
 $finishing = $false
 Line ("diag start; boot " + (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToString('s'))
@@ -161,6 +161,33 @@ try { Get-AppxPackage -AllUsers | Select-Object Name, PackageFullName, InstallLo
         @{ n = 'Users'; e = { ($_.PackageUserInformation | ForEach-Object { $_.UserSecurityId.Username + ':' + $_.InstallState }) -join ';' } } |
         Export-Csv (Join-Path $out 'appx.csv') -NoTypeInformation -Encoding UTF8 } catch { Line ('appx list: ' + $_.Exception.Message) }
 try { Get-AppxProvisionedPackage -Online | Select-Object DisplayName, PackageName, Version | Export-Csv (Join-Path $out 'provisioned.csv') -NoTypeInformation -Encoding UTF8 } catch { }
+# Smoke test (D-079, a shrunk WinSxS): disk use, programs that load side-by-side assemblies start,
+# and what the SideBySide event source logged. A program still running after 5 s started.
+$smoke = New-Object System.Collections.Generic.List[string]
+$c = Get-PSDrive C
+$smoke.Add(('disk C: used {0:N2} GB, free {1:N2} GB' -f ($c.Used / 1GB), ($c.Free / 1GB)))
+$smoke.Add(('WinSxS folders: ' + @(Get-ChildItem C:\Windows\WinSxS -Directory -Force -ErrorAction SilentlyContinue).Count))
+$programs = @('C:\Windows\System32\taskmgr.exe', 'C:\Windows\regedit.exe', 'C:\Windows\System32\mmc.exe',
+              'C:\Windows\System32\control.exe', 'C:\Windows\System32\msinfo32.exe', 'C:\Windows\System32\cleanmgr.exe',
+              'C:\Windows\System32\mspaint.exe', 'C:\Windows\System32\notepad.exe', 'C:\Windows\SysWOW64\cmd.exe',
+              'C:\Program Files\7-Zip\7zFM.exe', 'C:\Program Files\Notepad++\notepad++.exe', 'C:\Program Files\VideoLAN\VLC\vlc.exe')
+foreach ($exe in $programs) {
+    if (-not (Test-Path $exe)) { $smoke.Add('missing  ' + $exe); continue }
+    try {
+        $p = Start-Process -FilePath $exe -PassThru -WindowStyle Minimized -ErrorAction Stop
+        Start-Sleep -Seconds 5
+        if ($p.HasExited) { $smoke.Add(('exited   {0} (exit 0x{1:X8})' -f $exe, $p.ExitCode)) }
+        else { $smoke.Add('running  ' + $exe); Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+    } catch { $smoke.Add('failed   ' + $exe + ': ' + $_.Exception.Message) }
+}
+try {
+    $sxs = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'SideBySide' } -ErrorAction Stop)
+    $smoke.Add('SideBySide events: ' + $sxs.Count)
+    foreach ($e in ($sxs | Select-Object -First 20)) { $smoke.Add('  ' + $e.TimeCreated.ToString('s') + ' ' + $e.Id + ' ' + ($e.Message -replace '\s+', ' ')) }
+} catch { $smoke.Add('SideBySide events: 0') }
+try { $mp = Get-MpComputerStatus -ErrorAction Stop; $smoke.Add('Defender signatures: ' + $mp.AntivirusSignatureVersion + ' updated ' + $mp.AntivirusSignatureLastUpdated.ToString('s')) } catch { $smoke.Add('Defender: ' + $_.Exception.Message) }
+try { $smoke.Add('dism /online /get-packages: ' + ((& dism.exe /English /Online /Get-Packages /Format:Table 2>&1 | Select-Object -Last 3) -join ' | ')) } catch { }
+$smoke | Set-Content (Join-Path $out 'smoke.txt') -Encoding UTF8
 $shell = New-Object -ComObject WScript.Shell
 $links = foreach ($d in (Desktops)) {
     $p = ($d -split '  \(created ')[0]
@@ -173,7 +200,8 @@ $links | Set-Content (Join-Path $out 'desktop.txt') -Encoding UTF8
 StartMenu | Set-Content (Join-Path $out 'startmenu.txt') -Encoding UTF8
 foreach ($pair in @(@('C:\ProgramData\USOPrivate', 'USOPrivate'), @('C:\ProgramData\USOShared\Logs', 'USOSharedLogs'), @('C:\Windows\Panther', 'Panther'),
                     @('C:\Users\Public\Desktop', 'PublicDesktop'), @('C:\Users\lab\Desktop', 'LabDesktop'),
-                    @('C:\Users\lab\AppData\Local\Microsoft\OneDrive\setup\logs', 'OneDriveSetupLogs'))) {
+                    @('C:\Users\lab\AppData\Local\Microsoft\OneDrive\setup\logs', 'OneDriveSetupLogs'),
+                    @('C:\ProgramData\WinLove', 'WinLove'))) {
     & robocopy.exe $pair[0] (Join-Path $out $pair[1]) /E /B /R:0 /W:0 /NFL /NDL /NJH /NJS /NP /XF *.etl.tmp | Out-Null
 }
 Line 'done; shutting down'

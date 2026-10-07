@@ -42,8 +42,7 @@ struct AppsDialogActions {
 
 [[nodiscard]] AppsDialog makeCatalogDialog(const Localization& strings, CatalogDialogSpec spec, AppsDialogActions actions);
 
-// Row texts of the two catalogs of PostSetupController.
-[[nodiscard]] std::vector<CatalogRow> appRows(const Localization& strings);
+// Row texts of PostSetupController's ready commands.
 [[nodiscard]] std::vector<CatalogRow> commandRows(const Localization& strings, Language language);
 
 } // namespace wl::app

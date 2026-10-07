@@ -63,19 +63,19 @@ void PostSetupController::store(PostSetupPlan plan) {
     m_state.queue(operationFor(plan, payload));
 }
 
+void PostSetupController::setPrograms(std::vector<core::PostSetupProgram> programs,
+                                      std::vector<std::pair<std::wstring, std::wstring>> texts) {
+    PostSetupPlan next = plan();
+    next.programs = std::move(programs);
+    next.programTexts = next.programs.empty() ? decltype(texts){} : std::move(texts);
+    store(std::move(next));
+}
+
 void PostSetupController::add(PostSetupStep step) {
     PostSetupPlan next = plan();
     next.steps.push_back(std::move(step));
     store(std::move(next));
 }
-
-namespace {
-bool wingetStepOf(const PostSetupPlan& plan, const std::wstring& id) {
-    return std::ranges::any_of(plan.steps, [&](const PostSetupStep& step) {
-        return step.type == PostSetupStep::Type::Winget && _wcsicmp(step.source.c_str(), id.c_str()) == 0;
-    });
-}
-} // namespace
 
 bool PostSetupController::hasCommand(std::size_t index) const {
     const auto& commands = readyCommands();
@@ -144,28 +144,6 @@ const std::vector<PostSetupController::ReadyCommand>& PostSetupController::ready
          Network},
     };
     return commands;
-}
-
-bool PostSetupController::hasApp(std::size_t index) const {
-    const auto& apps = popularApps();
-    return index < apps.size() && wingetStepOf(plan(), apps[index].id);
-}
-
-std::size_t PostSetupController::addApps(const std::vector<std::size_t>& indexes) {
-    const auto& apps = popularApps();
-    PostSetupPlan next = plan();
-    std::size_t added = 0;
-    for (const std::size_t index : indexes) {
-        if (index >= apps.size() || wingetStepOf(next, apps[index].id)) {
-            continue;
-        }
-        next.steps.push_back(PostSetupStep{PostSetupStep::Type::Winget, apps[index].name, apps[index].id, {}, true});
-        ++added;
-    }
-    if (added > 0) {
-        store(std::move(next));
-    }
-    return added;
 }
 
 void PostSetupController::replace(std::size_t index, PostSetupStep step) {

@@ -57,7 +57,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch, Intl, LanguageFetch, SystemMounts, StoreFetch };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch, Intl, LanguageFetch, SystemMounts, StoreFetch, Programs };
     using Listener = std::function<void(Change)>;
 
     // `answersFile`: where the answer file being edited is kept between runs (AnswerStore.h).
@@ -300,6 +300,8 @@ public:
     [[nodiscard]] std::optional<UpdateFetch>& updateFetchMutable() noexcept { return m_updateFetch; }
     void setUpdateFetch(std::optional<UpdateFetch> fetch);
     void notifyUpdateFetch() { notify(Change::UpdateFetch); }
+    // D-078: the Programs page's data (index loaded, a package's details or icon arrived).
+    void notifyPrograms() { notify(Change::Programs); }
 
     // D-061: "Dil ekle…" — the running uupdump.net lookup / language download
     // (LanguageFetchController). Change::LanguageFetch.

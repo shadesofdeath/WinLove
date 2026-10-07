@@ -18,12 +18,12 @@ namespace wl::app {
 class ComponentController {
 public:
     struct Item {
-        enum class Kind : std::uint8_t { Appx, System, Cleanup };
+        enum class Kind : std::uint8_t { Appx, System, Cleanup, Shrink };
         Kind kind = Kind::Appx;
         int source = 0;                          // Appx: index into AppState::appxList()->items
         std::wstring name;                       // friendly (catalog) or the package identity
         const AppxCatalogEntry* entry = nullptr; // Appx: may be null (unknown app)
-        const ComponentCatalogEntry* system = nullptr; // System / Cleanup
+        const ComponentCatalogEntry* system = nullptr; // System / Cleanup / Shrink
         core::ops::Risk risk = core::ops::Risk::Medium;
         std::uint64_t size = 0;                  // 0 = unknown
         std::wstring packageName;                // the queue target: package full name / catalog id
@@ -71,6 +71,7 @@ public:
 
 private:
     void readSystem(); // once per mount, after the app list is there
+    void queueItem(const Item& item); // the shrink brings automatic updates off with it
 
     AppState& m_state;
     AppxCatalog m_catalog;

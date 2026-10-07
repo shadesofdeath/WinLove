@@ -40,6 +40,14 @@ build\lab\
    [--hires]`, `click X Y [--right|--double]`, `wheel`, `key enter ctrl+a…`, `type`, `dialog <yol>` (Windows'un aç / kaydet /
    klasör seçicisini doldurur), `windows`, `mark` + `wait-log <regex>` (oturumun günlüğünde bir satırı bekler), `log`,
    `exec -- <komut>` (yönetici konsol komutu), `close | kill | quit`. Koordinatlar `shot`'ın piksel = DIP'i.
+   Sunucu komutları **sırayla** işler: uzun bir `exec` (ör. 45 dk'lık `lab_vm.ps1`) sürerken sonraki komut bekler. Uzun
+   laboratuvarı `Start-Process -Verb RunAs` ile ayrı başlat (bu makinede UAC sormaz); günlüğü `build\lab\out\vm-<etiket>-test.log`.
+4b. Çökme: uygulama yakalanmayan istisnada `%LOCALAPPDATA%\WinLove\logs\crash-<zaman>.txt` (sembollü yığın) + `.dmp` yazar;
+   render'lar dahil (çıkış kodu 0xC0000005 görülürse önce bu dosyaya bak).
+4c. `lab_vm.ps1 -Diag`: kurulan sistemde ilk oturumdan sonra `-DiagMinutes` boyunca kayıt tutar, çıktı
+   `build\lab\out\vm-<etiket>\diag`: `timeline.txt`, `WinLove\` (Kurulum Sonrası / Programlar günlükleri), `smoke.txt`
+   (disk kullanımı, WinSxS klasör sayısı, sistem programları ve kurulan programlar açılıyor mu, SideBySide olayları,
+   Defender imzaları). Laboratuvar bitince sanal diski siler: günlük yalnız `-Diag` ile kalır.
 5. **Yasak:** tüm ekranı yakalamak (`ImageGrab`, ekran görüntüsü). Kullanıcının diğer pencereleri görüntüye girer (D-013).
 6. Farklar sayfa spec'ine not edilir; bilinçli sapmalar `DECISIONS.md`'ye.
 7. Render testleri (`tests/ui/RenderTests.cpp`) piksel düzeyinde kontrol eder: token rengi, 1px çizginin %150'de tam bir fiziksel satır olması.

@@ -25,6 +25,8 @@ namespace wl::app {
 // resources/catalog/tasks.json (scheduled tasks, D-048) and hosts.json (block lists, D-049).
 [[nodiscard]] std::string_view embeddedTaskCatalog();
 [[nodiscard]] std::string_view embeddedHostsCatalog();
+// resources/catalog/programs.json (D-078).
+[[nodiscard]] std::string_view embeddedProgramsCatalog();
 
 [[nodiscard]] HICON appIcon();
 

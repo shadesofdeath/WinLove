@@ -7,6 +7,7 @@
 #include "core/image/ComponentStore.h"
 #include "core/image/SystemComponents.h"
 #include "core/image/dism/StoreCleanup.h"
+#include "core/image/dism/StoreShrink.h"
 #include "core/image/RegistryEdit.h"
 #include "core/image/RegistryRead.h"
 #include "core/updates/UpdateCatalog.h"
@@ -484,6 +485,7 @@ const wchar_t* phaseName(core::ops::Phase phase) {
     case core::ops::Phase::DeepRemove: return L"deep-remove";
     case core::ops::Phase::Cleanup: return L"cleanup";
     case core::ops::Phase::Settings: return L"settings";
+    case core::ops::Phase::Shrink: return L"shrink";
     }
     return L"?";
 }
@@ -996,6 +998,22 @@ int cmdStoreCleanup(const std::wstring& dir, bool resetBase) {
         return reportError(cleaned.error());
     }
     print(L"component store cleaned (image not committed)\n");
+    return 0;
+}
+
+// D-079: WinSxS at its smallest. --dry-run lists and measures what would go; otherwise it goes
+// (irreversible; the image is not committed). Both print the same measurement.
+int cmdStoreShrink(const std::wstring& dir, bool dryRun) {
+    const auto task = progressTask(dryRun ? L"measure" : L"shrink");
+    const auto plan = dryRun ? core::planStoreShrink(dir, /*measure=*/true, task) : core::shrinkComponentStore(dir, task);
+    print(L"\n");
+    if (!plan) {
+        return reportError(plan.error());
+    }
+    const auto gb = [](std::uint64_t n) { return static_cast<double>(n) / (1024.0 * 1024 * 1024); };
+    print(std::format(L"{} {} folders ({} files, {:.2f} GB as Explorer counts), {} kept; {:.2f} GB {}\n",
+                      dryRun ? L"would remove" : L"removed", plan->removed.size(), plan->files, gb(plan->bytes), plan->kept,
+                      gb(plan->freed), dryRun ? L"would be freed" : L"freed"));
     return 0;
 }
 
@@ -2307,6 +2325,7 @@ void printUsage() {
           L"  wlcli cbs <mountdir> [text]   (CBS packages from the image's registry, hidden ones too)\n"
           L"  wlcli component <mountdir> <recipe.json> [--remove]   (P07 system component: probe / remove)\n"
           L"  wlcli store-cleanup <mountdir> [--resetbase]   (dism /Cleanup-Image /StartComponentCleanup)\n"
+          L"  wlcli store-shrink <mountdir> [--dry-run]      (D-079: WinSxS at its smallest, irreversible)\n"
           L"  wlcli edition <mountdir> [--set=<EditionId>] [--json]   (current + target editions; --set: dism /Set-Edition)\n"
           L"  wlcli appx-remove <mountdir> <PackageFullName> [--native]   (DISM; natively when DISM refuses the app)\n"
           L"  wlcli boot-patch <boot.wim> <mountdir> [--bypass=tpm,secureboot,ram,cpu,storage|all] [--driver=<inf>]...\n"
@@ -2353,6 +2372,7 @@ int wmain(int argc, wchar_t** argv) {
     bool restoreIcons = false;
     bool remove = false;
     bool resetBase = false;
+    bool dryRun = false;
     std::wstring arch;
     std::wstring downloadDir;
     std::wstring wingetCacheDir;
@@ -2475,6 +2495,8 @@ int wmain(int argc, wchar_t** argv) {
             remove = true;
         } else if (a == L"--resetbase") {
             resetBase = true;
+        } else if (a == L"--dry-run") {
+            dryRun = true;
         } else if (a.starts_with(L"--source=")) {
             source = std::wstring(a.substr(9));
         } else if (a == L"--skip-errors") {
@@ -2572,6 +2594,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"store-cleanup" && args.size() == 2) {
         return cmdStoreCleanup(args[1], resetBase);
+    }
+    if (command == L"store-shrink" && args.size() == 2) {
+        return cmdStoreShrink(args[1], dryRun);
     }
     if (command == L"appx" && args.size() == 2) {
         return cmdAppx(args[1], asJson);

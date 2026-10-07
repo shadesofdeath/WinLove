@@ -18,7 +18,7 @@ struct ComponentCatalogGroup {
 };
 
 struct ComponentCatalogEntry {
-    enum class Kind : std::uint8_t { Remove, Cleanup };
+    enum class Kind : std::uint8_t { Remove, Cleanup, Shrink }; // Shrink: WinSxS at its smallest (D-079)
     std::string id;
     std::string group;
     Kind kind = Kind::Remove;

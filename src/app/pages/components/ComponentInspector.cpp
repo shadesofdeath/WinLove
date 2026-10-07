@@ -22,7 +22,8 @@ constexpr float kLine = 16.0f;
 ui::icons::Icon ComponentInspector::iconOf(ComponentController::Item::Kind kind) noexcept {
     switch (kind) {
     case ComponentController::Item::Kind::System: return ui::icons::Icon::WindowsLogoGeneric;
-    case ComponentController::Item::Kind::Cleanup: return ui::icons::Icon::SizeSaved;
+    case ComponentController::Item::Kind::Cleanup:
+    case ComponentController::Item::Kind::Shrink: return ui::icons::Icon::SizeSaved;
     case ComponentController::Item::Kind::Appx: break;
     }
     return ui::icons::Icon::AppxPackage;

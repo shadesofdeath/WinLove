@@ -344,7 +344,10 @@ void ComponentsPage::updateRiskBar() {
     if (count > 1) {
         body += (body.empty() ? L"" : L" ") + m_strings.format(Str::ApplyHighRiskN, {{L"n", std::to_wstring(count)}});
     }
-    m_riskBar->set(ui::InfoKind::Warning, m_strings.format(Str::ComponentsDepWarning, {{L"name", risky->name}}), body);
+    // The store cleanup and the shrink run something; the rest is removed.
+    const bool runs = risky->kind == ComponentController::Item::Kind::Cleanup || risky->kind == ComponentController::Item::Kind::Shrink;
+    m_riskBar->set(ui::InfoKind::Warning,
+                   m_strings.format(runs ? Str::ComponentsRunWarning : Str::ComponentsDepWarning, {{L"name", risky->name}}), body);
     m_riskBar->setVisible(true);
     layout();
 }

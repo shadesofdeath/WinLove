@@ -9,6 +9,7 @@
 #include "core/image/dism/Appx.h"
 #include "core/image/dism/Edition.h"
 #include "core/image/dism/StoreCleanup.h"
+#include "core/image/dism/StoreShrink.h"
 #include "core/image/AppxInstall.h"
 #include "core/image/Branding.h"
 #include "core/image/HostsFile.h"
@@ -249,6 +250,19 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
         }
         registry.reset(); // dism.exe loads the image's hives
         return cleanupComponentStore(session, cleanup->resetBase, task);
+    }
+    case OpKind::ShrinkStore: {
+        if (auto shrink = storeShrinkFromJson(utf8::fromWide(op.value)); !shrink) {
+            return std::unexpected(shrink.error());
+        }
+        registry.reset();
+        auto shrunk = shrinkComponentStore(session.mountPath(), task);
+        if (!shrunk) {
+            return std::unexpected(shrunk.error());
+        }
+        log::info("apply", std::format(L"WinSxS shrunk: {} folders removed, {} kept, {:.2f} GB freed", shrunk->removed.size(),
+                                       shrunk->kept, static_cast<double>(shrunk->freed) / (1024.0 * 1024 * 1024)));
+        return {};
     }
     }
     return fail(ErrorCode::Unsupported, L"operation kind not implemented yet", utf8::toWide(opKindKey(op.kind)));

@@ -17,20 +17,6 @@ constexpr int kVisibleRows = 12;
 
 enum Column : int { kName, kCategory, kId };
 
-Str categoryName(PostSetupController::AppCategory category) {
-    using Category = PostSetupController::AppCategory;
-    switch (category) {
-    case Category::Browsers: return Str::PostsetupCatBrowsers;
-    case Category::Tools: return Str::PostsetupCatTools;
-    case Category::Media: return Str::PostsetupCatMedia;
-    case Category::Development: return Str::PostsetupCatDevelopment;
-    case Category::Communication: return Str::PostsetupCatCommunication;
-    case Category::Games: return Str::PostsetupCatGames;
-    case Category::Office: return Str::PostsetupCatOffice;
-    }
-    return Str::PostsetupCatTools;
-}
-
 Str commandCategoryName(PostSetupController::CommandCategory category) {
     using Category = PostSetupController::CommandCategory;
     switch (category) {
@@ -41,14 +27,6 @@ Str commandCategoryName(PostSetupController::CommandCategory category) {
 }
 
 } // namespace
-
-std::vector<CatalogRow> appRows(const Localization& strings) {
-    std::vector<CatalogRow> rows;
-    for (const auto& app : PostSetupController::popularApps()) {
-        rows.push_back({app.name, strings.get(categoryName(app.category)), app.id});
-    }
-    return rows;
-}
 
 std::vector<CatalogRow> commandRows(const Localization& strings, Language language) {
     std::vector<CatalogRow> rows;

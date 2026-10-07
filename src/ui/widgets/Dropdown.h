@@ -63,6 +63,11 @@ public:
     bool onWheel(PointF p, float lines) override;
     bool onChar(wchar_t ch) override;
     void close(); // pops it (nothing picked); the closed callback runs
+    // Its owner is going away: no callback may reach it any more (it closes the popup next).
+    void detach() noexcept {
+        m_picked = nullptr;
+        m_closed = nullptr;
+    }
 
 private:
     [[nodiscard]] int itemAt(PointF p) const;

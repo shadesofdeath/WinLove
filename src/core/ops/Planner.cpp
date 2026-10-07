@@ -21,6 +21,7 @@ Phase phaseOf(OpKind kind) noexcept {
     case OpKind::RemoveAppx: return Phase::Remove;
     case OpKind::AddAppx: return Phase::Apps;
     case OpKind::CleanupImage: return Phase::Cleanup;
+    case OpKind::ShrinkStore: return Phase::Shrink;
     case OpKind::DisableFeature:
     case OpKind::EnableFeature: return Phase::Features;
     case OpKind::AddDriver: return Phase::Drivers;
@@ -92,6 +93,7 @@ double estimateSeconds(OpKind kind) noexcept {
     case OpKind::SetPicture: return 3.0;       // a few encodes (WIC)
     case OpKind::AddFont: return 0.5;
     case OpKind::PatchIcons: return 4.0; // read, rebuild, check with Windows, write (imageres: 24 MB)
+    case OpKind::ShrinkStore: return 90.0; // measure + remove ~15 000 WinSxS folders
     }
     return 5.0;
 }

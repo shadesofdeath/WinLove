@@ -15,6 +15,7 @@
 #include "app/controllers/FeatureController.h"
 #include "app/controllers/IsoController.h"
 #include "app/controllers/PostSetupController.h"
+#include "app/controllers/ProgramsController.h"
 #include "app/controllers/ImageController.h"
 #include "app/controllers/ImageSettingsController.h"
 #include "app/controllers/AppsController.h"
@@ -215,6 +216,8 @@ private:
     [[nodiscard]] ApplyPage* applyPage() const;
     [[nodiscard]] IsoPage* isoPage() const;
     [[nodiscard]] ComponentsPage* componentsPage() const;
+    [[nodiscard]] class ProgramsPage* programsPage() const;
+    void updateProgramInspector();
     void updateComponentInspector();
     void loadPreset();
     [[nodiscard]] UpdatesPage* updatesPage() const;
@@ -240,7 +243,6 @@ public:
     void toolDialogForDemo(const std::wstring& which, const std::filesystem::path& file); // D-058 renders
 
 private:
-    void pickPostSetupApps(); // "Hazır uygulamalar": the winget catalog as a check list
     void pickPostSetupCommands(); // "Hazır komutlar": power plan, network
     void saveAnswerFile();
     void scanDriverFolder();
@@ -332,6 +334,7 @@ private:
     std::unique_ptr<ImageSettingsController> m_imageSettings; // P12 form
     std::unique_ptr<UnattendController> m_unattend; // P13 answer file
     std::unique_ptr<PostSetupController> m_postSetup; // P14 steps
+    std::unique_ptr<ProgramsController> m_programs;   // D-078 winget programs
     std::unique_ptr<PresetController> m_presets;      // P15 library
     std::unique_ptr<PreloadController> m_preload; // reads the page lists right after a mount
     std::unique_ptr<ImageValuesController> m_imageValues; // what the image already has (D-045)

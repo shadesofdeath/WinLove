@@ -5,6 +5,7 @@
 #include "app/pages/ApplyPage.h"
 #include "base/Utf8.h"
 #include "core/image/dism/StoreCleanup.h"
+#include "core/image/dism/StoreShrink.h"
 
 #include "base/Utf8.h"
 #include "core/ops/Planner.h"
@@ -113,7 +114,7 @@ ComponentCatalog shippedComponents() {
 TEST_CASE("components catalog: the shipped file parses, every recipe is one the engine accepts") {
     const auto catalog = shippedComponents();
     REQUIRE(catalog.groups().size() == 10);
-    CHECK(catalog.components().size() == 48); // nothing skipped
+    CHECK(catalog.components().size() == 49); // nothing skipped
     for (const auto& entry : catalog.components()) {
         CAPTURE(entry.id);
         CHECK_FALSE(entry.notes.tr.empty());
@@ -169,6 +170,9 @@ TEST_CASE("components catalog: the shipped file parses, every recipe is one the 
     REQUIRE(update);
     CHECK(update->recipe.registry.front().kind == core::RegistryWrite::Kind::DeleteKey);
     CHECK(catalog.find("component-store")->kind == ComponentCatalogEntry::Kind::Cleanup);
+    REQUIRE(catalog.find("component-store-shrink"));
+    CHECK(catalog.find("component-store-shrink")->kind == ComponentCatalogEntry::Kind::Shrink);
+    CHECK(catalog.find("component-store-shrink")->risk == core::ops::Risk::High);
     CHECK_FALSE(catalog.find("defender")); // not a removable package on Windows 11 24H2+ (D-031)
     // D-063: Defender from the root — packages, files, service keys, its app; a preset carries it all.
     const auto* defender = catalog.find("defender-full");
@@ -216,7 +220,7 @@ TEST_CASE("ComponentController: system components the image has, the cleanup, an
     state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});
     // Known before the app list arrives: the controller has nothing to read itself.
     state.setSystemComponents(AppState::SystemComponents{
-        L"C:\\m", {{"edge", {true, 800}}, {"onedrive", {true, 90}}, {"winre", {false, 0}}}});
+        L"C:\\m", {{"edge", {true, 800}}, {"onedrive", {true, 90}}, {"winre", {false, 0}}, {"component-store-shrink", {true, 3000}}}});
     state.setAppxList(AppState::AppxList{AppState::AppxList::Status::Ready, L"C:\\m", {makeApp(L"Microsoft.GamingApp", 400)}, {}});
 
     const auto groups = controller.groups();
@@ -248,9 +252,15 @@ TEST_CASE("ComponentController: system components the image has, the cleanup, an
     CHECK(privacy.items[0].system->id == "telemetry");
     CHECK(privacy.items[0].system->recipe.packages.empty());
     CHECK(privacy.items[0].system->recipe.registry.size() == 3);
+    REQUIRE(groups[3].items.size() == 2);
     const auto& cleanup = groups[3].items.front();
     CHECK(cleanup.kind == ComponentController::Item::Kind::Cleanup);
     CHECK(cleanup.size == 0);
+    // D-079: what shrinking frees, as the probe measured it.
+    const auto& shrink = groups[3].items.back();
+    CHECK(shrink.kind == ComponentController::Item::Kind::Shrink);
+    CHECK(shrink.size == 3000);
+    CHECK(shrink.risk == core::ops::Risk::High);
     // Group indexes never collide with the AppX catalog's.
     CHECK(groups[4].name == L"Xbox ve Oyun");
     CHECK(system.catalogIndex != groups[4].catalogIndex);
@@ -281,12 +291,37 @@ TEST_CASE("ComponentController: system components the image has, the cleanup, an
     CHECK(controller.queuedCount() == 2);
     CHECK(controller.queuedBytes() == 90);
 
+    // The shrink brings automatic updates off with it, in one queue edit; out again, the update
+    // setting stays (Ayarlar shows it).
+    const auto version = state.changes().version();
+    controller.toggle(shrink);
+    CHECK(state.changes().version() == version + 1);
+    const auto* shrunk = state.changes().find(OpKind::ShrinkStore, L"component-store-shrink");
+    REQUIRE(shrunk);
+    CHECK(shrunk->risk == core::ops::Risk::High);
+    CHECK(core::storeShrinkFromJson(utf8::fromWide(shrunk->value))->title == shrink.name);
+    CHECK(ApplyPage::displayName(state, *shrunk) == shrink.name);
+    const auto* updates =
+        state.changes().find(OpKind::SetRegistryValue, L"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU::NoAutoUpdate");
+    REQUIRE(updates);
+    CHECK(updates->value == L"dword:00000001");
+    const std::wstring updatesTarget = updates->target; // the queue's storage moves when it changes
+    CHECK(controller.queuedCount() == 3);
+    CHECK(controller.queuedBytes() == 3090);
+    controller.toggle(shrink);
+    CHECK_FALSE(state.changes().find(OpKind::ShrinkStore, L"component-store-shrink"));
+    CHECK(state.changes().find(OpKind::SetRegistryValue, updatesTarget));
+    controller.toggle(shrink); // the setting is there already: not queued twice
+    CHECK(state.changes().count(OpKind::SetRegistryValue) == 1);
+    controller.toggle(shrink);
+
     controller.toggle(self.items[0]); // again: out of the queue
     CHECK_FALSE(state.changes().find(OpKind::RemoveComponent, L"onedrive"));
     controller.toggleGroup(self);
     CHECK(controller.check(self) == ComponentController::Check::On);
     controller.resetChanges();
-    CHECK(state.changes().empty());
+    REQUIRE(state.changes().size() == 1); // the update setting belongs to Ayarlar
+    CHECK(state.changes().operations().front().kind == OpKind::SetRegistryValue);
 
     // Another image: what was known about the old one is gone with it.
     state.setMounted(MountedImage{L"C:\\m2", L"C:\\w\\install.wim", 2, L"Home"});
