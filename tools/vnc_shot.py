@@ -2,7 +2,7 @@
 .vmx) — only the VM's own screen, never the host's. Raw encoding, no authentication (the lab VMs set
 no VNC password).
 
-    python tools/vnc_shot.py <port> <out.png> [--host 127.0.0.1] [--timeout 20]
+    python tools/vnc_shot.py <port> <out.png> [--host 127.0.0.1] [--timeout 20] [--wake]
 
 Exit 0 with the PNG written; 1 when the VM does not answer (powered off, still booting the VNC
 server); 2 when it asks for a password.
@@ -25,7 +25,7 @@ def recv_exact(sock, n):
     return bytes(data)
 
 
-def shot(host, port, out, timeout):
+def shot(host, port, out, timeout, wake=False):
     sock = socket.create_connection((host, port), timeout=timeout)
     sock.settimeout(timeout)
     version = recv_exact(sock, 12)
@@ -51,6 +51,16 @@ def shot(host, port, out, timeout):
     pixel_format = struct.pack('>BBBBHHHBBB3x', 32, 24, 0, 1, 255, 255, 255, 16, 8, 0)
     sock.sendall(struct.pack('>B3x', 0) + pixel_format)
     sock.sendall(struct.pack('>BxHi', 2, 1, 0))  # SetEncodings: Raw
+    if wake:
+        # A pointer move wakes a display Windows turned off after idle time; give it a moment.
+        import time
+        for x in (width // 2, width // 2 + 8, width // 2):
+            sock.sendall(struct.pack('>BBHH', 5, 0, x, height // 2))
+            time.sleep(0.3)
+        for down in (1, 0):  # and a Shift press: Windows wakes the display on input
+            sock.sendall(struct.pack('>BBxxI', 4, down, 0xFFE1))
+            time.sleep(0.2)
+        time.sleep(5)
     sock.sendall(struct.pack('>BBHHHH', 3, 0, 0, 0, width, height))
     image = Image.new('RGB', (width, height))
     covered = 0
@@ -96,9 +106,10 @@ def main():
     parser.add_argument('out')
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--timeout', type=float, default=20)
+    parser.add_argument('--wake', action='store_true', help='move the pointer first (a display turned off after idle time)')
     args = parser.parse_args()
     try:
-        return shot(args.host, args.port, args.out, args.timeout)
+        return shot(args.host, args.port, args.out, args.timeout, args.wake)
     except (OSError, ConnectionError) as error:
         print(f'vnc: {error}', file=sys.stderr)
         return 1
