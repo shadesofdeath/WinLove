@@ -44,5 +44,8 @@ struct WimVerifyReport {
 // ("Windows\System32\Recovery\Winre.wim", either slash, any case) is a file in edition `index`.
 // Unsupported for ESD; a part of a split image other than the first has no file lists.
 [[nodiscard]] Result<bool> wimFileExists(const ByteSource& wim, int index, std::wstring_view path);
+// The names in folder `folder` of edition `index` (files and folders; empty when there is no such
+// folder). Same reading and limits as wimFileExists.
+[[nodiscard]] Result<std::vector<std::wstring>> wimFolderNames(const ByteSource& wim, int index, std::wstring_view folder);
 
 } // namespace wl::core

@@ -64,6 +64,53 @@ TEST_CASE("AIO: an added edition named like one already there gets its release (
     CHECK(distinctEditionNames(images, 6).empty()); // nothing added
 }
 
+TEST_CASE("isWindowsEdition: a Media Creation Tool ESD offers only its Windows editions") {
+    // The seven images of the Windows 10 22H2 MCT ESD in build\lab\win10, as its XML has them.
+    auto image = [](const wchar_t* name, const wchar_t* edition, const wchar_t* type, Architecture arch) {
+        ImageInfo i;
+        i.name = name;
+        i.editionId = edition;
+        i.installationType = type;
+        i.architecture = arch;
+        return i;
+    };
+    CHECK_FALSE(isWindowsEdition(image(L"Windows Setup Media", L"", L"", Architecture::Unknown)));
+    CHECK_FALSE(isWindowsEdition(image(L"Microsoft Windows PE (x64)", L"WindowsPE", L"WindowsPE", Architecture::X64)));
+    CHECK_FALSE(isWindowsEdition(image(L"Microsoft Windows Setup (x64)", L"WindowsPE", L"WindowsPE", Architecture::X64)));
+    CHECK(isWindowsEdition(image(L"Windows 10 Home", L"Core", L"Client", Architecture::X64)));
+    CHECK(isWindowsEdition(image(L"Windows 10 Pro", L"Professional", L"Client", Architecture::X64)));
+    CHECK(isWindowsEdition(image(L"Windows Server 2025 Standard", L"ServerStandard", L"Server Core", Architecture::X64)));
+    CHECK_FALSE(isWindowsEdition(image(L"data", L"", L"", Architecture::Unknown))); // a captured data folder
+}
+
+TEST_CASE("enablementBuild: Windows 10 22H2 media keeps 19041 in its XML (D-077, measured)") {
+    // build\lab\win10\win10_22h2_tr_consumer.esd, edition 7, Windows\servicing\Packages (read-only mount):
+    // the payloads of every release since 20H2, but only 22H2's switch; its SOFTWARE hive says 19045 / 22H2.
+    const std::vector<std::wstring> packages{
+        L"Microsoft-Windows-20H2Enablement-Payload-Package~31bf3856ad364e35~amd64~~10.0.19041.1799.mum",
+        L"Microsoft-Windows-21H1Enablement-Payload-Package~31bf3856ad364e35~amd64~~10.0.19041.1799.mum",
+        L"Microsoft-Windows-21H2Enablement-Payload-Package~31bf3856ad364e35~amd64~~10.0.19041.1799.mum",
+        L"Microsoft-Windows-22H2Enablement-Package~31bf3856ad364e35~amd64~~10.0.19041.1799.mum",
+        L"Microsoft-Windows-22H2Enablement-Payload-Package~31bf3856ad364e35~amd64~~10.0.19041.1799.mum",
+        L"Microsoft-Windows-Product-Data-22h2-EKB-Package~31bf3856ad364e35~amd64~~10.0.19041.3803.mum",
+        L"Microsoft-Windows-UpdateTargeting-ClientOS-22h2-EKB-Package~31bf3856ad364e35~amd64~~10.0.19041.3803.mum",
+    };
+    CHECK(enablementBuild(packages) == 19045);
+    CHECK(releaseLabel(enablementBuild(packages)) == L"10 22H2");
+    // 21H2 media: its switch only; payloads alone switch nothing on.
+    CHECK(enablementBuild(std::vector<std::wstring>{
+              L"Microsoft-Windows-21H2Enablement-Package~31bf3856ad364e35~amd64~~10.0.19041.1288.mum",
+              L"Microsoft-Windows-22H2Enablement-Payload-Package~31bf3856ad364e35~amd64~~10.0.19041.1288.mum"}) == 19044);
+    CHECK(enablementBuild(std::vector<std::wstring>{
+              L"microsoft-windows-20h2enablement-package~31bf3856ad364e35~amd64~~10.0.19041.572.mum"}) == 19042);
+    CHECK(enablementBuild(std::vector<std::wstring>{
+              L"Microsoft-Windows-20H2Enablement-Payload-Package~31bf3856ad364e35~amd64~~10.0.19041.1799.mum"}) == 0);
+    CHECK(enablementBuild(std::vector<std::wstring>{}) == 0);
+    // Windows 11's own enablement packages (23H2, 25H2) are no business of this: their media say the build.
+    CHECK(enablementBuild(std::vector<std::wstring>{
+              L"Microsoft-Windows-23H2Enablement-Package~31bf3856ad364e35~amd64~~10.0.22621.2506.mum"}) == 0);
+}
+
 TEST_CASE("AIO: what the setup media can install (D-077, measured)") {
     auto image = [](int index, int build) {
         ImageInfo i;
@@ -76,6 +123,7 @@ TEST_CASE("AIO: what the setup media can install (D-077, measured)") {
     aio.install.images = {image(1, 26200), image(2, 19045), image(3, 22631)};
     CHECK(setupMediaBuild(aio) == 0);           // a bare image: no media to judge
     CHECK(editionsMediaCannotInstall(aio).empty());
+    CHECK_FALSE(mediaOpensPreviousSetup(aio));
 
     WimFile boot;
     boot.images = {image(1, 26100), image(2, 26100)};
@@ -83,9 +131,11 @@ TEST_CASE("AIO: what the setup media can install (D-077, measured)") {
     aio.boot = boot;                            // Windows 11 24H2 media
     CHECK(setupMediaBuild(aio) == 26100);
     CHECK(editionsMediaCannotInstall(aio) == std::vector<int>{2});
+    CHECK_FALSE(mediaOpensPreviousSetup(aio));  // the new Setup: the switch means something
 
     aio.boot->images = {image(1, 19041), image(2, 19041)}; // Windows 10 media installs them all
     CHECK(editionsMediaCannotInstall(aio).empty());
+    CHECK(mediaOpensPreviousSetup(aio));
     aio.boot->images = {image(1, 22631)};                  // 23H2: no measurement says otherwise
     aio.boot->header.bootIndex = 0;                        // no boot index: the last image
     CHECK(setupMediaBuild(aio) == 22631);

@@ -57,6 +57,8 @@ private:
     void paintLegacyHint(ui::Canvas& canvas, float formRight);
     [[nodiscard]] std::vector<int> mediaCannotInstall() const; // D-077 (or the render demo's)
     [[nodiscard]] std::wstring setupImageText() const;
+    // "Kurulum ekranı" in the summary: which Setup the media opens, and in what ink.
+    [[nodiscard]] std::pair<std::wstring, ui::tokens::Color> setupUiSummary() const;
     void notifyChanged();
     void paintIsoForm(ui::Canvas& canvas, float y, float formRight);
     void paintUsbForm(ui::Canvas& canvas, float y, float formRight);

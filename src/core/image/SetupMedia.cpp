@@ -121,6 +121,11 @@ int setupMediaBuild(const SourceInfo& source) {
     return image ? image->build : 0;
 }
 
+bool mediaOpensPreviousSetup(const SourceInfo& source) {
+    const int build = setupMediaBuild(source);
+    return build > 0 && build < kNewSetup;
+}
+
 std::vector<int> editionsMediaCannotInstall(const SourceInfo& source) {
     std::vector<int> out;
     if (setupMediaBuild(source) < kNewSetup) {

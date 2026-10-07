@@ -3,6 +3,7 @@
 #include "base/Text.h"
 #include "core/image/ImageInfo.h"
 
+#include <algorithm>
 #include <array>
 #include <format>
 #include <string_view>
@@ -33,6 +34,26 @@ std::wstring releaseLabel(int build) {
         }
     }
     return std::format(L"{} build {}", major, build);
+}
+
+int enablementBuild(std::span<const std::wstring> packageFiles) {
+    static constexpr std::wstring_view kPrefix = L"microsoft-windows-";
+    static constexpr std::wstring_view kSuffix = L"enablement-package~"; // not "…Enablement-Payload-Package~"
+    int best = 0;
+    for (const auto& file : packageFiles) {
+        const std::wstring name = text::lower(file);
+        const auto at = name.find(kSuffix);
+        if (!name.starts_with(kPrefix) || at == std::wstring::npos || at < kPrefix.size()) {
+            continue;
+        }
+        const std::wstring_view release = std::wstring_view(name).substr(kPrefix.size(), at - kPrefix.size()); // "22h2"
+        for (const auto& r : kReleases) {
+            if (r.build > kWindows10Base && r.build < 22000 && text::iequals(release, r.name)) {
+                best = std::max(best, r.build);
+            }
+        }
+    }
+    return best;
 }
 
 std::vector<std::pair<int, std::wstring>> distinctEditionNames(const std::vector<ImageInfo>& images, int firstNew) {

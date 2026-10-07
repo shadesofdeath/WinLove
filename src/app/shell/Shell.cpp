@@ -2839,13 +2839,21 @@ void Shell::askAppendEditions() {
                 showToast(ui::InfoKind::Error, m_strings.get(Str::ImagesAppend), errorText(result.error()));
                 return;
             }
+            // Only Windows editions: a Media Creation Tool ESD also holds its setup files and two
+            // Windows PE images, which would land in install.wim as editions Setup cannot install.
+            std::vector<core::ImageInfo> editions;
+            std::ranges::copy_if(result->install.images, std::back_inserter(editions), core::isWindowsEdition);
+            if (editions.empty()) {
+                showToast(ui::InfoKind::Error, m_strings.get(Str::ImagesAppend), m_strings.get(Str::ImagesAppendNone));
+                return;
+            }
             const ModalSlot slot = modalSlot();
             auto close = slot.close;
             std::wstring note = m_strings.format(Str::ImagesAppendNote, {{L"file", path.filename().wstring()}});
             if (m_state.source() && m_state.source()->format == core::ImageFormat::Iso) {
                 note += L" " + m_strings.get(Str::DialogsDeleteIsoNote);
             }
-            ToolDialog built = makeEditionsDialog(m_strings, m_strings.get(Str::ImagesAppend), note, result->install.images,
+            ToolDialog built = makeEditionsDialog(m_strings, m_strings.get(Str::ImagesAppend), note, editions,
                                                   m_strings.get(Str::CommonAdd),
                                                   [this, path](std::vector<int> picked) { m_images->appendFrom(path, std::move(picked)); },
                                                   close);

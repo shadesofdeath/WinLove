@@ -496,6 +496,7 @@ enum class Str : std::uint16_t {
     ImagesActionsHint,
     ImagesActionsTitle,
     ImagesAppend,
+    ImagesAppendNone,
     ImagesAppendNote,
     ImagesAppendedToast,
     ImagesArch,
@@ -688,7 +689,9 @@ enum class Str : std::uint16_t {
     IsoFolder,
     IsoLabel,
     IsoLegacySetup,
+    IsoLegacySetupClassic,
     IsoLegacySetupHint,
+    IsoLegacySetupMedia,
     IsoLegacySetupNew,
     IsoLegacySetupNewFails,
     IsoLegacySetupNoWinre,
@@ -1382,7 +1385,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1372;
+inline constexpr std::size_t kStrCount = 1375;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -1873,6 +1876,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "images.actionsHint",
     "images.actionsTitle",
     "images.append",
+    "images.appendNone",
     "images.appendNote",
     "images.appendedToast",
     "images.arch",
@@ -2065,7 +2069,9 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "iso.folder",
     "iso.label",
     "iso.legacySetup",
+    "iso.legacySetupClassic",
     "iso.legacySetupHint",
+    "iso.legacySetupMedia",
     "iso.legacySetupNew",
     "iso.legacySetupNewFails",
     "iso.legacySetupNoWinre",

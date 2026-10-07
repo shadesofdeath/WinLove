@@ -43,4 +43,9 @@ struct ImageInfo {
 
 [[nodiscard]] const wchar_t* architectureName(Architecture arch) noexcept; // "x64"
 
+// A Windows edition Setup can install: not a Windows PE image and not the "Windows Setup Media"
+// image of a Media Creation Tool ESD (no edition, no architecture). Adding editions from another
+// image offers only these.
+[[nodiscard]] bool isWindowsEdition(const ImageInfo& image) noexcept;
+
 } // namespace wl::core

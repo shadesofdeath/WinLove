@@ -299,6 +299,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             ok = point(L"--tooltip-at=", options.tooltipAt);
         } else if (startsWith(a, L"--recent-file=")) {
             options.recentFile = std::filesystem::path(value(L"--recent-file="));
+        } else if (startsWith(a, L"--profile=")) {
+            options.profile = std::filesystem::path(value(L"--profile="));
         } else if (a == L"--dialog=admin") {
             options.adminDialog = true;
         } else if (startsWith(a, L"--drag=")) {
@@ -395,10 +397,16 @@ Result<void> App::initialize() {
     // get throw-away files unless a fixture is passed with --recent-file.
     const bool render = m_options.renderTo.has_value();
     const auto scratch = std::filesystem::temp_directory_path() / L"WinLove-render";
+    // A windowed test run (--profile) keeps the same three files in its own folder.
+    const auto& profile = m_options.profile;
     m_state = std::make_unique<AppState>(
-        m_options.recentFile.value_or(render ? scratch / L"recent.json" : RecentSources::defaultFile()),
-        render ? scratch / L"settings.json" : AppSettings::defaultFile(),
-        render ? std::filesystem::path() : defaultAnswersFile()); // renders show what their arguments say
+        m_options.recentFile.value_or(render    ? scratch / L"recent.json"
+                                      : profile ? *profile / L"recent.json"
+                                                : RecentSources::defaultFile()),
+        render ? scratch / L"settings.json" : profile ? *profile / L"settings.json" : AppSettings::defaultFile(),
+        render    ? std::filesystem::path() // renders show what their arguments say
+        : profile ? *profile / L"answers.dat"
+                  : defaultAnswersFile());
     // The user's settings (P16) — a render shows what its arguments say, never the scratch file.
     if (!render) {
         const AppSettings& settings = m_state->settings();

@@ -12,6 +12,8 @@
 //      --context-at=x,y       (right click: context menu)
 //      --tab=N                (press Tab N times: keyboard focus ring)
 //      --recent-file=<json>   (recent-sources file to show; default %LOCALAPPDATA%\WinLove\recent.json)
+//      --profile=<folder>     (windowed: recent.json, settings.json and answers.dat from this folder instead of
+//                              %LOCALAPPDATA%\WinLove — test runs, tools\gui.py; its settings.json sets the work folder)
 //      --dialog=admin         (open the administrator dialog, s4)
 //      --drag=valid|invalid   (Source page drop zone drag state)
 //      --mount=N              (windowed: after opening the source, mount edition N — UAC relaunch)
@@ -106,6 +108,7 @@ struct LaunchOptions {
     std::optional<ui::PointF> tooltipAt;
     int tabPresses = 0;
     std::optional<std::filesystem::path> recentFile;
+    std::optional<std::filesystem::path> profile; // --profile=<folder>: recent / settings / answers of a test run
     bool adminDialog = false;
     std::optional<bool> dragValid;
     std::optional<std::filesystem::path> openPath; // positional argument

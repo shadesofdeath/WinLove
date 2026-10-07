@@ -2,7 +2,10 @@
 
 #include "base/Log.h"
 #include "base/Path.h"
+#include "core/image/WindowsRelease.h"
+#include "core/image/wim/WimVerify.h"
 
+#include <algorithm>
 #include <format>
 
 namespace wl::core {
@@ -11,6 +14,37 @@ namespace {
 
 constexpr const wchar_t* kInstallCandidates[] = {L"sources/install.wim", L"sources/install.esd",
                                                  L"sources/install.swm"};
+
+// Windows 10 editions whose XML says 19041 get the build their enablement package gives them
+// (22H2: 19045), read from the edition's file list. One read per update level: a Microsoft ISO's
+// editions share it. ESD (solid LZMS) and later parts of a split image have no readable file list
+// here: they keep 19041.
+void raiseEnablementBuilds(const ByteSource& file, WimFile& wim) {
+    if (wim.header.solid || wim.header.partNumber > 1) {
+        return;
+    }
+    std::vector<std::pair<int, int>> known; // spBuild → build it was raised to (0: not raised)
+    for (auto& image : wim.images) {
+        if (image.build != kWindows10Base) {
+            continue;
+        }
+        const auto seen = std::ranges::find(known, image.spBuild, &std::pair<int, int>::first);
+        int raised = 0;
+        if (seen != known.end()) {
+            raised = seen->second;
+        } else {
+            if (auto names = wimFolderNames(file, image.index, L"Windows\\servicing\\Packages")) {
+                raised = enablementBuild(*names);
+            } else {
+                log::warn("source", L"edition " + std::to_wstring(image.index) + L": " + describe(names.error()));
+            }
+            known.emplace_back(image.spBuild, raised);
+        }
+        if (raised > 0) {
+            image.build = raised;
+        }
+    }
+}
 
 } // namespace
 
@@ -41,10 +75,12 @@ Result<SourceInfo> openSource(const std::filesystem::path& input) {
                         path.wstring());
         }
         info.installImageSize = install->size;
-        auto wim = readWim(*iso->openFile(*install));
+        const auto installFile = iso->openFile(*install);
+        auto wim = readWim(*installFile);
         if (!wim) {
             return std::unexpected(wim.error());
         }
+        raiseEnablementBuilds(*installFile, *wim);
         info.install = std::move(*wim);
         if (auto boot = iso->find(L"sources/boot.wim")) {
             if (auto bootWim = readWim(*iso->openFile(*boot))) {
@@ -66,6 +102,7 @@ Result<SourceInfo> openSource(const std::filesystem::path& input) {
         if (!wim) {
             return std::unexpected(wim.error());
         }
+        raiseEnablementBuilds(**file, *wim);
         info.install = std::move(*wim);
         break;
     }
@@ -92,6 +129,7 @@ Result<SourceInfo> openSource(const std::filesystem::path& input) {
         if (!wim) {
             return std::unexpected(wim.error());
         }
+        raiseEnablementBuilds(**file, *wim);
         info.install = std::move(*wim);
         if (auto boot = DiskFile::open(path / L"sources/boot.wim")) {
             if (auto bootWim = readWim(**boot)) {

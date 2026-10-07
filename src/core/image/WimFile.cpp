@@ -1,5 +1,6 @@
 #include "core/image/WimFile.h"
 
+#include "base/Text.h"
 #include "base/Utf8.h"
 
 #include <pugixml.hpp>
@@ -61,6 +62,11 @@ Architecture architectureFrom(int code) {
 
 std::wstring ImageInfo::versionString() const {
     return std::format(L"{}.{}.{}.{}", major, minor, build, spBuild);
+}
+
+bool isWindowsEdition(const ImageInfo& image) noexcept {
+    return !image.editionId.empty() && image.architecture != Architecture::Unknown &&
+           !text::iequals(image.installationType, L"WindowsPE");
 }
 
 const wchar_t* architectureName(Architecture arch) noexcept {

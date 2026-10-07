@@ -12,6 +12,8 @@
   -InstallWim <wim> -ImageIndex N: install edition N of a ready install.wim (no changeset; AIO tests);
    -BootWim <wim>: the media's boot.wim replaced (e.g. one patched for the previous Setup);
    -SetupFolder <dir>: the setup media files from there instead of build\lab\setup (another Windows).
+  -NoBypass: the answer file leaves out the LabConfig TPM / Secure Boot / RAM bypasses (the VM has no
+   TPM and no Secure Boot: does this media's Setup check Windows 11's requirements at all?).
   -Cpus / -MemMB: the vCPU count and memory (default 2, 4096). (An NVMe disk does not start under vmrun here.)
   -OpenThisPc: Explorer opens "This PC" at the first sign-in (icons tests).
   -Network: a NAT network card, e1000 (e1000e and vmxnet3 crash this VMware at power-on; Windows Update, Store and OOBE downloads happen; the default is none).
@@ -44,7 +46,8 @@ param(
     [string] $InstallWim = '',
     [int] $ImageIndex = 1,
     [string] $BootWim = '',
-    [string] $SetupFolder = ''
+    [string] $SetupFolder = '',
+    [switch] $NoBypass
 )
 $ErrorActionPreference = 'Stop'
 $Lab = [System.IO.Path]::GetFullPath($Lab)
@@ -160,6 +163,7 @@ SPECIALIZE
 '@
 
 $unattend = $unattend.Replace('PRODUCTKEY', $ProductKey).Replace('IMAGEINDEX', "$ImageIndex")
+if ($NoBypass) { $unattend = [regex]::Replace($unattend, '(?s)\s*<RunSynchronous>\s*<RunSynchronousCommand[^>]*><Order>1</Order><Path>reg add HKLM\\SYSTEM\\Setup\\LabConfig.*?</RunSynchronous>', '') }
 $first = if ($FirstLogon) { [System.Security.SecurityElement]::Escape($FirstLogon) } elseif ($OpenThisPc) { 'cmd /c start explorer.exe shell:MyComputerFolder' } else { 'cmd /c echo first sign-in' }
 $shutdownCmd = if ($Diag -or $ShutdownAfter -le 0) { 'cmd /c echo the guest shuts itself down' } else { "cmd /c timeout /t $ShutdownAfter /nobreak &amp; shutdown /s /t 0" }
 $specialize = if ($Diag) { '        <RunSynchronousCommand wcm:action="add"><Order>2</Order><Path>cmd /c C:\ProgramData\WinLoveDiag\setup.cmd</Path></RunSynchronousCommand>' } else { '' }
