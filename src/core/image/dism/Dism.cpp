@@ -3,6 +3,7 @@
 #include "base/Log.h"
 #include "base/Path.h"
 #include "core/image/dism/DismApi.h"
+#include "core/image/dism/HostDism.h"
 #include "core/system/Files.h"
 #include "core/system/Privileges.h"
 #include "core/system/Process.h"
@@ -77,12 +78,13 @@ Result<Dism*> Dism::instance() {
         return dism.get();
     }
     auto created = std::unique_ptr<Dism>(new Dism());
-    const auto dll = systemTool(L"dismapi.dll");
-    if (!dll) {
-        return std::unexpected(dll.error());
-    }
-    const std::filesystem::path dllPath = *dll;
-    created->m_module = LoadLibraryExW(dllPath.c_str(), nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    // System32's, or the ADK's when this PC's DISM is missing a part (HostDism.h, D-081). The ADK's
+    // dismapi.dll finds DismCore and its providers in its own folder.
+    const DismLocation& location = dismLocation();
+    const std::filesystem::path dllPath = location.dismapi;
+    created->m_module = LoadLibraryExW(dllPath.c_str(), nullptr,
+                                       location.adk ? LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32
+                                                    : LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (!created->m_module) {
         return fail(ErrorCode::NotFound, L"dismapi.dll not found", dllPath.wstring(),
                     static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
@@ -125,7 +127,8 @@ Result<Dism*> Dism::instance() {
     } else if (FAILED(hr)) {
         return fail(kCode, L"DismInitialize failed", logFile.wstring(), hr);
     }
-    log::info("dism", std::format(L"DISM API initialized (log: {})", logFile.wstring()));
+    log::info("dism", std::format(L"DISM API initialized: {} {} (log: {})", dllPath.wstring(), fileVersion(dllPath),
+                                  logFile.wstring()));
     dism = std::move(created);
     return dism.get();
 }

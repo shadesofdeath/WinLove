@@ -152,6 +152,8 @@ public:
     // ---- sources --------------------------------------------------------------------------
     // `then` runs after a successful open (e.g. --mount=N after a UAC relaunch).
     void openSource(const std::filesystem::path& path, std::function<void()> then = {});
+    // D-081: this PC's DISM / wimgapi files, read once at start (~0.1 s, reader thread).
+    void checkHost();
     void startPreload(); // image values first (fast), then the page lists
     // A mount from a previous run (ImageController::adoptExistingMount): reopen its source and
     // show it as mounted again.

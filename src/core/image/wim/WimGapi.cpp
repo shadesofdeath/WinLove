@@ -2,11 +2,15 @@
 
 #include "base/Log.h"
 #include "base/Path.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 #include "core/image/WimFile.h"
+#include "core/image/dism/HostDism.h"
+#include "core/image/wim/WimVerify.h"
 #include "core/io/ByteSource.h"
 #include "core/system/Files.h"
 #include "core/system/Process.h"
+#include "core/system/Signature.h"
 
 #include <pugixml.hpp>
 
@@ -16,6 +20,8 @@
 #include <cwctype>
 #include <format>
 #include <functional>
+#include <map>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -75,46 +81,211 @@ bool load(HMODULE module, const char* name, F& target) {
     return target != nullptr;
 }
 
-Result<const Api*> api() {
-    static Api instance;
-    static Result<void> status = [] () -> Result<void> {
-        const auto dll = systemTool(L"wimgapi.dll");
-        if (!dll) {
-            return std::unexpected(dll.error());
+// One copy of wimgapi.dll (D-081): this PC's (System32), the Windows ADK's, or a setup media's own
+// (sources\wimgapi.dll next to install.esd) — loaded once, never unloaded.
+struct Library {
+    std::filesystem::path path;
+    std::wstring origin; // "system", "adk", "media", "forced"
+    std::wstring version;
+    Api api;
+    Result<void> status = {}; // loaded with every entry point
+};
+
+std::mutex g_librariesMutex;
+std::vector<std::unique_ptr<Library>> g_libraries;
+std::optional<std::filesystem::path> g_forced;              // wlcli --wimgapi=
+std::map<std::wstring, const Library*> g_choice;             // per file (path|size|time): the copy that opens it
+thread_local const Library* t_library = nullptr;             // this operation's copy
+
+const Library& loadLibrary(const std::filesystem::path& path, std::wstring origin) {
+    std::scoped_lock lock(g_librariesMutex);
+    for (const auto& l : g_libraries) {
+        if (text::lower(l->path.wstring()) == text::lower(path.wstring())) {
+            return *l;
         }
-        const std::filesystem::path path = *dll;
-        const HMODULE m = LoadLibraryExW(path.c_str(), nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
-        if (!m) {
-            return fail(ErrorCode::NotFound, L"wimgapi.dll not found", path.wstring());
-        }
-        const bool ok = load(m, "WIMCreateFile", instance.createFile) && load(m, "WIMCloseHandle", instance.closeHandle) &&
-                        load(m, "WIMSetTemporaryPath", instance.setTemporaryPath) &&
-                        load(m, "WIMLoadImage", instance.loadImage) && load(m, "WIMExportImage", instance.exportImage) &&
-                        load(m, "WIMDeleteImage", instance.deleteImage) &&
-                        load(m, "WIMGetImageInformation", instance.getImageInformation) &&
-                        load(m, "WIMSetImageInformation", instance.setImageInformation) &&
-                        load(m, "WIMRegisterMessageCallback", instance.registerCallback) &&
-                        load(m, "WIMUnregisterMessageCallback", instance.unregisterCallback) &&
-                        load(m, "WIMSplitFile", instance.splitFile) &&
-                        load(m, "WIMSetReferenceFile", instance.setReferenceFile) &&
-                        load(m, "WIMSetBootImage", instance.setBootImage) && load(m, "WIMCaptureImage", instance.captureImage) &&
-                        load(m, "WIMApplyImage", instance.applyImage);
-        if (!ok) {
-            return fail(ErrorCode::Unsupported, L"wimgapi.dll is missing expected entry points", path.wstring());
-        }
-        return {};
-    }();
-    if (!status) {
-        return std::unexpected(status.error());
     }
-    return &instance;
+    auto l = std::make_unique<Library>();
+    l->path = path;
+    l->origin = std::move(origin);
+    l->version = fileVersion(path);
+    // Only System32 and our own choice of folder are trusted to hold the dll: another copy must
+    // carry Microsoft's signature (a setup media is the user's file, but WinLove runs elevated).
+    if (l->origin != L"system" && l->origin != L"forced" && !signedByMicrosoft(path)) {
+        l->status = fail(ErrorCode::Unsupported, L"wimgapi.dll is not signed by Microsoft", path.wstring());
+    } else if (const HMODULE m = LoadLibraryExW(path.c_str(), nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32); !m) {
+        l->status = fail(ErrorCode::NotFound, L"wimgapi.dll not found", path.wstring(),
+                         static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
+    } else {
+        Api& a = l->api;
+        const bool ok = load(m, "WIMCreateFile", a.createFile) && load(m, "WIMCloseHandle", a.closeHandle) &&
+                        load(m, "WIMSetTemporaryPath", a.setTemporaryPath) && load(m, "WIMLoadImage", a.loadImage) &&
+                        load(m, "WIMExportImage", a.exportImage) && load(m, "WIMDeleteImage", a.deleteImage) &&
+                        load(m, "WIMGetImageInformation", a.getImageInformation) &&
+                        load(m, "WIMSetImageInformation", a.setImageInformation) &&
+                        load(m, "WIMRegisterMessageCallback", a.registerCallback) &&
+                        load(m, "WIMUnregisterMessageCallback", a.unregisterCallback) && load(m, "WIMSplitFile", a.splitFile) &&
+                        load(m, "WIMSetReferenceFile", a.setReferenceFile) && load(m, "WIMSetBootImage", a.setBootImage) &&
+                        load(m, "WIMCaptureImage", a.captureImage) && load(m, "WIMApplyImage", a.applyImage);
+        if (!ok) {
+            l->status = fail(ErrorCode::Unsupported, L"wimgapi.dll is missing expected entry points", path.wstring());
+        }
+    }
+    if (!l->status) {
+        log::warn("wim", std::format(L"wimgapi ({}) unusable: {} — {}", l->origin, l->status.error().message, path.wstring()));
+    }
+    g_libraries.push_back(std::move(l));
+    return *g_libraries.back();
 }
+
+const Library& defaultLibrary() {
+    if (g_forced) {
+        return loadLibrary(*g_forced, L"forced");
+    }
+    const auto dll = systemTool(L"wimgapi.dll");
+    return loadLibrary(dll ? std::filesystem::path(*dll) : std::filesystem::path(L"wimgapi.dll"), L"system");
+}
+
+const Library& currentLibrary() {
+    return t_library ? *t_library : defaultLibrary();
+}
+
+Result<const Api*> api() {
+    const Library& l = currentLibrary();
+    if (!l.status) {
+        return std::unexpected(l.status.error());
+    }
+    return &l.api;
+}
+
+std::wstring describe(const Library& l) {
+    return std::format(L"wimgapi.dll {} ({})", l.version.empty() ? L"?" : l.version, l.origin);
+}
+
+// Whether `l` opens `file` and reads its first edition's file list — where a wimgapi that cannot
+// read the file's format fails (a missing / replaced copy fails earlier).
+bool opens(const Library& l, const std::filesystem::path& file) {
+    if (!l.status) {
+        return false;
+    }
+    const Api& a = l.api;
+    const HANDLE h = a.createFile(file.c_str(), GENERIC_READ, OPEN_EXISTING, 0, 0, nullptr);
+    if (!h) {
+        log::info("wim", std::format(L"{} cannot open {} ({:#010x})", describe(l), file.wstring(),
+                                     static_cast<unsigned>(HRESULT_FROM_WIN32(GetLastError()))));
+        return false;
+    }
+    a.setTemporaryPath(h, tempFolder().c_str());
+    const HANDLE image = a.loadImage(h, 1);
+    const DWORD error = GetLastError();
+    if (image) {
+        a.closeHandle(image);
+    }
+    a.closeHandle(h);
+    if (!image) {
+        log::info("wim", std::format(L"{} cannot read {} ({:#010x})", describe(l), file.wstring(),
+                                     static_cast<unsigned>(HRESULT_FROM_WIN32(error))));
+    }
+    return image != nullptr;
+}
+
+// The other Microsoft copies at hand for `file`, in the order they are tried.
+std::vector<const Library*> alternatives(const std::filesystem::path& file) {
+    std::vector<const Library*> out;
+    const Library& first = defaultLibrary();
+    auto add = [&](const std::filesystem::path& path, const wchar_t* origin) {
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(path, ec) || text::lower(path.wstring()) == text::lower(first.path.wstring())) {
+            return;
+        }
+        const Library& l = loadLibrary(path, origin);
+        if (l.status && std::ranges::find(out, &l) == out.end()) {
+            out.push_back(&l);
+        }
+    };
+    if (const auto adk = adkDismFolder()) {
+        add(*adk / L"wimgapi.dll", L"adk");
+    }
+    if (!file.empty() && file.has_parent_path()) {
+        add(file.parent_path() / L"wimgapi.dll", L"media"); // install.esd's own sources\ folder
+    }
+    return out;
+}
+
+// The copy to work on `file` with: this PC's, unless it is unusable or cannot read the file and
+// another copy can (D-081). Remembered per file version.
+const Library* chooseFor(const std::filesystem::path& file) {
+    const Library& first = defaultLibrary();
+    std::error_code ec;
+    const bool exists = !file.empty() && std::filesystem::is_regular_file(file, ec);
+    if (!exists) {
+        // Nothing to read yet (a capture into a new file): any copy that loads.
+        if (first.status) {
+            return &first;
+        }
+        const auto others = alternatives(file);
+        return others.empty() ? &first : others.front();
+    }
+    const auto size = std::filesystem::file_size(file, ec);
+    const auto time = std::filesystem::last_write_time(file, ec).time_since_epoch().count();
+    const std::wstring key = std::format(L"{}|{}|{}", text::lower(file.wstring()), size, time);
+    {
+        std::scoped_lock lock(g_librariesMutex);
+        if (const auto it = g_choice.find(key); it != g_choice.end()) {
+            return it->second;
+        }
+    }
+    const Library* chosen = &first;
+    if (!opens(first, file)) {
+        for (const Library* other : alternatives(file)) {
+            if (opens(*other, file)) {
+                log::warn("wim", std::format(L"{} could not read {}; using {} ({})", describe(first), file.wstring(),
+                                             describe(*other), other->path.wstring()));
+                chosen = other;
+                break;
+            }
+        }
+    }
+    std::scoped_lock lock(g_librariesMutex);
+    g_choice[key] = chosen;
+    return chosen;
+}
+
+// For the time of one public call: the copy chosen for its file (an outer call's choice stays).
+class UseLibrary {
+public:
+    explicit UseLibrary(const std::filesystem::path& file) : m_previous(t_library) {
+        if (!t_library) {
+            t_library = chooseFor(file);
+        }
+    }
+    explicit UseLibrary(const Library& library) : m_previous(t_library) { t_library = &library; }
+    ~UseLibrary() { t_library = m_previous; }
+    UseLibrary(const UseLibrary&) = delete;
+    UseLibrary& operator=(const UseLibrary&) = delete;
+
+private:
+    const Library* m_previous;
+};
 
 Error lastError(std::wstring context) {
     const DWORD code = GetLastError();
-    return Error{ErrorCode::WimFailure, L"wimgapi call failed", std::move(context),
+    return Error{ErrorCode::WimFailure, std::format(L"wimgapi call failed: {}", describe(currentLibrary())), std::move(context),
                  static_cast<std::int32_t>(HRESULT_FROM_WIN32(code))};
 }
+
+} // namespace
+
+WimLibraryInfo wimgapiFor(const std::filesystem::path& file) {
+    const Library* l = chooseFor(nativePath(file));
+    return {l->path, l->version, l->origin, static_cast<bool>(l->status)};
+}
+
+void forceWimgapi(std::filesystem::path dll) {
+    std::scoped_lock lock(g_librariesMutex);
+    g_forced = std::move(dll);
+}
+
+namespace {
 
 // Closes a wimgapi handle at scope exit.
 struct WimHandle {
@@ -169,6 +340,7 @@ Result<void> exportImageOnce(const std::filesystem::path& sourceInput, int index
 
 Result<void> exportImage(const std::filesystem::path& source, int index, const std::filesystem::path& destination,
                          WimCompression compression, const TaskContext& task) {
+    const UseLibrary use{nativePath(source)};
     if (auto r = exportImageOnce(source, index, destination, compression, task); !r) {
         return r;
     }
@@ -246,8 +418,8 @@ Result<void> exportImageOnce(const std::filesystem::path& sourceInput, int index
         if (task.cancel.cancelled()) {
             return fail(ErrorCode::Cancelled, L"export cancelled", destination.wstring());
         }
-        return fail(ErrorCode::WimFailure, L"export failed", destination.wstring(),
-                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(exportError)));
+        return fail(ErrorCode::WimFailure, std::format(L"export failed: {}", describe(currentLibrary())),
+                    destination.wstring(), static_cast<std::int32_t>(HRESULT_FROM_WIN32(exportError)));
     }
     task.report(1.0, L"export");
     return {};
@@ -320,6 +492,7 @@ Result<void> rewriteWith(const std::filesystem::path& wim, WimCompression compre
 
 Result<void> optimizeWim(const std::filesystem::path& wimInput, const TaskContext& task) {
     const std::filesystem::path wim = nativePath(wimInput);
+    const UseLibrary use{wim};
     auto info = readInfo(wim);
     if (!info) {
         return std::unexpected(info.error());
@@ -336,6 +509,7 @@ Result<void> optimizeWim(const std::filesystem::path& wimInput, const TaskContex
 
 Result<void> removeImages(const std::filesystem::path& wimInput, std::span<const int> indexes, const TaskContext& task) {
     const std::filesystem::path wim = nativePath(wimInput);
+    const UseLibrary use{wim};
     auto info = readInfo(wim);
     if (!info) {
         return std::unexpected(info.error());
@@ -384,6 +558,7 @@ Result<void> removeImages(const std::filesystem::path& wimInput, std::span<const
 
 Result<void> reorderImages(const std::filesystem::path& wimInput, std::span<const int> order, const TaskContext& task) {
     const std::filesystem::path wim = nativePath(wimInput);
+    const UseLibrary use{wim};
     auto info = readInfo(wim);
     if (!info) {
         return std::unexpected(info.error());
@@ -419,6 +594,7 @@ bool isPermutation(std::span<const int> order, int count) {
 
 Result<void> setImageText(const std::filesystem::path& wimInput, int index, const ImageText& text) {
     const std::filesystem::path wim = nativePath(wimInput);
+    const UseLibrary use{wim};
     auto clean = [](std::wstring value) {
         std::erase_if(value, [](wchar_t c) { return c < L' '; });
         const auto first = value.find_first_not_of(L' ');
@@ -498,6 +674,7 @@ Result<int> splitWim(const std::filesystem::path& sourceInput, const std::filesy
                      std::uint64_t partSize, const TaskContext& task) {
     const std::filesystem::path source = nativePath(sourceInput);
     const std::filesystem::path firstPart = nativePath(firstPartInput);
+    const UseLibrary use{source};
     auto a = api();
     if (!a) {
         return std::unexpected(a.error());
@@ -576,6 +753,42 @@ std::filesystem::path withExtension(std::filesystem::path p, const wchar_t* exte
 
 } // namespace
 
+namespace {
+
+// Every copy of wimgapi failed on `source`: which ones, and — for an ESD — what its solid resources
+// are. An ESD from Windows has LZMS ones; another tool's (wimlib's options) may not be readable.
+Error explainFailure(Error error, const std::filesystem::path& source, const std::vector<std::wstring>& tried) {
+    std::wstring detail;
+    if (auto file = DiskFile::open(source)) {
+        if (auto header = readWimHeader(**file); header && header->solid) {
+            if (auto solid = solidResources(**file); solid && !solid->empty()) {
+                std::map<std::pair<int, std::uint32_t>, int> kinds;
+                for (const auto& r : *solid) {
+                    ++kinds[{static_cast<int>(r.compression), r.chunkSize}];
+                }
+                bool foreign = false;
+                for (const auto& [kind, n] : kinds) {
+                    const auto compression = static_cast<WimCompression>(kind.first);
+                    foreign = foreign || compression != WimCompression::Lzms;
+                    detail += std::format(L"{}{} × {} {} KiB", detail.empty() ? L"" : L", ", n, compressionName(compression),
+                                          kind.second / 1024);
+                }
+                detail = std::format(L"; solid resources: {}{}", detail,
+                                     foreign ? L" — Windows writes LZMS only: this ESD was made by another tool" : L"");
+            }
+        }
+    }
+    std::wstring copies;
+    for (const auto& t : tried) {
+        copies += (copies.empty() ? L"" : L", ") + t;
+    }
+    error.message = std::format(L"no wimgapi could read the image (tried {}){}", copies, detail);
+    log::error("wim", error.message + L" — " + source.wstring());
+    return error;
+}
+
+} // namespace
+
 Result<void> exportImages(const std::filesystem::path& sourceInput, std::span<const int> indexes,
                           const std::filesystem::path& destinationInput, WimCompression compression, const TaskContext& task) {
     const std::filesystem::path source = nativePath(sourceInput);
@@ -591,13 +804,49 @@ Result<void> exportImages(const std::filesystem::path& sourceInput, std::span<co
                     source.wstring());
     }
     const double count = static_cast<double>(std::max<std::size_t>(indexes.size(), 1));
-    for (std::size_t i = 0; i < indexes.size(); ++i) {
-        const TaskContext one{task.cancel, [&](double f, std::wstring_view) {
-                                  task.report((static_cast<double>(i) + f) / count, L"export");
-                              }};
-        if (auto r = exportImageOnce(source, indexes[i], destination, compression, one, kExportAllowDuplicates, references); !r) {
-            return r;
+    auto all = [&]() -> Result<void> {
+        for (std::size_t i = 0; i < indexes.size(); ++i) {
+            const TaskContext one{task.cancel, [&](double f, std::wstring_view) {
+                                      task.report((static_cast<double>(i) + f) / count, L"export");
+                                  }};
+            if (auto r = exportImageOnce(source, indexes[i], destination, compression, one, kExportAllowDuplicates, references);
+                !r) {
+                return r;
+            }
         }
+        return {};
+    };
+    std::error_code ec;
+    const bool fresh = !std::filesystem::exists(destination, ec);
+    const UseLibrary use{source};
+    auto done = all();
+    // A wimgapi that read the first file list may still fail on the files themselves (a format it
+    // does not know): into a new file, the other copies get their turn (D-081).
+    if (!done && done.error().code == ErrorCode::WimFailure && fresh && !task.cancel.cancelled()) {
+        std::vector<std::wstring> tried{describe(currentLibrary())};
+        for (const Library* other : alternatives(source)) {
+            if (other == &currentLibrary()) {
+                continue;
+            }
+            std::filesystem::remove(destination, ec);
+            log::warn("wim", std::format(L"export with {} failed ({}); again with {}", tried.back(), done.error().message,
+                                         describe(*other)));
+            const UseLibrary again{*other};
+            tried.push_back(describe(*other));
+            if (auto retried = all(); retried || retried.error().code != ErrorCode::WimFailure) {
+                done = std::move(retried);
+                break;
+            }
+        }
+        if (!done) {
+            done = std::unexpected(explainFailure(done.error(), source, tried));
+        }
+    }
+    if (!done) {
+        if (fresh) {
+            std::filesystem::remove(destination, ec); // nothing half-written stays behind
+        }
+        return done;
     }
     if (compression == WimCompression::Lzms) {
         auto header = readInfo(destination);
@@ -680,6 +929,7 @@ Result<void> mergeSplitWim(const std::filesystem::path& firstPartInput, const st
 
 Result<int> duplicateEdition(const std::filesystem::path& wimInput, int index, const std::wstring& name, const TaskContext& task) {
     const std::filesystem::path wim = nativePath(wimInput);
+    const UseLibrary use{wim};
     auto info = readInfo(wim);
     if (!info) {
         return std::unexpected(info.error());
@@ -720,6 +970,7 @@ Result<int> captureImage(const std::filesystem::path& folderInput, const std::fi
                          WimCompression compression, const TaskContext& task) {
     const std::filesystem::path folder = nativePath(folderInput);
     const std::filesystem::path wim = nativePath(wimInput);
+    const UseLibrary use{wim};
     std::error_code ec;
     if (!std::filesystem::is_directory(folder, ec)) {
         return fail(ErrorCode::NotFound, L"the folder to capture is not there", folder.wstring());
@@ -776,6 +1027,7 @@ Result<int> captureImage(const std::filesystem::path& folderInput, const std::fi
 
 Result<void> setBootImage(const std::filesystem::path& wimInput, int index) {
     const std::filesystem::path wim = nativePath(wimInput);
+    const UseLibrary use{wim};
     auto a = api();
     if (!a) {
         return std::unexpected(a.error());
@@ -795,6 +1047,7 @@ Result<void> applyImage(const std::filesystem::path& wimInput, int index, const 
                         const TaskContext& task) {
     const std::filesystem::path wim = nativePath(wimInput);
     const std::filesystem::path folder = nativePath(folderInput);
+    const UseLibrary use{wim};
     auto a = api();
     if (!a) {
         return std::unexpected(a.error());

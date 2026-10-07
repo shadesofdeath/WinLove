@@ -149,7 +149,16 @@
     "mountedReading": "Reading the mounted images…",
     "discardTitle": "Unmount without saving?",
     "discardBody": "The image in {folder} is unmounted; changes made but not saved are lost. The WIM file stays as it is.",
-    "discardAction": "Unmount without saving"
+    "discardAction": "Unmount without saving",
+    "hostTitle": "This Windows' DISM files have a problem",
+    "hostBody": "{file} — {what}{more}. {action}",
+    "hostMore": " (+{n} more)",
+    "hostUsingAdk": "WinLove uses the Windows ADK's DISM.",
+    "hostAdkInstalled": "The Windows ADK is installed: its wimgapi is used when needed.",
+    "hostInstallAdk": "Image operations may fail; with the Windows ADK's Deployment Tools installed WinLove uses its DISM.",
+    "hostMissing": "missing",
+    "hostUnsigned": "not signed by Microsoft",
+    "hostDisabled": "disabled"
   },
   "images": {
     "title": "Editions",
@@ -1019,7 +1028,8 @@
     "lockedHint": "Cannot change while an image is mounted or a job is running",
     "pathInvalid": "A full path is needed (e.g. D:\\WinLove)",
     "pressEnter": "Press Enter to apply",
-    "resetDone": "Settings are back to the defaults"
+    "resetDone": "Settings are back to the defaults",
+    "dismAdk": "Windows ADK"
   },
   "about": {
     "title": "About",
@@ -1122,7 +1132,8 @@
     "waitForOther": "Another DISM operation is using the image. Wait for it and retry.",
     "freeDiskSpace": "Not enough free disk space.",
     "notSupported": "This operation is not supported for this image.",
-    "unknown": "Details are in the log."
+    "unknown": "Details are in the log.",
+    "wimLibrary": "Windows' WIM library (wimgapi) could not read this file. After this PC's copy WinLove also tries the other Microsoft copies it finds (the Windows ADK's, the setup media's sources folder). The file may be an ESD written by a tool other than Windows, or this Windows' DISM files may have been changed. Details are in the log."
   },
   "tasks": {
     "title": "Scheduled Tasks",

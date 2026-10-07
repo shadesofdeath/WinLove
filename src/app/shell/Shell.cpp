@@ -2161,6 +2161,15 @@ void Shell::restoreMount(const std::filesystem::path& source, MountedImage mount
     });
 }
 
+void Shell::checkHost() {
+    readThenUi<core::HostDismReport>([](const core::TaskContext&) -> Result<core::HostDismReport> { return core::checkHostDism(); },
+                                     [this](Result<core::HostDismReport> report) {
+                                         if (report) {
+                                             m_state.setHostDism(std::move(*report));
+                                         }
+                                     });
+}
+
 void Shell::startPreload() {
     m_imageValues->load(); // queued first on the engine thread: ~0.4 s, the lists take longer
     m_preload->start();

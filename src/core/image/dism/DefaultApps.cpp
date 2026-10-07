@@ -89,7 +89,7 @@ Result<void> importAssociations(DismSession& session, std::string_view xml, cons
 }
 
 Result<std::string> exportHostAssociations(const std::filesystem::path& scratchFolder) {
-    auto dism = systemTool(L"dism.exe");
+    auto dism = dismExePath();
     if (!dism) {
         return std::unexpected(dism.error());
     }
@@ -97,7 +97,7 @@ Result<std::string> exportHostAssociations(const std::filesystem::path& scratchF
     std::filesystem::create_directories(scratchFolder, ec);
     const auto file = scratchFolder / std::format(L"winlove-host-associations-{}.xml", GetCurrentProcessId());
     std::string output;
-    auto exit = runProcess(std::format(L"\"{}\" /English /Online /Export-DefaultAppAssociations:\"{}\"", *dism, file.wstring()),
+    auto exit = runProcess(std::format(L"\"{}\" /English /Online /Export-DefaultAppAssociations:\"{}\"", dism->wstring(), file.wstring()),
                            [&](std::string_view chunk) { output.append(chunk); });
     if (!exit) {
         return std::unexpected(exit.error());

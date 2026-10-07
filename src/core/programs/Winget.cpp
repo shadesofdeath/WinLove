@@ -6,6 +6,7 @@
 #include "base/Utf8.h"
 #include "core/net/Http.h"
 #include "core/programs/Yaml.h"
+#include "core/system/Signature.h"
 
 #include <windows.h>
 
@@ -13,8 +14,6 @@
 #include <bcrypt.h>
 #include <compressapi.h>
 #include <shlwapi.h>
-#include <softpub.h>
-#include <wintrust.h>
 #include <winsqlite/winsqlite3.h>
 #include <wrl/client.h>
 
@@ -104,39 +103,6 @@ std::wstring hexOf(std::span<const unsigned char> bytes) {
 
 std::span<const std::byte> bytesOf(std::string_view text) {
     return {reinterpret_cast<const std::byte*>(text.data()), text.size()};
-}
-
-// The signer of a file whose Authenticode signature Windows accepts; empty when it does not.
-std::wstring trustedSigner(const std::filesystem::path& file) {
-    WINTRUST_FILE_INFO info{};
-    info.cbStruct = sizeof(info);
-    info.pcwszFilePath = file.c_str();
-    WINTRUST_DATA data{};
-    data.cbStruct = sizeof(data);
-    data.dwUIChoice = WTD_UI_NONE;
-    data.fdwRevocationChecks = WTD_REVOKE_NONE;
-    data.dwUnionChoice = WTD_CHOICE_FILE;
-    data.pFile = &info;
-    data.dwStateAction = WTD_STATEACTION_VERIFY;
-    GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
-    const LONG status = WinVerifyTrust(static_cast<HWND>(INVALID_HANDLE_VALUE), &action, &data);
-    std::wstring signer;
-    if (status == ERROR_SUCCESS) {
-        if (CRYPT_PROVIDER_DATA* provider = WTHelperProvDataFromStateData(data.hWVTStateData)) {
-            if (CRYPT_PROVIDER_SGNR* sgnr = WTHelperGetProvSignerFromChain(provider, 0, FALSE, 0)) {
-                if (CRYPT_PROVIDER_CERT* cert = WTHelperGetProvCertFromChain(sgnr, 0); cert && cert->pCert) {
-                    wchar_t name[256] = {};
-                    CertGetNameStringW(cert->pCert, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, nullptr, name, 256);
-                    signer = name;
-                }
-            }
-        }
-    } else {
-        log::warn("winget", std::format(L"signature not accepted ({:#010x}): {}", static_cast<unsigned long>(status), file.wstring()));
-    }
-    data.dwStateAction = WTD_STATEACTION_CLOSE;
-    WinVerifyTrust(static_cast<HWND>(INVALID_HANDLE_VALUE), &action, &data);
-    return signer;
 }
 
 // COM for this thread while one call needs it (the reader / engine threads may not have it).
@@ -445,7 +411,7 @@ Result<std::filesystem::path> refreshWingetIndex(const std::filesystem::path& fo
         }
         return std::unexpected(downloaded.error());
     }
-    const std::wstring signer = trustedSigner(package);
+    const std::wstring signer = embeddedSigner(package);
     if (signer != L"Microsoft Corporation") {
         std::filesystem::remove(package, ec);
         return fail(ErrorCode::AccessDenied, L"the winget index is not signed by Microsoft",

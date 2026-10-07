@@ -10,6 +10,7 @@
 #include "core/image/Source.h"
 #include "core/image/dism/Appx.h"
 #include "core/image/dism/Dism.h"
+#include "core/image/dism/HostDism.h"
 #include "core/image/dism/Intl.h"
 #include "core/image/dism/MountHealth.h"
 #include "core/image/RegistryEdit.h"
@@ -57,7 +58,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch, Intl, LanguageFetch, SystemMounts, StoreFetch, Programs };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch, Intl, LanguageFetch, SystemMounts, StoreFetch, Programs, Host };
     using Listener = std::function<void(Change)>;
 
     // `answersFile`: where the answer file being edited is kept between runs (AnswerStore.h).
@@ -355,6 +356,9 @@ public:
     };
     [[nodiscard]] const std::optional<SystemMounts>& systemMounts() const noexcept { return m_systemMounts; }
     void setSystemMounts(std::optional<SystemMounts> mounts);
+    // D-081: this PC's DISM / wimgapi files, checked once at start (Change::Host).
+    [[nodiscard]] const std::optional<core::HostDismReport>& hostDism() const noexcept { return m_hostDism; }
+    void setHostDism(core::HostDismReport report);
 
     // Last inspection of the WinLove mount folder (MountHealth.h); empty until first checked.
     [[nodiscard]] const std::optional<core::MountCheck>& mountFolder() const noexcept { return m_mountFolder; }
@@ -410,6 +414,7 @@ private:
     std::optional<UpdateFetch> m_updateFetch;
     std::optional<LanguageFetch> m_languageFetch;
     std::optional<SystemMounts> m_systemMounts;
+    std::optional<core::HostDismReport> m_hostDism;
     std::optional<StoreFetch> m_storeFetch;
     std::filesystem::path m_settingsFile;
     std::filesystem::path m_answersFile;

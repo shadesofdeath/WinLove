@@ -100,7 +100,9 @@ void AboutPage::refresh() {
                                                      {L"arch", buildArchitecture()}});
     const std::wstring dismVersion = dismLibraryVersion();
     m_rows = {
-        {s(Str::AboutDism), {dismVersion.empty() ? dismLibraryPath() : dismVersion + L" · " + dismLibraryPath(), true}},
+        {s(Str::AboutDism), {(dismVersion.empty() ? dismLibraryPath() : dismVersion + L" · " + dismLibraryPath()) +
+                                 (dismFromAdk() ? L" · " + s(Str::SettingsDismAdk) : std::wstring()),
+                             true}},
         {s(Str::AboutWorkDir), {m_state.settings().workRoot.wstring(), true}},
         {s(Str::AboutFonts), {s(Str::AboutFontsValue), false}},
         {s(Str::AboutThirdParty), {s(Str::AboutThirdPartyValue), false}},

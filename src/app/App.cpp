@@ -242,6 +242,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoUpdates = true;
         } else if (a == L"--demo-media-update") {
             options.demoMediaUpdate = true;
+        } else if (a == L"--demo-host-dism") {
+            options.demoHostDism = true;
         } else if (a == L"--demo-no-winre") {
             options.demoNoWinre = true;
         } else if (a == L"--demo-aio") {
@@ -474,6 +476,15 @@ void App::buildUi(ui::HostServices services) {
     }
     m_shell->setNavCollapsed(m_options.navCollapsed, /*animated=*/false);
     m_shell->titleBar().setMaximized(m_options.maximized);
+    if (!m_options.renderTo) {
+        m_shell->checkHost(); // D-081
+    } else if (m_options.demoHostDism) {
+        core::HostDismReport report;
+        report.problems = {{L"C:\\Windows\\System32\\Dism\\CbsProvider.dll", L"missing"},
+                           {L"C:\\Windows\\System32\\wimgapi.dll", L"not signed"}};
+        report.signaturesChecked = true;
+        m_state->setHostDism(std::move(report));
+    }
 }
 
 // ---- offscreen -----------------------------------------------------------------------------

@@ -97,6 +97,7 @@ struct LaunchOptions {
     std::wstring demoUsb;         // render (with a source): "" | "confirm" — the USB tab with a sample drive (D-047)
     bool demoUsbGiven = false;
     bool demoMediaUpdate = false; // render (with a source): ISO page with downloaded media updates (D-080)
+    bool demoHostDism = false;    // render: Source page warns that this PC's DISM is not whole (D-081)
     bool demoNoWinre = false;     // render (with a source): ISO page, edition 1 has no WinRE (D-074)
     bool demoAio = false;         // render (with a source): ISO page, edition 2 cannot be installed by the media (D-077)
     std::wstring demoCatalog;     // render (with --demo-updates): "dialog" | "download" — the update catalog (D-046)

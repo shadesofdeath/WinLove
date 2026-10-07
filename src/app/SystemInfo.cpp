@@ -1,5 +1,8 @@
 #include "app/SystemInfo.h"
 
+#include "core/image/dism/HostDism.h"
+#include "core/system/Files.h"
+
 #include <windows.h>
 
 #include <array>
@@ -10,30 +13,16 @@
 namespace wl::app {
 
 std::wstring dismLibraryPath() {
-    wchar_t system[MAX_PATH] = {};
-    const UINT length = GetSystemDirectoryW(system, MAX_PATH);
-    if (length == 0 || length >= MAX_PATH) {
-        return L"dismapi.dll";
-    }
-    return std::wstring(system) + L"\\dismapi.dll";
+    // System32's, or the Windows ADK's when this PC's DISM is missing a part (D-081).
+    return core::dismLocation().dismapi.wstring();
 }
 
 std::wstring dismLibraryVersion() {
-    const std::wstring path = dismLibraryPath();
-    DWORD handle = 0;
-    const DWORD size = GetFileVersionInfoSizeW(path.c_str(), &handle);
-    if (size == 0) {
-        return {};
-    }
-    std::vector<BYTE> data(size);
-    VS_FIXEDFILEINFO* info = nullptr;
-    UINT infoSize = 0;
-    if (!GetFileVersionInfoW(path.c_str(), 0, size, data.data()) ||
-        !VerQueryValueW(data.data(), L"\\", reinterpret_cast<void**>(&info), &infoSize) || !info) {
-        return {};
-    }
-    return std::format(L"{}.{}.{}.{}", HIWORD(info->dwFileVersionMS), LOWORD(info->dwFileVersionMS),
-                       HIWORD(info->dwFileVersionLS), LOWORD(info->dwFileVersionLS));
+    return core::fileVersion(core::dismLocation().dismapi);
+}
+
+bool dismFromAdk() {
+    return core::dismLocation().adk;
 }
 
 std::wstring buildDate() {

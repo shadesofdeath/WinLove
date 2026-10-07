@@ -227,3 +227,11 @@ Uygulama davranışı:
 - [2026-10-07] [Modlu Windows] WinLove `dismapi.dll` / `wimgapi.dll`'i ana makinenin System32'sinden yükler. Kurulum ortamının
   `sources\`'ında `wimgapi.dll`, `dismapi.dll`, `dismcore.dll`, `wimprovider.dll`, `imagingprovider.dll`, `folderprovider.dll`,
   `vhdprovider.dll`, `osimageprovider.dll`, `dism.exe` var — `CbsProvider` yok (paket servisi ortamdan yapılamaz).
+- [2026-10-07] [wimgapi / DISM kopyaları] ADK 10.0.26100.2454'ün `wimgapi.dll` / `dismapi.dll`'i gömülü imzalı
+  (Microsoft Corporation); System32'ninkiler ve kurulum ortamının `sources\wimgapi.dll`'i (10.0.26100.1) yalnız katalogla
+  imzalı — ortam kopyası ancak bu PC'nin CatRoot'unda karması varsa doğrulanır. ADK'nın DISM klasöründe `CbsProvider.dll`
+  yok: paket servisi imajın kendi servis yığınıyla yapılır; ADK'nın `dismapi.dll`'i tam yoluyla
+  (`LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR`) yüklenince DismCore'u kendi klasöründen bulur, System32'ninkiyle aynı sonucu verir.
+  Aynı adlı ikinci bir `wimgapi.dll` tam yoluyla aynı süreçte yüklenebiliyor. Microsoft'un ESD'si: her katı kaynak LZMS,
+  64 MiB parça (başlık: boyut 8, parça 4, biçim 4 bayt; kaynağın kendi girdisi "boyut" alanında 0x100000000 taşır).
+  WinPE 19041 imajında `DismGetCapabilities` 0x80070003, `DismGetProvisionedAppxPackages` 0x8007007E (WinPE'de yok).

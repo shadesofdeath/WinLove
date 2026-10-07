@@ -149,7 +149,16 @@
     "mountedReading": "Bağlı imajlar okunuyor…",
     "discardTitle": "İmaj kaydetmeden ayrılsın mı?",
     "discardBody": "{folder} klasöründeki imaj ayrılır; yapılmış ama kaydedilmemiş değişiklikler kaybolur. WIM dosyası olduğu gibi kalır.",
-    "discardAction": "Kaydetmeden ayır"
+    "discardAction": "Kaydetmeden ayır",
+    "hostTitle": "Bu Windows'un DISM dosyalarında sorun var",
+    "hostBody": "{file} — {what}{more}. {action}",
+    "hostMore": " (+{n} sorun daha)",
+    "hostUsingAdk": "WinLove Windows ADK'nın DISM'ini kullanıyor.",
+    "hostAdkInstalled": "Windows ADK kurulu: wimgapi gerekirse onunki kullanılır.",
+    "hostInstallAdk": "İmaj işlemleri başarısız olabilir; Windows ADK'nın Deployment Tools bileşeni kurulursa WinLove onun DISM'ini kullanır.",
+    "hostMissing": "eksik",
+    "hostUnsigned": "Microsoft imzası yok",
+    "hostDisabled": "devre dışı"
   },
   "images": {
     "title": "Sürümler",
@@ -1019,7 +1028,8 @@
     "lockedHint": "Bağlı imaj ya da süren bir işlem varken değiştirilemez",
     "pathInvalid": "Tam yol gerekli (ör. D:\\WinLove)",
     "pressEnter": "Enter ile uygula",
-    "resetDone": "Ayarlar varsayılana döndü"
+    "resetDone": "Ayarlar varsayılana döndü",
+    "dismAdk": "Windows ADK"
   },
   "about": {
     "title": "Hakkında",
@@ -1122,7 +1132,8 @@
     "waitForOther": "İmaj başka bir DISM işlemi tarafından kullanılıyor. Bitmesini bekleyip yeniden dene.",
     "freeDiskSpace": "Diskte yeterli boş alan yok.",
     "notSupported": "Bu işlem bu imaj için desteklenmiyor.",
-    "unknown": "Ayrıntılar logda."
+    "unknown": "Ayrıntılar logda.",
+    "wimLibrary": "Windows'un WIM kitaplığı (wimgapi) bu dosyayı okuyamadı. WinLove bu bilgisayarınkinden sonra bulduğu diğer Microsoft kopyalarını da dener (Windows ADK, kurulum ortamının sources klasörü). Dosya Windows dışı bir araçla yazılmış bir ESD olabilir ya da bu Windows'un DISM dosyaları değiştirilmiş olabilir. Ayrıntı Loglar'da."
   },
   "tasks": {
     "title": "Zamanlanmış Görevler",

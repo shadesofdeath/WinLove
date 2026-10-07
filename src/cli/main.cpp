@@ -10,6 +10,8 @@
 #include "core/image/MediaRefresh.h"
 #include "core/image/dism/StoreShrink.h"
 #include "core/image/dism/WinReUpdate.h"
+#include "core/image/dism/HostDism.h"
+#include "core/image/wim/WimVerify.h"
 #include "core/image/RegistryEdit.h"
 #include "core/image/RegistryRead.h"
 #include "core/updates/UpdateCatalog.h"
@@ -718,6 +720,40 @@ int cmdOptimize(const std::wstring& wim) {
 
 // Reads every stream and checks its SHA-1 (what the Images page's "Dogrula" does). Exit code 3:
 // the image is damaged.
+// D-081: this PC's DISM / wimgapi files, and where WinLove takes them from.
+int cmdHostCheck() {
+    const auto report = core::checkHostDism();
+    const auto& location = core::dismLocation();
+    print(std::format(L"DISM      {} ({})\n", location.dismapi.wstring(), report.usingAdk ? L"Windows ADK" : L"this PC"));
+    if (report.usingAdk) {
+        print(std::format(L"          because {}\n", location.reason));
+    }
+    print(std::format(L"dismapi   {}\nwimgapi   {}\nADK       {}\nsignatures {}\n", report.dismVersion, report.wimgapiVersion,
+                      report.adk ? report.adk->wstring() : std::wstring(L"not installed"),
+                      report.signaturesChecked ? L"checked" : L"not checkable on this PC (only missing files are found)"));
+    for (const auto& problem : report.problems) {
+        print(std::format(L"PROBLEM   {} — {}\n", problem.file, problem.what));
+    }
+    print(report.healthy() ? L"healthy\n" : std::format(L"{} problem(s)\n", report.problems.size()));
+    return report.healthy() ? 0 : 3;
+}
+
+// The wimgapi.dll that reads `file`, and the solid resources of an ESD.
+int cmdWimgapi(const std::wstring& file) {
+    const auto chosen = core::wimgapiFor(file);
+    print(std::format(L"wimgapi   {} {} ({}){}\n", chosen.path.wstring(), chosen.version, chosen.origin,
+                      chosen.usable ? L"" : L" — unusable"));
+    if (auto disk = core::DiskFile::open(file)) {
+        if (auto solid = core::solidResources(**disk); solid) {
+            for (const auto& r : *solid) {
+                print(std::format(L"solid     at {} {} bytes: {} {} KiB chunks\n", r.offset, r.size,
+                                  core::compressionName(r.compression), r.chunkSize / 1024));
+            }
+        }
+    }
+    return chosen.usable ? 0 : 1;
+}
+
 int cmdVerify(const std::wstring& path) {
     auto source = core::openSource(path);
     if (!source) {
@@ -2400,9 +2436,12 @@ void printUsage() {
           L"  wlcli verify <iso|wim|folder>             Read every stream and check its SHA-1 (exit 3: damaged)\n"
           L"  wlcli wim-file <iso|wim|folder> <index> <path>   Is the file in the edition? (file list, no mount; exit 1: no)\n"
           L"  wlcli set-info <wim> <index> <name> [<description>] [--flags=<EditionId>]\n"
+          L"  wlcli host-check                          This PC's DISM / wimgapi files (exit 3: a problem)\n"
+          L"  wlcli wimgapi <wim|esd>                   The wimgapi.dll that reads it; an ESD's solid resources\n"
           L"  wlcli version | help\n"
           L"\n"
-          L"Options: --json (machine-readable), --verbose (log to stdout)\n");
+          L"Options: --json (machine-readable), --verbose (log to stdout),\n"
+          L"         --wimgapi=<dll> (in place of System32's), --dism=adk (the Windows ADK's DISM)\n");
 }
 
 } // namespace
@@ -2589,6 +2628,10 @@ int wmain(int argc, wchar_t** argv) {
             restoreIcons = true;
         } else if (a == L"--verbose") {
             log::addSink(log::makeStdoutSink());
+        } else if (a.starts_with(L"--wimgapi=")) {
+            core::forceWimgapi(std::filesystem::path(std::wstring(a.substr(10))));
+        } else if (a == L"--dism=adk") {
+            core::forceAdkDism();
         } else {
             args.emplace_back(a);
         }
@@ -2622,6 +2665,12 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"verify" && args.size() == 2) {
         return cmdVerify(args[1]);
+    }
+    if (command == L"host-check" && args.size() == 1) {
+        return cmdHostCheck();
+    }
+    if (command == L"wimgapi" && args.size() == 2) {
+        return cmdWimgapi(args[1]);
     }
     if (command == L"wim-file" && args.size() == 4) {
         return cmdWimFile(args[1], args[2], args[3]);

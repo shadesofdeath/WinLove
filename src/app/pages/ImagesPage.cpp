@@ -110,6 +110,7 @@ Str ImagesPage::remedyText(core::Remedy remedy) noexcept {
     case core::Remedy::WaitForOther: return Str::RemedyWaitForOther;
     case core::Remedy::FreeDiskSpace: return Str::RemedyFreeDiskSpace;
     case core::Remedy::NotSupported: return Str::RemedyNotSupported;
+    case core::Remedy::WimLibrary: return Str::RemedyWimLibrary;
     case core::Remedy::None: break;
     }
     return Str::RemedyUnknown;
