@@ -63,6 +63,27 @@ inline constexpr int kStartPinsMinUbr = 9457;
     return build > 26200 || ((build == 26100 || build == 26200) && ubr >= kStartPinsMinUbr);
 }
 
+// ---- the taskbar (D-083) ----------------------------------------------------------------------
+// Microsoft's Start Layout policy, machine-wide: HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer
+// LockedStartLayout = 1 + StartLayoutFile = %ProgramData%\WinLove\TaskbarLayout.xml, a layout whose
+// CustomTaskbarLayoutCollection replaces Windows' own pins (Edge, Store, the Outlook placeholder …).
+// The OEM way (LayoutXMLPath, D-067's tweak) only added pins on 24H2+. Windows 11 only: on Windows 10
+// the same policy also locks the Start tiles. userMayUnpin: PinGeneration="1" on every pin — the
+// user can unpin and the policy does not pin it back (24H2 with the June 2025 update and later).
+struct TaskbarPinsPlan {
+    std::vector<StartApp> pins; // in order, left to right; empty = nothing pinned
+    bool userMayUnpin = true;
+};
+inline constexpr wchar_t kTaskbarLayoutFile[] = LR"(ProgramData\WinLove\TaskbarLayout.xml)";
+// File Explorer as the taskbar names it (the Start list has no entry for it).
+[[nodiscard]] StartApp fileExplorerPin();
+[[nodiscard]] std::string taskbarLayoutXml(const TaskbarPinsPlan& plan);
+[[nodiscard]] Result<TaskbarPinsPlan> taskbarPlanFromXml(std::string_view xml);
+[[nodiscard]] std::vector<ops::Operation> taskbarPinsOperations(const TaskbarPinsPlan& plan);
+// The plan a queue holds (from the TaskbarLayout.xml WriteFile operation); nullopt: Windows' own.
+[[nodiscard]] std::optional<TaskbarPinsPlan> taskbarPlanFromOperations(const std::vector<ops::Operation>& ops);
+[[nodiscard]] std::vector<std::pair<ops::OpKind, std::wstring>> taskbarPinsSlots();
+
 // "Microsoft.WindowsCalculator_8wekyb3d8bbwe" from "Microsoft.WindowsCalculator_11.2405.2.0_x64__8wekyb3d8bbwe";
 // empty for a resource / bundle folder name it does not understand.
 [[nodiscard]] std::wstring familyFromFullName(std::wstring_view fullName);

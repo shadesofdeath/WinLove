@@ -48,7 +48,7 @@ void drawAppIcon(ui::Canvas& canvas, const StartPinsController& pins, const Star
 // ---- the image's apps --------------------------------------------------------------------------
 class StartMenuPage::AppList : public ui::Widget {
 public:
-    AppList(StartPinsController& pins, const Localization& strings) : m_pins(pins), m_strings(strings) {
+    AppList(StartPinsController& pins, const Localization& strings) : m_pins(&pins), m_strings(strings) {
         setFocusable(true);
         setAccessible(ui::AccessRole::List, strings.get(Str::StartmenuApps));
         m_scroll = &add<ui::ScrollBar>();
@@ -59,13 +59,17 @@ public:
     }
     std::function<void(const StartApp&)> onAdd;
 
+    void setPins(StartPinsController& pins) {
+        m_pins = &pins;
+        rebuild();
+    }
     void setFilter(const std::wstring& filter) {
         m_filter = text::lower(filter);
         rebuild();
     }
     void rebuild() {
         m_rows.clear();
-        if (const auto* apps = m_pins.apps()) {
+        if (const auto* apps = m_pins->apps()) {
             for (std::size_t i = 0; i < apps->size(); ++i) {
                 if (m_filter.empty() || text::lower((*apps)[i].name).find(m_filter) != std::wstring::npos) {
                     m_rows.push_back(i);
@@ -77,7 +81,7 @@ public:
         invalidate();
     }
     [[nodiscard]] const StartApp* selectedApp() const {
-        const auto* apps = m_pins.apps();
+        const auto* apps = m_pins->apps();
         if (!apps || m_selected < 0 || m_selected >= static_cast<int>(m_rows.size())) {
             return nullptr;
         }
@@ -153,13 +157,13 @@ public:
     void paint(ui::Canvas& canvas) override {
         const RectF b = bounds();
         canvas.strokeRoundRect(b, ui::tokens::radius::r2, Color::LineSubtle);
-        const auto* apps = m_pins.apps();
+        const auto* apps = m_pins->apps();
         if (!apps) {
             canvas.drawText(m_strings.get(Str::StartmenuLoadingApps), {b.x, b.y + 12, b.width, 20}, TypeStyle::Caption,
                             Color::TextTertiary, ui::TextAlign::Center);
             return;
         }
-        const auto pinned = m_pins.pins();
+        const auto pinned = m_pins->pins();
         canvas.pushClip(b);
         for (int row = 0; row < static_cast<int>(m_rows.size()); ++row) {
             const RectF r = rowRect(row);
@@ -171,7 +175,7 @@ public:
             if (selected || row == m_hover) {
                 canvas.fillRect({r.x + 1, r.y, r.width - 2, r.height}, selected ? Color::BgRaised : Color::BgPanel);
             }
-            drawAppIcon(canvas, m_pins, app, {r.x + 10, r.y + 6, 16, 16});
+            drawAppIcon(canvas, *m_pins, app, {r.x + 10, r.y + 6, 16, 16});
             const bool isPinned = std::ranges::find(pinned, app) != pinned.end();
             const float right = r.right() - 10 - (m_scroll->visible() ? ui::ScrollBar::kWidth : 0.0f);
             float kw = ui::tokens::size::icon;
@@ -215,7 +219,7 @@ private:
         }
     }
 
-    StartPinsController& m_pins;
+    StartPinsController* m_pins;
     const Localization& m_strings;
     ui::ScrollBar* m_scroll = nullptr;
     std::wstring m_filter;
@@ -228,12 +232,17 @@ private:
 // ---- the Start-like preview, which is the pin list ---------------------------------------------
 class StartMenuPage::PinGrid : public ui::Widget {
 public:
-    PinGrid(StartPinsController& pins, const Localization& strings) : m_pins(pins), m_strings(strings) {
+    PinGrid(StartPinsController& pins, const Localization& strings) : m_pins(&pins), m_strings(strings) {
         setFocusable(true);
         setAccessible(ui::AccessRole::List, strings.get(Str::StartmenuPinned));
     }
     std::function<void()> onSelectionChanged;
 
+    void setPins(StartPinsController& pins) {
+        m_pins = &pins;
+        m_selected = 0;
+        invalidate();
+    }
     [[nodiscard]] int selected() const noexcept { return m_selected; }
     void setSelected(int index) {
         m_selected = index;
@@ -247,7 +256,7 @@ public:
         const int cell = cellAt(p);
         if (cell != m_hover) {
             m_hover = cell;
-            const auto list = m_pins.pins();
+            const auto list = m_pins->pins();
             setTooltip(cell >= 0 && cell < static_cast<int>(list.size()) ? list[static_cast<std::size_t>(cell)].id : std::wstring());
             invalidate();
         }
@@ -264,8 +273,8 @@ public:
         }
     }
     bool onKeyDown(const ui::KeyEvent& key) override {
-        const int count = static_cast<int>(m_pins.pins().size());
-        if (count == 0 || m_pins.mode() != StartPinsController::Mode::Custom) {
+        const int count = static_cast<int>(m_pins->pins().size());
+        if (count == 0 || m_pins->mode() != StartPinsController::Mode::Custom) {
             return false;
         }
         const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
@@ -276,13 +285,13 @@ public:
         switch (key.virtualKey) {
         case VK_LEFT:
             if (ctrl) {
-                m_pins.move(static_cast<std::size_t>(m_selected), -1);
+                m_pins->move(static_cast<std::size_t>(m_selected), -1);
                 return go(m_selected - 1);
             }
             return go(m_selected - 1);
         case VK_RIGHT:
             if (ctrl) {
-                m_pins.move(static_cast<std::size_t>(m_selected), +1);
+                m_pins->move(static_cast<std::size_t>(m_selected), +1);
                 return go(m_selected + 1);
             }
             return go(m_selected + 1);
@@ -290,13 +299,13 @@ public:
         case VK_DOWN: return go(m_selected + kColumns);
         case VK_DELETE:
         case VK_BACK:
-            m_pins.remove(static_cast<std::size_t>(m_selected));
+            m_pins->remove(static_cast<std::size_t>(m_selected));
             return go(std::min(m_selected, count - 2));
         default: return false;
         }
     }
     [[nodiscard]] RectF focusRect() const override {
-        const int count = static_cast<int>(m_pins.pins().size());
+        const int count = static_cast<int>(m_pins->pins().size());
         return m_selected >= 0 && m_selected < count ? cellRect(m_selected) : bounds();
     }
 
@@ -304,17 +313,19 @@ public:
         const RectF b = bounds();
         canvas.fillRoundRect(b, ui::tokens::radius::r3, Color::BgPanel);
         canvas.strokeRoundRect(b, ui::tokens::radius::r3, Color::LineSubtle);
-        const auto mode = m_pins.mode();
-        const auto list = m_pins.pins();
-        canvas.drawText(m_strings.get(Str::StartmenuPinned), {b.x + 20, b.y + 14, b.width - 40, 20}, TypeStyle::BodyStrong,
-                        Color::TextPrimary);
+        const auto mode = m_pins->mode();
+        const auto list = m_pins->pins();
+        const bool bar = m_pins->surface() == StartPinsController::Surface::Taskbar;
+        canvas.drawText(m_strings.get(bar ? Str::StartmenuTabTaskbar : Str::StartmenuPinned), {b.x + 20, b.y + 14, b.width - 40, 20},
+                        TypeStyle::BodyStrong, Color::TextPrimary);
         if (mode == StartPinsController::Mode::Custom && !list.empty()) {
             const std::wstring count = m_strings.format(Str::StartmenuPinsN, {{L"n", std::to_wstring(list.size())}});
             canvas.drawText(count, {b.x + 20, b.y + 14, b.width - 40, 20}, TypeStyle::Caption, Color::TextTertiary, ui::TextAlign::Trailing);
         }
         if (mode != StartPinsController::Mode::Custom || list.empty()) {
-            const Str message = mode == StartPinsController::Mode::Windows ? Str::StartmenuPreviewWindows
-                                : mode == StartPinsController::Mode::Empty ? Str::StartmenuPreviewEmpty
+            const Str message = mode == StartPinsController::Mode::Windows
+                                    ? (bar ? Str::StartmenuTaskbarPreviewWindows : Str::StartmenuPreviewWindows)
+                                : mode == StartPinsController::Mode::Empty ? (bar ? Str::StartmenuTaskbarPreviewEmpty : Str::StartmenuPreviewEmpty)
                                                                            : Str::StartmenuPreviewCustomEmpty;
             if (mode == StartPinsController::Mode::Windows) {
                 // A hint of what Windows puts there: greyed placeholders, as Start shows them while it downloads.
@@ -337,7 +348,7 @@ public:
             if (selected) {
                 canvas.strokeRoundRect(c, ui::tokens::radius::r3, Color::AccentBase);
             }
-            drawAppIcon(canvas, m_pins, list[static_cast<std::size_t>(i)], {c.x + (c.width - 32) / 2, c.y + 12, 32, 32});
+            drawAppIcon(canvas, *m_pins, list[static_cast<std::size_t>(i)], {c.x + (c.width - 32) / 2, c.y + 12, 32, 32});
             canvas.drawText(list[static_cast<std::size_t>(i)].name, {c.x + 6, c.y + 52, c.width - 12, 16}, TypeStyle::Caption,
                             Color::TextPrimary, ui::TextAlign::Center);
         }
@@ -350,7 +361,7 @@ private:
         return {b.x + 20 + static_cast<float>(i % kColumns) * w, b.y + 48 + static_cast<float>(i / kColumns) * kCellH, w - 4, kCellH - 6};
     }
     [[nodiscard]] int cellAt(PointF p) const {
-        const int count = static_cast<int>(m_pins.pins().size());
+        const int count = static_cast<int>(m_pins->pins().size());
         for (int i = 0; i < count; ++i) {
             if (cellRect(i).contains(p)) {
                 return i;
@@ -359,37 +370,39 @@ private:
         return -1;
     }
 
-    StartPinsController& m_pins;
+    StartPinsController* m_pins;
     const Localization& m_strings;
     int m_selected = 0;
     int m_hover = -1;
 };
 
 // ---- the page ----------------------------------------------------------------------------------
-StartMenuPage::StartMenuPage(AppState& state, StartPinsController& pins, ImageSettingsController& settings,
+StartMenuPage::StartMenuPage(AppState& state, StartPinsController& pins, StartPinsController& taskbar, ImageSettingsController& settings,
                              const Localization& strings, Language language, std::function<void()> goImages)
-    : m_state(state), m_pins(pins), m_strings(strings) {
-    m_tabs = &add<ui::TabBar>(std::vector<std::wstring>{strings.get(Str::StartmenuTabPins), strings.get(Str::StartmenuTabSettings)}, 0);
+    : m_state(state), m_start(pins), m_taskbar(taskbar), m_pins(&pins), m_strings(strings) {
+    m_tabs = &add<ui::TabBar>(std::vector<std::wstring>{strings.get(Str::StartmenuTabPins), strings.get(Str::StartmenuTabTaskbar),
+                                                        strings.get(Str::StartmenuTabSettings)},
+                              0);
     m_tabs->onChange = [this](int tab) { showTab(tab); };
     m_mode = &add<ui::RadioGroup>(std::vector<std::wstring>{strings.get(Str::StartmenuModeWindows), strings.get(Str::StartmenuModeEmpty),
                                                             strings.get(Str::StartmenuModeCustom)},
                                   0);
-    m_mode->onChange = [this](int mode) { m_pins.setMode(static_cast<StartPinsController::Mode>(mode)); };
+    m_mode->onChange = [this](int mode) { m_pins->setMode(static_cast<StartPinsController::Mode>(mode)); };
     m_once = &add<ui::CheckField>(strings.get(Str::StartmenuApplyOnce), true);
     m_once->setTooltip(strings.get(Str::StartmenuApplyOnceHint));
-    m_once->onChange = [this](bool on) { m_pins.setApplyOnce(on); };
+    m_once->onChange = [this](bool on) { m_pins->setApplyOnce(on); };
     m_search = &add<ui::SearchBox>(strings.get(Str::StartmenuSearchApps));
     m_search->onChange = [this](const std::wstring& text) { m_apps->setFilter(text); };
     m_apps = &add<AppList>(pins, strings);
     m_apps->onAdd = [this](const StartApp& app) {
-        m_pins.add(app);
-        m_grid->setSelected(static_cast<int>(m_pins.pins().size()) - 1);
+        m_pins->add(app);
+        m_grid->setSelected(static_cast<int>(m_pins->pins().size()) - 1);
     };
     m_add = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::StartmenuAdd), ui::icons::Icon::Pin);
     m_add->onInvoke = [this] {
         if (const auto* app = m_apps->selectedApp()) {
-            m_pins.add(*app);
-            m_grid->setSelected(static_cast<int>(m_pins.pins().size()) - 1);
+            m_pins->add(*app);
+            m_grid->setSelected(static_cast<int>(m_pins->pins().size()) - 1);
         }
     };
     m_grid = &add<PinGrid>(pins, strings);
@@ -397,28 +410,28 @@ StartMenuPage::StartMenuPage(AppState& state, StartPinsController& pins, ImageSe
     m_left = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::StartmenuMoveLeft), ui::icons::Icon::ArrowLeft);
     m_left->onInvoke = [this] {
         const int i = m_grid->selected();
-        m_pins.move(static_cast<std::size_t>(i), -1);
+        m_pins->move(static_cast<std::size_t>(i), -1);
         m_grid->setSelected(std::max(i - 1, 0));
     };
     m_right = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::StartmenuMoveRight), ui::icons::Icon::ArrowRight);
     m_right->onInvoke = [this] {
         const int i = m_grid->selected();
-        m_pins.move(static_cast<std::size_t>(i), +1);
-        m_grid->setSelected(std::min(i + 1, static_cast<int>(m_pins.pins().size()) - 1));
+        m_pins->move(static_cast<std::size_t>(i), +1);
+        m_grid->setSelected(std::min(i + 1, static_cast<int>(m_pins->pins().size()) - 1));
     };
     m_remove = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::StartmenuRemove), ui::icons::Icon::Unpin);
     m_remove->onInvoke = [this] {
         const int i = m_grid->selected();
-        m_pins.remove(static_cast<std::size_t>(i));
-        m_grid->setSelected(std::max(std::min(i, static_cast<int>(m_pins.pins().size()) - 1), 0));
+        m_pins->remove(static_cast<std::size_t>(i));
+        m_grid->setSelected(std::max(std::min(i, static_cast<int>(m_pins->pins().size()) - 1), 0));
     };
     m_clear = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::StartmenuClear));
-    m_clear->onInvoke = [this] { m_pins.setPins({}); };
+    m_clear->onInvoke = [this] { m_pins->setPins({}); };
     m_settings = &add<TweaksPage>(state, settings, strings, language, goImages, TweaksPage::PickImage{}, std::string("start"));
     m_empty = &add<ui::EmptyState>(ui::icons::Icon::Pin, strings.get(Str::StartmenuNoMountTitle), strings.get(Str::StartmenuNoMountBody));
     m_empty->setAction(strings.get(Str::CommonGoImages)).onInvoke = std::move(goImages);
     setAccessible(ui::AccessRole::Group, strings.get(Str::StartmenuTitle));
-    m_pins.onLoaded = [this] {
+    m_start.onLoaded = [this] { // the taskbar's list is the same one
         m_apps->rebuild();
         invalidate();
     };
@@ -433,23 +446,36 @@ StartMenuPage::StartMenuPage(AppState& state, StartPinsController& pins, ImageSe
 }
 
 StartMenuPage::~StartMenuPage() {
-    m_pins.onLoaded = nullptr;
+    m_start.onLoaded = nullptr;
     m_state.unsubscribe(m_subscription);
 }
 
 void StartMenuPage::showTab(int tab) {
-    m_tab = std::clamp(tab, 0, 1);
+    m_tab = std::clamp(tab, kTabPins, kTabSettings);
     m_tabs->setSelected(m_tab);
+    StartPinsController& pins = taskbar() ? m_taskbar : m_start;
+    if (m_pins != &pins) {
+        m_pins = &pins;
+        m_apps->setPins(pins);
+        m_grid->setPins(pins);
+        m_once->setLabel(m_strings.get(taskbar() ? Str::StartmenuTaskbarUnpin : Str::StartmenuApplyOnce));
+        m_once->setTooltip(m_strings.get(taskbar() ? Str::StartmenuTaskbarUnpinHint : Str::StartmenuApplyOnceHint));
+    }
     refresh();
+}
+
+bool StartMenuPage::windows10() const {
+    const auto* image = m_state.selectedImage();
+    return image && image->build > 0 && image->build < 22000;
 }
 
 void StartMenuPage::refresh() {
     const bool mounted = m_state.mounted().has_value();
     m_empty->setVisible(!mounted);
     m_tabs->setVisible(mounted);
-    m_settings->setVisible(mounted && m_tab == 1);
+    m_settings->setVisible(mounted && m_tab == kTabSettings);
     if (mounted) {
-        (void)m_pins.apps(); // starts reading the image's apps
+        (void)m_pins->apps(); // starts reading the image's apps
     }
     m_apps->rebuild();
     sync();
@@ -457,13 +483,15 @@ void StartMenuPage::refresh() {
 
 void StartMenuPage::sync() {
     const bool mounted = m_state.mounted().has_value();
-    const bool pinsTab = mounted && m_tab == 0;
-    const auto mode = m_pins.mode();
+    const bool pinsTab = mounted && m_tab != kTabSettings;
+    const auto mode = m_pins->mode();
     const bool custom = mode == StartPinsController::Mode::Custom;
-    const int count = static_cast<int>(m_pins.pins().size());
+    const int count = static_cast<int>(m_pins->pins().size());
     const int selected = m_grid->selected();
     m_mode->setSelected(static_cast<int>(mode));
-    m_once->setChecked(m_pins.applyOnce());
+    // D-083: on Windows 10 the policy would lock Start's tiles too — Windows' own taskbar stays.
+    m_mode->setEnabled(!(taskbar() && windows10()) || mode != StartPinsController::Mode::Windows);
+    m_once->setChecked(m_pins->applyOnce());
     for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_mode, m_grid}) {
         w->setVisible(pinsTab);
     }
@@ -492,7 +520,7 @@ void StartMenuPage::layout() {
     const float onceW = m_once->measure({b.width, kModeRow}).width;
     m_once->setBounds({radioX + radioW + 32, top, onceW, kModeRow});
     const float content = top + kModeRow + kNoteH + 8;
-    const bool custom = m_pins.mode() == StartPinsController::Mode::Custom;
+    const bool custom = m_pins->mode() == StartPinsController::Mode::Custom;
     const float gridX = custom ? b.x + kListW + kGap : b.x;
     // Left: search + add, then the list.
     const float addW = m_add->measure({200, ui::tokens::size::control}).width;
@@ -514,13 +542,29 @@ void StartMenuPage::layout() {
 }
 
 void StartMenuPage::paint(ui::Canvas& canvas) {
-    if (!m_state.mounted() || m_tab != 0) {
+    if (!m_state.mounted() || m_tab == kTabSettings) {
         return;
     }
     const RectF b = bounds();
     const float top = b.y + kTop + kTabs + 12;
     canvas.drawText(m_strings.get(Str::StartmenuModeLabel), {b.x, top, 110, kModeRow}, TypeStyle::BodyStrong, Color::TextPrimary);
-    const auto mode = m_pins.mode();
+    const auto mode = m_pins->mode();
+    if (taskbar()) {
+        if (windows10()) {
+            canvas.drawTextWrapped(m_strings.get(Str::StartmenuTaskbarWindows10), {b.x, top + kModeRow + 4, b.width, kNoteH},
+                                   TypeStyle::Caption, Color::StatusWarning);
+            return;
+        }
+        const Str note = mode == StartPinsController::Mode::Windows ? Str::StartmenuTaskbarNoteWindows
+                         : mode == StartPinsController::Mode::Empty ? Str::StartmenuTaskbarNoteEmpty
+                                                                    : Str::StartmenuTaskbarNoteCustom;
+        std::wstring text = m_strings.get(note);
+        if (mode != StartPinsController::Mode::Windows) {
+            text += L" " + m_strings.get(Str::StartmenuTaskbarNoteHow);
+        }
+        canvas.drawTextWrapped(text, {b.x, top + kModeRow + 4, b.width, kNoteH}, TypeStyle::Caption, Color::TextTertiary);
+        return;
+    }
     const Str note = mode == StartPinsController::Mode::Windows ? Str::StartmenuNoteWindows
                      : mode == StartPinsController::Mode::Empty ? Str::StartmenuNoteEmpty
                                                                 : Str::StartmenuNoteCustom;

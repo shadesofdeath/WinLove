@@ -1287,6 +1287,16 @@ enum class Str : std::uint16_t {
     StartmenuSearchApps,
     StartmenuTabPins,
     StartmenuTabSettings,
+    StartmenuTabTaskbar,
+    StartmenuTaskbarNoteCustom,
+    StartmenuTaskbarNoteEmpty,
+    StartmenuTaskbarNoteHow,
+    StartmenuTaskbarNoteWindows,
+    StartmenuTaskbarPreviewEmpty,
+    StartmenuTaskbarPreviewWindows,
+    StartmenuTaskbarUnpin,
+    StartmenuTaskbarUnpinHint,
+    StartmenuTaskbarWindows10,
     StartmenuTitle,
     StatusApply,
     StatusApplying,
@@ -1481,7 +1491,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1471;
+inline constexpr std::size_t kStrCount = 1481;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -2763,6 +2773,16 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "startmenu.searchApps",
     "startmenu.tabPins",
     "startmenu.tabSettings",
+    "startmenu.tabTaskbar",
+    "startmenu.taskbarNoteCustom",
+    "startmenu.taskbarNoteEmpty",
+    "startmenu.taskbarNoteHow",
+    "startmenu.taskbarNoteWindows",
+    "startmenu.taskbarPreviewEmpty",
+    "startmenu.taskbarPreviewWindows",
+    "startmenu.taskbarUnpin",
+    "startmenu.taskbarUnpinHint",
+    "startmenu.taskbarWindows10",
     "startmenu.title",
     "status.apply",
     "status.applying",

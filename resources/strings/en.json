@@ -1551,7 +1551,17 @@
     "pinsN": "{n} pinned",
     "noMountTitle": "No image mounted",
     "noMountBody": "Mount an edition on the Images page to customize its Start menu.",
-    "oldBuild": "This image's build ({build}) does not apply your list: Start opens empty (no ads). The list applies from 26200.9457 / 26100.9457 — add the latest cumulative update on the Updates page."
+    "oldBuild": "This image's build ({build}) does not apply your list: Start opens empty (no ads). The list applies from 26200.9457 / 26100.9457 — add the latest cumulative update on the Updates page.",
+    "tabTaskbar": "Taskbar",
+    "taskbarUnpin": "Users may unpin",
+    "taskbarUnpinHint": "On: an unpinned app stays unpinned · off: pinned again at every sign-in",
+    "taskbarNoteWindows": "Windows pins its own: Edge, Microsoft Store, File Explorer and the placeholders it adds later (Outlook …).",
+    "taskbarNoteEmpty": "No apps are pinned to the taskbar; Start, search and open windows stay.",
+    "taskbarNoteCustom": "Only the apps on the right, left to right in this order; no Edge, Store or placeholders. Add from the left with a double click / Enter; on the right Delete removes, Ctrl+Left/Right moves.",
+    "taskbarNoteHow": "Written with Microsoft's Start Layout policy (tried on 26200.8037).",
+    "taskbarWindows10": "The taskbar layout is for Windows 11 images: on Windows 10 the same policy also locks the Start tiles.",
+    "taskbarPreviewWindows": "Windows' default pins",
+    "taskbarPreviewEmpty": "No pinned apps"
   },
   "compat": {
     "action": "Compatibility · {n}",

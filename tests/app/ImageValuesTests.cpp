@@ -77,7 +77,8 @@ TEST_CASE("image values: probes cover the settings catalog, text settings are re
     REQUIRE(settings);
     const auto probes = ImageValueProbes::from(*settings);
     CHECK(probes.writes.size() > 200);
-    CHECK(probes.files.size() >= 1); // the taskbar layout (the Start one moved to the Başlat menüsü page, D-069)
+    // No setting writes a file any more: the Start (D-069) and taskbar (D-083) layouts are the Başlat menüsü page's.
+    CHECK(probes.files.empty());
     CHECK(probes.texts.size() >= 5); // OEM information
     // A text setting's listed write only names the value: it is never probed as a write.
     for (const auto& w : probes.writes) {

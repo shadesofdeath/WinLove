@@ -1551,7 +1551,17 @@
     "pinsN": "{n} sabit",
     "noMountTitle": "Bağlı imaj yok",
     "noMountBody": "Başlat menüsünü özelleştirmek için İmajlar sayfasından bir sürüm bağla.",
-    "oldBuild": "Bu imajın build'i ({build}) kendi listeni uygulamaz: Başlat boş (reklamsız) açılır. Liste 26200.9457 / 26100.9457 ve sonrasında uygulanır — Güncellemeler'den son toplu güncellemeyi ekle."
+    "oldBuild": "Bu imajın build'i ({build}) kendi listeni uygulamaz: Başlat boş (reklamsız) açılır. Liste 26200.9457 / 26100.9457 ve sonrasında uygulanır — Güncellemeler'den son toplu güncellemeyi ekle.",
+    "tabTaskbar": "Görev çubuğu",
+    "taskbarUnpin": "Kullanıcı kaldırabilsin",
+    "taskbarUnpinHint": "Açık: kaldırılan sabitleme geri gelmez · kapalı: her oturumda yeniden sabitlenir",
+    "taskbarNoteWindows": "Windows kendi sabitlemelerini koyar: Edge, Microsoft Store, Dosya Gezgini ve sonradan eklediği yer tutucular (Outlook …).",
+    "taskbarNoteEmpty": "Görev çubuğunda sabit uygulama olmaz; Başlat, arama ve açık pencereler durur.",
+    "taskbarNoteCustom": "Yalnız sağdaki uygulamalar, soldan sağa bu sırayla; Edge, Store ve yer tutucular gelmez. Soldan çift tıkla / Enter ile ekle; sağda Delete kaldırır, Ctrl+←/→ taşır.",
+    "taskbarNoteHow": "Microsoft'un Başlangıç Düzeni ilkesiyle yazılır (26200.8037'de denendi).",
+    "taskbarWindows10": "Görev çubuğu düzeni Windows 11 imajları içindir: Windows 10'da aynı ilke Başlat kutucuklarını da kilitler.",
+    "taskbarPreviewWindows": "Windows'un varsayılan sabitlemeleri",
+    "taskbarPreviewEmpty": "Sabit uygulama yok"
   },
   "compat": {
     "action": "Uyumluluk · {n}",

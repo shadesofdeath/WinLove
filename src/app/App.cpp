@@ -199,9 +199,10 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoLanguages = a == L"--demo-languages" ? std::wstring() : std::wstring(value(L"--demo-languages="));
         } else if (startsWith(a, L"--demo-store=")) {
             options.demoStore = std::wstring(value(L"--demo-store="));
-        } else if (a == L"--demo-startmenu" || a == L"--demo-startmenu=settings") {
+        } else if (a == L"--demo-startmenu" || a == L"--demo-startmenu=settings" || a == L"--demo-startmenu=taskbar") {
             options.demoStartMenu = true;
             options.demoStartMenuSettings = a.ends_with(L"=settings");
+            options.demoTaskbar = a.ends_with(L"=taskbar");
         } else if (a == L"--demo-icons" || a == L"--demo-icons=redirect") {
             options.demoIcons = true;
             options.demoIconsRedirect = a.ends_with(L"=redirect");
@@ -920,10 +921,25 @@ int App::renderOffscreen() {
             }
         }
         pins.setPins(std::move(list));
+        // D-083: a taskbar of one's own — File Explorer, Terminal, Notepad, Calculator, Settings.
+        auto& bar = m_shell->taskbarPinsForDemo();
+        bar.preload();
+        std::vector<core::StartApp> barList;
+        if (const auto* apps = bar.apps()) {
+            for (const wchar_t* id : {L"Microsoft.Windows.Explorer", L"Microsoft.WindowsTerminal_8wekyb3d8bbwe!App",
+                                      L"Microsoft.WindowsNotepad_8wekyb3d8bbwe!App", L"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App",
+                                      L"windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel"}) {
+                const auto it = std::ranges::find_if(*apps, [&](const core::StartApp& a) { return a.id == id; });
+                if (it != apps->end()) {
+                    barList.push_back(*it);
+                }
+            }
+        }
+        bar.setPins(std::move(barList));
         m_shell->showPage(PageId::StartMenu);
-        if (m_options.demoStartMenuSettings) {
+        if (m_options.demoStartMenuSettings || m_options.demoTaskbar) {
             if (auto* page = m_shell->startMenuPageForDemo()) {
-                page->showTab(1);
+                page->showTab(m_options.demoTaskbar ? StartMenuPage::kTabTaskbar : StartMenuPage::kTabSettings);
             }
         }
     }

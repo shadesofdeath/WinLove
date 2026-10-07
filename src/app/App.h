@@ -82,6 +82,7 @@ struct LaunchOptions {
     std::optional<std::wstring> demoStore; // render: "dialog" (search results) | "fetch" (a download on Uygulamalar), D-066
     bool demoStartMenu = false;         // render: this PC as the image, a custom Start pin list (D-069)
     bool demoStartMenuSettings = false; // --demo-startmenu=settings: the "Başlat ayarları" tab
+    bool demoTaskbar = false;           // --demo-startmenu=taskbar: the "Görev çubuğu" tab with a list (D-083)
     bool demoIconsRedirect = false; // --demo-icons=redirect: the "Masaüstü ve Gezgin" tab
     bool demoIcons = false; // render: the Simgeler page with a few icons assigned (D-065)
     bool demoMounts = false; // render: images mounted on this PC by other tools, on the Kaynak page (D-064)

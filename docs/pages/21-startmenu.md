@@ -18,6 +18,11 @@ aynı yerden yönetmek. Windows 10'un `LayoutModification.xml` yöntemi Windows 
   seç, Delete kaldırır, Ctrl+←/→ taşır; **Öne al**, **Geriye al**, **Kaldır**, **Temizle**.
 - Nav rozeti: plan kuyruktaysa 1.
 
+- **Görev çubuğu (D-083):** aynı düzen — mod Windows varsayılanı / Boş / Kendi listem, **Kullanıcı kaldırabilsin**
+  (`PinGeneration`); soldaki listenin başında Dosya Gezgini; sağdaki ızgara soldan sağa sıra. Windows 10 sürümünde uyarı
+  (ilke orada Başlat kutucuklarını kilitler). Motor: `core::taskbarPinsOperations` (Başlangıç Düzeni ilkesi +
+  `ProgramData\WinLove\TaskbarLayout.xml`), geri okuma `taskbarPlanFromOperations`. Render: `--demo-startmenu=taskbar`.
+
 ## 3. Veri
 | Veri | Kaynak | Ne zaman |
 |---|---|---|

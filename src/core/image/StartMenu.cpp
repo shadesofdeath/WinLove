@@ -491,4 +491,140 @@ std::vector<std::pair<ops::OpKind, std::wstring>> startPinsSlots() {
             {OpKind::WriteFile, kStartState}};
 }
 
+// ---- the taskbar (D-083) ----------------------------------------------------------------------
+
+namespace {
+
+constexpr wchar_t kTaskbarPathValue[] = LR"(%ProgramData%\WinLove\TaskbarLayout.xml)";
+constexpr wchar_t kExplorerId[] = L"Microsoft.Windows.Explorer";
+constexpr wchar_t kLeaveEmpty[] = L"#leaveempty";
+
+std::string xmlAttribute(std::wstring_view text) {
+    std::string out;
+    for (const char c : utf8::fromWide(text)) {
+        switch (c) {
+        case '&': out += "&amp;"; break;
+        case '<': out += "&lt;"; break;
+        case '>': out += "&gt;"; break;
+        case '"': out += "&quot;"; break;
+        default: out += c; break;
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+StartApp fileExplorerPin() {
+    StartApp explorer;
+    explorer.kind = StartApp::Kind::DesktopId;
+    explorer.id = kExplorerId;
+    explorer.name = L"File Explorer";
+    explorer.icon = LR"(Windows\explorer.exe)";
+    return explorer;
+}
+
+std::string taskbarLayoutXml(const TaskbarPinsPlan& plan) {
+    std::string out =
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n"
+        "<LayoutModificationTemplate xmlns=\"http://schemas.microsoft.com/Start/2014/LayoutModification\""
+        " xmlns:defaultlayout=\"http://schemas.microsoft.com/Start/2014/FullDefaultLayout\""
+        " xmlns:start=\"http://schemas.microsoft.com/Start/2014/StartLayout\""
+        " xmlns:taskbar=\"http://schemas.microsoft.com/Start/2014/TaskbarLayout\" Version=\"1\">\r\n"
+        "  <CustomTaskbarLayoutCollection PinListPlacement=\"Replace\">\r\n"
+        "    <defaultlayout:TaskbarLayout>\r\n"
+        "      <taskbar:TaskbarPinList>\r\n";
+    // No XML comments: Explorer drops a layout that has them (Microsoft Q&A, 24H2).
+    const std::string generation = plan.userMayUnpin ? " PinGeneration=\"1\"" : "";
+    for (const auto& pin : plan.pins) {
+        switch (pin.kind) {
+        case StartApp::Kind::Packaged:
+            out += "        <taskbar:UWA AppUserModelID=\"" + xmlAttribute(pin.id) + "\"" + generation + "/>\r\n";
+            break;
+        case StartApp::Kind::DesktopId:
+            out += "        <taskbar:DesktopApp DesktopApplicationID=\"" + xmlAttribute(pin.id) + "\"" + generation + "/>\r\n";
+            break;
+        case StartApp::Kind::DesktopLink:
+            out += "        <taskbar:DesktopApp DesktopApplicationLinkPath=\"" + xmlAttribute(pin.id) + "\"" + generation + "/>\r\n";
+            break;
+        }
+    }
+    if (plan.pins.empty()) {
+        out += "        <taskbar:DesktopApp DesktopApplicationLinkPath=\"#leaveempty\"/>\r\n";
+    }
+    out += "      </taskbar:TaskbarPinList>\r\n"
+           "    </defaultlayout:TaskbarLayout>\r\n"
+           "  </CustomTaskbarLayoutCollection>\r\n"
+           "</LayoutModificationTemplate>\r\n";
+    return out;
+}
+
+Result<TaskbarPinsPlan> taskbarPlanFromXml(std::string_view xml) {
+    pugi::xml_document doc;
+    if (!doc.load_buffer(xml.data(), xml.size())) {
+        return fail(ErrorCode::ParseError, L"not a taskbar layout", L"TaskbarLayout.xml");
+    }
+    const auto list = doc.select_node("//*[local-name()='TaskbarPinList']").node();
+    if (!list) {
+        return fail(ErrorCode::ParseError, L"the layout has no taskbar pin list", L"TaskbarLayout.xml");
+    }
+    TaskbarPinsPlan plan;
+    bool generation = false;
+    bool any = false;
+    for (const auto& pin : list.children()) {
+        const std::string_view name = pin.name();
+        StartApp app;
+        if (name.ends_with("UWA")) {
+            app.kind = StartApp::Kind::Packaged;
+            app.id = utf8::toWide(pin.attribute("AppUserModelID").as_string());
+        } else if (name.ends_with("DesktopApp")) {
+            if (const auto id = pin.attribute("DesktopApplicationID"); id) {
+                app.kind = StartApp::Kind::DesktopId;
+                app.id = utf8::toWide(id.as_string());
+            } else {
+                app.kind = StartApp::Kind::DesktopLink;
+                app.id = utf8::toWide(pin.attribute("DesktopApplicationLinkPath").as_string());
+            }
+        } else {
+            continue;
+        }
+        if (app.id.empty() || app.id == kLeaveEmpty) {
+            continue;
+        }
+        any = true;
+        generation = generation || pin.attribute("PinGeneration");
+        app.name = app.id == kExplorerId ? fileExplorerPin().name : app.id;
+        plan.pins.push_back(std::move(app));
+    }
+    plan.userMayUnpin = !any || generation;
+    return plan;
+}
+
+std::vector<ops::Operation> taskbarPinsOperations(const TaskbarPinsPlan& plan) {
+    using ops::OpKind;
+    using ops::Operation;
+    return {Operation{OpKind::SetRegistryValue, std::wstring(kExplorerPolicyKey) + L"::LockedStartLayout", L"dword:00000001"},
+            Operation{OpKind::SetRegistryValue, std::wstring(kExplorerPolicyKey) + L"::StartLayoutFile", regExpand(kTaskbarPathValue)},
+            Operation{OpKind::WriteFile, kTaskbarLayoutFile, utf8::toWide(taskbarLayoutXml(plan))}};
+}
+
+std::optional<TaskbarPinsPlan> taskbarPlanFromOperations(const std::vector<ops::Operation>& ops) {
+    for (const auto& op : ops) {
+        if (op.kind == ops::OpKind::WriteFile && text::lower(op.target) == text::lower(std::wstring(kTaskbarLayoutFile))) {
+            if (auto plan = taskbarPlanFromXml(utf8::fromWide(op.value))) {
+                return std::move(*plan);
+            }
+            return std::nullopt;
+        }
+    }
+    return std::nullopt;
+}
+
+std::vector<std::pair<ops::OpKind, std::wstring>> taskbarPinsSlots() {
+    using ops::OpKind;
+    return {{OpKind::SetRegistryValue, std::wstring(kExplorerPolicyKey) + L"::LockedStartLayout"},
+            {OpKind::SetRegistryValue, std::wstring(kExplorerPolicyKey) + L"::StartLayoutFile"},
+            {OpKind::WriteFile, kTaskbarLayoutFile}};
+}
+
 } // namespace wl::core
