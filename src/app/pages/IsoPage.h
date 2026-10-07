@@ -57,6 +57,10 @@ private:
     void paintLegacyHint(ui::Canvas& canvas, float formRight);
     [[nodiscard]] std::vector<int> mediaCannotInstall() const; // D-077 (or the render demo's)
     [[nodiscard]] std::wstring setupImageText() const;
+    // D-080: "KB5129195 · Setup KB5127216" — what the media update takes; empty: nothing downloaded.
+    [[nodiscard]] std::wstring mediaUpdateSource() const;
+    [[nodiscard]] std::pair<std::wstring, ui::tokens::Color> mediaUpdateSummary() const;
+    void paintMediaHint(ui::Canvas& canvas, float formRight);
     // "Kurulum ekranı" in the summary: which Setup the media opens, and in what ink.
     [[nodiscard]] std::pair<std::wstring, ui::tokens::Color> setupUiSummary() const;
     void notifyChanged();
@@ -84,6 +88,7 @@ private:
     ui::CheckField* m_noPrompt = nullptr;
     ui::CheckField* m_bootBypass = nullptr;
     ui::CheckField* m_legacySetup = nullptr;
+    ui::CheckField* m_mediaUpdate = nullptr; // D-080
     bool m_legacyTouched = false;  // the user's choice is kept from then on
     std::vector<int> m_noWinre;    // 24H2+ editions without Winre.wim
     std::optional<std::vector<int>> m_cannotInstallDemo; // D-077 render demo

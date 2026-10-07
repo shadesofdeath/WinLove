@@ -25,6 +25,9 @@ struct ApplyReport {
 
 struct ApplyOptions {
     std::vector<std::filesystem::path> featureSources; // DismEnableFeature SourcePaths (sources\sxs)
+    // D-080: the cumulative update queued in the same run, whose servicing stack goes into WinRE
+    // before the Safe OS dynamic update (apply() finds it in the plan when this is empty).
+    std::filesystem::path winReLcu;
 };
 
 struct ApplyCallbacks {

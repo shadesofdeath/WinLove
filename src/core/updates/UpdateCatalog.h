@@ -51,6 +51,8 @@ struct CatalogTarget {
     std::wstring release;
     std::wstring architecture = L"x64"; // x64 | arm64 | x86
     int build = 0, revision = 0;        // the image's own build, e.g. 26200.8037
+    // D-080: also the Safe OS (WinRE) and Setup (setup media) dynamic updates of the release.
+    bool dynamicUpdates = false;
 };
 // From the image's build (26200 → 11 25H2); empty release for a build the catalog has no name for.
 [[nodiscard]] CatalogTarget catalogTarget(int build, int revision, std::wstring_view architecture);
@@ -60,7 +62,7 @@ struct CatalogTarget {
 [[nodiscard]] std::vector<CatalogFile> parseCatalogDownload(std::string_view script);
 void classifyCatalogEntry(CatalogEntry& entry);
 [[nodiscard]] bool matchesTarget(const CatalogEntry& entry, const CatalogTarget& target);
-// The search terms that find the target's cumulative and .NET updates.
+// The search terms that find the target's cumulative and .NET updates (and its dynamic updates).
 [[nodiscard]] std::vector<std::wstring> catalogQueries(const CatalogTarget& target);
 
 struct CatalogOffer {
@@ -84,6 +86,7 @@ struct DownloadedUpdate {
     std::filesystem::path main;               // the entry's own package (queued)
     std::vector<std::filesystem::path> prerequisites; // e.g. the 24H2 checkpoint (same folder)
     std::uint64_t bytes = 0;                  // size of the files fetched now (0: all were there already)
+    CatalogKind kind = CatalogKind::Other;    // what the catalog says it is (a Safe OS update's file name does not)
 };
 // Downloads the files of `entry` into `folder` (a file already there with the right SHA-256 is
 // kept) and verifies each. Progress covers all files by size.

@@ -35,6 +35,7 @@ struct IsoOptions {
     struct ReplacedFile {
         std::wstring path;          // in the image, from its root: L"sources\\boot.wim"
         std::filesystem::path file; // read while the image is written: must stay until buildIso returns
+        bool isNew = false;         // the folder has no such file yet (D-080: a Setup dynamic update brings it)
     };
     std::vector<ReplacedFile> replacedFiles;
 };

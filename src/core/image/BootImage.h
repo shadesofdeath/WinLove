@@ -29,10 +29,15 @@ struct BootPatch {
     bool bypassStorage = false;
     bool legacySetup = false;                   // boot into the previous Setup (24H2+)
     std::vector<std::filesystem::path> drivers; // .inf files
+    // D-080: the latest cumulative update for Setup's own images — every index of boot.wim, as
+    // Microsoft's media refresh does (steps 17, 23–25). The files the media must then take from the
+    // updated Setup image (its whole sources\ folder, the boot manager) are copied to `setupFilesTo`.
+    std::filesystem::path lcu;
+    std::filesystem::path setupFilesTo;
 
     [[nodiscard]] bool empty() const noexcept {
         return !bypassTpm && !bypassSecureBoot && !bypassRam && !bypassCpu && !bypassStorage && !legacySetup &&
-               drivers.empty();
+               drivers.empty() && lcu.empty();
     }
     // "BypassTPMCheck" … for the checks that are on.
     [[nodiscard]] std::vector<std::wstring> labConfigValues() const;
@@ -43,7 +48,9 @@ struct BootPatch {
 inline constexpr std::wstring_view kLegacySetupCmdLine = L"cmd /c start /min wpeinit && \\sources\\setup";
 
 struct BootPatchReport {
-    int index = 0;                             // the image that was patched
+    int index = 0;                             // the image that was patched (Setup's)
+    int updated = 0;                           // images the cumulative update went into
+    std::wstring versionBefore, versionAfter;  // Setup's image, "10.0.26100.1742"
     std::size_t driversAdded = 0;
     std::vector<std::wstring> driversRefused;  // "<inf>: <why>" — the rest still went in
 };

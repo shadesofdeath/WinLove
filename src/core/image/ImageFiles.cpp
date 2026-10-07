@@ -170,6 +170,59 @@ Result<void> replaceImageFile(const std::filesystem::path& mountDir, std::wstrin
     return {};
 }
 
+Result<void> replaceImageFileFrom(const std::filesystem::path& mountDir, std::wstring_view relative,
+                                  const std::filesystem::path& source, std::uint32_t attributes, const TaskContext& task) {
+    auto target = resolveImagePath(mountDir, relative);
+    if (!target) {
+        return std::unexpected(target.error());
+    }
+    UniqueHandle in{CreateFileW(source.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                                FILE_FLAG_SEQUENTIAL_SCAN, nullptr)};
+    LARGE_INTEGER size{};
+    if (!in || !GetFileSizeEx(in.get(), &size)) {
+        return fail(ErrorCode::IoError, L"cannot read the file to put into the image", source.wstring(),
+                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
+    }
+    if (auto removed = unlinkImageFile(mountDir, relative); !removed) {
+        return removed;
+    }
+    enableBackupRestore();
+    UniqueHandle out{CreateFileW(target->c_str(), GENERIC_WRITE | FILE_WRITE_ATTRIBUTES, 0, nullptr, CREATE_NEW,
+                                 FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, nullptr)};
+    if (!out) {
+        return fail(ErrorCode::IoError, L"cannot create the file in the image", target->wstring(),
+                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
+    }
+    std::vector<char> buffer(4u << 20);
+    std::uint64_t done = 0;
+    for (;;) {
+        DWORD got = 0;
+        if (!ReadFile(in.get(), buffer.data(), static_cast<DWORD>(buffer.size()), &got, nullptr)) {
+            return fail(ErrorCode::IoError, L"cannot read the file to put into the image", source.wstring(),
+                        static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
+        }
+        if (got == 0) {
+            break;
+        }
+        DWORD written = 0;
+        if (!WriteFile(out.get(), buffer.data(), got, &written, nullptr) || written != got) {
+            return fail(ErrorCode::IoError, L"cannot write the file in the image", target->wstring(),
+                        static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
+        }
+        done += written;
+        task.report(size.QuadPart > 0 ? static_cast<double>(done) / static_cast<double>(size.QuadPart) : 1.0);
+    }
+    if (attributes != 0) {
+        FILE_BASIC_INFO basic{};
+        if (GetFileInformationByHandleEx(out.get(), FileBasicInfo, &basic, sizeof(basic))) {
+            basic.FileAttributes = attributes;
+            SetFileInformationByHandle(out.get(), FileBasicInfo, &basic, sizeof(basic));
+        }
+    }
+    log::info("file", std::format(L"replaced {} ({} bytes)", target->wstring(), done));
+    return {};
+}
+
 Result<void> writeImageFile(const std::filesystem::path& mountDir, std::wstring_view relative, std::string_view content) {
     if (auto ok = validateImageFile(relative, content.size()); !ok) {
         return ok;

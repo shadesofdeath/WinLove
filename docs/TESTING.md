@@ -48,6 +48,11 @@ build\lab\
    `build\lab\out\vm-<etiket>\diag`: `timeline.txt`, `WinLove\` (Kurulum Sonrası / Programlar günlükleri), `smoke.txt`
    (disk kullanımı, WinSxS klasör sayısı, sistem programları ve kurulan programlar açılıyor mu, SideBySide olayları,
    Defender imzaları). Laboratuvar bitince sanal diski siler: günlük yalnız `-Diag` ile kalır.
+4d. Kurulum ortamı (D-080): `tools\lab_winre.ps1 [-Keep]` (WinRE güncellemesi), `tools\lab_media.ps1 [-ForVm]` (boot.wim +
+   kurulum dosyaları + ISO içeriği), `lab_vm.ps1 -IsoArgs @('--setup-du=…','--boot-files=…')` (ISO'yu o yoldan kurar).
+   Kurulum WinPE'de başarısızsa `tools\lab_setup_logs.ps1 -Tag x -SetupFolder <ortam> -InstallWim <wim>`: Setup'ı bir
+   betiğe sarar, günlükleri (`$WINDOWS.~BT` her sürücüde, `X:\Windows\Panther`) `lab_vm.ps1 -LogDisk` diskine yazar →
+   `build\lab\out\vm-setuplogs-<Tag>\diag`.
 5. **Yasak:** tüm ekranı yakalamak (`ImageGrab`, ekran görüntüsü). Kullanıcının diğer pencereleri görüntüye girer (D-013).
 6. Farklar sayfa spec'ine not edilir; bilinçli sapmalar `DECISIONS.md`'ye.
 7. Render testleri (`tests/ui/RenderTests.cpp`) piksel düzeyinde kontrol eder: token rengi, 1px çizginin %150'de tam bir fiziksel satır olması.

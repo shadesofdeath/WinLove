@@ -214,3 +214,16 @@ Uygulama davranışı:
   sembollü yığın; Debug'da dosya:satır) + `.dmp` yazar — render'lar dahil. İlk bulduğu: açılır liste açıkken pencere
   kapanınca (render her zaman öyle biter) `Host` önce modal pencereleri siler, `Dropdown`'ın yıkıcısı ölü `MenuPopup`'ı
   kapatmaya çalışıyordu (0xC0000005). Artık `MenuPopup` yok olurken sahibine haber verir, sahibi önce giderse `detach()`.
+- [2026-10-07] [Kurulum ortamı güncellemesi, 24H2+] Toplu güncelleme boot.wim'in iki sürümüne 443 sn; Safe OS + toplu
+  güncelleme WinRE'ye 80 sn (toplu güncellemenin WinRE'deki ilk geçişi bilinen 0x8007007E vermedi). Yeni kurulum: WinPE'de
+  `X:\Sources\SetupPrep.exe` → `SetupHost.exe /Install /Boot`, ortamın tamamını (`D:`) diskteki `$Windows.~BT`'ye kopyalar,
+  ikinci aşama oradan çalışır ve **ortamın** `sources\` kopyasındaki Setup Platform'u yükler: yapı farklıysa
+  "Determine if the expected version of Setup Platform has been loaded" → 0xC1900100, ekranda "Windows 11 yüklemesi başarısız
+  oldu". Yalnız boot.wim güncellenip ortam dosyaları eski kalırsa: "Donanımı görüntülemek için sürücüyü yükle" (medya sürücüsü
+  eksik). Setup dinamik güncellemesi bütün dillerin klasörlerini getirir (ar-sa, …); boot.wim'in `sources\`'ı 141 dosya,
+  56 MB, ortamda olmayan `en-US`, `recovery` klasörleriyle. WinPE'nin kurulum günlükleri RAM diskte kalır: Setup'ı
+  `HKLM\SYSTEM\Setup\CmdLine` ile bir betiğe sarıp ikinci diske kopyalamak gerekir (diskpart `noerr`'i `select`
+  komutlarında kabul etmez, ilk hatada betiği durdurur; GPT'de veri bölümü MSR'den sonra).
+- [2026-10-07] [Modlu Windows] WinLove `dismapi.dll` / `wimgapi.dll`'i ana makinenin System32'sinden yükler. Kurulum ortamının
+  `sources\`'ında `wimgapi.dll`, `dismapi.dll`, `dismcore.dll`, `wimprovider.dll`, `imagingprovider.dll`, `folderprovider.dll`,
+  `vhdprovider.dll`, `osimageprovider.dll`, `dism.exe` var — `CbsProvider` yok (paket servisi ortamdan yapılamaz).

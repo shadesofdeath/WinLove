@@ -25,6 +25,7 @@ add_library(wl_core STATIC
     image/LanguageInstall.cpp
     image/LanguagePacks.cpp
     image/ImageFiles.cpp
+    image/MediaRefresh.cpp
     image/ImageFormat.cpp
     image/Source.cpp
     image/SystemComponents.cpp
@@ -43,6 +44,7 @@ add_library(wl_core STATIC
     image/dism/OptionalFeatures.cpp
     image/dism/StoreCleanup.cpp
     image/dism/StoreShrink.cpp
+    image/dism/WinReUpdate.cpp
     image/wim/Lzx.cpp
     image/wim/WimGapi.cpp
     image/wim/WimVerify.cpp

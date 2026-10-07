@@ -525,6 +525,14 @@ Result<UsbResult> writeUsb(const UsbOptions& options, const TaskContext& task) {
     if (ec) {
         return fail(ErrorCode::IoError, L"could not read the setup folder", options.sourceFolder.wstring(), ec.value());
     }
+    // Files the setup folder does not have (D-080: brought by a Setup dynamic update).
+    for (const auto& file : options.replacedFiles) {
+        if (file.isNew) {
+            if (auto r = copyOne(file.file, target / file.path); !r) {
+                return std::unexpected(r.error());
+            }
+        }
+    }
     for (const auto& file : options.rootFiles) {
         std::ofstream out(target / file.name, std::ios::binary | std::ios::trunc);
         out.write(file.content.data(), static_cast<std::streamsize>(file.content.size()));

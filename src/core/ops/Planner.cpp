@@ -137,7 +137,12 @@ ApplyPlan plan(const ChangeSet& changes) {
         if (op.kind != OpKind::AddPackage) {
             return 0;
         }
-        return op.value == L"ssu" ? 0 : op.value == L"language" ? 1 : op.value == L"lcu" ? 2 : op.value == L"dotnet" ? 3 : 4;
+        return op.value == L"ssu"        ? 0
+               : op.value == L"language" ? 1
+               : op.value == L"lcu"      ? 2
+               : op.value == L"dotnet"   ? 3
+               : op.value == L"safeos"   ? 5 // WinRE (D-080): a separate image, after the main one
+                                         : 4;
     };
     // Language files among themselves: the pack, then each feature after what it depends on
     // (Basic before Speech, …), the components' languages last (LanguagePacks.h, D-061).

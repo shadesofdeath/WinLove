@@ -172,8 +172,19 @@ Result<IsoResult> buildIso(const IsoOptions& options, const TaskContext& task) {
         if (FAILED(hr)) {
             return comFail(hr, L"open " + file.file.wstring());
         }
+        if (file.isNew) {
+            // Its folder may be new as well (sources\en-US of a Setup image): made one level at a time.
+            for (std::size_t at = file.path.find(L'\\'); at != std::wstring::npos; at = file.path.find(L'\\', at + 1)) {
+                BSTR dir = SysAllocString(file.path.substr(0, at).c_str());
+                (void)root->AddDirectory(dir); // fails when it is there already
+                SysFreeString(dir);
+            }
+        }
         BSTR path = SysAllocString(file.path.c_str());
-        hr = root->Remove(path); // it replaces a file of the folder: one that is not there is a mistake
+        hr = root->Remove(path); // it replaces a file of the folder: one that is not there is a mistake…
+        if (FAILED(hr) && file.isNew) {
+            hr = S_OK; // …unless it is new
+        }
         if (SUCCEEDED(hr)) {
             hr = root->AddFile(path, content.Get());
         }

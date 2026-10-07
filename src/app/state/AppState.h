@@ -226,6 +226,19 @@ public:
     [[nodiscard]] bool isBootDriver(const std::filesystem::path& inf) const;
     void setBootDriver(const std::filesystem::path& inf, bool on);
 
+    // D-080: what brings the setup media itself up to date when the ISO / USB is made — the
+    // cumulative update for boot.wim and the Setup dynamic update for sources\ — as the update
+    // catalog downloaded them; `enabled` is the ISO page's box. Change::Iso.
+    struct MediaUpdate {
+        std::filesystem::path lcu;
+        std::filesystem::path setupDu;
+        bool enabled = true;
+        [[nodiscard]] bool any() const noexcept { return !lcu.empty() || !setupDu.empty(); }
+        [[nodiscard]] bool operator==(const MediaUpdate&) const = default;
+    };
+    [[nodiscard]] const MediaUpdate& mediaUpdate() const noexcept { return m_mediaUpdate; }
+    void setMediaUpdate(MediaUpdate update);
+
     // P13: the answer file being edited (kept across pages, sources and — with an answers file —
     // runs of the app); written to the root of the next ISO when `includeInIso` is on.
     struct Unattend {
@@ -391,6 +404,7 @@ private:
     std::vector<RegImport> m_regImports;
     DriverScan m_drivers;
     std::vector<std::filesystem::path> m_bootDrivers;
+    MediaUpdate m_mediaUpdate;
     Unattend m_unattend;
     std::optional<IsoRun> m_iso;
     std::optional<UpdateFetch> m_updateFetch;

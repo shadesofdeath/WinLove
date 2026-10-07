@@ -154,14 +154,16 @@ UpdatesPage::~UpdatesPage() {
     m_state.unsubscribe(m_subscription);
 }
 
-std::size_t UpdatesPage::queuePackages(AppState& state, const std::vector<std::filesystem::path>& files) {
+std::size_t UpdatesPage::queuePackages(AppState& state, const std::vector<std::filesystem::path>& files,
+                                       std::optional<core::UpdateKind> kind) {
     std::size_t added = 0;
     for (const auto& file : files) {
         if (!core::isUpdateFile(file) || state.changes().find(OpKind::AddPackage, file.wstring())) {
             continue;
         }
         const auto info = core::analyzeUpdate(file);
-        core::ops::Operation op{OpKind::AddPackage, file.wstring(), core::updateKindKey(info.kind)};
+        // A Safe OS update's file name does not say what it is: the catalog does (D-080).
+        core::ops::Operation op{OpKind::AddPackage, file.wstring(), core::updateKindKey(kind.value_or(info.kind))};
         op.risk = core::ops::Risk::Low;
         op.sizeDelta = static_cast<std::int64_t>(info.size); // the image grows
         state.queue(std::move(op));
@@ -241,9 +243,11 @@ void UpdatesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect)
         break;
     }
     case kKind: {
-        static constexpr Str kKinds[] = {Str::UpdatesKindSsu, Str::UpdatesKindLcu, Str::UpdatesKindDotnet, Str::UpdatesKindOther,
-                                         Str::UpdatesKindLanguage};
-        canvas.drawText(m_strings.get(kKinds[static_cast<int>(info.kind)]), rect, TypeStyle::Body, Color::TextPrimary);
+        static constexpr Str kKinds[] = {Str::UpdatesKindSsu,   Str::UpdatesKindLcu,      Str::UpdatesKindDotnet,
+                                         Str::UpdatesKindOther, Str::UpdatesKindLanguage, Str::UpdatesKindSafeOs};
+        // The queue says what it is (the catalog's word for a Safe OS update), the file name the rest.
+        const auto kind = op.value == L"safeos" ? core::UpdateKind::SafeOs : info.kind;
+        canvas.drawText(m_strings.get(kKinds[static_cast<int>(kind)]), rect, TypeStyle::Body, Color::TextPrimary);
         break;
     }
     case kKb:

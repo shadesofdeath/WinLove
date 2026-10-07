@@ -7,7 +7,9 @@
 #include "core/image/ComponentStore.h"
 #include "core/image/SystemComponents.h"
 #include "core/image/dism/StoreCleanup.h"
+#include "core/image/MediaRefresh.h"
 #include "core/image/dism/StoreShrink.h"
+#include "core/image/dism/WinReUpdate.h"
 #include "core/image/RegistryEdit.h"
 #include "core/image/RegistryRead.h"
 #include "core/updates/UpdateCatalog.h"
@@ -1001,6 +1003,31 @@ int cmdStoreCleanup(const std::wstring& dir, bool resetBase) {
     return 0;
 }
 
+// D-080: the image's WinRE brought up to date (Safe OS dynamic update, the LCU's servicing stack).
+// The work folder sits next to the mount folder; the image is not committed.
+int cmdWinReUpdate(const std::wstring& dir, const std::wstring& safeOs, const std::wstring& lcu) {
+    if (safeOs.empty()) {
+        print(L"error: --safeos=<Safe OS dynamic update .cab> is required\n");
+        return 1;
+    }
+    auto dism = core::Dism::instance();
+    if (!dism) {
+        return reportError(dism.error());
+    }
+    const std::filesystem::path mount(dir);
+    const auto work = mount.parent_path() / (mount.filename().wstring() + L"-winre");
+    const auto task = progressTask(L"winre");
+    auto report = core::updateWinRe(**dism, mount, work, {safeOs, lcu}, task);
+    print(L"\n");
+    if (!report) {
+        return reportError(report.error());
+    }
+    print(std::format(L"WinRE {} -> {} ({:.0f} MB -> {:.0f} MB; image not committed)\n", report->versionBefore,
+                      report->versionAfter, static_cast<double>(report->bytesBefore) / 1048576.0,
+                      static_cast<double>(report->bytesAfter) / 1048576.0));
+    return 0;
+}
+
 // D-079: WinSxS at its smallest. --dry-run lists and measures what would go; otherwise it goes
 // (irreversible; the image is not committed). Both print the same measurement.
 int cmdStoreShrink(const std::wstring& dir, bool dryRun) {
@@ -1073,9 +1100,12 @@ int cmdAppxRemove(const std::wstring& dir, const std::wstring& package, bool nat
 // committed (BootImage.h). `bypass`: "tpm,secureboot,ram,cpu,storage" or "all"; `legacySetup`: the
 // media boots into the previous Setup (24H2+, D-074).
 int cmdBootPatch(const std::wstring& bootWim, const std::wstring& mountDir, const std::wstring& bypass,
-                 const std::vector<std::wstring>& drivers, bool legacySetup) {
+                 const std::vector<std::wstring>& drivers, bool legacySetup, const std::wstring& lcu,
+                 const std::wstring& setupFiles) {
     core::BootPatch patch;
     patch.legacySetup = legacySetup;
+    patch.lcu = lcu;
+    patch.setupFilesTo = setupFiles;
     std::wstringstream parts(bypass);
     for (std::wstring part; !bypass.empty() && std::getline(parts, part, L',');) {
         const bool all = part == L"all";
@@ -1092,7 +1122,7 @@ int cmdBootPatch(const std::wstring& bootWim, const std::wstring& mountDir, cons
         patch.drivers.emplace_back(driver);
     }
     if (patch.empty()) {
-        return reportError(Error{ErrorCode::InvalidArgument, L"nothing to do: give --bypass=, --driver= and / or --legacy-setup", bootWim});
+        return reportError(Error{ErrorCode::InvalidArgument, L"nothing to do: give --bypass=, --driver=, --lcu= and / or --legacy-setup", bootWim});
     }
     auto d = dism();
     if (!d) {
@@ -1109,6 +1139,10 @@ int cmdBootPatch(const std::wstring& bootWim, const std::wstring& mountDir, cons
                       legacySetup ? L", boots into the previous Setup" : L""));
     for (const auto& refused : report->driversRefused) {
         print(std::format(L"  driver not added: {}\n", refused));
+    }
+    if (!patch.lcu.empty()) {
+        print(std::format(L"  cumulative update in {} image(s); Setup image {} -> {}\n", report->updated, report->versionBefore,
+                          report->versionAfter));
     }
     return report->driversRefused.empty() ? 0 : 3;
 }
@@ -1584,19 +1618,22 @@ int cmdRegCheck(const std::wstring& file, const std::wstring& mountDir, bool asJ
 
 // D-046: the Microsoft Update Catalog for an image build (no admin, network).
 int cmdCatalog(const std::wstring& buildText, const std::wstring& arch, const std::wstring& downloadDir, bool preview,
-               const std::wstring& onlyKb, bool asJson) {
+               const std::wstring& onlyKb, bool asJson, bool dynamic) {
     int build = 0;
     int revision = 0;
     if (swscanf_s(buildText.c_str(), L"%d.%d", &build, &revision) < 1 || build < 10000) {
         print(L"error: build must look like 26200 or 26200.8037\n");
         return 1;
     }
-    const auto target = core::catalogTarget(build, revision, arch.empty() ? L"x64" : arch);
+    auto target = core::catalogTarget(build, revision, arch.empty() ? L"x64" : arch);
+    target.dynamicUpdates = dynamic;
     auto offers = core::findCatalogUpdates(target, g_cancel);
     if (!offers) {
         return reportError(offers.error());
     }
-    auto kindName = [](core::CatalogKind k) { return k == core::CatalogKind::DotNet ? L".NET" : L"LCU"; };
+    auto kindName = [](core::CatalogKind k) {
+        return k == core::CatalogKind::DotNet ? L".NET" : k == core::CatalogKind::SafeOs ? L"SafeOS" : k == core::CatalogKind::Setup ? L"Setup" : L"LCU";
+    };
     if (asJson) {
         json out = json::array();
         for (const auto& o : *offers) {
@@ -2185,8 +2222,26 @@ int cmdLanguages(const std::wstring& folder) {
 
 // P06: bootable ISO from a setup folder (IMAPI2FS, no admin).
 int cmdIso(const std::wstring& folder, const std::wstring& output, const std::wstring& label, const std::wstring& boot,
-           bool sha, bool noPrompt) {
+           bool sha, bool noPrompt, const std::wstring& setupDu, const std::wstring& bootFiles) {
     core::IsoOptions options;
+    // D-080: the setup folder's own files brought up to date (Setup dynamic update, then setup.exe,
+    // setuphost.exe and the boot manager from an updated boot.wim: boot-patch --setup-files=).
+    const std::filesystem::path duFolder = std::filesystem::path(output).wstring() + L".setupdu";
+    if (!setupDu.empty() || !bootFiles.empty()) {
+        if (!setupDu.empty()) {
+            auto expanded = core::expandSetupDynamicUpdate(setupDu, duFolder, {});
+            if (!expanded) {
+                return reportError(expanded.error());
+            }
+        }
+        const auto files = core::mediaRefreshFiles(folder, setupDu.empty() ? std::filesystem::path() : duFolder, bootFiles);
+        std::size_t added = 0;
+        for (const auto& file : files) {
+            options.replacedFiles.push_back({file.path, file.file, file.isNew});
+            added += file.isNew ? 1 : 0;
+        }
+        print(std::format(L"  {} file(s) of the setup folder replaced, {} new\n", files.size() - added, added));
+    }
     options.sourceFolder = folder;
     options.output = output;
     options.volumeLabel = label;
@@ -2203,6 +2258,8 @@ int cmdIso(const std::wstring& folder, const std::wstring& output, const std::ws
     }
     print(std::format(L"  {} ({} bytes){}\n", output, result->bytes,
                       result->sha256.empty() ? std::wstring() : L"\n  sha256 " + result->sha256));
+    std::error_code ec;
+    std::filesystem::remove_all(duFolder, ec);
     return 0;
 }
 
@@ -2267,7 +2324,7 @@ void printUsage() {
           L"  wlcli mounts | cleanup\n"
           L"  wlcli repair <dir>                  (inspect a mount folder and do what it needs: remount / discard / clean)\n"
           L"  wlcli packages|features|capabilities <mountdir>\n"
-          L"  wlcli iso <setup-folder> <out.iso> [--label=X] [--boot=both|uefi|bios] [--sha256] [--no-prompt]\n"
+          L"  wlcli iso <setup-folder> <out.iso> [--label=X] [--boot=both|uefi|bios] [--sha256] [--no-prompt] [--setup-du=<cab>] [--boot-files=<dir>]\n"
           L"  wlcli unattend <answer.xml>         (read an answer file; print it as WinLove writes it, P13)\n"
           L"  wlcli postsetup <plan.json> <mountdir>   (write post-setup scripts and payloads into the image, P14)\n"
           L"  wlcli reg <file.reg> [<mountdir>] [--first-logon]   (parse; with a mount: write into the image's\n"
@@ -2306,7 +2363,7 @@ void printUsage() {
           L"  wlcli usb-write <disk> <setup folder> --yes [--gpt] [--label=] [--unattend=<xml>] [--allow-virtual]\n"
           L"                                      (admin; ERASES the\n"
           L"                                      disk: FAT32, BIOS + UEFI (--gpt: UEFI only), install.wim > 4 GB -> .swm)\n"
-          L"  wlcli catalog <build>[.<revision>] [--arch=x64|arm64] [--download=<folder>] [--preview] [--kb=KB…] [--json]\n"
+          L"  wlcli catalog <build>[.<revision>] [--arch=x64|arm64] [--download=<folder>] [--preview] [--kb=KB…] [--json] [--dynamic]\n"
           L"                                      (newest cumulative + .NET updates from the Microsoft Update\n"
           L"                                      Catalog; --download: fetch the recommended ones, SHA-256 checked)\n"
           L"  wlcli start-apps <mountdir> [--json]       (apps the Start menu can pin; D-069)\n"
@@ -2326,10 +2383,11 @@ void printUsage() {
           L"  wlcli component <mountdir> <recipe.json> [--remove]   (P07 system component: probe / remove)\n"
           L"  wlcli store-cleanup <mountdir> [--resetbase]   (dism /Cleanup-Image /StartComponentCleanup)\n"
           L"  wlcli store-shrink <mountdir> [--dry-run]      (D-079: WinSxS at its smallest, irreversible)\n"
+          L"  wlcli winre-update <mountdir> --safeos=<cab> [--lcu=<msu>]   (D-080: the image's WinRE up to date)\n"
           L"  wlcli edition <mountdir> [--set=<EditionId>] [--json]   (current + target editions; --set: dism /Set-Edition)\n"
           L"  wlcli appx-remove <mountdir> <PackageFullName> [--native]   (DISM; natively when DISM refuses the app)\n"
           L"  wlcli boot-patch <boot.wim> <mountdir> [--bypass=tpm,secureboot,ram,cpu,storage|all] [--driver=<inf>]...\n"
-          L"                                      [--legacy-setup]   (Setup's image: LabConfig, drivers, previous Setup; mounts, commits)\n"
+          L"                                      [--legacy-setup] [--lcu=<msu> --setup-files=<dir>]   (Setup's image: LabConfig, drivers, previous Setup, D-080 update; mounts, commits)\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
           L"  wlcli apply <changeset.json> <mountdir> [--commit] [--source=<sources\\sxs>]\n"
           L"                                      [--also=2,3 --wim=<file>] [--setup=<setup folder>]   (with --commit: then the same on further editions)\n"
@@ -2380,6 +2438,12 @@ int wmain(int argc, wchar_t** argv) {
     int resultLimit = 0;
     bool refreshIndex = false;
     bool preview = false;
+    bool dynamic = false;
+    std::wstring safeOsPath;
+    std::wstring setupDuPath;
+    std::wstring bootFilesPath;
+    std::wstring setupFilesPath;
+    std::wstring lcuPath;
     std::wstring onlyKb;
     bool allowVirtual = false;
     std::wstring removeName;
@@ -2479,6 +2543,18 @@ int wmain(int argc, wchar_t** argv) {
             hidden = true;
         } else if (a.starts_with(L"--unattend=")) {
             unattendFile = std::wstring(a.substr(11));
+        } else if (a.starts_with(L"--setup-du=")) {
+            setupDuPath = a.substr(11);
+        } else if (a.starts_with(L"--boot-files=")) {
+            bootFilesPath = a.substr(13);
+        } else if (a.starts_with(L"--setup-files=")) {
+            setupFilesPath = a.substr(14);
+        } else if (a.starts_with(L"--safeos=")) {
+            safeOsPath = a.substr(9);
+        } else if (a.starts_with(L"--lcu=")) {
+            lcuPath = a.substr(6);
+        } else if (a == L"--dynamic") {
+            dynamic = true;
         } else if (a == L"--preview") {
             preview = true;
         } else if (a.starts_with(L"--label=")) {
@@ -2587,13 +2663,16 @@ int wmain(int argc, wchar_t** argv) {
         return cmdAppxRemove(args[1], args[2], native);
     }
     if (command == L"boot-patch" && args.size() == 3) {
-        return cmdBootPatch(args[1], args[2], bypass, drivers, legacySetup);
+        return cmdBootPatch(args[1], args[2], bypass, drivers, legacySetup, lcuPath, setupFilesPath);
     }
     if (command == L"edition" && args.size() == 2) {
         return cmdEdition(args[1], serviceSet, asJson);
     }
     if (command == L"store-cleanup" && args.size() == 2) {
         return cmdStoreCleanup(args[1], resetBase);
+    }
+    if (command == L"winre-update" && args.size() == 2) {
+        return cmdWinReUpdate(args[1], safeOsPath, lcuPath);
     }
     if (command == L"store-shrink" && args.size() == 2) {
         return cmdStoreShrink(args[1], dryRun);
@@ -2602,7 +2681,7 @@ int wmain(int argc, wchar_t** argv) {
         return cmdAppx(args[1], asJson);
     }
     if (command == L"iso" && args.size() == 3) {
-        return cmdIso(args[1], args[2], label, boot, sha, noPrompt);
+        return cmdIso(args[1], args[2], label, boot, sha, noPrompt, setupDuPath, bootFilesPath);
     }
     if (command == L"postsetup" && args.size() == 3) {
         return cmdPostSetup(args[1], args[2]);
@@ -2704,7 +2783,7 @@ int wmain(int argc, wchar_t** argv) {
         return cmdUupLanguages(args[1], arch, langList, partList, packagesOf, downloadDir, asJson);
     }
     if (command == L"catalog" && args.size() == 2) {
-        return cmdCatalog(args[1], arch, downloadDir, preview, onlyKb, asJson);
+        return cmdCatalog(args[1], arch, downloadDir, preview, onlyKb, asJson, dynamic);
     }
     if (command == L"start-apps" && args.size() == 2) {
         return cmdStartApps(args[1], asJson);

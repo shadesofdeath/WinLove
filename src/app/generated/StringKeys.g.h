@@ -704,6 +704,13 @@ enum class Str : std::uint16_t {
     IsoLegacySetupNewFails,
     IsoLegacySetupNoWinre,
     IsoLegacySetupPrevious,
+    IsoMediaUpdate,
+    IsoMediaUpdateBootOnly,
+    IsoMediaUpdateBox,
+    IsoMediaUpdateFilesOnly,
+    IsoMediaUpdateNone,
+    IsoMediaUpdateShort,
+    IsoMediaUpdateSummary,
     IsoNoPrompt,
     IsoOpenFolder,
     IsoOpenWhenDone,
@@ -1429,6 +1436,8 @@ enum class Str : std::uint16_t {
     UpdatesKindLanguage,
     UpdatesKindLcu,
     UpdatesKindOther,
+    UpdatesKindSafeOs,
+    UpdatesKindSetupDu,
     UpdatesKindSsu,
     UpdatesNoMountBody,
     UpdatesNoMountTitle,
@@ -1450,7 +1459,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1440;
+inline constexpr std::size_t kStrCount = 1449;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -2149,6 +2158,13 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "iso.legacySetupNewFails",
     "iso.legacySetupNoWinre",
     "iso.legacySetupPrevious",
+    "iso.mediaUpdate",
+    "iso.mediaUpdateBootOnly",
+    "iso.mediaUpdateBox",
+    "iso.mediaUpdateFilesOnly",
+    "iso.mediaUpdateNone",
+    "iso.mediaUpdateShort",
+    "iso.mediaUpdateSummary",
     "iso.noPrompt",
     "iso.openFolder",
     "iso.openWhenDone",
@@ -2874,6 +2890,8 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "updates.kindLanguage",
     "updates.kindLcu",
     "updates.kindOther",
+    "updates.kindSafeOs",
+    "updates.kindSetupDu",
     "updates.kindSsu",
     "updates.noMountBody",
     "updates.noMountTitle",

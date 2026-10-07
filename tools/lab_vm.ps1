@@ -19,6 +19,9 @@
   -Network: a NAT network card, e1000 (e1000e and vmxnet3 crash this VMware at power-on; Windows Update, Store and OOBE downloads happen; the default is none).
   -FirstLogon <command>: run at the first sign-in instead (e.g. a diagnostics script the changeset put
    into ProgramData); -ShutdownAfter <seconds> after that (default 150).
+  -IsoArgs: more arguments for "wlcli iso" (D-080: --setup-du=<cab> --boot-files=<dir>).
+  -LogDisk: only the second disk of -Diag (512 MB, label WLDIAG, no drive letter), collected into
+   out\vm-<Tag>\diag afterwards - for what writes to it itself (lab_setup_logs.ps1); works with -InstallWim.
   -Diag: first-boot diagnostics (tools\vm_diag.ps1): the guest records what gets installed, by which
    process, and what lands on the desktop, from the specialize pass until -DiagMinutes after the first
    sign-in, onto a second virtual disk (a fixed VHD the host mounts afterwards) -> out\vm-<Tag>\diag.
@@ -39,6 +42,7 @@ param(
     [string] $FirstLogon = '',
     [int] $ShutdownAfter = 150,
     [switch] $Diag,
+    [switch] $LogDisk,
     [int] $DiagMinutes = 30,
     [switch] $KeepVm,
     [int] $Cpus = 2,
@@ -47,7 +51,8 @@ param(
     [int] $ImageIndex = 1,
     [string] $BootWim = '',
     [string] $SetupFolder = '',
-    [switch] $NoBypass
+    [switch] $NoBypass,
+    [string[]] $IsoArgs = @()
 )
 $ErrorActionPreference = 'Stop'
 $Lab = [System.IO.Path]::GetFullPath($Lab)
@@ -215,14 +220,14 @@ try {
     Move-Item "$work\install.wim" (Join-Path $media 'sources\install.wim')
     if ($BootWim) { Copy-Item $BootWim (Join-Path $media 'sources\boot.wim') -Force }
     [System.IO.File]::WriteAllText((Join-Path $media 'autounattend.xml'), $unattend, (New-Object System.Text.UTF8Encoding $false))
-    Run @('iso', $media, "$work\wl-$Tag.iso", '--label=WL_LAB', '--boot=uefi', '--no-prompt')
+    Run (@('iso', $media, "$work\wl-$Tag.iso", '--label=WL_LAB', '--boot=uefi', '--no-prompt') + $IsoArgs)
     Check 'ISO built' ($script:lastExit -eq 0 -and (Test-Path "$work\wl-$Tag.iso"))
 
     # 3. The VM.
     Native { & $vdisk -c -s 64GB -a lsilogic -t 0 (Join-Path $vmDir 'disk.vmdk') } | Out-Null
     $diagVhd = Join-Path $vmDir 'diag.vhd'
     $diagDisk = ''
-    if ($Diag) {
+    if ($Diag -or $LogDisk) {
         # A fixed VHD is raw sectors + a 512-byte footer: VMware sees the sectors as a flat extent, the
         # host mounts the VHD afterwards. GPT "no drive letter" attribute: Setup and the host leave it alone.
         $dp = Join-Path $work 'diag-diskpart.txt'
@@ -294,7 +299,7 @@ logging = "TRUE"
     if ($poweredOff -and $vmLogs.Count -eq 0) { Say 'no vmware.log: who powered the VM off cannot be told' }
     if ($poweredOff -and -not $byGuest) { Say 'the VM went off without an ACPI soft-off in vmware.log: stopped from outside' }
     Check "the guest reached the desktop and shut itself down within $TimeoutMinutes min (no boot loop)" $byGuest
-    if ($Diag -and $poweredOff) {
+    if (($Diag -or $LogDisk) -and $poweredOff) {
         $image = Mount-DiskImage -ImagePath $diagVhd -NoDriveLetter -PassThru
         $part = Get-Partition -DiskNumber ($image | Get-Disk).Number | Where-Object { $_.Type -eq 'Basic' } | Select-Object -First 1
         $at = Join-Path $work 'diag-mount'
@@ -303,7 +308,7 @@ logging = "TRUE"
         Native { robocopy.exe $at (Join-Path $shots 'diag') /E /XD 'System Volume Information' /R:0 /W:0 /NFL /NDL /NJH /NJS /NP } | Out-Null
         Remove-PartitionAccessPath -DiskNumber $part.DiskNumber -PartitionNumber $part.PartitionNumber -AccessPath ($at + '\')
         Dismount-DiskImage -ImagePath $diagVhd | Out-Null
-        Check "diagnostics collected ($shots\diag)" (Test-Path (Join-Path $shots 'diag\done.txt'))
+        Check "diagnostics collected ($shots\diag)" ($LogDisk -or (Test-Path (Join-Path $shots 'diag\done.txt')))
     }
 } catch {
     Say ("ERROR  " + $_.Exception.Message + " (line " + $_.InvocationInfo.ScriptLineNumber + ")")
@@ -311,7 +316,7 @@ logging = "TRUE"
 } finally {
     if (Test-Path (Join-Path $mount 'Windows')) { Run @('unmount', $mount, '--discard') }
     if ((Test-Path $vmx) -and (VmRunning $vmx)) { Native { & $vmrun -T ws stop $vmx hard } | Out-Null }
-    if ($Diag -and (Test-Path $diagVhd) -and (Get-DiskImage -ImagePath $diagVhd -ErrorAction SilentlyContinue).Attached) {
+    if (($Diag -or $LogDisk) -and (Test-Path $diagVhd) -and (Get-DiskImage -ImagePath $diagVhd -ErrorAction SilentlyContinue).Attached) {
         Dismount-DiskImage -ImagePath $diagVhd | Out-Null
     }
     if (-not $KeepVm) {

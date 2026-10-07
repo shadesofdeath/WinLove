@@ -49,3 +49,16 @@ TEST_CASE("planner applies updates SSU → LCU → .NET → other, after removal
     CHECK(plan.steps[3].operation.target == L"net.msu");
     CHECK(plan.steps[4].operation.target == L"lang.cab");
 }
+
+TEST_CASE("planner: the Safe OS dynamic update (WinRE, D-080) comes after the image's own updates") {
+    core::ops::ChangeSet set;
+    set.add({OpKind::AddPackage, L"safeos.cab", L"safeos"});
+    set.add({OpKind::AddPackage, L"other.cab", L"other"});
+    set.add({OpKind::AddPackage, L"lcu.msu", L"lcu"});
+    const auto plan = core::ops::plan(set);
+    REQUIRE(plan.steps.size() == 3);
+    CHECK(plan.steps[0].operation.target == L"lcu.msu");
+    CHECK(plan.steps[1].operation.target == L"other.cab");
+    CHECK(plan.steps[2].operation.target == L"safeos.cab");
+    CHECK(plan.steps[2].phase == core::ops::Phase::Updates);
+}

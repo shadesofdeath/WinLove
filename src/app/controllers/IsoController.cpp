@@ -2,6 +2,7 @@
 
 #include "app/controllers/UnattendController.h"
 #include "base/Log.h"
+#include "core/image/MediaRefresh.h"
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
 #include "core/image/dism/Dism.h"
@@ -122,6 +123,22 @@ void IsoController::start(Request request) {
     core::BootPatch boot = request.bootBypass ? bootPatch(m_state) : core::BootPatch{};
     boot.legacySetup = request.legacySetup; // D-074
     const std::filesystem::path bootFolder = m_state.settings().workRoot / L"boot"; // the copy and its mount folder
+    // D-080: the cumulative update into boot.wim (Setup's files kept for the media) and the Setup
+    // dynamic update over sources\.
+    std::filesystem::path setupDu;
+    if (request.mediaUpdate) {
+        const auto& media = m_state.mediaUpdate();
+        std::error_code missing;
+        if (!media.lcu.empty() && std::filesystem::exists(media.lcu, missing)) {
+            boot.lcu = media.lcu;
+            boot.setupFilesTo = bootFolder / L"setup-files";
+        }
+        if (!media.setupDu.empty() && std::filesystem::exists(media.setupDu, missing)) {
+            setupDu = media.setupDu;
+        }
+        log::info("iso", std::format(L"setup media update: boot.wim {}, Setup files {}", boot.lcu.empty() ? L"-" : boot.lcu.filename().wstring(),
+                                     setupDu.empty() ? L"-" : setupDu.filename().wstring()));
+    }
     const BootPatcher patcher = m_patcher ? m_patcher : BootPatcher{patchWithDism};
     const UsbWriter usbWriter = m_usbWriter ? m_usbWriter : UsbWriter{core::writeUsb};
     if (request.usb && !m_usbWriter && !core::isElevated()) {
@@ -178,15 +195,15 @@ void IsoController::start(Request request) {
 
     auto usbRoot = std::make_shared<std::wstring>(); // the stick's drive, set by the job
     m_state.engine().run<core::IsoResult>(
-        [source, workFolder, request, cancel, report, answerFile, boot, bootFolder, patcher, usbWriter,
-         usbRoot](const core::TaskContext&) -> Result<core::IsoResult> {
+        [source, workFolder, request, cancel, report, answerFile, boot, bootFolder, patcher, usbWriter, usbRoot,
+         setupDu](const core::TaskContext&) -> Result<core::IsoResult> {
             // Weights: extract 0.30 (ISO sources), repack 0.30 (if asked), boot image 0.15 (if
             // asked), build the rest.
             const bool extract = source.format == core::ImageFormat::Iso;
             const bool repack = request.repack != Repack::AsIs;
             const double we = extract ? 0.30 : 0.0;
             const double wr = repack ? 0.30 : 0.0;
-            const double wp = boot.empty() ? 0.0 : 0.15;
+            const double wp = boot.empty() ? 0.0 : boot.lcu.empty() ? 0.15 : 0.6; // a cumulative update: minutes per image
             const double wb = 1.0 - we - wr - wp;
             std::filesystem::path folder = source.path;
             if (extract) {
@@ -246,6 +263,22 @@ void IsoController::start(Request request) {
                 log::info("iso", std::format(L"boot.wim index {}: {} requirement check(s) switched off{}", done->index,
                                              boot.labConfigValues().size(), boot.legacySetup ? L", previous Setup" : L""));
                 options.replacedFiles.push_back({L"sources\\boot.wim", patched.file});
+            }
+            // D-080: the media's own files — the Setup dynamic update, then Setup and the boot manager
+            // from the updated boot.wim (a Setup older than its image fails the installation).
+            const std::filesystem::path duFolder = bootFolder / L"setup-du";
+            if (!setupDu.empty()) {
+                if (auto expanded = core::expandSetupDynamicUpdate(setupDu, duFolder, core::TaskContext{cancel, {}}); !expanded) {
+                    return std::unexpected(expanded.error());
+                }
+            }
+            if (!setupDu.empty() || !boot.lcu.empty()) {
+                const auto files = core::mediaRefreshFiles(folder, setupDu.empty() ? std::filesystem::path() : duFolder,
+                                                           boot.lcu.empty() ? std::filesystem::path() : boot.setupFilesTo);
+                for (const auto& file : files) {
+                    options.replacedFiles.push_back({file.path, file.file, file.isNew});
+                }
+                log::info("iso", std::format(L"setup media: {} file(s) from the updates", files.size()));
             }
             if (request.usb) {
                 core::UsbOptions usb;
