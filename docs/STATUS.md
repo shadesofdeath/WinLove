@@ -109,6 +109,10 @@
   msinfo32, cleanmgr, notepad, 32 bit cmd, 7-Zip, Notepad++, VLC açılıyor; winget 4/4 (VC++ MSI dahil); `dism /online
   /get-packages` çalışıyor. Aynı koşullu çift (`shrink-max2` / `shrink-base`: aynı 4 program, 25 dk, ikisinde de ResetBase +
   güncellemeler kapalı): **C: 17,46 GB / 19,66 GB → kurulu sistemde −2,20 GB**, ikisi de ALL PASSED, SideBySide 0. taskmgr SYSTEM'den 0x80070005 — küçültmesiz sistemde de aynı (tanılamanın oturum dışından başlatması).
+- **Kendi karşılama ekranımız (D-084, 2026-10-08):** Katılımsız Kurulum › Hesap › Karşılama ekranı. Yanıt dosyası
+  geçici `WinLoveSetup` hesabıyla bir kez oturum açtırır, WinLove'un tam ekran sihirbazı hesabı / bilgisayar adını / görünümü /
+  gizliliği sorar, hesabı kurar, geçici hesabı siler. VM'de uçtan uca ALL PASSED. ISO Oluştur betik imajda yoksa reddeder.
+  Sırada (fikir): sihirbaza Programlar paketleri ve duvar kağıdı sayfası; insan eliyle VM denemesi (VNC ile tıklama).
 - **Görev çubuğu sabitlemeleri (D-083, 2026-10-07):** Başlat menüsü › Görev çubuğu sekmesi (Windows varsayılanı / Boş /
   Kendi listem, "Kullanıcı kaldırabilsin"); Microsoft'un Başlangıç Düzeni ilkesi, VM'de Edge/Store/Outlook yer tutucusu
   olmadan yalnız seçilenler. Eski "Sabitlenmiş uygulamalar" anahtarı kaldırıldı. NTLite listesinin 4 maddesi bitti.

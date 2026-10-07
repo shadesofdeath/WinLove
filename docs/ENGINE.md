@@ -245,3 +245,11 @@ Uygulama davranışı:
   tutucusunu gerçekten kaldırır; `#leaveempty` ile görev çubuğunda yalnız Başlat, arama, görev görünümü kalır. OEM yolu
   (`CurrentVersion\Explorer\LayoutXMLPath`) aynı düzeni yalnız ekler (D-070 VM'leri). Başlat'ın kendi sabitlemeleri
   bundan etkilenmez (ConfigureStartPins ayrı).
+- [2026-10-08] [İlk oturum / karşılama] `FirstLogonCommands` kurulum hesabının ilk oturumunda, Windows'un "Bu işlem birkaç
+  dakika sürebilir" ekranı (`FirstLogonAnim`) sürerken çalışır; girdi masaüstü o sırada `Default` görünebilir ama ekranın
+  üstüne pencere çıkmaz. Senkron komutlar masaüstünü bekletir; `cmd /c start ""` ile başlatılan süreç sürer. Windows 11 ilk
+  oturumda Başlat'ı açar; Başlat en üstteki (Topmost) WPF penceresinin de üstündedir (Esc kapatır). `AutoLogonCount` 0'a inince
+  Windows `DefaultPassword`'u **silmez** (26200.8037) — kendin sil. Kurulum hesabının profili sonraki açılışta SYSTEM görevle
+  (`Win32_UserProfile` + `Remove-LocalUser`) silinebilir. PowerShell 5.1'de `0xFF -shl 24` = negatif Int32 (`[uint32]` çevrimi
+  hata verir). `New-LocalUser`, `Rename-Computer`, `Register-ScheduledTask` ilk oturum komutundan (yönetici) çalışır.
+  `defaultuser0` hesabı ve profili Windows'un kendi OOBE artığıdır (bizim değil).

@@ -241,6 +241,43 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-084 — Kendi karşılama ekranımız: Windows'un hesap sayfaları yerine WinLove'un ilk açılış sihirbazı (2026-10-08)
+Bağlam: Kullanıcı yeni özellik olarak "Kendi OOBE'miz"i seçti (hesap, bilgisayar adı, tema / vurgu, gizlilik — kurulumu yapan
+kişi seçsin). Risk hesap oluşturma ve oturumun devri olduğu için önce VM deneyleri (`oobe1`…`oobe5`, `welcome1`…`welcome3`).
+Karar:
+- **Yöntem:** Windows'un OOBE sayfaları yanıt dosyasıyla gizlenir (EULA, çevrimiçi hesap, kablosuz, OEM, gizlilik); yanıt dosyası
+  bir **kurulum hesabı** `WinLoveSetup` (rastgele 20 karakterlik parola, BCryptGenRandom) açar, bir kez kendiliğinden oturum
+  açtırır; ilk oturum komutu `cmd /c start "" powershell … -File "%ProgramData%\WinLove\Oobe\oobe.ps1"` (beklemeden: komut
+  listesi sürer). Sihirbaz (`resources/scripts/oobe.ps1`, WPF, tasarım belirteçleri, tam ekran) sorar, sonra:
+  hesabı oluşturur (Administrators SID ile, dilden bağımsız), bilgisayarı yeniden adlandırır, gizlilik ilkelerini yazar ve Windows'un
+  gizlilik sayfasını kapatır (`DisablePrivacyExperience`), görünümü yeni hesabın ilk oturumuna bırakır (Default profilin RunOnce'ı
+  bir .reg alır — çevrimdışı yazılan tema ilk oturumda eziliyor, D-026), kurulum hesabını ve profilini silen bir başlangıç görevi
+  kaydeder, yeni hesabın bir kez kendiliğinden açılmasını ayarlar ve yeniden başlatır.
+- **VM'de bulunan üç tuzak (çözüldü):** (1) ilk oturum komutları Windows'un "Bu işlem birkaç dakika sürebilir" ekranı sırasında
+  çalışır; o ekranın üstüne pencere çıkamaz → pencere girdi masaüstü `Default` olana ve `FirstLogonAnim` süreci bitene dek bekler;
+  (2) Windows 11 ilk oturumda Başlat'ı açar ve Başlat en üstteki pencerenin de üstündedir → ön planda Başlat / Arama varsa
+  sihirbaz bir Esc gönderip öne geçer; (3) Windows otomatik oturumdan sonra **parolayı silmez** (`AutoLogonCount` 0,
+  `DefaultPassword` düz metin kalır) → yeni hesabın ilk oturumunda SYSTEM olarak çalışan bir görev siler ve kendini kaldırır.
+  Ayrıca PowerShell'de `0xFF -shl 24` negatif Int32 → renkler Int64 ile hesaplanır.
+- **Uygulama:** Katılımsız Kurulum › Hesap: **Karşılama ekranı** anahtarı; açıkken Bilgisayar adını / Tema ve vurguyu /
+  Gizliliği sor, Önerilen tema, Önerilen gizlilik (Az veri: zorunlu tanılama, reklam kimliği / etkinlik geçmişi / yazma
+  kişiselleştirmesi kapalı · Windows'un varsayılanı), Parolasız hesaba izin ver, **Önizle** (pencere bu bilgisayarda, tam ekran
+  değil, hiçbir şey yapmaz). Yerel hesap / parola / otomatik oturum satırları kapanır (değerleri saklanır). Betik + `oobe.json`
+  kuyruğa girer (Uygula imaja yazar; `ProgramData\WinLove\Oobe`); bağlanan her imajda yoksa yeniden kuyruğa alınır. Metinler
+  yanıt dosyasının kurulum dilinde (tr → Türkçe, değilse İngilizce; yoksa uygulamanın). **ISO Oluştur** karşılama açıkken
+  kurulacak sürümün dosya listesinde betiği arar (bağlamadan); yoksa ISO'yu yapmaz (kurulum, kuran kişiyi geçici hesapta bırakırdı).
+- Motor: `core/unattend/Welcome` (`welcomeJson`, `welcomeOperations`, `welcomePlanFromOperations`, `editionsWithoutWelcome`,
+  `randomWelcomePassword`), `UnattendOptions::welcome` / `withWelcome` (yazarken kurulum hesabı; okurken geri çözülür). CLI:
+  `wlcli unattend <xml> --welcome`, `wlcli welcome <changes.json> --strings=… [--auto=…]`.
+Kanıt: 344 test. VM (Pro 26200.8037, ağsız; laboratuvar yanıtlarıyla sayfalar kendiliğinden ilerler, yeni hesabın ilk oturumunda
+denetim betiği sonucu kayıt diskine yazar): WinLove'un yazdığı yanıt dosyası + değişiklik kümesiyle (`lab_vm -AnswerFile`)
+ALL PASSED — Deneme hesabı yönetici, DENEME-PC, koyu tema, yeşil vurgu (palet), gizlilik ilkeleri, `DisablePrivacyExperience`,
+`WinLoveSetup` ve profili silinmiş, `DefaultPassword` yok, `AutoAdminLogon` 0, `oobe.json` silinmiş (`welcome2`). Görünürlük (`welcome3`, `welcome4`): animasyon
+süreci görüldü ve beklendi, ön plandaki Arama kapatıldı; sihirbaz tam ekran (görev çubuğu da örtülü) "Hoş geldin" ve
+"Gizlilik" sayfalarıyla VNC karelerinde, ardından yeni hesap koyu temayla açıldı. Her iki çalışma ALL PASSED.
+Görülmeyen: ağ açıkken (Microsoft hesabı sayfaları yanıt dosyasıyla gizli), Home sürümü, Windows 10, insan eliyle girilen
+yanıtlar (pencere, önizlemede ve laboratuvar yanıtlarıyla görüldü).
+
 ## D-083 — Görev çubuğu sabitlemeleri: Başlat menüsü › Görev çubuğu, Microsoft'un Başlangıç Düzeni ilkesi (2026-10-07)
 Bağlam: NTLite eksik listesinden (4). D-067'nin "Sabitlenmiş uygulamalar" anahtarı OEM yöntemini kullanıyordu
 (`LayoutXMLPath` + `PinListPlacement="Replace"`); D-070'in VM'lerinde 24H2+ bunu varsayılanların **üstüne ekledi**

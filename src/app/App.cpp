@@ -226,8 +226,9 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoTweaks = true;
         } else if (a == L"--demo-image-values") {
             options.demoImageValues = true;
-        } else if (a == L"--demo-unattended") {
+        } else if (a == L"--demo-unattended" || a == L"--demo-unattended=welcome") {
             options.demoUnattended = true;
+            options.demoWelcome = a.ends_with(L"=welcome");
         } else if (a == L"--demo-postsetup") {
             options.demoPostSetup = true;
         } else if (a == L"--demo-presets") {
@@ -757,6 +758,9 @@ int App::renderOffscreen() {
         });
         m_shell->showPage(m_options.page.value_or(PageId::Unattended));
         controller.edit([](core::UnattendOptions& o) { o.bypassTpm = true; });
+        if (m_options.demoWelcome) {
+            controller.setWelcome(true); // D-084
+        }
     }
     if (m_options.demoPostSetup) {
         m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,

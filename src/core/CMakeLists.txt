@@ -74,6 +74,7 @@ add_library(wl_core STATIC
     tasks/Task.cpp
     tasks/TaskRunner.cpp
     unattend/Unattend.cpp
+    unattend/Welcome.cpp
     usb/UsbMedia.cpp
     updates/UpdateCatalog.cpp
     updates/UupLanguages.cpp

@@ -53,6 +53,12 @@ build\lab\
    Kurulum WinPE'de başarısızsa `tools\lab_setup_logs.ps1 -Tag x -SetupFolder <ortam> -InstallWim <wim>`: Setup'ı bir
    betiğe sarar, günlükleri (`$WINDOWS.~BT` her sürücüde, `X:\Windows\Panther`) `lab_vm.ps1 -LogDisk` diskine yazar →
    `build\lab\out\vm-setuplogs-<Tag>\diag`.
+4f. Karşılama ekranı (D-084): `wlcli unattend <xml> --welcome > a.xml` (genel ürün anahtarı yalnız sürüm bilinince yazılır:
+   laboratuvarda anahtarı elle koy), `wlcli welcome c.json --strings=resources\strings\tr.json --auto=<yanıtlar.json>`
+   (`{"name","password","computer","theme","accent","privacy","check":true,"pause":9}`), sonra `lab_vm.ps1 -Changes c.json
+   -AnswerFile a.xml -LogDisk`. `check` için `ProgramData\WinLove\Oobe\oobe-check.ps1` değişiklik kümesine eklenir: yeni
+   hesabın ilk oturumunda sonucu WLDIAG diskine yazıp kapatır → `out\vm-<Tag>\diag\oobe\check.txt`, `oobe.log`.
+   Önizleme: Katılımsız Kurulum › Önizle (pencere, hiçbir şey yapmaz).
 4e. Modlu Windows (D-081): `wlcli host-check` (çıkış 3: sorun), `wlcli wimgapi <wim|esd>` (seçilen kopya, katı kaynaklar).
    Yedeği kanıtlamak: `wlcli export <esd> 2 <out.wim> --wimgapi=C:\Windows\System32\version.dll --verbose` (bozuk kopya
    → ADK'nınki); `wlcli mount … --dism=adk` (yönetici) ADK'nın DISM'iyle. Arayüz: `--render … --page=source --demo-host-dism`.

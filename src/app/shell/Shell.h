@@ -339,6 +339,7 @@ private:
     std::unique_ptr<RegistryController> m_registry;
     std::unique_ptr<ImageSettingsController> m_imageSettings; // P12 form
     std::unique_ptr<UnattendController> m_unattend; // P13 answer file
+    std::optional<Localization> m_otherStrings;      // the other language's strings (D-084 welcome texts)
     std::unique_ptr<PostSetupController> m_postSetup; // P14 steps
     std::unique_ptr<ProgramsController> m_programs;   // D-078 winget programs
     std::unique_ptr<CompatController> m_compat;       // D-082 compatibility guards

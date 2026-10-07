@@ -52,6 +52,7 @@
 #include "core/programs/Winget.h"
 #include "core/system/Privileges.h"
 #include "core/unattend/Unattend.h"
+#include "core/unattend/Welcome.h"
 
 #include <json.hpp>
 
@@ -1257,14 +1258,18 @@ int cmdServices(const std::wstring& dir, const std::wstring& set, bool asJson) {
 }
 
 // P13: read an answer file for the options WinLove knows and print the file it would write.
-int cmdUnattend(const std::wstring& file) {
+int cmdUnattend(const std::wstring& file, bool welcome) {
     const auto bytes = readFileBytes(file);
     if (!bytes) {
         return reportError(Error{ErrorCode::NotFound, L"could not open the answer file", file, 0});
     }
-    const auto options = core::parseUnattendXml(*bytes);
+    auto options = core::parseUnattendXml(*bytes);
     if (!options) {
         return reportError(options.error());
+    }
+    if (welcome && !options->welcome) { // D-084: the welcome in place of the account
+        options->welcome = true;
+        options->welcomePassword = core::randomWelcomePassword();
     }
     print(core::buildUnattendXml(*options));
     const auto problems = core::validateUnattend(*options);
@@ -1274,6 +1279,46 @@ int cmdUnattend(const std::wstring& file) {
         print(std::format(L"problem: {}\n", kNames[static_cast<std::size_t>(problem)]));
     }
     return problems.empty() ? 0 : 1;
+}
+
+// D-084: a changeset that puts the welcome into an image: its texts from a strings file of the app
+// (resources/strings/tr.json, section "welcome"); --auto=<json> (the lab only) answers the pages.
+int cmdWelcome(const std::wstring& out, const std::wstring& stringsFile, const std::wstring& autoFile) {
+    core::WelcomePlan plan;
+    if (!stringsFile.empty()) {
+        const auto bytes = readFileBytes(stringsFile);
+        const auto doc = bytes ? json::parse(*bytes, nullptr, false) : json();
+        if (!bytes || doc.is_discarded() || !doc.contains("welcome")) {
+            return reportError(Error{ErrorCode::ParseError, L"no \"welcome\" section", stringsFile, 0});
+        }
+        for (const auto& [key, value] : doc["welcome"].items()) {
+            if (value.is_string()) {
+                plan.texts.emplace_back(key, utf8::toWide(value.get<std::string>()));
+            }
+        }
+    }
+    auto ops = core::welcomeOperations(plan);
+    if (!autoFile.empty()) {
+        const auto bytes = readFileBytes(autoFile);
+        auto answers = bytes ? json::parse(*bytes, nullptr, false) : json();
+        if (!bytes || answers.is_discarded()) {
+            return reportError(Error{ErrorCode::ParseError, L"could not read the answers", autoFile, 0});
+        }
+        for (auto& op : ops) {
+            if (op.target.ends_with(L"oobe.json")) {
+                auto doc = json::parse(utf8::fromWide(op.value));
+                doc["auto"] = answers;
+                op.value = utf8::toWide(doc.dump(1));
+            }
+        }
+    }
+    core::ops::ChangeSet changes;
+    changes.addAll(std::move(ops));
+    if (auto saved = writeFileAtomic(out, changes.toJson()); !saved) {
+        return reportError(saved.error());
+    }
+    print(std::format(L"  welcome changeset written: {}\n", out));
+    return 0;
 }
 
 // P14: write a post-setup plan (the JSON a preset holds) into a mounted image — or any folder
@@ -2367,7 +2412,8 @@ void printUsage() {
           L"  wlcli repair <dir>                  (inspect a mount folder and do what it needs: remount / discard / clean)\n"
           L"  wlcli packages|features|capabilities <mountdir>\n"
           L"  wlcli iso <setup-folder> <out.iso> [--label=X] [--boot=both|uefi|bios] [--sha256] [--no-prompt] [--setup-du=<cab>] [--boot-files=<dir>]\n"
-          L"  wlcli unattend <answer.xml>         (read an answer file; print it as WinLove writes it, P13)\n"
+          L"  wlcli unattend <answer.xml> [--welcome]   (read an answer file; print it as WinLove writes it, P13; D-084)\n"
+          L"  wlcli welcome <changes.json> [--strings=<tr.json>] [--auto=<answers.json>]   (the welcome into an image, D-084)\n"
           L"  wlcli postsetup <plan.json> <mountdir>   (write post-setup scripts and payloads into the image, P14)\n"
           L"  wlcli reg <file.reg> [<mountdir>] [--first-logon]   (parse; with a mount: write into the image's\n"
           L"                                      hives, P11; --first-logon: also re-import after setup)\n"
@@ -2463,6 +2509,9 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring label;
     std::wstring serviceSet;
     std::wstring flags;
+    bool welcomeFlag = false;   // unattend --welcome (D-084)
+    std::wstring stringsFile;   // welcome --strings=
+    std::wstring autoFile;      // welcome --auto= (the lab)
     std::wstring bypass;
     std::vector<std::wstring> drivers;
     bool native = false;
@@ -2638,6 +2687,12 @@ int wmain(int argc, wchar_t** argv) {
             core::forceWimgapi(std::filesystem::path(std::wstring(a.substr(10))));
         } else if (a == L"--dism=adk") {
             core::forceAdkDism();
+        } else if (a == L"--welcome") {
+            welcomeFlag = true;
+        } else if (a.starts_with(L"--strings=")) {
+            stringsFile = std::wstring(a.substr(10));
+        } else if (a.starts_with(L"--auto=")) {
+            autoFile = std::wstring(a.substr(7));
         } else {
             args.emplace_back(a);
         }
@@ -2742,7 +2797,10 @@ int wmain(int argc, wchar_t** argv) {
         return cmdPostSetup(args[1], args[2]);
     }
     if (command == L"unattend" && args.size() == 2) {
-        return cmdUnattend(args[1]);
+        return cmdUnattend(args[1], welcomeFlag);
+    }
+    if (command == L"welcome" && args.size() == 2) {
+        return cmdWelcome(args[1], stringsFile, autoFile);
     }
     if (command == L"reg" && (args.size() == 2 || args.size() == 3)) {
         return cmdReg(args[1], args.size() == 3 ? args[2] : std::wstring(), firstLogon);

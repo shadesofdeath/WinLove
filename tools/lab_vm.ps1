@@ -12,6 +12,7 @@
   -InstallWim <wim> -ImageIndex N: install edition N of a ready install.wim (no changeset; AIO tests);
    -BootWim <wim>: the media's boot.wim replaced (e.g. one patched for the previous Setup);
    -SetupFolder <dir>: the setup media files from there instead of build\lab\setup (another Windows).
+  -AnswerFile <xml>: that answer file instead of the lab's (e.g. one WinLove's P13 wrote; FirstLogon / ShutdownAfter do not apply).
   -NoBypass: the answer file leaves out the LabConfig TPM / Secure Boot / RAM bypasses (the VM has no
    TPM and no Secure Boot: does this media's Setup check Windows 11's requirements at all?).
   -Cpus / -MemMB: the vCPU count and memory (default 2, 4096). (An NVMe disk does not start under vmrun here.)
@@ -52,6 +53,7 @@ param(
     [string] $BootWim = '',
     [string] $SetupFolder = '',
     [switch] $NoBypass,
+    [string] $AnswerFile = '',
     [string[]] $IsoArgs = @()
 )
 $ErrorActionPreference = 'Stop'
@@ -219,7 +221,13 @@ try {
     Native { robocopy.exe $setup $media /E /XF install.wim /NFL /NDL /NJH /NJS /NP } | Out-Null
     Move-Item "$work\install.wim" (Join-Path $media 'sources\install.wim')
     if ($BootWim) { Copy-Item $BootWim (Join-Path $media 'sources\boot.wim') -Force }
+    if ($AnswerFile) {
+        # An answer file WinLove wrote (P13): it has to wipe disk 0 and install edition 1 itself.
+        Copy-Item $AnswerFile (Join-Path $media 'autounattend.xml') -Force
+        Check "answer file taken as it is: $AnswerFile" (Test-Path (Join-Path $media 'autounattend.xml'))
+    } else {
     [System.IO.File]::WriteAllText((Join-Path $media 'autounattend.xml'), $unattend, (New-Object System.Text.UTF8Encoding $false))
+    }
     Run (@('iso', $media, "$work\wl-$Tag.iso", '--label=WL_LAB', '--boot=uefi', '--no-prompt') + $IsoArgs)
     Check 'ISO built' ($script:lastExit -eq 0 -and (Test-Path "$work\wl-$Tag.iso"))
 

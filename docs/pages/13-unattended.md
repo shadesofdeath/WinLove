@@ -52,6 +52,13 @@ istenirse bir sonraki ISO'nun köküne yazılır.
 - CLI: `wlcli unattend <dosya.xml>` (oku → WinLove'un yazacağı hali bas). Testler: `tests/core/UnattendTests.cpp`,
   `tests/core/IsoTests.cpp` (gerçek ISO üretir, kendi UDF okuyucumuzla doğrular), `tests/app/UnattendControllerTests.cpp`.
 
+## 3b. Karşılama ekranı (D-084)
+- Hesap bölümünün başında **Karşılama ekranı**: yanıt dosyası geçici `WinLoveSetup` hesabını (rastgele parola) bir kez
+  açtırır; WinLove'un tam ekran sihirbazı hesabı, bilgisayar adını, tema / vurguyu, gizliliği sorar ve kurar. Seçenekler:
+  sorulacak sayfalar, önerilen tema ve gizlilik, parolasız hesap; **Önizle**. Açıkken Yerel hesap / Parola / Otomatik oturum
+  kapalı. Betik kuyruğa girer (Uygula yazar); ISO Oluştur betik imajda yoksa reddeder.
+- Motor `core/unattend/Welcome`; betik `resources/scripts/oobe.ps1`; render `--demo-unattended=welcome`.
+
 ## 4. Sınırlar
 - Disk düzeni yalnız "disk 0'ı sil" kalıpları; var olan bölüme kurma / çoklu disk yok.
 - Tek yerel hesap (yönetici). Microsoft hesabı / etki alanına katılma yok.

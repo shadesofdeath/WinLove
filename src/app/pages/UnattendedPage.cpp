@@ -367,7 +367,8 @@ UnattendedPage::UnattendedPage(AppState& state, UnattendController& controller, 
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Source) {
             buildForm(); // languages and editions come from the source
-        } else if (change == AppState::Change::Unattend || change == AppState::Change::Selection) {
+        } else if (change == AppState::Change::Unattend || change == AppState::Change::Selection ||
+                   change == AppState::Change::Queue) { // the welcome's plan is in the queue (D-084)
             sync();
         }
     });
@@ -446,12 +447,43 @@ void UnattendedPage::buildForm() {
               [](const Options& o) { return o.timeZone; }, [](Options& o, const std::wstring& v) { o.timeZone = v; });
 
     m_form->addSection(s(Str::UnattendedStepsAccount));
+    // D-084: WinLove's welcome in place of the account rows below.
+    m_welcome = &m_form->addRow<ui::Toggle>(s(Str::UnattendedWelcome), std::wstring(), ui::tokens::size::toggleW, std::wstring(), false);
+    m_welcome->setAccessible(ui::AccessRole::CheckBox, s(Str::UnattendedWelcome));
+    m_welcome->onChange = [this](bool on) { m_controller.setWelcome(on); };
+    auto askRow = [&](Str label, bool core::WelcomePlan::*field) {
+        auto& toggle = m_form->addRow<ui::Toggle>(s(label), std::wstring(), ui::tokens::size::toggleW, std::wstring(), true);
+        toggle.setAccessible(ui::AccessRole::CheckBox, s(label));
+        toggle.onChange = [this, field](bool on) { editWelcome([&](core::WelcomePlan& p) { p.*field = on; }); };
+        return &toggle;
+    };
+    m_askComputer = askRow(Str::UnattendedWelcomeAskComputer, &core::WelcomePlan::computerPage);
+    m_askLook = askRow(Str::UnattendedWelcomeAskLook, &core::WelcomePlan::lookPage);
+    m_askPrivacy = askRow(Str::UnattendedWelcomeAskPrivacy, &core::WelcomePlan::privacyPage);
+    m_welcomeTheme = &m_form->addRow<ui::Dropdown>(s(Str::UnattendedWelcomeTheme), std::wstring(), kPickerWidth, std::wstring(),
+                                                   std::vector<std::wstring>{s(Str::WelcomeThemeDark), s(Str::WelcomeThemeLight)}, 0);
+    m_welcomeTheme->setAccessible(ui::AccessRole::Group, s(Str::UnattendedWelcomeTheme));
+    m_welcomeTheme->onChange = [this](int index) { editWelcome([index](core::WelcomePlan& p) { p.theme = index == 1 ? L"light" : L"dark"; }); };
+    m_welcomePrivacy = &m_form->addRow<ui::Dropdown>(s(Str::UnattendedWelcomePrivacy), std::wstring(), kPickerWidth, std::wstring(),
+                                                     std::vector<std::wstring>{s(Str::WelcomePrivacyStrict), s(Str::WelcomePrivacyWindows)}, 0);
+    m_welcomePrivacy->setAccessible(ui::AccessRole::Group, s(Str::UnattendedWelcomePrivacy));
+    m_welcomePrivacy->onChange = [this](int index) {
+        editWelcome([index](core::WelcomePlan& p) { p.privacy = index == 1 ? L"windows" : L"strict"; });
+    };
+    m_emptyPassword = askRow(Str::UnattendedWelcomeEmptyPassword, &core::WelcomePlan::allowEmptyPassword);
+    m_welcomePreview = &m_form->addRow<ui::Button>(s(Str::UnattendedWelcomePreviewLabel), std::wstring(), 0.0f,
+                                                   ui::ButtonKind::Secondary, s(Str::UnattendedWelcomePreview), ui::icons::Icon::Eye);
+    m_welcomePreview->onInvoke = [this] {
+        if (onPreviewWelcome) {
+            onPreviewWelcome();
+        }
+    };
     m_account = &addText(Str::UnattendedLocalAccount, Str::UnattendedAccountHint, kFieldWidth,
                          [](const Options& o) { return o.accountName; },
                          [](Options& o, const std::wstring& v) { o.accountName = v; });
-    addText(Str::UnattendedPassword, std::nullopt, kFieldWidth, [](const Options& o) { return o.password; },
-            [](Options& o, const std::wstring& v) { o.password = v; })
-        .setPassword(true);
+    m_password = &addText(Str::UnattendedPassword, std::nullopt, kFieldWidth, [](const Options& o) { return o.password; },
+                          [](Options& o, const std::wstring& v) { o.password = v; });
+    m_password->setPassword(true);
     m_autoLogon = &m_form->addRow<ui::CheckField>(s(Str::UnattendedAutoLogon), std::wstring(), 0.0f,
                                                   s(Str::UnattendedAutoLogonHint), false);
     m_autoLogon->setAccessible(ui::AccessRole::CheckBox, s(Str::UnattendedAutoLogon));
@@ -628,9 +660,47 @@ void UnattendedPage::sync() {
          o.extraAccounts.empty() ? std::optional<Str>(Str::UnattendedExtraAccountsHint) : std::nullopt);
     hint(*m_diskId, Problem::DiskId, Str::UnattendedProblemDiskId, std::optional<Str>(Str::UnattendedDiskIdHint));
 
+    // D-084: the welcome's rows from its plan in the queue; the account rows it replaces are off.
+    if (m_welcome) {
+        const auto plan = m_controller.welcomePlan();
+        if (m_welcome->isOn() != o.welcome) {
+            m_welcome->setOn(o.welcome);
+        }
+        m_form->setHint(*m_welcome, o.welcome ? m_strings.get(Str::UnattendedWelcomeHint) : std::wstring());
+        for (const auto& [toggle, on] : {std::pair{m_askComputer, plan.computerPage}, std::pair{m_askLook, plan.lookPage},
+                                         std::pair{m_askPrivacy, plan.privacyPage}, std::pair{m_emptyPassword, plan.allowEmptyPassword}}) {
+            if (toggle->isOn() != on) {
+                toggle->setOn(on);
+            }
+            toggle->setEnabled(o.welcome);
+        }
+        m_welcomeTheme->setSelected(plan.theme == L"light" ? 1 : 0);
+        m_welcomePrivacy->setSelected(plan.privacy == L"windows" ? 1 : 0);
+        for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_welcomeTheme, m_welcomePrivacy, m_welcomePreview}) {
+            w->setEnabled(o.welcome);
+        }
+        m_welcomePreview->setEnabled(true); // a preview needs nothing switched on
+        for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_account, m_password, m_autoLogon}) {
+            w->setEnabled(!o.welcome);
+        }
+        if (o.welcome) {
+            m_form->setHint(*m_account, m_strings.get(Str::UnattendedWelcomeUsed));
+        }
+    }
+
     m_include->setChecked(m_controller.includeInIso());
     m_preview->setText(m_controller.xml());
     invalidate();
+}
+
+void UnattendedPage::editWelcome(const std::function<void(core::WelcomePlan&)>& change) {
+    if (!m_controller.welcome()) {
+        return;
+    }
+    auto plan = m_controller.welcomePlan();
+    change(plan);
+    m_controller.setWelcomePlan(std::move(plan));
+    sync();
 }
 
 void UnattendedPage::layout() {
