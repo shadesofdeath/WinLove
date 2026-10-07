@@ -49,6 +49,8 @@ enum class OpKind : std::uint8_t {
     AddFont,               // font: target = file name in Windows\Fonts, value = source file
     // 2026-10-05 (D-068):
     PatchIcons,            // icons inside a Windows file: target = its path from the image root, value = JSON (IconPatch.h)
+    // 2026-10-07 (D-079):
+    ShrinkStore,           // WinSxS at its smallest, irreversible: target "component-store-shrink" (one slot), value = JSON (StoreShrink.h)
 };
 
 enum class Risk : std::uint8_t { Low, Medium, High };

@@ -51,8 +51,10 @@ Result<ComponentCatalog> ComponentCatalog::parse(std::string_view json) {
             ComponentCatalogEntry entry;
             entry.id = c.value("id", std::string{});
             entry.group = c.value("group", std::string{});
-            entry.kind = c.value("kind", std::string{"remove"}) == "cleanup" ? ComponentCatalogEntry::Kind::Cleanup
-                                                                              : ComponentCatalogEntry::Kind::Remove;
+            const std::string kind = c.value("kind", std::string{"remove"});
+            entry.kind = kind == "cleanup"  ? ComponentCatalogEntry::Kind::Cleanup
+                         : kind == "shrink" ? ComponentCatalogEntry::Kind::Shrink
+                                            : ComponentCatalogEntry::Kind::Remove;
             entry.name = {wide(c, "tr"), wide(c, "en")};
             entry.notes = {wide(c, "notes_tr"), wide(c, "notes_en")};
             entry.risk = riskFrom(c.value("risk", std::string{"medium"}));

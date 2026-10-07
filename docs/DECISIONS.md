@@ -241,6 +241,65 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-079 — WinSxS en aza indirilir (tiny11 "core" yöntemi), geri dönüşsüz; Bileşenler › Temizlik (2026-10-07)
+Bağlam: Kullanıcı: "winsxs boyutunu maksimum seviyede düşürmeye çalış… tiny iso dosyaları yapıyorlar"; uyarıyla, hangi
+sayfaya konacağı bana bırakıldı. Ölçüm (25H2 Pro, bağlı imaj): gezginde WinSxS 10,33 GB / 18 058 klasör, bunun 7,22 GB'ı
+System32 & co. ile sabit bağlantı (silmek yer açmaz), yalnız WinSxS'te duran 3,12 GB.
+Karar:
+- **Motor (`core/image/dism/StoreShrink`):** WinSxS'te kalanlar tiny11 Coremaker listesi: `Catalogs`, `FileMaps`, `Fusion`,
+  `InstallTemp`, `Manifests`, `SettingsManifests`, `Temp`; her mimaride common-controls (+ .resources), gdiplus,
+  isolationautomation, i..utomation.proxystub, vc80.crt, vc90.crt ve bunların `policy.N.M.*` yönlendirmeleri; servis yığını
+  (`microsoft-windows-servicing*`, `s..ngstack*`, `s..stack-*`). Gerisi silinir: SeRestore ile POSIX silme (ACL / sahiplik
+  değişmez), olmazsa sahiplik alınarak; junction'a girilmez. Önce her dosyanın bağlantı sayısıyla ölçülür (yalnız bağlantı
+  sayısı 1 olan bayt "açılan"dır). `pending.xml` varsa (aynı çalıştırmada açılan özellik ilk açılışta tamamlanacak) ve
+  servis yığını bulunamazsa reddeder. `wlcli store-shrink <mount> [--dry-run]`.
+- **İşlem:** yeni `ShrinkStore` (hedef `component-store-shrink`, tek yuva), Planner'da yeni son aşama `Phase::Shrink`
+  (Ayarlar'dan da sonra: dil / varsayılan uygulama adımları dism.exe kullanır). Risk onayında listelenir, presetle taşınır.
+- **Arayüz:** ayrı sayfa değil, ISO Oluştur da değil (orası imaj içeriğini değiştirmez): Bileşenler › Temizlik'te
+  ResetBase'in yanında ikinci satır "WinSxS'i en aza indir (geri dönüşsüz)", yüksek risk; boyut sütunu bağlanan imajda
+  ölçülür (bileşen yoklamasıyla, ~5 sn). Seçilince Ayarlar'ın "Otomatik güncelleştirmeler: Kapalı" yazımı
+  (`WindowsUpdate\AU\NoAutoUpdate = 1`) aynı kuyruk düzenlemesiyle eklenir; satır çıkarılınca ayar kalır (Ayarlar gösterir).
+  Uyarı bandı "uygulanacak" der (kaldırma değil).
+Kanıt: 330 test; kuru çalıştırma (25H2 Pro): 17 642 klasör / 50 154 dosya / 10,12 GB gider, 416 klasör kalır, 2,97 GB
+açılır (~5 sn). Lab: temizlik + küçültme 22 sn, sonrasında DISM oturumu hâlâ açılıyor; tek sürüm install.wim 6,96 → 4,90 GB.
+VM `shrink-max` (ağlı, -Diag): kurulum + ilk oturum + masaüstü, WinSxS 427 klasör, SideBySide olayı 0, sistem ve
+kurulan programlar açılıyor, winget 4/4 (VC++ MSI dahil), `dism /online /get-packages` çalışıyor (STATUS).
+Görülmeyen: kurulu sistemde aylar içinde ne bozulduğu; Windows Update elle çalıştırılınca ne olduğu; ARM64 / Windows 10
+imajı; küçültülmüş imaja sonradan bir şey eklenmesi (DISM'in reddetmesi beklenir).
+
+## D-078 — Programlar: winget deposu winget'siz okunur, ilk oturumda WinLove'un penceresiyle kurulur; hazır paketler (2026-10-07)
+Bağlam: Kullanıcı yeni özellik olarak "Program kurulumu (Ninite gibi)"yı seçti: "binlerce uygulama datası içerebilir,
+güncel veriyi çekebilir". Hazır *ayar* profillerini reddetti (her yeni özellikte güncellenmesi gerekir); hazır *program*
+paketlerini ise kendisi istedi ("geliştiriciler için, oyun oynayanlar için"). İnternet yoksa kurulum sonraki oturuma
+ertelenmez: bağlantı beklenir, kullanıcı bunu ekranda görür.
+Karar:
+- **Motor (`core/programs`):** `cdn.winget.microsoft.com/cache/source2.msix` indirilir, Authenticode imzası
+  `WinVerifyTrust` ile denetlenir (imzalayan "Microsoft Corporation"), içinden `Public\index.db` (`IAppxFactory`) çıkarılır,
+  Windows'un kendi SQLite'ı (`winsqlite3`) ile okunur — winget kurulu olmasa da. Arama ad / kimlik / moniker / etiket
+  sıralı; etikete göre ve bütün depo listesi. Bir paketin ayrıntısı `versionData.mszyml` (MSZIP, SHA-256 = dizindeki
+  hash) → birleşik manifest (SHA-256) → simge (`IconSha256`); hepsi `<çalışma>\winget`'te önbellek, dizin günde bir
+  yenilenir. `wlcli programs-index | programs-search | programs-show`.
+- **Kurulum:** seçimler Kurulum Sonrası planında (`PostSetupPlan::programs` + pencere metinleri): tek kuyruk işlemi,
+  presetle taşınır. `postsetup-machine.cmd` (SYSTEM) "WinLove Programs" görevini kaydeder (BUILTIN\Users, en yüksek yetki,
+  oturum açılışından 15 sn sonra). `programs.ps1` (WPF; WinLove'un açılış ekranı dili, renkler tokens.json'dan, açık /
+  koyu) Kurulum Sonrası görevini bekler, winget'i kaydettirir, ağı bekler (bantta), programları tek tek
+  `winget install --id X --exact --silent --source winget` ile kurar; "zaten kurulu" ve "yeniden başlatma" kodları
+  başarıdır, başarısız olan bir kez yeniden denenir. Bitince görev kendini siler (`%ProgramData%\WinLove\programs-done.txt`);
+  pencere kapatılırsa sonraki oturumda kalanlarla sürer.
+- **Sayfa (P22, Uygulamalar'ın altında):** arama (bütün depo), Kategori (katalogdaki 12 kategori + Bütün depo), Yalnızca
+  seçili, 6 hazır paket kartı, tablo + sağda ayrıntılar. Kategori = `programs.json`'daki öne çıkanlar + winget etiketleriyle
+  "N program daha". Katalog yalnız kimlik + etiket taşır (ad, sürüm dizinden gelir): bakım istemez;
+  `tools/check_programs.py` her kimliği ve etiketi dizinde arar. App Installer (winget) Uygulamalar'da kaldırılacaksa
+  sayfa kırmızı bant gösterir. Kurulum Sonrası'nın eski "Hazır uygulamalar" dialogu kaldırıldı, düğme bu sayfayı açar.
+- **Önizleme:** "Kurulum penceresini önizle" pencereyi bu bilgisayarda `dryRun` ile açar (hiçbir şey kurulmaz).
+- **Yönetici istemeyen yükleyiciler:** winget `0x8A150056` ("cannot be run from an administrator context", Spotify) verirse
+  aynı komut, oturumdaki kullanıcının sınırlı yetkili geçici görevi olarak yeniden çalışır (parola / UAC yok), çıkış kodu
+  dosyadan okunur, görev silinir.
+Kanıt: 330 test; gerçek pencerede (gui.py) arama, kategori, Bütün depo (15 403 paket), paketler, ayrıntılar, önizleme;
+VM `programs-diag`: 6 programdan 5'i ilk oturumda ~6 dk'da kuruldu, Spotify `0x8A150056` → düzeltme → VM `programs-spotify`:
+Spotify yükseltilmeden kuruldu. VM `shrink-max`: küçültülmüş WinSxS'li sistemde 4/4 (VC++ MSI dahil).
+Görülmeyen: internet yokken bekleme (VM), bütün depodan rastgele programlar, ARM64 imaj.
+
 ## D-077 — AIO: Win10 + Win11 karışık ISO Win10 kurulum ortamıyla kurulur; sürüm sıralama, ad çakışması (2026-10-06)
 Bağlam: Kullanıcı AIO ISO istedi (Win10 + Win11 karışık, tek mimari — kullanıcı seçimi). Sürüm ekleme / yeniden adlandırma /
 silme zaten vardı (D-033, D-035, D-058); bilinmeyen kurulum tarafıydı.

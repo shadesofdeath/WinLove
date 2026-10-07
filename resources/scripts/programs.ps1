@@ -389,6 +389,38 @@ if (Test-Path $doneFile) { foreach ($line in [System.IO.File]::ReadAllLines($don
 # winget's exit codes that mean "it is there"
 $alreadyThere = @(-1978335189, -1978335135)   # 0x8A15002B no newer version, 0x8A150061 already installed
 $needsRestart = @(-1978334967, 3010, 1641)    # 0x8A150109 restart to finish, MSI 3010 / 1641
+$refusesAdmin = -1978335146                   # 0x8A150056 the installer cannot run as administrator (Spotify)
+
+# The same winget command as the signed-in user WITHOUT elevation: a task of this user with the
+# limited run level (no password, no UAC prompt). Its exit code comes back through a file.
+function Invoke-Unelevated([string[]] $arguments, [string] $output) {
+    $codeFile = $output + '.code'
+    Remove-Item $output, $codeFile -ErrorAction SilentlyContinue
+    $line = '"' + $winget + '" ' + ($arguments -join ' ') + ' > "' + $output + '" 2>&1 & echo !errorlevel! > "' + $codeFile + '"'
+    $userTask = $taskName + ' (user)'
+    try {
+        $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/v:on /s /c "' + $line + '"')
+        $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 1)
+        Register-ScheduledTask -TaskName $userTask -Action $action -Principal $principal -Settings $settings -Force | Out-Null
+        Start-ScheduledTask -TaskName $userTask
+    } catch {
+        Write-Log ('unelevated run not possible: ' + $_.Exception.Message)
+        return $refusesAdmin
+    }
+    $until = (Get-Date).AddMinutes(45)
+    while (-not (Test-Path $codeFile) -and (Get-Date) -lt $until) {
+        if ($script:closed) { Stop-Here 2 }
+        Update-Ui
+        Start-Sleep -Milliseconds 30
+    }
+    Start-Sleep -Milliseconds 300   # the echo's file is closed
+    Unregister-ScheduledTask -TaskName $userTask -Confirm:$false -ErrorAction SilentlyContinue
+    $text = if (Test-Path $codeFile) { ((Get-Content $codeFile -ErrorAction SilentlyContinue) -join '').Trim() } else { '' }
+    $value = 0
+    if ([int]::TryParse($text, [ref] $value)) { return $value }
+    return $refusesAdmin
+}
 $ok = 0
 $failed = 0
 $index = 0
@@ -424,6 +456,10 @@ foreach ($program in $programs) {
                 Start-Sleep -Milliseconds 30
             }
             $code = $process.ExitCode
+            if ($code -eq $refusesAdmin) {
+                Write-Log ('{0}: the installer refuses an administrator; running it as {1} without elevation' -f $program.id, $env:USERNAME)
+                $code = Invoke-Unelevated $arguments $output
+            }
         }
         $tail = ''
         if (Test-Path $output) { $tail = ((Get-Content $output -Tail 3 -ErrorAction SilentlyContinue) -join ' ').Trim() }

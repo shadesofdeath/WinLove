@@ -1,8 +1,10 @@
 # wl_app — shell, pages, app state, localization. Joins ui and core. Library so tests can link it.
 add_library(wl_app STATIC
     App.cpp
+    CrashReport.cpp
     catalog/AppxCatalog.cpp
     catalog/ComponentCatalog.cpp
+    catalog/ProgramCatalog.cpp
     catalog/ImageSettingsCatalog.cpp
     controllers/ApplyController.cpp
     controllers/ComponentController.cpp
@@ -14,6 +16,7 @@ add_library(wl_app STATIC
     controllers/ImageValuesController.cpp
     controllers/IsoController.cpp
     controllers/PostSetupController.cpp
+    controllers/ProgramsController.cpp
     controllers/PreloadController.cpp
     controllers/PresetController.cpp
     controllers/UnattendController.cpp
@@ -62,6 +65,9 @@ add_library(wl_app STATIC
     pages/images/ToolDialogs.cpp
     pages/PageInfo.cpp
     pages/PostSetupPage.cpp
+    pages/ProgramsPage.cpp
+    pages/programs/BundleStrip.cpp
+    pages/programs/ProgramInspector.cpp
     pages/PresetsPage.cpp
     pages/postsetup/AppsDialog.cpp
     pages/postsetup/StepDialog.cpp
@@ -95,7 +101,7 @@ add_library(wl_app STATIC
     state/Preset.cpp
     state/RecentSources.cpp)
 wl_configure_target(wl_app)
-target_link_libraries(wl_app PUBLIC wl_core wl_ui PRIVATE wl_json version crypt32)
+target_link_libraries(wl_app PUBLIC wl_core wl_ui PRIVATE wl_json version crypt32 dbghelp)
 
 add_executable(WinLove WIN32
     main.cpp
@@ -113,6 +119,7 @@ set(WL_EMBEDDED_RESOURCES
     ${PROJECT_SOURCE_DIR}/resources/catalog/services.json
     ${PROJECT_SOURCE_DIR}/resources/catalog/settings.json
     ${PROJECT_SOURCE_DIR}/resources/catalog/components.json
+    ${PROJECT_SOURCE_DIR}/resources/catalog/programs.json
     ${PROJECT_SOURCE_DIR}/resources/strings/tr.json
     ${PROJECT_SOURCE_DIR}/resources/strings/en.json)
 set_source_files_properties(WinLove.rc PROPERTIES OBJECT_DEPENDS "${WL_EMBEDDED_RESOURCES}")

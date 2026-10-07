@@ -206,10 +206,11 @@ std::vector<PresetController::Item> PresetController::items(const Preset& preset
             break;
         }
         case OpKind::RemoveComponent:
-        case OpKind::CleanupImage: {
+        case OpKind::CleanupImage:
+        case OpKind::ShrinkStore: {
             const std::wstring title = core::componentTitle(op.value);
             result.push_back({kComponents, L"system|" + wl::text::lower(op.target), title.empty() ? op.target : title,
-                              s(op.kind == OpKind::CleanupImage ? Str::PresetsValueRun : Str::PresetsValueRemove), {}});
+                              s(op.kind == OpKind::RemoveComponent ? Str::PresetsValueRemove : Str::PresetsValueRun), {}});
             break;
         }
         case OpKind::SetEdition:

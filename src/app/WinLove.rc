@@ -18,6 +18,7 @@ IDR_CATALOG_SETTINGS RCDATA "../../resources/catalog/settings.json"
 IDR_CATALOG_COMPONENTS RCDATA "../../resources/catalog/components.json"
 IDR_CATALOG_TASKS RCDATA "../../resources/catalog/tasks.json"
 IDR_CATALOG_HOSTS RCDATA "../../resources/catalog/hosts.json"
+IDR_CATALOG_PROGRAMS RCDATA "../../resources/catalog/programs.json"
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION 1,0,2,0

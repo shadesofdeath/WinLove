@@ -17,7 +17,9 @@ namespace wl::core::ops {
 // Apps: provisioned .appx / .msix (D-050) — after the updates, whose servicing stack may be needed.
 // DeepRemove: deep removal (D-060) — after the updates: a cumulative update added to an image whose
 // inbox drivers are already gone fails (0x80070002, measured), the other way round works.
-enum class Phase : std::uint8_t { Edition, Remove, Features, Drivers, Updates, Apps, DeepRemove, Cleanup, Settings };
+// Shrink: WinSxS at its smallest (D-079) — the very last step: afterwards DISM cannot service the
+// image any more (dism.exe steps of Settings — languages, default apps — included).
+enum class Phase : std::uint8_t { Edition, Remove, Features, Drivers, Updates, Apps, DeepRemove, Cleanup, Settings, Shrink };
 
 struct PlanStep {
     Phase phase;

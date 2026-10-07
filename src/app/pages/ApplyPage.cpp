@@ -41,6 +41,7 @@ Category categoryOf(OpKind kind) {
     case OpKind::RemovePackage:
     case OpKind::RemoveComponent:
     case OpKind::CleanupImage:
+    case OpKind::ShrinkStore:
     case OpKind::RemoveAppx: return kComponents;
     case OpKind::EnableFeature:
     case OpKind::DisableFeature:
@@ -86,7 +87,7 @@ ApplyPage::Mode ApplyPage::modeFor(const AppState& state) {
 }
 
 std::wstring ApplyPage::displayName(const AppState& state, const core::ops::Operation& op) {
-    if (op.kind == OpKind::RemoveComponent || op.kind == OpKind::CleanupImage) {
+    if (op.kind == OpKind::RemoveComponent || op.kind == OpKind::CleanupImage || op.kind == OpKind::ShrinkStore) {
         // The operation carries the name it was queued under.
         const std::wstring title = core::componentTitle(op.value);
         return title.empty() ? op.target : title;
@@ -188,6 +189,7 @@ ui::icons::Icon ApplyPage::groupIcon(const Row& row) {
     case Phase::DeepRemove: return ui::icons::Icon::DriverChip;
     case Phase::Cleanup: return ui::icons::Icon::SizeSaved;
     case Phase::Settings: return ui::icons::Icon::Registry;
+    case Phase::Shrink: return ui::icons::Icon::SizeSaved;
     }
     return ui::icons::Icon::File;
 }

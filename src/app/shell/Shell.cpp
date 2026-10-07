@@ -26,6 +26,8 @@
 #include "app/pages/IsoPage.h"
 #include "app/pages/LogsPage.h"
 #include "app/pages/PostSetupPage.h"
+#include "app/pages/ProgramsPage.h"
+#include "app/pages/programs/ProgramInspector.h"
 #include "app/pages/PresetsPage.h"
 #include "app/ApplyReport.h"
 #include "app/pages/postsetup/AppsDialog.h"
@@ -223,6 +225,12 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     });
     m_unattend = std::make_unique<UnattendController>(m_state);
     m_postSetup = std::make_unique<PostSetupController>(m_state);
+    {
+        // Without the resource (tools, tests): no catalog, the search still works.
+        auto catalog = ProgramCatalog::parse(embeddedProgramsCatalog());
+        m_programs = std::make_unique<ProgramsController>(m_state, *m_postSetup, catalog ? std::move(*catalog) : ProgramCatalog{},
+                                                          m_strings, m_language, ProgramsController::Events{m_services.postToUi});
+    }
     m_presets = std::make_unique<PresetController>(m_state, m_imageSettings->catalog(), m_strings, m_language,
                                                    PresetController::defaultFolder());
     m_preload = std::make_unique<PreloadController>(m_state, m_services.postToUi);
@@ -386,6 +394,29 @@ ComponentsPage* Shell::componentsPage() const {
     return m_page == PageId::Components ? dynamic_cast<ComponentsPage*>(m_pageBody) : nullptr;
 }
 
+ProgramsPage* Shell::programsPage() const {
+    return m_page == PageId::Programs ? dynamic_cast<ProgramsPage*>(m_pageBody) : nullptr;
+}
+
+void Shell::updateProgramInspector() {
+    auto* page = programsPage();
+    auto* inspector = dynamic_cast<ProgramInspector*>(m_sideInspector);
+    if (!page || !inspector) {
+        return;
+    }
+    const auto program = page->selectedProgram();
+    const core::WingetDetails* details = program ? m_programs->details(program->id) : nullptr;
+    const auto icon = program ? m_programs->icon(program->id) : std::filesystem::path();
+    const bool wasVisible = inspector->visible();
+    inspector->set(program, details, icon, program && m_programs->picked(program->id),
+                   program && m_programs->detailsFailed(program->id));
+    inspector->setVisible(program.has_value());
+    if (wasVisible != inspector->visible()) {
+        layout();
+    }
+    invalidate();
+}
+
 UpdatesPage* Shell::updatesPage() const {
     return m_page == PageId::Updates ? dynamic_cast<UpdatesPage*>(m_pageBody) : nullptr;
 }
@@ -500,35 +531,6 @@ void Shell::editPostSetupStep(core::PostSetupStep::Type type, std::optional<std:
         }
     };
     StepDialog built = makeStepDialog(m_strings, std::move(step), index.has_value(), std::move(actions));
-    showModal(slot, std::move(built.dialog), built.initialFocus);
-}
-
-void Shell::pickPostSetupApps() {
-    if (!host()) {
-        return;
-    }
-    if (!requireMount(Str::PostsetupNoMountTitle, Str::PostsetupNoMountBody)) {
-        return;
-    }
-    std::wstring body = m_strings.get(Str::PostsetupCatalogBody);
-    // winget is the App Installer: with its removal queued these steps would have nothing to run with.
-    const bool noWinget = std::ranges::any_of(m_state.changes().operations(), [](const core::ops::Operation& op) {
-        return op.kind == core::ops::OpKind::RemoveAppx && op.target.starts_with(L"Microsoft.DesktopAppInstaller_");
-    });
-    if (noWinget) {
-        body += L" " + m_strings.get(Str::PostsetupCatalogNoWinget);
-    }
-    const ModalSlot slot = modalSlot();
-    AppsDialogActions actions;
-    actions.present = [this](std::size_t index) { return m_postSetup->hasApp(index); };
-    actions.close = slot.close;
-    actions.accept = [this](std::vector<std::size_t> picked) {
-        const std::size_t added = m_postSetup->addApps(picked);
-        showToast(ui::InfoKind::Success, m_strings.format(Str::PostsetupCatalogAdded, {{L"n", std::to_wstring(added)}}), L"");
-    };
-    CatalogDialogSpec spec{m_strings.get(Str::PostsetupCatalog), std::move(body), m_strings.get(Str::PostsetupWingetId),
-                           Str::PostsetupCatalogAdd, appRows(m_strings)};
-    AppsDialog built = makeCatalogDialog(m_strings, std::move(spec), std::move(actions));
     showModal(slot, std::move(built.dialog), built.initialFocus);
 }
 
@@ -1319,6 +1321,7 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::Tweaks, m_imageSettings->changedCount());
     m_nav->setBadge(PageId::StartMenu, m_startPins->changedCount());
     m_nav->setBadge(PageId::PostSetup, static_cast<int>(m_postSetup->stepCount()));
+    m_nav->setBadge(PageId::Programs, static_cast<int>(m_programs->pickCount()));
     m_nav->setBadge(PageId::Tasks, m_tasks->changedCount());
     m_nav->setBadge(PageId::Hosts, m_hosts->changedCount());
     m_nav->setBadge(PageId::Branding, m_branding->changedCount());
@@ -1547,6 +1550,33 @@ void Shell::showPage(PageId page) {
                 }
             };
             body.onSelectionChanged = [this] { updateComponentInspector(); };
+        } else if (page == PageId::Programs) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ProgramsPreview), ui::icons::Icon::Eye).onInvoke = [this] {
+                if (auto shown = m_programs->preview(); !shown) {
+                    showToast(ui::InfoKind::Error, m_strings.get(Str::ProgramsPreviewFailed), errorText(shown.error()));
+                }
+            };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ProgramsRefresh), ui::icons::Icon::Refresh)
+                .onInvoke = [this] { m_programs->load(/*refresh=*/true); };
+            auto& body = m_pageView->setBody<ProgramsPage>(m_state, *m_programs, m_strings, m_language,
+                                                           [this] { showPage(PageId::Images); });
+            m_pageBody = &body;
+            auto& inspector = add<ProgramInspector>(m_strings, m_language);
+            m_sideInspector = &inspector;
+            inspector.setVisible(false);
+            inspector.onToggle = [this] {
+                if (auto* p = programsPage()) {
+                    if (const auto program = p->selectedProgram()) {
+                        m_programs->toggle(*program);
+                    }
+                }
+            };
+            inspector.onOpenUrl = [](const std::wstring& url) {
+                if (url.starts_with(L"https://")) { // a manifest's address: only web pages open
+                    ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                }
+            };
+            body.onSelectionChanged = [this] { updateProgramInspector(); };
         } else if (page == PageId::Registry) {
             auto pick = [this] {
                 importRegFiles(ui::pickFiles(owner(), m_strings.get(Str::RegistryImportReg),
@@ -1663,8 +1693,9 @@ void Shell::showPage(PageId page) {
                 .onInvoke = [this] { editPostSetupStep(Type::Winget, std::nullopt); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupAddWifi), ui::icons::Icon::Network)
                 .onInvoke = [this] { editPostSetupStep(Type::Wifi, std::nullopt); };
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupCatalog), ui::icons::Icon::AppxPackage)
-                .onInvoke = [this] { pickPostSetupApps(); };
+            // D-078: the programs have a page of their own, over winget's whole repository.
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupCatalog), ui::icons::Icon::Download)
+                .onInvoke = [this] { showPage(PageId::Programs); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupCommands), ui::icons::Icon::LogTerminal)
                 .onInvoke = [this] { pickPostSetupCommands(); };
             m_pageBody = &m_pageView->setBody<PostSetupPage>(

@@ -539,7 +539,9 @@ int App::renderOffscreen() {
              {"bio-enrollment", {true, 5 * mb}},
              // Deep removal (D-060): inbox drivers of legacy classes, WinSxS payload of the same image.
              {"deep-modem", {true, 28 * mb}}, {"deep-tape", {true, 2 * mb}}, {"deep-floppy", {true, 1 * mb}},
-             {"deep-firewire", {true, 1 * mb}}, {"deep-pcmcia", {true, 1 * mb}}, {"deep-pos", {true, 1 * mb}}}});
+             {"deep-firewire", {true, 1 * mb}}, {"deep-pcmcia", {true, 1 * mb}}, {"deep-pos", {true, 1 * mb}},
+             // D-079: what shrinking WinSxS frees in the same image (wlcli store-shrink --dry-run).
+             {"component-store-shrink", {true, 3041 * mb}}}});
         m_state->setAppxList(AppState::AppxList{AppState::AppxList::Status::Ready, mountDir, std::move(items), {}});
         auto& controller = m_shell->components();
         for (const auto& g : controller.groups()) {

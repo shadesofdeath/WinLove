@@ -29,7 +29,8 @@ bool RiskConfirm::removes(core::ops::OpKind kind) noexcept {
     case OpKind::RemoveComponent:
     case OpKind::RemoveDriver:
     case OpKind::RemoveAppx:
-    case OpKind::CleanupImage: return true;
+    case OpKind::CleanupImage:
+    case OpKind::ShrinkStore: return true;
     default: return false;
     }
 }

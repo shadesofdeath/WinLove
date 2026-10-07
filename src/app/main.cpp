@@ -1,5 +1,6 @@
 // WinLove.exe entry point. See app/App.h for the command line.
 #include "app/App.h"
+#include "app/CrashReport.h"
 #include "core/system/Privileges.h"
 
 #include <objbase.h>
@@ -12,6 +13,7 @@
 #include <vector>
 
 int WINAPI wWinMain(HINSTANCE /*instance*/, HINSTANCE /*previous*/, PWSTR /*commandLine*/, int /*show*/) {
+    wl::app::installCrashReport();
     // OLE (STA): drag & drop needs OleInitialize, WIC and shell dialogs need COM.
     if (FAILED(OleInitialize(nullptr))) {
         return 1;

@@ -225,6 +225,15 @@ TEST_CASE("winget index: search ranks the id, then names, then tags; hashes and 
     CHECK(index->find(L"google.chrome").value().version == L"155.0.8059.40");
     CHECK_FALSE(index->find(L"Google").has_value());
     CHECK(index->tags(L"Brave.Brave") == std::vector<std::wstring>{L"browser"});
+    const std::vector<std::wstring> browserTags{L"browser", L"web-browser"};
+    REQUIRE(index->tagged(browserTags, 10).size() == 1);
+    CHECK(index->tagged(browserTags, 10).front().id == L"Brave.Brave");
+    CHECK(index->tagged(std::vector<std::wstring>{L"nothing"}, 10).empty());
+    const auto all = index->all(100);
+    REQUIRE(all.size() == 5);
+    CHECK(all.front().name == L"Brave");          // by name, case-insensitive
+    CHECK(all.back().name == L"Google Chrome Dev");
+    CHECK(index->all(2).size() == 2);
     CHECK(index->versionDataHash(L"Google.Chrome") == L"8003ec63fcf6f39463edb5fbe26bbf1f8a279e1c018c14ef5958e77f6487c447");
     CHECK(index->versionDataHash(L"Brave.Brave").empty());
     CHECK(std::chrono::duration_cast<std::chrono::seconds>(index->builtAt().time_since_epoch()).count() == 1791367162);

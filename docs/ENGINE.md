@@ -195,3 +195,22 @@ Uygulama davranışı:
 - [2026-10-06] [WIM metadata] Bir sürümün dosya listesi (metadata kaynağı) lookup tablosundaki sırasıyla sürüm 1..N; biçim: u32 güvenlik verisi uzunluğu (8'e hizalı) → kök girdi; girdi 102 bayt + UTF-16 ad, `subdir` çocuk listesinin başı, liste uzunluğu 0 olan girdiyle biter; her girdinin ardından `num_extra_streams` adet 8'e hizalı akış girdisi. 25H2 install.wim'de bir yol araması ~0,2 sn (LZX çözme dahil).
 - [2026-10-07] [Windows 10 22H2 sürümü] Microsoft'un Win10 22H2 MCT ESD'sinde (ve ondan dışa aktarılan WIM'de) XML `BUILD` 19041 ("2004"); gerçek sürüm etkinleştirme paketiyle açılıyor: `Windows\servicing\Packages\Microsoft-Windows-22H2Enablement-Package~…~10.0.19041.1799.mum` (20H2 / 21H1 / 21H2 / 22H2'nin yalnız `…Enablement-Payload-Package` dosyaları da var, onlar açmıyor); imajın SOFTWARE hive'ı `CurrentBuild 19045`, `DisplayVersion 22H2`. → `openSource` 19041 sürümlerde dosya listesinden okuyup build'i yükseltiyor (WIM'de ~0,05 sn; ESD / LZMS okunamıyor, 19041 kalıyor). MCT ESD'si: index 1 "Windows Setup Media" (EDITIONID / mimari yok), 2 ve 3 `INSTALLATIONTYPE = WindowsPE`.
 - [2026-10-07] [AIO / Win10 kurulum ortamı] Win10 22H2 kurulum ortamı Win11 25H2 sürümünü TPM'siz, Secure Boot'suz, LabConfig atlatması olmayan VM'de sorunsuz kuruyor: eski kurulum Win11'in donanım denetimini hiç yapmıyor (`lab_vm.ps1 -NoBypass`, masaüstü + ACPI kapanma).
+- [2026-10-07] [winget deposu, winget'siz] `source2.msix` (~3,7 MB) Microsoft Corporation imzalı; içindeki `Public\index.db` SQLite:
+  `packages` (rowid, id, name, moniker, latest_version, hash), `tags2` + `tags2_map` (etiket ↔ paket; ~22 500 etiket, en
+  sık: cli 920, ai 554, web 481), 25H2 tarihinde 15 403 paket. Bir paketin sürüm listesi
+  `packages/<id>/<hash'in ilk 8 hex'i>/versionData.mszyml` — MSZIP (Compression API `COMPRESS_ALGORITHM_MSZIP`), açılmış
+  hâlinin SHA-256'sı dizindeki `hash`; içindeki YAML her sürüm için birleşik manifestin yolunu (`rP`) ve SHA-256'sını
+  (`s256H`) verir. Etiketler küçük harf; bazı paketlerin etiketleri Store ürün kimliği (`9ncbcszsjrsb`). Windows'un
+  `winsqlite3.dll`'i (SDK: `winsqlite/winsqlite3.h`, `winsqlite3.lib`) dizini okumaya yetiyor — kendi SQLite'ımız yok.
+- [2026-10-07] [WinSxS'in gerçek boyutu] 25H2 Pro (26200.8037), dokunulmamış: 18 058 klasör, 86 551 dosya, gezginde 10,33 GB;
+  bağlantı sayısı > 1 olan (System32, Program Files, .NET GAC ile aynı dosya) 7,22 GB, yalnız WinSxS'te 3,12 GB. Yalnız
+  WinSxS'tekilerin en büyükleri: Edge WebView 533 MB, Defender imzaları 244 MB, Defender for Endpoint (Sense) 159 MB, OneDrive
+  kurulumu 111 MB, servis yığını 86 MB, Backup 193 MB, Çince / Japonca yazı tipleri ~150 MB. Manifests ~30 000 dosya ama
+  26 MB. tiny11 izin listesiyle (D-079) 17 642 klasör gider, 416 kalır, 2,97 GB açılır; dosya başına bağlantı sayısı
+  okumasıyla ölçüm ~5 sn. Commit, silinen dosyaların akışlarını WIM'den atmaz (yalnız ekler): boyut ancak dışa aktarma /
+  optimize ile görünür — tek sürüm install.wim 6,96 → 4,90 GB. Küçültmeden sonra `DismOpenSession` hâlâ açılıyor ve
+  WriteFile gibi DISM'siz adımlar çalışıyor.
+- [2026-10-07] [Çökme izi] Uygulama artık yakalanmayan istisnada `%LOCALAPPDATA%\WinLove\logs\crash-<zaman>.txt` (dbghelp ile
+  sembollü yığın; Debug'da dosya:satır) + `.dmp` yazar — render'lar dahil. İlk bulduğu: açılır liste açıkken pencere
+  kapanınca (render her zaman öyle biter) `Host` önce modal pencereleri siler, `Dropdown`'ın yıkıcısı ölü `MenuPopup`'ı
+  kapatmaya çalışıyordu (0xC0000005). Artık `MenuPopup` yok olurken sahibine haber verir, sahibi önce giderse `detach()`.

@@ -62,6 +62,8 @@ Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **
 
 > **Başlat menüsü (P21, 2026-10-05; D-069):** Windows 11 sabitlemelerini temizleme ve kendi listesi, her sürümde; 11 VM kurulumuyla ölçüldü. 🟨 test — spec: `pages/21-startmenu.md`.
 
+> **Programlar (P22, 2026-10-07; D-078):** winget deposundan (~15 400 paket, imzalı dizin, winget'siz okunur) ilk oturumda kurulacak programlar; kategoriler, bütün depo, 6 hazır paket; kurulum WinLove'un penceresinde, internet yoksa bekler. 🟨 test — spec: `pages/22-programs.md`.
+
 > **Simgeler (P20, 2026-10-05; D-065 yönlendirme + D-068 dosya yaması):** `.mun` simge dosyalarını okuma, her simgeyi değiştirme, yedek + geri yükleme betiği, paketler. 🟨 test — motor `tools\lab_icons.ps1` (+ `-Lcu`) ve `tools\lab_icons_vm.ps1` (VM önyükleme) ile; spec: `pages/20-icons.md`.
 
 ## Faz 4 — Sağlamlaştırma ve yayın

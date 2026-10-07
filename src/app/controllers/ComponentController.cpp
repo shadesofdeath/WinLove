@@ -4,6 +4,7 @@
 #include "base/Utf8.h"
 #include "core/image/ComponentStore.h"
 #include "core/image/dism/StoreCleanup.h"
+#include "core/image/dism/StoreShrink.h"
 
 #include <algorithm>
 
@@ -16,11 +17,17 @@ namespace {
 
 constexpr const wchar_t* kCleanupTarget = L"component-store";
 constexpr const wchar_t* kCleanupCommand = L"DISM /Cleanup-Image /StartComponentCleanup";
+constexpr const wchar_t* kShrinkTarget = L"component-store-shrink";
+// What Ayarlar › Windows Update › "Otomatik güncelleştirmeler: Kapalı" writes: a shrunk store takes
+// no update, and Windows would download one every day only to fail installing it.
+constexpr const wchar_t* kNoAutoUpdateTarget = L"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU::NoAutoUpdate";
+constexpr const wchar_t* kNoAutoUpdateValue = L"dword:00000001";
 
 OpKind kindOf(const ComponentController::Item& item) {
     switch (item.kind) {
     case ComponentController::Item::Kind::System: return OpKind::RemoveComponent;
     case ComponentController::Item::Kind::Cleanup: return OpKind::CleanupImage;
+    case ComponentController::Item::Kind::Shrink: return OpKind::ShrinkStore;
     case ComponentController::Item::Kind::Appx: break;
     }
     return OpKind::RemoveAppx;
@@ -108,6 +115,12 @@ AppState::SystemComponents ComponentController::probeSystem(const ComponentCatal
     for (const auto& entry : catalog.components()) {
         if (entry.kind == ComponentCatalogEntry::Kind::Remove) {
             found.items[entry.id] = core::probeComponent(mountDir, entry.recipe, store ? &*store : nullptr);
+        } else if (entry.kind == ComponentCatalogEntry::Kind::Shrink) {
+            // What shrinking would free, measured (~5 s): only what no other folder links to.
+            core::CancelToken never;
+            if (auto plan = core::planStoreShrink(mountDir, /*measure=*/true, core::TaskContext{never, {}})) {
+                found.items[entry.id] = {true, plan->freed};
+            }
         }
     }
     return found;
@@ -206,6 +219,18 @@ std::vector<ComponentController::Group> ComponentController::groups() const {
             item.packageName = kCleanupTarget;
             item.identity = kCleanupCommand;
             item.contents = {std::wstring(kCleanupCommand) + (entry.resetBase ? L" /ResetBase" : L"")};
+        } else if (entry.kind == ComponentCatalogEntry::Kind::Shrink) {
+            item.kind = Item::Kind::Shrink;
+            item.packageName = kShrinkTarget;
+            item.identity = L"Windows\\WinSxS";
+            if (probed) {
+                if (const auto found = system->items.find(entry.id); found != system->items.end()) {
+                    item.size = found->second.size;
+                }
+            }
+            item.contents = {L"WinSxS: Manifests, Catalogs, FileMaps, Fusion, InstallTemp, SettingsManifests, Temp",
+                             L"common-controls, gdiplus, isolationautomation, vc80.crt, vc90.crt",
+                             L"servicingstack", L"WindowsUpdate\\AU : NoAutoUpdate = 1"};
         } else {
             if (!probed) {
                 continue;
@@ -243,7 +268,8 @@ std::vector<ComponentController::Group> ComponentController::groups() const {
 }
 
 bool ComponentController::isComponentKind(OpKind kind) noexcept {
-    return kind == OpKind::RemoveAppx || kind == OpKind::RemoveComponent || kind == OpKind::CleanupImage;
+    return kind == OpKind::RemoveAppx || kind == OpKind::RemoveComponent || kind == OpKind::CleanupImage ||
+           kind == OpKind::ShrinkStore;
 }
 
 Operation ComponentController::operationFor(const Item& item) {
@@ -256,6 +282,8 @@ Operation ComponentController::operationFor(const Item& item) {
         op.value = utf8::toWide(core::componentRecipeToJson(recipe));
     } else if (item.kind == Item::Kind::Cleanup) {
         op.value = utf8::toWide(core::storeCleanupToJson({item.name, !item.system || item.system->resetBase}));
+    } else if (item.kind == Item::Kind::Shrink) {
+        op.value = utf8::toWide(core::storeShrinkToJson({item.name}));
     } else {
         op.value = item.name; // not used by the engine: the name the Apply lists show instead of the package id
     }
@@ -295,9 +323,22 @@ ComponentController::Check ComponentController::check(const Group& group) const 
 }
 
 void ComponentController::toggle(const Item& item) {
-    if (!m_state.unqueue(kindOf(item), item.packageName)) {
-        m_state.queue(operationFor(item));
+    if (m_state.unqueue(kindOf(item), item.packageName)) {
+        return;
     }
+    queueItem(item);
+}
+
+// The shrink takes automatic updates off with it (one queue edit); taken out of the queue, it
+// leaves that setting where it is — Ayarlar shows it and can turn it back.
+void ComponentController::queueItem(const Item& item) {
+    if (item.kind != Item::Kind::Shrink || m_state.changes().find(OpKind::SetRegistryValue, kNoAutoUpdateTarget)) {
+        m_state.queue(operationFor(item));
+        return;
+    }
+    Operation updates{OpKind::SetRegistryValue, kNoAutoUpdateTarget, kNoAutoUpdateValue};
+    updates.risk = core::ops::Risk::Medium;
+    m_state.queueMany({operationFor(item), std::move(updates)});
 }
 
 void ComponentController::toggleGroup(const Group& group) {
@@ -306,7 +347,7 @@ void ComponentController::toggleGroup(const Group& group) {
         if (all) {
             m_state.unqueue(kindOf(item), item.packageName);
         } else if (!queued(item)) {
-            m_state.queue(operationFor(item));
+            queueItem(item);
         }
     }
 }
@@ -317,7 +358,7 @@ void ComponentController::resetChanges() {
 
 std::size_t ComponentController::queuedCount() const {
     return m_state.changes().count(OpKind::RemoveAppx) + m_state.changes().count(OpKind::RemoveComponent) +
-           m_state.changes().count(OpKind::CleanupImage);
+           m_state.changes().count(OpKind::CleanupImage) + m_state.changes().count(OpKind::ShrinkStore);
 }
 
 std::uint64_t ComponentController::queuedBytes() const {

@@ -83,8 +83,7 @@ TEST_CASE("post-setup controller: the whole plan is one queue operation") {
     CHECK(f.state.changes().empty()); // no steps: nothing to apply
 }
 
-TEST_CASE("post-setup controller: the app catalog adds what is ticked once, as one queue edit") {
-    Fixture f;
+TEST_CASE("post-setup controller: the app list of a winget step holds valid ids, each once") {
     const auto& apps = PostSetupController::popularApps();
     REQUIRE(apps.size() >= 40);
     for (const auto& app : apps) {
@@ -95,23 +94,29 @@ TEST_CASE("post-setup controller: the app catalog adds what is ticked once, as o
         CHECK(core::validatePostSetup(one).empty());
         CHECK(std::ranges::count(apps, app.id, &PostSetupController::App::id) == 1);
     }
+}
 
-    f.controller.add(Step{Step::Type::Winget, L"mine", L"7ZIP.7zip", {}, true}); // typed by hand, other case
-    const auto sevenZip = static_cast<std::size_t>(
-        std::ranges::find(apps, std::wstring(L"7zip.7zip"), &PostSetupController::App::id) - apps.begin());
-    CHECK(f.controller.hasApp(sevenZip));
-    CHECK_FALSE(f.controller.hasApp(0));
+TEST_CASE("post-setup controller: the Programs page's picks live in the same plan and operation (D-078)") {
+    Fixture f;
+    const std::vector<std::pair<std::wstring, std::wstring>> texts{{L"heading", L"Programlar\u0131n kuruluyor"}};
+    f.controller.setPrograms({{L"7zip.7zip", L"7-Zip"}, {L"VideoLAN.VLC", L"VLC media player"}}, texts);
+    CHECK(f.state.changes().size() == 1); // a plan of programs alone is one operation
+    CHECK(f.controller.stepCount() == 0);
+    REQUIRE(f.controller.programs().size() == 2);
+    CHECK(f.controller.programs()[1].id == L"VideoLAN.VLC");
+    CHECK(f.controller.plan().programTexts == texts);
 
-    const auto version = f.state.changes().version();
-    CHECK(f.controller.addApps({0, 1, sevenZip, 0, apps.size() + 5}) == 2); // the known one, the repeat and the bad index are left out
-    CHECK(f.controller.stepCount() == 3);
+    // Steps edited on Kurulum Sonrası keep the programs, and the other way round.
+    f.controller.add(Step{Step::Type::Command, L"echo", L"echo hi", {}, true});
+    CHECK(f.controller.programs().size() == 2);
+    f.controller.setPrograms({{L"7zip.7zip", L"7-Zip"}}, texts);
+    CHECK(f.controller.stepCount() == 1);
     CHECK(f.state.changes().size() == 1);
-    CHECK(f.state.changes().version() == version + 1); // one edit: one undo step
-    CHECK(f.controller.plan().steps[1].source == apps[0].id);
-    CHECK(f.controller.plan().steps[1].name == apps[0].name);
-    CHECK(f.controller.hasApp(0));
-    CHECK(f.controller.addApps({0, 1}) == 0);
-    CHECK(f.state.changes().version() == version + 1); // nothing new: the queue is not touched
+
+    f.controller.setPrograms({}, texts);
+    CHECK(f.controller.plan().programTexts.empty()); // no programs: no window texts either
+    f.controller.remove(0);
+    CHECK(f.state.changes().empty());
 }
 
 TEST_CASE("post-setup controller: ready commands are command steps, each once, named in the UI language") {

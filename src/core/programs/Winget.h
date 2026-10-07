@@ -69,6 +69,10 @@ public:
     // containing it, then packages tagged with it. Case-insensitive (ASCII); empty text: nothing.
     [[nodiscard]] std::vector<WingetPackage> search(std::wstring_view text, std::size_t limit) const;
     [[nodiscard]] std::optional<WingetPackage> find(std::wstring_view id) const; // exact id, any case
+    // Packages tagged with any of `tags` (winget's tags are lower case), by name; at most `limit`.
+    [[nodiscard]] std::vector<WingetPackage> tagged(std::span<const std::wstring> tags, std::size_t limit) const;
+    // The whole repository by name, at most `limit`.
+    [[nodiscard]] std::vector<WingetPackage> all(std::size_t limit) const;
     [[nodiscard]] std::vector<std::wstring> tags(std::wstring_view id) const;
     // The SHA-256 (lowercase hex) of the package's version list; empty when the id is unknown.
     [[nodiscard]] std::wstring versionDataHash(std::wstring_view id) const;
@@ -88,6 +92,11 @@ private:
 
 // The latest version's details (cached under `cache`; `locale` "tr-TR": its localized texts if any).
 [[nodiscard]] Result<WingetDetails> fetchWingetDetails(const WingetIndex& index, std::wstring_view id,
+                                                       const std::filesystem::path& cache, std::wstring_view locale,
+                                                       const CancelToken& cancel = {});
+// The same from what the index said (find() and versionDataHash()), without the index: for a
+// thread of its own while the index stays with the one that searches it.
+[[nodiscard]] Result<WingetDetails> fetchWingetDetails(const WingetPackage& package, std::wstring_view versionDataHash,
                                                        const std::filesystem::path& cache, std::wstring_view locale,
                                                        const CancelToken& cancel = {});
 // The package's icon file (cached), checked against its SHA-256 when the manifest gives one.

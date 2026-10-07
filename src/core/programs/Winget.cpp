@@ -345,6 +345,46 @@ std::optional<WingetPackage> WingetIndex::find(std::wstring_view id) const {
     return packageFrom(q.get());
 }
 
+std::vector<WingetPackage> WingetIndex::tagged(std::span<const std::wstring> tags, std::size_t limit) const {
+    std::vector<WingetPackage> out;
+    if (tags.empty() || limit == 0) {
+        return out;
+    }
+    std::string placeholders;
+    for (std::size_t i = 0; i < tags.size(); ++i) {
+        placeholders += i == 0 ? "?" : ",?";
+    }
+    const std::string sql = "SELECT DISTINCT p.id, p.name, p.moniker, p.latest_version FROM packages p "
+                            "JOIN tags2_map m ON m.package = p.rowid JOIN tags2 t ON t.rowid = m.tag "
+                            "WHERE t.tag IN (" + placeholders + ") ORDER BY lower(p.name), p.id LIMIT ?";
+    Statement q(m_db, sql.c_str());
+    if (!q) {
+        return out;
+    }
+    int at = 1;
+    for (const auto& tag : tags) {
+        q.bind(at++, lowerAscii(utf8::fromWide(tag)));
+    }
+    q.bind(at, static_cast<std::int64_t>(limit));
+    while (q.step()) {
+        out.push_back(packageFrom(q.get()));
+    }
+    return out;
+}
+
+std::vector<WingetPackage> WingetIndex::all(std::size_t limit) const {
+    std::vector<WingetPackage> out;
+    Statement q(m_db, "SELECT id, name, moniker, latest_version FROM packages ORDER BY lower(name), id LIMIT ?1");
+    if (!q) {
+        return out;
+    }
+    q.bind(1, static_cast<std::int64_t>(limit));
+    while (q.step()) {
+        out.push_back(packageFrom(q.get()));
+    }
+    return out;
+}
+
 std::vector<std::wstring> WingetIndex::tags(std::wstring_view id) const {
     std::vector<std::wstring> out;
     Statement q(m_db, "SELECT t.tag FROM packages p JOIN tags2_map m ON m.package = p.rowid JOIN tags2 t ON t.rowid = m.tag "
@@ -422,9 +462,18 @@ Result<std::filesystem::path> refreshWingetIndex(const std::filesystem::path& fo
 Result<WingetDetails> fetchWingetDetails(const WingetIndex& index, std::wstring_view id, const std::filesystem::path& cache,
                                          std::wstring_view locale, const CancelToken& cancel) {
     const auto package = index.find(id);
-    const std::wstring hash = index.versionDataHash(id);
-    if (!package || hash.size() < 8) {
+    if (!package) {
         return fail(ErrorCode::NotFound, L"no such winget package", std::wstring(id));
+    }
+    return fetchWingetDetails(*package, index.versionDataHash(id), cache, locale, cancel);
+}
+
+Result<WingetDetails> fetchWingetDetails(const WingetPackage& found, std::wstring_view versionDataHash,
+                                         const std::filesystem::path& cache, std::wstring_view locale, const CancelToken& cancel) {
+    const WingetPackage* package = &found;
+    const std::wstring hash(versionDataHash);
+    if (hash.size() < 8) {
+        return fail(ErrorCode::NotFound, L"the winget package has no version list", found.id);
     }
     const std::wstring folder = safeName(package->id);
     // The version list: its SHA-256 is the hash the signed index gives.
@@ -593,6 +642,12 @@ Result<WingetDetails> parseWingetManifest(std::string_view yaml, std::wstring_vi
             }
         }
     }
+    // Tags that are Microsoft Store product ids ("9ncbcszsjrsb", "xpdc2rh70k22mn") say nothing to a reader.
+    std::erase_if(d.tags, [](const std::wstring& tag) {
+        const bool storeId = (tag.size() == 12 && tag.front() == L'9') || (tag.size() == 14 && text::istartsWith(tag, L"xp"));
+        return storeId && std::ranges::all_of(tag, [](wchar_t c) { return std::iswalnum(c) != 0; }) &&
+               std::ranges::any_of(tag, [](wchar_t c) { return std::iswdigit(c) != 0; });
+    });
     // Installers: the root's values are the defaults of every installer.
     const std::wstring rootType = text(doc, "InstallerType");
     const std::wstring rootScope = text(doc, "Scope");

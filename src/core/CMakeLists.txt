@@ -42,6 +42,7 @@ add_library(wl_core STATIC
     image/dism/MountHealth.cpp
     image/dism/OptionalFeatures.cpp
     image/dism/StoreCleanup.cpp
+    image/dism/StoreShrink.cpp
     image/wim/Lzx.cpp
     image/wim/WimGapi.cpp
     image/wim/WimVerify.cpp
