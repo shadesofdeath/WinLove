@@ -117,6 +117,52 @@ $xaml = @'
         </Setter.Value>
       </Setter>
     </Style>
+    <!-- WinLove's own scroll bar: a 4 px thumb, 8 px under the mouse, no arrows (WPF's is always light). -->
+    <Style x:Key="PageClick" TargetType="RepeatButton">
+      <Setter Property="Focusable" Value="False"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"/></ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="ScrollBar">
+      <Setter Property="Width" Value="10"/>
+      <Setter Property="MinWidth" Value="10"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Grid Background="Transparent">
+            <Track x:Name="PART_Track" IsDirectionReversed="True">
+              <Track.DecreaseRepeatButton>
+                <RepeatButton Style="{StaticResource PageClick}" Command="ScrollBar.PageUpCommand"/>
+              </Track.DecreaseRepeatButton>
+              <Track.IncreaseRepeatButton>
+                <RepeatButton Style="{StaticResource PageClick}" Command="ScrollBar.PageDownCommand"/>
+              </Track.IncreaseRepeatButton>
+              <Track.Thumb>
+                <Thumb>
+                  <Thumb.Template>
+                    <ControlTemplate TargetType="Thumb">
+                      <Border Background="Transparent">
+                        <Border x:Name="T" Width="4" HorizontalAlignment="Right" CornerRadius="2" Background="{frame}"/>
+                      </Border>
+                      <ControlTemplate.Triggers>
+                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ScrollBar}}" Value="True">
+                          <Setter TargetName="T" Property="Width" Value="8"/>
+                          <Setter TargetName="T" Property="Background" Value="{text3}"/>
+                        </DataTrigger>
+                      </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                  </Thumb.Template>
+                </Thumb>
+              </Track.Thumb>
+            </Track>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
   </Window.Resources>
   <Border BorderBrush="{frame}" BorderThickness="1">
     <DockPanel>
@@ -154,7 +200,7 @@ $xaml = @'
             <TextBlock x:Name="BannerText" TextWrapping="Wrap" FontSize="12"/>
           </DockPanel>
         </Border>
-        <ScrollViewer Margin="0,12,0,0" MaxHeight="352" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer Margin="0,12,0,0" MaxHeight="352" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel x:Name="Rows"/>
         </ScrollViewer>
       </StackPanel>

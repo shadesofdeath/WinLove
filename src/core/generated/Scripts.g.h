@@ -127,6 +127,52 @@ $xaml = @'
         </Setter.Value>
       </Setter>
     </Style>
+    <!-- WinLove's own scroll bar: a 4 px thumb, 8 px under the mouse, no arrows (WPF's is always light). -->
+    <Style x:Key="PageClick" TargetType="RepeatButton">
+      <Setter Property="Focusable" Value="False"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"/></ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="ScrollBar">
+      <Setter Property="Width" Value="10"/>
+      <Setter Property="MinWidth" Value="10"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Grid Background="Transparent">
+            <Track x:Name="PART_Track" IsDirectionReversed="True">
+              <Track.DecreaseRepeatButton>
+                <RepeatButton Style="{StaticResource PageClick}" Command="ScrollBar.PageUpCommand"/>
+              </Track.DecreaseRepeatButton>
+              <Track.IncreaseRepeatButton>
+                <RepeatButton Style="{StaticResource PageClick}" Command="ScrollBar.PageDownCommand"/>
+              </Track.IncreaseRepeatButton>
+              <Track.Thumb>
+                <Thumb>
+                  <Thumb.Template>
+                    <ControlTemplate TargetType="Thumb">
+                      <Border Background="Transparent">
+                        <Border x:Name="T" Width="4" HorizontalAlignment="Right" CornerRadius="2" Background="{frame}"/>
+                      </Border>
+                      <ControlTemplate.Triggers>
+                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ScrollBar}}" Value="True">
+                          <Setter TargetName="T" Property="Width" Value="8"/>
+                          <Setter TargetName="T" Property="Background" Value="{text3}"/>
+                        </DataTrigger>
+                      </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                  </Thumb.Template>
+                </Thumb>
+              </Track.Thumb>
+            </Track>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
   </Window.Resources>
   <Border BorderBrush="{frame}" BorderThickness="1">
     <DockPanel>
@@ -164,7 +210,7 @@ $xaml = @'
             <TextBlock x:Name="BannerText" TextWrapping="Wrap" FontSize="12"/>
           </DockPanel>
         </Border>
-        <ScrollViewer Margin="0,12,0,0" MaxHeight="352" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer Margin="0,12,0,0" MaxHeight="352" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel x:Name="Rows"/>
         </ScrollViewer>
       </StackPanel>
@@ -184,7 +230,8 @@ $rowXaml = @'
   <TextBlock Grid.Column="0" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center"
              Foreground="{text3}"/>
   <Path Grid.Column="0" Width="14" Height="14" HorizontalAlignment="Left" Stroke="{accent}" StrokeThickness="1.5"
-        StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M7 1 A6 6 0 1 1 1 7" Visibility="Collapsed"
+        StrokeStartLineCap="Round" S)wlps"
+    R"wlps(trokeEndLineCap="Round" Data="M7 1 A6 6 0 1 1 1 7" Visibility="Collapsed"
         RenderTransformOrigin="0.5,0.5">
     <Path.RenderTransform><RotateTransform/></Path.RenderTransform>
   </Path>
@@ -236,8 +283,7 @@ $window.Show()
 
 function Update-Ui {
     # WPF's DoEvents: run what the dispatcher has queued (layout, render, animation ticks).
-    $)wlps"
-    R"wlps(frame = New-Object System.Windows.Threading.DispatcherFrame
+    $frame = New-Object System.Windows.Threading.DispatcherFrame
     $callback = [System.Windows.Threading.DispatcherOperationCallback] { param($f) $f.Continue = $false; return $null }
     [void] [System.Windows.Threading.Dispatcher]::CurrentDispatcher.BeginInvoke([System.Windows.Threading.DispatcherPriority]::Background, $callback, $frame)
     [System.Windows.Threading.Dispatcher]::PushFrame($frame)
@@ -452,7 +498,8 @@ foreach ($program in $programs) {
         Set-Row $program.id 'installing' $texts.installingRow
         $output = Join-Path $env:TEMP ('winlove-winget-' + $index + '.txt')
         $arguments = @('install', '--id', $program.id, '--exact', '--silent', '--source', 'winget',
-                       '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
+                       ')wlps"
+    R"wlps(--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
         if ($dryRun) {
             # The preview: the second program "is there already", the last one fails once, then works.
             Wait-Seconds 2.5
@@ -497,8 +544,7 @@ foreach ($program in $programs) {
     Set-Progress $index
 }
 
-# ---- the end -----------------------------------)wlps"
-    R"wlps(---------------------------------------------------
+# ---- the end --------------------------------------------------------------------------------------
 $summary = if ($failed -gt 0) { Format-Text $texts.doneWithErrors @{ ok = $ok; failed = $failed } } else { Format-Text $texts.done @{ ok = $ok } }
 Write-Log $summary
 $ui.Heading.Text = $texts.finished
