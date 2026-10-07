@@ -32,6 +32,7 @@ add_executable(wl_tests
     core/BrandingTests.cpp
     core/WimEditTests.cpp
     core/WimVerifyTests.cpp
+    core/WingetTests.cpp
     ui/TokensTests.cpp
     ui/IconsTests.cpp
     ui/RenderTests.cpp
@@ -63,7 +64,7 @@ add_executable(wl_tests
 wl_configure_target(wl_tests)
 target_include_directories(wl_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(wl_tests PRIVATE WL_SOURCE_DIR=L"${PROJECT_SOURCE_DIR}")
-target_link_libraries(wl_tests PRIVATE wl_app wl_doctest wl_json wl_pugixml ole32)
+target_link_libraries(wl_tests PRIVATE wl_app wl_doctest wl_json wl_pugixml ole32 cabinet winsqlite3)
 
 add_test(NAME unit COMMAND wl_tests)
 set_tests_properties(unit PROPERTIES LABELS unit)

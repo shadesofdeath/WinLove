@@ -2,7 +2,9 @@
 
 #include "base/Log.h"
 #include "base/Utf8.h"
+#include "core/generated/Scripts.g.h"
 #include "core/image/RegistryEdit.h"
+#include "core/programs/Winget.h"
 #include "core/system/Files.h"
 
 #include <json.hpp>
@@ -23,6 +25,33 @@ using Json = nlohmann::json;
 using Step = PostSetupStep;
 
 constexpr const wchar_t* kTaskName = L"WinLove Post-Setup";
+constexpr const wchar_t* kProgramsTaskName = L"WinLove Programs";
+
+// The program window's texts when the plan does not give them (the CLI; English).
+constexpr std::pair<const char*, const char*> kProgramTextDefaults[] = {
+    {"heading", "Installing your programs"},
+    {"finished", "Your programs are ready"},
+    {"columnProgram", "Program"},
+    {"columnState", "State"},
+    {"pending", "Waiting"},
+    {"installing", "Installing {name} ({n}/{total})"},
+    {"installingRow", "Installing..."},
+    {"installed", "Installed"},
+    {"already", "Already installed"},
+    {"restart", "Installed - finishes after a restart"},
+    {"failed", "Not installed ({code})"},
+    {"notInstalled", "Not installed"},
+    {"waitingPostSetup", "Waiting for the setup steps to finish..."},
+    {"waitingWinget", "Getting winget ready..."},
+    {"noWinget", "winget is not on this Windows: App Installer was removed"},
+    {"waitingNetwork", "Waiting for an internet connection..."},
+    {"waitingNetworkHint", "No internet connection. Installing goes on by itself as soon as there is one."},
+    {"hint", "Closing the window stops here; the rest is installed at the next sign-in."},
+    {"updatingSources", "Updating the program list..."},
+    {"done", "{ok} program(s) installed"},
+    {"doneWithErrors", "{ok} installed, {failed} not installed"},
+    {"close", "Close"},
+};
 constexpr const char* kSetupCompleteLine =
     "if exist \"%SystemRoot%\\Setup\\Scripts\\WinLove\\postsetup-machine.cmd\" "
     "call \"%SystemRoot%\\Setup\\Scripts\\WinLove\\postsetup-machine.cmd\"";
@@ -206,6 +235,51 @@ Result<void> stage(const std::filesystem::path& source, const std::filesystem::p
     return {};
 }
 
+// The task XML both logon tasks use (UTF-16 header: what schtasks /xml expects).
+std::wstring logonTaskXml(std::wstring_view description, std::wstring_view command, std::wstring_view arguments,
+                          std::wstring_view delay) {
+    // S-1-5-32-545 = BUILTIN\Users: whoever logs on; HighestAvailable = elevated for administrators.
+    std::wstring xml = L"<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n"
+                       L"<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n"
+                       L"  <RegistrationInfo>\r\n";
+    xml += std::format(L"    <Description>{}</Description>\r\n", description);
+    xml += L"  </RegistrationInfo>\r\n"
+           L"  <Triggers>\r\n"
+           L"    <LogonTrigger>\r\n"
+           L"      <Enabled>true</Enabled>\r\n";
+    if (!delay.empty()) {
+        xml += std::format(L"      <Delay>{}</Delay>\r\n", delay);
+    }
+    xml += L"    </LogonTrigger>\r\n"
+           L"  </Triggers>\r\n"
+           L"  <Principals>\r\n"
+           L"    <Principal id=\"Author\">\r\n"
+           L"      <GroupId>S-1-5-32-545</GroupId>\r\n"
+           L"      <RunLevel>HighestAvailable</RunLevel>\r\n"
+           L"    </Principal>\r\n"
+           L"  </Principals>\r\n"
+           L"  <Settings>\r\n"
+           L"    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n"
+           L"    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n"
+           L"    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n"
+           L"    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n"
+           L"    <Enabled>true</Enabled>\r\n"
+           L"  </Settings>\r\n"
+           L"  <Actions Context=\"Author\">\r\n"
+           L"    <Exec>\r\n";
+    xml += std::format(L"      <Command>{}</Command>\r\n      <Arguments>{}</Arguments>\r\n", command, arguments);
+    xml += L"    </Exec>\r\n"
+           L"  </Actions>\r\n"
+           L"</Task>\r\n";
+    return xml;
+}
+
+std::string utf16File(const std::wstring& text) {
+    std::string bytes = "\xFF\xFE"; // UTF-16LE with its byte order mark
+    bytes.append(reinterpret_cast<const char*>(text.data()), text.size() * sizeof(wchar_t));
+    return bytes;
+}
+
 } // namespace
 
 std::string postSetupToJson(const PostSetupPlan& plan) {
@@ -220,10 +294,22 @@ std::string postSetupToJson(const PostSetupPlan& plan) {
         }
         steps.push_back(std::move(entry));
     }
-    return Json{{"when", plan.when == PostSetupPlan::When::SetupComplete ? "setupComplete" : "firstLogon"},
-                {"continueOnError", plan.continueOnError},
-                {"steps", std::move(steps)}}
-        .dump();
+    Json doc{{"when", plan.when == PostSetupPlan::When::SetupComplete ? "setupComplete" : "firstLogon"},
+             {"continueOnError", plan.continueOnError},
+             {"steps", std::move(steps)}};
+    if (!plan.programs.empty()) {
+        Json programs = Json::array();
+        for (const auto& program : plan.programs) {
+            programs.push_back({{"id", utf8::fromWide(program.id)}, {"name", utf8::fromWide(program.name)}});
+        }
+        doc["programs"] = std::move(programs);
+        Json texts = Json::object();
+        for (const auto& [key, value] : plan.programTexts) {
+            texts[utf8::fromWide(key)] = utf8::fromWide(value);
+        }
+        doc["programTexts"] = std::move(texts);
+    }
+    return doc.dump();
 }
 
 Result<PostSetupPlan> postSetupFromJson(std::string_view json) {
@@ -248,6 +334,19 @@ Result<PostSetupPlan> postSetupFromJson(std::string_view json) {
             step.destination = utf8::toWide(entry.value("destination", std::string{}));
             step.wait = entry.value("wait", true);
             plan.steps.push_back(std::move(step));
+        }
+        for (const auto& entry : doc.value("programs", Json::array())) {
+            PostSetupProgram program{utf8::toWide(entry.value("id", std::string{})), utf8::toWide(entry.value("name", std::string{}))};
+            if (!program.id.empty()) {
+                plan.programs.push_back(std::move(program));
+            }
+        }
+        if (const auto texts = doc.find("programTexts"); texts != doc.end() && texts->is_object()) {
+            for (const auto& [key, value] : texts->items()) {
+                if (value.is_string()) {
+                    plan.programTexts.emplace_back(utf8::toWide(key), utf8::toWide(value.get<std::string>()));
+                }
+            }
         }
     } catch (const Json::exception& e) {
         return fail(ErrorCode::ParseError, L"malformed post-setup plan", utf8::toWide(e.what()));
@@ -286,9 +385,19 @@ std::vector<std::pair<std::size_t, PostSetupProblem>> validatePostSetup(const Po
     return problems;
 }
 
+std::vector<std::size_t> invalidPrograms(const PostSetupPlan& plan) {
+    std::vector<std::size_t> bad;
+    for (std::size_t i = 0; i < plan.programs.size(); ++i) {
+        if (!validWingetId(plan.programs[i].id)) {
+            bad.push_back(i);
+        }
+    }
+    return bad;
+}
+
 PostSetupScripts buildPostSetupScripts(const PostSetupPlan& plan) {
     PostSetupScripts scripts;
-    if (plan.steps.empty()) {
+    if (plan.empty()) {
         return scripts;
     }
     const std::size_t total = plan.steps.size();
@@ -304,6 +413,10 @@ PostSetupScripts buildPostSetupScripts(const PostSetupPlan& plan) {
     if (anyAtLogon) {
         // Before the end label: when a machine step stops the run, the rest does not start either.
         machine.line(std::format(L"schtasks /create /tn \"{}\" /xml \"%WL%\\postsetup-task.xml\" /f >>\"%LOG%\" 2>&1", kTaskName));
+    }
+    if (!plan.programs.empty()) {
+        machine.line(std::format(L"schtasks /create /tn \"{}\" /xml \"%WL%\\programs-task.xml\" /f >>\"%LOG%\" 2>&1",
+                                 kProgramsTaskName));
     }
     machine.line(L":wl_end");
     machine.line(L">>\"%LOG%\" echo [%date% %time%] finished");
@@ -336,37 +449,33 @@ PostSetupScripts buildPostSetupScripts(const PostSetupPlan& plan) {
 }
 
 std::wstring postSetupTaskXml() {
-    // S-1-5-32-545 = BUILTIN\Users: whoever logs on; HighestAvailable = elevated for administrators.
-    return L"<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n"
-           L"<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n"
-           L"  <RegistrationInfo>\r\n"
-           L"    <Description>WinLove: post-setup steps, once, at the first logon.</Description>\r\n"
-           L"  </RegistrationInfo>\r\n"
-           L"  <Triggers>\r\n"
-           L"    <LogonTrigger>\r\n"
-           L"      <Enabled>true</Enabled>\r\n"
-           L"    </LogonTrigger>\r\n"
-           L"  </Triggers>\r\n"
-           L"  <Principals>\r\n"
-           L"    <Principal id=\"Author\">\r\n"
-           L"      <GroupId>S-1-5-32-545</GroupId>\r\n"
-           L"      <RunLevel>HighestAvailable</RunLevel>\r\n"
-           L"    </Principal>\r\n"
-           L"  </Principals>\r\n"
-           L"  <Settings>\r\n"
-           L"    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n"
-           L"    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n"
-           L"    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n"
-           L"    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n"
-           L"    <Enabled>true</Enabled>\r\n"
-           L"  </Settings>\r\n"
-           L"  <Actions Context=\"Author\">\r\n"
-           L"    <Exec>\r\n"
-           L"      <Command>%SystemRoot%\\System32\\cmd.exe</Command>\r\n"
-           L"      <Arguments>/d /c \"%SystemRoot%\\Setup\\Scripts\\WinLove\\postsetup-user.cmd\"</Arguments>\r\n"
-           L"    </Exec>\r\n"
-           L"  </Actions>\r\n"
-           L"</Task>\r\n";
+    return logonTaskXml(L"WinLove: post-setup steps, once, at the first logon.", L"%SystemRoot%\\System32\\cmd.exe",
+                        L"/d /c \"%SystemRoot%\\Setup\\Scripts\\WinLove\\postsetup-user.cmd\"", {});
+}
+
+std::wstring programsTaskXml() {
+    // A short delay: the desktop is up before the window opens.
+    return logonTaskXml(L"WinLove: the chosen programs, installed with winget at the first logon (until all are in place).",
+                        L"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+                        L"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "
+                        L"\"%SystemRoot%\\Setup\\Scripts\\WinLove\\programs.ps1\"",
+                        L"PT15S");
+}
+
+std::string programsJson(const PostSetupPlan& plan) {
+    Json texts = Json::object();
+    for (const auto& [key, value] : kProgramTextDefaults) {
+        texts[key] = value;
+    }
+    for (const auto& [key, value] : plan.programTexts) {
+        texts[utf8::fromWide(key)] = utf8::fromWide(value);
+    }
+    Json programs = Json::array();
+    for (const auto& program : plan.programs) {
+        programs.push_back({{"id", utf8::fromWide(program.id)},
+                            {"name", utf8::fromWide(program.name.empty() ? program.id : program.name)}});
+    }
+    return Json{{"title", "WinLove"}, {"texts", std::move(texts)}, {"programs", std::move(programs)}}.dump(2);
 }
 
 double estimatePostSetupSeconds(const PostSetupPlan& plan) {
@@ -379,7 +488,7 @@ double estimatePostSetupSeconds(const PostSetupPlan& plan) {
         case Step::Type::Wifi: seconds += 2; break;
         }
     }
-    return seconds;
+    return seconds + 60.0 * static_cast<double>(plan.programs.size()); // download + silent install each
 }
 
 std::uint64_t postSetupPayloadBytes(const PostSetupPlan& plan) {
@@ -397,15 +506,19 @@ Result<void> applyPostSetup(const std::filesystem::path& mountDir, const PostSet
         return fail(ErrorCode::InvalidArgument, L"post-setup step cannot be written",
                     std::format(L"step {}", problems.front().first + 1));
     }
+    if (const auto bad = invalidPrograms(plan); !bad.empty()) {
+        return fail(ErrorCode::InvalidArgument, L"not a winget package id", plan.programs[bad.front()].id);
+    }
     const auto scripts = mountDir / L"Windows" / L"Setup" / L"Scripts";
     const auto folder = scripts / L"WinLove";
     std::error_code ec;
     // What an earlier run left: the plan is replaced as a whole.
-    for (const wchar_t* name : {L"postsetup-machine.cmd", L"postsetup-user.cmd", L"postsetup-task.xml"}) {
+    for (const wchar_t* name : {L"postsetup-machine.cmd", L"postsetup-user.cmd", L"postsetup-task.xml", L"programs.ps1",
+                                L"programs.json", L"programs-task.xml"}) {
         std::filesystem::remove(folder / name, ec);
     }
     std::filesystem::remove_all(folder / L"files", ec);
-    if (plan.steps.empty()) {
+    if (plan.empty()) {
         return {}; // the SetupComplete line checks for the script before calling it
     }
     std::filesystem::create_directories(folder, ec);
@@ -442,14 +555,24 @@ Result<void> applyPostSetup(const std::filesystem::path& mountDir, const PostSet
         if (auto r = writeBytes(folder / L"postsetup-user.cmd", utf8::fromWide(text.user)); !r) {
             return r;
         }
-        const std::wstring xml = postSetupTaskXml();
-        std::string bytes = "\xFF\xFE"; // UTF-16LE, as the header says: what schtasks /xml expects
-        bytes.append(reinterpret_cast<const char*>(xml.data()), xml.size() * sizeof(wchar_t));
-        if (auto r = writeBytes(folder / L"postsetup-task.xml", bytes); !r) {
+        if (auto r = writeBytes(folder / L"postsetup-task.xml", utf16File(postSetupTaskXml())); !r) {
             return r;
         }
     }
-    log::info("postsetup", std::format(L"{} step(s) written to {}", plan.steps.size(), folder.wstring()));
+    if (!plan.programs.empty()) {
+        // D-078: the window that installs them, what it reads, and its own logon task.
+        if (auto r = writeBytes(folder / L"programs.ps1", scripts::kPrograms); !r) {
+            return r;
+        }
+        if (auto r = writeBytes(folder / L"programs.json", programsJson(plan)); !r) {
+            return r;
+        }
+        if (auto r = writeBytes(folder / L"programs-task.xml", utf16File(programsTaskXml())); !r) {
+            return r;
+        }
+    }
+    log::info("postsetup", std::format(L"{} step(s), {} program(s) written to {}", plan.steps.size(), plan.programs.size(),
+                                       folder.wstring()));
     return ensureSetupCompleteLine(scripts / L"SetupComplete.cmd", kSetupCompleteLine, "WinLove: post-setup steps");
 }
 
