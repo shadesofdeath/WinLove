@@ -25,6 +25,7 @@ public:
     std::function<void(bool)> onChange;
     [[nodiscard]] bool checked() const noexcept { return m_checked; }
     void setChecked(bool checked); // no onChange
+    void setLabel(std::wstring label);
 
     [[nodiscard]] SizeF measure(SizeF available) override;
     void paint(Canvas& canvas) override;

@@ -241,6 +241,32 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-083 — Görev çubuğu sabitlemeleri: Başlat menüsü › Görev çubuğu, Microsoft'un Başlangıç Düzeni ilkesi (2026-10-07)
+Bağlam: NTLite eksik listesinden (4). D-067'nin "Sabitlenmiş uygulamalar" anahtarı OEM yöntemini kullanıyordu
+(`LayoutXMLPath` + `PinListPlacement="Replace"`); D-070'in VM'lerinde 24H2+ bunu varsayılanların **üstüne ekledi**
+(Edge, Store, Outlook yer tutucusu kaldı).
+Karar:
+- **Yöntem:** Microsoft'un BT belgesindeki makine ilkesi — `HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer`
+  `LockedStartLayout = 1`, `StartLayoutFile = %ProgramData%\WinLove\TaskbarLayout.xml` (REG_EXPAND_SZ) + düzen dosyası
+  (`CustomTaskbarLayoutCollection PinListPlacement="Replace"`, yorum yok; boşsa `#leaveempty`). Paketli uygulama `UWA
+  AppUserModelID`, masaüstü kimliği `DesktopApplicationID` (Dosya Gezgini `Microsoft.Windows.Explorer`, Edge `MSEdge`),
+  kısayol `DesktopApplicationLinkPath`. "Kullanıcı kaldırabilsin" = her sabitlemede `PinGeneration="1"` (24H2 Haziran 2025
+  güncellemesinden beri: kaldırılan geri gelmez); kapalıysa ilke her oturumda yeniden sabitler.
+- **Yalnız Windows 11:** Windows 10'da aynı ilke Başlat kutucuklarını da kilitler (Microsoft belgesi) → sekme Windows 10
+  sürümünde uyarır, kendi düzenini kurdurmaz.
+- **Arayüz:** Başlat menüsü sayfasına üçüncü sekme **Görev çubuğu** (Sabitlenenler · Görev çubuğu · Başlat ayarları): Windows
+  varsayılanı / Boş / Kendi listem, "Kullanıcı kaldırabilsin"; aynı uygulama listesi (imajdan; başta Dosya Gezgini, imajın
+  kendi kısayolunun adı ve simgesiyle) ve sıralama ızgarası (soldan sağa). `StartPinsController` iki yüzeyli
+  (`Surface::Taskbar`, uygulamaları Başlat denetleyicisinden); plan kuyruktan geri okunur, presetle gider. Nav rozeti ikisinin
+  toplamı. Eski anahtar `taskbar-pins` katalogdan çıktı.
+- Bu işte bulunan eski hata: Shell yıkılırken sayfalar denetleyicilerden sonra yıkılıyordu (StartMenuPage'in yıkıcısı serbest
+  bırakılmış denetleyiciye yazıyordu, yeni render'da 0xC0000005). `~Shell` önce çocukları kaldırır.
+Kanıt: VM (Pro 26200.8037, ağsız): liste → görev çubuğunda yalnız Dosya Gezgini, Not Defteri, Terminal, Hesap Makinesi,
+Ayarlar (Edge, Store, Outlook yer tutucusu yok); boş → hiç sabitleme yok; ikisi de masaüstüne kadar ALL PASSED. 341 test
+(düzen XML'i, kuyruktan geri okuma, iki yüzeyin ayrı planları, kipler, PinGeneration).
+Görülmeyen: kullanıcının bir sabitlemeyi kaldırıp yeniden oturum açması (PinGeneration'ın geri getirmemesi), ağ açıkken
+sonradan gelen yer tutucular, Home sürümü.
+
 ## D-082 — Uyumluluk korumaları: kalan uygulamaların çalışma zamanları ve kullanıcının açtığı korumalar (2026-10-07)
 Bağlam: NTLite eksik listesinden kullanıcının seçtiği (3). Bir kaldırma ya da devre dışı servis, imajda kalan bir uygulamanın
 ya da kullanıcının istediği bir özelliğin (güncelleme, yazdırma, Wi-Fi …) çalışmasını bozabiliyordu; sayfa yalnız notla uyarıyordu.

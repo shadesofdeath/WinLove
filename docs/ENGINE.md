@@ -240,3 +240,8 @@ Uygulama davranışı:
   listede yok. Windows 10 22H2 Pro: 40 uygulama, `Microsoft.VCLibs.140.00` listede (39 uygulama ona bağlı); UI.Xaml.2.0,
   NET.Native 1.7 / 2.2, Advertising.Xaml, Services.Store.Engagement listede değil. Paket klasörü `<Ad>_<sürüm>_<mimari>__<yayıncı>`
   içindeki `AppxManifest.xml` okunur; paket demeti klasöründe (`_~_`) yalnız `AppxMetadata\` var.
+- [2026-10-07] [Görev çubuğu] 26200.8037 Pro: `Policies\Microsoft\Windows\Explorer` `LockedStartLayout=1` +
+  `StartLayoutFile` (REG_EXPAND_SZ) düzeni ilk oturumda uygulanır ve `PinListPlacement="Replace"` Edge / Store / Outlook yer
+  tutucusunu gerçekten kaldırır; `#leaveempty` ile görev çubuğunda yalnız Başlat, arama, görev görünümü kalır. OEM yolu
+  (`CurrentVersion\Explorer\LayoutXMLPath`) aynı düzeni yalnız ekler (D-070 VM'leri). Başlat'ın kendi sabitlemeleri
+  bundan etkilenmez (ConfigureStartPins ayrı).

@@ -171,3 +171,85 @@ TEST_CASE("start pins: modes, order and applyOnce go through the queue; a preset
     CHECK(f.state.changes().empty());
     CHECK(f.controller.mode() == StartPinsController::Mode::Windows);
 }
+
+TEST_CASE("taskbar pins: Microsoft's layout that replaces the default pins, read back from the queue (D-083)") {
+    core::TaskbarPinsPlan plan;
+    plan.pins = {core::fileExplorerPin(),
+                 StartApp{StartApp::Kind::Packaged, L"Microsoft.WindowsTerminal_8wekyb3d8bbwe!App", L"Terminal"},
+                 StartApp{StartApp::Kind::DesktopId, L"MSEdge", L"Edge"},
+                 StartApp{StartApp::Kind::DesktopLink, L"%ALLUSERSPROFILE%\\Microsoft\\Windows\\Start Menu\\Programs\\A & B.lnk", L"A"}};
+    const std::string xml = core::taskbarLayoutXml(plan);
+    CHECK(xml.find("PinListPlacement=\"Replace\"") != std::string::npos);
+    CHECK(xml.find("<taskbar:DesktopApp DesktopApplicationID=\"Microsoft.Windows.Explorer\" PinGeneration=\"1\"/>") != std::string::npos);
+    CHECK(xml.find("<taskbar:UWA AppUserModelID=\"Microsoft.WindowsTerminal_8wekyb3d8bbwe!App\" PinGeneration=\"1\"/>") != std::string::npos);
+    CHECK(xml.find("A &amp; B.lnk") != std::string::npos);
+    CHECK(xml.find("<!--") == std::string::npos); // Explorer drops a layout with comments
+
+    const auto ops = core::taskbarPinsOperations(plan);
+    REQUIRE(ops.size() == 3);
+    CHECK(ops[0].target == L"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer::LockedStartLayout");
+    CHECK(ops[0].value == L"dword:00000001");
+    const auto path = core::registryWriteFrom(ops[1].target, ops[1].value);
+    REQUIRE(path);
+    CHECK(path->name == L"StartLayoutFile");
+    CHECK(ops[2].target == L"ProgramData\\WinLove\\TaskbarLayout.xml");
+    CHECK(core::taskbarPinsSlots().size() == 3);
+
+    const auto back = core::taskbarPlanFromOperations(ops);
+    REQUIRE(back);
+    REQUIRE(back->pins.size() == 4);
+    CHECK(back->pins[0] == core::fileExplorerPin());
+    CHECK(back->pins[0].name == L"File Explorer");
+    CHECK(back->pins[1].kind == StartApp::Kind::Packaged);
+    CHECK(back->pins[3].id == L"%ALLUSERSPROFILE%\\Microsoft\\Windows\\Start Menu\\Programs\\A & B.lnk");
+    CHECK(back->userMayUnpin);
+
+    // Nothing pinned: Microsoft's "#leaveempty"; pins without PinGeneration stay pinned.
+    const auto empty = core::taskbarPlanFromXml(core::taskbarLayoutXml({}));
+    REQUIRE(empty);
+    CHECK(empty->pins.empty());
+    CHECK(core::taskbarLayoutXml({}).find("#leaveempty") != std::string::npos);
+    plan.userMayUnpin = false;
+    const auto kept = core::taskbarPlanFromXml(core::taskbarLayoutXml(plan));
+    REQUIRE(kept);
+    CHECK_FALSE(kept->userMayUnpin);
+    CHECK_FALSE(core::taskbarPlanFromOperations({}).has_value());
+    CHECK_FALSE(core::taskbarPlanFromXml("<LayoutModificationTemplate/>").has_value());
+}
+
+TEST_CASE("taskbar pins controller: modes, File Explorer first, users may unpin; Start stays its own (D-083)") {
+    Fixture f;
+    StartPinsController taskbar(f.state, [](std::function<void()> fn) { fn(); }, StartPinsController::Surface::Taskbar, &f.controller);
+    CHECK(taskbar.surface() == StartPinsController::Surface::Taskbar);
+    CHECK(taskbar.mode() == StartPinsController::Mode::Windows);
+
+    taskbar.setMode(StartPinsController::Mode::Custom); // starts from File Explorer
+    CHECK(taskbar.mode() == StartPinsController::Mode::Custom);
+    REQUIRE(taskbar.pins().size() == 1);
+    CHECK(taskbar.pins().front().id == L"Microsoft.Windows.Explorer");
+    CHECK(f.controller.mode() == StartPinsController::Mode::Windows); // the Start plan is another one
+    CHECK(f.state.changes().find(OpKind::SetRegistryValue, L"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer::StartLayoutFile"));
+
+    taskbar.add(StartApp{StartApp::Kind::Packaged, L"Microsoft.WindowsTerminal_8wekyb3d8bbwe!App", L"Terminal"});
+    taskbar.move(1, -1);
+    REQUIRE(taskbar.pins().size() == 2);
+    CHECK(taskbar.pins().front().kind == StartApp::Kind::Packaged);
+    CHECK(taskbar.applyOnce()); // users may unpin: PinGeneration
+    taskbar.setApplyOnce(false);
+    const auto* file = f.state.changes().find(OpKind::WriteFile, L"ProgramData\\WinLove\\TaskbarLayout.xml");
+    REQUIRE(file);
+    CHECK(file->value.find(L"PinGeneration") == std::wstring::npos);
+    CHECK_FALSE(taskbar.applyOnce());
+
+    taskbar.setMode(StartPinsController::Mode::Empty);
+    CHECK(taskbar.mode() == StartPinsController::Mode::Empty);
+    CHECK(f.state.changes().find(OpKind::WriteFile, L"ProgramData\\WinLove\\TaskbarLayout.xml")->value.find(L"#leaveempty") !=
+          std::wstring::npos);
+    CHECK(taskbar.changedCount() == 1);
+
+    f.controller.setMode(StartPinsController::Mode::Empty);
+    taskbar.setMode(StartPinsController::Mode::Windows);
+    CHECK(taskbar.changedCount() == 0);
+    CHECK_FALSE(f.state.changes().find(OpKind::WriteFile, L"ProgramData\\WinLove\\TaskbarLayout.xml"));
+    CHECK(f.controller.mode() == StartPinsController::Mode::Empty); // untouched
+}

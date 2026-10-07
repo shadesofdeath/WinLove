@@ -160,6 +160,8 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_icons = std::make_unique<IconController>(m_state);
     m_iconPatch = std::make_unique<IconPatchController>(m_state, m_services.postToUi);
     m_startPins = std::make_unique<StartPinsController>(m_state, m_services.postToUi);
+    m_taskbarPins = std::make_unique<StartPinsController>(m_state, m_services.postToUi, StartPinsController::Surface::Taskbar,
+                                                          m_startPins.get());
     m_store = std::make_unique<StoreController>(m_state, StoreController::Events{
         m_services.postToUi,
         [this](const std::wstring& query, std::vector<core::StoreSearchResult> results) {
@@ -410,6 +412,9 @@ bool Shell::requireMount(Str title, Str body) {
 Shell::~Shell() {
     *m_alive = false;
     m_state.unsubscribe(m_subscription);
+    // The pages and dialogs before the controllers they hold references to: the members go before
+    // the base class's children otherwise (StartMenuPage's destructor wrote to a freed controller).
+    clearChildren();
 }
 
 SourcePage* Shell::sourcePage() const {
@@ -1390,7 +1395,7 @@ void Shell::updateQueue() {
     m_nav->setBadge(PageId::Services, static_cast<int>(changes.count(core::ops::OpKind::SetServiceStart)));
     m_nav->setBadge(PageId::Registry, m_registry->checkedCount());
     m_nav->setBadge(PageId::Tweaks, m_imageSettings->changedCount());
-    m_nav->setBadge(PageId::StartMenu, m_startPins->changedCount());
+    m_nav->setBadge(PageId::StartMenu, m_startPins->changedCount() + m_taskbarPins->changedCount());
     m_nav->setBadge(PageId::PostSetup, static_cast<int>(m_postSetup->stepCount()));
     m_nav->setBadge(PageId::Programs, static_cast<int>(m_programs->pickCount()));
     m_nav->setBadge(PageId::Tasks, m_tasks->changedCount());
@@ -1788,7 +1793,7 @@ void Shell::showPage(PageId page) {
                 .onInvoke = [this] { saveAnswerFile(); };
             m_pageBody = &m_pageView->setBody<UnattendedPage>(m_state, *m_unattend, m_strings);
         } else if (page == PageId::StartMenu) {
-            m_pageBody = &m_pageView->setBody<StartMenuPage>(m_state, *m_startPins, *m_imageSettings, m_strings, m_language,
+            m_pageBody = &m_pageView->setBody<StartMenuPage>(m_state, *m_startPins, *m_taskbarPins, *m_imageSettings, m_strings, m_language,
                                                              [this] { showPage(PageId::Images); });
         } else if (page == PageId::Tweaks) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TweaksApplyRecommended)).onInvoke = [this] {

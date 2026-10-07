@@ -1,17 +1,22 @@
 #include "app/controllers/StartPinsController.h"
 
+#include "base/Text.h"
+
 #include <algorithm>
 
 namespace wl::app {
 
-StartPinsController::StartPinsController(AppState& state, std::function<void(std::function<void()>)> postToUi)
-    : m_state(state), m_post(std::move(postToUi)) {
+StartPinsController::StartPinsController(AppState& state, std::function<void(std::function<void()>)> postToUi, Surface surface,
+                                         StartPinsController* appsFrom)
+    : m_state(state), m_post(std::move(postToUi)), m_surface(surface), m_appsFrom(appsFrom) {
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Mount) {
             m_apps.reset();
             m_loading = false;
             m_mountDir.clear();
             m_customChosen = false;
+            m_merged.clear();
+            m_mergedFrom = 0;
         }
     });
 }
@@ -21,8 +26,30 @@ StartPinsController::~StartPinsController() {
     m_state.unsubscribe(m_subscription);
 }
 
-std::optional<core::StartPinsPlan> StartPinsController::queued() const {
-    return core::startPinsPlanFromOperations(m_state.changes().operations());
+std::optional<StartPinsController::Plan> StartPinsController::queued() const {
+    if (m_surface == Surface::Taskbar) {
+        const auto plan = core::taskbarPlanFromOperations(m_state.changes().operations());
+        if (!plan) {
+            return std::nullopt;
+        }
+        return Plan{!plan->pins.empty(), plan->pins, plan->userMayUnpin};
+    }
+    const auto plan = core::startPinsPlanFromOperations(m_state.changes().operations());
+    if (!plan) {
+        return std::nullopt;
+    }
+    return Plan{plan->custom, plan->pins, plan->applyOnce};
+}
+
+std::vector<std::pair<core::ops::OpKind, std::wstring>> StartPinsController::slots() const {
+    return m_surface == Surface::Taskbar ? core::taskbarPinsSlots() : core::startPinsSlots();
+}
+
+const std::vector<core::StartApp>* StartPinsController::known() const {
+    if (m_surface == Surface::Taskbar) {
+        return m_merged.empty() ? nullptr : &m_merged;
+    }
+    return m_apps ? &*m_apps : nullptr;
 }
 
 StartPinsController::Mode StartPinsController::mode() const {
@@ -35,7 +62,7 @@ StartPinsController::Mode StartPinsController::mode() const {
 
 bool StartPinsController::applyOnce() const {
     const auto plan = queued();
-    return !plan || plan->applyOnce;
+    return !plan || plan->once;
 }
 
 std::vector<core::StartApp> StartPinsController::pins() const {
@@ -44,10 +71,10 @@ std::vector<core::StartApp> StartPinsController::pins() const {
         return {};
     }
     auto list = plan->pins;
-    if (m_apps) {
+    if (const auto* apps = known()) {
         for (auto& pin : list) {
-            const auto it = std::ranges::find(*m_apps, pin);
-            if (it != m_apps->end()) {
+            const auto it = std::ranges::find(*apps, pin);
+            if (it != apps->end()) {
                 pin.name = it->name;
                 pin.icon = it->icon;
                 pin.iconIndex = it->iconIndex;
@@ -57,21 +84,31 @@ std::vector<core::StartApp> StartPinsController::pins() const {
     return list;
 }
 
-void StartPinsController::store(core::StartPinsPlan plan) {
-    m_state.unqueueMany(core::startPinsSlots());
-    m_state.queueMany(core::startPinsOperations(plan));
+void StartPinsController::store(Plan plan) {
+    m_state.unqueueMany(slots());
+    if (m_surface == Surface::Taskbar) {
+        m_state.queueMany(core::taskbarPinsOperations({plan.custom ? std::move(plan.pins) : std::vector<core::StartApp>{}, plan.once}));
+        return;
+    }
+    m_state.queueMany(core::startPinsOperations({plan.custom, std::move(plan.pins), plan.once}));
 }
 
 void StartPinsController::setMode(Mode mode) {
     m_customChosen = mode == Mode::Custom;
     if (mode == Mode::Windows) {
-        m_state.unqueueMany(core::startPinsSlots());
+        m_state.unqueueMany(slots());
         return;
     }
-    core::StartPinsPlan plan = queued().value_or(core::StartPinsPlan{});
+    Plan plan = queued().value_or(Plan{});
     plan.custom = mode == Mode::Custom;
     if (!plan.custom) {
         plan.pins.clear();
+    } else if (plan.pins.empty() && m_surface == Surface::Taskbar) {
+        // A taskbar of one's own starts from File Explorer (a list with nothing is "empty").
+        plan.pins.push_back(core::fileExplorerPin());
+        if (const auto* apps = known(); apps && !apps->empty()) {
+            plan.pins.front() = apps->front();
+        }
     }
     store(std::move(plan));
 }
@@ -81,13 +118,13 @@ void StartPinsController::setApplyOnce(bool once) {
     if (!plan) {
         return;
     }
-    plan->applyOnce = once;
+    plan->once = once;
     plan->custom = plan->custom || m_customChosen;
     store(std::move(*plan));
 }
 
 void StartPinsController::setPins(std::vector<core::StartApp> pins) {
-    core::StartPinsPlan plan = queued().value_or(core::StartPinsPlan{});
+    Plan plan = queued().value_or(Plan{});
     plan.custom = true;
     plan.pins = std::move(pins);
     m_customChosen = true;
@@ -129,6 +166,30 @@ const std::vector<core::StartApp>* StartPinsController::apps() {
     if (!m_state.mounted()) {
         return nullptr;
     }
+    if (m_surface == Surface::Taskbar && m_appsFrom) {
+        const auto* start = m_appsFrom->apps();
+        if (!start) {
+            return nullptr;
+        }
+        if (m_merged.empty() || m_mergedFrom != start->size()) {
+            // File Explorer as the taskbar names it, with the name and icon of the image's own
+            // shortcut to it (which the list then leaves out: it would be the same pin twice).
+            core::StartApp explorer = core::fileExplorerPin();
+            m_merged.clear();
+            for (const auto& app : *start) {
+                if (app.kind == core::StartApp::Kind::DesktopLink && text::iendsWith(app.id, L"\\File Explorer.lnk")) {
+                    explorer.name = app.name;
+                    explorer.icon = app.icon;
+                    explorer.iconIndex = app.iconIndex;
+                    continue;
+                }
+                m_merged.push_back(app);
+            }
+            m_merged.insert(m_merged.begin(), explorer);
+            m_mergedFrom = start->size();
+        }
+        return &m_merged;
+    }
     const auto mountDir = m_state.mounted()->mountDir;
     if (m_apps && m_mountDir == mountDir) {
         return &*m_apps;
@@ -162,6 +223,11 @@ const std::vector<core::StartApp>* StartPinsController::apps() {
 
 void StartPinsController::preload() {
     if (!m_state.mounted()) {
+        return;
+    }
+    if (m_surface == Surface::Taskbar && m_appsFrom) {
+        m_appsFrom->preload();
+        (void)apps();
         return;
     }
     m_mountDir = m_state.mounted()->mountDir;

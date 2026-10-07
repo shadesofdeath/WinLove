@@ -228,26 +228,6 @@ TEST_CASE("form: promoted apps are a policy and the default profile's values (fi
         L"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager::SilentInstalledAppsEnabled"));
 }
 
-TEST_CASE("form: the taskbar comes with File Explorer only — a layout file and the value that points Windows at it") {
-    Fixture f;
-    const auto& catalog = f.controller.catalog();
-    const auto& pins = setting(catalog, "taskbar-pins");
-    f.controller.select(pins, option(pins, "off"));
-    const auto* file = f.state.changes().find(OpKind::WriteFile, L"ProgramData\\WinLove\\TaskbarLayoutModification.xml");
-    REQUIRE(file);
-    CHECK(file->value.find(L"PinListPlacement=\"Replace\"") != std::wstring::npos);
-    CHECK(file->value.find(L"Microsoft.Windows.Explorer") != std::wstring::npos);
-    // REG_EXPAND_SZ, as Microsoft documents the value: Explorer expands %ProgramData% itself.
-    const auto* value = f.state.changes().find(
-        OpKind::SetRegistryValue, L"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer::LayoutXMLPath");
-    REQUIRE(value);
-    const auto written = core::registryWriteFrom(value->target, value->value);
-    REQUIRE(written);
-    CHECK(written->type == REG_EXPAND_SZ);
-    CHECK(std::wstring(reinterpret_cast<const wchar_t*>(written->data.data()), written->data.size() / 2 - 1) ==
-          L"%ProgramData%\\WinLove\\TaskbarLayoutModification.xml");
-}
-
 TEST_CASE("form: Windows Update options share the AU key without stepping on each other") {
     Fixture f;
     const auto& catalog = f.controller.catalog();

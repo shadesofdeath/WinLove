@@ -1,9 +1,11 @@
 #pragma once
-// D-069 Başlat menüsü: two tabs.
+// D-069 Başlat menüsü: three tabs.
 //   Sabitlenenler — the mode (Windows default / empty / my list) and "users may change it later";
 //     with "my list": the image's apps on the left (search, double click / Enter adds) and on the
 //     right a Start-like preview that is the pin list itself (select; Delete removes; Ctrl+Left /
 //     Right or the buttons move; order = Start's order).
+//   Görev çubuğu (D-083) — the same for the taskbar: Windows' pins, none, or my list (left to right),
+//     "users may unpin"; Windows 11 images only.
 //   Başlat ayarları — the "start" tab of the settings catalog (TweaksPage, one tab).
 #include "app/Localization.h"
 #include "app/controllers/ImageSettingsController.h"
@@ -26,8 +28,11 @@ class TweaksPage;
 
 class StartMenuPage : public ui::Widget {
 public:
-    StartMenuPage(AppState& state, StartPinsController& pins, ImageSettingsController& settings, const Localization& strings,
-                  Language language, std::function<void()> goImages);
+    StartMenuPage(AppState& state, StartPinsController& pins, StartPinsController& taskbar, ImageSettingsController& settings,
+                  const Localization& strings, Language language, std::function<void()> goImages);
+    static constexpr int kTabPins = 0;
+    static constexpr int kTabTaskbar = 1;
+    static constexpr int kTabSettings = 2;
     ~StartMenuPage() override;
 
     void showTab(int tab);
@@ -40,8 +45,13 @@ private:
     void refresh();
     void sync(); // controls from the queue
 
+    [[nodiscard]] bool taskbar() const noexcept { return m_tab == kTabTaskbar; }
+    [[nodiscard]] bool windows10() const; // the selected edition is older than Windows 11
+
     AppState& m_state;
-    StartPinsController& m_pins;
+    StartPinsController& m_start;
+    StartPinsController& m_taskbar;
+    StartPinsController* m_pins; // the tab's: Start or the taskbar
     const Localization& m_strings;
     std::size_t m_subscription = 0;
     ui::TabBar* m_tabs = nullptr;

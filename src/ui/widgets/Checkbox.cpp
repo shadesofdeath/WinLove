@@ -44,6 +44,12 @@ SizeF CheckField::measure(SizeF /*available*/) {
     return {Checkbox::kBox + 8 + label, tokens::size::control};
 }
 
+void CheckField::setLabel(std::wstring label) {
+    m_label = std::move(label);
+    setAccessible(AccessRole::CheckBox, m_label);
+    invalidate();
+}
+
 void CheckField::paint(Canvas& canvas) {
     const RectF b = bounds();
     Checkbox::paintBox(canvas, {b.x, b.y + (b.height - Checkbox::kBox) / 2}, m_checked ? CheckState::On : CheckState::Off,

@@ -44,7 +44,7 @@ etkisizdir. Kullanıcı sonradan kendi sabitlemelerini yapabilir (düzen kilitle
 ### Yeni ayarlar (2026-09-30, D-041)
 | Sekme › bölüm | Ayar | Ne yazılır |
 |---|---|---|
-| Başlat menüsü › Görev çubuğu | Sabitlenmiş uygulamalar (Edge, Store…) | `ProgramData\WinLove\TaskbarLayoutModification.xml` (yalnız Dosya Gezgini, `PinListPlacement="Replace"`) + `Explorer\LayoutXMLPath` (REG_EXPAND_SZ) |
+| Başlat menüsü › Görev çubuğu | ~~Sabitlenmiş uygulamalar~~ → Başlat menüsü › Görev çubuğu sekmesi (D-083; OEM yolu 24H2+'da yalnız ekliyordu) | — |
 | | Sohbet, toplantı ve Cortana düğmeleri | `TaskbarMn`, `ShowCortanaButton`, `People\PeopleBand` = 0; `HideSCAMeetNow` = 1 (ilk oturumda da) |
 | Gizlilik › Copilot ve yapay zekâ | Copilot · Recall | `WindowsCopilot\TurnOffWindowsCopilot` (HKCU + HKLM), `ShowCopilotButton` = 0 · `WindowsAI\DisableAIDataAnalysis` = 1, `AllowRecallEnablement` = 0 |
 | Gizlilik › Microsoft Edge | İlk çalıştırma · masaüstü kısayolu · arka planda çalışma | Edge ilkeleri (`HideFirstRunExperience`, `DefaultBrowserSettingEnabled`, `StartupBoostEnabled`, `BackgroundModeEnabled`), `EdgeUpdate\CreateDesktopShortcutDefault`, `DisableEdgeDesktopShortcutCreation` |

@@ -109,6 +109,11 @@
   msinfo32, cleanmgr, notepad, 32 bit cmd, 7-Zip, Notepad++, VLC açılıyor; winget 4/4 (VC++ MSI dahil); `dism /online
   /get-packages` çalışıyor. Aynı koşullu çift (`shrink-max2` / `shrink-base`: aynı 4 program, 25 dk, ikisinde de ResetBase +
   güncellemeler kapalı): **C: 17,46 GB / 19,66 GB → kurulu sistemde −2,20 GB**, ikisi de ALL PASSED, SideBySide 0. taskmgr SYSTEM'den 0x80070005 — küçültmesiz sistemde de aynı (tanılamanın oturum dışından başlatması).
+- **Görev çubuğu sabitlemeleri (D-083, 2026-10-07):** Başlat menüsü › Görev çubuğu sekmesi (Windows varsayılanı / Boş /
+  Kendi listem, "Kullanıcı kaldırabilsin"); Microsoft'un Başlangıç Düzeni ilkesi, VM'de Edge/Store/Outlook yer tutucusu
+  olmadan yalnız seçilenler. Eski "Sabitlenmiş uygulamalar" anahtarı kaldırıldı. NTLite listesinin 4 maddesi bitti.
+  Sırada: **kendi OOBE'miz** (kullanıcı seçti; önce VM deneyleri), istenirse daha geniş bileşen listesi (D-059 taraması
+  zaten 1227 aileden isteğe bağlı olanları aldı: yenisi paket paket VM denemesi ister).
 - **Uyumluluk korumaları (D-082, 2026-10-07):** Bileşenler başlığında "Uyumluluk · N" (13 koruma, 7'si varsayılan açık),
   kalan uygulamaların çalışma zamanları (manifestten) her zaman korunur, Programlar seçiliyse App Installer; Bileşenler ve
   Servisler'de kilit, çakışan işlemler kuyruktan çıkar. Ayrıca: Programlar penceresinin kaydırma çubuğu temaya uydu (958a434).
