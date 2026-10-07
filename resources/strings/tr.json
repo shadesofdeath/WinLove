@@ -1552,5 +1552,18 @@
     "noMountTitle": "Bağlı imaj yok",
     "noMountBody": "Başlat menüsünü özelleştirmek için İmajlar sayfasından bir sürüm bağla.",
     "oldBuild": "Bu imajın build'i ({build}) kendi listeni uygulamaz: Başlat boş (reklamsız) açılır. Liste 26200.9457 / 26100.9457 ve sonrasında uygulanır — Güncellemeler'den son toplu güncellemeyi ekle."
+  },
+  "compat": {
+    "action": "Uyumluluk · {n}",
+    "title": "Uyumluluk korumaları",
+    "body": "Açık bir koruma, onu bozacak uygulama ve bileşenlerin kaldırılmasını, servislerin devre dışı bırakılmasını engeller; kuyrukta onunla çakışanlar çıkar. Kalan uygulamaların kullandığı çalışma zamanları her zaman korunur.",
+    "columnGuard": "Koruma",
+    "columnWhat": "Neyi korur",
+    "keptBy": "Korunuyor: {guards}",
+    "neededBy": "Kullanan: {apps}",
+    "programsGuard": "Programlar sayfası (winget)",
+    "droppedTitle": "Kuyruktan çıkarıldı",
+    "droppedBody": "{n} işlem ({items}).",
+    "lockedHint": "Bileşenler › Uyumluluk'tan değiştirilebilir."
   }
 }

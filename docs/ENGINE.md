@@ -235,3 +235,8 @@ Uygulama davranışı:
   Aynı adlı ikinci bir `wimgapi.dll` tam yoluyla aynı süreçte yüklenebiliyor. Microsoft'un ESD'si: her katı kaynak LZMS,
   64 MiB parça (başlık: boyut 8, parça 4, biçim 4 bayt; kaynağın kendi girdisi "boyut" alanında 0x100000000 taşır).
   WinPE 19041 imajında `DismGetCapabilities` 0x80070003, `DismGetProvisionedAppxPackages` 0x8007007E (WinPE'de yok).
+- [2026-10-07] [Uygulama bağımlılıkları] 25H2 Pro: DISM'in hazır paket listesi 48 uygulama, çalışma zamanları
+  (VCLibs.140.00 32 uygulama, VCLibs.UWPDesktop 21, UI.Xaml.2.8 16, NET.Native 2.2 10, WindowsAppRuntime 1.5 / 1.6 3 / 2)
+  listede yok. Windows 10 22H2 Pro: 40 uygulama, `Microsoft.VCLibs.140.00` listede (39 uygulama ona bağlı); UI.Xaml.2.0,
+  NET.Native 1.7 / 2.2, Advertising.Xaml, Services.Store.Engagement listede değil. Paket klasörü `<Ad>_<sürüm>_<mimari>__<yayıncı>`
+  içindeki `AppxManifest.xml` okunur; paket demeti klasöründe (`_~_`) yalnız `AppxMetadata\` var.

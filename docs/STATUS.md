@@ -109,6 +109,10 @@
   msinfo32, cleanmgr, notepad, 32 bit cmd, 7-Zip, Notepad++, VLC açılıyor; winget 4/4 (VC++ MSI dahil); `dism /online
   /get-packages` çalışıyor. Aynı koşullu çift (`shrink-max2` / `shrink-base`: aynı 4 program, 25 dk, ikisinde de ResetBase +
   güncellemeler kapalı): **C: 17,46 GB / 19,66 GB → kurulu sistemde −2,20 GB**, ikisi de ALL PASSED, SideBySide 0. taskmgr SYSTEM'den 0x80070005 — küçültmesiz sistemde de aynı (tanılamanın oturum dışından başlatması).
+- **Uyumluluk korumaları (D-082, 2026-10-07):** Bileşenler başlığında "Uyumluluk · N" (13 koruma, 7'si varsayılan açık),
+  kalan uygulamaların çalışma zamanları (manifestten) her zaman korunur, Programlar seçiliyse App Installer; Bileşenler ve
+  Servisler'de kilit, çakışan işlemler kuyruktan çıkar. Ayrıca: Programlar penceresinin kaydırma çubuğu temaya uydu (958a434).
+  Sırada: daha geniş bileşen listesi (D-059 gibi paket paket denenecek), (4) görev çubuğu sabitlemeleri, kendi OOBE'miz.
 - **Modlu Windows yedeği (D-081, 2026-10-07):** wimgapi dosya başına seçilir (bu PC'ninki → Windows ADK'nınki → kurulum
   ortamının `sources\wimgapi.dll`'i, Microsoft imzası şart); DISM'in bir parçası eksikse ADK'nın DISM'i; açılışta sağlık
   denetimi → Kaynak sayfasında uyarı; hata metinleri kullanılan kopyayı ve okunamayan ESD'nin katı kaynaklarını söyler.

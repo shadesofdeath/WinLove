@@ -314,16 +314,33 @@ bool ComponentController::queued(const Item& item) const {
     return m_state.changes().find(kindOf(item), item.packageName) != nullptr;
 }
 
-ComponentController::Check ComponentController::check(const Group& group) const {
-    std::size_t n = 0;
-    for (const auto& item : group.items) {
-        n += queued(item) ? 1 : 0;
+core::ops::CompatBlock ComponentController::block(const Item& item) const {
+    if (!blockOf || queued(item)) {
+        return {};
     }
-    return n == 0 ? Check::Off : n >= group.items.size() ? Check::On : Check::Partial;
+    return blockOf(operationFor(item));
+}
+
+ComponentController::Check ComponentController::check(const Group& group) const {
+    // Items a guard holds do not count: a group whose other items are all queued is "on".
+    std::size_t n = 0;
+    std::size_t open = 0;
+    for (const auto& item : group.items) {
+        const bool q = queued(item);
+        n += q ? 1 : 0;
+        open += q || block(item).empty() ? 1 : 0;
+    }
+    return n == 0 ? Check::Off : n >= open ? Check::On : Check::Partial;
 }
 
 void ComponentController::toggle(const Item& item) {
     if (m_state.unqueue(kindOf(item), item.packageName)) {
+        return;
+    }
+    if (const auto held = block(item); !held.empty()) {
+        if (onBlocked) {
+            onBlocked(item, held);
+        }
         return;
     }
     queueItem(item);
@@ -346,7 +363,7 @@ void ComponentController::toggleGroup(const Group& group) {
     for (const auto& item : group.items) {
         if (all) {
             m_state.unqueue(kindOf(item), item.packageName);
-        } else if (!queued(item)) {
+        } else if (!queued(item) && block(item).empty()) {
             queueItem(item);
         }
     }

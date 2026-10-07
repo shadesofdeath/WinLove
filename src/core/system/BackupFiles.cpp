@@ -77,4 +77,23 @@ std::vector<std::wstring> backupListFolders(const std::filesystem::path& folder)
     return names;
 }
 
+std::optional<std::string> backupReadFile(const std::filesystem::path& file, std::size_t limit) {
+    const HANDLE h = CreateFileW(file.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                                 FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+    if (h == INVALID_HANDLE_VALUE) {
+        return std::nullopt;
+    }
+    std::optional<std::string> out;
+    LARGE_INTEGER size{};
+    if (GetFileSizeEx(h, &size) && size.QuadPart >= 0 && static_cast<std::uint64_t>(size.QuadPart) <= limit) {
+        std::string bytes(static_cast<std::size_t>(size.QuadPart), '\0');
+        DWORD read = 0;
+        if (bytes.empty() || (ReadFile(h, bytes.data(), static_cast<DWORD>(bytes.size()), &read, nullptr) && read == bytes.size())) {
+            out = std::move(bytes);
+        }
+    }
+    CloseHandle(h);
+    return out;
+}
+
 } // namespace wl::core

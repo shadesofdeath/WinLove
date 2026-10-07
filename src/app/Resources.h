@@ -27,6 +27,7 @@ namespace wl::app {
 [[nodiscard]] std::string_view embeddedHostsCatalog();
 // resources/catalog/programs.json (D-078).
 [[nodiscard]] std::string_view embeddedProgramsCatalog();
+[[nodiscard]] std::string_view embeddedCompatCatalog(); // D-082
 
 [[nodiscard]] HICON appIcon();
 

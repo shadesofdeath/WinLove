@@ -1,0 +1,131 @@
+{
+  "format": "winlove.catalog.compat",
+  "version": 1,
+  "comment": "D-082 compatibility guards. A guard that is on keeps its apps (identity-name prefixes), system components (components.json ids) and services (never set to disabled) out of the queue. Only dependencies that are certain: a guard that holds too much is switched off by the user, one that holds too little breaks the image. 'default': on for a new user.",
+  "guards": [
+    {
+      "id": "windows-update",
+      "tr": "Windows Update",
+      "en": "Windows Update",
+      "default": true,
+      "description_tr": "Güncellemeler kurulabilsin: WinSxS'i en aza indirme, derin kaldırma, güncelleme servisleri.",
+      "description_en": "Updates can be installed: WinSxS at its smallest, deep removal, the update services.",
+      "components": ["component-store-shrink", "deep-modem", "deep-tape", "deep-floppy", "deep-firewire", "deep-pcmcia", "deep-pos"],
+      "services": ["wuauserv", "UsoSvc", "TrustedInstaller", "CryptSvc"]
+    },
+    {
+      "id": "store",
+      "tr": "Microsoft Store ve uygulama kurulumu",
+      "en": "Microsoft Store and app installs",
+      "default": true,
+      "description_tr": "Store, App Installer (winget), uygulamaların çalışma zamanları ve lisans / dağıtım servisleri.",
+      "description_en": "The Store, App Installer (winget), the apps' runtimes and the licence / deployment services.",
+      "appx": ["Microsoft.WindowsStore", "Microsoft.StorePurchaseApp", "Microsoft.DesktopAppInstaller", "Microsoft.VCLibs",
+               "Microsoft.UI.Xaml", "Microsoft.NET.Native", "Microsoft.WindowsAppRuntime"],
+      "services": ["AppXSvc", "ClipSVC", "InstallService"]
+    },
+    {
+      "id": "printing",
+      "tr": "Yazdırma",
+      "en": "Printing",
+      "default": true,
+      "description_tr": "Yazıcıya ve PDF'e yazdırma: yazdırma biriktiricisi.",
+      "description_en": "Printing to a printer or to PDF: the print spooler.",
+      "services": ["Spooler"]
+    },
+    {
+      "id": "wireless",
+      "tr": "Wi-Fi ve Bluetooth",
+      "en": "Wi-Fi and Bluetooth",
+      "default": true,
+      "description_tr": "Kablosuz ağ, Bluetooth aygıtları ve mobil etkin nokta servisleri.",
+      "description_en": "Wireless networks, Bluetooth devices and the mobile hotspot services.",
+      "services": ["WlanSvc", "bthserv", "BthAvctpSvc", "icssvc"]
+    },
+    {
+      "id": "audio",
+      "tr": "Ses",
+      "en": "Audio",
+      "default": true,
+      "description_tr": "Ses çıkışı ve girişi: Windows ses servisleri.",
+      "description_en": "Sound out and in: the Windows audio services.",
+      "services": ["Audiosrv", "AudioEndpointBuilder"]
+    },
+    {
+      "id": "webview-apps",
+      "tr": "Edge tabanlı uygulamalar (WebView2)",
+      "en": "Edge-based apps (WebView2)",
+      "default": true,
+      "description_tr": "Widget'lar, yeni Outlook, Teams, Copilot, Clipchamp, Microsoft 365 ve birçok program WebView2 ister.",
+      "description_en": "Widgets, the new Outlook, Teams, Copilot, Clipchamp, Microsoft 365 and many programs need WebView2.",
+      "components": ["edge-webview", "edge-update"]
+    },
+    {
+      "id": "recovery",
+      "tr": "Kurtarma ve sıfırlama",
+      "en": "Recovery and reset",
+      "default": true,
+      "description_tr": "\"Bu bilgisayarı sıfırla\" ve Gelişmiş başlangıç: Windows Kurtarma Ortamı.",
+      "description_en": "\"Reset this PC\" and Advanced startup: the Windows Recovery Environment.",
+      "components": ["winre"]
+    },
+    {
+      "id": "security",
+      "tr": "Windows Güvenliği",
+      "en": "Windows Security",
+      "default": false,
+      "description_tr": "Defender, tanımları, Güvenlik uygulaması ve güvenlik duvarı servisleri.",
+      "description_en": "Defender, its definitions, the Security app and the firewall services.",
+      "appx": ["Microsoft.SecHealthUI"],
+      "components": ["defender-definitions", "defender-full"],
+      "services": ["WinDefend", "SecurityHealthService", "WdNisSvc", "mpssvc"]
+    },
+    {
+      "id": "xbox",
+      "tr": "Xbox ve PC oyunları",
+      "en": "Xbox and PC games",
+      "default": false,
+      "description_tr": "Game Pass ve Xbox oturumu isteyen oyunlar, Game Bar, oyun kumandaları.",
+      "description_en": "Game Pass and games that sign in to Xbox, the Game Bar, game controllers.",
+      "appx": ["Microsoft.GamingApp", "Microsoft.XboxIdentityProvider", "Microsoft.Xbox.TCUI", "Microsoft.XboxGamingOverlay"],
+      "services": ["XblAuthManager", "XblGameSave", "XboxNetApiSvc", "XboxGipSvc"]
+    },
+    {
+      "id": "sharing",
+      "tr": "Ağ paylaşımı",
+      "en": "Network sharing",
+      "default": false,
+      "description_tr": "Paylaşılan klasörler ve yazıcılar, ağda görünme ve ağdaki aygıtları bulma.",
+      "description_en": "Shared folders and printers, being seen on the network and finding devices on it.",
+      "services": ["LanmanServer", "LanmanWorkstation", "FDResPub", "fdPHost", "SSDPSRV"]
+    },
+    {
+      "id": "remote-desktop",
+      "tr": "Uzak Masaüstü (bu bilgisayara bağlanma)",
+      "en": "Remote Desktop (connecting to this PC)",
+      "default": false,
+      "description_tr": "Bu bilgisayara Uzak Masaüstü ile bağlanılabilsin: Terminal Hizmetleri.",
+      "description_en": "This PC can be reached with Remote Desktop: the Terminal Services.",
+      "services": ["TermService", "SessionEnv", "UmRdpService"]
+    },
+    {
+      "id": "camera",
+      "tr": "Kamera",
+      "en": "Camera",
+      "default": false,
+      "description_tr": "Kamera uygulaması ve kamerayı uygulamalara açan Kamera Çerçeve Sunucusu.",
+      "description_en": "The Camera app and the Camera Frame Server that hands the camera to apps.",
+      "appx": ["Microsoft.WindowsCamera"],
+      "services": ["FrameServer"]
+    },
+    {
+      "id": "east-asian",
+      "tr": "Japonca, Çince ve Korece metin",
+      "en": "Japanese, Chinese and Korean text",
+      "default": false,
+      "description_tr": "Bu dillerdeki metinlerin görünmesi için gereken yazı tipleri.",
+      "description_en": "The fonts that text in these languages needs to show.",
+      "components": ["fonts-jpan", "fonts-hans", "fonts-hant", "fonts-kore"]
+    }
+  ]
+}

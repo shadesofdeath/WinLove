@@ -40,12 +40,14 @@ ComponentInspector::ComponentInspector(const Localization& strings, Language lan
     setAccessible(ui::AccessRole::Group, strings.get(Str::CommonDetails));
 }
 
-void ComponentInspector::set(std::optional<ComponentController::Item> item, std::wstring group, bool queued) {
+void ComponentInspector::set(std::optional<ComponentController::Item> item, std::wstring group, bool queued, std::wstring held) {
     m_item = std::move(item);
     m_group = std::move(group);
     m_queued = queued;
+    m_held = std::move(held);
     m_toggle->setText(m_strings.get(queued ? Str::ComponentsRemoveFromQueue : Str::ComponentsAddToQueue));
     m_toggle->setVisible(m_item.has_value());
+    m_toggle->setEnabled(m_held.empty());
     layout();
     invalidate();
 }
@@ -97,8 +99,16 @@ void ComponentInspector::paint(ui::Canvas& canvas) {
     row(Str::ComponentsReversible, m_strings.get(Str::CommonNo));
 
     const std::wstring& notes = item.notes;
-    if (!notes.empty()) {
+    if (!m_held.empty() || !notes.empty()) {
         section(m_strings.get(Str::ComponentsCompat));
+    }
+    if (!m_held.empty()) {
+        const float h = std::ceil(canvas.text().measureWrapped(m_held, TypeStyle::Caption, width - 20));
+        canvas.drawIcon(ui::icons::Icon::Lock, {x, y}, Color::TextSecondary);
+        canvas.drawTextWrapped(m_held, {x + 20, y, width - 20, h}, TypeStyle::Caption, Color::TextPrimary);
+        y += h + 8;
+    }
+    if (!notes.empty()) {
         const float h = std::ceil(canvas.text().measureWrapped(notes, TypeStyle::Caption, width - 20));
         canvas.drawIcon(ui::icons::Icon::WarningTriangle, {x, y}, riskInk(item.risk));
         canvas.drawTextWrapped(notes, {x + 20, y, width - 20, h}, TypeStyle::Caption, Color::TextSecondary);

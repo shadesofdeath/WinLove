@@ -251,6 +251,17 @@ enum class Str : std::uint16_t {
     CommonStatus,
     CommonType,
     CommonYes,
+    CompatAction,
+    CompatBody,
+    CompatColumnGuard,
+    CompatColumnWhat,
+    CompatDroppedBody,
+    CompatDroppedTitle,
+    CompatKeptBy,
+    CompatLockedHint,
+    CompatNeededBy,
+    CompatProgramsGuard,
+    CompatTitle,
     ComponentsAddToQueue,
     ComponentsCategory,
     ComponentsCollapseAll,
@@ -1470,7 +1481,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1460;
+inline constexpr std::size_t kStrCount = 1471;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -1716,6 +1727,17 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "common.status",
     "common.type",
     "common.yes",
+    "compat.action",
+    "compat.body",
+    "compat.columnGuard",
+    "compat.columnWhat",
+    "compat.droppedBody",
+    "compat.droppedTitle",
+    "compat.keptBy",
+    "compat.lockedHint",
+    "compat.neededBy",
+    "compat.programsGuard",
+    "compat.title",
     "components.addToQueue",
     "components.category",
     "components.collapseAll",

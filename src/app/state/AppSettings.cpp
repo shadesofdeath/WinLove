@@ -72,6 +72,15 @@ AppSettings AppSettings::load(const std::filesystem::path& file) {
     if (const auto it = doc.find("reduceMotion"); it != doc.end() && it->is_boolean()) {
         settings.reduceMotion = it->get<bool>();
     }
+    if (const auto it = doc.find("guards"); it != doc.end() && it->is_array()) {
+        std::vector<std::wstring> guards;
+        for (const auto& id : *it) {
+            if (id.is_string() && !id.get<std::string>().empty()) {
+                guards.push_back(utf8::toWide(id.get<std::string>()));
+            }
+        }
+        settings.guards = std::move(guards);
+    }
     return settings;
 }
 
@@ -81,15 +90,21 @@ void AppSettings::save(const std::filesystem::path& file) const {
     static constexpr const char* kThemes[] = {"dark", "light", "hc", "system"};
     static constexpr const char* kAccents[] = {"copper", "sea", "pomegranate", "sky", "olive"};
     // Through a temporary file: a crash mid-write must not reset every setting to its default.
-    const std::string json = nlohmann::json{{"version", 1},
-                          {"theme", kThemes[static_cast<std::size_t>(theme)]},
-                          {"accent", kAccents[static_cast<std::size_t>(accent)]},
-                          {"reduceMotion", reduceMotion},
-                          {"language", language == Language::English ? "en" : "tr"},
-                          {"workRoot", utf8::fromWide(workRoot.wstring())},
-                          {"mountFolder", utf8::fromWide(mountFolder.wstring())},
-                          {"isoFolder", utf8::fromWide(isoFolder.wstring())}}
-                                 .dump(2);
+    nlohmann::json doc{{"version", 1},
+                       {"theme", kThemes[static_cast<std::size_t>(theme)]},
+                       {"accent", kAccents[static_cast<std::size_t>(accent)]},
+                       {"reduceMotion", reduceMotion},
+                       {"language", language == Language::English ? "en" : "tr"},
+                       {"workRoot", utf8::fromWide(workRoot.wstring())},
+                       {"mountFolder", utf8::fromWide(mountFolder.wstring())},
+                       {"isoFolder", utf8::fromWide(isoFolder.wstring())}};
+    if (guards) {
+        auto& list = doc["guards"] = nlohmann::json::array();
+        for (const auto& id : *guards) {
+            list.push_back(utf8::fromWide(id));
+        }
+    }
+    const std::string json = doc.dump(2);
     if (auto written = writeFileAtomic(file, json); !written) {
         log::warn("app", L"settings not saved: " + describe(written.error()));
     }

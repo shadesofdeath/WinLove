@@ -19,6 +19,7 @@ namespace wl::app {
 
 class ComponentsPage : public ui::Widget {
 public:
+    void refresh(); // the groups again (also when the compatibility guards changed, D-082)
     ComponentsPage(AppState& state, ComponentController& controller, const Localization& strings, Language language,
                    std::function<void()> goToImages);
     ~ComponentsPage() override;
@@ -44,7 +45,6 @@ private:
         int item = -1;   // index into the group's items, -1 = the group row
         int matches = 0; // group rows while searching: matching items
     };
-    void refresh();
     void rebuildRows();
     void updateRiskBar();
     [[nodiscard]] bool itemVisible(const ComponentController::Item& item) const;

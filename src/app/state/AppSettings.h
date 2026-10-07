@@ -8,6 +8,9 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
+#include <string>
+#include <vector>
 
 namespace wl::app {
 
@@ -21,6 +24,8 @@ struct AppSettings {
     std::filesystem::path workRoot = defaultWorkRoot();
     std::filesystem::path mountFolder; // empty: <workRoot>\mount
     std::filesystem::path isoFolder;   // last "ISO Oluştur" output folder (empty: Desktop)
+    // D-082: the compatibility guards that are on (compat.json ids). Never chosen: the catalog's defaults.
+    std::optional<std::vector<std::wstring>> guards;
 
     [[nodiscard]] bool operator==(const AppSettings&) const = default;
     [[nodiscard]] std::filesystem::path mountDirectory() const {

@@ -86,8 +86,17 @@ aile "istenmiyor" işaretlenir. Hepsi her imajda sunulur (`always`). VM'de ölç
   imaj sonrasında servislenebilir; `-Cleanup` ile depo temizliği de çalıştı (13 sn, dokunulmamış imajda temizlenecek
   bir şey yok). Güncelleme eklenmiş imajda temizlik ve commit + VM kurulumu henüz denenmedi.
 
+## 4b. Uyumluluk korumaları (D-082)
+- `resources/catalog/compat.json`: 13 koruma (uygulama önekleri, bileşen kimlikleri, devre dışı bırakılamayacak servisler);
+  açık olanlar `settings.json` → `guards`. Kalan uygulamaların çalışma zamanları (`AppxManifest.xml` bağımlılıkları) ve
+  Programlar sayfasında program varken App Installer her zaman korunur.
+- Tutulan satır: kilit simgesi, soluk kutu, tıklayınca uyarı; grup kutusu atlar; Inspector nedenini söyler. Kuyruk değişince
+  artık tutulan işlemler çıkar (uyarı). Çekirdek kural `core/ops/Compat` (`compatBlock`, `compatConflicts`), uygulamada
+  `CompatController`; pencere `pages/components/CompatDialog`.
+- Render: `--demo-components [--demo-compat]`.
+
 ## 5. Ekran
-- Başlık: Preset yükle, Tümünü daralt / genişlet.
+- Başlık: Preset yükle, Uyumluluk · N (pencere), Tümünü daralt / genişlet.
 - Araç çubuğu: arama (`/`, Ctrl+F), Kategori, Risk, "Yalnızca seçili"; sağda "Tahmini kazanç X · n bileşen kuyrukta".
 - Yüksek riskli seçim varsa uyarı InfoBar'ı (katalog notu).
 - Ağaç: önce **Sistem Bileşenleri** ve **Temizlik** grupları, sonra uygulama grupları. Grup satırı (chevron, üç

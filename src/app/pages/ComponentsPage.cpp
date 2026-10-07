@@ -399,14 +399,22 @@ void ComponentsPage::paintCell(ui::Canvas& canvas, int row, int column, RectF re
         x += kChevron + 4;
         const auto state = isGroup ? m_controller.check(group) : (m_controller.queued(*item) ? ComponentController::Check::On
                                                                                             : ComponentController::Check::Off);
+        // D-082: a guard or a kept app holds it — it cannot be ticked; the inspector says why.
+        const bool held = !isGroup && !m_controller.block(*item).empty();
+        if (held) {
+            canvas.pushOpacity(ui::tokens::opacity::disabled);
+        }
         ui::Checkbox::paintBox(canvas, {x, rect.y + (rect.height - ui::Checkbox::kBox) / 2},
                                state == ComponentController::Check::On        ? ui::CheckState::On
                                : state == ComponentController::Check::Partial ? ui::CheckState::Indeterminate
                                                                               : ui::CheckState::Off,
-                               cell.hoveredCell);
+                               cell.hoveredCell && !held);
+        if (held) {
+            canvas.popOpacity();
+        }
         x += ui::Checkbox::kBox + 8;
-        canvas.drawIcon(isGroup ? ui::icons::Icon::Folder : ComponentInspector::iconOf(item->kind), {x, rect.y + 4},
-                        Color::TextSecondary);
+        canvas.drawIcon(isGroup ? ui::icons::Icon::Folder : held ? ui::icons::Icon::Lock : ComponentInspector::iconOf(item->kind),
+                        {x, rect.y + 4}, held ? Color::TextTertiary : Color::TextSecondary);
         x += ui::tokens::size::icon + 6;
         const std::wstring& name = isGroup ? group.name : item->name;
         if (!isGroup && !m_needle.empty()) {
@@ -418,7 +426,8 @@ void ComponentsPage::paintCell(ui::Canvas& canvas, int row, int column, RectF re
             }
         }
         canvas.drawText(name, {x, rect.y, rect.right() - x, rect.height},
-                        isGroup || cell.selected ? TypeStyle::BodyStrong : TypeStyle::Body, Color::TextPrimary);
+                        isGroup || cell.selected ? TypeStyle::BodyStrong : TypeStyle::Body,
+                        held ? Color::TextSecondary : Color::TextPrimary);
         break;
     }
     case kRisk:

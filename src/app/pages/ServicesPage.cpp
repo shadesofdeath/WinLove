@@ -249,7 +249,9 @@ void ServicesPage::openChoice(int row) {
 }
 
 void ServicesPage::choose(const ServiceEntry& service, StartType start) {
-    m_controller.set(service, start);
+    if (!m_controller.set(service, start)) {
+        return; // a compatibility guard keeps it (D-082): the controller said why
+    }
     if (start == StartType::Disabled && m_intents.warn) {
         const auto dependents = m_controller.activeDependents(service);
         if (!dependents.empty()) {
@@ -293,8 +295,15 @@ void ServicesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
         canvas.fillRoundRect(box, ui::tokens::radius::r2, Color::BgInput);
         canvas.strokeRoundRect(box, ui::tokens::radius::r2, border);
         const float chevronX = box.right() - 4 - ui::tokens::size::icon;
+        float textRight = chevronX;
+        if (m_controller.guarded(*item)) {
+            // D-082: a compatibility guard keeps it from being disabled.
+            textRight -= ui::tokens::size::icon + 2;
+            canvas.drawIcon(ui::icons::Icon::Lock, {textRight, box.y + (box.height - ui::tokens::size::icon) / 2},
+                            Color::TextTertiary);
+        }
         canvas.drawText(m_strings.get(startName(m_controller.target(*item))),
-                        {box.x + 6, box.y, chevronX - box.x - 8, box.height}, TypeStyle::Body, Color::TextPrimary);
+                        {box.x + 6, box.y, textRight - box.x - 8, box.height}, TypeStyle::Body, Color::TextPrimary);
         canvas.drawIcon(ui::icons::Icon::ChevronDown, {chevronX, box.y + (box.height - ui::tokens::size::icon) / 2},
                         Color::TextTertiary);
         break;
