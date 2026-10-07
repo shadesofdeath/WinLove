@@ -192,7 +192,7 @@ def do_click(args):
     time.sleep(0.03)
     down, up, held = (WM_RBUTTONDOWN, WM_RBUTTONUP, 0x2) if right else (WM_LBUTTONDOWN, WM_LBUTTONUP, MK_LBUTTON)
     for n in range(2 if double else 1):
-        send(hwnd, WM_LBUTTONDBLCLK if (double and n == 1 and not right) else down, held, lparam(x, y))
+        send(hwnd, down, held, lparam(x, y))  # the app tells a double click by time (GetDoubleClickTime)
         time.sleep(0.03)
         answered = send(hwnd, up, 0, lparam(x, y), timeout_ms=1500)
         time.sleep(0.05)
@@ -435,6 +435,8 @@ def do_dialog(args):
             if cid in (1148, 1152) or (grand and user32.GetDlgCtrlID(grand) == 1148) or user32.GetDlgCtrlID(parent) == 1148:
                 edit = child
                 break
+    if not edit:  # a save dialog: its only visible Edit (id 1001, inside a combo box)
+        edit = next((c for c in children(dialog) if class_name(c) == "Edit" and user32.IsWindowVisible(c)), 0)
     if not edit:
         raise RuntimeError(f"no file name box in '{title}'")
     buffer = ctypes.create_unicode_buffer(path)

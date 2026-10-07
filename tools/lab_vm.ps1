@@ -65,6 +65,9 @@ $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     [Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) { throw 'Run this from an elevated (Administrator) PowerShell.' }
 if ($Changes -and -not (Test-Path $Changes)) { throw "no changeset: $Changes" }
+# -Diag writes its script into the image it mounts; a ready -InstallWim is never mounted, so the
+# guest would never run it nor shut itself down (2026-10-07). Use -ShutdownAfter there.
+if ($Diag -and $InstallWim) { throw '-Diag needs the image mounted: not with -InstallWim (use -ShutdownAfter <seconds>)' }
 foreach ($need in $Cli, $vmrun, $vdisk, (Join-Path $setup 'sources\install.wim'), (Join-Path $setup 'efi\microsoft\boot\efisys_noprompt.bin')) {
     if (-not (Test-Path $need)) { throw "missing: $need" }
 }

@@ -265,6 +265,10 @@ void Canvas::drawIcon(icons::Icon icon, PointF topLeft, Ink ink, IconVariant var
     m_context->SetTransform(previous);
 }
 
+void Canvas::forgetFileIcons() {
+    fileIcons().bitmaps.clear();
+}
+
 bool Canvas::drawFileIcon(const std::wstring& file, int index, RectF rect, float opacity) {
     if (file.empty() || rect.width <= 0) {
         return false;

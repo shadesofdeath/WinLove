@@ -78,7 +78,7 @@ double estimateSeconds(OpKind kind) noexcept {
     case OpKind::SetRegistryFirstLogon: return 0.3;
     case OpKind::SetServiceStart: return 1.0;
     case OpKind::SetPostSetup: return 5.0; // scripts; copy payloads add their own time
-    case OpKind::RemoveComponent: return 25.0; // hive edit + package removal + a few thousand files
+    case OpKind::RemoveComponent: return 12.0; // 2026-10-07, a 310-item preset: 38 components, 9.8 s each (0.3–63 s)
     case OpKind::CleanupImage: return 30.0;    // StartComponentCleanup /ResetBase with nothing new to clean
     case OpKind::SetEdition: return 35.0;      // lab: Home → Pro 28 s
     case OpKind::SetTaskState:
@@ -97,12 +97,18 @@ double estimateSeconds(OpKind kind) noexcept {
 }
 
 double estimateSeconds(const ApplyPlan& plan, std::size_t step) noexcept {
-    const OpKind kind = plan.steps[step].operation.kind;
-    if (kind == OpKind::CleanupImage &&
-        std::ranges::any_of(plan.steps, [](const PlanStep& s) { return s.operation.kind == OpKind::AddPackage; })) {
+    const Operation& op = plan.steps[step].operation;
+    // Language files are no cumulative update (2026-10-07: en-US, 30 files in 64 s; the pack 19 s).
+    const auto languageFile = [](const Operation& o) { return o.kind == OpKind::AddPackage && o.value == L"language"; };
+    if (languageFile(op)) {
+        return classifyLanguageName(op.target).kind == LanguagePackFile::Kind::LanguagePack ? 20.0 : 3.0;
+    }
+    if (op.kind == OpKind::CleanupImage && std::ranges::any_of(plan.steps, [&](const PlanStep& s) {
+            return s.operation.kind == OpKind::AddPackage && !languageFile(s.operation);
+        })) {
         return 600.0; // the updates of this run left superseded versions behind
     }
-    return estimateSeconds(kind);
+    return estimateSeconds(op.kind);
 }
 
 std::vector<PlanGroup> groups(const ApplyPlan& plan) {
