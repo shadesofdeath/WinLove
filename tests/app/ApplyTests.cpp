@@ -3,7 +3,9 @@
 #include "app/ApplyReport.h"
 #include "app/Format.h"
 #include "app/controllers/ApplyController.h"
+#include "app/controllers/ImageSettingsController.h"
 #include "app/pages/ApplyPage.h"
+#include "app/pages/apply/RiskConfirm.h"
 
 #include <doctest.h>
 
@@ -84,6 +86,38 @@ TEST_CASE("ApplyController: high-risk list and canStart") {
     CHECK(controller.canStart());
     REQUIRE(controller.highRisk().size() == 1);
     CHECK(controller.highRisk()[0].target == L"OpenSSH.Client");
+}
+
+TEST_CASE("risk confirm rows: removals with their size, a high-risk setting once by its name") {
+    std::ifstream file(std::filesystem::path(WL_SOURCE_DIR) / L"resources/strings/en.json", std::ios::binary);
+    std::stringstream text;
+    text << file.rdbuf();
+    const Localization strings = Localization::fromJson(text.str()).value();
+    std::ifstream catalogFile(std::filesystem::path(WL_SOURCE_DIR) / L"resources/catalog/settings.json", std::ios::binary);
+    std::stringstream catalogText;
+    catalogText << catalogFile.rdbuf();
+    const ImageSettingsCatalog catalog = ImageSettingsCatalog::parse(catalogText.str()).value();
+
+    AppState state{scratch(L"recent-risk.json"), scratch(L"settings-risk.json")};
+    state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});
+    Operation winre{OpKind::RemoveCapability, L"OpenSSH.Client", L"", core::ops::Risk::High};
+    winre.sizeDelta = -(5ll << 20);
+    state.queue(winre);
+    // "Microsoft Defender (virus protection)": off is many registry writes (and services), all high risk.
+    const auto defender = std::ranges::find(catalog.settings(), "defender", &ImageSetting::id);
+    REQUIRE(defender != catalog.settings().end());
+    state.queueMany(ImageSettingsController::operationsFor(*defender, 0));
+
+    const auto risky = ApplyController(state, {[](std::function<void()> fn) { fn(); }, {}, {}, {}}).highRisk();
+    REQUIRE(risky.size() > 2);
+    const auto items = RiskConfirm::itemsFor(state, catalog, strings, Language::English, risky);
+    REQUIRE(items.size() == 2); // the removal, and Defender once — not one row per registry value
+    CHECK(items[0].removal);
+    CHECK(items[0].name == L"OpenSSH.Client");
+    CHECK(items[0].size == formatBytes(5ull << 20, Language::English));
+    CHECK_FALSE(items[1].removal);
+    CHECK(items[1].name == L"Microsoft Defender (virus protection)");
+    CHECK(items[1].size == L"Off");
 }
 
 TEST_CASE("apply report: one HTML page with the sizes and every step's result") {

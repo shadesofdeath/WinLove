@@ -10,6 +10,7 @@ the commands; this client only queues them and prints the answer.
     python tools/gui.py shot out.png [--hires] [--crop=x,y,w,h]          # DIPs; --hires keeps physical pixels
     python tools/gui.py click X Y [--right] [--double]                   # DIPs in the client area (= shot pixels)
     python tools/gui.py move X Y | wheel X Y NOTCHES | key enter esc ctrl+a ... | type "text"
+    python tools/gui.py resize W H           # the client area in DIPs (minimum size applies)
     python tools/gui.py dialog <path>        # fill the open / save / folder dialog the app shows and accept it
     python tools/gui.py dialog --cancel      # cancel it
     python tools/gui.py windows              # the app's top-level windows (dialogs) with their classes
@@ -322,6 +323,28 @@ def do_shot(args, cwd):
     return f"{out} {image.width}x{image.height} (scale {s:g})"
 
 
+def set_client_size(hwnd, w, h):
+    """Client size in DIPs: the frame of this custom-drawn window is the client area's border."""
+    s = scale_of(hwnd)
+    user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    window, client = wt.RECT(), wt.RECT()
+    user32.GetWindowRect(hwnd, ctypes.byref(window))
+    user32.GetClientRect(hwnd, ctypes.byref(client))
+    extra_w = (window.right - window.left) - client.right
+    extra_h = (window.bottom - window.top) - client.bottom
+    user32.SetWindowPos(hwnd, None, 0, 0, round(w * s) + extra_w, round(h * s) + extra_h, 0x0004 | 0x0010)  # NOZORDER | NOACTIVATE
+    time.sleep(0.5)
+
+
+def do_resize(args):
+    hwnd = main_window()
+    set_client_size(hwnd, int(args[0]), int(args[1]))
+    client = wt.RECT()
+    user32.GetClientRect(hwnd, ctypes.byref(client))
+    s = scale_of(hwnd)
+    return f"client {client.right / s:.0f}x{client.bottom / s:.0f} DIPs"
+
+
 def do_start(args, cwd):
     state = app_state()
     if state.get("pid") and process_alive(state["pid"]):
@@ -354,15 +377,8 @@ def do_start(args, cwd):
         raise RuntimeError("no window")
     s = scale_of(hwnd)
     w, h = (int(v) for v in size.split("x"))
-    # Client size in DIPs: the frame of this custom-drawn window is the client area's border.
-    user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-    window, client = wt.RECT(), wt.RECT()
-    user32.GetWindowRect(hwnd, ctypes.byref(window))
-    user32.GetClientRect(hwnd, ctypes.byref(client))
-    extra_w = (window.right - window.left) - client.right
-    extra_h = (window.bottom - window.top) - client.bottom
-    user32.SetWindowPos(hwnd, None, 0, 0, round(w * s) + extra_w, round(h * s) + extra_h, 0x0004 | 0x0010)  # NOZORDER | NOACTIVATE
-    time.sleep(0.5)
+    set_client_size(hwnd, w, h)
+    client = wt.RECT()
     log = None
     for _ in range(40):
         candidates = [p for p in LOGS.glob("WinLove-*.log") if p.stat().st_mtime >= started - 1]
@@ -524,7 +540,7 @@ def do_kill(_args):
 
 
 COMMANDS = {"click": do_click, "move": do_move, "wheel": do_wheel, "key": do_key, "type": do_type,
-            "dialog": do_dialog, "windows": do_windows, "wait-log": do_wait_log, "log": do_log, "mark": do_mark,
+            "dialog": do_dialog, "windows": do_windows, "wait-log": do_wait_log, "log": do_log, "mark": do_mark, "resize": do_resize,
             "close": do_close, "kill": do_kill}
 
 

@@ -240,6 +240,28 @@ TEST_CASE("preset diff: added, removed, changed; identical rows only on request;
     CHECK(f.controller.diff(a, a, false).empty());
 }
 
+TEST_CASE("preset diff: two settings writing one value are not told as a change against each other") {
+    // "Pages hidden in Settings" (a list) and "Custom page list" (typed) both write
+    // SettingsPageVisibility: one preset read twice showed "Custom page list" as changed (2026-10-07,
+    // the user's own preset against the queue it had just filled).
+    Fixture f;
+    Preset a;
+    f.choose(a.changes, "settings-home", "home-ai");
+    const auto items = f.controller.items(a);
+    REQUIRE(find(items, L"Pages hidden in Settings") != nullptr);
+    REQUIRE(find(items, L"Custom page list") != nullptr);
+    CHECK(f.controller.diff(a, a, false).empty());
+    Preset b = a;
+    CHECK(f.controller.diff(a, b, false).empty());
+    f.choose(b.changes, "settings-home", "home"); // a real change still shows, on the list's own row
+    const auto rows = f.controller.diff(a, b, false);
+    const auto list = std::ranges::find(rows, L"Pages hidden in Settings", &PresetController::DiffRow::label);
+    REQUIRE(list != rows.end());
+    CHECK(list->mark == Mark::Changed);
+    CHECK(list->a == L"Home and AI components");
+    CHECK(list->b == L"Home");
+}
+
 TEST_CASE("preset apply: operations into the queue, the answer file into the state; the queue needs a mount") {
     Fixture f;
     Preset preset;

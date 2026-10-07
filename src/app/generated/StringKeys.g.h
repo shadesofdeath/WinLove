@@ -35,8 +35,12 @@ enum class Str : std::uint16_t {
     ApplyCommitFailedBody,
     ApplyConfirmAck,
     ApplyConfirmBody,
+    ApplyConfirmBodyMixed,
+    ApplyConfirmBodySettings,
     ApplyConfirmGo,
+    ApplyConfirmGoSettings,
     ApplyConfirmTitle,
+    ApplyConfirmTitleRisky,
     ApplyDesc,
     ApplyDoneDesc,
     ApplyDoneTitle,
@@ -57,6 +61,8 @@ enum class Str : std::uint16_t {
     ApplyGainValue,
     ApplyGoFeatures,
     ApplyHighRiskBody,
+    ApplyHighRiskBodyMixed,
+    ApplyHighRiskBodySettings,
     ApplyHighRiskN,
     ApplyLiveLog,
     ApplyLogSaved,
@@ -1385,7 +1391,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1375;
+inline constexpr std::size_t kStrCount = 1381;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -1415,8 +1421,12 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "apply.commitFailedBody",
     "apply.confirmAck",
     "apply.confirmBody",
+    "apply.confirmBodyMixed",
+    "apply.confirmBodySettings",
     "apply.confirmGo",
+    "apply.confirmGoSettings",
     "apply.confirmTitle",
+    "apply.confirmTitleRisky",
     "apply.desc",
     "apply.doneDesc",
     "apply.doneTitle",
@@ -1437,6 +1447,8 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "apply.gainValue",
     "apply.goFeatures",
     "apply.highRiskBody",
+    "apply.highRiskBodyMixed",
+    "apply.highRiskBodySettings",
     "apply.highRiskN",
     "apply.liveLog",
     "apply.logSaved",

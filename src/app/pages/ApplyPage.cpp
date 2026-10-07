@@ -6,6 +6,7 @@
 
 #include "app/Format.h"
 #include "app/pages/LogsPage.h"
+#include "app/pages/apply/RiskConfirm.h"
 #include "ui/anim/Tween.h"
 
 #include <algorithm>
@@ -113,9 +114,10 @@ std::wstring ApplyPage::displayName(const AppState& state, const core::ops::Oper
     return op.target;
 }
 
-ApplyPage::ApplyPage(AppState& state, ApplyController& controller, const Localization& strings, Language language,
-                     Intents intents)
-    : m_state(state), m_controller(controller), m_strings(strings), m_language(language), m_intents(std::move(intents)),
+ApplyPage::ApplyPage(AppState& state, ApplyController& controller, const ImageSettingsCatalog& settings,
+                     const Localization& strings, Language language, Intents intents)
+    : m_state(state), m_controller(controller), m_settings(settings), m_strings(strings), m_language(language),
+      m_intents(std::move(intents)),
       m_mode(modeFor(state)) {
     setAccessible(ui::AccessRole::Group, strings.get(Str::ApplyTitle));
     switch (m_mode) {
@@ -284,16 +286,22 @@ void ApplyPage::buildSummary() {
 
     const auto risky = m_controller.highRisk();
     if (!risky.empty()) {
+        const auto named = RiskConfirm::itemsFor(m_state, m_settings, m_strings, m_language, risky);
         std::wstring items;
-        for (std::size_t i = 0; i < risky.size() && i < 3; ++i) {
-            items += (i ? L", " : L"") + displayName(m_state, risky[i]);
+        for (std::size_t i = 0; i < named.size() && i < 3; ++i) {
+            items += (i ? L", " : L"") + named[i].name;
         }
-        if (risky.size() > 3) {
+        if (named.size() > 3) {
             items += L" …";
         }
+        const bool removals = std::ranges::any_of(named, &RiskConfirm::Item::removal);
+        const bool settings = std::ranges::any_of(named, [](const RiskConfirm::Item& i) { return !i.removal; });
         m_riskBar = &add<ui::InfoBar>(ui::InfoKind::Warning,
-                                      m_strings.format(Str::ApplyHighRiskN, {{L"n", std::to_wstring(risky.size())}}),
-                                      m_strings.format(Str::ApplyHighRiskBody, {{L"items", items}}),
+                                      m_strings.format(Str::ApplyHighRiskN, {{L"n", std::to_wstring(named.size())}}),
+                                      m_strings.format(!settings  ? Str::ApplyHighRiskBody
+                                                       : removals ? Str::ApplyHighRiskBodyMixed
+                                                                  : Str::ApplyHighRiskBodySettings,
+                                                       {{L"items", items}}),
                                       m_strings.get(Str::CommonClose));
         m_riskBar->setAction(m_strings.get(Str::ApplyReview), m_intents.review);
         m_riskBar->onClose = [this] {

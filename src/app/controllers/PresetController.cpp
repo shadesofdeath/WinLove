@@ -305,8 +305,12 @@ std::vector<PresetController::DiffRow> PresetController::diff(const Preset& a, c
         return x.key == y.key || (!x.alias.empty() && (x.alias == y.key || x.alias == y.alias)) ||
                (!y.alias.empty() && y.alias == x.key);
     };
+    // The same setting first: two settings can write one value ("Ayarlar'da gizlenen sayfalar" and
+    // "Özel sayfa listesi"), and through the alias each would find the other.
     auto counterpart = [&](const std::vector<Item>& side, const Item& item) {
-        return std::ranges::find_if(side, [&](const Item& candidate) { return same(item, candidate); });
+        const auto exact = std::ranges::find(side, item.key, &Item::key);
+        return exact != side.end() ? exact
+                                   : std::ranges::find_if(side, [&](const Item& candidate) { return same(item, candidate); });
     };
     std::vector<DiffRow> rows;
     for (const auto& item : left) {

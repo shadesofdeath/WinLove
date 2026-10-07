@@ -4,6 +4,7 @@
 // Running (2px progress, step list, live log), Done (result InfoBar, counters, per-group
 // results) and Empty. The header actions belong to the Shell and follow the mode.
 #include "app/Localization.h"
+#include "app/catalog/ImageSettingsCatalog.h"
 #include "app/controllers/ApplyController.h"
 #include "app/pages/apply/StatStrip.h"
 #include "ui/widgets/Checkbox.h"
@@ -27,8 +28,8 @@ public:
         std::function<void()> goFeatures;
     };
 
-    ApplyPage(AppState& state, ApplyController& controller, const Localization& strings, Language language,
-              Intents intents);
+    ApplyPage(AppState& state, ApplyController& controller, const ImageSettingsCatalog& settings,
+              const Localization& strings, Language language, Intents intents);
     ~ApplyPage() override;
 
     [[nodiscard]] Mode mode() const noexcept { return m_mode; }
@@ -62,6 +63,7 @@ private:
 
     AppState& m_state;
     ApplyController& m_controller;
+    const ImageSettingsCatalog& m_settings; // names the high-risk settings (risk bar)
     const Localization& m_strings;
     Language m_language;
     Intents m_intents;

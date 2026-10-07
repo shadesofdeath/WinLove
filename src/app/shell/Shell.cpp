@@ -1186,20 +1186,21 @@ void Shell::showApplyConfirm() {
     if (!host() || !m_apply->canStart()) {
         return;
     }
-    std::vector<RiskConfirm::Item> items;
-    for (const auto& op : m_apply->highRisk()) {
-        items.push_back({ApplyPage::displayName(m_state, op),
-                         op.sizeDelta < 0 ? formatBytes(static_cast<std::uint64_t>(-op.sizeDelta), m_language)
-                                          : std::wstring()});
-    }
-    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::ApplyConfirmTitle), m_strings.get(Str::ApplyConfirmBody),
-                                               ui::icons::Icon::ErrorOctagon, ui::tokens::Color::StatusError);
+    const auto risky = m_apply->highRisk();
+    std::vector<RiskConfirm::Item> items = RiskConfirm::itemsFor(m_state, m_imageSettings->catalog(), m_strings, m_language, risky);
+    // Irreversible removals, high-risk settings, or both: the title, text and button say which.
+    const bool removals = std::ranges::any_of(items, &RiskConfirm::Item::removal);
+    const bool settings = std::ranges::any_of(items, [](const RiskConfirm::Item& i) { return !i.removal; });
+    auto dialog = std::make_unique<ui::Dialog>(
+        m_strings.get(settings ? Str::ApplyConfirmTitleRisky : Str::ApplyConfirmTitle),
+        m_strings.get(!settings ? Str::ApplyConfirmBody : removals ? Str::ApplyConfirmBodyMixed : Str::ApplyConfirmBodySettings),
+        ui::icons::Icon::ErrorOctagon, ui::tokens::Color::StatusError);
     ui::Dialog* raw = dialog.get();
     const std::size_t count = items.size();
     auto& content = raw->setContent<RiskConfirm>(RiskConfirm::heightFor(count), std::move(items),
                                                  m_strings.get(Str::ApplyConfirmAck));
     raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
-    ui::Button& go = raw->addButton(ui::ButtonKind::Danger, m_strings.get(Str::ApplyConfirmGo),
+    ui::Button& go = raw->addButton(ui::ButtonKind::Danger, m_strings.get(removals ? Str::ApplyConfirmGo : Str::ApplyConfirmGoSettings),
                                     [this, raw] {
                                         host()->popModal(raw);
                                         m_apply->start();
@@ -1929,7 +1930,7 @@ void Shell::showPage(PageId page) {
                     .onInvoke = [this] { showPage(PageId::Iso); };
             }
             auto& body = m_pageView->setBody<ApplyPage>(
-                m_state, *m_apply, m_strings, m_language,
+                m_state, *m_apply, m_imageSettings->catalog(), m_strings, m_language,
                 ApplyPage::Intents{[this] { showApplyConfirm(); }, [this] { showPage(PageId::Images); },
                                    [this] { showPage(PageId::Features); }});
             m_pageBody = &body;
