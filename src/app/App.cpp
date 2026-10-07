@@ -255,6 +255,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoCatalog = std::wstring(value(L"--demo-catalog="));
         } else if (a == L"--demo-components") {
             options.demoComponents = true;
+        } else if (a == L"--demo-compat") {
+            options.demoCompat = true;
         } else if (a == L"--demo-features") {
             options.demoFeatures = true;
         } else if (a == L"--demo-logs") {
@@ -533,6 +535,14 @@ int App::renderOffscreen() {
             app(L"Microsoft.VCLibs.140.00", L"14.0.33519.0", 6), app(L"Microsoft.WindowsCalculator", L"11.2409.0.0", 14),
             app(L"Contoso.Unknown", L"1.0.0.0", 3),
         };
+        // D-082: what they need, as Windows 10 22H2 lists it (there VCLibs is a provisioned package).
+        for (auto& item : items) {
+            const std::wstring& id = item.package.displayName;
+            if (id == L"Microsoft.WindowsStore" || id == L"Microsoft.WindowsCalculator" || id == L"Microsoft.Windows.Photos" ||
+                id == L"Microsoft.ZuneMusic" || id == L"Microsoft.BingWeather") {
+                item.needs = {L"Microsoft.VCLibs.140.00"};
+            }
+        }
         // Sizes as measured in Windows 11 25H2 (26200.8037) Pro.
         constexpr std::uint64_t mb = 1024 * 1024;
         m_state->setSystemComponents(AppState::SystemComponents{
@@ -566,6 +576,9 @@ int App::renderOffscreen() {
             }
         }
         m_shell->showPage(m_options.page.value_or(PageId::Components));
+        if (m_options.demoCompat) {
+            m_shell->showCompat();
+        }
     }
     if (m_options.demoFeatures) {
         using core::OptionalFeature;

@@ -594,12 +594,18 @@ int cmdAppx(const std::wstring& dir, bool asJson) {
     }
     json out = json::array();
     for (const auto& a : *list) {
+        std::wstring needs;
+        json needsJson = json::array();
+        for (const auto& n : a.needs) {
+            needs += (needs.empty() ? L"" : L", ") + n;
+            needsJson.push_back(narrow(n));
+        }
         if (asJson) {
             out.push_back({{"packageName", narrow(a.package.packageName)}, {"name", narrow(a.package.displayName)},
                            {"version", narrow(a.package.version)}, {"architecture", a.package.architecture},
-                           {"size", a.size}});
+                           {"size", a.size}, {"needs", needsJson}});
         } else {
-            print(std::format(L"  {:>12}  {}\n", a.size, a.package.packageName));
+            print(std::format(L"  {:>12}  {}{}\n", a.size, a.package.packageName, needs.empty() ? L"" : L"\n                needs " + needs));
         }
     }
     if (asJson) {

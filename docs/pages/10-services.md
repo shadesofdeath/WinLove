@@ -34,6 +34,10 @@ Bağlı imajdaki Win32 servislerinin başlangıç türünü değiştirmek (kuyru
 - Kullanıcı servis şablonları (Type 0x50/0x60) listede; örnek başına (_xxxx) ayarlar yok (çevrimdışı imajda örnek yok).
 - Kurcalama korumalı servisler (WinDefend vb.) ilk açılışta Windows tarafından geri alınabilir.
 
+- **Uyumluluk (D-082):** açık bir korumanın servisi (Windows Update → wuauserv, Yazdırma → Spooler …) "Devre dışı"
+  yapılamaz: seçim kutusunda kilit, seçilirse uyarı ("Korunuyor: …", Bileşenler › Uyumluluk'tan değişir). El ile /
+  otomatik serbest. Koruma sonradan açılırsa kuyruktaki devre dışı bırakma çıkar.
+
 ## 5. Kabul
 - [ ] Bağlı imajda liste gelir, adlar Türkçe çözülür.
 - [ ] DiagTrack → Devre dışı → Uygula → `wlcli services <mount>` (veya yeniden bağla) "disabled" gösterir.

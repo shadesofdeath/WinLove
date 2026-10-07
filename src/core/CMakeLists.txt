@@ -55,6 +55,7 @@ add_library(wl_core STATIC
     ops/ApplyJob.cpp
     ops/Applier.cpp
     ops/ChangeSet.cpp
+    ops/Compat.cpp
     ops/Planner.cpp
     postsetup/PostSetup.cpp
     programs/Winget.cpp

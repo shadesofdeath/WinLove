@@ -8,6 +8,7 @@
 #include "app/catalog/AppxCatalog.h"
 #include "app/catalog/ComponentCatalog.h"
 #include "app/state/AppState.h"
+#include "core/ops/Compat.h"
 
 #include <functional>
 #include <memory>
@@ -59,6 +60,12 @@ public:
     [[nodiscard]] Check check(const Group& group) const;
     void toggle(const Item& item);
     void toggleGroup(const Group& group);
+    // D-082: what keeps an item out of the queue (the CompatController); empty for an item that is
+    // queued or when nothing does. A group check box passes over held items; a click on one calls
+    // `onBlocked` instead of queueing it.
+    std::function<core::ops::CompatBlock(const core::ops::Operation&)> blockOf;
+    std::function<void(const Item&, const core::ops::CompatBlock&)> onBlocked;
+    [[nodiscard]] core::ops::CompatBlock block(const Item& item) const;
     void resetChanges();
     [[nodiscard]] std::size_t queuedCount() const;   // component operations of every kind
     [[nodiscard]] std::uint64_t queuedBytes() const;  // their size

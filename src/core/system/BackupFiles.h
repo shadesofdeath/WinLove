@@ -6,6 +6,7 @@
 // folders (junctions, symlinks) are never entered; a mounted WIM's own reparse files are files.
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -17,5 +18,7 @@ namespace wl::core {
 [[nodiscard]] std::vector<std::wstring> backupListFolders(const std::filesystem::path& folder);
 // Names of the direct files (same access rules).
 [[nodiscard]] std::vector<std::wstring> backupListFiles(const std::filesystem::path& folder);
+// The bytes of a file (same access rules); nothing when it cannot be read or is larger than `limit`.
+[[nodiscard]] std::optional<std::string> backupReadFile(const std::filesystem::path& file, std::size_t limit);
 
 } // namespace wl::core

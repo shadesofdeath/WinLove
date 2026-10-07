@@ -108,12 +108,27 @@ bool ServiceController::changed(const ServiceEntry& service) const {
     return m_state.changes().find(OpKind::SetServiceStart, service.name) != nullptr;
 }
 
-void ServiceController::set(const ServiceEntry& service, StartType start) {
+bool ServiceController::guarded(const ServiceEntry& service) const {
+    return blockOf && service.start != StartType::Disabled &&
+           !blockOf(operationFor(service, StartType::Disabled, Risk::Low)).guards.empty();
+}
+
+bool ServiceController::set(const ServiceEntry& service, StartType start) {
     if (start == service.start) {
         m_state.unqueue(OpKind::SetServiceStart, service.name);
-        return;
+        return true;
     }
-    m_state.queue(operationFor(service, start, risk(service)));
+    Operation op = operationFor(service, start, risk(service));
+    if (blockOf) {
+        if (const auto block = blockOf(op); !block.empty()) {
+            if (onBlocked) {
+                onBlocked(service, block);
+            }
+            return false;
+        }
+    }
+    m_state.queue(std::move(op));
+    return true;
 }
 
 void ServiceController::resetChanges() {

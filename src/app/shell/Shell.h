@@ -5,6 +5,7 @@
 // (interaction.md "Kısayollar"), the source-opening flow, P02 image operations (through
 // ImageController), dialogs and the toast.
 #include "app/Localization.h"
+#include "app/controllers/CompatController.h"
 #include "app/controllers/ApplyController.h"
 #include "app/controllers/ComponentController.h"
 #include "app/controllers/IconPatchController.h"
@@ -76,6 +77,7 @@ class AboutPage;
 
 class Shell : public ui::Widget {
 public:
+    void showCompat(); // D-082: the Uyumluluk dialog (Bileşenler)
     // Everything the shell needs from the window/app, as plain callbacks (keeps it testable and
     // usable from the headless --render path).
     struct Services {
@@ -337,12 +339,14 @@ private:
     std::unique_ptr<UnattendController> m_unattend; // P13 answer file
     std::unique_ptr<PostSetupController> m_postSetup; // P14 steps
     std::unique_ptr<ProgramsController> m_programs;   // D-078 winget programs
+    std::unique_ptr<CompatController> m_compat;       // D-082 compatibility guards
     std::unique_ptr<PresetController> m_presets;      // P15 library
     std::unique_ptr<PreloadController> m_preload; // reads the page lists right after a mount
     std::unique_ptr<ImageValuesController> m_imageValues; // what the image already has (D-045)
     std::unique_ptr<PaletteIndex> m_palette;      // P18: what Ctrl+K searches
     ui::Widget* m_sideInspector = nullptr; // pages other than Images (Components)
     ui::Button* m_actionExpand = nullptr;  // Components: "Tümünü genişlet / daralt"
+    ui::Button* m_actionCompat = nullptr;  // Components: "Uyumluluk · N" (D-082)
     ui::Button* m_actionIso = nullptr; // ISO page: "ISO Oluştur" / "İptal"
     int m_applyMode = -1; // ApplyPage::Mode the Apply page was built for
     ui::Button* m_actionReset = nullptr; // Özellikler: "Değişiklikleri sıfırla"

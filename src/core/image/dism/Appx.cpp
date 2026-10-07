@@ -1,10 +1,13 @@
 #include "core/image/dism/Appx.h"
 
 #include "base/Log.h"
+#include "base/Utf8.h"
 #include "core/image/OfflineHive.h"
 #include "core/image/RegistryEdit.h"
 #include "core/system/BackupFiles.h"
 #include "core/system/Privileges.h"
+
+#include <pugixml.hpp>
 
 #include <windows.h>
 
@@ -35,7 +38,7 @@ Result<std::vector<AppxComponent>> readAppx(Dism& dism, const std::filesystem::p
         if (task.cancel.cancelled()) {
             return fail(ErrorCode::Cancelled, L"reading apps cancelled", mountDir.wstring());
         }
-        AppxComponent item{(*packages)[i], 0};
+        AppxComponent item{(*packages)[i], 0, {}};
         // Main + resource + per-architecture packages share the "<Name>_" prefix.
         const std::wstring prefix = item.package.displayName + L"_";
         for (const auto& folder : folders) {
@@ -43,8 +46,21 @@ Result<std::vector<AppxComponent>> readAppx(Dism& dism, const std::filesystem::p
                 CompareStringOrdinal(folder.c_str(), static_cast<int>(prefix.size()), prefix.c_str(),
                                      static_cast<int>(prefix.size()), TRUE) == CSTR_EQUAL) {
                 item.size += backupFolderSize(windowsApps / folder);
+                // A bundle's folder ("_~_") has only AppxMetadata\; the packages in it carry the manifests.
+                if (folder.find(L"_~_") == std::wstring::npos) {
+                    if (auto manifest = backupReadFile(windowsApps / folder / L"AppxManifest.xml", 4u << 20)) {
+                        for (auto& need : parseAppxDependencies(*manifest)) {
+                            item.needs.push_back(std::move(need));
+                        }
+                    }
+                }
             }
         }
+        std::ranges::sort(item.needs, [](const std::wstring& a, const std::wstring& b) { return _wcsicmp(a.c_str(), b.c_str()) < 0; });
+        item.needs.erase(std::ranges::unique(item.needs, [](const std::wstring& a, const std::wstring& b) {
+                             return _wcsicmp(a.c_str(), b.c_str()) == 0;
+                         }).begin(),
+                         item.needs.end());
         result.push_back(std::move(item));
         task.report(static_cast<double>(i + 1) / static_cast<double>(packages->size()), L"appx");
     }
@@ -53,6 +69,32 @@ Result<std::vector<AppxComponent>> readAppx(Dism& dism, const std::filesystem::p
     log::info("dism", std::format(L"{} provisioned apps read in {} ms ({} WindowsApps folders)", result.size(), ms,
                                   folders.size()));
     return result;
+}
+
+std::vector<std::wstring> parseAppxDependencies(std::string_view manifestXml) {
+    pugi::xml_document doc;
+    if (!doc.load_buffer(manifestXml.data(), manifestXml.size())) {
+        return {};
+    }
+    auto local = [](const char* name) {
+        const std::string_view n(name);
+        const auto colon = n.find(':');
+        return colon == std::string_view::npos ? n : n.substr(colon + 1);
+    };
+    std::vector<std::wstring> out;
+    for (const auto& dependencies : doc.document_element().children()) {
+        if (local(dependencies.name()) != "Dependencies") {
+            continue;
+        }
+        for (const auto& dependency : dependencies.children()) {
+            if (local(dependency.name()) == "PackageDependency") {
+                if (const std::string name = dependency.attribute("Name").as_string(); !name.empty()) {
+                    out.push_back(utf8::toWide(name));
+                }
+            }
+        }
+    }
+    return out;
 }
 
 // ---- removal without DISM ----------------------------------------------------------------------

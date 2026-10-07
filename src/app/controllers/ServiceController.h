@@ -5,6 +5,7 @@
 // removes the queued operation. Risk and notes come from resources/catalog/services.json.
 #include "app/Localization.h"
 #include "app/state/AppState.h"
+#include "core/ops/Compat.h"
 
 #include <functional>
 #include <map>
@@ -28,7 +29,13 @@ public:
     // The start type the image will have after Uygula (queued or current).
     [[nodiscard]] core::StartType target(const core::ServiceEntry& service) const;
     [[nodiscard]] bool changed(const core::ServiceEntry& service) const;
-    void set(const core::ServiceEntry& service, core::StartType start);
+    // Returns false when a compatibility guard keeps the service from being disabled (D-082):
+    // `onBlocked` has said why, nothing was queued.
+    bool set(const core::ServiceEntry& service, core::StartType start);
+    std::function<core::ops::CompatBlock(const core::ops::Operation&)> blockOf;
+    std::function<void(const core::ServiceEntry&, const core::ops::CompatBlock&)> onBlocked;
+    // A guard keeps this service from being disabled (the page shows a lock in its choice).
+    [[nodiscard]] bool guarded(const core::ServiceEntry& service) const;
     void resetChanges();
     [[nodiscard]] std::size_t queuedCount() const;
 

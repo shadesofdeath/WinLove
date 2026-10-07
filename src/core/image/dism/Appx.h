@@ -15,7 +15,13 @@ namespace wl::core {
 struct AppxComponent {
     AppxEntry package;
     std::uint64_t size = 0; // 0 = unknown
+    // D-082: the packages it cannot run without — <PackageDependency Name="…"> of its AppxManifest.xml
+    // ("Microsoft.VCLibs.140.00", "Microsoft.UI.Xaml.2.8"), identity names, sorted, no repeats.
+    std::vector<std::wstring> needs;
 };
+
+// The <PackageDependency Name="…"> of an AppxManifest.xml (any namespace prefix), in file order.
+[[nodiscard]] std::vector<std::wstring> parseAppxDependencies(std::string_view manifestXml);
 
 [[nodiscard]] Result<std::vector<AppxComponent>> readAppx(Dism& dism, const std::filesystem::path& mountDir,
                                                           const TaskContext& task);

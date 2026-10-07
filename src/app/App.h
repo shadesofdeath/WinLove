@@ -64,6 +64,7 @@ struct LaunchOptions {
     bool demoLogs = false;     // render: fill the log with the design's sample lines (screen 18)
     bool demoFeatures = false; // render: fake mount + screen 05 sample features
     bool demoComponents = false; // render: fake mount + sample provisioned apps (screen 04)
+    bool demoCompat = false;     // with --demo-components: the Uyumluluk dialog open (D-082)
     bool demoRegistry = false;   // render: fake mount + typed values and an imported .reg (D-067)
     bool demoRegistryDialog = false; // --demo-registry=dialog: the first value open in "Değeri düzenle"
     bool demoServices = false;   // render: fake mount + sample services (09)

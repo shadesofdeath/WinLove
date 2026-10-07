@@ -241,6 +241,34 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-082 — Uyumluluk korumaları: kalan uygulamaların çalışma zamanları ve kullanıcının açtığı korumalar (2026-10-07)
+Bağlam: NTLite eksik listesinden kullanıcının seçtiği (3). Bir kaldırma ya da devre dışı servis, imajda kalan bir uygulamanın
+ya da kullanıcının istediği bir özelliğin (güncelleme, yazdırma, Wi-Fi …) çalışmasını bozabiliyordu; sayfa yalnız notla uyarıyordu.
+Karar:
+- **Kalan uygulamaların çalışma zamanları (her zaman):** uygulama listesiyle birlikte her paketin `AppxManifest.xml`'i
+  (WindowsApps, yedekleme semantiği) okunur, `<PackageDependency Name>`'leri `AppxComponent::needs`. Kalan bir uygulamanın
+  ihtiyaç duyduğu paket kaldırılamaz; uygulamalar da kuyruktaysa serbest. Ölçüm: 25H2 Pro'da 48 hazır uygulamanın 36'sı
+  VCLibs / UI.Xaml / NET.Native / WindowsAppRuntime'a bağlı ama bunlar **hazır paket listesinde değil** (kaldırılamaz,
+  kilit gerekmez); Windows 10 22H2 Pro'da `Microsoft.VCLibs.140.00` listede ve 40 uygulamanın 39'u ona bağlı — kilit orada.
+- **Uyumluluk korumaları** (`resources/catalog/compat.json`, 13 koruma; açık olanlar `settings.json` → `guards`, yeni
+  kullanıcıda katalog varsayılanı): Windows Update, Store ve uygulama kurulumu, Yazdırma, Wi-Fi ve Bluetooth, Ses, Edge
+  tabanlı uygulamalar (WebView2), Kurtarma (varsayılan açık); Windows Güvenliği, Xbox, Ağ paylaşımı, Uzak Masaüstü, Kamera,
+  Doğu Asya metni (kapalı). Her biri uygulama önekleri, `components.json` kimlikleri (WinSxS küçültme, derin kaldırma, WinRE,
+  WebView2 …) ve **devre dışı bırakılamayacak** servisler sayar (el ile / otomatik serbest). Yalnız kesin bağımlılıklar:
+  fazlası kullanıcıyı kapatmaya iter, eksiği imajı bozar.
+- **Programlar sayfası:** program seçiliyken App Installer kaldırılamaz (pencere winget ile kurar) — otomatik koruma.
+- **Uygulama:** Bileşenler'de tutulan satır kilit simgesi + soluk kutu; tıklayınca uyarı; grup kutusu tutulanları atlar;
+  Inspector "UYUMLULUK" bölümünde neden ("Korunuyor: …" / "Kullanan: …") ve nereden değişir. Başlıkta "Uyumluluk · N" →
+  pencere (koruma · neyi korur, kutular, Kaydet). Servisler'de korunan servisin seçim kutusunda kilit, "Devre dışı" reddedilir.
+  Kuyruk her değiştiğinde (koruma açıldı, bir uygulama kuyruktan geri alındı, preset, Ayarlar / Tweaks, geri al) artık
+  tutulan işlemler kuyruktan çıkar ve uyarı ne çıktığını söyler (`CompatController`, çekirdek kural: `core/ops/Compat`).
+Kanıt: 340 test (çekirdek kural, manifest ayrıştırma, katalog: her bileşen kimliği ve uygulama öneki gerçek kataloglarda;
+denetleyici: Store kilidi, VCLibs'in uygulamalarla serbest kalıp Hesap Makinesi geri alınınca çıkması, Programlar → App
+Installer, Spooler / WlanSvc). Gerçek imaj: 25H2 ve Windows 10 bağımlılık grafiği `wlcli appx` ile; korumalardaki 38 servis
+adının hepsi 25H2 imajında var.
+Görülmeyen: bir korumanın bozduğunu söylediği şeyin VM'de bozulduğu (servisler bilinen Windows davranışı; VCLibs bağımlılığı
+Microsoft'un manifest beyanı).
+
 ## D-081 — Modlu Windows: DISM / wimgapi yedeği, sağlık uyarısı, okunamayan ESD'nin açıklaması (2026-10-07)
 Bağlam: bir kullanıcıda ESD → WIM "İşlem başarısız (0x8007000B) wimgapi call failed" (install.esd, iki sürüm, 22631.3007).
 WinLove `dismapi.dll` / `wimgapi.dll`'i ana makinenin System32'sinden yükler (D-017); kullanıcının sorusu: "modlu

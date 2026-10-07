@@ -19,6 +19,7 @@
 #include "app/pages/RegistryPage.h"
 #include "app/pages/StartMenuPage.h"
 #include "app/pages/SettingsPage.h"
+#include "app/pages/components/CompatDialog.h"
 #include "app/pages/components/ComponentInspector.h"
 #include "app/pages/FeaturesPage.h"
 #include "app/pages/apply/RiskConfirm.h"
@@ -230,6 +231,38 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         auto catalog = ProgramCatalog::parse(embeddedProgramsCatalog());
         m_programs = std::make_unique<ProgramsController>(m_state, *m_postSetup, catalog ? std::move(*catalog) : ProgramCatalog{},
                                                           m_strings, m_language, ProgramsController::Events{m_services.postToUi});
+    }
+    {
+        // D-082. Without the resource (tools, tests): no guards, the kept apps' runtimes still hold.
+        auto catalog = CompatCatalog::parse(embeddedCompatCatalog());
+        m_compat = std::make_unique<CompatController>(m_state, m_strings, m_language, catalog ? std::move(*catalog) : CompatCatalog{},
+                                                      m_components->catalog(), *m_postSetup);
+        m_compat->describe = [this](const core::ops::Operation& op) -> std::wstring {
+            switch (op.kind) {
+            case core::ops::OpKind::RemoveAppx: return op.value.empty() ? op.target : op.value;
+            case core::ops::OpKind::RemoveComponent:
+            case core::ops::OpKind::CleanupImage:
+            case core::ops::OpKind::ShrinkStore:
+                if (const auto* entry = m_components->systemCatalog().find(utf8::fromWide(op.target))) {
+                    return entry->name.get(m_language);
+                }
+                return op.target;
+            default: return op.target;
+            }
+        };
+        m_compat->onDropped = [this](const std::wstring& title, const std::wstring& body) {
+            showToast(ui::InfoKind::Warning, title, body);
+        };
+        auto blockOf = [this](const core::ops::Operation& op) { return m_compat->block(op); };
+        m_components->blockOf = blockOf;
+        m_components->onBlocked = [this](const ComponentController::Item& item, const core::ops::CompatBlock& block) {
+            showToast(ui::InfoKind::Warning, item.name, m_compat->explain(block));
+        };
+        m_serviceCtl->blockOf = blockOf;
+        m_serviceCtl->onBlocked = [this](const core::ServiceEntry& service, const core::ops::CompatBlock& block) {
+            showToast(ui::InfoKind::Warning, service.displayName.empty() ? service.name : service.displayName,
+                      m_compat->explain(block) + L" " + m_strings.get(Str::CompatLockedHint));
+        };
     }
     m_presets = std::make_unique<PresetController>(m_state, m_imageSettings->catalog(), m_strings, m_language,
                                                    PresetController::defaultFolder());
@@ -675,6 +708,25 @@ void Shell::showUpdateOffers(const core::CatalogTarget& target, std::vector<core
     showModal(slot, std::move(built.dialog), built.initialFocus);
 }
 
+void Shell::showCompat() {
+    const ModalSlot slot = modalSlot();
+    CompatDialogActions actions;
+    actions.close = slot.close;
+    actions.save = [this](std::vector<std::wstring> on) {
+        m_compat->setGuards(on);
+        if (auto* page = componentsPage()) {
+            if (m_actionCompat) {
+                m_actionCompat->setText(m_strings.format(Str::CompatAction, {{L"n", std::to_wstring(m_compat->onCount())}}));
+                m_pageView->layout();
+            }
+            page->refresh();
+            updateComponentInspector();
+        }
+    };
+    CompatDialog built = makeCompatDialog(m_strings, m_language, m_compat->catalog(), m_compat->onIds(), std::move(actions));
+    showModal(slot, std::move(built.dialog), built.initialFocus);
+}
+
 void Shell::updateComponentInspector() {
     auto* page = componentsPage();
     auto* inspector = dynamic_cast<ComponentInspector*>(m_sideInspector);
@@ -684,7 +736,13 @@ void Shell::updateComponentInspector() {
     const auto item = page->selectedItem();
     const bool queued = item && m_components->queued(*item);
     const bool wasVisible = inspector->visible();
-    inspector->set(item, page->selectedGroupName(), queued);
+    std::wstring held;
+    if (item) {
+        if (const auto block = m_components->block(*item); !block.empty()) {
+            held = m_compat->explain(block) + L"\n" + m_strings.get(Str::CompatLockedHint);
+        }
+    }
+    inspector->set(item, page->selectedGroupName(), queued, std::move(held));
     inspector->setVisible(item.has_value());
     if (wasVisible != inspector->visible()) {
         layout();
@@ -1540,6 +1598,10 @@ void Shell::showPage(PageId page) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsLoadPreset),
                                   ui::icons::Icon::PresetBookmark)
                 .onInvoke = [this] { loadPreset(); };
+            m_actionCompat = &m_pageView->addAction(
+                ui::ButtonKind::Secondary,
+                m_strings.format(Str::CompatAction, {{L"n", std::to_wstring(m_compat->onCount())}}), ui::icons::Icon::ShieldCheck);
+            m_actionCompat->onInvoke = [this] { showCompat(); };
             m_actionExpand = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsCollapseAll));
             m_actionExpand->onInvoke = [this] {
                 if (auto* p = componentsPage()) {

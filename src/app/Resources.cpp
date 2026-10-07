@@ -66,6 +66,10 @@ std::string_view embeddedProgramsCatalog() {
     return resourceBytes(IDR_CATALOG_PROGRAMS);
 }
 
+std::string_view embeddedCompatCatalog() {
+    return resourceBytes(IDR_CATALOG_COMPAT);
+}
+
 HICON appIcon() {
     return LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_WINLOVE));
 }

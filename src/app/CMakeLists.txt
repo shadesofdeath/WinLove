@@ -5,9 +5,11 @@ add_library(wl_app STATIC
     catalog/AppxCatalog.cpp
     catalog/ComponentCatalog.cpp
     catalog/ProgramCatalog.cpp
+    catalog/CompatCatalog.cpp
     catalog/ImageSettingsCatalog.cpp
     controllers/ApplyController.cpp
     controllers/ComponentController.cpp
+    controllers/CompatController.cpp
     controllers/FeatureController.cpp
     controllers/ServiceController.cpp
     controllers/RegistryController.cpp
@@ -43,6 +45,7 @@ add_library(wl_app STATIC
     pages/GalleryPage.cpp
     pages/apply/RiskConfirm.cpp
     pages/apply/StatStrip.cpp
+    pages/components/CompatDialog.cpp
     pages/components/ComponentInspector.cpp
     pages/ApplyPage.cpp
     pages/ComponentsPage.cpp
@@ -120,6 +123,7 @@ set(WL_EMBEDDED_RESOURCES
     ${PROJECT_SOURCE_DIR}/resources/catalog/settings.json
     ${PROJECT_SOURCE_DIR}/resources/catalog/components.json
     ${PROJECT_SOURCE_DIR}/resources/catalog/programs.json
+    ${PROJECT_SOURCE_DIR}/resources/catalog/compat.json
     ${PROJECT_SOURCE_DIR}/resources/strings/tr.json
     ${PROJECT_SOURCE_DIR}/resources/strings/en.json)
 set_source_files_properties(WinLove.rc PROPERTIES OBJECT_DEPENDS "${WL_EMBEDDED_RESOURCES}")

@@ -18,7 +18,8 @@ public:
 
     std::function<void()> onToggle;
 
-    void set(std::optional<ComponentController::Item> item, std::wstring group, bool queued);
+    // `held`: why a guard or a kept app keeps the item (D-082); empty when nothing does.
+    void set(std::optional<ComponentController::Item> item, std::wstring group, bool queued, std::wstring held = {});
     [[nodiscard]] static ui::icons::Icon iconOf(ComponentController::Item::Kind kind) noexcept;
 
     void layout() override;
@@ -30,6 +31,7 @@ private:
     std::optional<ComponentController::Item> m_item;
     std::wstring m_group;
     bool m_queued = false;
+    std::wstring m_held;
     ui::Button* m_toggle = nullptr;
 };
 

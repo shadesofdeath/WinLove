@@ -95,3 +95,32 @@ TEST_CASE("boot image: the checks that are on become LabConfig values; an empty 
     const auto missing = setupImageIndex(std::filesystem::temp_directory_path() / L"wl-tests" / L"no-boot.wim");
     CHECK_FALSE(missing.has_value());
 }
+
+TEST_CASE("appx: the packages an app needs are its manifest's PackageDependency names (D-082)") {
+    // Microsoft.WindowsStore's manifest as 25H2 ships it (shortened): default namespace, other
+    // namespaces around, a TargetDeviceFamily that is not a package.
+    const std::string_view store = R"(<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10">
+  <Identity Name="Microsoft.WindowsStore" Publisher="CN=Microsoft Corporation" Version="22509.1401.1.0" ProcessorArchitecture="x64"/>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0"/>
+    <PackageDependency Name="Microsoft.NET.Native.Framework.2.2" MinVersion="2.2.29512.0" Publisher="CN=Microsoft Corporation"/>
+    <PackageDependency Name="Microsoft.NET.Native.Runtime.2.2" MinVersion="2.2.28604.0" Publisher="CN=Microsoft Corporation"/>
+    <PackageDependency Name="Microsoft.VCLibs.140.00" MinVersion="14.0.30035.0" Publisher="CN=Microsoft Corporation"/>
+    <PackageDependency Name="Microsoft.UI.Xaml.2.8" MinVersion="8.2212.15002.0" Publisher="CN=Microsoft Corporation"/>
+  </Dependencies>
+  <Applications><Application Id="App"><uap:VisualElements DisplayName="Store"/></Application></Applications>
+</Package>)";
+    const auto needs = core::parseAppxDependencies(store);
+    REQUIRE(needs.size() == 4);
+    CHECK(needs[0] == L"Microsoft.NET.Native.Framework.2.2");
+    CHECK(needs[2] == L"Microsoft.VCLibs.140.00");
+    CHECK(needs[3] == L"Microsoft.UI.Xaml.2.8");
+
+    // A prefixed foundation namespace, a framework without dependencies, and what is not XML.
+    CHECK(core::parseAppxDependencies(R"(<f:Package xmlns:f="x"><f:Dependencies><f:PackageDependency Name="A.B"/></f:Dependencies></f:Package>)") ==
+          std::vector<std::wstring>{L"A.B"});
+    CHECK(core::parseAppxDependencies(R"(<Package><Properties><Framework>true</Framework></Properties></Package>)").empty());
+    CHECK(core::parseAppxDependencies("not xml").empty());
+}

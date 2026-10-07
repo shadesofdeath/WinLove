@@ -1552,5 +1552,18 @@
     "noMountTitle": "No image mounted",
     "noMountBody": "Mount an edition on the Images page to customize its Start menu.",
     "oldBuild": "This image's build ({build}) does not apply your list: Start opens empty (no ads). The list applies from 26200.9457 / 26100.9457 — add the latest cumulative update on the Updates page."
+  },
+  "compat": {
+    "action": "Compatibility · {n}",
+    "title": "Compatibility guards",
+    "body": "A guard that is on keeps the apps and components it needs from being removed and its services from being disabled; what clashes with it leaves the queue. The runtimes kept apps use are always kept.",
+    "columnGuard": "Guard",
+    "columnWhat": "What it keeps",
+    "keptBy": "Kept by: {guards}",
+    "neededBy": "Needed by: {apps}",
+    "programsGuard": "Programs page (winget)",
+    "droppedTitle": "Taken off the queue",
+    "droppedBody": "{n} operation(s) ({items}).",
+    "lockedHint": "Changed under Components › Compatibility."
   }
 }
