@@ -43,7 +43,7 @@ Operation PostSetupController::operationFor(const PostSetupPlan& plan, std::uint
 
 void PostSetupController::store(PostSetupPlan plan) {
     m_cachedVersion = ~0ull; // also when the queue does not change (options of an empty plan)
-    if (plan.steps.empty()) {
+    if (plan.empty()) {
         m_state.unqueue(OpKind::SetPostSetup, kTarget);
         return;
     }

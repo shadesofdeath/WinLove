@@ -49,7 +49,7 @@ function Import-VsDevEnvironment {
 Push-Location $Root
 try {
     $env:PYTHONUTF8 = '1'
-    Invoke-Step 'generate (tokens, icons, strings)' { python tools/gen_all.py }
+    Invoke-Step 'generate (tokens, icons, strings, scripts)' { python tools/gen_all.py }
     if ($Gen) { return }
     Invoke-Step 'layer check' { python tools/check_layers.py }
 

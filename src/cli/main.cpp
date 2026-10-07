@@ -44,6 +44,7 @@
 #include "core/ops/Planner.h"
 #include "core/image/WindowsRelease.h"
 #include "core/postsetup/PostSetup.h"
+#include "core/programs/Winget.h"
 #include "core/system/Privileges.h"
 #include "core/unattend/Unattend.h"
 
@@ -2009,6 +2010,96 @@ int cmdUupLanguages(const std::wstring& buildText, const std::wstring& arch, con
 }
 
 // D-066: Microsoft Store apps through Microsoft's own services (no admin).
+
+// D-078: winget's repository without winget — the signed index (search) and a package's details.
+std::filesystem::path wingetCache(const std::wstring& cache) {
+    if (!cache.empty()) {
+        return cache;
+    }
+    wchar_t buffer[MAX_PATH] = {};
+    GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH);
+    return std::filesystem::path(buffer) / L"WinLove" / L"winget";
+}
+
+Result<core::WingetIndex> openWingetIndex(const std::filesystem::path& cache, bool refresh) {
+    core::TaskContext task{g_cancel, [](double fraction, std::wstring_view) {
+                               if (fraction >= 0) {
+                                   print(std::format(L"\r  index {:3.0f}%", fraction * 100));
+                               }
+                           }};
+    auto path = core::refreshWingetIndex(cache, refresh ? std::chrono::hours(0) : std::chrono::hours(24), task);
+    if (!path) {
+        return std::unexpected(path.error());
+    }
+    return core::WingetIndex::open(*path);
+}
+
+int cmdProgramsIndex(const std::wstring& cache, bool refresh) {
+    const auto started = std::chrono::steady_clock::now();
+    auto index = openWingetIndex(wingetCache(cache), refresh);
+    if (!index) {
+        return reportError(index.error());
+    }
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
+    const auto built = std::chrono::floor<std::chrono::seconds>(index->builtAt());
+    print(std::format(L"\r  {} packages · built {:%Y-%m-%d %H:%M} UTC · {} ms · {}\n", index->count(), built, ms,
+                      wingetCache(cache).wstring()));
+    return 0;
+}
+
+int cmdProgramsSearch(const std::wstring& query, const std::wstring& cache, int limit, bool asJson) {
+    auto index = openWingetIndex(wingetCache(cache), false);
+    if (!index) {
+        return reportError(index.error());
+    }
+    const auto started = std::chrono::steady_clock::now();
+    const auto found = index->search(query, static_cast<std::size_t>(limit > 0 ? limit : 20));
+    const auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - started).count();
+    if (asJson) {
+        json out = json::array();
+        for (const auto& p : found) {
+            out.push_back({{"id", narrow(p.id)}, {"name", narrow(p.name)}, {"moniker", narrow(p.moniker)}, {"version", narrow(p.version)}});
+        }
+        printJson(out);
+        return 0;
+    }
+    print(L"\r");
+    for (const auto& p : found) {
+        print(std::format(L"  {:<40} {:<38} {}\n", p.id, p.name, p.version));
+    }
+    print(std::format(L"\n  {} result(s) in {} us\n", found.size(), us));
+    return 0;
+}
+
+int cmdProgramsShow(const std::wstring& id, const std::wstring& cache, const std::wstring& locale) {
+    const auto folder = wingetCache(cache);
+    auto index = openWingetIndex(folder, false);
+    if (!index) {
+        return reportError(index.error());
+    }
+    auto details = core::fetchWingetDetails(*index, id, folder, locale.empty() ? L"tr-TR" : locale, g_cancel);
+    if (!details) {
+        return reportError(details.error());
+    }
+    auto join = [](const std::vector<std::wstring>& list) {
+        std::wstring out;
+        for (const auto& item : list) {
+            out += (out.empty() ? L"" : L", ") + item;
+        }
+        return out;
+    };
+    const auto& d = *details;
+    print(std::format(L"\r  {} {}\n  {}\n  publisher  {}\n  license    {}\n  homepage   {}\n  installers {} · {} · {}\n  tags       {}\n",
+                      d.name, d.version, d.shortDescription, d.publisher, d.license, d.homepage, join(d.installerTypes),
+                      join(d.scopes), join(d.architectures), join(d.tags)));
+    if (!d.iconUrl.empty()) {
+        auto icon = core::fetchWingetIcon(d, folder, g_cancel);
+        print(icon ? std::format(L"  icon       {} (SHA-256 {})\n", icon->wstring(), d.iconSha256.empty() ? L"not given" : L"ok")
+                   : L"  icon       " + describe(icon.error()) + L"\n");
+    }
+    return 0;
+}
+
 int cmdStoreSearch(const std::wstring& query, bool asJson) {
     auto results = core::searchStore(query, g_cancel);
     if (!results) {
@@ -2188,6 +2279,9 @@ void printUsage() {
           L"                                      tts,speech,components] [--packages-of=<mountdir>] [--download=<folder>] [--json]\n"
           L"                                      (the build's language files from Windows Update, via uupdump.net; D-061)\n"
           L"  wlcli store-search <name> [--json]          (Microsoft Store apps; D-066)\n"
+          L"  wlcli programs-index [--cache=<folder>] [--refresh]   (winget's signed index; D-078)\n"
+          L"  wlcli programs-search <text> [--limit=20] [--cache=<folder>] [--json]   (the whole winget repository)\n"
+          L"  wlcli programs-show <id> [--locale=tr-TR] [--cache=<folder>]   (manifest details + icon, SHA-256 checked)\n"
           L"  wlcli store-get <product id> [--arch=x64] [--download=<folder>]   (the app + frameworks from Windows Update)\n"
           L"  wlcli usb-list [--all] [--json] [--allow-virtual]   USB disks a setup stick can go to (never the system\n"
           L"                                      disk; --allow-virtual: file-backed VHD(X) disks too, for the lab)\n"
@@ -2261,6 +2355,10 @@ int wmain(int argc, wchar_t** argv) {
     bool resetBase = false;
     std::wstring arch;
     std::wstring downloadDir;
+    std::wstring wingetCacheDir;
+    std::wstring localeName;
+    int resultLimit = 0;
+    bool refreshIndex = false;
     bool preview = false;
     std::wstring onlyKb;
     bool allowVirtual = false;
@@ -2307,6 +2405,14 @@ int wmain(int argc, wchar_t** argv) {
             arch = std::wstring(a.substr(7));
         } else if (a.starts_with(L"--download=")) {
             downloadDir = std::wstring(a.substr(11));
+        } else if (a.starts_with(L"--cache=")) {
+            wingetCacheDir = std::wstring(a.substr(8));
+        } else if (a.starts_with(L"--locale=")) {
+            localeName = std::wstring(a.substr(9));
+        } else if (a.starts_with(L"--limit=")) {
+            resultLimit = static_cast<int>(std::wcstol(std::wstring(a.substr(8)).c_str(), nullptr, 10));
+        } else if (a == L"--refresh") {
+            refreshIndex = true;
         } else if (a.starts_with(L"--lang=")) {
             langList = std::wstring(a.substr(7));
         } else if (a.starts_with(L"--parts=")) {
@@ -2553,6 +2659,15 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"usb-write" && args.size() == 3) {
         return cmdUsbWrite(args[1], args[2], label, gpt, unattendFile, allowVirtual, yes);
+    }
+    if (command == L"programs-index" && args.size() == 1) {
+        return cmdProgramsIndex(wingetCacheDir, refreshIndex);
+    }
+    if (command == L"programs-search" && args.size() == 2) {
+        return cmdProgramsSearch(args[1], wingetCacheDir, resultLimit, asJson);
+    }
+    if (command == L"programs-show" && args.size() == 2) {
+        return cmdProgramsShow(args[1], wingetCacheDir, localeName);
     }
     if (command == L"store-search" && args.size() == 2) {
         return cmdStoreSearch(args[1], asJson);
