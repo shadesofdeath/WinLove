@@ -32,9 +32,17 @@ build\lab\
 1. `WinLove.exe --render=out.png --theme=dark --scale=1.5 [--lang=en] [--page=<anahtar>] [--hover-at=x,y] [--click-at=x,y] [--maximized]`: pencere açmadan tek kare (bayrakların tam listesi: `src/app/App.h`). Hata olursa diyalog açmaz, konsola yazar ve 1 ile çıkar.
 2. `python tools/compare_design.py 01-welcome-source --theme=dark [--crop=x,y,w,h] [--zoom=2]`: tasarım SVG'si ve WinLove render'ı alt alta + fark satırı → `build/visual/<ekran>-<tema>.png`.
 3. `python tools/capture_window.py out.png [--maximized] [-- <uygulama argümanları>]`: gerçek HWND'yi açar, **yalnızca kendi penceresini** `PrintWindow` ile yakalar (üstünde başka pencere olsa bile), `WM_CLOSE` ile kapatır ve çıkış kodunu yazar. Özel çerçeve, DPI ve ekranı kaplama davranışı bununla doğrulanır.
-4. **Yasak:** tüm ekranı yakalamak (`ImageGrab`, ekran görüntüsü). Kullanıcının diğer pencereleri görüntüye girer (D-013).
-5. Farklar sayfa spec'ine not edilir; bilinçli sapmalar `DECISIONS.md`'ye.
-6. Render testleri (`tests/ui/RenderTests.cpp`) piksel düzeyinde kontrol eder: token rengi, 1px çizginin %150'de tam bir fiziksel satır olması.
+4. `python tools/gui.py …`: **uygulamayı içinden sınamak** (kullanıcı yokken de). İlk komut yönetici bir sunucu başlatır
+   (bu makinede UAC sormadan yükseltir); tıklama / tuş / metin pencereye ileti olarak gider (kullanıcının faresi ve klavyesi
+   kullanılmaz), görüntü yalnız WinLove penceresinden (`PrintWindow`, istemci alanı, DIP). Uygulama `build\lab\gui\bin`'deki
+   kopyadan, `--profile=build\lab\gui\profile` ile çalışır: son kullanılanlar / ayarlar / yanıtlar kullanıcınınkilere
+   dokunmaz, çalışma klasörü `build\lab\gui\work`. Komutlar: `start [--dist] [-- <kaynak>]`, `shot <png> [--crop=x,y,w,h]
+   [--hires]`, `click X Y [--right|--double]`, `wheel`, `key enter ctrl+a…`, `type`, `dialog <yol>` (Windows'un aç / kaydet /
+   klasör seçicisini doldurur), `windows`, `mark` + `wait-log <regex>` (oturumun günlüğünde bir satırı bekler), `log`,
+   `exec -- <komut>` (yönetici konsol komutu), `close | kill | quit`. Koordinatlar `shot`'ın piksel = DIP'i.
+5. **Yasak:** tüm ekranı yakalamak (`ImageGrab`, ekran görüntüsü). Kullanıcının diğer pencereleri görüntüye girer (D-013).
+6. Farklar sayfa spec'ine not edilir; bilinçli sapmalar `DECISIONS.md`'ye.
+7. Render testleri (`tests/ui/RenderTests.cpp`) piksel düzeyinde kontrol eder: token rengi, 1px çizginin %150'de tam bir fiziksel satır olması.
 
 ## Sayfa testleri
 - `tests/app/SourceTests.cpp`: biçimleme, son kullanılanlar kalıcılığı, sürükleme kuralları ve **Shell → motor → UI akışı** (gerçek ISO, `postToUi` sahte kuyruğu + `engine().drain()` ile deterministik). Yeni sayfalar aynı kalıbı izler.

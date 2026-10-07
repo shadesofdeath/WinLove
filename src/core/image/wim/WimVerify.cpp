@@ -379,18 +379,15 @@ bool sameName(std::wstring_view a, std::wstring_view b) {
            CSTR_EQUAL;
 }
 
-bool fileInMetadata(std::span<const std::byte> meta, std::wstring_view path) {
+// The entry `path` names ("Windows\System32", either slash, any case; "" = the root folder).
+std::optional<Dentry> entryInMetadata(std::span<const std::byte> meta, std::wstring_view path) {
     if (meta.size() < 8) {
-        return false;
+        return std::nullopt;
     }
     const std::uint32_t security = le<std::uint32_t>(meta.data());
-    const auto root = dentryAt(meta, security == 0 ? 8 : align8(security));
-    if (!root) {
-        return false;
-    }
-    std::uint64_t dir = root->subdir;
+    std::optional<Dentry> current = dentryAt(meta, security == 0 ? 8 : align8(security));
     std::size_t start = 0;
-    while (start <= path.size()) {
+    while (current && start <= path.size()) {
         std::size_t end = path.find_first_of(L"\\/", start);
         if (end == std::wstring_view::npos) {
             end = path.size();
@@ -400,10 +397,12 @@ bool fileInMetadata(std::span<const std::byte> meta, std::wstring_view path) {
         if (part.empty()) {
             continue; // "\Windows" or a doubled slash
         }
-        const bool last = end == path.size();
+        if ((current->attributes & kDirectory) == 0) {
+            return std::nullopt; // a file in the middle of the path
+        }
         std::optional<Dentry> found;
         // Bounded: a damaged list could point back into itself.
-        for (std::uint64_t at = dir, guard = 0; dir != 0 && guard < 1'000'000; ++guard) {
+        for (std::uint64_t at = current->subdir, guard = 0; at != 0 && guard < 1'000'000; ++guard) {
             const auto d = dentryAt(meta, at);
             if (!d || d->next <= at) {
                 break;
@@ -414,20 +413,39 @@ bool fileInMetadata(std::span<const std::byte> meta, std::wstring_view path) {
             }
             at = d->next;
         }
-        if (!found) {
-            return false;
-        }
-        if (last) {
-            return (found->attributes & kDirectory) == 0;
-        }
-        dir = found->subdir;
+        current = found;
     }
-    return false;
+    return current;
+}
+
+bool fileInMetadata(std::span<const std::byte> meta, std::wstring_view path) {
+    const auto entry = entryInMetadata(meta, path);
+    return entry && (entry->attributes & kDirectory) == 0;
+}
+
+std::vector<std::wstring> namesInMetadata(std::span<const std::byte> meta, std::wstring_view folder) {
+    std::vector<std::wstring> names;
+    const auto entry = entryInMetadata(meta, folder);
+    if (!entry || (entry->attributes & kDirectory) == 0) {
+        return names;
+    }
+    for (std::uint64_t at = entry->subdir, guard = 0; at != 0 && guard < 1'000'000; ++guard) {
+        const auto d = dentryAt(meta, at);
+        if (!d || d->next <= at) {
+            break;
+        }
+        names.emplace_back(d->name);
+        at = d->next;
+    }
+    return names;
 }
 
 } // namespace
 
-Result<bool> wimFileExists(const ByteSource& wim, int index, std::wstring_view path) {
+namespace {
+
+// One edition's file list (its metadata resource), decompressed.
+Result<std::vector<std::byte>> editionMetadata(const ByteSource& wim, int index) {
     auto table = readTable(wim);
     if (!table) {
         return std::unexpected(table.error());
@@ -449,7 +467,25 @@ Result<bool> wimFileExists(const ByteSource& wim, int index, std::wstring_view p
     if (auto problem = worker.read(*metadata, meta); !problem.empty()) {
         return fail(ErrorCode::ParseError, L"the file list of the edition " + problem, std::to_wstring(index));
     }
-    return fileInMetadata(meta, path);
+    return meta;
+}
+
+} // namespace
+
+Result<bool> wimFileExists(const ByteSource& wim, int index, std::wstring_view path) {
+    auto meta = editionMetadata(wim, index);
+    if (!meta) {
+        return std::unexpected(meta.error());
+    }
+    return fileInMetadata(*meta, path);
+}
+
+Result<std::vector<std::wstring>> wimFolderNames(const ByteSource& wim, int index, std::wstring_view folder) {
+    auto meta = editionMetadata(wim, index);
+    if (!meta) {
+        return std::unexpected(meta.error());
+    }
+    return namesInMetadata(*meta, folder);
 }
 
 Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task) {

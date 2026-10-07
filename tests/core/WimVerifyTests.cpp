@@ -370,6 +370,19 @@ TEST_CASE("wim file list: a path is found in the edition it is in, by name in an
     CHECK_FALSE(has(2, L"Windows\\System32\\Recovery\\Winre.wim"));
     CHECK(has(2, L"Windows\\System32\\Recovery\\ReAgent.xml"));
 
+    // A folder's names, in the order the list keeps them; files and folders alike.
+    auto names = [&](int index, std::wstring_view folder) {
+        auto found = wimFolderNames(wim, index, folder);
+        REQUIRE(found.has_value());
+        return *found;
+    };
+    CHECK(names(1, L"Windows\\System32") == std::vector<std::wstring>{L"notepad.exe", L"Recovery"});
+    CHECK(names(1, L"windows/system32/recovery") == std::vector<std::wstring>{L"ReAgent.xml", L"Winre.wim"});
+    CHECK(names(2, L"Windows\\System32\\Recovery") == std::vector<std::wstring>{L"ReAgent.xml"}); // through LZX
+    CHECK(names(1, L"") == std::vector<std::wstring>{L"Program Files", L"Windows"});           // the root folder
+    CHECK(names(1, L"Windows\\System32\\notepad.exe").empty()); // a file, not a folder
+    CHECK(names(1, L"Windows\\Nope").empty());
+
     const auto third = wimFileExists(wim, 3, L"Windows");
     REQUIRE_FALSE(third.has_value());
     CHECK(third.error().code == ErrorCode::NotFound);

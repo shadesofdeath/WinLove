@@ -268,8 +268,16 @@ replaceSetupMedia`, ISO kaynak önce çalışma klasörüne) ve ÖZET'te "Kurulu
 (önceki kurulum da çözmez — ölçüldü). Render `--demo-aio`.
 Kanıt: 317 test / 11.411 doğrulama; `lab_aio.ps1 -Cases swap-w10,swap-w11` ALL PASSED: Win11 medyası + AIO →
 media-check 1 (Win10 Pro işaretli) → setup-media (ESD) → media-check 0, install.wim aynı → Win10 ve Win11 masaüstü.
-**Açık:** uygulamanın içinden düğmeyle değiştirme (render'da görüldü, tıklanarak değil); Win11'in Win10 ortamından yanıt
-dosyası olmadan (TPM / Secure Boot denetimi) kurulması; ESD'deki Win10 22H2'nin XML'de 19041 görünmesi ("10 2004" etiketi).
+**3. adım (2026-10-07, kullanıcı yokken, `tools\gui.py` ile uygulamanın içinden):** Kaynak › Dosya aç… (test ISO'su) →
+İmajlar › Araçlar › Başka imajdan sürüm ekle… (Win10 ESD, yalnız Pro) → 7 sürüm (3 dk) → ISO Oluştur'da uyarı + "Windows 10
+ortamını al…" (ESD, 31 sn) → uyarı kalktı → ISO 29 sn'de yazıldı, `media-check`: her sürüm kurulabilir. VM: bu ortamla Win11 Pro
+**atlatmasız** (TPM'siz, Secure Boot'suz) masaüstüne kuruldu (`lab_vm.ps1 -NoBypass`, ALL PASSED). Bulunan ve düzeltilenler:
+(1) sürüm ekleme diyaloğu MCT ESD'sinin "Windows Setup Media" ve iki Windows PE imajını da işaretli listeliyordu → yalnız
+Windows sürümleri (`core::isWindowsEdition`), hiç yoksa hata bildirimi; (2) Win10 ortamında "Önceki kurulumu kullan (24H2+)"
+seçilebiliyordu ve özet "yeni kurulum" diyordu → kutu kapalı + devre dışı, açıklama ve özet "önceki kurulum (ortamın kendisi)"
+(`core::mediaOpensPreviousSetup`); (3) Win10 22H2 XML'de 19041 → "10 2004" etiketi, ve bağlı imajda "Güncellemeleri bul" /
+dil indirme 2004'ü hedefliyordu → 19041 sürümlerin build'i dosya listesindeki etkinleştirme paketinden (`wimFolderNames`,
+`core::enablementBuild`; 22H2 = 19045). ESD'de (LZMS) okunamıyor: ESD → WIM sonrasında doğru.
 
 ## D-076 — Preset uygulanırken bileşen tarifleri güncel katalogdan gelir (2026-10-06)
 Bağlam: D-075'ten sonra kullanıcının kurulumunda görev çubuğunda Outlook vardı. Preset'teki `outlook-install` tarifi 1.0.1'den

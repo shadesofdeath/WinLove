@@ -17,6 +17,9 @@ namespace wl::core {
 // The editions the source's own setup media cannot install: Windows 10 (build < 22000) when the
 // media is 24H2 or newer (26100+). Empty when the media is older or unknown.
 [[nodiscard]] std::vector<int> editionsMediaCannotInstall(const SourceInfo& source);
+// True when the setup media is older than 24H2 (a Windows 10 one, D-077): its Setup is the previous
+// one already, so "Önceki kurulumu kullan" has nothing to switch. False without setup media.
+[[nodiscard]] bool mediaOpensPreviousSetup(const SourceInfo& source);
 
 // Replaces the setup files of `setupFolder` (boot.wim, setup.exe, efi\, boot\, sources\…) with
 // those of `from`: a Windows 10 ISO, a setup folder, or a Media Creation Tool ESD (its "Windows
