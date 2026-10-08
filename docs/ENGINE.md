@@ -278,3 +278,13 @@ Uygulama davranışı:
   bekler); oturum açılışı tetikleyicili zamanlanmış görevler ~20 sn sonra başlar; PowerShell + WPF o sırada 10–20 sn'de
   açılır; HKCU `RunOnce` Win11'de başlangıç programlarıyla ~55 sn'de çalışır. `New-ScheduledTaskSettingsSet` varsayılanı
   `DisallowStartIfOnBatteries` / `StopIfGoingOnBatteries` açık: ayarsız kaydedilen görev pildeyken başlamaz.
+
+- [2026-10-08] [Yanıt dosyası düzenleme, D-087] `XmlDocument.Save()` (`PreserveWhitespace` kapalı) metni boş bir elemanı
+  `<Value>` + satır sonu + girinti + `</Value>` yazar (`IsEmpty = $false` da aynı); Windows `Password/Value`'yu kırpmadan
+  parola yapar (`[Shell Unattend] UserAccounts: Password set`). Kurulumun dosyasını düzenlerken `PreserveWhitespace = $true`.
+  oobeSystem'de `International-Core` yoksa OOBE bölge / klavye sayfalarını `defaultuser0` oturumunda gösterir; ağ varsa
+  ZDP güncellemesi (`Detected Reboot Required after ZDP install`) bir yeniden başlatma ekler, yanıt dosyasının `AutoLogon`'u
+  CXH çıkışında aktarılır ve bu yeniden başlatmadan sağ çıkar (Win11 26200, VM u1 / u2). Yanıt dosyasıyla açılan yerel
+  hesapta `UF_DONT_EXPIRE_PASSWD` yok (SAM ACB 0x10): parola 42 günlük üst sınıra tabi. Kullanıcının VMware diski (bölünmüş
+  seyrek VMDK) VM kapalıyken 7-Zip ile okunur: `7z e x.vmdk "2.Basic data partition.ntfs"`, ardından `7z x` ile
+  `Windows\Panther\*`, `ProgramData\WinLove\*`.

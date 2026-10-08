@@ -241,6 +241,32 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-087 — Karşılamanın ilk gerçek testi: boş parola, bölge / klavye, parola süresi (2026-10-08)
+Bağlam: Kullanıcı kendi ön ayarıyla (Windows 11 Home Single Language; yanıt dosyasında dil yok, parolasız hesaba izin
+var) ISO yapıp NAT ağlı bir VMware VM'ine kurdu: sihirbazda "user", parola boş. Yeniden başlayınca Windows bölge ve
+klavye sordu, güncelleme kurup yeniden başladı; sonra kilit ekranı parola istedi, boş parolayı kabul etmedi.
+Tanı (VM kapatıldı, diski 7-Zip ile salt okunur açıldı: `oobe.log`, `Panther` / `UnattendGC` günlükleri, SAM'deki hesap
+bayrakları):
+- **Boş parola bizim hatamız:** PreOobe `Panther\unattend.xml`'i `XmlDocument` ile açıp kaydederken boş parola elemanı
+  girintilenip **satır sonu + boşluk** olarak yazıldı; Windows (`[Shell Unattend] UserAccounts: Password set`) bunu
+  hesabın parolası yaptı. `AutoLogon`'un değeri farklı derinlikte (10 / 14 boşluk) olduğundan hesabınkiyle eşleşmedi:
+  otomatik oturum açılmadı, kilit ekranında yazılamayan bir parola kaldı.
+- **Bölge / klavye:** oobeSystem'de `International-Core` yoktu; OOBE bölge ve klavye sayfalarını geçici `defaultuser0`
+  oturumunda gösterdi (`CommitRegion` / `CommitKeyboards`), ağ olduğu için ZDP güncellemesini kurup yeniden başladı.
+- **Parola süresi:** yanıt dosyasıyla açılan hesapta "parola süresiz" bayrağı yok (SAM ACB 0x10; OOBE'nin kendi hesaplarında
+  0x200): Windows'un 42 günlük üst sınırı işler.
+- Laboratuvarda üçü de görülmedi: yanıt dosyalarında tr-TR hep vardı, parola hep doluydu, ağ yoktu.
+Karar: PreOobe dosyayı `PreserveWhitespace` ile açar (Kurulumun biçimi korunur, boş değer `<Value></Value>`); oobeSystem'de
+`International-Core` yoksa ya da eksikse sistemin kendi değerleri eklenir — klavyeler `HKU\.DEFAULT\Keyboard
+Layout\Preload` (+ `Substitutes`), `Get-WinSystemLocale`, `InstalledUICulture`, `Get-Culture`; dosyada olan değere
+dokunulmaz. PostOobe hesabı `PasswordNeverExpires` yapar (D-084 yolunda parolasız hesap da). WinLove'un C++ yanıt
+dosyası üreticisi boş parolayı zaten `<Value></Value>` yazıyordu.
+Kanıt: VM `u1` (kullanıcının yanıt dosyası, Home SL, NAT ağı, "user" parolasız) ve `u2` (aynısı, parolalı) **ALL PASSED**:
+bölge / klavye sayfası yok, ZDP'nin yeniden başlatmasına rağmen kendiliğinden oturum, u1'de `PasswordRequired` False,
+ikisinde parola süresiz, tema / vurgu / tercihler / gizlilik / saat dilimi doğru; ekranlar `build\visual\u1-oobe-sheet.png`.
+Kalan: ağ varken OOBE ~3,5 dk Windows'un "Güncelleştirmeler denetleniyor" ekranlarını gösterir ve bir kez yeniden başlar
+(soru sormaz). Kullanıcının o VM'i kurtarılamaz (parola yazılamayan boşluk), yeniden kurulmalı.
+
 ## D-086 — İlk oturumun "Windows hazırlanıyor" ekranı yerine kendi ekranımız: denendi, bırakıldı (2026-10-08)
 Bağlam: Kullanıcı, D-085 akışında hesabın ilk oturumundaki siyah "Windows hazırlanıyor" ekranının yerine kurulum
 sihirbazının devamı gibi kendi ekranımızı istedi.

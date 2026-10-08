@@ -72,12 +72,35 @@ function Set-SetupHooks([bool] $on) {
         }
     }
 }
+# The keyboards Windows starts with (Setup's, from the image's language): "041f:0000041f;...".
+function Get-InputLocale {
+    $root = 'Registry::HKEY_USERS\.DEFAULT\Keyboard Layout'
+    $preload = Get-ItemProperty -Path "$root\Preload" -ErrorAction SilentlyContinue
+    $substitutes = Get-ItemProperty -Path "$root\Substitutes" -ErrorAction SilentlyContinue
+    $list = foreach ($i in 1..9) {
+        $id = [string] $preload."$i"
+        if ($id.Length -ne 8) { break }
+        $layout = [string] $substitutes.$id
+        if ($layout.Length -ne 8) { $layout = $id }
+        '{0}:{1}' -f $id.Substring(4), $layout
+    }
+    $text = @($list) -join ';'
+    if (-not $text) { try { $text = (Get-WinUserLanguageList)[0].InputMethodTips[0] } catch { } }
+    return $text
+}
 # The account into Setup's answer file (oobeSystem): the local account, its one automatic sign-in and
-# the time zone; OOBE's local account page is hidden already (the answer file WinLove wrote).
+# the time zone; OOBE's local account page is hidden already (the answer file WinLove wrote). Also the
+# region and the keyboard when the file has none: without them OOBE shows its own pages in a temporary
+# session (a test with such a file, 26200, 2026-10-08: region, keyboard, an update, a restart - and the
+# automatic sign-in was lost).
 function Add-SetupAccount($account) {
     $file = Join-Path $env:WINDIR 'Panther\unattend.xml'
     if (-not (Test-Path $file)) { throw "Setup's answer file is not at $file" }
+    # Saved as Setup wrote it: re-indenting turns an empty text (no password) into a line break and
+    # spaces, and Windows set those as the password (a test, 26200, 2026-10-08: the sign-in screen
+    # asked for a password and refused an empty one).
     $doc = New-Object System.Xml.XmlDocument
+    $doc.PreserveWhitespace = $true
     $doc.Load($file)
     $uri = 'urn:schemas-microsoft-com:unattend'
     $ns = New-Object System.Xml.XmlNamespaceManager($doc.NameTable)
@@ -87,12 +110,16 @@ function Add-SetupAccount($account) {
         $settings = $doc.CreateElement('settings', $uri); $settings.SetAttribute('pass', 'oobeSystem')
         [void] $doc.DocumentElement.AppendChild($settings)
     }
+    $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
+    function New-Component([string] $name) {
+        $component = $doc.CreateElement('component', $uri)
+        foreach ($pair in @(@('name', $name), @('processorArchitecture', $arch), @('publicKeyToken', '31bf3856ad364e35'),
+                            @('language', 'neutral'), @('versionScope', 'nonSxS'))) { $component.SetAttribute($pair[0], $pair[1]) }
+        return $component
+    }
     $shell = $settings.SelectSingleNode("u:component[@name='Microsoft-Windows-Shell-Setup']", $ns)
     if (-not $shell) {
-        $shell = $doc.CreateElement('component', $uri)
-        $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
-        foreach ($pair in @(@('name', 'Microsoft-Windows-Shell-Setup'), @('processorArchitecture', $arch), @('publicKeyToken', '31bf3856ad364e35'),
-                            @('language', 'neutral'), @('versionScope', 'nonSxS'))) { $shell.SetAttribute($pair[0], $pair[1]) }
+        $shell = New-Component 'Microsoft-Windows-Shell-Setup'
         [void] $settings.AppendChild($shell)
     }
     foreach ($old in 'AutoLogon', 'UserAccounts', 'TimeZone') {
@@ -101,7 +128,7 @@ function Add-SetupAccount($account) {
     }
     function Add-Node($parent, [string] $name, $text = $null) {
         $e = $doc.CreateElement($name, $uri)
-        if ($null -ne $text) { $e.InnerText = [string] $text }
+        if ($null -ne $text -and [string] $text -ne '') { $e.InnerText = [string] $text } elseif ($null -ne $text) { $e.IsEmpty = $false } # <Value></Value>
         [void] $parent.AppendChild($e)
         return $e
     }
@@ -120,7 +147,18 @@ function Add-SetupAccount($account) {
     [void] (Add-Node $pw 'Value' $account.password); [void] (Add-Node $pw 'PlainText' 'true')
     [void] (Add-Node $local 'DisplayName' $account.name); [void] (Add-Node $local 'Group' 'Administrators'); [void] (Add-Node $local 'Name' $account.name)
     if ($account.timeZone) { [void] (Add-Node $shell 'TimeZone' $account.timeZone) }
+    $intl = $settings.SelectSingleNode("u:component[@name='Microsoft-Windows-International-Core']", $ns)
+    if (-not $intl) {
+        $intl = New-Component 'Microsoft-Windows-International-Core'
+        [void] $settings.PrependChild($intl)
+    }
+    $language = [ordered] @{ InputLocale = (Get-InputLocale); SystemLocale = (Get-WinSystemLocale).Name
+                             UILanguage = [System.Globalization.CultureInfo]::InstalledUICulture.Name; UserLocale = (Get-Culture).Name }
+    $added = foreach ($key in $language.Keys) {
+        if ($language[$key] -and -not $intl.SelectSingleNode("u:$key", $ns)) { [void] (Add-Node $intl $key $language[$key]); '{0}={1}' -f $key, $language[$key] }
+    }
     $doc.Save($file)
+    return (@($added) -join ' ')
 }
 # Setup sets its answer file's computer name once more after the welcome's command (shsetup.dll, from
 # Setup's own copy of the file: VM spec4/spec5), and a file without a name lets OOBE pick a random one
@@ -159,7 +197,8 @@ function Register-SignInTasks([string] $name) {
         '$winlogon = ''HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon''',
         'Remove-ItemProperty -Path $winlogon -Name DefaultPassword -ErrorAction SilentlyContinue',
         'Remove-ItemProperty -Path $winlogon -Name AutoLogonCount -ErrorAction SilentlyContinue',
-        'Set-ItemProperty -Path $winlogon -Name AutoAdminLogon -Value ''0''',
+)wlps"
+    R"wlps(        'Set-ItemProperty -Path $winlogon -Name AutoAdminLogon -Value ''0''',
         ('Remove-Item -LiteralPath ''{0}'' -Force -ErrorAction SilentlyContinue' -f (Join-Path $here 'oobe.json')),
         # Setup's copy of the answer file held the password (inside Setup it came through there)
         ('Remove-Item -LiteralPath ''{0}'' -Force -ErrorAction SilentlyContinue' -f (Join-Path $env:WINDIR 'Panther\unattend.xml')),
@@ -183,9 +222,8 @@ if ($Stage -eq 'preoobe') {
     try {
         Write-Log ('pre-OOBE hooks: ' + ((Get-ItemProperty 'HKLM:\SYSTEM\Setup\FirstBoot\PreOobe' -ErrorAction SilentlyContinue | Out-String).Trim() -replace '\s+', ' '))
         $account = Read-Account
-        Add-SetupAccount $account
-        Write-Log ("account " + $account.name + " in Setup's answer f)wlps"
-    R"wlps(ile")
+        $language = Add-SetupAccount $account
+        Write-Log ("account " + $account.name + " in Setup's answer file" + $(if ($language) { '; ' + $language } else { '' }))
         if ($account.computer -and $account.computer -ne $env:COMPUTERNAME) {
             # Setup kept its own name after all: the chosen one from the next start.
             Rename-Computer -NewName $account.computer -Force -WarningAction SilentlyContinue
@@ -200,8 +238,10 @@ if ($Stage -eq 'preoobe') {
 if ($Stage -eq 'postoobe') {
     try {
         $account = Read-Account
-        Write-Log ('post-OOBE: user ' + $account.name + ' exists: ' + [bool] (Get-LocalUser -Name $account.name -ErrorAction SilentlyContinue) +
-                   '; computer ' + $env:COMPUTERNAME + ' (asked: ' + $account.computer + ')')
+        $user = Get-LocalUser -Name $account.name -ErrorAction SilentlyContinue
+        Write-Log ('post-OOBE: user ' + $account.name + ' exists: ' + [bool] $user + '; computer ' + $env:COMPUTERNAME + ' (asked: ' + $account.computer + ')')
+        # An account from the answer file keeps Windows' 42-day password age (OOBE's own do not expire).
+        if ($user) { Set-LocalUser -Name $account.name -PasswordNeverExpires $true }
         Register-SignInTasks $account.name
         # OOBE turns Windows' "Hi" pages back on (VM spec2): off for that first sign-in.
         Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -Name EnableFirstLogonAnimation -Value 0 -Type DWord
@@ -340,7 +380,8 @@ function Get-WifiProfile($net, [string] $key, [bool] $autoConnect) {
     return ('<?xml version="1.0"?><WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1"><name>{0}</name>' +
             '<SSIDConfig><SSID><hex>{1}</hex><name>{0}</name></SSID></SSIDConfig><connectionType>ESS</connectionType>' +
             '<connectionMode>{2}</connectionMode><MSM><security><authEncryption><authentication>{3}</authentication>' +
-            '<encryption>{4}</encryption><useOneX>false</useOneX></authEncryption>{5}</security></MSM></WLANProfile>') -f
+            '<encryption>{4}</encryption><useOneX>false</use)wlps"
+    R"wlps(OneX></authEncryption>{5}</security></MSM></WLANProfile>') -f
            $name, $hex, $(if ($autoConnect) { 'auto' } else { 'manual' }), $auth, $cipher, $shared
 }
 function Test-Wired {
@@ -381,8 +422,7 @@ $xaml = @'
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseO)wlps"
-    R"wlps(ver" Value="True"><Setter TargetName="B" Property="Background" Value="{DynamicResource Row}"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="{DynamicResource Row}"/></Trigger>
               <Trigger Property="IsPressed" Value="True"><Setter TargetName="B" Property="Opacity" Value="0.8"/></Trigger>
               <Trigger Property="IsEnabled" Value="False"><Setter TargetName="B" Property="Opacity" Value="0.45"/></Trigger>
             </ControlTemplate.Triggers>
@@ -549,7 +589,8 @@ $xaml = @'
               <ToggleButton x:Name="Toggle" Focusable="False" Cursor="Hand"
                             IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
                 <ToggleButton.Template>
-                  <ControlTemplate TargetType="ToggleButton">
+                  <ControlTemplate TargetType="ToggleBut)wlps"
+    R"wlps(ton">
                     <Grid>
                       <Border x:Name="B" Background="{DynamicResource Fill}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" CornerRadius="4"/>
                       <Border Height="1" VerticalAlignment="Bottom" Margin="1,0" Background="{DynamicResource Bottom}"/>
@@ -584,8 +625,7 @@ $xaml = @'
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius" Value="6"/>
     </Style>
-  </Window.Reso)wlps"
-    R"wlps(urces>
+  </Window.Resources>
   <Grid>
     <!-- Windows' bloom: soft colour clouds, drawn for 1280x800 and filling any screen. -->
     <Viewbox Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -691,7 +731,8 @@ $xaml = @'
                       </Border>
                       <Border x:Name="MiniLine1" Width="120" Height="6" CornerRadius="3" Margin="10,8,0,0" HorizontalAlignment="Left"/>
                       <Border x:Name="MiniLine2" Width="150" Height="6" CornerRadius="3" Margin="10,6,0,0" HorizontalAlignment="Left"/>
-                      <Border x:Name="MiniLine3" Width="90" Height="6" CornerRadius="3" Margin="10,6,0,0" HorizontalAlignment="Left"/>
+                  )wlps"
+    R"wlps(    <Border x:Name="MiniLine3" Width="90" Height="6" CornerRadius="3" Margin="10,6,0,0" HorizontalAlignment="Left"/>
                       <Border Width="56" Height="16" CornerRadius="3" Margin="10,14,0,0" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}"/>
                     </StackPanel>
                   </Border>
@@ -719,8 +760,7 @@ $xaml = @'
                   <Border Height="32" Background="{DynamicResource Fill}" BorderBrush="{DynamicResource RowLine}" BorderThickness="0,1,0,0" CornerRadius="0,0,8,8">
                     <StackPanel x:Name="ExBar" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                   </Border>
-                </)wlps"
-    R"wlps(StackPanel>
+                </StackPanel>
               </Border>
 
               <Grid x:Name="ArtPrivacy" Visibility="Collapsed">
@@ -844,7 +884,8 @@ $xaml = @'
           <Border x:Name="Fill" HorizontalAlignment="Left" Width="0" Background="{DynamicResource Sel}"/>
         </Grid>
         <TextBlock x:Name="Status" Margin="0,14,0,0" HorizontalAlignment="Center" FontSize="12" Foreground="{DynamicResource Err}" TextWrapping="Wrap" MaxWidth="560" TextAlignment="Center"/>
-      </StackPanel>
+      </S)wlps"
+    R"wlps(tackPanel>
       <TextBlock x:Name="KeepOn" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,56" Foreground="{DynamicResource Text2}"/>
     </Grid>
   </Grid>
@@ -877,8 +918,7 @@ $palettes = @{
 }
 function Get-Mix([string] $hex, [int] $toward, [double] $amount) { # toward 255 (lighter) or 0 (darker): "#RRGGBB"
     $out = foreach ($i in 1, 3, 5) {
-        $v = [Convert])wlps"
-    R"wlps(::ToInt32($hex.Substring($i, 2), 16)
+        $v = [Convert]::ToInt32($hex.Substring($i, 2), 16)
         '{0:X2}' -f [int] [Math]::Round($v + ($toward - $v) * $amount)
     }
     return '#' + ($out -join '')
@@ -1044,7 +1084,8 @@ foreach ($entry in $data.accents) {
     $swatch.Background = $brush.ConvertFromString([string] $entry.color)
     $swatch.Child = New-Path $checkGeometry '#FFFFFF' 14 3
     $ring.Child = $swatch
-    $ring.Add_MouseLeftButtonUp({ param($s) Select-Accent ([string] $s.Tag) })
+    $ring.Ad)wlps"
+    R"wlps(d_MouseLeftButtonUp({ param($s) Select-Accent ([string] $s.Tag) })
     [void] $ui.Accents.Children.Add($ring)
 }
 # Taskbar: centred or on the left (Windows 11; Windows 10's is always on the left).
@@ -1084,8 +1125,7 @@ foreach ($pref in @($data.prefs)) {
     $detail = New-Text ([string] $pref.detail) 12 'Text2'
     $detail.TextWrapping = 'Wrap'
     [void] $words.Children.Add($detail)
-    [void] $)wlps"
-    R"wlps(grid.Children.Add($words)
+    [void] $grid.Children.Add($words)
     $state = New-Text '' 12 'Text2'
     $state.Width = 52; $state.TextAlignment = 'Right'; $state.Margin = '0,0,12,0'; $state.VerticalAlignment = 'Center'
     [System.Windows.Controls.Grid]::SetColumn($state, 2)
@@ -1237,7 +1277,8 @@ function Update-Art {
     $ui.ArtLock.Text = $(if ($ui.Pass.Password) { $t.accountLocked } else { $t.accountOpen })
     # computer
     $now = Get-Date
-    $zone = if ($ui.Zone.SelectedItem) { [System.TimeZoneInfo]::FindSystemTimeZoneById([string] $ui.Zone.SelectedItem.Tag) } else { [System.TimeZoneInfo]::Local }
+    $zone = if ($ui.Zone.SelectedItem) { [System.TimeZoneInfo]::FindSystemTimeZoneById([string] $ui.Zone.SelectedItem.Tag) } else { [System.TimeZoneInfo]::Loca)wlps"
+    R"wlps(l }
     $there = [System.TimeZoneInfo]::ConvertTime($now, $zone)
     $ui.ArtClock.Text = $there.ToString('HH:mm', $culture)
     $ui.ArtDate.Text = $there.ToString('dddd, d MMMM', $culture)
@@ -1269,8 +1310,7 @@ function Update-Art {
         $iconBox.Background = $brush.ConvertFromString($f[2])
         [void] $line.Children.Add($iconBox)
         $label = New-Text $f[0] 13
-        $label.Margin = '10,0,0,0'; $label.Vertic)wlps"
-    R"wlps(alAlignment = 'Center'
+        $label.Margin = '10,0,0,0'; $label.VerticalAlignment = 'Center'
         [void] $line.Children.Add($label)
         if ($ext -and $f[1]) {
             $e = New-Text $f[1] 13 'Text3'
@@ -1436,7 +1476,8 @@ $ui.NetRefresh.Add_Click({ Show-Networks $true })
 # ---- pages -----------------------------------------------------------------------------------------------
 $allPages = @(
     @{ id = 'network'; panel = 'PageNetwork'; art = 'ArtNetwork'; heading = $t.networkHeading; sub = $t.networkSub },
-    @{ id = 'account'; panel = 'PageAccount'; art = 'ArtAccount'; heading = $t.accountHeading; sub = $t.accountSub },
+    @{ id = 'account'; panel = )wlps"
+    R"wlps('PageAccount'; art = 'ArtAccount'; heading = $t.accountHeading; sub = $t.accountSub },
     @{ id = 'computer'; panel = 'PagePc'; art = 'ArtPc'; heading = $t.pcHeading; sub = $t.pcSub },
     @{ id = 'look'; panel = 'PageLook'; art = 'ArtLook'; heading = $t.lookHeading; sub = $t.lookSub },
     @{ id = 'prefs'; panel = 'PagePrefs'; art = 'ArtPrefs'; heading = $t.prefsHeading; sub = $t.prefsSub },
@@ -1477,8 +1518,7 @@ function Show-Page([int] $index) {
     $ui.Heading.Text = $page.heading
     $ui.Sub.Text = $page.sub
     $ui.Steps.Children.Clear()
-    for ($i = 0; $i -lt $pages.Count; )wlps"
-    R"wlps($i++) {
+    for ($i = 0; $i -lt $pages.Count; $i++) {
         $seg = New-Object System.Windows.Controls.Border
         $seg.Width = 20; $seg.Height = 4; $seg.CornerRadius = 2; $seg.Margin = '2,0'
         Set-Res $seg ([System.Windows.Controls.Border]::BackgroundProperty) $(if ($i -le $index) { 'Sel' } else { 'Stroke' })
@@ -1643,7 +1683,8 @@ if ($data.preview -and $data.previewFill) { # screenshots: the fields filled in 
 }
 $first = [int] $data.previewPage
 if ($first -ge $pages.Count) { $first = $pages.Count - 1 }
-Show-Page $first
+Sho)wlps"
+    R"wlps(w-Page $first
 
 # ---- the lab: the answers fill in and the pages go on by themselves ---------------------------------------
 $script:go = $false
@@ -1686,8 +1727,7 @@ foreach ($step in $steps) {
     $line = New-Object System.Windows.Controls.StackPanel
     $line.Orientation = 'Horizontal'; $line.Height = 34; $line.Margin = '14,0'
     $mark = New-Object System.Windows.Controls.Border
-    $mark.Width = 18; $mark.Height = 18; $mark.CornerRadius = 9; $mark.BorderThickness = 1; $mark.Ver)wlps"
-    R"wlps(ticalAlignment = 'Center'
+    $mark.Width = 18; $mark.Height = 18; $mark.CornerRadius = 9; $mark.BorderThickness = 1; $mark.VerticalAlignment = 'Center'
     Set-Res $mark ([System.Windows.Controls.Border]::BorderBrushProperty) 'Stroke'
     $label = New-Text $step.text 14 'Text3'
     $label.Margin = '12,0,0,0'; $label.VerticalAlignment = 'Center'
@@ -1786,7 +1826,7 @@ try {
             $secure = ConvertTo-SecureString $password -AsPlainText -Force
             New-LocalUser -Name $name -FullName $name -Password $secure -PasswordNeverExpires -AccountNeverExpires -ErrorAction Stop | Out-Null
         } else {
-            New-LocalUser -Name $name -FullName $name -NoPassword -AccountNeverExpires -ErrorAction Stop | Out-Null
+            New-LocalUser -Name $name -FullName $name -NoPassword -PasswordNeverExpires -AccountNeverExpires -ErrorAction Stop | Out-Null
         }
         Add-LocalGroupMember -SID 'S-1-5-32-544' -Member $name -ErrorAction Stop   # Administrators, in any language
         Write-Log "account $name created"
@@ -1837,7 +1877,8 @@ try {
             ('"AccentPalette"=hex:' + $palette), ('"AccentColorMenu"=dword:{0:x8}' -f (Get-Bgr $base)),
             ('"StartColorMenu"=dword:{0:x8}' -f (Get-Bgr $shades[5])), '',
             '[HKEY_CURRENT_USER\Software\Microsoft\Windows\DWM]',
-            ('"AccentColor"=dword:{0:x8}' -f (Get-Bgr $base)), ('"ColorizationColor"=dword:{0:x8}' -f $argb),
+            ('"AccentColor"=dw)wlps"
+    R"wlps(ord:{0:x8}' -f (Get-Bgr $base)), ('"ColorizationColor"=dword:{0:x8}' -f $argb),
             ('"ColorizationAfterglow"=dword:{0:x8}' -f $argb), '"EnableWindowColorization"=dword:00000000', '',
             '[HKEY_CURRENT_USER\Control Panel\Desktop]', '"AutoColorization"="0"', ''))
         if ($win11) { Add-UserValue 'Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' 'TaskbarAl' 'dword' $(if ($script:align -eq 'left') { 0 } else { 1 }) }
@@ -1876,8 +1917,7 @@ try {
             'Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -like ("*\" + $name) } | Remove-CimInstance',
             'Remove-LocalUser -Name $name -ErrorAction SilentlyContinue',
             ('Remove-Item -LiteralPath ''{0}'' -Force -ErrorAction SilentlyContinue' -f (Join-Path $here 'oobe.json')),
-            'Unregister-ScheduledTask -TaskN)wlps"
-    R"wlps(ame ''WinLove OOBE cleanup'' -Confirm:$false',
+            'Unregister-ScheduledTask -TaskName ''WinLove OOBE cleanup'' -Confirm:$false',
             'Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force')
         [System.IO.File]::WriteAllText($cleanup, ($lines -join "`r`n"), [System.Text.Encoding]::UTF8)
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$cleanup`""
