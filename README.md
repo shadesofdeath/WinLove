@@ -17,7 +17,8 @@
 
 ---
 
-> **1.0.2 Alpha.** WinLove erken bir sürüm. Değişiklikleri önce bir sanal makinede dene; asıl imajının yedeğini tut.
+> **1.1.0 Beta.** Değişiklikleri yine önce bir sanal makinede dene; asıl imajının yedeğini tut. Neler değişti:
+> [CHANGELOG](CHANGELOG.md).
 > WinLove yalnızca **çevrimdışı imajlarla** çalışır (ISO / WIM / ESD); çalışan sistemine dokunmaz.
 
 ![WinLove](docs/screenshots/components.png)
@@ -27,15 +28,17 @@
 | | |
 |---|---|
 | **Kaynak ve imajlar** | ISO, WIM, ESD açar; sürümleri listeler, bağlar, dışa aktarır, siler; ESD → WIM. |
-| **Bileşenler ve uygulamalar** | Hazır gelen uygulamaları ve sistem bileşenlerini kaldırır (Edge, OneDrive, WinRE, eski sürücüler…); bağımlılıkları ve riski önceden söyler. |
+| **Bileşenler ve uygulamalar** | Hazır gelen uygulamaları ve sistem bileşenlerini kaldırır (Edge, OneDrive, WinRE, eski sürücüler…); bağımlılıkları ve riski önceden söyler, uyumluluk korumalarıyla gerekenleri tutar; WinSxS'i en aza indirir. |
 | **Windows'un kendiliğinden kurdukları** | Yeni Outlook, Teams, Dev Home, Telefon Bağlantısı, Microsoft 365 Copilot, Copilot ve OneDrive'ın kurulumdan sonra kendiliğinden gelmesini kökünden durdurur (Windows Update zamanlayıcısı, yedek paketler, "istenmiyor" işaretleri — sanal makinede ölçüldü). |
-| **Başlat menüsü** | Windows 11 Başlat'ını reklamsız ve boş başlatır ya da kendi uygulama listeni sabitler — Home dahil her sürümde. |
+| **Başlat menüsü ve görev çubuğu** | Windows 11 Başlat'ını reklamsız ve boş başlatır ya da kendi uygulama listeni sabitler; görev çubuğu sabitlemelerini de — Home dahil her sürümde. |
+| **Programlar** | winget deposunun tamamından (~15.400 paket) ya da hazır paketlerden (Temel, Oyuncu, Geliştirici…) seç; ilk oturumda kendi penceresinde kurulur. |
 | **Ayarlar / Tweaks** | 280+ ayar on sekmede: gizlilik, yapay zekâ, uygulamalar, performans, görünüm, Gezgin, Başlat ve görev çubuğu, güncellemeler, güvenlik, sistem. |
 | **Özellikler, güncellemeler, sürücüler, diller** | İsteğe bağlı özellikler; Microsoft Update Kataloğu'ndan toplu güncelleme indirme ve ekleme; sürücü ekleme / kaldırma; dil paketleri. |
 | **Kayıt defteri, servisler, görevler, hosts** | Kendi kayıt değerlerin ve .reg dosyaların; servis başlangıç türleri; zamanlanmış görevler; hosts listeleri. |
 | **Simgeler ve kişiselleştirme** | Windows'un kendi simge dosyalarındaki simgeleri yedekleyerek değiştirir, 7TSP simge paketlerini (.7z / .zip) tek seferde uygular; duvar kâğıdı, OEM bilgileri, yazı tipleri. |
 | **Katılımsız kurulum ve sonrası** | `autounattend.xml` (yerel hesap, TPM / Secure Boot atlama, OOBE), kurulumdan sonra çalışacak uygulamalar, Wi-Fi, betikler. |
-| **ISO ve USB** | Önyüklenebilir ISO (UEFI / BIOS) ya da USB bellek; presetlerle aynı ayarları tekrar uygula. |
+| **Kendi kurulum ekranı** | Windows'un OOBE sayfaları yerine WinLove'un Windows 11 görünümlü sihirbazı: ağ, hesap, bilgisayar adı, tema ve vurgu, tercihler, gizlilik — sonra doğrudan masaüstü. |
+| **ISO ve USB** | Önyüklenebilir ISO (UEFI / BIOS) ya da USB bellek; kurulum ortamını (WinRE, boot.wim, kurulum dosyaları) da günceller; Win10 + Win11 tek ISO; presetlerle aynı ayarları tekrar uygula. |
 
 <p>
   <img src="docs/screenshots/startmenu.png" width="49%" alt="Başlat menüsü">
