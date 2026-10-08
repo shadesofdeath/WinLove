@@ -62,12 +62,35 @@ function Set-SetupHooks([bool] $on) {
         }
     }
 }
+# The keyboards Windows starts with (Setup's, from the image's language): "041f:0000041f;...".
+function Get-InputLocale {
+    $root = 'Registry::HKEY_USERS\.DEFAULT\Keyboard Layout'
+    $preload = Get-ItemProperty -Path "$root\Preload" -ErrorAction SilentlyContinue
+    $substitutes = Get-ItemProperty -Path "$root\Substitutes" -ErrorAction SilentlyContinue
+    $list = foreach ($i in 1..9) {
+        $id = [string] $preload."$i"
+        if ($id.Length -ne 8) { break }
+        $layout = [string] $substitutes.$id
+        if ($layout.Length -ne 8) { $layout = $id }
+        '{0}:{1}' -f $id.Substring(4), $layout
+    }
+    $text = @($list) -join ';'
+    if (-not $text) { try { $text = (Get-WinUserLanguageList)[0].InputMethodTips[0] } catch { } }
+    return $text
+}
 # The account into Setup's answer file (oobeSystem): the local account, its one automatic sign-in and
-# the time zone; OOBE's local account page is hidden already (the answer file WinLove wrote).
+# the time zone; OOBE's local account page is hidden already (the answer file WinLove wrote). Also the
+# region and the keyboard when the file has none: without them OOBE shows its own pages in a temporary
+# session (a test with such a file, 26200, 2026-10-08: region, keyboard, an update, a restart - and the
+# automatic sign-in was lost).
 function Add-SetupAccount($account) {
     $file = Join-Path $env:WINDIR 'Panther\unattend.xml'
     if (-not (Test-Path $file)) { throw "Setup's answer file is not at $file" }
+    # Saved as Setup wrote it: re-indenting turns an empty text (no password) into a line break and
+    # spaces, and Windows set those as the password (a test, 26200, 2026-10-08: the sign-in screen
+    # asked for a password and refused an empty one).
     $doc = New-Object System.Xml.XmlDocument
+    $doc.PreserveWhitespace = $true
     $doc.Load($file)
     $uri = 'urn:schemas-microsoft-com:unattend'
     $ns = New-Object System.Xml.XmlNamespaceManager($doc.NameTable)
@@ -77,12 +100,16 @@ function Add-SetupAccount($account) {
         $settings = $doc.CreateElement('settings', $uri); $settings.SetAttribute('pass', 'oobeSystem')
         [void] $doc.DocumentElement.AppendChild($settings)
     }
+    $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
+    function New-Component([string] $name) {
+        $component = $doc.CreateElement('component', $uri)
+        foreach ($pair in @(@('name', $name), @('processorArchitecture', $arch), @('publicKeyToken', '31bf3856ad364e35'),
+                            @('language', 'neutral'), @('versionScope', 'nonSxS'))) { $component.SetAttribute($pair[0], $pair[1]) }
+        return $component
+    }
     $shell = $settings.SelectSingleNode("u:component[@name='Microsoft-Windows-Shell-Setup']", $ns)
     if (-not $shell) {
-        $shell = $doc.CreateElement('component', $uri)
-        $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
-        foreach ($pair in @(@('name', 'Microsoft-Windows-Shell-Setup'), @('processorArchitecture', $arch), @('publicKeyToken', '31bf3856ad364e35'),
-                            @('language', 'neutral'), @('versionScope', 'nonSxS'))) { $shell.SetAttribute($pair[0], $pair[1]) }
+        $shell = New-Component 'Microsoft-Windows-Shell-Setup'
         [void] $settings.AppendChild($shell)
     }
     foreach ($old in 'AutoLogon', 'UserAccounts', 'TimeZone') {
@@ -91,7 +118,7 @@ function Add-SetupAccount($account) {
     }
     function Add-Node($parent, [string] $name, $text = $null) {
         $e = $doc.CreateElement($name, $uri)
-        if ($null -ne $text) { $e.InnerText = [string] $text }
+        if ($null -ne $text -and [string] $text -ne '') { $e.InnerText = [string] $text } elseif ($null -ne $text) { $e.IsEmpty = $false } # <Value></Value>
         [void] $parent.AppendChild($e)
         return $e
     }
@@ -110,7 +137,18 @@ function Add-SetupAccount($account) {
     [void] (Add-Node $pw 'Value' $account.password); [void] (Add-Node $pw 'PlainText' 'true')
     [void] (Add-Node $local 'DisplayName' $account.name); [void] (Add-Node $local 'Group' 'Administrators'); [void] (Add-Node $local 'Name' $account.name)
     if ($account.timeZone) { [void] (Add-Node $shell 'TimeZone' $account.timeZone) }
+    $intl = $settings.SelectSingleNode("u:component[@name='Microsoft-Windows-International-Core']", $ns)
+    if (-not $intl) {
+        $intl = New-Component 'Microsoft-Windows-International-Core'
+        [void] $settings.PrependChild($intl)
+    }
+    $language = [ordered] @{ InputLocale = (Get-InputLocale); SystemLocale = (Get-WinSystemLocale).Name
+                             UILanguage = [System.Globalization.CultureInfo]::InstalledUICulture.Name; UserLocale = (Get-Culture).Name }
+    $added = foreach ($key in $language.Keys) {
+        if ($language[$key] -and -not $intl.SelectSingleNode("u:$key", $ns)) { [void] (Add-Node $intl $key $language[$key]); '{0}={1}' -f $key, $language[$key] }
+    }
     $doc.Save($file)
+    return (@($added) -join ' ')
 }
 # Setup sets its answer file's computer name once more after the welcome's command (shsetup.dll, from
 # Setup's own copy of the file: VM spec4/spec5), and a file without a name lets OOBE pick a random one
@@ -173,8 +211,8 @@ if ($Stage -eq 'preoobe') {
     try {
         Write-Log ('pre-OOBE hooks: ' + ((Get-ItemProperty 'HKLM:\SYSTEM\Setup\FirstBoot\PreOobe' -ErrorAction SilentlyContinue | Out-String).Trim() -replace '\s+', ' '))
         $account = Read-Account
-        Add-SetupAccount $account
-        Write-Log ("account " + $account.name + " in Setup's answer file")
+        $language = Add-SetupAccount $account
+        Write-Log ("account " + $account.name + " in Setup's answer file" + $(if ($language) { '; ' + $language } else { '' }))
         if ($account.computer -and $account.computer -ne $env:COMPUTERNAME) {
             # Setup kept its own name after all: the chosen one from the next start.
             Rename-Computer -NewName $account.computer -Force -WarningAction SilentlyContinue
@@ -189,8 +227,10 @@ if ($Stage -eq 'preoobe') {
 if ($Stage -eq 'postoobe') {
     try {
         $account = Read-Account
-        Write-Log ('post-OOBE: user ' + $account.name + ' exists: ' + [bool] (Get-LocalUser -Name $account.name -ErrorAction SilentlyContinue) +
-                   '; computer ' + $env:COMPUTERNAME + ' (asked: ' + $account.computer + ')')
+        $user = Get-LocalUser -Name $account.name -ErrorAction SilentlyContinue
+        Write-Log ('post-OOBE: user ' + $account.name + ' exists: ' + [bool] $user + '; computer ' + $env:COMPUTERNAME + ' (asked: ' + $account.computer + ')')
+        # An account from the answer file keeps Windows' 42-day password age (OOBE's own do not expire).
+        if ($user) { Set-LocalUser -Name $account.name -PasswordNeverExpires $true }
         Register-SignInTasks $account.name
         # OOBE turns Windows' "Hi" pages back on (VM spec2): off for that first sign-in.
         Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -Name EnableFirstLogonAnimation -Value 0 -Type DWord
@@ -1767,7 +1807,7 @@ try {
             $secure = ConvertTo-SecureString $password -AsPlainText -Force
             New-LocalUser -Name $name -FullName $name -Password $secure -PasswordNeverExpires -AccountNeverExpires -ErrorAction Stop | Out-Null
         } else {
-            New-LocalUser -Name $name -FullName $name -NoPassword -AccountNeverExpires -ErrorAction Stop | Out-Null
+            New-LocalUser -Name $name -FullName $name -NoPassword -PasswordNeverExpires -AccountNeverExpires -ErrorAction Stop | Out-Null
         }
         Add-LocalGroupMember -SID 'S-1-5-32-544' -Member $name -ErrorAction Stop   # Administrators, in any language
         Write-Log "account $name created"

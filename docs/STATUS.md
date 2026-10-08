@@ -109,6 +109,13 @@
   msinfo32, cleanmgr, notepad, 32 bit cmd, 7-Zip, Notepad++, VLC açılıyor; winget 4/4 (VC++ MSI dahil); `dism /online
   /get-packages` çalışıyor. Aynı koşullu çift (`shrink-max2` / `shrink-base`: aynı 4 program, 25 dk, ikisinde de ResetBase +
   güncellemeler kapalı): **C: 17,46 GB / 19,66 GB → kurulu sistemde −2,20 GB**, ikisi de ALL PASSED, SideBySide 0. taskmgr SYSTEM'den 0x80070005 — küçültmesiz sistemde de aynı (tanılamanın oturum dışından başlatması).
+- **Karşılamanın ilk gerçek testi (D-087, 2026-10-08):** kullanıcının kendi ön ayarı ve VM'inde (yanıt dosyasında dil
+  yok, parola boş, NAT ağı, Home SL) Windows bölge / klavye sordu, güncelleyip yeniden başladı, kilit ekranı yazılamayan bir
+  parola istedi. Nedenler: `oobe.ps1` boş parolayı satır sonu + boşluk yazıyordu (XmlDocument girintisi), dil yoksa OOBE kendi
+  sayfalarını açıyordu; ayrıca yanıt dosyası hesapları 42 günde parola istiyordu. **Düzeltildi** (PreserveWhitespace,
+  sistemin dili / klavyesi oobeSystem'e, parola süresiz). **Kanıt:** VM `u1` (parolasız) + `u2` (parolalı), kullanıcının yanıt
+  dosyası + ağ ile ALL PASSED. **Bir sonraki somut adım:** kullanıcı eski VM'i siler, `dist\WinLove.exe` ile aynı ön ayardan
+  yeni ISO yapıp kurar. **Bilinen:** ağ varken OOBE'nin güncelleme ekranları (~3,5 dk, bir yeniden başlatma) Windows'un kendisi.
 - **İlk oturum ekranı denemesi (D-086, 2026-10-08):** kullanıcı ilk oturumdaki "Windows hazırlanıyor" yerine kendi
   ekranımızı istedi. `DelayedDesktopSwitchTimeout 0` + tam ekran WPF penceresi (zamanlanmış görev ve Active Setup ile) VM'de
   Win10 / Win11'de denendi: Windows'un ekranı kalktı ama PowerShell ilk oturumda 10–20 sn'de açıldığı için masaüstü bizden
