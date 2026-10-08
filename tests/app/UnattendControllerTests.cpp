@@ -434,17 +434,17 @@ TEST_CASE("unattend controller: the welcome (D-084) — the setup account in the
 
     // The window's texts: every "welcome." key, without its prefix.
     const auto texts = UnattendController::welcomeTexts(tr);
-    CHECK(texts.size() == 45);
+    CHECK(texts.size() == 105);
     CHECK(std::ranges::find(texts, std::pair<std::string, std::wstring>{"accountHeading", L"Hoş geldin"}) != texts.end());
 
     CHECK_FALSE(controller.welcome());
     controller.setWelcome(true);
     CHECK(controller.welcome());
-    CHECK(controller.options().welcomePassword.size() == 20);
     CHECK(controller.welcomeQueued());
-    CHECK(controller.xml().find(L"<Name>WinLoveSetup</Name>") != std::wstring::npos);
+    CHECK(controller.xml().find(L"oobe.ps1") != std::wstring::npos);
+    CHECK(controller.xml().find(L"WinLoveSetup") == std::wstring::npos);
     // No UI language in the file: the app's (Turkish by default).
-    CHECK(controller.welcomePlan().texts.size() == 45);
+    CHECK(controller.welcomePlan().texts.size() == 105);
     const auto title = [&] {
         for (const auto& [k, v] : controller.welcomePlan().texts) {
             if (k == "accountHeading") {
@@ -460,13 +460,17 @@ TEST_CASE("unattend controller: the welcome (D-084) — the setup account in the
     plan.computerPage = false;
     controller.setWelcomePlan(plan);
     controller.edit([](core::UnattendOptions& o) { o.uiLanguage = L"en-US"; });
-    controller.setWelcomePlan(controller.welcomePlan());
-    CHECK(title() == L"Welcome");
+    CHECK(title() == L"Welcome"); // the queued welcome followed the language
     CHECK_FALSE(controller.welcomePlan().computerPage);
-    const std::wstring password = controller.options().welcomePassword;
+    // ... and the answer file's time zone, where its time zone list starts
+    controller.edit([](core::UnattendOptions& o) {
+        o.timeZone = L"Turkey Standard Time";
+        o.computerName = L"OFIS-PC";
+    });
+    CHECK(controller.welcomePlan().timeZone == L"Turkey Standard Time");
+    CHECK(controller.welcomePlan().computerName == L"OFIS-PC");
+    CHECK(controller.xml().find(L"<TimeZone>") == std::wstring::npos); // the welcome sets it, not Setup
     controller.setWelcome(false);
     CHECK_FALSE(controller.welcomeQueued());
-    CHECK(controller.xml().find(L"WinLoveSetup") == std::wstring::npos);
-    controller.setWelcome(true);
-    CHECK(controller.options().welcomePassword == password); // made once
+    CHECK(controller.xml().find(L"oobe.ps1") == std::wstring::npos);
 }

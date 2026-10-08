@@ -80,8 +80,10 @@ private:
     ui::Dropdown* m_disk = nullptr;
     // D-084: the welcome and what it asks; the account rows it replaces.
     ui::Toggle* m_welcome = nullptr;
+    ui::Toggle* m_askNetwork = nullptr;
     ui::Toggle* m_askComputer = nullptr;
     ui::Toggle* m_askLook = nullptr;
+    ui::Toggle* m_askPrefs = nullptr;
     ui::Toggle* m_askPrivacy = nullptr;
     ui::Toggle* m_emptyPassword = nullptr;
     ui::Dropdown* m_welcomeTheme = nullptr;

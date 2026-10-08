@@ -52,11 +52,14 @@ istenirse bir sonraki ISO'nun köküne yazılır.
 - CLI: `wlcli unattend <dosya.xml>` (oku → WinLove'un yazacağı hali bas). Testler: `tests/core/UnattendTests.cpp`,
   `tests/core/IsoTests.cpp` (gerçek ISO üretir, kendi UDF okuyucumuzla doğrular), `tests/app/UnattendControllerTests.cpp`.
 
-## 3b. Karşılama ekranı (D-084)
-- Hesap bölümünün başında **Karşılama ekranı**: yanıt dosyası geçici `WinLoveSetup` hesabını (rastgele parola) bir kez
-  açtırır; WinLove'un tam ekran sihirbazı hesabı, bilgisayar adını, tema / vurguyu, gizliliği sorar ve kurar. Seçenekler:
-  sorulacak sayfalar, önerilen tema ve gizlilik, parolasız hesap; **Önizle**. Açıkken Yerel hesap / Parola / Otomatik oturum
-  kapalı. Betik kuyruğa girer (Uygula yazar); ISO Oluştur betik imajda yoksa reddeder.
+## 3b. Karşılama ekranı (D-084, D-085)
+- Hesap bölümünün başında **Karşılama ekranı**: Windows Kurulumu'nun içinde, logodan sonra WinLove'un tam ekran sayfaları
+  (Windows 11 kurulumu görünümünde, açık / koyu) kablosuz ağı, hesabı, bilgisayar adı ve saat dilimini, tema / vurgu / görev
+  çubuğunu, Gezgin ve görev çubuğu tercihlerini, gizliliği sorar; Kurulum sürer, hesap kendiliğinden açılır. Windows'un OOBE
+  sayfaları ve geçici hesap yok. Seçenekler: sorulacak sayfalar (Ağ, Bilgisayar adı ve saat dilimi, Tema, Tercihler,
+  Gizlilik), önerilen tema ve gizlilik, parolasız hesap; **Önizle**. Açıkken Yerel hesap / Parola / Otomatik oturum kapalı;
+  yanıt dosyasının bilgisayar adı ve saat dilimi sihirbazın ilk cevapları olur. Betik kuyruğa girer (Uygula yazar); ISO
+  Oluştur betik imajda yoksa reddeder.
 - Motor `core/unattend/Welcome`; betik `resources/scripts/oobe.ps1`; render `--demo-unattended=welcome`.
 
 ## 4. Sınırlar

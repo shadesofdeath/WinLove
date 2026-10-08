@@ -302,15 +302,25 @@ UnattendOptions withWelcome(const UnattendOptions& options) {
     if (!options.welcome) {
         return options;
     }
+    // No account in the file: the welcome creates it inside Setup and has OOBE sign it in. No time zone
+    // either: Setup applies it after the welcome's command (VM spec2); it is the welcome's first answer
+    // (WelcomePlan) and the welcome sets it. A computer name always: Setup sets it before the welcome
+    // renames, and without one OOBE renames the PC once more (Welcome.h).
     UnattendOptions o = options;
-    o.accountName = kWelcomeAccount;
-    o.password = o.welcomePassword;
-    o.autoLogon = true;
+    o.accountName.clear();
+    o.password.clear();
+    o.autoLogon = false;
+    if (o.randomComputerName || o.computerName.empty()) {
+        o.computerName = kWelcomeComputerName;
+    }
+    o.randomComputerName = false;
+    o.timeZone.clear();
     o.acceptEula = true;
     o.skipOnlineAccount = true;
     o.skipPrivacy = true;
     o.hideOemRegistration = true;
-    o.firstLogonCommands.insert(o.firstLogonCommands.begin(), welcomeFirstLogonCommand());
+    o.hideLocalAccount = true;
+    o.specializeCommands.push_back(welcomeSetupCommand());
     return o;
 }
 
@@ -472,10 +482,13 @@ std::wstring buildUnattendXml(const UnattendOptions& options) {
         }
     }
     const bool hideWifi = o.skipOnlineAccount || o.hideWifiSetup;
-    if (o.acceptEula || o.skipOnlineAccount || o.skipPrivacy || hideWifi || o.hideOemRegistration) {
+    if (o.acceptEula || o.skipOnlineAccount || o.skipPrivacy || hideWifi || o.hideOemRegistration || o.hideLocalAccount) {
         shell.open(L"OOBE");
         if (o.acceptEula) {
             shell.flag(L"HideEULAPage", true);
+        }
+        if (o.hideLocalAccount) {
+            shell.flag(L"HideLocalAccountScreen", true);
         }
         if (o.hideOemRegistration) {
             shell.flag(L"HideOEMRegistrationScreen", true);
@@ -642,6 +655,7 @@ Result<UnattendOptions> parseUnattendXml(std::string_view utf8) {
                                   !o.skipOnlineAccount;
                 o.hideOemRegistration =
                     o.hideOemRegistration || truthy(oobe.child("HideOEMRegistrationScreen").text().as_string("false"));
+                o.hideLocalAccount = o.hideLocalAccount || truthy(oobe.child("HideLocalAccountScreen").text().as_string("false"));
                 o.skipPrivacy = o.skipPrivacy || oobe.child("ProtectYourPC").text().as_int(0) == 3;
                 const auto accounts = component.child("UserAccounts");
                 if (const auto admin = accounts.child("AdministratorPassword")) {
@@ -665,11 +679,17 @@ Result<UnattendOptions> parseUnattendXml(std::string_view utf8) {
             }
         }
     }
-    // D-084: the welcome's setup account and command read back as the welcome.
-    if (text::lower(o.accountName) == text::lower(std::wstring(kWelcomeAccount)) && !o.firstLogonCommands.empty() &&
-        o.firstLogonCommands.front() == welcomeFirstLogonCommand()) {
+    // D-085: the welcome's command reads back as the welcome (its hidden account page with it).
+    if (const auto at = std::ranges::find(o.specializeCommands, welcomeSetupCommand()); at != o.specializeCommands.end()) {
+        o.specializeCommands.erase(at);
         o.welcome = true;
-        o.welcomePassword = o.password;
+        o.hideLocalAccount = false;
+    }
+    // D-084's files (a setup account whose first sign-in started the welcome) read as the welcome too.
+    constexpr std::wstring_view kSetupAccountCommand =
+        LR"(cmd /c start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%ProgramData%\WinLove\Oobe\oobe.ps1")";
+    if (text::lower(o.accountName) == L"winlovesetup" && !o.firstLogonCommands.empty() && o.firstLogonCommands.front() == kSetupAccountCommand) {
+        o.welcome = true;
         o.accountName.clear();
         o.password.clear();
         o.autoLogon = false;

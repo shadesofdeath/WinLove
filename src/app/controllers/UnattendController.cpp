@@ -70,6 +70,11 @@ std::vector<std::pair<std::string, std::wstring>> UnattendController::welcomeTex
 
 void UnattendController::setWelcomePlan(core::WelcomePlan plan) {
     plan.texts = welcomeTextsNow();
+    // The answer file's computer name and time zone are the welcome's first answers (D-085: the file
+    // leaves them out while the welcome is on).
+    const auto& options = m_state.unattend().options;
+    plan.timeZone = options.timeZone;
+    plan.computerName = options.randomComputerName ? std::wstring() : options.computerName;
     m_state.unqueueMany(core::welcomeSlots());
     m_state.queueMany(core::welcomeOperations(plan));
 }
@@ -98,12 +103,7 @@ Result<void> UnattendController::previewWelcome() const {
 }
 
 void UnattendController::setWelcome(bool on) {
-    edit([on](core::UnattendOptions& o) {
-        o.welcome = on;
-        if (on && o.welcomePassword.empty()) {
-            o.welcomePassword = core::randomWelcomePassword();
-        }
-    });
+    edit([on](core::UnattendOptions& o) { o.welcome = on; });
     if (on) {
         setWelcomePlan(welcomePlan());
     } else {
@@ -145,7 +145,15 @@ void UnattendController::edit(const std::function<void(core::UnattendOptions&)>&
         // ekle" afterwards stays unchecked.
         unattend.includeInIso = true;
     }
+    // The queued welcome follows the answers it takes: its language and its first time zone.
+    const auto& before = m_state.unattend().options;
+    const bool refresh = welcomeQueued() && (unattend.options.uiLanguage != before.uiLanguage || unattend.options.timeZone != before.timeZone ||
+                                             unattend.options.computerName != before.computerName ||
+                                             unattend.options.randomComputerName != before.randomComputerName);
     m_state.setUnattend(std::move(unattend));
+    if (refresh) {
+        setWelcomePlan(welcomePlan());
+    }
 }
 
 void UnattendController::setIncludeInIso(bool include) {

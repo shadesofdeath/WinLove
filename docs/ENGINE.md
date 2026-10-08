@@ -253,3 +253,21 @@ Uygulama davranışı:
   (`Win32_UserProfile` + `Remove-LocalUser`) silinebilir. PowerShell 5.1'de `0xFF -shl 24` = negatif Int32 (`[uint32]` çevrimi
   hata verir). `New-LocalUser`, `Rename-Computer`, `Register-ScheduledTask` ilk oturum komutundan (yönetici) çalışır.
   `defaultuser0` hesabı ve profili Windows'un kendi OOBE artığıdır (bizim değil).
+- [2026-10-08] [Kurulum içi karşılama, D-085] specialize'ın `RunSynchronous` komutu SYSTEM olarak çalışır ve **pencere
+  açabilir** (WPF tam ekran, logo / "Yükleniyor %42"den sonra; Win11 26200 ve Win10 19045). Sıra: Kurulum
+  `ComputerName`'i specialize'ın **başında** (`OrchestrateSetComputerName`) uygular, RunSynchronous komutları gelir,
+  Shell-Setup'ın geri kalanı (`shsetup.dll SHUnattendedSetup specialize`: TimeZone …) **sonra** uygulanır, specialize
+  bitince Kurulum yanıt dosyası kopyasını (`Panther\unattend.xml`) bellekten **yeniden yazar**
+  (`Callback_Unattend_Serialize`) — specialize'da o dosyada yapılan değişiklik kaybolur. Specialize'da Winlogon otomatik
+  oturum değerleri yazmak OOBE'nin kendi `defaultuser0` oturumunu bozar ("Biraz bekleyin…" sonsuza dek). Yanıt dosyasında
+  hesap yoksa `HideLocalAccountScreen` yok sayılır (OOBE "Bu cihazı kimler kullanacak?"), bilgisayar adı yoksa OOBE'nin
+  ComputerName eklentisi rastgele `DESKTOP-…` verir ("Could OOBE change computer name? TRUE"). Çalışan yol:
+  `HKLM\SYSTEM\Setup\FirstBoot\PreOobe` / `PostOobe` değerleri (DISM'in kendi `SetupPlatform.exe /preoobe` girdisinin
+  yanında; OEM lisansında da çalışır, `SetupComplete.cmd` çalışmaz). PreOobe, Kurulumun yeniden yazmasından sonra ve
+  oobeldr'in oobeSystem'i okumasından önce çalışır: oraya yazılan `UserAccounts` + `AutoLogon` + `TimeZone` OOBE tarafından
+  uygulanır. Shell-Setup dosyanın `ComputerName`'ini RunSynchronous'tan sonra **bir kez daha** yazar (`[Shell Unattend]
+  ComputerName set to …`, Kurulumun kendi kopyasından: o sırada diskteki dosyayı düzeltmek işe yaramaz); arkada kalan bir
+  süreç bekleyen adı (`ComputerName\ComputerName` + `Tcpip\Parameters\NV Hostname`) geri çevirince specialize sonrası
+  yeniden başlatma seçilen adla açılır. OOBE `EnableFirstLogonAnimation`'ı 1'e geri alır (PostOobe'da 0 yap). `New-Item -Force` var olan kayıt
+  anahtarını boşaltır (FirstBoot gibi anahtarlarda yalnız yoksa oluştur). Win11 kurulum ortamı Win10 install.wim'ini kurmaz
+  ("Windows 11 yüklemesi başarısız oldu"; `wlcli setup-media` ile Win10 ortamı).

@@ -76,6 +76,7 @@ struct UnattendOptions {
     bool acceptEula = false;        // AcceptEula + HideEULAPage
     bool hideWifiSetup = false;     // HideWirelessSetupInOOBE (also part of skipOnlineAccount)
     bool hideOemRegistration = false; // HideOEMRegistrationScreen
+    bool hideLocalAccount = false;    // HideLocalAccountScreen (the welcome makes the account, D-085)
 
     // Sistem
     bool preventDeviceEncryption = false; // BitLocker\PreventDeviceEncryption = 1 (specialize)
@@ -99,17 +100,15 @@ struct UnattendOptions {
     bool bypassCpu = false;     // supported processor list / 2 cores
     bool bypassStorage = false; // 64 GB system disk
 
-    // D-084: WinLove's welcome asks for the account at the first start (Welcome.h). Written as the
-    // setup account (welcomePassword), its one automatic sign-in, the welcome as its first command
-    // and Windows' account / privacy / EULA pages hidden — in place of accountName / password /
-    // autoLogon, which stay as they are for when the welcome is switched off again.
+    // D-085: WinLove's welcome asks for the account inside Setup (Welcome.h): the welcome as the
+    // last specialize command and Windows' account / privacy / EULA pages hidden — in place of
+    // accountName / password / autoLogon, which stay as they are for when it is switched off again.
     bool welcome = false;
-    std::wstring welcomePassword; // random, made when the welcome is switched on
 
     [[nodiscard]] bool operator==(const UnattendOptions&) const = default;
 };
 
-// The options as the answer file writes them: with the welcome, its setup account and pages.
+// The options as the answer file writes them: with the welcome, its command and hidden pages.
 [[nodiscard]] UnattendOptions withWelcome(const UnattendOptions& options);
 
 // The file text ("\n" line ends, 2-space indent, XML declaration first). Saved as UTF-8.

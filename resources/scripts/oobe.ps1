@@ -1,22 +1,30 @@
-# WinLove: its own welcome in place of Windows' OOBE pages (D-084, first version: the experiment).
+# WinLove: its own setup screens in place of Windows' OOBE (D-084, D-085), in Windows 11's own look.
 #
-# Windows' OOBE is skipped by the answer file; a setup account signs in once by itself and its first
-# sign-in runs this script, full screen. Whoever installs picks the account (name, password), the
-# computer's name, light or dark, an accent colour and how much Windows may collect. Then:
-#   - the account is created (an administrator), the computer is renamed,
-#   - the look goes into the new account's first sign-in (Default profile RunOnce: Windows writes
-#     its own theme over values written earlier - ENGINE.md, D-026),
-#   - the privacy policies are written and Windows' own privacy page is not shown,
-#   - a start-up task deletes the setup account and its profile, the new account signs in once by
-#     itself, the computer restarts.
-# Reads oobe.json next to it (UTF-8): the texts, the choices, the setup account's name. "auto" in it
-# (the lab): the answers are filled in and the pages go on by themselves.
+# Two ways in:
+#   - inside Windows Setup (D-085, what WinLove's answer file does): the specialize pass runs this
+#     script as SYSTEM, before any account exists - Windows' logo, then these pages; Setup goes on.
+#     Setup's own hooks run it twice more (-Stage): before OOBE ("preoobe": the account and its one
+#     automatic sign-in go into Setup's answer file, so OOBE creates it and signs it in) and after
+#     OOBE ("postoobe": the tasks for that sign-in). Windows' own OOBE pages stay hidden;
+#   - at the first sign-in of a setup account (D-084's answer files; the account goes afterwards).
+# Whoever installs picks: a wireless network, the account (name, password), the computer's name and
+# time zone, light or dark, an accent colour, the taskbar, a few Explorer / taskbar habits and how much
+# Windows may collect. Then:
+#   - the account is created (an administrator), the computer is renamed, the time zone is set,
+#   - the look and the habits go into the new account's profile (the Default profile, and once more at
+#     its first sign-in through RunOnce: Windows writes its own theme over earlier values, D-026),
+#   - machine policies (privacy, widgets) are written and Windows' own privacy page is not shown,
+#   - the new account signs in once by itself (a task at that sign-in takes the password out again).
+# Reads oobe.json next to it (UTF-8): the texts, the choices. "auto" in it (the lab): the answers are
+# filled in and the pages go on by themselves. "preview": a window on this PC, nothing is done.
 #
-# Colours from the design tokens (tools/gen_scripts.py replaces every @@theme.token@@).
+# Colours are Windows' Fluent ones (below), not WinLove's design tokens: it is Windows the person sees.
 # Keep this file ASCII: Windows PowerShell reads a script without a byte order mark as ANSI.
 
+param([string] $Stage = '')
 $ErrorActionPreference = 'Continue'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
+$system = [Security.Principal.WindowsIdentity]::GetCurrent().IsSystem
 $data = [System.IO.File]::ReadAllText((Join-Path $here 'oobe.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json
 $t = $data.texts
 $auto = $data.auto
@@ -28,13 +36,309 @@ function Write-Log([string] $text) {
     $line = '[{0:yyyy-MM-dd HH:mm:ss}] {1}' -f (Get-Date), $text
     [System.IO.File]::AppendAllText($logFile, $line + "`r`n", [System.Text.Encoding]::UTF8)
 }
-Write-Log ('started as ' + [Environment]::UserName + ' on ' + $env:COMPUTERNAME)
+Write-Log ('started as ' + [Environment]::UserName + ' on ' + $env:COMPUTERNAME + $(if ($system) { ' (inside Setup)' } else { '' }))
+$win11 = [Environment]::OSVersion.Version.Build -ge 22000
 
-$c = @{ bg = '@@dark.bg.base@@'; panel = '@@dark.bg.panel@@'; raised = '@@dark.bg.raised@@'; input = '@@dark.bg.input@@'
-        line = '@@dark.line.subtle@@'; frame = '@@dark.line.strong@@'; text = '@@dark.text.primary@@'
-        text2 = '@@dark.text.secondary@@'; text3 = '@@dark.text.tertiary@@'; accent = '@@dark.accent.base@@'
-        accentHover = '@@dark.accent.hover@@'; onAccent = '@@dark.text.onAccent@@'; error = '@@dark.status.error@@' }
+# A registry key made only when missing: New-Item -Force empties a key that is there (Setup's own
+# FirstBoot entries, other policies).
+function Confirm-Key([string] $path) { if (-not (Test-Path -LiteralPath $path)) { New-Item -Path $path -Force | Out-Null } }
 
+# ---- Setup's hooks (D-085) ----------------------------------------------------------------------------
+# Inside Setup the account cannot simply be made in specialize: OOBE then shows its own account page
+# (no account in its answer file), and Setup rewrites its answer file when specialize ends (VM spec2,
+# 26200). Windows' FirstBoot hooks run after that: PreOobe before OOBE reads the file, PostOobe after
+# OOBE, before the first sign-in (they run with an OEM licence too, unlike SetupComplete.cmd).
+$accountFile = Join-Path $here 'account.json'
+$hookName = 'WinLove'
+function Set-SetupHooks([bool] $on) {
+    foreach ($phase in 'PreOobe', 'PostOobe') {
+        $key = "HKLM:\SYSTEM\Setup\FirstBoot\$phase"
+        if ($on) {
+            Confirm-Key $key
+            $line = 'cmd.exe /c powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -Stage {1}' -f (Join-Path $here 'oobe.ps1'), $phase.ToLower()
+            Set-ItemProperty -Path $key -Name $hookName -Value $line -Type String
+        } else {
+            Remove-ItemProperty -Path $key -Name $hookName -ErrorAction SilentlyContinue
+        }
+    }
+}
+# The account into Setup's answer file (oobeSystem): the local account, its one automatic sign-in and
+# the time zone; OOBE's local account page is hidden already (the answer file WinLove wrote).
+function Add-SetupAccount($account) {
+    $file = Join-Path $env:WINDIR 'Panther\unattend.xml'
+    if (-not (Test-Path $file)) { throw "Setup's answer file is not at $file" }
+    $doc = New-Object System.Xml.XmlDocument
+    $doc.Load($file)
+    $uri = 'urn:schemas-microsoft-com:unattend'
+    $ns = New-Object System.Xml.XmlNamespaceManager($doc.NameTable)
+    $ns.AddNamespace('u', $uri)
+    $settings = $doc.SelectSingleNode("/u:unattend/u:settings[@pass='oobeSystem']", $ns)
+    if (-not $settings) {
+        $settings = $doc.CreateElement('settings', $uri); $settings.SetAttribute('pass', 'oobeSystem')
+        [void] $doc.DocumentElement.AppendChild($settings)
+    }
+    $shell = $settings.SelectSingleNode("u:component[@name='Microsoft-Windows-Shell-Setup']", $ns)
+    if (-not $shell) {
+        $shell = $doc.CreateElement('component', $uri)
+        $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
+        foreach ($pair in @(@('name', 'Microsoft-Windows-Shell-Setup'), @('processorArchitecture', $arch), @('publicKeyToken', '31bf3856ad364e35'),
+                            @('language', 'neutral'), @('versionScope', 'nonSxS'))) { $shell.SetAttribute($pair[0], $pair[1]) }
+        [void] $settings.AppendChild($shell)
+    }
+    foreach ($old in 'AutoLogon', 'UserAccounts', 'TimeZone') {
+        $node = $shell.SelectSingleNode("u:$old", $ns)
+        if ($node) { [void] $shell.RemoveChild($node) }
+    }
+    function Add-Node($parent, [string] $name, $text = $null) {
+        $e = $doc.CreateElement($name, $uri)
+        if ($null -ne $text) { $e.InnerText = [string] $text }
+        [void] $parent.AppendChild($e)
+        return $e
+    }
+    $logon = $doc.CreateElement('AutoLogon', $uri)
+    $pw = Add-Node $logon 'Password'
+    [void] (Add-Node $pw 'Value' $account.password); [void] (Add-Node $pw 'PlainText' 'true')
+    [void] (Add-Node $logon 'Enabled' 'true'); [void] (Add-Node $logon 'LogonCount' '1'); [void] (Add-Node $logon 'Username' $account.name)
+    [void] $shell.PrependChild($logon)
+    $locals = Add-Node (Add-Node $shell 'UserAccounts') 'LocalAccounts'
+    $local = $doc.CreateElement('LocalAccount', $uri)
+    $action = $doc.CreateAttribute('wcm', 'action', 'http://schemas.microsoft.com/WMIConfig/2002/State')
+    $action.Value = 'add'
+    [void] $local.Attributes.Append($action)
+    [void] $locals.AppendChild($local)
+    $pw = Add-Node $local 'Password'
+    [void] (Add-Node $pw 'Value' $account.password); [void] (Add-Node $pw 'PlainText' 'true')
+    [void] (Add-Node $local 'DisplayName' $account.name); [void] (Add-Node $local 'Group' 'Administrators'); [void] (Add-Node $local 'Name' $account.name)
+    if ($account.timeZone) { [void] (Add-Node $shell 'TimeZone' $account.timeZone) }
+    $doc.Save($file)
+}
+# Setup sets its answer file's computer name once more after the welcome's command (shsetup.dll, from
+# Setup's own copy of the file: VM spec4/spec5), and a file without a name lets OOBE pick a random one
+# (spec3). So a small watcher stays behind: when Setup writes its name, the chosen one goes back as the
+# name Windows starts with next - Setup restarts before OOBE because of the name change.
+function Start-NameWatcher([string] $computer) {
+    $watcher = Join-Path $here 'oobe-name.ps1'
+    $lines = @(
+        ('$want = ''{0}''' -f $computer),
+        '$names = ''HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName''',
+        '$tcp = ''HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters''',
+        '$until = (Get-Date).AddMinutes(15)',
+        'while ((Get-Date) -lt $until) {',
+        '    try {',
+        '        $now = (Get-ItemProperty -Path $names).ComputerName',
+        '        if ($now -ne $want) {',
+        '            Set-ItemProperty -Path $names -Name ComputerName -Value $want',
+        '            Set-ItemProperty -Path $tcp -Name ''NV Hostname'' -Value $want',
+        ('            [System.IO.File]::AppendAllText(''{0}'', (''[{{0:yyyy-MM-dd HH:mm:ss}}] name watcher: {{1}} -> {{2}}'' -f (Get-Date), $now, $want) + "`r`n")' -f $logFile),
+        '        }',
+        '    } catch { }',
+        '    Start-Sleep -Milliseconds 50',
+        '}')
+    [System.IO.File]::WriteAllText($watcher, ($lines -join "`r`n"), [System.Text.Encoding]::UTF8)
+    Start-Process -FilePath 'powershell.exe' -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $watcher) -WindowStyle Hidden
+    Write-Log "name watcher for $computer"
+}
+# The new account's first sign-in: a task, as SYSTEM, takes out the password Windows keeps for the
+# automatic sign-in (VM, 26200: AutoLogonCount 0, DefaultPassword still there in plain text).
+function Register-SignInTasks([string] $name) {
+    $signin = Join-Path $stateDir 'oobe-signin.ps1'
+    $lines = @(
+        '$winlogon = ''HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon''',
+        'Remove-ItemProperty -Path $winlogon -Name DefaultPassword -ErrorAction SilentlyContinue',
+        'Remove-ItemProperty -Path $winlogon -Name AutoLogonCount -ErrorAction SilentlyContinue',
+        'Set-ItemProperty -Path $winlogon -Name AutoAdminLogon -Value ''0''',
+        ('Remove-Item -LiteralPath ''{0}'' -Force -ErrorAction SilentlyContinue' -f (Join-Path $here 'oobe.json')),
+        # Setup's copy of the answer file held the password (inside Setup it came through there)
+        ('Remove-Item -LiteralPath ''{0}'' -Force -ErrorAction SilentlyContinue' -f (Join-Path $env:WINDIR 'Panther\unattend.xml')),
+        'Unregister-ScheduledTask -TaskName ''WinLove OOBE sign-in'' -Confirm:$false',
+        'Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force')
+    [System.IO.File]::WriteAllText($signin, ($lines -join "`r`n"), [System.Text.Encoding]::UTF8)
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$signin`""
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    Register-ScheduledTask -TaskName 'WinLove OOBE sign-in' -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $name) -Principal $principal -Force | Out-Null
+    if ($auto -and $auto.check) {
+        # The lab: what the new account finds at its first sign-in, onto the log disk.
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f (Join-Path $here 'oobe-check.ps1'))
+        $principal = New-ScheduledTaskPrincipal -UserId $name -LogonType Interactive -RunLevel Highest
+        Register-ScheduledTask -TaskName 'WinLove OOBE check' -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $name) -Principal $principal -Force | Out-Null
+    }
+    Write-Log "sign-in tasks for $name"
+}
+function Read-Account { return [System.IO.File]::ReadAllText($accountFile, [System.Text.Encoding]::UTF8) | ConvertFrom-Json }
+
+if ($Stage -eq 'preoobe') {
+    try {
+        Write-Log ('pre-OOBE hooks: ' + ((Get-ItemProperty 'HKLM:\SYSTEM\Setup\FirstBoot\PreOobe' -ErrorAction SilentlyContinue | Out-String).Trim() -replace '\s+', ' '))
+        $account = Read-Account
+        Add-SetupAccount $account
+        Write-Log ("account " + $account.name + " in Setup's answer file")
+        if ($account.computer -and $account.computer -ne $env:COMPUTERNAME) {
+            # Setup kept its own name after all: the chosen one from the next start.
+            Rename-Computer -NewName $account.computer -Force -WarningAction SilentlyContinue
+            Write-Log ('computer is ' + $env:COMPUTERNAME + '; ' + $account.computer + ' from the next start')
+        }
+        # From here the password is only in Setup's answer file (Windows clears it there after OOBE;
+        # the sign-in task deletes the file).
+        [System.IO.File]::WriteAllText($accountFile, (@{ name = $account.name; computer = $account.computer } | ConvertTo-Json), [System.Text.Encoding]::UTF8)
+    } catch { Write-Log ('pre-OOBE FAILED: ' + $_.Exception.Message) }
+    exit 0
+}
+if ($Stage -eq 'postoobe') {
+    try {
+        $account = Read-Account
+        Write-Log ('post-OOBE: user ' + $account.name + ' exists: ' + [bool] (Get-LocalUser -Name $account.name -ErrorAction SilentlyContinue) +
+                   '; computer ' + $env:COMPUTERNAME + ' (asked: ' + $account.computer + ')')
+        Register-SignInTasks $account.name
+        # OOBE turns Windows' "Hi" pages back on (VM spec2): off for that first sign-in.
+        Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -Name EnableFirstLogonAnimation -Value 0 -Type DWord
+        Remove-Item -LiteralPath $accountFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath (Join-Path $here 'oobe-name.ps1') -Force -ErrorAction SilentlyContinue
+        Set-SetupHooks $false
+    } catch { Write-Log ('post-OOBE FAILED: ' + $_.Exception.Message) }
+    exit 0
+}
+
+# ---- wireless: Windows' Native Wifi API ---------------------------------------------------------------
+# netsh's output is in the system's language; the API is not. Profiles are for all users: Windows keeps
+# the network after Setup and connects again by itself.
+$wifiCode = @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+namespace WinLove {
+public class WifiNet { public string Ssid; public int Signal; public bool Secure; public int Auth; public int Cipher; public bool Connected; }
+public static class Wifi {
+    [DllImport("wlanapi.dll")] static extern uint WlanOpenHandle(uint version, IntPtr reserved, out uint negotiated, out IntPtr handle);
+    [DllImport("wlanapi.dll")] static extern uint WlanCloseHandle(IntPtr handle, IntPtr reserved);
+    [DllImport("wlanapi.dll")] static extern uint WlanEnumInterfaces(IntPtr handle, IntPtr reserved, out IntPtr list);
+    [DllImport("wlanapi.dll")] static extern uint WlanScan(IntPtr handle, ref Guid iface, IntPtr ssid, IntPtr ie, IntPtr reserved);
+    [DllImport("wlanapi.dll")] static extern uint WlanGetAvailableNetworkList(IntPtr handle, ref Guid iface, uint flags, IntPtr reserved, out IntPtr list);
+    [DllImport("wlanapi.dll", CharSet = CharSet.Unicode)] static extern uint WlanSetProfile(IntPtr handle, ref Guid iface, uint flags, string xml, string security, bool overwrite, IntPtr reserved, out uint reason);
+    [DllImport("wlanapi.dll")] static extern uint WlanConnect(IntPtr handle, ref Guid iface, ref Parameters parameters, IntPtr reserved);
+    [DllImport("wlanapi.dll")] static extern void WlanFreeMemory(IntPtr memory);
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct Parameters { public int mode; [MarshalAs(UnmanagedType.LPWStr)] public string profile; public IntPtr ssid; public IntPtr bssids; public int bssType; public uint flags; }
+
+    static IntPtr Open() { uint version; IntPtr handle; return WlanOpenHandle(2, IntPtr.Zero, out version, out handle) == 0 ? handle : IntPtr.Zero; }
+    static List<Guid> Interfaces(IntPtr handle) {
+        var found = new List<Guid>();
+        IntPtr list;
+        if (WlanEnumInterfaces(handle, IntPtr.Zero, out list) != 0) return found;
+        int count = Marshal.ReadInt32(list);
+        for (int i = 0; i < count; i++) { // WLAN_INTERFACE_INFO: GUID, WCHAR[256], state = 532 bytes
+            byte[] guid = new byte[16];
+            Marshal.Copy(new IntPtr(list.ToInt64() + 8 + i * 532), guid, 0, 16);
+            found.Add(new Guid(guid));
+        }
+        WlanFreeMemory(list);
+        return found;
+    }
+    public static bool Present() {
+        IntPtr handle = Open();
+        if (handle == IntPtr.Zero) return false;
+        try { return Interfaces(handle).Count > 0; } finally { WlanCloseHandle(handle, IntPtr.Zero); }
+    }
+    public static void Scan() {
+        IntPtr handle = Open();
+        if (handle == IntPtr.Zero) return;
+        try { foreach (var iface in Interfaces(handle)) { Guid g = iface; WlanScan(handle, ref g, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero); } }
+        finally { WlanCloseHandle(handle, IntPtr.Zero); }
+    }
+    public static List<WifiNet> Networks() {
+        var byName = new Dictionary<string, WifiNet>();
+        IntPtr handle = Open();
+        if (handle == IntPtr.Zero) return new List<WifiNet>();
+        try {
+            foreach (var iface in Interfaces(handle)) {
+                Guid g = iface;
+                IntPtr list;
+                if (WlanGetAvailableNetworkList(handle, ref g, 0, IntPtr.Zero, out list) != 0) continue;
+                int count = Marshal.ReadInt32(list);
+                for (int i = 0; i < count; i++) { // WLAN_AVAILABLE_NETWORK: 628 bytes
+                    long at = list.ToInt64() + 8 + (long) i * 628;
+                    int length = Marshal.ReadInt32(new IntPtr(at + 512));
+                    if (length <= 0 || length > 32) continue; // hidden networks
+                    byte[] raw = new byte[length];
+                    Marshal.Copy(new IntPtr(at + 516), raw, 0, length);
+                    var net = new WifiNet();
+                    net.Ssid = Encoding.UTF8.GetString(raw);
+                    net.Signal = Marshal.ReadInt32(new IntPtr(at + 604));
+                    net.Secure = Marshal.ReadInt32(new IntPtr(at + 608)) != 0;
+                    net.Auth = Marshal.ReadInt32(new IntPtr(at + 612));
+                    net.Cipher = Marshal.ReadInt32(new IntPtr(at + 616));
+                    net.Connected = (Marshal.ReadInt32(new IntPtr(at + 620)) & 1) != 0;
+                    WifiNet seen;
+                    if (byName.TryGetValue(net.Ssid, out seen)) {
+                        seen.Connected |= net.Connected;
+                        if (net.Signal > seen.Signal) seen.Signal = net.Signal;
+                    } else {
+                        byName[net.Ssid] = net;
+                    }
+                }
+                WlanFreeMemory(list);
+            }
+        } finally { WlanCloseHandle(handle, IntPtr.Zero); }
+        var all = new List<WifiNet>(byName.Values);
+        all.Sort((a, b) => a.Connected != b.Connected ? (a.Connected ? -1 : 1) : b.Signal.CompareTo(a.Signal));
+        return all;
+    }
+    // 0: asked (Windows connects in the background); otherwise the Win32 error.
+    public static uint Connect(string xml, string profile) {
+        IntPtr handle = Open();
+        if (handle == IntPtr.Zero) return 1;
+        try {
+            foreach (var iface in Interfaces(handle)) {
+                Guid g = iface;
+                uint reason;
+                uint result = WlanSetProfile(handle, ref g, 0, xml, null, true, IntPtr.Zero, out reason);
+                if (result != 0) return result;
+                var parameters = new Parameters();
+                parameters.mode = 0; parameters.profile = profile; parameters.bssType = 1;
+                return WlanConnect(handle, ref g, ref parameters, IntPtr.Zero);
+            }
+            return 2;
+        } finally { WlanCloseHandle(handle, IntPtr.Zero); }
+    }
+}
+}
+'@
+$script:wifi = $false
+try {
+    if ($system) { Start-Service -Name WlanSvc -ErrorAction SilentlyContinue } # Setup may not have started it yet
+    Add-Type -TypeDefinition $wifiCode -ErrorAction Stop
+    $script:wifi = [WinLove.Wifi]::Present()
+} catch { Write-Log ('wireless: ' + $_.Exception.Message) }
+Write-Log ('wireless adapter: ' + $script:wifi)
+
+# A profile for the network (WLANProfile v1). Enterprise networks (802.1X) are left to Windows.
+function Get-WifiProfile($net, [string] $key, [bool] $autoConnect) {
+    $auth = switch ($net.Auth) { 1 { 'open' } 4 { 'WPAPSK' } 7 { 'WPA2PSK' } 9 { 'WPA3SAE' } 10 { 'OWE' } default { '' } }
+    if (-not $auth -or ($net.Auth -eq 1 -and $net.Cipher -ne 0)) { return '' } # enterprise, WEP
+    $cipher = switch ($net.Cipher) { 0 { 'none' } 2 { 'TKIP' } default { 'AES' } }
+    $hex = -join ([System.Text.Encoding]::UTF8.GetBytes($net.Ssid) | ForEach-Object { '{0:X2}' -f $_ })
+    $name = [System.Security.SecurityElement]::Escape($net.Ssid)
+    $shared = ''
+    if ($auth -in 'WPAPSK', 'WPA2PSK', 'WPA3SAE') {
+        $type = if ($key -match '^[0-9A-Fa-f]{64}$') { 'networkKey' } else { 'passPhrase' }
+        $shared = '<sharedKey><keyType>{0}</keyType><protected>false</protected><keyMaterial>{1}</keyMaterial></sharedKey>' -f $type, [System.Security.SecurityElement]::Escape($key)
+    }
+    return ('<?xml version="1.0"?><WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1"><name>{0}</name>' +
+            '<SSIDConfig><SSID><hex>{1}</hex><name>{0}</name></SSID></SSIDConfig><connectionType>ESS</connectionType>' +
+            '<connectionMode>{2}</connectionMode><MSM><security><authEncryption><authentication>{3}</authentication>' +
+            '<encryption>{4}</encryption><useOneX>false</useOneX></authEncryption>{5}</security></MSM></WLANProfile>') -f
+           $name, $hex, $(if ($autoConnect) { 'auto' } else { 'manual' }), $auth, $cipher, $shared
+}
+function Test-Wired {
+    try {
+        return [bool] (Get-NetAdapter -Physical -ErrorAction Stop | Where-Object { $_.Status -eq 'Up' -and $_.PhysicalMediaType -notmatch '802\.11|Wireless|Native' })
+    } catch { return $false }
+}
+
+# ---- the window ---------------------------------------------------------------------------------------
+# Windows 11's setup: a soft bloom behind, a rounded card in the middle, a live picture of the choice
+# on the left, the question on the right, Fluent controls, the accent button at the bottom right
+# (design: the "WinLove Kurulum Ekrani" canvas). The window follows the theme chosen on the look page.
 try {
     Add-Type -Namespace WinLove -Name Dpi -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(System.IntPtr value);'
     [void] [WinLove.Dpi]::SetProcessDpiAwarenessContext([IntPtr] -2)
@@ -44,245 +348,1141 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="WinLove" WindowStyle="None" ResizeMode="NoResize" WindowState="Maximized" Topmost="True"
-        Background="{bg}" UseLayoutRounding="True" SnapsToDevicePixels="True"
-        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="13" Foreground="{text}">
+        Title="Windows" WindowStyle="None" ResizeMode="NoResize" Topmost="True" ShowInTaskbar="False"
+        Background="{DynamicResource Bg}" UseLayoutRounding="True" SnapsToDevicePixels="True"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14" Foreground="{DynamicResource Text1}">
   <Window.Resources>
-    <Style TargetType="TextBox">
-      <Setter Property="Foreground" Value="{text}"/>
-      <Setter Property="CaretBrush" Value="{text}"/>
-      <Setter Property="Height" Value="32"/>
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="TextBox">
-            <Border x:Name="B" Background="{input}" BorderBrush="{frame}" BorderThickness="1" CornerRadius="3" Padding="8,0">
-              <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
-            </Border>
-            <ControlTemplate.Triggers>
-              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="{accent}"/></Trigger>
-            </ControlTemplate.Triggers>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
-    </Style>
-    <Style TargetType="PasswordBox">
-      <Setter Property="Foreground" Value="{text}"/>
-      <Setter Property="CaretBrush" Value="{text}"/>
-      <Setter Property="Height" Value="32"/>
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="PasswordBox">
-            <Border x:Name="B" Background="{input}" BorderBrush="{frame}" BorderThickness="1" CornerRadius="3" Padding="8,0">
-              <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
-            </Border>
-            <ControlTemplate.Triggers>
-              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="{accent}"/></Trigger>
-            </ControlTemplate.Triggers>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
-    </Style>
-    <Style x:Key="Button" TargetType="Button">
-      <Setter Property="Foreground" Value="{text}"/>
-      <Setter Property="Background" Value="{raised}"/>
-      <Setter Property="Height" Value="32"/>
-      <Setter Property="MinWidth" Value="96"/>
+    <Style TargetType="Button">
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
       <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Foreground" Value="{DynamicResource Text1}"/>
+      <Setter Property="Background" Value="{DynamicResource Fill}"/>
+      <Setter Property="Height" Value="32"/>
+      <Setter Property="MinWidth" Value="120"/>
+      <Setter Property="Padding" Value="20,0"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="B" Background="{TemplateBinding Background}" BorderBrush="{frame}" BorderThickness="1" CornerRadius="3" Padding="16,0">
+            <Border x:Name="B" Background="{TemplateBinding Background}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" CornerRadius="4" Padding="{TemplateBinding Padding}">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="{DynamicResource Row}"/></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="B" Property="Opacity" Value="0.8"/></Trigger>
               <Trigger Property="IsEnabled" Value="False"><Setter TargetName="B" Property="Opacity" Value="0.45"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
     </Style>
-    <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource Button}">
-      <Setter Property="Foreground" Value="{onAccent}"/>
-      <Setter Property="Background" Value="{accent}"/>
+    <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Foreground" Value="{DynamicResource BtnText}"/>
+      <Setter Property="Background" Value="{DynamicResource Sel}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="B" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+              <Grid>
+                <Border x:Name="Edge" CornerRadius="4" BorderBrush="#2E000000" BorderThickness="0,0,0,1"/>
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Grid>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="{DynamicResource SelHover}"/></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="B" Property="Opacity" Value="0.8"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="B" Property="Opacity" Value="0.4"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
-    <Style TargetType="TextBlock" x:Key="Label">
-      <Setter Property="Foreground" Value="{text2}"/>
-      <Setter Property="FontSize" Value="12"/>
-      <Setter Property="Margin" Value="0,14,0,6"/>
+    <Style x:Key="Ghost" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="MinWidth" Value="0"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="B" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="{DynamicResource Soft}"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="Field" TargetType="Control">
+      <Setter Property="Foreground" Value="{DynamicResource Text1}"/>
+      <Setter Property="Height" Value="32"/>
+      <Setter Property="Width" Value="360"/>
+      <Setter Property="HorizontalAlignment" Value="Left"/>
+    </Style>
+    <ControlTemplate x:Key="FieldFrame" TargetType="Control">
+      <Grid>
+        <Border x:Name="B" Background="{DynamicResource Fill}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" CornerRadius="4"/>
+        <Border x:Name="L" Height="1" VerticalAlignment="Bottom" Margin="1,0" Background="{DynamicResource Bottom}"/>
+        <ScrollViewer x:Name="PART_ContentHost" Margin="11,0,36,0" VerticalAlignment="Center"/>
+      </Grid>
+      <ControlTemplate.Triggers>
+        <Trigger Property="IsKeyboardFocused" Value="True">
+          <Setter TargetName="B" Property="Background" Value="{DynamicResource FillFocus}"/>
+          <Setter TargetName="L" Property="Height" Value="2"/>
+          <Setter TargetName="L" Property="Background" Value="{DynamicResource Sel}"/>
+        </Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate>
+    <Style TargetType="TextBox" BasedOn="{StaticResource Field}">
+      <Setter Property="CaretBrush" Value="{DynamicResource Text1}"/>
+      <Setter Property="Template" Value="{StaticResource FieldFrame}"/>
+    </Style>
+    <Style TargetType="PasswordBox" BasedOn="{StaticResource Field}">
+      <Setter Property="CaretBrush" Value="{DynamicResource Text1}"/>
+      <Setter Property="Template" Value="{StaticResource FieldFrame}"/>
+    </Style>
+    <Style x:Key="Label" TargetType="TextBlock">
+      <Setter Property="Margin" Value="0,0,0,8"/>
+    </Style>
+    <!-- Windows' toggle switch -->
+    <Style x:Key="Switch" TargetType="CheckBox">
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <Grid Width="40" Height="20" Background="Transparent">
+              <Border x:Name="Track" CornerRadius="10" BorderThickness="1" BorderBrush="{DynamicResource Bottom}" Background="Transparent"/>
+              <Ellipse x:Name="Knob" Width="10" Height="10" HorizontalAlignment="Left" Margin="5,0,0,0" Fill="{DynamicResource Text2}"/>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Track" Property="Background" Value="{DynamicResource Sel}"/>
+                <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource Sel}"/>
+                <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource BtnText}"/>
+                <Setter TargetName="Knob" Property="Width" Value="12"/>
+                <Setter TargetName="Knob" Property="Height" Value="12"/>
+                <Setter TargetName="Knob" Property="Margin" Value="23,0,0,0"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="Box" TargetType="CheckBox">
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Foreground" Value="{DynamicResource Text1}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <StackPanel Orientation="Horizontal" Background="Transparent">
+              <Border x:Name="Sq" Width="18" Height="18" CornerRadius="4" BorderThickness="1" BorderBrush="{DynamicResource Bottom}" Background="{DynamicResource Fill}">
+                <Path x:Name="Tick" Data="M5 12.5l4.5 4.5L19 7.5" Stroke="{DynamicResource BtnText}" StrokeThickness="2.6" Width="24" Height="24"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Hidden" RenderTransformOrigin="0,0">
+                  <Path.RenderTransform><ScaleTransform ScaleX="0.66" ScaleY="0.66"/></Path.RenderTransform>
+                </Path>
+              </Border>
+              <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Sq" Property="Background" Value="{DynamicResource Sel}"/>
+                <Setter TargetName="Sq" Property="BorderBrush" Value="{DynamicResource Sel}"/>
+                <Setter TargetName="Tick" Property="Visibility" Value="Visible"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <!-- Windows' drop-down list -->
+    <Style TargetType="ComboBoxItem">
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Text1}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ComboBoxItem">
+            <Border x:Name="B" Background="Transparent" CornerRadius="4" Margin="4,2" Padding="12,6">
+              <Grid>
+                <Border x:Name="Pill" Width="3" Height="16" CornerRadius="1.5" HorizontalAlignment="Left" Margin="-12,0,0,0" Background="{DynamicResource Sel}" Visibility="Hidden"/>
+                <ContentPresenter/>
+              </Grid>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="B" Property="Background" Value="{DynamicResource Soft}"/></Trigger>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="B" Property="Background" Value="{DynamicResource Soft}"/>
+                <Setter TargetName="Pill" Property="Visibility" Value="Visible"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="ComboBox">
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Text1}"/>
+      <Setter Property="Height" Value="32"/>
+      <Setter Property="Width" Value="360"/>
+      <Setter Property="HorizontalAlignment" Value="Left"/>
+      <Setter Property="MaxDropDownHeight" Value="320"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ComboBox">
+            <Grid>
+              <ToggleButton x:Name="Toggle" Focusable="False" Cursor="Hand"
+                            IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                <ToggleButton.Template>
+                  <ControlTemplate TargetType="ToggleButton">
+                    <Grid>
+                      <Border x:Name="B" Background="{DynamicResource Fill}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" CornerRadius="4"/>
+                      <Border Height="1" VerticalAlignment="Bottom" Margin="1,0" Background="{DynamicResource Bottom}"/>
+                      <Path Data="M6 9l6 6 6-6" Stroke="{DynamicResource Text2}" StrokeThickness="2" Width="24" Height="24" HorizontalAlignment="Right" Margin="0,0,4,0"
+                            StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" RenderTransformOrigin="0.5,0.5">
+                        <Path.RenderTransform><ScaleTransform ScaleX="0.55" ScaleY="0.55"/></Path.RenderTransform>
+                      </Path>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="{DynamicResource Row}"/></Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </ToggleButton.Template>
+              </ToggleButton>
+              <ContentPresenter Margin="11,0,32,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"/>
+              <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                <Border Margin="0,4,12,16" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                        Background="{DynamicResource Card}" BorderBrush="{DynamicResource RowLine}" BorderThickness="1" CornerRadius="8" Padding="0,4">
+                  <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.22"/></Border.Effect>
+                  <ScrollViewer><ItemsPresenter/></ScrollViewer>
+                </Border>
+              </Popup>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="CardBox" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource Row}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource RowLine}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="6"/>
     </Style>
   </Window.Resources>
   <Grid>
-    <StackPanel Width="520" HorizontalAlignment="Center" VerticalAlignment="Center">
-      <StackPanel Orientation="Horizontal">
-        <Path Data="M8 14L2 8V5l2-2h2l2 2 2-2h2l2 2v3z M5 8l3 3 3-3" Stroke="{accent}" StrokeThickness="1.25"
-              StrokeLineJoin="Round" Width="16" Height="16"/>
-        <TextBlock Text="WinLove" Margin="8,0,0,1" FontWeight="SemiBold" VerticalAlignment="Center"/>
-        <TextBlock x:Name="Step" Margin="12,0,0,1" Foreground="{text3}" FontSize="12" FontFamily="Cascadia Mono, Consolas"
-                   VerticalAlignment="Center"/>
-      </StackPanel>
-      <TextBlock x:Name="Heading" Margin="0,24,0,0" FontSize="26" FontWeight="SemiBold" TextWrapping="Wrap"/>
-      <TextBlock x:Name="Sub" Margin="0,8,0,0" Foreground="{text2}" TextWrapping="Wrap"/>
-      <Grid Margin="0,8,0,0" MinHeight="230">
-        <StackPanel x:Name="PageAccount">
-          <TextBlock x:Name="NameLabel" Style="{StaticResource Label}"/>
-          <TextBox x:Name="UserName" MaxLength="20"/>
-          <TextBlock x:Name="PassLabel" Style="{StaticResource Label}"/>
-          <PasswordBox x:Name="Pass"/>
-          <TextBlock x:Name="Pass2Label" Style="{StaticResource Label}"/>
-          <PasswordBox x:Name="Pass2"/>
-        </StackPanel>
-        <StackPanel x:Name="PagePc" Visibility="Collapsed">
-          <TextBlock x:Name="PcLabel" Style="{StaticResource Label}"/>
-          <TextBox x:Name="PcName" MaxLength="15"/>
-          <TextBlock x:Name="PcHint" Margin="0,8,0,0" Foreground="{text3}" FontSize="12" TextWrapping="Wrap"/>
-        </StackPanel>
-        <StackPanel x:Name="PageLook" Visibility="Collapsed">
-          <TextBlock x:Name="ThemeLabel" Style="{StaticResource Label}"/>
-          <StackPanel x:Name="Themes" Orientation="Horizontal"/>
-          <TextBlock x:Name="AccentLabel" Style="{StaticResource Label}"/>
-          <WrapPanel x:Name="Accents"/>
-        </StackPanel>
-        <StackPanel x:Name="PagePrivacy" Visibility="Collapsed">
-          <StackPanel x:Name="Levels" Margin="0,14,0,0"/>
-        </StackPanel>
-        <StackPanel x:Name="PageDone" Visibility="Collapsed">
-          <Grid Margin="0,18,0,0" Height="2" Background="{line}">
-            <Border x:Name="Fill" HorizontalAlignment="Left" Width="0" Background="{accent}"/>
+    <!-- Windows' bloom: soft colour clouds, drawn for 1280x800 and filling any screen. -->
+    <Viewbox Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center">
+      <Canvas Width="1280" Height="800" ClipToBounds="True">
+        <Ellipse Canvas.Left="-260" Canvas.Top="330" Width="1300" Height="900" Fill="{DynamicResource Blob1}"/>
+        <Ellipse Canvas.Left="420" Canvas.Top="120" Width="1150" Height="820" Fill="{DynamicResource Blob2}"/>
+        <Ellipse Canvas.Left="700" Canvas.Top="-380" Width="980" Height="760" Fill="{DynamicResource Blob3}"/>
+      </Canvas>
+    </Viewbox>
+
+    <Viewbox x:Name="Stage" StretchDirection="DownOnly" Margin="24">
+      <Grid Width="1040" Height="640">
+        <Border CornerRadius="8" Background="{DynamicResource Card}">
+          <Border.Effect><DropShadowEffect BlurRadius="56" ShadowDepth="16" Direction="270" Opacity="0.26"/></Border.Effect>
+          <Border.CacheMode><BitmapCache/></Border.CacheMode>
+        </Border>
+        <Border x:Name="CardFace" CornerRadius="8" Background="{DynamicResource Card}" BorderBrush="{DynamicResource CardLine}" BorderThickness="1">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="400"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- the picture on the left -->
+            <Grid Grid.Column="0" ClipToBounds="True">
+              <Ellipse Width="360" Height="360" Stroke="{DynamicResource Soft}" StrokeThickness="1"/>
+              <Ellipse Width="300" Height="300" Fill="{DynamicResource Soft}"/>
+
+              <Grid x:Name="ArtNetwork" Visibility="Collapsed">
+                <Ellipse Width="220" Height="220" Stroke="{DynamicResource Sel}" StrokeThickness="2" Opacity="0.25"/>
+                <Ellipse Width="268" Height="268" Stroke="{DynamicResource Sel}" StrokeThickness="2" Opacity="0.12"/>
+                <Border Width="148" Height="148" CornerRadius="34" Background="{DynamicResource Tile}">
+                  <Border.Effect><DropShadowEffect BlurRadius="36" ShadowDepth="14" Direction="270" Opacity="0.3" Color="{DynamicResource AccentColor}"/></Border.Effect>
+                  <Viewbox Width="72" Height="72">
+                    <Path Data="M2.5 9a14 14 0 0 1 19 0 M5.5 12.2a9.5 9.5 0 0 1 13 0 M8.6 15.4a5 5 0 0 1 6.8 0 M12 17.4a1.2 1.2 0 1 1 0 2.4a1.2 1.2 0 1 1 0-2.4"
+                          Stroke="White" StrokeThickness="1.6" Width="24" Height="24" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                  </Viewbox>
+                </Border>
+                <Border x:Name="NetBadge" Width="40" Height="40" CornerRadius="20" Margin="116,116,0,0" Background="{DynamicResource Row}" BorderBrush="{DynamicResource RowLine}" BorderThickness="1" Visibility="Hidden">
+                  <Viewbox Width="18" Height="18"><Path Data="M5 12.5l4.5 4.5L19 7.5" Stroke="{DynamicResource Sel}" StrokeThickness="3" Width="24" Height="24" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/></Viewbox>
+                </Border>
+              </Grid>
+
+              <Grid x:Name="ArtAccount" Visibility="Collapsed">
+                <Ellipse Width="10" Height="10" Fill="{DynamicResource AccentBrush}" Opacity="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="86,196,0,0"/>
+                <Ellipse Width="6" Height="6" Fill="{DynamicResource AccentBrush}" Opacity="0.7" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="306,168,0,0"/>
+                <Ellipse Width="8" Height="8" Fill="{DynamicResource AccentBrush}" Opacity="0.4" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="300,446,0,0"/>
+                <Border Width="228" Style="{StaticResource CardBox}" CornerRadius="8" VerticalAlignment="Center" Padding="0,30,0,22">
+                  <Border.Effect><DropShadowEffect BlurRadius="32" ShadowDepth="10" Direction="270" Opacity="0.16"/></Border.Effect>
+                  <StackPanel HorizontalAlignment="Center">
+                    <Border Width="76" Height="76" CornerRadius="38" Background="{DynamicResource Tile}" HorizontalAlignment="Center">
+                      <Viewbox Width="36" Height="36"><Path Data="M12 4a4 4 0 1 1 0 8a4 4 0 1 1 0-8 M4.5 20c.8-3.6 3.8-6 7.5-6s6.7 2.4 7.5 6" Stroke="White" StrokeThickness="1.6" Width="24" Height="24" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Viewbox>
+                    </Border>
+                    <TextBlock x:Name="ArtName" Margin="12,14,12,0" HorizontalAlignment="Center" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="20" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock x:Name="ArtRole" Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="12" Foreground="{DynamicResource Text2}"/>
+                    <Border x:Name="ArtChip" Margin="0,14,0,0" HorizontalAlignment="Center" CornerRadius="12" Background="{DynamicResource Soft}" Padding="10,3">
+                      <StackPanel Orientation="Horizontal">
+                        <Viewbox Width="12" Height="12" VerticalAlignment="Center"><Path Data="M7 10h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z M8 10V7a4 4 0 0 1 8 0v3" Stroke="{DynamicResource Sel}" StrokeThickness="2.2" Width="24" Height="24" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Viewbox>
+                        <TextBlock x:Name="ArtLock" Margin="6,0,0,0" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Sel}"/>
+                      </StackPanel>
+                    </Border>
+                  </StackPanel>
+                </Border>
+              </Grid>
+
+              <StackPanel x:Name="ArtPc" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border Width="236" Height="150" CornerRadius="10" Background="#1C1C1C" Padding="7">
+                  <Border.Effect><DropShadowEffect BlurRadius="32" ShadowDepth="12" Direction="270" Opacity="0.24"/></Border.Effect>
+                  <Grid ClipToBounds="True">
+                    <Border CornerRadius="4" Background="{DynamicResource Tile}"/>
+                    <Ellipse Width="260" Height="150" Fill="#38FFFFFF" Margin="-60,0,0,-150" HorizontalAlignment="Left" VerticalAlignment="Bottom"/>
+                    <StackPanel Margin="14,10,0,0">
+                      <TextBlock x:Name="ArtClock" Foreground="White" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="30" FontWeight="SemiBold"/>
+                      <TextBlock x:Name="ArtDate" Foreground="#D9FFFFFF" FontSize="11"/>
+                    </StackPanel>
+                  </Grid>
+                </Border>
+                <Border Width="34" Height="22" Background="#4A4A4A"/>
+                <Border Width="104" Height="8" CornerRadius="4" Background="#3A3A3A"/>
+                <Border Style="{StaticResource CardBox}" CornerRadius="16" Margin="0,18,0,0" Padding="14,6" HorizontalAlignment="Center">
+                  <StackPanel Orientation="Horizontal">
+                    <Viewbox Width="14" Height="14" VerticalAlignment="Center"><Path Data="M5 4h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M8 20h8 M12 16v4" Stroke="{DynamicResource Text1}" StrokeThickness="2" Width="24" Height="24" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Viewbox>
+                    <TextBlock x:Name="ArtPcName" Margin="8,0,0,0" FontWeight="SemiBold"/>
+                  </StackPanel>
+                </Border>
+                <TextBlock x:Name="ArtZone" Margin="0,8,0,0" HorizontalAlignment="Center" FontSize="12" Foreground="{DynamicResource Text2}" MaxWidth="320" TextTrimming="CharacterEllipsis"/>
+              </StackPanel>
+
+              <Border x:Name="ArtLook" Visibility="Collapsed" Width="312" Height="204" CornerRadius="8" ClipToBounds="True">
+                <Border.Effect><DropShadowEffect BlurRadius="36" ShadowDepth="14" Direction="270" Opacity="0.26"/></Border.Effect>
+                <Grid ClipToBounds="True">
+                  <Border x:Name="MiniWall" CornerRadius="8"/>
+                  <Ellipse Width="300" Height="190" Margin="-90,0,0,-110" HorizontalAlignment="Left" VerticalAlignment="Bottom" Fill="{DynamicResource MiniBlobA}"/>
+                  <Ellipse Width="230" Height="170" Margin="0,-70,-80,0" HorizontalAlignment="Right" VerticalAlignment="Top" Fill="{DynamicResource MiniBlobB}"/>
+                  <Border x:Name="MiniApp" Width="196" Height="118" CornerRadius="6" Margin="58,30,0,0" HorizontalAlignment="Left" VerticalAlignment="Top">
+                    <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.3"/></Border.Effect>
+                    <StackPanel>
+                      <Border x:Name="MiniTitle" Height="18" CornerRadius="6,6,0,0">
+                        <StackPanel Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+                          <Ellipse Width="6" Height="6" Fill="{DynamicResource AccentBrush}"/>
+                          <Border x:Name="MiniLine0" Width="40" Height="4" CornerRadius="2" Margin="4,0,0,0"/>
+                        </StackPanel>
+                      </Border>
+                      <Border x:Name="MiniLine1" Width="120" Height="6" CornerRadius="3" Margin="10,8,0,0" HorizontalAlignment="Left"/>
+                      <Border x:Name="MiniLine2" Width="150" Height="6" CornerRadius="3" Margin="10,6,0,0" HorizontalAlignment="Left"/>
+                      <Border x:Name="MiniLine3" Width="90" Height="6" CornerRadius="3" Margin="10,6,0,0" HorizontalAlignment="Left"/>
+                      <Border Width="56" Height="16" CornerRadius="3" Margin="10,14,0,0" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}"/>
+                    </StackPanel>
+                  </Border>
+                  <Border x:Name="MiniBar" Height="26" VerticalAlignment="Bottom">
+                    <StackPanel x:Name="MiniIcons" Orientation="Horizontal" HorizontalAlignment="Center" Margin="10,0">
+                      <Border Width="13" Height="13" CornerRadius="3" Margin="3,0" Background="{DynamicResource AccentBrush}"/>
+                      <Border x:Name="MiniIcon1" Width="13" Height="13" CornerRadius="3" Margin="3,0"/>
+                      <Border x:Name="MiniIcon2" Width="13" Height="13" CornerRadius="3" Margin="3,0"/>
+                      <Border x:Name="MiniIcon3" Width="13" Height="13" CornerRadius="3" Margin="3,0"/>
+                    </StackPanel>
+                  </Border>
+                </Grid>
+              </Border>
+
+              <Border x:Name="ArtPrefs" Visibility="Collapsed" Width="296" Style="{StaticResource CardBox}" CornerRadius="8" VerticalAlignment="Center" ClipToBounds="True">
+                <Border.Effect><DropShadowEffect BlurRadius="36" ShadowDepth="14" Direction="270" Opacity="0.2"/></Border.Effect>
+                <StackPanel>
+                  <Border Height="30" Background="{DynamicResource Fill}" BorderBrush="{DynamicResource RowLine}" BorderThickness="0,0,0,1" CornerRadius="8,8,0,0">
+                    <StackPanel Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
+                      <Viewbox Width="14" Height="14"><Path Data="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" Stroke="{DynamicResource Text2}" StrokeThickness="1.8" Width="24" Height="24"/></Viewbox>
+                      <TextBlock x:Name="ExPlace" Margin="8,0,0,0" FontSize="12" Foreground="{DynamicResource Text2}"/>
+                    </StackPanel>
+                  </Border>
+                  <StackPanel x:Name="ExFiles" Margin="0,4"/>
+                  <Border Height="32" Background="{DynamicResource Fill}" BorderBrush="{DynamicResource RowLine}" BorderThickness="0,1,0,0" CornerRadius="0,0,8,8">
+                    <StackPanel x:Name="ExBar" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  </Border>
+                </StackPanel>
+              </Border>
+
+              <Grid x:Name="ArtPrivacy" Visibility="Collapsed">
+                <Ellipse Width="236" Height="236" Stroke="{DynamicResource Sel}" StrokeThickness="1" StrokeDashArray="3 3" Opacity="0.4"/>
+                <Border Width="132" Height="132" CornerRadius="30" Background="{DynamicResource Tile}">
+                  <Border.Effect><DropShadowEffect BlurRadius="36" ShadowDepth="14" Direction="270" Opacity="0.3" Color="{DynamicResource AccentColor}"/></Border.Effect>
+                  <Viewbox Width="64" Height="64"><Path Data="M12 3l7 3v5.5c0 4.2-2.9 7.9-7 9.5c-4.1-1.6-7-5.3-7-9.5V6z M8.8 12.2l2.2 2.2l4.2-4.4" Stroke="White" StrokeThickness="1.5" Width="24" Height="24" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/></Viewbox>
+                </Border>
+                <Canvas x:Name="Orbs" Width="400" Height="640"/>
+              </Grid>
+            </Grid>
+
+            <!-- the question on the right -->
+            <Grid Grid.Column="1" Margin="16,28,48,40">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
+              <Grid Grid.Row="0" Height="36">
+                <Button x:Name="Back" Style="{StaticResource Ghost}" Width="40" Height="36" HorizontalAlignment="Left" Margin="-12,0,0,0">
+                  <Viewbox Width="16" Height="16"><Path Data="M20 12H4 M10 6l-6 6l6 6" Stroke="{DynamicResource Text1}" StrokeThickness="1.8" Width="24" Height="24" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/></Viewbox>
+                </Button>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                  <StackPanel x:Name="Steps" Orientation="Horizontal" VerticalAlignment="Center"/>
+                  <TextBlock x:Name="StepCount" Margin="8,0,0,0" FontSize="12" Foreground="{DynamicResource Text3}"/>
+                </StackPanel>
+              </Grid>
+              <TextBlock x:Name="Heading" Grid.Row="1" Margin="0,16,0,0" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="28" FontWeight="SemiBold" TextWrapping="Wrap"/>
+              <TextBlock x:Name="Sub" Grid.Row="2" Margin="0,8,0,0" Foreground="{DynamicResource Text2}" TextWrapping="Wrap" MaxWidth="520" HorizontalAlignment="Left"/>
+              <Grid x:Name="Body" Grid.Row="3" Margin="0,22,0,0">
+
+                <Grid x:Name="PageNetwork" Visibility="Collapsed">
+                  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                  <Grid Width="540" HorizontalAlignment="Left" Margin="0,0,0,8">
+                    <TextBlock x:Name="NetHead" FontSize="12" Foreground="{DynamicResource Text2}" VerticalAlignment="Center"/>
+                    <Button x:Name="NetRefresh" Style="{StaticResource Ghost}" Width="32" Height="28" HorizontalAlignment="Right">
+                      <Viewbox Width="15" Height="15"><Path Data="M20 11a8 8 0 1 0-2.3 5.7 M20 5v6h-6" Stroke="{DynamicResource Text1}" StrokeThickness="1.8" Width="24" Height="24" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/></Viewbox>
+                    </Button>
+                  </Grid>
+                  <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Width="556" HorizontalAlignment="Left">
+                    <StackPanel x:Name="NetList" Width="540" HorizontalAlignment="Left"/>
+                  </ScrollViewer>
+                  <TextBlock x:Name="NetState" Grid.Row="2" Margin="0,10,0,0" FontSize="12" Foreground="{DynamicResource Text2}" TextWrapping="Wrap" MaxWidth="540" HorizontalAlignment="Left"/>
+                </Grid>
+
+                <StackPanel x:Name="PageAccount" Visibility="Collapsed">
+                  <TextBlock x:Name="NameLabel" Style="{StaticResource Label}"/>
+                  <TextBox x:Name="UserName" MaxLength="20" Margin="0,0,0,20"/>
+                  <TextBlock x:Name="PassLabel" Style="{StaticResource Label}"/>
+                  <Grid Width="360" HorizontalAlignment="Left" Margin="0,0,0,20">
+                    <PasswordBox x:Name="Pass"/>
+                    <TextBox x:Name="PassShown" Visibility="Collapsed" IsReadOnly="True"/>
+                    <Button x:Name="Reveal" Style="{StaticResource Ghost}" Width="28" Height="24" HorizontalAlignment="Right" Margin="0,0,4,0">
+                      <Viewbox Width="16" Height="16"><Path Data="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z M12 9a3 3 0 1 1 0 6a3 3 0 1 1 0-6" Stroke="{DynamicResource Text2}" StrokeThickness="1.6" Width="24" Height="24"/></Viewbox>
+                    </Button>
+                  </Grid>
+                  <TextBlock x:Name="Pass2Label" Style="{StaticResource Label}"/>
+                  <PasswordBox x:Name="Pass2"/>
+                </StackPanel>
+
+                <StackPanel x:Name="PagePc" Visibility="Collapsed">
+                  <TextBlock x:Name="PcLabel" Style="{StaticResource Label}"/>
+                  <TextBox x:Name="PcName" MaxLength="15"/>
+                  <TextBlock x:Name="PcHint" Margin="0,8,0,24" Foreground="{DynamicResource Text2}" FontSize="12" TextWrapping="Wrap" MaxWidth="420" HorizontalAlignment="Left"/>
+                  <TextBlock x:Name="ZoneLabel" Style="{StaticResource Label}"/>
+                  <ComboBox x:Name="Zone" Width="440"/>
+                </StackPanel>
+
+                <StackPanel x:Name="PageLook" Visibility="Collapsed">
+                  <TextBlock x:Name="ThemeLabel" Style="{StaticResource Label}"/>
+                  <StackPanel x:Name="Themes" Orientation="Horizontal" Margin="0,0,0,16"/>
+                  <TextBlock x:Name="AccentLabel" Style="{StaticResource Label}"/>
+                  <WrapPanel x:Name="Accents" MaxWidth="470" HorizontalAlignment="Left" Margin="0,0,0,14"/>
+                  <StackPanel Orientation="Horizontal">
+                    <StackPanel x:Name="TaskbarBox" Margin="0,0,28,0">
+                      <TextBlock x:Name="TaskbarLabel" Style="{StaticResource Label}"/>
+                      <Border Background="{DynamicResource Fill}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" CornerRadius="5" Padding="2">
+                        <StackPanel x:Name="Aligns" Orientation="Horizontal"/>
+                      </Border>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom" Margin="0,0,0,6">
+                      <CheckBox x:Name="Glass" Style="{StaticResource Switch}" VerticalAlignment="Center"/>
+                      <TextBlock x:Name="GlassLabel" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </StackPanel>
+                </StackPanel>
+
+                <StackPanel x:Name="PagePrefs" Visibility="Collapsed"/>
+
+                <StackPanel x:Name="PagePrivacy" Visibility="Collapsed"/>
+              </Grid>
+              <TextBlock x:Name="Error" Grid.Row="4" Margin="0,10,0,0" Foreground="{DynamicResource Err}" FontSize="12" TextWrapping="Wrap" MaxWidth="540" HorizontalAlignment="Left" Visibility="Collapsed"/>
+              <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                <Button x:Name="Skip" Margin="0,0,8,0" Visibility="Collapsed"/>
+                <Button x:Name="Next" Style="{StaticResource AccentButton}"/>
+              </StackPanel>
+            </Grid>
           </Grid>
-          <TextBlock x:Name="Status" Margin="0,10,0,0" Foreground="{text2}" FontSize="12"/>
-        </StackPanel>
+        </Border>
       </Grid>
-      <TextBlock x:Name="Error" Margin="0,8,0,0" Foreground="{error}" FontSize="12" TextWrapping="Wrap"/>
-      <DockPanel Margin="0,20,0,0" LastChildFill="False">
-        <Button x:Name="Back" Style="{StaticResource Button}" DockPanel.Dock="Left"/>
-        <Button x:Name="Next" Style="{StaticResource Primary}" DockPanel.Dock="Right"/>
-      </DockPanel>
-    </StackPanel>
+    </Viewbox>
+
+    <!-- while it works: Windows' own "getting ready" look, full screen -->
+    <Grid x:Name="Busy" Visibility="Collapsed">
+      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,40">
+        <Grid Width="56" Height="56" HorizontalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+          <Grid.RenderTransform><RotateTransform x:Name="Spin" Angle="0"/></Grid.RenderTransform>
+          <Ellipse Stroke="{DynamicResource Stroke}" StrokeThickness="4"/>
+          <Path Data="M28 2a26 26 0 0 1 26 26" Stroke="{DynamicResource Sel}" StrokeThickness="4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+        </Grid>
+        <TextBlock x:Name="BusyHeading" Margin="0,32,0,0" HorizontalAlignment="Center" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="32" FontWeight="SemiBold"/>
+        <TextBlock x:Name="BusySub" Margin="0,10,0,0" HorizontalAlignment="Center" Foreground="{DynamicResource Text2}" TextWrapping="Wrap" MaxWidth="560" TextAlignment="Center"/>
+        <Border Margin="0,36,0,0" Width="440" CornerRadius="8" Background="{DynamicResource Panel}" BorderBrush="{DynamicResource RowLine}" BorderThickness="1" Padding="6,10">
+          <StackPanel x:Name="BusySteps"/>
+        </Border>
+        <Grid x:Name="Track" Margin="0,20,0,0" Width="440" Height="3" Background="{DynamicResource Stroke}">
+          <Border x:Name="Fill" HorizontalAlignment="Left" Width="0" Background="{DynamicResource Sel}"/>
+        </Grid>
+        <TextBlock x:Name="Status" Margin="0,14,0,0" HorizontalAlignment="Center" FontSize="12" Foreground="{DynamicResource Err}" TextWrapping="Wrap" MaxWidth="560" TextAlignment="Center"/>
+      </StackPanel>
+      <TextBlock x:Name="KeepOn" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,56" Foreground="{DynamicResource Text2}"/>
+    </Grid>
   </Grid>
 </Window>
 '@
 
-$choiceXaml = @'
-<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Background="{panel}" BorderBrush="{frame}"
-        BorderThickness="1" CornerRadius="3" Padding="12,8" Margin="0,0,8,8" Cursor="Hand">
-  <StackPanel>
-    <TextBlock FontWeight="SemiBold"/>
-    <TextBlock Foreground="{text2}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"/>
-  </StackPanel>
-</Border>
-'@
-
-function Expand-Xaml([string] $text) {
-    foreach ($key in $c.Keys) { $text = $text.Replace('{' + $key + '}', $c[$key]) }
-    return $text
-}
-
-$window = [Windows.Markup.XamlReader]::Parse((Expand-Xaml $xaml))
-$names = 'Step', 'Heading', 'Sub', 'PageAccount', 'PagePc', 'PageLook', 'PagePrivacy', 'PageDone', 'NameLabel', 'UserName',
-         'PassLabel', 'Pass', 'Pass2Label', 'Pass2', 'PcLabel', 'PcName', 'PcHint', 'ThemeLabel', 'Themes', 'AccentLabel',
-         'Accents', 'Levels', 'Fill', 'Status', 'Error', 'Back', 'Next'
+$window = [Windows.Markup.XamlReader]::Parse($xaml)
 $ui = @{}
-foreach ($name in $names) { $ui[$name] = $window.FindName($name) }
+foreach ($name in 'Stage', 'CardFace', 'ArtNetwork', 'NetBadge', 'ArtAccount', 'ArtName', 'ArtRole', 'ArtChip', 'ArtLock', 'ArtPc',
+                  'ArtClock', 'ArtDate', 'ArtPcName', 'ArtZone', 'ArtLook', 'MiniWall', 'MiniApp', 'MiniTitle', 'MiniLine0',
+                  'MiniLine1', 'MiniLine2', 'MiniLine3', 'MiniBar', 'MiniIcons', 'MiniIcon1', 'MiniIcon2', 'MiniIcon3', 'ArtPrefs',
+                  'ExPlace', 'ExFiles', 'ExBar', 'ArtPrivacy', 'Orbs', 'Back', 'Steps', 'StepCount', 'Heading', 'Sub', 'Body',
+                  'PageNetwork', 'NetHead', 'NetRefresh', 'NetList', 'NetState', 'PageAccount', 'NameLabel', 'UserName', 'PassLabel',
+                  'Pass', 'PassShown', 'Reveal', 'Pass2Label', 'Pass2', 'PagePc', 'PcLabel', 'PcName', 'PcHint', 'ZoneLabel', 'Zone',
+                  'PageLook', 'ThemeLabel', 'Themes', 'AccentLabel', 'Accents', 'TaskbarBox', 'TaskbarLabel', 'Aligns', 'Glass',
+                  'GlassLabel', 'PagePrefs', 'PagePrivacy', 'Error', 'Skip', 'Next', 'Busy', 'Spin', 'BusyHeading', 'BusySub',
+                  'BusySteps', 'Track', 'Fill', 'Status', 'KeepOn') {
+    $ui[$name] = $window.FindName($name)
+}
 $brush = New-Object System.Windows.Media.BrushConverter
 
+# ---- colours ------------------------------------------------------------------------------------------
+$palettes = @{
+    light = @{ Bg = '#D9E4F5'; Blob1 = '#5B8FE8'; Blob2 = '#A9C6F7'; Blob3 = '#EFD3EA'; Card = '#F3F3F3'; CardLine = '#12000000'
+               Text1 = '#1B1B1B'; Text2 = '#5F5F5F'; Text3 = '#8B8B8B'; Fill = '#FDFDFD'; FillFocus = '#FFFFFF'; Stroke = '#E3E3E3'
+               Bottom = '#8A8A8A'; Row = '#FBFBFB'; RowLine = '#E6E6E6'; Err = '#C42B1C'; Panel = '#8CFFFFFF' }
+    dark  = @{ Bg = '#0B1222'; Blob1 = '#1E4FB8'; Blob2 = '#12306E'; Blob3 = '#4A2A6E'; Card = '#202020'; CardLine = '#14FFFFFF'
+               Text1 = '#FFFFFF'; Text2 = '#C8C8C8'; Text3 = '#9D9D9D'; Fill = '#2D2D2D'; FillFocus = '#1F1F1F'; Stroke = '#3A3A3A'
+               Bottom = '#9A9A9A'; Row = '#2B2B2B'; RowLine = '#363636'; Err = '#FF99A4'; Panel = '#80202020' }
+}
+function Get-Mix([string] $hex, [int] $toward, [double] $amount) { # toward 255 (lighter) or 0 (darker): "#RRGGBB"
+    $out = foreach ($i in 1, 3, 5) {
+        $v = [Convert]::ToInt32($hex.Substring($i, 2), 16)
+        '{0:X2}' -f [int] [Math]::Round($v + ($toward - $v) * $amount)
+    }
+    return '#' + ($out -join '')
+}
+function Get-Color([string] $hex, [double] $alpha = 1) {
+    $c = $brush.ConvertFromString($hex).Color
+    $c.A = [byte] [Math]::Round($c.A * $alpha)
+    return $c
+}
+function Get-Light([string] $hex) { # relative luminance, 0..1
+    $sum = 0
+    foreach ($pair in @(@(1, 0.2126), @(3, 0.7152), @(5, 0.0722))) {
+        $v = [Convert]::ToInt32($hex.Substring($pair[0], 2), 16) / 255
+        $v = if ($v -le 0.03928) { $v / 12.92 } else { [Math]::Pow(($v + 0.055) / 1.055, 2.4) }
+        $sum += $v * $pair[1]
+    }
+    return $sum
+}
+function New-Cloud([string] $hex, [double] $alpha) { # a colour cloud: solid in the middle, gone at the edge
+    $b = New-Object System.Windows.Media.RadialGradientBrush
+    $b.GradientStops.Add((New-Object System.Windows.Media.GradientStop((Get-Color $hex $alpha), 0)))
+    $b.GradientStops.Add((New-Object System.Windows.Media.GradientStop((Get-Color $hex ($alpha * 0.55)), 0.45)))
+    $b.GradientStops.Add((New-Object System.Windows.Media.GradientStop((Get-Color $hex 0), 1)))
+    return $b
+}
+function New-Slope([string] $a, [string] $b, [string] $c) { # the tiles' accent gradient, top left to bottom right
+    $g = New-Object System.Windows.Media.LinearGradientBrush
+    $g.StartPoint = '0,0'; $g.EndPoint = '1,1'
+    $g.GradientStops.Add((New-Object System.Windows.Media.GradientStop((Get-Color $a), 0)))
+    $g.GradientStops.Add((New-Object System.Windows.Media.GradientStop((Get-Color $b), 0.6)))
+    $g.GradientStops.Add((New-Object System.Windows.Media.GradientStop((Get-Color $c), 1)))
+    return $g
+}
+
+# New-Object's results come wrapped (PSObject); the resource dictionary takes only the object itself.
+function Set-Resource([string] $key, $value) { $window.Resources[$key] = $value.PSObject.BaseObject }
+# The window's colours, all at once (DynamicResource): theme and accent take effect at once.
+function Set-Colors {
+    $dark = $script:theme -ne 'light'
+    $p = if ($dark) { $palettes.dark } else { $palettes.light }
+    $accent = $script:accent
+    foreach ($key in $p.Keys) {
+        if ($key -like 'Blob*') { continue }
+        Set-Resource $key ($brush.ConvertFromString($p[$key]))
+    }
+    Set-Resource 'Blob1' (New-Cloud $p.Blob1 0.85)
+    Set-Resource 'Blob2' (New-Cloud $p.Blob2 0.8)
+    Set-Resource 'Blob3' (New-Cloud $p.Blob3 0.7)
+    # Fluent: the accent one step darker on light, two steps lighter on dark; text on it by contrast.
+    $sel = if ($dark) { Get-Mix $accent 255 0.45 } else { Get-Mix $accent 0 0.2 }
+    Set-Resource 'Sel' ($brush.ConvertFromString($sel))
+    Set-Resource 'SelHover' ($brush.ConvertFromString($(if ($dark) { Get-Mix $sel 0 0.1 } else { Get-Mix $sel 255 0.12 })))
+    Set-Resource 'BtnText' ($brush.ConvertFromString($(if ((Get-Light $sel) -gt 0.4) { '#000000' } else { '#FFFFFF' })))
+    Set-Resource 'Soft' (New-Object System.Windows.Media.SolidColorBrush((Get-Color $accent $(if ($dark) { 0.22 } else { 0.12 }))))
+    Set-Resource 'AccentBrush' ($brush.ConvertFromString($accent))
+    Set-Resource 'AccentColor' (Get-Color $accent)
+    Set-Resource 'Tile' (New-Slope (Get-Mix $accent 255 0.35) $accent (Get-Mix $accent 0 0.2))
+    Set-Resource 'MiniBlobA' (New-Cloud $accent 0.9)
+    Set-Resource 'MiniBlobB' (New-Cloud (Get-Mix $accent 255 0.35) 0.75)
+    Update-Art
+}
+
+$ui.Back.ToolTip = $t.back
+$ui.Next.Content = $t.next
+$ui.Skip.Content = $t.networkSkip
 $ui.NameLabel.Text = $t.name
 $ui.PassLabel.Text = $t.password
 $ui.Pass2Label.Text = $t.password2
+$ui.Reveal.ToolTip = $t.reveal
 $ui.PcLabel.Text = $t.computer
 $ui.PcHint.Text = $t.computerHint
+$ui.ZoneLabel.Text = $t.timeZone
 $ui.ThemeLabel.Text = $t.theme
 $ui.AccentLabel.Text = $t.accent
-$ui.Back.Content = $t.back
+$ui.TaskbarLabel.Text = $t.taskbar
+$ui.GlassLabel.Text = $t.transparency
+$ui.NetHead.Text = $t.networkList
+$ui.NetRefresh.ToolTip = $t.networkRefresh
+$ui.ArtRole.Text = $t.accountRole
+$ui.BusyHeading.Text = $t.doneHeading
+$ui.BusySub.Text = $t.doneSub
+$ui.KeepOn.Text = $t.keepOn
 
 # The finished flag lets the window close; before that Alt+F4 does nothing.
 $script:finished = $false
 $window.Add_Closing({ param($s, $e) if (-not $script:finished) { $e.Cancel = $true } })
 
-# ---- choices: theme, accent, privacy ---------------------------------------------------------------
+# ---- choices -------------------------------------------------------------------------------------------
 $script:theme = [string] $data.defaults.theme
 $script:accent = [string] $data.defaults.accent
 $script:privacy = [string] $data.defaults.privacy
+$script:align = if ($data.defaults.taskbar) { [string] $data.defaults.taskbar } else { 'center' }
+$ui.Glass.IsChecked = ($data.defaults.transparency -ne $false)
+$script:prefs = @{}
+foreach ($pref in @($data.prefs)) { if ($pref) { $script:prefs[[string] $pref.id] = [bool] $pref.default } }
 
-function New-Choice([string] $title, [string] $detail, [double] $width) {
-    $card = [Windows.Markup.XamlReader]::Parse((Expand-Xaml $choiceXaml))
-    $card.Width = $width
-    $card.Child.Children[0].Text = $title
-    $card.Child.Children[1].Text = $detail
-    if (-not $detail) { $card.Child.Children[1].Visibility = 'Collapsed' }
-    return $card
+function New-Path([string] $geometry, [string] $resource, [double] $size, [double] $thickness) {
+    $path = New-Object System.Windows.Shapes.Path
+    $path.Data = [System.Windows.Media.Geometry]::Parse($geometry)
+    $path.Width = 24; $path.Height = 24; $path.StrokeThickness = $thickness
+    $path.StrokeStartLineCap = 'Round'; $path.StrokeEndLineCap = 'Round'; $path.StrokeLineJoin = 'Round'
+    if ($resource -like '#*') { $path.Stroke = $brush.ConvertFromString($resource) } else { $path.SetResourceReference([System.Windows.Shapes.Shape]::StrokeProperty, $resource) }
+    $box = New-Object System.Windows.Controls.Viewbox
+    $box.Width = $size; $box.Height = $size; $box.Child = $path
+    return $box
 }
-function Show-Selected([System.Windows.Controls.Panel] $panel, [string] $value) {
-    foreach ($card in $panel.Children) {
-        $on = [string] $card.Tag -eq $value
-        # A swatch is itself a colour: its frame is the text colour.
-        $mark = if ($panel -eq $ui.Accents) { $c.text } else { $c.accent }
-        $card.BorderBrush = $brush.ConvertFromString($(if ($on) { $mark } else { $c.frame }))
+function New-Text([string] $text, [double] $size = 14, [string] $resource = 'Text1') {
+    $tb = New-Object System.Windows.Controls.TextBlock
+    $tb.Text = $text; $tb.FontSize = $size
+    $tb.SetResourceReference([System.Windows.Controls.TextBlock]::ForegroundProperty, $resource)
+    return $tb
+}
+function Set-Res($element, [System.Windows.DependencyProperty] $property, [string] $resource) { $element.SetResourceReference($property, $resource) }
+$checkGeometry = 'M5 12.5l4.5 4.5L19 7.5'
+
+# Theme: a small picture of Windows in it (wallpaper, a window, the taskbar) over its name.
+foreach ($entry in $data.themes) {
+    $isLight = [string] $entry.id -eq 'light'
+    $tile = New-Object System.Windows.Controls.Border
+    $tile.CornerRadius = 7; $tile.Padding = '4,4,4,6'; $tile.Margin = '0,0,12,0'; $tile.BorderThickness = 2; $tile.Cursor = 'Hand'
+    $tile.Tag = [string] $entry.id; $tile.Background = [System.Windows.Media.Brushes]::Transparent
+    $grid = New-Object System.Windows.Controls.Grid
+    $stack = New-Object System.Windows.Controls.StackPanel
+    $mini = New-Object System.Windows.Controls.Grid
+    $mini.Width = 150; $mini.Height = 88; $mini.ClipToBounds = $true
+    $wall = New-Object System.Windows.Controls.Border
+    $wall.CornerRadius = 4; $wall.BorderThickness = 1; Set-Res $wall ([System.Windows.Controls.Border]::BorderBrushProperty) 'RowLine'
+    $wall.Background = $(if ($isLight) { New-Slope '#E2EBF8' '#C9D9F3' '#A9C3EE' } else { New-Slope '#22355F' '#16264C' '#08102A' })
+    [void] $mini.Children.Add($wall)
+    $win = New-Object System.Windows.Controls.Border
+    $win.Width = 90; $win.Height = 50; $win.CornerRadius = 3; $win.Margin = '30,16,0,0'; $win.HorizontalAlignment = 'Left'; $win.VerticalAlignment = 'Top'
+    $win.Background = $brush.ConvertFromString($(if ($isLight) { '#FBFBFB' } else { '#2B2B2B' }))
+    [void] $mini.Children.Add($win)
+    $bar = New-Object System.Windows.Controls.Border
+    $bar.Height = 12; $bar.VerticalAlignment = 'Bottom'; $bar.Margin = '1,0,1,1'; $bar.CornerRadius = '0,0,3,3'
+    $bar.Background = $brush.ConvertFromString($(if ($isLight) { '#EBF3F3F3' } else { '#EB1C1C1C' }))
+    [void] $mini.Children.Add($bar)
+    $dot = New-Object System.Windows.Controls.Border
+    $dot.Width = 12; $dot.Height = 6; $dot.CornerRadius = 2; $dot.VerticalAlignment = 'Bottom'; $dot.Margin = '0,0,0,4'
+    Set-Res $dot ([System.Windows.Controls.Border]::BackgroundProperty) 'AccentBrush'
+    [void] $mini.Children.Add($dot)
+    [void] $stack.Children.Add($mini)
+    $name = New-Text ([string] $entry.name)
+    $name.HorizontalAlignment = 'Center'; $name.Margin = '0,6,0,0'
+    [void] $stack.Children.Add($name)
+    [void] $grid.Children.Add($stack)
+    $badge = New-Object System.Windows.Controls.Border
+    $badge.Width = 20; $badge.Height = 20; $badge.CornerRadius = 10; $badge.HorizontalAlignment = 'Right'; $badge.VerticalAlignment = 'Top'; $badge.Margin = '0,-11,-11,0'
+    Set-Res $badge ([System.Windows.Controls.Border]::BackgroundProperty) 'Sel'
+    $badge.Child = New-Path $checkGeometry 'BtnText' 12 3
+    [void] $grid.Children.Add($badge)
+    $tile.Child = $grid
+    $tile.Add_MouseLeftButtonUp({ param($s) Select-Theme ([string] $s.Tag) })
+    [void] $ui.Themes.Children.Add($tile)
+}
+# Accent: Windows' rounded squares, a ring and a tick on the chosen one.
+foreach ($entry in $data.accents) {
+    $ring = New-Object System.Windows.Controls.Border
+    $ring.CornerRadius = 7; $ring.Padding = 3; $ring.BorderThickness = 2; $ring.Margin = '0,0,6,6'; $ring.Cursor = 'Hand'
+    $ring.Tag = [string] $entry.color; $ring.ToolTip = [string] $entry.name; $ring.Background = [System.Windows.Media.Brushes]::Transparent
+    $swatch = New-Object System.Windows.Controls.Border
+    $swatch.Width = 34; $swatch.Height = 34; $swatch.CornerRadius = 4
+    $swatch.Background = $brush.ConvertFromString([string] $entry.color)
+    $swatch.Child = New-Path $checkGeometry '#FFFFFF' 14 3
+    $ring.Child = $swatch
+    $ring.Add_MouseLeftButtonUp({ param($s) Select-Accent ([string] $s.Tag) })
+    [void] $ui.Accents.Children.Add($ring)
+}
+# Taskbar: centred or on the left (Windows 11; Windows 10's is always on the left).
+foreach ($pair in @(@('center', $t.taskbarCenter), @('left', $t.taskbarLeft))) {
+    $b = New-Object System.Windows.Controls.Button
+    $b.Style = $window.FindResource('Ghost'); $b.Height = 28; $b.Padding = '14,0'; $b.Tag = $pair[0]
+    $b.Content = New-Text $pair[1]
+    $b.Add_Click({ param($s) $script:align = [string] $s.Tag; Show-Choices; Update-Art })
+    [void] $ui.Aligns.Children.Add($b)
+}
+if (-not $win11) { $ui.TaskbarBox.Visibility = 'Collapsed' }
+$ui.Glass.Add_Click({ Update-Art })
+
+# Habits: Windows Settings' rows, a switch on the right.
+$prefIcons = @{
+    ext = 'M6 3h8l4 4v14H6z M14 3v4h4'; hidden = 'M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z M12 9a3 3 0 1 1 0 6a3 3 0 1 1 0-6'
+    thispc = 'M3 5h18v11H3z M8 20h8 M12 16v4'; classic = 'M4 4h16v16H4z M8 9h8 M8 13h8 M8 17h5'
+    search = 'M10.5 4a6.5 6.5 0 1 1 0 13a6.5 6.5 0 1 1 0-13 M15.5 15.5L20 20'; taskview = 'M3 6h8v6H3z M13 6h8v6h-8z M3 14h18v4H3z'
+    widgets = 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z'
+}
+$script:prefRows = @{}
+foreach ($pref in @($data.prefs)) {
+    if (-not $pref -or ($pref.windows11 -and -not $win11)) { continue }
+    $row = New-Object System.Windows.Controls.Border
+    $row.Style = $window.FindResource('CardBox'); $row.CornerRadius = 4; $row.Margin = '0,0,0,4'; $row.Padding = '14,7'; $row.MinHeight = 50
+    $row.Cursor = 'Hand'; $row.Tag = [string] $pref.id; $row.MaxWidth = 560; $row.HorizontalAlignment = 'Left'; $row.Width = 560
+    $grid = New-Object System.Windows.Controls.Grid
+    foreach ($w in 'Auto', '*', 'Auto', 'Auto') { $col = New-Object System.Windows.Controls.ColumnDefinition; $col.Width = $w; $grid.ColumnDefinitions.Add($col) }
+    $icon = New-Path $prefIcons[[string] $pref.id] 'Text1' 16 1.7
+    $icon.Margin = '0,0,14,0'; $icon.VerticalAlignment = 'Center'
+    [void] $grid.Children.Add($icon)
+    $words = New-Object System.Windows.Controls.StackPanel
+    $words.VerticalAlignment = 'Center'
+    [System.Windows.Controls.Grid]::SetColumn($words, 1)
+    $nameText = if (-not $win11 -and $pref.name10) { [string] $pref.name10 } else { [string] $pref.name }
+    [void] $words.Children.Add((New-Text $nameText))
+    $detail = New-Text ([string] $pref.detail) 12 'Text2'
+    $detail.TextWrapping = 'Wrap'
+    [void] $words.Children.Add($detail)
+    [void] $grid.Children.Add($words)
+    $state = New-Text '' 12 'Text2'
+    $state.Width = 52; $state.TextAlignment = 'Right'; $state.Margin = '0,0,12,0'; $state.VerticalAlignment = 'Center'
+    [System.Windows.Controls.Grid]::SetColumn($state, 2)
+    [void] $grid.Children.Add($state)
+    $switch = New-Object System.Windows.Controls.CheckBox
+    $switch.Style = $window.FindResource('Switch'); $switch.VerticalAlignment = 'Center'; $switch.IsHitTestVisible = $false
+    $switch.IsChecked = $script:prefs[[string] $pref.id]
+    [System.Windows.Controls.Grid]::SetColumn($switch, 3)
+    [void] $grid.Children.Add($switch)
+    $row.Child = $grid
+    $row.Add_MouseLeftButtonUp({ param($s) $id = [string] $s.Tag; $script:prefs[$id] = -not $script:prefs[$id]; Show-Choices; Update-Art })
+    $script:prefRows[[string] $pref.id] = @{ row = $row; switch = $switch; state = $state }
+    [void] $ui.PagePrefs.Children.Add($row)
+}
+
+# Privacy: Windows' radio button, the level, what it means.
+foreach ($entry in $data.privacy) {
+    $card = New-Object System.Windows.Controls.Border
+    $card.Style = $window.FindResource('CardBox'); $card.Margin = '0,0,0,8'; $card.Padding = '16,14'; $card.Cursor = 'Hand'
+    $card.Tag = [string] $entry.id; $card.Width = 540; $card.HorizontalAlignment = 'Left'
+    $grid = New-Object System.Windows.Controls.Grid
+    foreach ($w in 'Auto', '*') { $col = New-Object System.Windows.Controls.ColumnDefinition; $col.Width = $w; $grid.ColumnDefinitions.Add($col) }
+    $radio = New-Object System.Windows.Controls.Grid
+    $radio.Width = 20; $radio.Height = 20; $radio.VerticalAlignment = 'Top'; $radio.Margin = '0,1,14,0'
+    $ringShape = New-Object System.Windows.Shapes.Ellipse
+    $ringShape.StrokeThickness = 1
+    $dotShape = New-Object System.Windows.Shapes.Ellipse
+    $dotShape.Width = 8; $dotShape.Height = 8
+    Set-Res $dotShape ([System.Windows.Shapes.Shape]::FillProperty) 'BtnText'
+    [void] $radio.Children.Add($ringShape); [void] $radio.Children.Add($dotShape)
+    [void] $grid.Children.Add($radio)
+    $words = New-Object System.Windows.Controls.StackPanel
+    [System.Windows.Controls.Grid]::SetColumn($words, 1)
+    $title = New-Text ([string] $entry.name)
+    $title.FontWeight = 'SemiBold'
+    [void] $words.Children.Add($title)
+    $detail = New-Text ([string] $entry.detail) 12 'Text2'
+    $detail.TextWrapping = 'Wrap'; $detail.Margin = '0,4,0,0'
+    [void] $words.Children.Add($detail)
+    $facts = @($entry.facts | Where-Object { $_ })
+    if ($facts.Count) {
+        $wrap = New-Object System.Windows.Controls.WrapPanel
+        $wrap.Margin = '0,8,0,0'
+        foreach ($fact in $facts) {
+            $chip = New-Object System.Windows.Controls.Border
+            $chip.CornerRadius = 10; $chip.Padding = '8,2'; $chip.Margin = '0,0,6,6'
+            Set-Res $chip ([System.Windows.Controls.Border]::BackgroundProperty) 'Soft'
+            $line = New-Object System.Windows.Controls.StackPanel
+            $line.Orientation = 'Horizontal'
+            $tick = New-Path $checkGeometry 'Sel' 12 3
+            $tick.Margin = '0,0,5,0'
+            [void] $line.Children.Add($tick)
+            [void] $line.Children.Add((New-Text ([string] $fact) 12))
+            $chip.Child = $line
+            [void] $wrap.Children.Add($chip)
+        }
+        [void] $words.Children.Add($wrap)
+    }
+    [void] $grid.Children.Add($words)
+    $card.Child = $grid
+    $card.Add_MouseLeftButtonUp({ param($s) $script:privacy = [string] $s.Tag; Show-Choices })
+    [void] $ui.PagePrivacy.Children.Add($card)
+}
+# The privacy picture: what "less data" switches off, around the shield.
+foreach ($orb in @(@(92, 214, 'M4 18V9 M10 18V5 M16 18v-6 M22 18H2'), @(268, 196, 'M4 7h16v10H4z M8 11h3 M8 14h6'),
+                   @(250, 410, 'M12 4a8 8 0 1 1 0 16a8 8 0 1 1 0-16 M12 8v4l3 2'))) {
+    $o = New-Object System.Windows.Controls.Border
+    $o.Width = 40; $o.Height = 40; $o.CornerRadius = 20; $o.BorderThickness = 1
+    Set-Res $o ([System.Windows.Controls.Border]::BackgroundProperty) 'Row'
+    Set-Res $o ([System.Windows.Controls.Border]::BorderBrushProperty) 'RowLine'
+    $g = New-Object System.Windows.Controls.Grid
+    [void] $g.Children.Add((New-Path $orb[2] 'Text2' 18 1.7))
+    $minus = New-Object System.Windows.Controls.Border
+    $minus.Width = 16; $minus.Height = 16; $minus.CornerRadius = 8; $minus.HorizontalAlignment = 'Right'; $minus.VerticalAlignment = 'Bottom'; $minus.Margin = '0,0,-4,-4'
+    Set-Res $minus ([System.Windows.Controls.Border]::BackgroundProperty) 'Sel'
+    $minus.Child = New-Path 'M6 12h12' 'BtnText' 9 4
+    [void] $g.Children.Add($minus)
+    $o.Child = $g
+    [System.Windows.Controls.Canvas]::SetLeft($o, $orb[0]); [System.Windows.Controls.Canvas]::SetTop($o, $orb[1])
+    [void] $ui.Orbs.Children.Add($o)
+}
+
+# Time zones: Windows' own list, in Windows' language.
+$zoneNow = try { (Get-TimeZone).Id } catch { '' }
+# Without an answer Setup leaves Pacific time: the system locale's usual zone is a better first answer.
+$localeZones = @{ 'tr-TR' = 'Turkey Standard Time'; 'az-Latn-AZ' = 'Azerbaijan Standard Time'; 'en-GB' = 'GMT Standard Time'
+                  'de-DE' = 'W. Europe Standard Time'; 'fr-FR' = 'Romance Standard Time'; 'es-ES' = 'Romance Standard Time'
+                  'it-IT' = 'W. Europe Standard Time'; 'nl-NL' = 'W. Europe Standard Time'; 'pl-PL' = 'Central European Standard Time'
+                  'ru-RU' = 'Russian Standard Time'; 'uk-UA' = 'FLE Standard Time'; 'pt-BR' = 'E. South America Standard Time'
+                  'ja-JP' = 'Tokyo Standard Time'; 'ko-KR' = 'Korea Standard Time'; 'zh-CN' = 'China Standard Time' }
+$systemLocale = try { (Get-WinSystemLocale).Name } catch { '' }
+$zoneWanted = if ($data.defaults.timeZone) { [string] $data.defaults.timeZone }
+              elseif ($zoneNow -eq 'Pacific Standard Time' -and $localeZones[$systemLocale]) { $localeZones[$systemLocale] }
+              else { $zoneNow }
+foreach ($zone in [System.TimeZoneInfo]::GetSystemTimeZones()) {
+    $item = New-Object System.Windows.Controls.ComboBoxItem
+    $item.Content = $zone.DisplayName; $item.Tag = $zone.Id
+    [void] $ui.Zone.Items.Add($item)
+    if ($zone.Id -eq $zoneWanted) { $ui.Zone.SelectedItem = $item }
+}
+if ($ui.Zone.SelectedIndex -lt 0 -and $ui.Zone.Items.Count) { $ui.Zone.SelectedIndex = 0 }
+$ui.Zone.Add_SelectionChanged({ Update-Art })
+
+# Selection marks in the current colours.
+function Show-Choices {
+    foreach ($tile in $ui.Themes.Children) {
+        $on = [string] $tile.Tag -eq $script:theme
+        if ($on) { Set-Res $tile ([System.Windows.Controls.Border]::BorderBrushProperty) 'Sel' } else { $tile.BorderBrush = [System.Windows.Media.Brushes]::Transparent }
+        $tile.Child.Children[1].Visibility = $(if ($on) { 'Visible' } else { 'Hidden' })
+    }
+    foreach ($ring in $ui.Accents.Children) {
+        $on = ([string] $ring.Tag).ToLower() -eq $script:accent.ToLower()
+        if ($on) { Set-Res $ring ([System.Windows.Controls.Border]::BorderBrushProperty) 'Text1' } else { $ring.BorderBrush = [System.Windows.Media.Brushes]::Transparent }
+        $ring.Child.Child.Visibility = $(if ($on) { 'Visible' } else { 'Hidden' })
+    }
+    foreach ($b in $ui.Aligns.Children) {
+        $on = [string] $b.Tag -eq $script:align
+        if ($on) { Set-Res $b ([System.Windows.Controls.Control]::BackgroundProperty) 'Soft' } else { $b.Background = [System.Windows.Media.Brushes]::Transparent }
+        $b.Content.FontWeight = $(if ($on) { 'SemiBold' } else { 'Normal' })
+        Set-Res $b.Content ([System.Windows.Controls.TextBlock]::ForegroundProperty) $(if ($on) { 'Sel' } else { 'Text1' })
+    }
+    foreach ($id in @($script:prefRows.Keys)) {
+        $r = $script:prefRows[$id]
+        $r.switch.IsChecked = $script:prefs[$id]
+        $r.state.Text = $(if ($script:prefs[$id]) { $t.on } else { $t.off })
+    }
+    foreach ($card in $ui.PagePrivacy.Children) {
+        $on = [string] $card.Tag -eq $script:privacy
+        Set-Res $card ([System.Windows.Controls.Border]::BorderBrushProperty) $(if ($on) { 'Sel' } else { 'RowLine' })
         $card.BorderThickness = $(if ($on) { 2 } else { 1 })
+        $card.Padding = $(if ($on) { '15,13' } else { '16,14' })
+        $radio = $card.Child.Children[0]
+        Set-Res $radio.Children[0] ([System.Windows.Shapes.Shape]::StrokeProperty) $(if ($on) { 'Sel' } else { 'Bottom' })
+        if ($on) { Set-Res $radio.Children[0] ([System.Windows.Shapes.Shape]::FillProperty) 'Sel' } else { $radio.Children[0].Fill = [System.Windows.Media.Brushes]::Transparent }
+        $radio.Children[1].Visibility = $(if ($on) { 'Visible' } else { 'Hidden' })
     }
 }
+function Select-Theme([string] $id) { $script:theme = $id; Set-Colors; Show-Choices }
+function Select-Accent([string] $color) { $script:accent = $color; Set-Colors; Show-Choices }
 
-# (Loop variables of their own: at script level $theme would be $script:theme.)
-foreach ($entry in $data.themes) {
-    $card = New-Choice $entry.name '' 160
-    $card.Tag = $entry.id
-    $card.Add_MouseLeftButtonUp({ param($s) $script:theme = [string] $s.Tag; Show-Selected $ui.Themes $script:theme })
-    [void] $ui.Themes.Children.Add($card)
+# ---- the live pictures ---------------------------------------------------------------------------------
+$culture = [System.Globalization.CultureInfo]::CurrentUICulture
+function Update-Art {
+    $dark = $script:theme -ne 'light'
+    # account
+    $typed = $ui.UserName.Text.Trim()
+    $ui.ArtName.Text = $(if ($typed) { $typed } else { $t.accountPlaceholder })
+    $ui.ArtName.Opacity = $(if ($typed) { 1 } else { 0.45 })
+    $ui.ArtLock.Text = $(if ($ui.Pass.Password) { $t.accountLocked } else { $t.accountOpen })
+    # computer
+    $now = Get-Date
+    $zone = if ($ui.Zone.SelectedItem) { [System.TimeZoneInfo]::FindSystemTimeZoneById([string] $ui.Zone.SelectedItem.Tag) } else { [System.TimeZoneInfo]::Local }
+    $there = [System.TimeZoneInfo]::ConvertTime($now, $zone)
+    $ui.ArtClock.Text = $there.ToString('HH:mm', $culture)
+    $ui.ArtDate.Text = $there.ToString('dddd, d MMMM', $culture)
+    $pc = $ui.PcName.Text.Trim()
+    $ui.ArtPcName.Text = $(if ($pc) { $pc.ToUpper() } else { 'PC' })
+    $ui.ArtZone.Text = $zone.DisplayName
+    # look
+    $ui.MiniWall.Background = $(if ($dark) { New-Slope '#22355F' '#16264C' '#08102A' } else { New-Slope '#E2EBF8' '#C9D9F3' '#A9C3EE' })
+    $ui.MiniApp.Background = $brush.ConvertFromString($(if ($dark) { '#202020' } else { '#F9F9F9' }))
+    $ui.MiniTitle.Background = $brush.ConvertFromString($(if ($dark) { '#2B2B2B' } else { '#EEEEEE' }))
+    foreach ($n in 'MiniLine0', 'MiniLine1', 'MiniLine2', 'MiniLine3') { $ui[$n].Background = $brush.ConvertFromString($(if ($dark) { '#3D3D3D' } else { '#DEDEDE' })) }
+    $glass = [bool] $ui.Glass.IsChecked
+    $ui.MiniBar.Background = $brush.ConvertFromString($(if ($dark) { if ($glass) { '#C71C1C1C' } else { '#1C1C1C' } } else { if ($glass) { '#C7F3F3F3' } else { '#EEEEEE' } }))
+    foreach ($n in 'MiniIcon1', 'MiniIcon2', 'MiniIcon3') { $ui[$n].Background = $brush.ConvertFromString($(if ($dark) { '#6B6B6B' } else { '#9A9A9A' })) }
+    $ui.MiniIcons.HorizontalAlignment = $(if ($win11 -and $script:align -eq 'center') { 'Center' } else { 'Left' })
+    # habits: a small Explorer and taskbar that follow the switches
+    $ext = $script:prefs['ext']; $hidden = $script:prefs['hidden']
+    $ui.ExPlace.Text = $(if ($script:prefs['thispc']) { $t.prefPlaceThisPc } else { $t.prefPlaceDocs })
+    $ui.ExFiles.Children.Clear()
+    $files = @(@('.config', '', '#8A8A8A', $true), @($t.prefFileReport, '.docx', '#2F6FD0', $false), @($t.prefFileBudget, '.xlsx', '#2E9D5B', $false),
+               @($t.prefFileHoliday, '.jpg', '#E8A23B', $false), @('setup', '.exe', '#C04A3A', $false))
+    foreach ($f in $files) {
+        if ($f[3] -and -not $hidden) { continue }
+        $line = New-Object System.Windows.Controls.StackPanel
+        $line.Orientation = 'Horizontal'; $line.Height = 30; $line.Margin = '14,0,0,0'
+        if ($f[3]) { $line.Opacity = 0.5 }
+        $iconBox = New-Object System.Windows.Controls.Border
+        $iconBox.Width = 16; $iconBox.Height = 18; $iconBox.CornerRadius = 2; $iconBox.VerticalAlignment = 'Center'
+        $iconBox.Background = $brush.ConvertFromString($f[2])
+        [void] $line.Children.Add($iconBox)
+        $label = New-Text $f[0] 13
+        $label.Margin = '10,0,0,0'; $label.VerticalAlignment = 'Center'
+        [void] $line.Children.Add($label)
+        if ($ext -and $f[1]) {
+            $e = New-Text $f[1] 13 'Text3'
+            $e.VerticalAlignment = 'Center'
+            [void] $line.Children.Add($e)
+        }
+        [void] $ui.ExFiles.Children.Add($line)
+    }
+    $ui.ExBar.Children.Clear()
+    $items = @()
+    if ($script:prefs['widgets']) { $items += 'widgets' }
+    $items += 'start'
+    if ($script:prefs['search']) { $items += 'search' }
+    if ($script:prefs['taskview']) { $items += 'taskview' }
+    $items += 'app', 'app'
+    foreach ($item in $items) {
+        $b = New-Object System.Windows.Controls.Border
+        $b.Margin = '3,0'; $b.VerticalAlignment = 'Center'
+        if ($item -eq 'search') {
+            $b.Height = 18; $b.Padding = '8,0'; $b.CornerRadius = 9; $b.BorderThickness = 1
+            Set-Res $b ([System.Windows.Controls.Border]::BackgroundProperty) 'Row'
+            Set-Res $b ([System.Windows.Controls.Border]::BorderBrushProperty) 'RowLine'
+            $b.Child = New-Text $t.prefSearchWord 10 'Text3'
+        } else {
+            $b.Width = 14; $b.Height = 14; $b.CornerRadius = 3
+            switch ($item) {
+                'start' { Set-Res $b ([System.Windows.Controls.Border]::BackgroundProperty) 'AccentBrush' }
+                'widgets' { $b.Background = $brush.ConvertFromString('#E8A23B') }
+                default { Set-Res $b ([System.Windows.Controls.Border]::BackgroundProperty) 'Text3'; $b.Opacity = 0.6 }
+            }
+        }
+        [void] $ui.ExBar.Children.Add($b)
+    }
 }
-foreach ($entry in $data.accents) {
-    $swatch = New-Object System.Windows.Controls.Border
-    $swatch.Width = 40; $swatch.Height = 40; $swatch.CornerRadius = 3; $swatch.Margin = '0,0,8,8'; $swatch.Cursor = 'Hand'
-    $swatch.Background = $brush.ConvertFromString($entry.color)
-    $swatch.BorderBrush = $brush.ConvertFromString($c.frame)
-    $swatch.BorderThickness = 1
-    $swatch.Tag = $entry.color
-    $swatch.ToolTip = $entry.name
-    $swatch.Add_MouseLeftButtonUp({ param($s) $script:accent = [string] $s.Tag; Show-Selected $ui.Accents $script:accent })
-    [void] $ui.Accents.Children.Add($swatch)
-}
-foreach ($entry in $data.privacy) {
-    $card = New-Choice $entry.name $entry.detail 520
-    $card.Margin = '0,0,0,8' # the column's full width: no gap on the right
-    $card.Tag = $entry.id
-    $card.Add_MouseLeftButtonUp({ param($s) $script:privacy = [string] $s.Tag; Show-Selected $ui.Levels $script:privacy })
-    [void] $ui.Levels.Children.Add($card)
-}
-Show-Selected $ui.Themes $script:theme
-Show-Selected $ui.Accents $script:accent
-Show-Selected $ui.Levels $script:privacy
+$ui.UserName.Add_TextChanged({ Update-Art })
+$ui.PcName.Add_TextChanged({ Update-Art })
+$ui.Pass.Add_PasswordChanged({ Update-Art })
+$ui.Reveal.Add_PreviewMouseLeftButtonDown({ $ui.PassShown.Text = $ui.Pass.Password; $ui.PassShown.Visibility = 'Visible' })
+$ui.Reveal.Add_PreviewMouseLeftButtonUp({ $ui.PassShown.Visibility = 'Collapsed'; $ui.PassShown.Text = '' })
+$ui.Reveal.Add_MouseLeave({ $ui.PassShown.Visibility = 'Collapsed'; $ui.PassShown.Text = '' })
 
-# ---- pages ------------------------------------------------------------------------------------------
-# The account page always; the others as WinLove's answer file asked ("pages": ["computer", "look", "privacy"]).
+# ---- the wireless page ----------------------------------------------------------------------------------
+$script:online = $false
+$script:openRow = $null
+function Get-Bars([int] $signal) { if ($signal -gt 66) { 3 } elseif ($signal -gt 33) { 2 } else { 1 } }
+function Show-Networks([bool] $scan) {
+    if (-not $script:wifi) { return }
+    if ($scan -and -not ($data.preview -and $data.previewNetworks)) {
+        try { [WinLove.Wifi]::Scan() } catch { }
+        $ui.NetState.Text = $t.networkSearching
+        Wait-Seconds 3
+    }
+    $nets = @()
+    if ($data.preview -and $data.previewNetworks) { # screenshots: made-up networks, not the ones around this PC
+        $nets = @($data.previewNetworks | ForEach-Object { $n = New-Object WinLove.WifiNet; $n.Ssid = $_.ssid; $n.Signal = $_.signal; $n.Secure = $_.secure; $n.Auth = $_.auth; $n.Cipher = $(if ($_.secure) { 4 } else { 0 }); $n })
+    } else {
+        try { $nets = @([WinLove.Wifi]::Networks()) } catch { Write-Log ('networks: ' + $_.Exception.Message) }
+    }
+    $script:online = [bool] ($nets | Where-Object { $_.Connected }) -or ((Test-Wired) -and -not $data.previewNetworks)
+    $ui.NetList.Children.Clear()
+    $script:openRow = $null
+    foreach ($net in ($nets | Select-Object -First 12)) {
+        $row = New-Object System.Windows.Controls.Border
+        $row.Style = $window.FindResource('CardBox'); $row.Margin = '0,0,0,4'; $row.Tag = $net
+        $stack = New-Object System.Windows.Controls.StackPanel
+        $head = New-Object System.Windows.Controls.Grid
+        $head.Height = 46; $head.Background = [System.Windows.Media.Brushes]::Transparent; $head.Cursor = 'Hand'
+        foreach ($w in 'Auto', '*', 'Auto') { $col = New-Object System.Windows.Controls.ColumnDefinition; $col.Width = $w; $head.ColumnDefinitions.Add($col) }
+        # the signal: three arcs, the ones above the strength faint
+        $bars = Get-Bars $net.Signal
+        $signal = New-Object System.Windows.Controls.Grid
+        $signal.Margin = '14,0,14,0'; $signal.VerticalAlignment = 'Center'
+        $arcs = @('M2.5 9a14 14 0 0 1 19 0', 'M5.5 12.2a9.5 9.5 0 0 1 13 0', 'M8.6 15.4a5 5 0 0 1 6.8 0 M12 17.4a1.2 1.2 0 1 1 0 2.4a1.2 1.2 0 1 1 0-2.4')
+        for ($i = 0; $i -lt 3; $i++) {
+            $arc = New-Path $arcs[$i] 'Text1' 18 2
+            if ((3 - $i) -gt $bars) { $arc.Opacity = 0.3 }
+            [void] $signal.Children.Add($arc)
+        }
+        [void] $head.Children.Add($signal)
+        $words = New-Object System.Windows.Controls.StackPanel
+        $words.VerticalAlignment = 'Center'
+        [System.Windows.Controls.Grid]::SetColumn($words, 1)
+        [void] $words.Children.Add((New-Text $net.Ssid))
+        $supported = [bool] (Get-WifiProfile $net 'x' $true)
+        $meta = if ($net.Connected) { $t.networkConnected } elseif (-not $supported) { $t.networkEnterprise } elseif ($net.Secure) { $t.networkSecure } else { $t.networkOpen }
+        [void] $words.Children.Add((New-Text $meta 12 $(if ($net.Connected) { 'Sel' } else { 'Text2' })))
+        [void] $head.Children.Add($words)
+        if ($net.Secure) {
+            $lock = New-Path 'M7 10h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z M8 10V7a4 4 0 0 1 8 0v3' 'Text2' 14 1.8
+            $lock.Margin = '0,0,14,0'
+            [System.Windows.Controls.Grid]::SetColumn($lock, 2)
+            [void] $head.Children.Add($lock)
+        }
+        [void] $stack.Children.Add($head)
+        # opened: the key, "connect automatically", Connect
+        $more = New-Object System.Windows.Controls.StackPanel
+        $more.Margin = '48,0,14,14'; $more.Visibility = 'Collapsed'
+        $key = New-Object System.Windows.Controls.PasswordBox
+        $key.Width = 476
+        if ($net.Secure) {
+            $label = New-Text $t.networkKey 12 'Text2'
+            $label.Margin = '0,2,0,6'
+            [void] $more.Children.Add($label)
+            [void] $more.Children.Add($key)
+        }
+        $line = New-Object System.Windows.Controls.Grid
+        $line.Margin = '0,10,0,0'
+        $autoBox = New-Object System.Windows.Controls.CheckBox
+        $autoBox.Style = $window.FindResource('Box'); $autoBox.Content = New-Text $t.networkAuto 13; $autoBox.IsChecked = $true; $autoBox.VerticalAlignment = 'Center'
+        [void] $line.Children.Add($autoBox)
+        $go = New-Object System.Windows.Controls.Button
+        $go.Style = $window.FindResource('AccentButton'); $go.Content = $t.networkConnect; $go.MinWidth = 96; $go.HorizontalAlignment = 'Right'
+        [void] $line.Children.Add($go)
+        [void] $more.Children.Add($line)
+        $message = New-Text '' 12 'Err'
+        $message.TextWrapping = 'Wrap'; $message.Margin = '0,8,0,0'; $message.Visibility = 'Collapsed'
+        [void] $more.Children.Add($message)
+        [void] $stack.Children.Add($more)
+        $row.Child = $stack
+        $entry = @{ row = $row; net = $net; more = $more; key = $key; auto = $autoBox; go = $go; message = $message; supported = $supported }
+        $head.Tag = $entry; $go.Tag = $entry; $key.Tag = $entry
+        $head.Add_MouseLeftButtonUp({ param($s) Open-Network $s.Tag })
+        $go.Add_Click({ param($s) Connect-Network $s.Tag })
+        [void] $ui.NetList.Children.Add($row)
+    }
+    if (-not $nets.Count) { $ui.NetState.Text = $t.networkNone }
+    elseif ($script:online) { $ui.NetState.Text = $(if (Test-Wired) { $t.networkWired } else { '' }) }
+    else { $ui.NetState.Text = '' }
+    Update-Next
+}
+function Open-Network($entry) {
+    if ($entry.net.Connected -or -not $entry.supported) { return }
+    foreach ($row in $ui.NetList.Children) {
+        $mine = [object]::ReferenceEquals($row, $entry.row)
+        $row.Child.Children[1].Visibility = $(if ($mine) { 'Visible' } else { 'Collapsed' })
+        Set-Res $row ([System.Windows.Controls.Border]::BorderBrushProperty) $(if ($mine) { 'Sel' } else { 'RowLine' })
+        $row.BorderThickness = $(if ($mine) { 2 } else { 1 })
+    }
+    $script:openRow = $entry
+    if ($entry.net.Secure) { [void] $entry.key.Focus() }
+}
+function Connect-Network($entry) {
+    $entry.message.Visibility = 'Collapsed'
+    if ($data.preview) { $entry.message.Text = $t.networkPreview; $entry.message.Visibility = 'Visible'; return }
+    $xmlText = Get-WifiProfile $entry.net $entry.key.Password ([bool] $entry.auto.IsChecked)
+    $entry.go.IsEnabled = $false; $entry.go.Content = $t.networkConnecting
+    $result = 1
+    try { $result = [WinLove.Wifi]::Connect($xmlText, $entry.net.Ssid) } catch { Write-Log ('connect: ' + $_.Exception.Message) }
+    $ok = $false
+    if ($result -eq 0) {
+        $until = (Get-Date).AddSeconds(20)
+        while ((Get-Date) -lt $until -and -not $ok) {
+            Wait-Seconds 1
+            try { $ok = [bool] ([WinLove.Wifi]::Networks() | Where-Object { $_.Ssid -eq $entry.net.Ssid -and $_.Connected }) } catch { }
+        }
+    }
+    Write-Log ('wireless ' + $entry.net.Ssid + ': ' + $(if ($ok) { 'connected' } else { "not connected ($result)" }))
+    $entry.go.IsEnabled = $true; $entry.go.Content = $t.networkConnect
+    if ($ok) { Show-Networks $false } else { $entry.message.Text = $t.networkFailed; $entry.message.Visibility = 'Visible' }
+}
+$ui.NetRefresh.Add_Click({ Show-Networks $true })
+
+# ---- pages -----------------------------------------------------------------------------------------------
 $allPages = @(
-    @{ id = 'account'; panel = 'PageAccount'; heading = $t.accountHeading; sub = $t.accountSub },
-    @{ id = 'computer'; panel = 'PagePc'; heading = $t.pcHeading; sub = $t.pcSub },
-    @{ id = 'look'; panel = 'PageLook'; heading = $t.lookHeading; sub = $t.lookSub },
-    @{ id = 'privacy'; panel = 'PagePrivacy'; heading = $t.privacyHeading; sub = $t.privacySub }
+    @{ id = 'network'; panel = 'PageNetwork'; art = 'ArtNetwork'; heading = $t.networkHeading; sub = $t.networkSub },
+    @{ id = 'account'; panel = 'PageAccount'; art = 'ArtAccount'; heading = $t.accountHeading; sub = $t.accountSub },
+    @{ id = 'computer'; panel = 'PagePc'; art = 'ArtPc'; heading = $t.pcHeading; sub = $t.pcSub },
+    @{ id = 'look'; panel = 'PageLook'; art = 'ArtLook'; heading = $t.lookHeading; sub = $t.lookSub },
+    @{ id = 'prefs'; panel = 'PagePrefs'; art = 'ArtPrefs'; heading = $t.prefsHeading; sub = $t.prefsSub },
+    @{ id = 'privacy'; panel = 'PagePrivacy'; art = 'ArtPrivacy'; heading = $t.privacyHeading; sub = $t.privacySub }
 )
-$wanted = if ($null -ne $data.pages) { @($data.pages) } else { @('computer', 'look', 'privacy') }
-$pages = @($allPages | Where-Object { $_.id -eq 'account' -or $wanted -contains $_.id })
+$wanted = if ($null -ne $data.pages) { @($data.pages) } else { @('network', 'computer', 'look', 'prefs', 'privacy') }
+# The wireless page only where there is a wireless adapter (a preview shows it anyway, to be seen).
+$pages = @($allPages | Where-Object { $_.id -eq 'account' -or ($wanted -contains $_.id -and ($_.id -ne 'network' -or $script:wifi -or $data.preview)) })
 function Test-Shown([string] $id) { return [bool] ($pages | Where-Object { $_.id -eq $id }) }
-$script:page = 0
+$script:page = -1
 
+function Start-Enter($element, [double] $dx) {
+    if (-not $element) { return }
+    $ease = New-Object System.Windows.Media.Animation.CubicEase
+    $ease.EasingMode = 'EaseOut'
+    $move = New-Object System.Windows.Media.TranslateTransform($dx, 0)
+    $element.RenderTransform = $move
+    $slide = New-Object System.Windows.Media.Animation.DoubleAnimation($dx, 0, (New-Object System.Windows.Duration([TimeSpan]::FromMilliseconds(360))))
+    $slide.EasingFunction = $ease
+    $fade = New-Object System.Windows.Media.Animation.DoubleAnimation(0, 1, (New-Object System.Windows.Duration([TimeSpan]::FromMilliseconds(260))))
+    $move.BeginAnimation([System.Windows.Media.TranslateTransform]::XProperty, $slide)
+    $element.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $fade)
+}
+function Update-Next {
+    $id = $pages[$script:page].id
+    $ui.Skip.Visibility = $(if ($id -eq 'network' -and -not $script:online) { 'Visible' } else { 'Collapsed' })
+    $ui.Next.IsEnabled = ($id -ne 'network' -or $script:online)
+}
 function Show-Page([int] $index) {
+    $forward = $index -ge $script:page
     $script:page = $index
     for ($i = 0; $i -lt $pages.Count; $i++) {
-        $ui[$pages[$i].panel].Visibility = $(if ($i -eq $index) { 'Visible' } else { 'Collapsed' })
+        $show = $(if ($i -eq $index) { 'Visible' } else { 'Collapsed' })
+        $ui[$pages[$i].panel].Visibility = $show
+        $ui[$pages[$i].art].Visibility = $show
     }
-    $ui.Heading.Text = $pages[$index].heading
-    $ui.Sub.Text = $pages[$index].sub
-    $ui.Step.Text = '{0} / {1}' -f ($index + 1), $pages.Count
+    $page = $pages[$index]
+    $ui.Heading.Text = $page.heading
+    $ui.Sub.Text = $page.sub
+    $ui.Steps.Children.Clear()
+    for ($i = 0; $i -lt $pages.Count; $i++) {
+        $seg = New-Object System.Windows.Controls.Border
+        $seg.Width = 20; $seg.Height = 4; $seg.CornerRadius = 2; $seg.Margin = '2,0'
+        Set-Res $seg ([System.Windows.Controls.Border]::BackgroundProperty) $(if ($i -le $index) { 'Sel' } else { 'Stroke' })
+        [void] $ui.Steps.Children.Add($seg)
+    }
+    $ui.StepCount.Text = '{0} / {1}' -f ($index + 1), $pages.Count
     $ui.Back.Visibility = $(if ($index -gt 0) { 'Visible' } else { 'Hidden' })
     $ui.Next.Content = $(if ($index -eq $pages.Count - 1) { $t.finish } else { $t.next })
-    $ui.Error.Text = ''
-    if ($pages[$index].id -eq 'account') { [void] $ui.UserName.Focus() }
-    if ($pages[$index].id -eq 'computer') {
-        if (-not $ui.PcName.Text) { $ui.PcName.Text = Get-DefaultComputerName $ui.UserName.Text }
-        [void] $ui.PcName.Focus()
+    $ui.Error.Text = ''; $ui.Error.Visibility = 'Collapsed'
+    $dx = $(if ($forward) { 28 } else { -28 })
+    foreach ($e in $ui.Heading, $ui.Sub, $ui[$page.panel]) { Start-Enter $e $dx }
+    Start-Enter $ui[$page.art] ($dx / 2)
+    switch ($page.id) {
+        'network' { if (-not $ui.NetList.Children.Count) { Show-Networks $true } }
+        'account' { [void] $ui.UserName.Focus() }
+        'computer' {
+            if (-not $ui.PcName.Text) { $ui.PcName.Text = Get-DefaultComputerName $ui.UserName.Text }
+            [void] $ui.PcName.Focus()
+        }
     }
+    Update-Art
+    Update-Next
 }
 
 $reserved = @('administrator', 'guest', 'defaultaccount', 'wdagutilityaccount', 'system', 'none', ([string] $data.setupAccount).ToLower())
-
 function Get-DefaultComputerName([string] $user) {
     if ($data.computerName) { return [string] $data.computerName } # what the answer file suggested
     $clean = ($user.ToUpper() -replace '[^A-Z0-9]', '')
@@ -290,7 +1490,6 @@ function Get-DefaultComputerName([string] $user) {
     if (-not $clean) { return 'PC' }
     return $clean + '-PC'
 }
-
 function Test-Page([int] $index) {
     $id = $pages[$index].id
     if ($id -eq 'account') {
@@ -309,19 +1508,28 @@ function Test-Page([int] $index) {
 }
 
 $ui.Back.Add_Click({ if ($script:page -gt 0) { Show-Page ($script:page - 1) } })
+$ui.Skip.Add_Click({ if ($script:page -lt $pages.Count - 1) { Show-Page ($script:page + 1) } })
 $ui.Next.Add_Click({
+    if (-not $ui.Next.IsEnabled) { return }
     $problem = Test-Page $script:page
-    if ($problem) { $ui.Error.Text = $problem; return }
+    if ($problem) { $ui.Error.Text = $problem; $ui.Error.Visibility = 'Visible'; return }
     if ($script:page -lt $pages.Count - 1) { Show-Page ($script:page + 1) } else { $script:go = $true }
 })
-$window.Add_KeyDown({ param($s, $e) if ($e.Key -eq 'Return') { $ui.Next.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) } })
+$window.Add_KeyDown({
+    param($s, $e)
+    if ($e.Key -ne 'Return') { return }
+    # Enter in a network key connects to that network; anywhere else it is "Next".
+    $focus = [System.Windows.Input.Keyboard]::FocusedElement
+    if ($focus -is [System.Windows.Controls.PasswordBox] -and $focus.Tag) { Connect-Network $focus.Tag; return }
+    $ui.Next.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent)))
+})
 
 $script:keepTop = (Get-Date).AddMinutes(3)
 $script:lastTop = Get-Date
 function Update-Ui {
     # Windows' first sign-in screen and the Start menu it opens come up over a window started before
     # them: for the first minutes the window takes the top again every two seconds.
-    if ((Get-Date) -lt $script:keepTop -and ((Get-Date) - $script:lastTop).TotalSeconds -ge 2 -and -not $data.preview) {
+    if ((Get-Date) -lt $script:keepTop -and ((Get-Date) - $script:lastTop).TotalSeconds -ge 2 -and -not $data.preview -and -not $system) {
         $script:lastTop = Get-Date
         # Windows 11 opens Start at the first sign-in, and Start is above any topmost window: when
         # Start or Search has the keyboard, one Escape closes it (VM: Start covered the pages).
@@ -345,10 +1553,12 @@ function Wait-Seconds([double] $seconds) {
     while ((Get-Date) -lt $end) { Update-Ui; Start-Sleep -Milliseconds 30 }
 }
 
-# Windows shows its own first sign-in screen ("This might take several minutes") on the Winlogon
-# desktop while the account's shell starts on the Default one: no window can be above it (VM: the
-# lab answers ran all pages behind it). So the window waits until the input desktop is Default.
-if (-not $data.preview) {
+# ---- when to show it -----------------------------------------------------------------------------------
+# At a setup account's first sign-in Windows shows its own first sign-in screen ("This might take
+# several minutes") on the Winlogon desktop while the account's shell starts on the Default one: no
+# window can be above it (VM). So the window waits until the input desktop is Default. Inside Setup
+# (SYSTEM) there is nothing to wait for.
+if (-not $data.preview -and -not $system) {
     try {
         Add-Type -Namespace WinLove -Name Desk -UsingNamespace System.Text -MemberDefinition @'
 [DllImport("user32.dll", SetLastError = true)] static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
@@ -373,19 +1583,18 @@ public static string Input() {
         Write-Log ('input desktop: ' + [WinLove.Desk]::Input())
     } catch { Write-Log ('input desktop unknown: ' + $_.Exception.Message) }
     # The input desktop can be Default while Windows' "This might take several minutes" screen is
-    # still up (VM, 26200: the lab answers ran all pages under it): its process goes first.
+    # still up (VM, 26200): its process goes first.
     $until = (Get-Date).AddMinutes(10)
     $seen = $false
     while ((Get-Date) -lt $until -and (Get-Process -Name 'FirstLogonAnim' -ErrorAction SilentlyContinue)) { $seen = $true; Start-Sleep -Milliseconds 500 }
-    Write-Log ('first sign-in screen ' + $(if ($seen) { 'gone' } else { 'not seen' }) + '; windows: ' +
-               ((Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { $_.ProcessName }) -join ', '))
+    Write-Log ('first sign-in screen ' + $(if ($seen) { 'gone' } else { 'not seen' }))
     Start-Sleep -Seconds 2
 }
 
 # "preview" (WinLove's own preview, screenshots): a window instead of the whole screen, nothing is done.
 if ($data.preview) {
-    $window.WindowState = 'Normal'; $window.Topmost = $false
-    $window.Width = 1100; $window.Height = 680; $window.WindowStartupLocation = 'CenterScreen'
+    $window.WindowState = 'Normal'; $window.Topmost = $false; $window.ShowInTaskbar = $true
+    $window.Width = 1240; $window.Height = 780; $window.WindowStartupLocation = 'CenterScreen'
 } else {
     # The whole screen, the taskbar too (a maximized window stops at the work area: VM, the taskbar showed).
     $window.WindowState = 'Normal'
@@ -393,129 +1602,252 @@ if ($data.preview) {
     $window.Width = [System.Windows.SystemParameters]::PrimaryScreenWidth
     $window.Height = [System.Windows.SystemParameters]::PrimaryScreenHeight
 }
+Set-Colors
+Show-Choices
 $window.Show()
 [void] $window.Activate()
-Show-Page ([int] $data.previewPage)
+# The card comes in: a short rise and fade.
+$ui.Stage.Opacity = 0
+$rise = New-Object System.Windows.Media.TranslateTransform(0, 24)
+$ui.Stage.RenderTransform = $rise
+$ease = New-Object System.Windows.Media.Animation.CubicEase
+$ease.EasingMode = 'EaseOut'
+$up = New-Object System.Windows.Media.Animation.DoubleAnimation(24, 0, (New-Object System.Windows.Duration([TimeSpan]::FromMilliseconds(520))))
+$up.EasingFunction = $ease
+$rise.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, $up)
+$ui.Stage.BeginAnimation([System.Windows.UIElement]::OpacityProperty, (New-Object System.Windows.Media.Animation.DoubleAnimation(0, 1, (New-Object System.Windows.Duration([TimeSpan]::FromMilliseconds(420))))))
+if ($data.preview -and $data.previewFill) { # screenshots: the fields filled in as a person would
+    $ui.UserName.Text = $data.previewFill.name; $ui.Pass.Password = $data.previewFill.password; $ui.Pass2.Password = $data.previewFill.password
+    $ui.PcName.Text = $data.previewFill.computer
+}
+$first = [int] $data.previewPage
+if ($first -ge $pages.Count) { $first = $pages.Count - 1 }
+Show-Page $first
 
-# ---- the lab: the answers fill in and the pages go on by themselves ---------------------------------
+# ---- the lab: the answers fill in and the pages go on by themselves ---------------------------------------
 $script:go = $false
 if ($auto) {
     $pause = if ($auto.pause) { [double] $auto.pause } else { 4 }
     $ui.UserName.Text = $auto.name; $ui.Pass.Password = $auto.password; $ui.Pass2.Password = $auto.password
     if ($auto.computer) { $ui.PcName.Text = $auto.computer }
-    $script:theme = $auto.theme; Show-Selected $ui.Themes $script:theme
-    $script:accent = $auto.accent; Show-Selected $ui.Accents $script:accent
-    $script:privacy = $auto.privacy; Show-Selected $ui.Levels $script:privacy
+    if ($auto.timeZone) { foreach ($item in $ui.Zone.Items) { if ($item.Tag -eq $auto.timeZone) { $ui.Zone.SelectedItem = $item } } }
+    if ($auto.taskbar) { $script:align = [string] $auto.taskbar }
+    if ($null -ne $auto.transparency) { $ui.Glass.IsChecked = [bool] $auto.transparency }
+    if ($auto.prefs) { foreach ($p in $auto.prefs.PSObject.Properties) { $script:prefs[$p.Name] = [bool] $p.Value } }
+    $script:privacy = [string] $auto.privacy
+    Show-Choices
     $problem = ''
     for ($i = 0; $i -lt $pages.Count; $i++) {
         Show-Page $i
+        if ($pages[$i].id -eq 'look') { Wait-Seconds ($pause / 2); Select-Accent ([string] $auto.accent); Select-Theme ([string] $auto.theme) }
         Wait-Seconds $pause
         if (-not $problem) { $problem = Test-Page $i }
     }
+    if (-not (Test-Shown 'look')) { $script:theme = [string] $auto.theme; $script:accent = [string] $auto.accent }
     if ($problem) { Write-Log ('auto answers refused: ' + $problem) } else { $script:go = $true }
 }
+if ($data.preview -and $data.previewBusy) { $script:go = $true } # screenshots of the working screen
 while (-not $script:go) { Update-Ui; Start-Sleep -Milliseconds 30 }
-if ($data.preview) { # never on the PC that previews it
+
+# ---- doing it: Windows' "getting ready" screen while it works -------------------------------------------------
+$steps = @(
+    @{ id = 'account'; text = $t.stepAccount },
+    @{ id = 'computer'; text = $t.stepComputer },
+    @{ id = 'privacy'; text = $t.stepPrivacy },
+    @{ id = 'look'; text = $t.stepLook }
+)
+$setup = [string] $data.setupAccount
+$setupSignIn = $setup -and -not $system -and $setup -eq [Environment]::UserName
+if ($setupSignIn) { $steps += @{ id = 'cleanup'; text = $t.stepCleanup } }
+$steps += @{ id = 'end'; text = $(if ($system) { $t.stepFinish } else { $t.stepRestart }) }
+$script:stepRows = @()
+foreach ($step in $steps) {
+    $line = New-Object System.Windows.Controls.StackPanel
+    $line.Orientation = 'Horizontal'; $line.Height = 34; $line.Margin = '14,0'
+    $mark = New-Object System.Windows.Controls.Border
+    $mark.Width = 18; $mark.Height = 18; $mark.CornerRadius = 9; $mark.BorderThickness = 1; $mark.VerticalAlignment = 'Center'
+    Set-Res $mark ([System.Windows.Controls.Border]::BorderBrushProperty) 'Stroke'
+    $label = New-Text $step.text 14 'Text3'
+    $label.Margin = '12,0,0,0'; $label.VerticalAlignment = 'Center'
+    [void] $line.Children.Add($mark); [void] $line.Children.Add($label)
+    [void] $ui.BusySteps.Children.Add($line)
+    $script:stepRows += @{ mark = $mark; label = $label }
+}
+function Set-Step([int] $n) { # n: 1-based, the one working now
+    for ($i = 0; $i -lt $script:stepRows.Count; $i++) {
+        $r = $script:stepRows[$i]
+        if ($i -lt $n - 1) {
+            Set-Res $r.mark ([System.Windows.Controls.Border]::BackgroundProperty) 'Sel'
+            Set-Res $r.mark ([System.Windows.Controls.Border]::BorderBrushProperty) 'Sel'
+            $r.mark.Child = New-Path $checkGeometry 'BtnText' 10 4
+            Set-Res $r.label ([System.Windows.Controls.TextBlock]::ForegroundProperty) 'Text1'
+            $r.label.FontWeight = 'Normal'
+        } elseif ($i -eq $n - 1) {
+            $r.mark.BorderThickness = 2
+            Set-Res $r.mark ([System.Windows.Controls.Border]::BorderBrushProperty) 'Sel'
+            Set-Res $r.label ([System.Windows.Controls.TextBlock]::ForegroundProperty) 'Text1'
+            $r.label.FontWeight = 'SemiBold'
+        }
+    }
+    $ui.Fill.Width = $ui.Track.Width * ($n - 1) / $script:stepRows.Count
+    Write-Log $steps[$n - 1].text
+    Update-Ui
+}
+$spin = New-Object System.Windows.Media.Animation.DoubleAnimation(0, 360, (New-Object System.Windows.Duration([TimeSpan]::FromSeconds(1.2))))
+$spin.RepeatBehavior = [System.Windows.Media.Animation.RepeatBehavior]::Forever
+$ui.Spin.BeginAnimation([System.Windows.Media.RotateTransform]::AngleProperty, $spin)
+$ui.Stage.BeginAnimation([System.Windows.UIElement]::OpacityProperty, (New-Object System.Windows.Media.Animation.DoubleAnimation(1, 0, (New-Object System.Windows.Duration([TimeSpan]::FromMilliseconds(300))))))
+Wait-Seconds 0.3
+$ui.Stage.Visibility = 'Collapsed'
+$ui.Busy.Visibility = 'Visible'
+$ui.Busy.BeginAnimation([System.Windows.UIElement]::OpacityProperty, (New-Object System.Windows.Media.Animation.DoubleAnimation(0, 1, (New-Object System.Windows.Duration([TimeSpan]::FromMilliseconds(400))))))
+
+if ($data.preview) { # never on the PC that previews it: the steps only go by
+    if ($data.previewBusy) { Set-Step 4; Wait-Seconds 60 }
+    for ($n = 1; $n -le $steps.Count; $n++) { Set-Step $n; Wait-Seconds 0.8 }
     Write-Log 'preview: nothing done'
     $script:finished = $true
     $window.Close()
     return
 }
 
-# ---- doing it ---------------------------------------------------------------------------------------
 $name = $ui.UserName.Text.Trim()
 $password = $ui.Pass.Password
-$computer = if (Test-Shown 'computer') { $ui.PcName.Text.Trim() } elseif ($data.computerName) { [string] $data.computerName } else { $env:COMPUTERNAME }
-foreach ($panel in 'PageAccount', 'PagePc', 'PageLook', 'PagePrivacy') { $ui[$panel].Visibility = 'Collapsed' }
-$ui.PageDone.Visibility = 'Visible'
-$ui.Heading.Text = $t.doneHeading
-$ui.Sub.Text = $t.doneSub
-$ui.Step.Text = ''
-$ui.Back.Visibility = 'Hidden'
-$ui.Next.Visibility = 'Hidden'
-$steps = 6
-function Set-Step([int] $n, [string] $text) {
-    $ui.Status.Text = $text
-    $ui.Fill.Width = 520 * $n / $steps
-    Update-Ui
-    Write-Log $text
-}
+# Not asked and not given: a name like Windows' own (inside Setup the answer file holds a placeholder).
+$computer = if (Test-Shown 'computer') { $ui.PcName.Text.Trim() } elseif ($data.computerName) { [string] $data.computerName }
+            elseif ($system) { 'DESKTOP-' + (-join (1..7 | ForEach-Object { 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789'[(Get-Random -Maximum 34)] })) }
+            else { $env:COMPUTERNAME }
+$zoneId = if ((Test-Shown 'computer') -and $ui.Zone.SelectedItem) { [string] $ui.Zone.SelectedItem.Tag } else { [string] $data.defaults.timeZone }
 
 function Get-Bgr([string] $hex) { # "#RRGGBB" -> 0xAABBGGRR with alpha FF (what DWM and Explorer keep)
     $r = [Convert]::ToInt64($hex.Substring(1, 2), 16); $g = [Convert]::ToInt64($hex.Substring(3, 2), 16); $b = [Convert]::ToInt64($hex.Substring(5, 2), 16)
     # Int64 arithmetic: in PowerShell 0xFF -shl 24 is a negative Int32 and fails the UInt32 cast.
     return [uint32] (4278190080 + $b * 65536 + $g * 256 + $r)
 }
-function Get-Mix([string] $hex, [int] $toward, [double] $amount) { # toward 255 (lighter) or 0 (darker)
-    $out = @()
-    foreach ($i in 1, 3, 5) {
-        $v = [Convert]::ToInt32($hex.Substring($i, 2), 16)
-        $out += [int] [Math]::Round($v + ($toward - $v) * $amount)
+function Get-Rgb([string] $hex) { return @(1, 3, 5 | ForEach-Object { [Convert]::ToInt32($hex.Substring($_, 2), 16) }) }
+# A value for the new account: into the .reg its first sign-in imports and, unless Windows resets it
+# there anyway, into the Default profile now (so Explorer has it from its first start).
+$script:userReg = New-Object System.Collections.Generic.List[string]
+$script:defaultWrites = New-Object System.Collections.Generic.List[object]
+function Add-UserValue([string] $key, [string] $valueName, [string] $type, $value, [bool] $defaultToo = $true) {
+    $script:userReg.Add('[HKEY_CURRENT_USER\' + $key + ']')
+    $label = if ($valueName) { '"' + $valueName + '"' } else { '@' }
+    $script:userReg.Add($(if ($type -eq 'dword') { '{0}=dword:{1:x8}' -f $label, [uint32] $value } else { '{0}="{1}"' -f $label, $value }))
+    $script:userReg.Add('')
+    if ($defaultToo -and $key -notlike 'Software\Classes\*') { $script:defaultWrites.Add(@($key, $valueName, $type, $value)) }
+}
+function Set-Write($write) { # a prefs / privacy write: "HKCU\..." for the new account, "HKLM\..." now
+    $key = [string] $write.key
+    $type = if ($write.type) { [string] $write.type } else { 'dword' }
+    if ($key -like 'HKCU\*') {
+        Add-UserValue $key.Substring(5) ([string] $write.name) $type $write.value
+    } else {
+        $path = 'Registry::' + ($key -replace '^HKLM\\', 'HKEY_LOCAL_MACHINE\' -replace '^HKLM:\\', 'HKEY_LOCAL_MACHINE\')
+        Confirm-Key $path
+        if ($type -eq 'dword') { Set-ItemProperty -Path $path -Name $write.name -Value ([int] $write.value) -Type DWord }
+        else { Set-ItemProperty -Path $path -Name $write.name -Value ([string] $write.value) -Type String }
     }
-    return $out
 }
 
 try {
     # 1. The account.
-    Set-Step 1 $t.stepAccount
-    if ($password) {
-        $secure = ConvertTo-SecureString $password -AsPlainText -Force
-        New-LocalUser -Name $name -FullName $name -Password $secure -PasswordNeverExpires -AccountNeverExpires -ErrorAction Stop | Out-Null
+    Set-Step 1
+    if ($system) {
+        # Windows' OOBE makes it from Setup's answer file (the pre-OOBE hook puts it there): kept for
+        # that hook, readable by SYSTEM and Administrators only.
+        $account = [ordered] @{ name = $name; password = $password; timeZone = $zoneId; computer = $computer }
+        [System.IO.File]::WriteAllText($accountFile, ($account | ConvertTo-Json), [System.Text.Encoding]::UTF8)
+        & icacls.exe $accountFile /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F' | Out-Null
+        Write-Log "account $name kept for Windows' OOBE"
     } else {
-        New-LocalUser -Name $name -FullName $name -NoPassword -AccountNeverExpires -ErrorAction Stop | Out-Null
+        if ($password) {
+            $secure = ConvertTo-SecureString $password -AsPlainText -Force
+            New-LocalUser -Name $name -FullName $name -Password $secure -PasswordNeverExpires -AccountNeverExpires -ErrorAction Stop | Out-Null
+        } else {
+            New-LocalUser -Name $name -FullName $name -NoPassword -AccountNeverExpires -ErrorAction Stop | Out-Null
+        }
+        Add-LocalGroupMember -SID 'S-1-5-32-544' -Member $name -ErrorAction Stop   # Administrators, in any language
+        Write-Log "account $name created"
     }
-    Add-LocalGroupMember -SID 'S-1-5-32-544' -Member $name -ErrorAction Stop   # Administrators, in any language
-    Write-Log "account $name created"
 
-    # 2. The computer's name (from the next start).
-    Set-Step 2 $t.stepComputer
-    if ($computer -ne $env:COMPUTERNAME) { Rename-Computer -NewName $computer -Force -ErrorAction Stop -WarningAction SilentlyContinue }
+    # 2. The computer's name (from the next start) and the time zone.
+    Set-Step 2
+    if ($system) { try { Start-NameWatcher $computer } catch { Write-Log ('name watcher: ' + $_.Exception.Message) } }
+    if ($computer -ne $env:COMPUTERNAME) {
+        try {
+            Rename-Computer -NewName $computer -Force -ErrorAction Stop -WarningAction SilentlyContinue
+        } catch {
+            # Inside Setup the rename can be refused; Windows reads these names at the next start.
+            Write-Log ('Rename-Computer: ' + $_.Exception.Message + '; written to the registry')
+            Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' -Name ComputerName -Value $computer
+            Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name 'NV Hostname' -Value $computer
+        }
+    }
+    if ($zoneId) {
+        try { Set-TimeZone -Id $zoneId -ErrorAction Stop } catch { & tzutil.exe /s $zoneId | Out-Null }
+        Write-Log ('time zone ' + $zoneId)
+    }
 
     # 3. Privacy: machine policies; Windows' own privacy page is not shown to the new account.
-    Set-Step 3 $t.stepPrivacy
+    Set-Step 3
     $oobe = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OOBE'
-    New-Item -Path $oobe -Force | Out-Null
+    Confirm-Key $oobe
     Set-ItemProperty -Path $oobe -Name DisablePrivacyExperience -Value 1 -Type DWord
     $level = $data.privacy | Where-Object { $_.id -eq $script:privacy } | Select-Object -First 1
-    foreach ($write in @($level.writes)) {
-        if (-not $write) { continue }
-        New-Item -Path $write.key -Force | Out-Null
-        Set-ItemProperty -Path $write.key -Name $write.name -Value $write.value -Type DWord
-    }
+    foreach ($write in @($level.writes)) { if ($write) { Set-Write $write } }
 
-    # 4. The look, at the new account's first sign-in (a .reg the Default profile's RunOnce imports).
-    Set-Step 4 $t.stepLook
+    # 4. The look and the habits, for the new account.
+    Set-Step 4
     if (Test-Shown 'look') { # without the page Windows' own look stays
         $light = [int] ($script:theme -eq 'light')
         $base = $script:accent
-        $shades = @((Get-Mix $base 255 0.65), (Get-Mix $base 255 0.45), (Get-Mix $base 255 0.2), (Get-Mix $base 0 0.0),
-                    (Get-Mix $base 0 0.15), (Get-Mix $base 0 0.4), (Get-Mix $base 0 0.65), @(0xF7, 0x63, 0x0C))
-        $palette = ($shades | ForEach-Object { '{0:x2},{1:x2},{2:x2},00' -f $_[0], $_[1], $_[2] }) -join ','
-        $dark2 = '#{0:X2}{1:X2}{2:X2}' -f $shades[5][0], $shades[5][1], $shades[5][2]
+        $shades = @((Get-Mix $base 255 0.65), (Get-Mix $base 255 0.45), (Get-Mix $base 255 0.2), $base,
+                    (Get-Mix $base 0 0.15), (Get-Mix $base 0 0.4), (Get-Mix $base 0 0.65), '#F7630C')
+        $palette = ($shades | ForEach-Object { $c = Get-Rgb $_; '{0:x2},{1:x2},{2:x2},00' -f $c[0], $c[1], $c[2] }) -join ','
         $argb = [uint32] (3288334336 + [Convert]::ToInt64($base.Substring(1), 16)) # alpha C4, then RGB
-        $reg = @(
-            'Windows Registry Editor Version 5.00', '',
+        # Windows writes its own theme over the Default profile's at the first sign-in (D-026): the
+        # theme goes in only through the .reg.
+        $script:userReg.AddRange([string[]] @(
             '[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize]',
-            ('"AppsUseLightTheme"=dword:{0:x8}' -f $light), ('"SystemUsesLightTheme"=dword:{0:x8}' -f $light), '',
+            ('"AppsUseLightTheme"=dword:{0:x8}' -f $light), ('"SystemUsesLightTheme"=dword:{0:x8}' -f $light),
+            ('"EnableTransparency"=dword:{0:x8}' -f [int] [bool] $ui.Glass.IsChecked), '',
             '[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Accent]',
             ('"AccentPalette"=hex:' + $palette), ('"AccentColorMenu"=dword:{0:x8}' -f (Get-Bgr $base)),
-            ('"StartColorMenu"=dword:{0:x8}' -f (Get-Bgr $dark2)), '',
+            ('"StartColorMenu"=dword:{0:x8}' -f (Get-Bgr $shades[5])), '',
             '[HKEY_CURRENT_USER\Software\Microsoft\Windows\DWM]',
             ('"AccentColor"=dword:{0:x8}' -f (Get-Bgr $base)), ('"ColorizationColor"=dword:{0:x8}' -f $argb),
             ('"ColorizationAfterglow"=dword:{0:x8}' -f $argb), '"EnableWindowColorization"=dword:00000000', '',
-            '[HKEY_CURRENT_USER\Control Panel\Desktop]', '"AutoColorization"="0"', '')
+            '[HKEY_CURRENT_USER\Control Panel\Desktop]', '"AutoColorization"="0"', ''))
+        if ($win11) { Add-UserValue 'Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' 'TaskbarAl' 'dword' $(if ($script:align -eq 'left') { 0 } else { 1 }) }
+    }
+    if (Test-Shown 'prefs') {
+        foreach ($pref in @($data.prefs)) {
+            if (-not $pref -or ($pref.windows11 -and -not $win11)) { continue }
+            $writes = if ($script:prefs[[string] $pref.id]) { $pref.on } else { $pref.off }
+            foreach ($write in @($writes)) { if ($write) { Set-Write $write } }
+        }
+    }
+    if ($script:userReg.Count) {
         $regFile = Join-Path $stateDir 'oobe-user.reg'
-        [System.IO.File]::WriteAllText($regFile, ($reg -join "`r`n"), [System.Text.Encoding]::Unicode)
-        & reg.exe load 'HKU\WinLoveOobe' "$env:SystemDrive\Users\Default\NTUSER.DAT" | Out-Null
+        $text = (@('Windows Registry Editor Version 5.00', '') + $script:userReg) -join "`r`n"
+        [System.IO.File]::WriteAllText($regFile, $text, [System.Text.Encoding]::Unicode)
+        $hive = "$env:SystemDrive\Users\Default\NTUSER.DAT"
+        & reg.exe load 'HKU\WinLoveOobe' $hive | Out-Null
         & reg.exe add 'HKU\WinLoveOobe\Software\Microsoft\Windows\CurrentVersion\RunOnce' /v WinLoveOobe /t REG_SZ /d "reg import `"$regFile`"" /f | Out-Null
+        foreach ($w in $script:defaultWrites) {
+            $type = if ($w[2] -eq 'dword') { 'REG_DWORD' } else { 'REG_SZ' }
+            if ($w[1]) { & reg.exe add ('HKU\WinLoveOobe\' + $w[0]) /v $w[1] /t $type /d $w[3] /f | Out-Null }
+            else { & reg.exe add ('HKU\WinLoveOobe\' + $w[0]) /ve /t $type /d $w[3] /f | Out-Null }
+        }
         [gc]::Collect()
         & reg.exe unload 'HKU\WinLoveOobe' | Out-Null
+        Write-Log ('new account values: ' + $script:defaultWrites.Count + ' in the Default profile, .reg at its first sign-in')
     }
 
-    # 5. The setup account goes at the next start (its profile is free then).
-    Set-Step 5 $t.stepCleanup
-    $setup = [string] $data.setupAccount
-    if ($setup -and $setup -eq [Environment]::UserName) {
+    $n = 5
+    if ($setupSignIn) {
+        # 5. The setup account goes at the next start (its profile is free then).
+        Set-Step $n; $n++
         $cleanup = Join-Path $stateDir 'oobe-cleanup.ps1'
         $lines = @(
             ('$name = ''{0}''' -f $setup),
@@ -529,42 +1861,50 @@ try {
         $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
         Register-ScheduledTask -TaskName 'WinLove OOBE cleanup' -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -Principal $principal -Force | Out-Null
     }
-    if ($auto -and $auto.check) {
-        # The lab: what the new account finds at its first sign-in, onto the log disk.
-        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f (Join-Path $here 'oobe-check.ps1'))
-        $principal = New-ScheduledTaskPrincipal -UserId $name -LogonType Interactive -RunLevel Highest
-        Register-ScheduledTask -TaskName 'WinLove OOBE check' -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $name) -Principal $principal -Force | Out-Null
+    if ($auto -and $auto.check -and $system) {
+        # The lab: from the next start, Setup's logs onto the log disk every minute (how OOBE goes).
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f (Join-Path $here 'oobe-watch.ps1'))
+        $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+        Register-ScheduledTask -TaskName 'WinLove lab watch' -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -Principal $principal -Force | Out-Null
     }
 
-    # 6. The new account signs in once by itself. Windows does NOT forget the password afterwards
-    #    (VM, 26200: AutoLogonCount 0, DefaultPassword still there in plain text): a task at that
-    #    sign-in, as SYSTEM, takes it out and goes.
-    Set-Step 6 $t.stepRestart
-    $signin = Join-Path $stateDir 'oobe-signin.ps1'
-    $lines = @(
-        '$winlogon = ''HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon''',
-        'Remove-ItemProperty -Path $winlogon -Name DefaultPassword -ErrorAction SilentlyContinue',
-        'Remove-ItemProperty -Path $winlogon -Name AutoLogonCount -ErrorAction SilentlyContinue',
-        'Set-ItemProperty -Path $winlogon -Name AutoAdminLogon -Value ''0''',
-        'Unregister-ScheduledTask -TaskName ''WinLove OOBE sign-in'' -Confirm:$false',
-        'Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force')
-    [System.IO.File]::WriteAllText($signin, ($lines -join "`r`n"), [System.Text.Encoding]::UTF8)
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$signin`""
-    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-    Register-ScheduledTask -TaskName 'WinLove OOBE sign-in' -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $name) -Principal $principal -Force | Out-Null
-    $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
-    Set-ItemProperty -Path $winlogon -Name AutoAdminLogon -Value '1'
-    Set-ItemProperty -Path $winlogon -Name DefaultUserName -Value $name
-    Set-ItemProperty -Path $winlogon -Name DefaultDomainName -Value $computer
-    Set-ItemProperty -Path $winlogon -Name DefaultPassword -Value $password
-    Set-ItemProperty -Path $winlogon -Name AutoLogonCount -Value 1 -Type DWord
-    Write-Log 'done; restarting'
-    Wait-Seconds 2
+    # Last: the new account signs in once by itself.
+    Set-Step $n
+    if ($system) {
+        # Through Windows: the pre-OOBE hook gives the account to OOBE with an automatic sign-in, the
+        # post-OOBE hook registers the sign-in tasks. Windows' "Hi" pages at that sign-in: off.
+        Set-SetupHooks $true
+        $policy = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+        Confirm-Key $policy
+        Set-ItemProperty -Path $policy -Name EnableFirstLogonAnimation -Value 0 -Type DWord
+    } else {
+        Register-SignInTasks $name
+        $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+        Set-ItemProperty -Path $winlogon -Name AutoAdminLogon -Value '1'
+        Set-ItemProperty -Path $winlogon -Name DefaultUserName -Value $name
+        Set-ItemProperty -Path $winlogon -Name DefaultDomainName -Value $computer
+        Set-ItemProperty -Path $winlogon -Name DefaultPassword -Value $password
+        Set-ItemProperty -Path $winlogon -Name AutoLogonCount -Value 1 -Type DWord
+    }
+    $ui.Fill.Width = $ui.Track.Width
+    Write-Log 'done'
+    Wait-Seconds 1.5
     $script:finished = $true
+    if ($system) { # Setup goes on and restarts by itself
+        $window.Close()
+        return
+    }
     Restart-Computer -Force
 } catch {
     Write-Log ('FAILED: ' + $_.Exception.Message)
-    $ui.Error.Text = $t.failed + ' ' + $_.Exception.Message
+    $ui.Status.Text = $t.failed + ' ' + $_.Exception.Message
+    if ($system) {
+        # Without the hooks Setup's answer file has no account and OOBE asks with its own page (VM spec2).
+        try { Set-SetupHooks $false } catch { }
+        Remove-Item -LiteralPath $accountFile -Force -ErrorAction SilentlyContinue
+        $ui.Status.Text += ' ' + $t.failedFallback
+    }
     $script:finished = $true
     Wait-Seconds 30
+    $window.Close()
 }

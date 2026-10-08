@@ -241,6 +241,50 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-085 — Kurulum ekranımız Windows Kurulumu'nun içinde: logodan sonra bizim sayfalar, OOBE ve geçici hesap yok (2026-10-08)
+Bağlam: Kullanıcı D-084'ün görünümünü beğenmedi ("Windows'un temasına yakın olmalıydı… Claude Design ile Windows'a yakışır
+bir kurulum arayüzü"), daha fazla ayar ve kablosuz ağ istedi, sonra akışı netleştirdi: "format bitince Windows logosunda
+dönüp bitince bizim setup arayüzümüz gelsin, seçenekler seçilince yeniden başlatılıp masaüstü gelsin; Windows'un OOBE'sine
+dair bir kısım olmasın" — D-084'teki geçici hesap iki kez "Merhaba / Hazırlanıyor" bekletiyordu.
+Karar:
+- **Tasarım:** Claude Design tuvali ("WinLove Kurulum Ekranı", 7 ekran + koyu tema) → WPF. Windows 11 kurulumunun dili:
+  bulanık renk bulutları üstünde yuvarlak kart, solda seçime göre **canlı çizim** (yazılan ad kartta, saat diliminin
+  saati monitörde, tema / vurgu / görev çubuğu küçük masaüstünde, tercihler küçük Gezgin'de), sağda soru, Fluent denetimler
+  (alt çizgili kutular, anahtar, açılır liste, radyo kartlar), sağ altta vurgu düğmesi, üstte adım çizgisi; sayfa geçişi
+  kayma + solma; iş sürerken tam ekran "Her şey hazırlanıyor" (dönen halka, adım listesi, "Bilgisayarını kapatma").
+  Renkler WinLove belirteçleri değil Windows'un Fluent renkleri (kurulumu yapan Windows'u görüyor; memory: oobe-windows-look);
+  pencere seçilen temaya ve vurguya anında geçer.
+- **Sayfalar:** Ağ (yalnız kablosuz bağdaştırıcı varsa: Native Wifi API ile liste, parola, otomatik bağlan, "Bağlanmadan devam
+  et"; WPA2/WPA3/açık/OWE, kurumsal ağlar Windows'a kalır), Hesap (göster düğmeli parola), Bu bilgisayar (ad + **saat dilimi**),
+  Görünüm (tema, 9 vurgu, **görev çubuğu hizası** — Win11, **saydamlık**), **Tercihler** (dosya uzantıları, gizli dosyalar, Gezgin
+  Bu bilgisayar ile, klasik sağ tık — Win11, arama kutusu, Görev görünümü, Widget'lar / Haberler — ayarlar kataloğunun
+  anahtarları), Gizlilik (Az veri: neleri kapattığı etiketlerle). Uygulamada her sayfa ayrı sorulabilir.
+- **Akış (VM'de bulundu):** yanıt dosyası sihirbazı **specialize geçişinin son komutu** yapar (`cmd /c powershell … oobe.ps1`,
+  Kurulum bekler): logo / "Yükleniyor %42"den sonra SYSTEM olarak, hiçbir hesap yokken tam ekran açılır. Sorular sorulur;
+  tema / tercihler Default profile + ilk oturum .reg'ine, gizlilik ve Widget ilkeleri HKLM'ye, saat dilimi ve bilgisayar adı
+  hemen yazılır. Hesap specialize'da **oluşturulmaz**: Windows'un iki FirstBoot kancası kaydedilir —
+  `HKLM\SYSTEM\Setup\FirstBoot\PreOobe` (OOBE yanıt dosyasını okumadan önce: hesap + tek seferlik otomatik oturum + saat dilimi
+  `Panther\unattend.xml`'in oobeSystem geçişine yazılır; OOBE hesabı D-084'te kanıtlanmış yolla kendisi kurar ve açar) ve
+  `…\PostOobe` (OOBE'den sonra, ilk oturumdan önce: parolayı ilk oturumda silen SYSTEM görevi, ilk oturum animasyonu kapalı).
+  Yanıt dosyası OOBE'nin bütün sayfalarını gizler (EULA, çevrimiçi hesap, kablosuz, yerel hesap, gizlilik, OEM).
+- **Yanıt dosyası:** karşılama açıkken hesap / otomatik oturum / saat dilimi yazılmaz; bilgisayar adı **hep** yazılır
+  (verilmemişse `WINLOVE-PC`): adsız dosyada OOBE rastgele `DESKTOP-…` verir. Kurulum dosyanın adını bizim komuttan sonra
+  bir kez daha uygular (`shsetup.dll`, kendi kopyasından — diskteki dosyayı düzeltmek işe yaramadı): sihirbaz arkasında küçük
+  bir **ad izleyicisi** bırakır, Kurulum adı yazınca bekleyen adı seçilene geri çevirir; specialize sonrası zorunlu yeniden
+  başlatma seçilen adla açılır (PreOobe ad yine farklıysa bir sonraki açılış için yeniden adlandırır). Dosyanın adı ve saat
+  dilimi sihirbazın ilk cevaplarıdır (`WelcomePlan.computerName/timeZone`); saat dilimi yoksa sistem dilinden tahmin.
+  D-084 dosyaları (WinLoveSetup + ilk oturum komutu) okununca karşılamaya çevrilir; betik o yolu da hâlâ çalıştırır.
+  İlk oturumun ilk saniyelerinde Windows'un varsayılan görünümü görünür, ilk oturum .reg'i birkaç saniyede uygular (D-026).
+- **Bir adım başarısız olursa** kancalar kaydedilmez: yanıt dosyasında hesap olmadığından OOBE kendi hesap sayfasını açar,
+  kurulum hesapsız kalmaz.
+VM'de bulunan tuzaklar: (1) specialize'da Winlogon otomatik oturum değerleri yazılırsa OOBE'nin kendi `defaultuser0` oturumu
+bozulur, "Biraz bekleyin…"de sonsuza dek kalır (spec1); (2) Kurulum specialize bitince yanıt dosyası kopyasını bellekten
+yeniden yazar — o sırada yapılan düzenleme kaybolur (spec2, `Callback_Unattend_Serialize`); (3) yanıt dosyasında hesap yoksa
+`HideLocalAccountScreen` yok sayılır, OOBE "Bu cihazı kimler kullanacak?" der (spec2); (4) Shell-Setup'ın specialize ayarları
+(ComputerName yeniden, TimeZone) RunSynchronous komutlarından **sonra**, Kurulumun kendi kopyasından uygulanır; (5) OOBE `EnableFirstLogonAnimation`'ı 1'e geri
+alır; (6) Win11 kurulum ortamı Win10 install.wim'i kurmaz ("Windows 11 yüklemesi başarısız oldu") — Win10 için Win10 ortamı.
+Kanıt: 345 test / 11.935 doğrulama. VM (laboratuvar yanıtlarıyla sayfalar kendiliğinden ilerler; ağ ve kablosuz bağdaştırıcı yok → Ağ sayfası gizli): WinLove'un ürettiği yanıt dosyasıyla (D-084 dosyasından dönüştürülmüş) **Win11 25H2 26200 Pro (`spec6`) ve Win10 22H2 19045 Pro (`w10e`, Win10 kurulum ortamı) ALL PASSED** — sihirbaz logodan sonra görünür, Deneme yönetici ve kendiliğinden açılır, DENEME-PC, Türkiye saati, koyu + yeşil vurgu, tercihlerin yedisi (Win10'da Win11'e özgü klasik menü / hiza atlanır), gizlilik + Widget ilkeleri, ilk oturum animasyonu kapalı, DefaultPassword / Panther yanıt dosyası / oobe.json silinmiş; Windows'un hesap sayfası ve geçici hesap yok. Tuzakları bulan çalıştırmalar: spec1 (sonsuz bekleme), spec2 (OOBE hesap sayfası), spec3 / spec4 / spec5 (ad rastgele / dosyanınki / dosyanınki), w10a (Win11 ortamı Win10 kurmaz). Görülmeyen: gerçek Wi-Fi'ye bağlanma (liste önizlemede bu bilgisayarda çalıştı), insan eliyle tıklama, Home, ARM64, OEM lisanslı gerçek bilgisayar.
+
 ## D-084 — Kendi karşılama ekranımız: Windows'un hesap sayfaları yerine WinLove'un ilk açılış sihirbazı (2026-10-08)
 Bağlam: Kullanıcı yeni özellik olarak "Kendi OOBE'miz"i seçti (hesap, bilgisayar adı, tema / vurgu, gizlilik — kurulumu yapan
 kişi seçsin). Risk hesap oluşturma ve oturumun devri olduğu için önce VM deneyleri (`oobe1`…`oobe5`, `welcome1`…`welcome3`).

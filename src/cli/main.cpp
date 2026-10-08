@@ -1267,9 +1267,8 @@ int cmdUnattend(const std::wstring& file, bool welcome) {
     if (!options) {
         return reportError(options.error());
     }
-    if (welcome && !options->welcome) { // D-084: the welcome in place of the account
+    if (welcome) { // D-085: the welcome in place of the account
         options->welcome = true;
-        options->welcomePassword = core::randomWelcomePassword();
     }
     print(core::buildUnattendXml(*options));
     const auto problems = core::validateUnattend(*options);
