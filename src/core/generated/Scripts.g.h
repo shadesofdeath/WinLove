@@ -148,6 +148,9 @@ function Start-NameWatcher([string] $computer) {
     Start-Process -FilePath 'powershell.exe' -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $watcher) -WindowStyle Hidden
     Write-Log "name watcher for $computer"
 }
+# The tasks here run on battery too: by default Windows holds a task until the charger is in (and the
+# password below would stay in the registry on a laptop).
+function New-TaskSettings { return New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries }
 # The new account's first sign-in: a task, as SYSTEM, takes out the password Windows keeps for the
 # automatic sign-in (VM, 26200: AutoLogonCount 0, DefaultPassword still there in plain text).
 function Register-SignInTasks([string] $name) {
@@ -165,12 +168,12 @@ function Register-SignInTasks([string] $name) {
     [System.IO.File]::WriteAllText($signin, ($lines -join "`r`n"), [System.Text.Encoding]::UTF8)
     $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$signin`""
     $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-    Register-ScheduledTask -TaskName 'WinLove OOBE sign-in' -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $name) -Principal $principal -Force | Out-Null
+    Register-ScheduledTask -TaskName 'WinLove OOBE sign-in' -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $name) -Principal $principal -Settings (New-TaskSettings) -Force | Out-Null
     if ($auto -and $auto.check) {
         # The lab: what the new account finds at its first sign-in, onto the log disk.
-        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f (Join-Path $here 'oobe-check.ps1'))
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ("-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"{0}`"" -f (Join-Path $here 'oobe-check.ps1'))
         $principal = New-ScheduledTaskPrincipal -UserId $name -LogonType Interactive -RunLevel Highest
-        Register-ScheduledTask -TaskName 'WinLove OOBE check' -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $name) -Principal $principal -Force | Out-Null
+        Register-ScheduledTask -TaskName 'WinLove OOBE check' -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $name) -Principal $principal -Settings (New-TaskSettings) -Force | Out-Null
     }
     Write-Log "sign-in tasks for $name"
 }
@@ -181,12 +184,12 @@ if ($Stage -eq 'preoobe') {
         Write-Log ('pre-OOBE hooks: ' + ((Get-ItemProperty 'HKLM:\SYSTEM\Setup\FirstBoot\PreOobe' -ErrorAction SilentlyContinue | Out-String).Trim() -replace '\s+', ' '))
         $account = Read-Account
         Add-SetupAccount $account
-        Write-Log ("account " + $account.name + " in Setup's answer file")
+        Write-Log ("account " + $account.name + " in Setup's answer f)wlps"
+    R"wlps(ile")
         if ($account.computer -and $account.computer -ne $env:COMPUTERNAME) {
             # Setup kept its own name after all: the chosen one from the next start.
             Rename-Computer -NewName $account.computer -Force -WarningAction SilentlyContinue
-            Write-Log ('computer is ' + $env:COMPUTERNAME + '; ' + $account.computer + ' from )wlps"
-    R"wlps(the next start')
+            Write-Log ('computer is ' + $env:COMPUTERNAME + '; ' + $account.computer + ' from the next start')
         }
         # From here the password is only in Setup's answer file (Windows clears it there after OOBE;
         # the sign-in task deletes the file).
@@ -378,11 +381,11 @@ $xaml = @'
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="{DynamicResource Row}"/></Trigger>
+              <Trigger Property="IsMouseO)wlps"
+    R"wlps(ver" Value="True"><Setter TargetName="B" Property="Background" Value="{DynamicResource Row}"/></Trigger>
               <Trigger Property="IsPressed" Value="True"><Setter TargetName="B" Property="Opacity" Value="0.8"/></Trigger>
               <Trigger Property="IsEnabled" Value="False"><Setter TargetName="B" Property="Opacity" Value="0.45"/></Trigger>
-    )wlps"
-    R"wlps(        </ControlTemplate.Triggers>
+            </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
@@ -581,13 +584,13 @@ $xaml = @'
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius" Value="6"/>
     </Style>
-  </Window.Resources>
+  </Window.Reso)wlps"
+    R"wlps(urces>
   <Grid>
     <!-- Windows' bloom: soft colour clouds, drawn for 1280x800 and filling any screen. -->
     <Viewbox Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center">
       <Canvas Width="1280" Height="800" ClipToBounds="True">
-        <Ellipse Canvas.Left="-260" Canvas.Top="330" Width="1300" Height="900" Fill="{DynamicR)wlps"
-    R"wlps(esource Blob1}"/>
+        <Ellipse Canvas.Left="-260" Canvas.Top="330" Width="1300" Height="900" Fill="{DynamicResource Blob1}"/>
         <Ellipse Canvas.Left="420" Canvas.Top="120" Width="1150" Height="820" Fill="{DynamicResource Blob2}"/>
         <Ellipse Canvas.Left="700" Canvas.Top="-380" Width="980" Height="760" Fill="{DynamicResource Blob3}"/>
       </Canvas>
@@ -716,14 +719,14 @@ $xaml = @'
                   <Border Height="32" Background="{DynamicResource Fill}" BorderBrush="{DynamicResource RowLine}" BorderThickness="0,1,0,0" CornerRadius="0,0,8,8">
                     <StackPanel x:Name="ExBar" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                   </Border>
-                </StackPanel>
+                </)wlps"
+    R"wlps(StackPanel>
               </Border>
 
               <Grid x:Name="ArtPrivacy" Visibility="Collapsed">
                 <Ellipse Width="236" Height="236" Stroke="{DynamicResource Sel}" StrokeThickness="1" StrokeDashArray="3 3" Opacity="0.4"/>
                 <Border Width="132" Height="132" CornerRadius="30" Background="{DynamicResource Tile}">
-             )wlps"
-    R"wlps(     <Border.Effect><DropShadowEffect BlurRadius="36" ShadowDepth="14" Direction="270" Opacity="0.3" Color="{DynamicResource AccentColor}"/></Border.Effect>
+                  <Border.Effect><DropShadowEffect BlurRadius="36" ShadowDepth="14" Direction="270" Opacity="0.3" Color="{DynamicResource AccentColor}"/></Border.Effect>
                   <Viewbox Width="64" Height="64"><Path Data="M12 3l7 3v5.5c0 4.2-2.9 7.9-7 9.5c-4.1-1.6-7-5.3-7-9.5V6z M8.8 12.2l2.2 2.2l4.2-4.4" Stroke="White" StrokeThickness="1.5" Width="24" Height="24" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/></Viewbox>
                 </Border>
                 <Canvas x:Name="Orbs" Width="400" Height="640"/>
@@ -874,7 +877,8 @@ $palettes = @{
 }
 function Get-Mix([string] $hex, [int] $toward, [double] $amount) { # toward 255 (lighter) or 0 (darker): "#RRGGBB"
     $out = foreach ($i in 1, 3, 5) {
-        $v = [Convert]::ToInt32($hex.Substring($i, 2), 16)
+        $v = [Convert])wlps"
+    R"wlps(::ToInt32($hex.Substring($i, 2), 16)
         '{0:X2}' -f [int] [Math]::Round($v + ($toward - $v) * $amount)
     }
     return '#' + ($out -join '')
@@ -884,8 +888,7 @@ function Get-Color([string] $hex, [double] $alpha = 1) {
     $c.A = [byte] [Math]::Round($c.A * $alpha)
     return $c
 }
-function Get-Light([string] $hex) { # rela)wlps"
-    R"wlps(tive luminance, 0..1
+function Get-Light([string] $hex) { # relative luminance, 0..1
     $sum = 0
     foreach ($pair in @(@(1, 0.2126), @(3, 0.7152), @(5, 0.0722))) {
         $v = [Convert]::ToInt32($hex.Substring($pair[0], 2), 16) / 255
@@ -1081,14 +1084,14 @@ foreach ($pref in @($data.prefs)) {
     $detail = New-Text ([string] $pref.detail) 12 'Text2'
     $detail.TextWrapping = 'Wrap'
     [void] $words.Children.Add($detail)
-    [void] $grid.Children.Add($words)
+    [void] $)wlps"
+    R"wlps(grid.Children.Add($words)
     $state = New-Text '' 12 'Text2'
     $state.Width = 52; $state.TextAlignment = 'Right'; $state.Margin = '0,0,12,0'; $state.VerticalAlignment = 'Center'
     [System.Windows.Controls.Grid]::SetColumn($state, 2)
     [void] $grid.Children.Add($state)
     $switch = New-Object System.Windows.Controls.CheckBox
-    $switch.Style = $wi)wlps"
-    R"wlps(ndow.FindResource('Switch'); $switch.VerticalAlignment = 'Center'; $switch.IsHitTestVisible = $false
+    $switch.Style = $window.FindResource('Switch'); $switch.VerticalAlignment = 'Center'; $switch.IsHitTestVisible = $false
     $switch.IsChecked = $script:prefs[[string] $pref.id]
     [System.Windows.Controls.Grid]::SetColumn($switch, 3)
     [void] $grid.Children.Add($switch)
@@ -1266,7 +1269,8 @@ function Update-Art {
         $iconBox.Background = $brush.ConvertFromString($f[2])
         [void] $line.Children.Add($iconBox)
         $label = New-Text $f[0] 13
-        $label.Margin = '10,0,0,0'; $label.VerticalAlignment = 'Center'
+        $label.Margin = '10,0,0,0'; $label.Vertic)wlps"
+    R"wlps(alAlignment = 'Center'
         [void] $line.Children.Add($label)
         if ($ext -and $f[1]) {
             $e = New-Text $f[1] 13 'Text3'
@@ -1277,8 +1281,7 @@ function Update-Art {
     }
     $ui.ExBar.Children.Clear()
     $items = @()
-    if ($script:prefs)wlps"
-    R"wlps(['widgets']) { $items += 'widgets' }
+    if ($script:prefs['widgets']) { $items += 'widgets' }
     $items += 'start'
     if ($script:prefs['search']) { $items += 'search' }
     if ($script:prefs['taskview']) { $items += 'taskview' }
@@ -1474,14 +1477,14 @@ function Show-Page([int] $index) {
     $ui.Heading.Text = $page.heading
     $ui.Sub.Text = $page.sub
     $ui.Steps.Children.Clear()
-    for ($i = 0; $i -lt $pages.Count; $i++) {
+    for ($i = 0; $i -lt $pages.Count; )wlps"
+    R"wlps($i++) {
         $seg = New-Object System.Windows.Controls.Border
         $seg.Width = 20; $seg.Height = 4; $seg.CornerRadius = 2; $seg.Margin = '2,0'
         Set-Res $seg ([System.Windows.Controls.Border]::BackgroundProperty) $(if ($i -le $index) { 'Sel' } else { 'Stroke' })
         [void] $ui.Steps.Children.Add($seg)
     }
-    $ui.StepCount.Text = '{0} /)wlps"
-    R"wlps( {1}' -f ($index + 1), $pages.Count
+    $ui.StepCount.Text = '{0} / {1}' -f ($index + 1), $pages.Count
     $ui.Back.Visibility = $(if ($index -gt 0) { 'Visible' } else { 'Hidden' })
     $ui.Next.Content = $(if ($index -eq $pages.Count - 1) { $t.finish } else { $t.next })
     $ui.Error.Text = ''; $ui.Error.Visibility = 'Collapsed'
@@ -1683,14 +1686,14 @@ foreach ($step in $steps) {
     $line = New-Object System.Windows.Controls.StackPanel
     $line.Orientation = 'Horizontal'; $line.Height = 34; $line.Margin = '14,0'
     $mark = New-Object System.Windows.Controls.Border
-    $mark.Width = 18; $mark.Height = 18; $mark.CornerRadius = 9; $mark.BorderThickness = 1; $mark.VerticalAlignment = 'Center'
+    $mark.Width = 18; $mark.Height = 18; $mark.CornerRadius = 9; $mark.BorderThickness = 1; $mark.Ver)wlps"
+    R"wlps(ticalAlignment = 'Center'
     Set-Res $mark ([System.Windows.Controls.Border]::BorderBrushProperty) 'Stroke'
     $label = New-Text $step.text 14 'Text3'
     $label.Margin = '12,0,0,0'; $label.VerticalAlignment = 'Center'
     [void] $line.Children.Add($mark); [void] $line.Children.Add($label)
     [void] $ui.BusySteps.Children.Add($line)
-    $script:stepRow)wlps"
-    R"wlps(s += @{ mark = $mark; label = $label }
+    $script:stepRows += @{ mark = $mark; label = $label }
 }
 function Set-Step([int] $n) { # n: 1-based, the one working now
     for ($i = 0; $i -lt $script:stepRows.Count; $i++) {
@@ -1873,19 +1876,19 @@ try {
             'Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -like ("*\" + $name) } | Remove-CimInstance',
             'Remove-LocalUser -Name $name -ErrorAction SilentlyContinue',
             ('Remove-Item -LiteralPath ''{0}'' -Force -ErrorAction SilentlyContinue' -f (Join-Path $here 'oobe.json')),
-            'Unregister-ScheduledTask -TaskName ''WinLove OOBE cleanup'' -Confirm:$false',
+            'Unregister-ScheduledTask -TaskN)wlps"
+    R"wlps(ame ''WinLove OOBE cleanup'' -Confirm:$false',
             'Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force')
         [System.IO.File]::WriteAllText($cleanup, ($lines -join "`r`n"), [System.Text.Encoding]::UTF8)
-        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$cleanup`")wlps"
-    R"wlps("
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$cleanup`""
         $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-        Register-ScheduledTask -TaskName 'WinLove OOBE cleanup' -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -Principal $principal -Force | Out-Null
+        Register-ScheduledTask -TaskName 'WinLove OOBE cleanup' -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -Principal $principal -Settings (New-TaskSettings) -Force | Out-Null
     }
     if ($auto -and $auto.check -and $system) {
         # The lab: from the next start, Setup's logs onto the log disk every minute (how OOBE goes).
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f (Join-Path $here 'oobe-watch.ps1'))
         $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-        Register-ScheduledTask -TaskName 'WinLove lab watch' -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -Principal $principal -Force | Out-Null
+        Register-ScheduledTask -TaskName 'WinLove lab watch' -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -Principal $principal -Settings (New-TaskSettings) -Force | Out-Null
     }
 
     # Last: the new account signs in once by itself.

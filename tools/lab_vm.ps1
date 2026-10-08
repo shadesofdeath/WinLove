@@ -17,6 +17,7 @@
   -AnswerFile <xml>: that answer file instead of the lab's (e.g. one WinLove's P13 wrote; FirstLogon / ShutdownAfter do not apply).
   -NoBypass: the answer file leaves out the LabConfig TPM / Secure Boot / RAM bypasses (the VM has no
    TPM and no Secure Boot: does this media's Setup check Windows 11's requirements at all?).
+  -ShotSeconds: the time between screenshots (default 30; e.g. 5 to see the first sign-in).
   -Cpus / -MemMB: the vCPU count and memory (default 2, 4096). (An NVMe disk does not start under vmrun here.)
   -OpenThisPc: Explorer opens "This PC" at the first sign-in (icons tests).
   -Network: a NAT network card, e1000 (e1000e and vmxnet3 crash this VMware at power-on; Windows Update, Store and OOBE downloads happen; the default is none).
@@ -39,6 +40,7 @@ param(
     [string] $Changes = '',
     [string] $Tag = 'test',
     [int] $VncPort = 5917,
+    [int] $ShotSeconds = 30,
     [string] $ProductKey = 'VK7JG-NPHTM-C97JM-9MPGT-3V66T', # generic install key of the edition (Pro; Home: YTMG3-N6DKC-DKB77-7M9GH-8HVX7)
     [switch] $OpenThisPc,
     [switch] $Network,
@@ -290,12 +292,12 @@ logging = "TRUE"
     Check 'VM started' (VmRunning $vmx)
     if (-not (VmRunning $vmx)) { throw 'the VM did not start (see vmware.log / vmware-vmx.dmp in the VM folder)' }
 
-    # 4. Watch it: a screenshot every 30 s until the guest powers itself off.
+    # 4. Watch it: a screenshot every -ShotSeconds (30) until the guest powers itself off.
     $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
     $n = 0
     $poweredOff = $false
     while ((Get-Date) -lt $deadline) {
-        Start-Sleep -Seconds 30
+        Start-Sleep -Seconds $ShotSeconds
         $n++
         $png = Join-Path $shots ('shot-{0:D3}.png' -f $n)
         Native { python (Join-Path $repo 'tools\vnc_shot.py') $vncPort $png } | Out-Null
