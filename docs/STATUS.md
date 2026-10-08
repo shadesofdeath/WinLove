@@ -109,6 +109,13 @@
   msinfo32, cleanmgr, notepad, 32 bit cmd, 7-Zip, Notepad++, VLC açılıyor; winget 4/4 (VC++ MSI dahil); `dism /online
   /get-packages` çalışıyor. Aynı koşullu çift (`shrink-max2` / `shrink-base`: aynı 4 program, 25 dk, ikisinde de ResetBase +
   güncellemeler kapalı): **C: 17,46 GB / 19,66 GB → kurulu sistemde −2,20 GB**, ikisi de ALL PASSED, SideBySide 0. taskmgr SYSTEM'den 0x80070005 — küçültmesiz sistemde de aynı (tanılamanın oturum dışından başlatması).
+- **İlk oturum ekranı denemesi (D-086, 2026-10-08):** kullanıcı ilk oturumdaki "Windows hazırlanıyor" yerine kendi
+  ekranımızı istedi. `DelayedDesktopSwitchTimeout 0` + tam ekran WPF penceresi (zamanlanmış görev ve Active Setup ile) VM'de
+  Win10 / Win11'de denendi: Windows'un ekranı kalktı ama PowerShell ilk oturumda 10–20 sn'de açıldığı için masaüstü bizden
+  önce hazır oldu — **bırakıldı**, geri alındı. Kalan: görevler pilde de çalışır (ilk oturum görevi parolayı pildeki
+  dizüstünde de siler), `lab_vm.ps1 -ShotSeconds`. **Kanıt:** VM `w10f`, `spec7`, `w10g`, `spec8` ALL PASSED (parola
+  silinmiş, ayarlar doğru); ekran görüntüleri `build\visual\*-signin-sheet.png`. "Biraz bekleyin" (OOBE'nin geçici
+  oturumu) Windows'un kendi ekranı; değiştirilmiyor.
 - **Kurulum ekranımız Windows Kurulumu'nun içinde (D-085, 2026-10-08, kullanıcı uyurken):** kullanıcı D-084'ün görünümünü
   beğenmedi, daha fazla ayar + Wi-Fi istedi ve akışı tarif etti ("logodan sonra bizim ekran, seçince yeniden başlayıp masaüstü,
   Windows OOBE'si yok"). Claude Design tuvali (claude.ai/artifact/G6srYK5bT9LRCtjxBJSLQm, 7 ekran + koyu) → WPF yeniden yazıldı:

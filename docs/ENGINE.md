@@ -271,3 +271,10 @@ Uygulama davranışı:
   yeniden başlatma seçilen adla açılır. OOBE `EnableFirstLogonAnimation`'ı 1'e geri alır (PostOobe'da 0 yap). `New-Item -Force` var olan kayıt
   anahtarını boşaltır (FirstBoot gibi anahtarlarda yalnız yoksa oluştur). Win11 kurulum ortamı Win10 install.wim'ini kurmaz
   ("Windows 11 yüklemesi başarısız oldu"; `wlcli setup-media` ile Win10 ortamı).
+
+- [2026-10-08] [İlk oturum, D-086] `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\DelayedDesktopSwitchTimeout = 0`
+  ilk oturumda da "Windows hazırlanıyor" ekranını kaldırır: masaüstü kabuk hazır olmadan görünür (boş görev çubuğu). İlk
+  oturumda zamanlama (VM, Win10 19045 / Win11 26200): Explorer'ın Active Setup'ı oturumdan ~2 sn sonra çalışır (komutu
+  bekler); oturum açılışı tetikleyicili zamanlanmış görevler ~20 sn sonra başlar; PowerShell + WPF o sırada 10–20 sn'de
+  açılır; HKCU `RunOnce` Win11'de başlangıç programlarıyla ~55 sn'de çalışır. `New-ScheduledTaskSettingsSet` varsayılanı
+  `DisallowStartIfOnBatteries` / `StopIfGoingOnBatteries` açık: ayarsız kaydedilen görev pildeyken başlamaz.

@@ -241,6 +241,24 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-086 — İlk oturumun "Windows hazırlanıyor" ekranı yerine kendi ekranımız: denendi, bırakıldı (2026-10-08)
+Bağlam: Kullanıcı, D-085 akışında hesabın ilk oturumundaki siyah "Windows hazırlanıyor" ekranının yerine kurulum
+sihirbazının devamı gibi kendi ekranımızı istedi.
+Denenen: OOBE sonrası kanca `HKLM\...\Policies\System\DelayedDesktopSwitchTimeout = 0` yazar (Windows o ekranı göstermez,
+masaüstüne hemen geçer); hesabın ilk oturumunda sihirbazın "Her şey hazırlanıyor" görünümünde tam ekran bir pencere
+(seçilen tema / vurgu, "Hoş geldin, {ad}", görev çubuğu → Başlat → seçilen görünüm adımları) masaüstü hazır olana dek
+kalır, sonra solar; ilke ve parçalar ilk oturumdan sonra kaldırılır. Başlatma iki yolla denendi: oturum açılışında
+zamanlanmış görev (VM `w10f`, `spec7`) ve Active Setup (`w10g`, `spec8`).
+Sonuç (VM, Win10 19045 + Win11 26200, dördü de ALL PASSED ama amaç tutmadı): Windows'un ekranı gerçekten kalktı, fakat
+PowerShell + WPF ilk oturumda (Windows o sırada uygulamaları kaydederken) 10–20 sn'de açılıyor; masaüstü bizden önce
+hazır oluyor. Kullanıcı önce çıplak masaüstünü, sonra birkaç saniye bizim ekranı görüyor — Win10'da eskisinden kötü.
+Karar: bırakıldı, Windows'un kendi ekranı kalır. Kalanlar: görevler pilde de çalışır (aşağıda), laboratuvarın
+`lab_vm.ps1 -ShotSeconds`'ı. Yeniden denenecekse PowerShell yerine hızlı açılan yerel bir yardımcı gerekir.
+Ek düzeltme (bu denemede bulundu): `Register-ScheduledTask` ayarsız kaydedilince Windows görevi **pildeyken başlatmaz**
+(`DisallowStartIfOnBatteries` varsayılan açık). Karşılamanın ilk oturum görevi otomatik oturumun parolasını
+(`DefaultPassword`) siliyor: pildeki bir dizüstünde parola kayıt defterinde açık metin kalırdı. Bütün görevler artık
+`-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries` ile kaydedilir.
+
 ## D-085 — Kurulum ekranımız Windows Kurulumu'nun içinde: logodan sonra bizim sayfalar, OOBE ve geçici hesap yok (2026-10-08)
 Bağlam: Kullanıcı D-084'ün görünümünü beğenmedi ("Windows'un temasına yakın olmalıydı… Claude Design ile Windows'a yakışır
 bir kurulum arayüzü"), daha fazla ayar ve kablosuz ağ istedi, sonra akışı netleştirdi: "format bitince Windows logosunda

@@ -138,6 +138,9 @@ function Start-NameWatcher([string] $computer) {
     Start-Process -FilePath 'powershell.exe' -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $watcher) -WindowStyle Hidden
     Write-Log "name watcher for $computer"
 }
+# The tasks here run on battery too: by default Windows holds a task until the charger is in (and the
+# password below would stay in the registry on a laptop).
+function New-TaskSettings { return New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries }
 # The new account's first sign-in: a task, as SYSTEM, takes out the password Windows keeps for the
 # automatic sign-in (VM, 26200: AutoLogonCount 0, DefaultPassword still there in plain text).
 function Register-SignInTasks([string] $name) {
@@ -155,12 +158,12 @@ function Register-SignInTasks([string] $name) {
     [System.IO.File]::WriteAllText($signin, ($lines -join "`r`n"), [System.Text.Encoding]::UTF8)
     $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$signin`""
     $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-    Register-ScheduledTask -TaskName 'WinLove OOBE sign-in' -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $name) -Principal $principal -Force | Out-Null
+    Register-ScheduledTask -TaskName 'WinLove OOBE sign-in' -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $name) -Principal $principal -Settings (New-TaskSettings) -Force | Out-Null
     if ($auto -and $auto.check) {
         # The lab: what the new account finds at its first sign-in, onto the log disk.
-        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f (Join-Path $here 'oobe-check.ps1'))
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ("-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"{0}`"" -f (Join-Path $here 'oobe-check.ps1'))
         $principal = New-ScheduledTaskPrincipal -UserId $name -LogonType Interactive -RunLevel Highest
-        Register-ScheduledTask -TaskName 'WinLove OOBE check' -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $name) -Principal $principal -Force | Out-Null
+        Register-ScheduledTask -TaskName 'WinLove OOBE check' -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $name) -Principal $principal -Settings (New-TaskSettings) -Force | Out-Null
     }
     Write-Log "sign-in tasks for $name"
 }
@@ -1859,13 +1862,13 @@ try {
         [System.IO.File]::WriteAllText($cleanup, ($lines -join "`r`n"), [System.Text.Encoding]::UTF8)
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$cleanup`""
         $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-        Register-ScheduledTask -TaskName 'WinLove OOBE cleanup' -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -Principal $principal -Force | Out-Null
+        Register-ScheduledTask -TaskName 'WinLove OOBE cleanup' -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -Principal $principal -Settings (New-TaskSettings) -Force | Out-Null
     }
     if ($auto -and $auto.check -and $system) {
         # The lab: from the next start, Setup's logs onto the log disk every minute (how OOBE goes).
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f (Join-Path $here 'oobe-watch.ps1'))
         $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-        Register-ScheduledTask -TaskName 'WinLove lab watch' -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -Principal $principal -Force | Out-Null
+        Register-ScheduledTask -TaskName 'WinLove lab watch' -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -Principal $principal -Settings (New-TaskSettings) -Force | Out-Null
     }
 
     # Last: the new account signs in once by itself.
