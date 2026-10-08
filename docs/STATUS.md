@@ -109,6 +109,14 @@
   msinfo32, cleanmgr, notepad, 32 bit cmd, 7-Zip, Notepad++, VLC açılıyor; winget 4/4 (VC++ MSI dahil); `dism /online
   /get-packages` çalışıyor. Aynı koşullu çift (`shrink-max2` / `shrink-base`: aynı 4 program, 25 dk, ikisinde de ResetBase +
   güncellemeler kapalı): **C: 17,46 GB / 19,66 GB → kurulu sistemde −2,20 GB**, ikisi de ALL PASSED, SideBySide 0. taskmgr SYSTEM'den 0x80070005 — küçültmesiz sistemde de aynı (tanılamanın oturum dışından başlatması).
+- **Yayın 1.1.0 Beta (2026-10-08, kullanıcı isteği):** alfadan betaya; `v1.1.0-beta` GitHub'da (ön sürüm, `dist\WinLove.exe`),
+  notlar `CHANGELOG.md` (Türkçe + İngilizce; 1.0.2'den bu yana D-075…D-088). Sürüm `PROJECT_VERSION 1.1.0`, etiket
+  "1.1.0 Beta" (`WinLove.rc` elle), README tablosu yeni özelliklerle. **Bir sonraki somut adım (kullanıcı seçimi):** çok
+  dilli karşılama ekranı (kurulan Windows'un dili, 15 dil, İngilizce yedek) → 1.1.1.
+- **Karşılamada akıcılık + son ekran (D-088, 2026-10-08):** uyumayan mesaj döngüsü, animasyonlu denetimler, kademeli sayfa
+  geçişi, tema geçişinde yumuşak geçiş; son ekranda Windows 11 halkası, her adımda ne yapıldığı, okunur hız, "Her şey
+  hazır". **Kanıt:** 18 storyboard çalıştırıldı, önizleme kareleri, VM `u3` ALL PASSED. **D-089:** OOBE'nin güncelleme adımını
+  HOSTS (`sdx.microsoft.com`) ile atlamak VM `u4`'te işe yaramadı, geri alındı (Bilinen).
 - **Karşılamanın ilk gerçek testi (D-087, 2026-10-08):** kullanıcının kendi ön ayarı ve VM'inde (yanıt dosyasında dil
   yok, parola boş, NAT ağı, Home SL) Windows bölge / klavye sordu, güncelleyip yeniden başladı, kilit ekranı yazılamayan bir
   parola istedi. Nedenler: `oobe.ps1` boş parolayı satır sonu + boşluk yazıyordu (XmlDocument girintisi), dil yoksa OOBE kendi
