@@ -9,6 +9,8 @@
 
     powershell -ExecutionPolicy Bypass -File tools\lab_vm.ps1 -Changes <changeset.json> -Tag start1   (elevated; ~40 min)
 
+  -SourceWim <wim|esd>: edition -Edition of that image instead of build\lab\setup's (another Windows with
+   this Setup, e.g. Windows 10 Pro from an ESD: -SourceWim win10.esd -Edition 7); the changeset applies.
   -InstallWim <wim> -ImageIndex N: install edition N of a ready install.wim (no changeset; AIO tests);
    -BootWim <wim>: the media's boot.wim replaced (e.g. one patched for the previous Setup);
    -SetupFolder <dir>: the setup media files from there instead of build\lab\setup (another Windows).
@@ -49,6 +51,7 @@ param(
     [int] $Cpus = 2,
     [int] $MemMB = 4096,
     [string] $InstallWim = '',
+    [string] $SourceWim = '',
     [int] $ImageIndex = 1,
     [string] $BootWim = '',
     [string] $SetupFolder = '',
@@ -186,7 +189,8 @@ try {
         Copy-Item $InstallWim "$work\install.wim"
         Check "install.wim taken as it is: $InstallWim (index $ImageIndex)" (Test-Path "$work\install.wim")
     } else {
-    Run @('export', (Join-Path $setup 'sources\install.wim'), "$Edition", "$work\install.wim")
+    $from = if ($SourceWim) { $SourceWim } else { Join-Path $setup 'sources\install.wim' }
+    Run @('export', $from, "$Edition", "$work\install.wim")
     Run @('mount', "$work\install.wim", '1', $mount)
     Check "mount edition $Edition" ($script:lastExit -eq 0)
     }

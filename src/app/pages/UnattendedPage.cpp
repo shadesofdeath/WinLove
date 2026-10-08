@@ -457,8 +457,10 @@ void UnattendedPage::buildForm() {
         toggle.onChange = [this, field](bool on) { editWelcome([&](core::WelcomePlan& p) { p.*field = on; }); };
         return &toggle;
     };
+    m_askNetwork = askRow(Str::UnattendedWelcomeAskNetwork, &core::WelcomePlan::networkPage);
     m_askComputer = askRow(Str::UnattendedWelcomeAskComputer, &core::WelcomePlan::computerPage);
     m_askLook = askRow(Str::UnattendedWelcomeAskLook, &core::WelcomePlan::lookPage);
+    m_askPrefs = askRow(Str::UnattendedWelcomeAskPrefs, &core::WelcomePlan::prefsPage);
     m_askPrivacy = askRow(Str::UnattendedWelcomeAskPrivacy, &core::WelcomePlan::privacyPage);
     m_welcomeTheme = &m_form->addRow<ui::Dropdown>(s(Str::UnattendedWelcomeTheme), std::wstring(), kPickerWidth, std::wstring(),
                                                    std::vector<std::wstring>{s(Str::WelcomeThemeDark), s(Str::WelcomeThemeLight)}, 0);
@@ -667,7 +669,8 @@ void UnattendedPage::sync() {
             m_welcome->setOn(o.welcome);
         }
         m_form->setHint(*m_welcome, o.welcome ? m_strings.get(Str::UnattendedWelcomeHint) : std::wstring());
-        for (const auto& [toggle, on] : {std::pair{m_askComputer, plan.computerPage}, std::pair{m_askLook, plan.lookPage},
+        for (const auto& [toggle, on] : {std::pair{m_askNetwork, plan.networkPage}, std::pair{m_askComputer, plan.computerPage},
+                                         std::pair{m_askLook, plan.lookPage}, std::pair{m_askPrefs, plan.prefsPage},
                                          std::pair{m_askPrivacy, plan.privacyPage}, std::pair{m_emptyPassword, plan.allowEmptyPassword}}) {
             if (toggle->isOn() != on) {
                 toggle->setOn(on);

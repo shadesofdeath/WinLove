@@ -8,12 +8,9 @@
 
 #include <windows.h>
 
-#include <bcrypt.h>
 #include <json.hpp>
 
 #include <algorithm>
-#include <array>
-#include <cwctype>
 
 namespace wl::core {
 
@@ -42,11 +39,58 @@ nlohmann::json strictWrites() {
                                   write(R"(HKLM:\SOFTWARE\Policies\Microsoft\InputPersonalization)", "AllowInputPersonalization", 0)});
 }
 
+// The habits page (D-085): the settings catalog's keys (file-ext, hidden-files, launch-to,
+// classic-context, taskbar-search, task-view, widgets). "on" / "off": what the switch's state writes;
+// HKCU goes to the new account (Default profile + its first sign-in), HKLM at once.
+nlohmann::json welcomePrefs(const WelcomePlan& plan) {
+    constexpr char kAdvanced[] = R"(HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced)";
+    auto write = [](const char* key, const char* name, int value) { return nlohmann::json{{"key", key}, {"name", name}, {"value", value}}; };
+    auto pref = [&](const char* id, const char* nameKey, const char* detailKey, bool on, nlohmann::json onWrites, nlohmann::json offWrites) {
+        return nlohmann::json{{"id", id}, {"name", text(plan, nameKey)}, {"detail", text(plan, detailKey)}, {"default", on},
+                              {"on", std::move(onWrites)}, {"off", std::move(offWrites)}};
+    };
+    const auto none = nlohmann::json::array();
+    auto classic = pref("classic", "prefClassic", "prefClassicDetail", false,
+                        nlohmann::json::array({{{"key", R"(HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32)"},
+                                                {"name", ""}, {"type", "sz"}, {"value", ""}}}),
+                        none);
+    classic["windows11"] = true;
+    auto widgets = pref("widgets", "prefWidgets", "prefWidgetsDetail", true, none,
+                        nlohmann::json::array({write(R"(HKLM\SOFTWARE\Policies\Microsoft\Dsh)", "AllowNewsAndInterests", 0),
+                                               write(R"(HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds)", "EnableFeeds", 0)}));
+    widgets["name10"] = text(plan, "prefWidgets10");
+    return nlohmann::json::array({
+        pref("ext", "prefExt", "prefExtDetail", true, nlohmann::json::array({write(kAdvanced, "HideFileExt", 0)}),
+             nlohmann::json::array({write(kAdvanced, "HideFileExt", 1)})),
+        pref("hidden", "prefHidden", "prefHiddenDetail", false, nlohmann::json::array({write(kAdvanced, "Hidden", 1)}), none),
+        pref("thispc", "prefThisPc", "prefThisPcDetail", false, nlohmann::json::array({write(kAdvanced, "LaunchTo", 1)}), none),
+        classic,
+        pref("search", "prefSearch", "prefSearchDetail", true, none,
+             nlohmann::json::array({write(R"(HKCU\Software\Microsoft\Windows\CurrentVersion\Search)", "SearchboxTaskbarMode", 0)})),
+        pref("taskview", "prefTaskView", "prefTaskViewDetail", true, none, nlohmann::json::array({write(kAdvanced, "ShowTaskViewButton", 0)})),
+        widgets,
+    });
+}
+
+nlohmann::json splitFacts(const std::string& joined) {
+    nlohmann::json facts = nlohmann::json::array();
+    size_t start = 0;
+    while (start <= joined.size()) {
+        const size_t end = std::min(joined.find(';', start), joined.size());
+        if (end > start) {
+            facts.push_back(joined.substr(start, end - start));
+        }
+        start = end + 1;
+    }
+    return facts;
+}
+
 } // namespace
 
 std::string welcomeJson(const WelcomePlan& plan) {
     nlohmann::json pages = nlohmann::json::array();
-    for (const auto& [on, id] : {std::pair{plan.computerPage, "computer"}, std::pair{plan.lookPage, "look"},
+    for (const auto& [on, id] : {std::pair{plan.networkPage, "network"}, std::pair{plan.computerPage, "computer"},
+                                 std::pair{plan.lookPage, "look"}, std::pair{plan.prefsPage, "prefs"},
                                  std::pair{plan.privacyPage, "privacy"}}) {
         if (on) {
             pages.push_back(id);
@@ -63,13 +107,15 @@ std::string welcomeJson(const WelcomePlan& plan) {
     nlohmann::json doc{
         {"format", "winlove.welcome"},
         {"version", 1},
-        {"setupAccount", utf8::fromWide(kWelcomeAccount)},
         {"allowEmptyPassword", plan.allowEmptyPassword},
-        {"defaults", {{"theme", utf8::fromWide(plan.theme)}, {"accent", utf8::fromWide(plan.accent)}, {"privacy", utf8::fromWide(plan.privacy)}}},
+        {"defaults", {{"theme", utf8::fromWide(plan.theme)}, {"accent", utf8::fromWide(plan.accent)}, {"privacy", utf8::fromWide(plan.privacy)},
+                      {"taskbar", "center"}, {"transparency", true}, {"timeZone", utf8::fromWide(plan.timeZone)}}},
         {"pages", pages},
         {"themes", nlohmann::json::array({{{"id", "dark"}, {"name", text(plan, "themeDark")}}, {{"id", "light"}, {"name", text(plan, "themeLight")}}})},
         {"accents", accents},
-        {"privacy", nlohmann::json::array({{{"id", "strict"}, {"name", text(plan, "privacyStrict")}, {"detail", text(plan, "privacyStrictDetail")}, {"writes", strictWrites()}},
+        {"prefs", welcomePrefs(plan)},
+        {"privacy", nlohmann::json::array({{{"id", "strict"}, {"name", text(plan, "privacyStrict")}, {"detail", text(plan, "privacyStrictDetail")},
+                                            {"facts", splitFacts(text(plan, "privacyStrictFacts"))}, {"writes", strictWrites()}},
                                            {{"id", "windows"}, {"name", text(plan, "privacyWindows")}, {"detail", text(plan, "privacyWindowsDetail")}, {"writes", nlohmann::json::array()}}})},
         {"texts", texts},
     };
@@ -98,14 +144,17 @@ std::optional<WelcomePlan> welcomePlanFromOperations(const std::vector<ops::Oper
         WelcomePlan plan;
         const auto pages = doc.value("pages", nlohmann::json::array());
         auto shown = [&](const char* id) { return std::ranges::any_of(pages, [&](const auto& p) { return p.is_string() && p.template get<std::string>() == id; }); };
+        plan.networkPage = shown("network");
         plan.computerPage = shown("computer");
         plan.lookPage = shown("look");
+        plan.prefsPage = shown("prefs");
         plan.privacyPage = shown("privacy");
         plan.allowEmptyPassword = doc.value("allowEmptyPassword", true);
         const auto defaults = doc.value("defaults", nlohmann::json::object());
         plan.theme = utf8::toWide(defaults.value("theme", std::string("dark")));
-        plan.accent = utf8::toWide(defaults.value("accent", std::string("#D4905A")));
+        plan.accent = utf8::toWide(defaults.value("accent", std::string("#0078D4")));
         plan.privacy = utf8::toWide(defaults.value("privacy", std::string("strict")));
+        plan.timeZone = utf8::toWide(defaults.value("timeZone", std::string{}));
         plan.computerName = utf8::toWide(doc.value("computerName", std::string{}));
         for (const auto& [key, value] : doc.value("texts", nlohmann::json::object()).items()) {
             if (value.is_string()) {
@@ -146,31 +195,9 @@ Result<std::vector<int>> editionsWithoutWelcome(const SourceInfo& source, int on
     return missing;
 }
 
-std::wstring welcomeFirstLogonCommand() {
-    // On its own (start): the setup account's sign-in goes on, and the window waits for Windows'
-    // first sign-in screen to go (it is on the Winlogon desktop, above anything).
-    return LR"(cmd /c start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%ProgramData%\WinLove\Oobe\oobe.ps1")";
-}
-
-std::wstring randomWelcomePassword() {
-    static constexpr wchar_t kAlphabet[] = L"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-    constexpr std::size_t kCount = std::size(kAlphabet) - 1;
-    for (;;) {
-        std::array<unsigned char, 20> random{};
-        if (!BCRYPT_SUCCESS(BCryptGenRandom(nullptr, random.data(), static_cast<ULONG>(random.size()), BCRYPT_USE_SYSTEM_PREFERRED_RNG))) {
-            continue;
-        }
-        std::wstring out;
-        for (const unsigned char byte : random) {
-            out.push_back(kAlphabet[byte % kCount]);
-        }
-        const bool upper = std::ranges::any_of(out, [](wchar_t c) { return std::iswupper(c) != 0; });
-        const bool lower = std::ranges::any_of(out, [](wchar_t c) { return std::iswlower(c) != 0; });
-        const bool digit = std::ranges::any_of(out, [](wchar_t c) { return std::iswdigit(c) != 0; });
-        if (upper && lower && digit) {
-            return out;
-        }
-    }
+std::wstring welcomeSetupCommand() {
+    // Synchronous: Setup waits for the pages and the account, then goes on (D-085).
+    return LR"(cmd /c powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%ProgramData%\WinLove\Oobe\oobe.ps1")";
 }
 
 } // namespace wl::core

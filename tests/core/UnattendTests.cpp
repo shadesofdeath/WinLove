@@ -267,39 +267,75 @@ TEST_CASE("unattend: a generic key or the placeholder read from a file is not th
     CHECK(genericProductKey(L"Nope").empty());
 }
 
-TEST_CASE("welcome (D-084): the setup account, its one sign-in, the welcome first; read back as the welcome") {
+TEST_CASE("welcome (D-085): no account, the welcome last in specialize, OOBE's pages hidden; read back as the welcome") {
     UnattendOptions o;
     o.accountName = L"Berkay"; // kept for when the welcome is switched off again
     o.password = L"secret";
-    o.firstLogonCommands = {L"cmd /c echo mine"};
+    o.autoLogon = true;
+    o.specializeCommands = {L"cmd /c echo mine"};
+    o.firstLogonCommands = {L"cmd /c echo later"};
+    o.computerName = L"OFIS-PC";             // the welcome's first answers, not the file's
+    o.timeZone = L"Turkey Standard Time";
     o.welcome = true;
-    o.welcomePassword = L"Xy7pQ2mN8rT4vW6zK3bC";
     const std::string xml = utf8::fromWide(buildUnattendXml(o));
-    CHECK(xml.find("<Name>WinLoveSetup</Name>") != std::string::npos);
+    CHECK(xml.find("<ComputerName>OFIS-PC</ComputerName>") != std::string::npos); // set before the welcome renames
+    CHECK(xml.find("<TimeZone>") == std::string::npos);
     CHECK(xml.find("<Name>Berkay</Name>") == std::string::npos);
-    CHECK(xml.find("<LogonCount>1</LogonCount>") != std::string::npos);
+    CHECK(xml.find("WinLoveSetup") == std::string::npos);
+    CHECK(xml.find("<AutoLogon>") == std::string::npos);
     CHECK(xml.find("<HideOnlineAccountScreens>true</HideOnlineAccountScreens>") != std::string::npos);
+    CHECK(xml.find("<HideLocalAccountScreen>true</HideLocalAccountScreen>") != std::string::npos);
     CHECK(xml.find("<ProtectYourPC>3</ProtectYourPC>") != std::string::npos);
     CHECK(xml.find("<HideEULAPage>true</HideEULAPage>") != std::string::npos);
+    const auto specializeAt = xml.find("<settings pass=\"specialize\">");
+    const auto oobeAt = xml.find("<settings pass=\"oobeSystem\">");
     const auto welcomeAt = xml.find("oobe.ps1");
     const auto mineAt = xml.find("echo mine");
     REQUIRE(welcomeAt != std::string::npos);
-    CHECK(welcomeAt < mineAt); // the welcome is the first command
+    CHECK(specializeAt < welcomeAt);
+    CHECK(welcomeAt < oobeAt);
+    CHECK(mineAt < welcomeAt); // the welcome is the last specialize command
+    CHECK(xml.find("start \"\" powershell") == std::string::npos); // Setup waits for it
     CHECK(validateUnattend(o).empty());
 
     const auto back = parseUnattendXml(xml);
     REQUIRE(back);
     CHECK(back->welcome);
-    CHECK(back->welcomePassword == L"Xy7pQ2mN8rT4vW6zK3bC");
+    CHECK_FALSE(back->hideLocalAccount);
     CHECK(back->accountName.empty());
     CHECK_FALSE(back->autoLogon);
-    CHECK(back->firstLogonCommands == std::vector<std::wstring>{L"cmd /c echo mine"});
+    CHECK(back->specializeCommands == std::vector<std::wstring>{L"cmd /c echo mine"});
+    CHECK(back->firstLogonCommands == std::vector<std::wstring>{L"cmd /c echo later"});
+    // No name given (or a random one): the welcome's placeholder, so OOBE leaves the welcome's name.
+    o.computerName.clear();
+    o.randomComputerName = true;
+    CHECK(utf8::fromWide(buildUnattendXml(o)).find("<ComputerName>WINLOVE-PC</ComputerName>") != std::string::npos);
+    o.randomComputerName = false;
+    o.computerName = L"OFIS-PC";
 
     // Off: the account written as it was.
     o.welcome = false;
     const std::string plain = utf8::fromWide(buildUnattendXml(o));
     CHECK(plain.find("<Name>Berkay</Name>") != std::string::npos);
     CHECK(plain.find("oobe.ps1") == std::string::npos);
+    CHECK(plain.find("HideLocalAccountScreen") == std::string::npos);
+    CHECK(plain.find("<ComputerName>OFIS-PC</ComputerName>") != std::string::npos);
+}
+
+TEST_CASE("welcome: D-084's answer files (a setup account starting it) read back as the welcome") {
+    UnattendOptions o;
+    o.accountName = L"WinLoveSetup";
+    o.password = L"Xy7pQ2mN8rT4vW6zK3bC";
+    o.autoLogon = true;
+    o.firstLogonCommands = {LR"(cmd /c start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%ProgramData%\WinLove\Oobe\oobe.ps1")",
+                            L"cmd /c echo mine"};
+    const auto back = parseUnattendXml(utf8::fromWide(buildUnattendXml(o)));
+    REQUIRE(back);
+    CHECK(back->welcome);
+    CHECK(back->accountName.empty());
+    CHECK_FALSE(back->autoLogon);
+    CHECK(back->firstLogonCommands == std::vector<std::wstring>{L"cmd /c echo mine"});
+    CHECK(utf8::fromWide(buildUnattendXml(*back)).find("WinLoveSetup") == std::string::npos);
 }
 
 TEST_CASE("welcome: oobe.json carries the pages, the defaults and the texts; the plan reads back from the queue") {
@@ -309,10 +345,17 @@ TEST_CASE("welcome: oobe.json carries the pages, the defaults and the texts; the
     plan.accent = L"#107C10";
     plan.privacy = L"windows";
     plan.computerName = L"OFIS-PC";
+    plan.timeZone = L"Turkey Standard Time";
+    plan.prefsPage = true;
     plan.texts = {{"accountHeading", L"Hoş geldin"}, {"themeDark", L"Koyu"}, {"accentGreen", L"Yeşil"}, {"privacyStrict", L"Az veri"}};
     const std::string json = welcomeJson(plan);
-    CHECK(json.find("\"setupAccount\": \"WinLoveSetup\"") != std::string::npos);
+    CHECK(json.find("WinLoveSetup") == std::string::npos);
     CHECK(json.find("\"computer\"") == std::string::npos); // not among the pages
+    CHECK(json.find("\"network\"") != std::string::npos);
+    CHECK(json.find("\"prefs\"") != std::string::npos);
+    CHECK(json.find("HideFileExt") != std::string::npos);      // the habits and what they write
+    CHECK(json.find("AllowNewsAndInterests") != std::string::npos);
+    CHECK(json.find("\"windows11\": true") != std::string::npos); // the classic menu: Windows 11 only
     CHECK(json.find("\"OFIS-PC\"") != std::string::npos);
     CHECK(json.find("AllowTelemetry") != std::string::npos);
     CHECK(json.find(utf8::fromWide(L"Yeşil")) != std::string::npos);
@@ -320,7 +363,7 @@ TEST_CASE("welcome: oobe.json carries the pages, the defaults and the texts; the
     const auto ops = welcomeOperations(plan);
     REQUIRE(ops.size() == 2);
     CHECK(ops[0].target == LR"(ProgramData\WinLove\Oobe\oobe.ps1)");
-    CHECK(ops[0].value.find(L"WinLove: its own welcome") != std::wstring::npos);
+    CHECK(ops[0].value.find(L"WinLove: its own setup screens") != std::wstring::npos);
     CHECK(ops[0].value.find(L"@@dark.") == std::wstring::npos); // the colours were filled in at build time
     CHECK(welcomeSlots().size() == 2);
     const auto back = welcomePlanFromOperations(ops);
@@ -329,8 +372,6 @@ TEST_CASE("welcome: oobe.json carries the pages, the defaults and the texts; the
     CHECK(*back == plan);
     CHECK_FALSE(welcomePlanFromOperations({}).has_value());
 
-    const std::wstring password = randomWelcomePassword();
-    CHECK(password.size() == 20);
-    CHECK(password != randomWelcomePassword());
-    CHECK(welcomeFirstLogonCommand().find(L"start \"\" powershell.exe") != std::wstring::npos);
+    CHECK(json.find("\"Turkey Standard Time\"") != std::string::npos);
+    CHECK(welcomeSetupCommand().find(L"oobe.ps1") != std::wstring::npos);
 }

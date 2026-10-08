@@ -109,6 +109,14 @@
   msinfo32, cleanmgr, notepad, 32 bit cmd, 7-Zip, Notepad++, VLC açılıyor; winget 4/4 (VC++ MSI dahil); `dism /online
   /get-packages` çalışıyor. Aynı koşullu çift (`shrink-max2` / `shrink-base`: aynı 4 program, 25 dk, ikisinde de ResetBase +
   güncellemeler kapalı): **C: 17,46 GB / 19,66 GB → kurulu sistemde −2,20 GB**, ikisi de ALL PASSED, SideBySide 0. taskmgr SYSTEM'den 0x80070005 — küçültmesiz sistemde de aynı (tanılamanın oturum dışından başlatması).
+- **Kurulum ekranımız Windows Kurulumu'nun içinde (D-085, 2026-10-08, kullanıcı uyurken):** kullanıcı D-084'ün görünümünü
+  beğenmedi, daha fazla ayar + Wi-Fi istedi ve akışı tarif etti ("logodan sonra bizim ekran, seçince yeniden başlayıp masaüstü,
+  Windows OOBE'si yok"). Claude Design tuvali (claude.ai/artifact/G6srYK5bT9LRCtjxBJSLQm, 7 ekran + koyu) → WPF yeniden yazıldı:
+  Windows 11 kurulumu görünümü, canlı çizimler, animasyonlar; yeni sayfalar Ağ (Wi-Fi) ve Tercihler (7 anahtar), saat dilimi,
+  görev çubuğu hizası, saydamlık. Sihirbaz artık specialize'ın son komutu (SYSTEM, hesap yokken); hesap ve otomatik oturum
+  Windows'un PreOobe kancasıyla OOBE'ye verilir, geçici hesap yok. Uygulamada Ağı sor / Tercihleri sor. **Kanıt:** 345 test; VM Win11 26200 (`spec6`) + Win10 19045 (`w10e`) ALL PASSED (ad, saat, tema, 7 tercih, gizlilik, temizlik).
+  **Görülmeyen:** gerçek Wi-Fi ile bağlanma (VM'de kablosuz bağdaştırıcı yok; liste API'si bu bilgisayarda önizlemede
+  çalıştı, bağlanma denenmedi), insan eliyle tıklanarak kurulum, ARM64, Home sürümü, OEM lisanslı gerçek bilgisayar.
 - **Kendi karşılama ekranımız (D-084, 2026-10-08):** Katılımsız Kurulum › Hesap › Karşılama ekranı. Yanıt dosyası
   geçici `WinLoveSetup` hesabıyla bir kez oturum açtırır, WinLove'un tam ekran sihirbazı hesabı / bilgisayar adını / görünümü /
   gizliliği sorar, hesabı kurar, geçici hesabı siler. VM'de uçtan uca ALL PASSED. ISO Oluştur betik imajda yoksa reddeder.
