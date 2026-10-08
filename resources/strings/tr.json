@@ -1696,6 +1696,10 @@
     "privacyStrictFacts": "Gerekli tanılama;Reklam kimliği kapalı;Etkinlik geçmişi kapalı;Yazma kişiselleştirmesi kapalı",
     "stepFinish": "Windows kurulumu tamamlıyor",
     "keepOn": "Bilgisayarını kapatma.",
-    "failedFallback": "Windows kendi hesap sayfasıyla devam edecek."
+    "failedFallback": "Windows kendi hesap sayfasıyla devam edecek.",
+    "readyHeading": "Her şey hazır",
+    "readySub": "Windows kurulumu bitirip bilgisayarı yeniden başlatacak.",
+    "stepFinishDetail": "Ardından bilgisayar yeniden başlar",
+    "prefsOn": "{n} tercih açık"
   }
 }

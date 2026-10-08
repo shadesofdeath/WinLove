@@ -62,7 +62,9 @@ build\lab\
    `diag\watch\boot-*`; 40 dk'da oturum yoksa kapatır) eklenir. Windows 10: `lab_vm.ps1 -SourceWim <win10.esd> -Edition 7
    -SetupFolder build\lab\setup-w10` (Win11 kurulumu Win10 imajını kurmaz; `wlcli setup-media` ile Win10 ortamı).
    Önizleme: Katılımsız Kurulum › Önizle (pencere, hiçbir şey yapmaz); ekran görüntüsü için `oobe.json`'a `previewPage`,
-   `previewBusy`, `previewFill`, `previewNetworks` (örnek ağlar: bilgisayarın çevresindeki ağlar görünmez).
+   `previewBusy` (doğrudan son ekran, adımlar kendi hızında ~10 sn), `previewFill`, `previewNetworks` (örnek ağlar:
+   bilgisayarın çevresindeki ağlar görünmez); `auto` önizlemede de çalışır (sayfalar kendiliğinden, tema geçişi dahil).
+   Animasyonlar zamanla değiştiği için belirli anlarda birden çok kare alınır (yalnız önizleme penceresi, PrintWindow).
 4e. Modlu Windows (D-081): `wlcli host-check` (çıkış 3: sorun), `wlcli wimgapi <wim|esd>` (seçilen kopya, katı kaynaklar).
    Yedeği kanıtlamak: `wlcli export <esd> 2 <out.wim> --wimgapi=C:\Windows\System32\version.dll --verbose` (bozuk kopya
    → ADK'nınki); `wlcli mount … --dism=adk` (yönetici) ADK'nın DISM'iyle. Arayüz: `--render … --page=source --demo-host-dism`.
