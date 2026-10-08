@@ -53,6 +53,9 @@ inline constexpr std::pair<const char*, const wchar_t*> kWelcomeAccents[] = {
 [[nodiscard]] std::vector<ops::Operation> welcomeOperations(const WelcomePlan& plan);
 [[nodiscard]] std::optional<WelcomePlan> welcomePlanFromOperations(const std::vector<ops::Operation>& ops);
 [[nodiscard]] std::vector<std::pair<ops::OpKind, std::wstring>> welcomeSlots();
+// A preset keeps the script as it was when it was saved: the app's own one goes in when the preset is
+// applied (an older copy wrote an empty password as spaces, D-087). Its oobe.json (the choices) stays.
+[[nodiscard]] ops::ChangeSet withCurrentWelcomeScript(ops::ChangeSet changes);
 // The specialize pass's command: Setup waits for the script (the pages, then the account).
 [[nodiscard]] std::wstring welcomeSetupCommand();
 // The editions of `source` whose file list has no welcome script (Apply puts it in): Setup would

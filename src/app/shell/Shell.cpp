@@ -40,6 +40,7 @@
 #include "app/pages/languages/LanguageAddDialog.h"
 #include "app/pages/FilesPage.h"
 #include "core/system/Privileges.h"
+#include "core/unattend/Welcome.h"
 #include "app/pages/HostsPage.h"
 #include "app/pages/BrandingPage.h"
 #include "app/pages/TasksPage.h"
@@ -797,7 +798,7 @@ void Shell::applyPreset(const Preset& preset) {
         return;
     }
     Preset current = preset;
-    current.changes = m_components->withCurrentRecipes(preset.changes);
+    current.changes = core::withCurrentWelcomeScript(m_components->withCurrentRecipes(preset.changes));
     const std::size_t queued = m_presets->apply(current);
     showToast(ui::InfoKind::Success, m_strings.format(Str::PresetsLoaded, {{L"n", std::to_wstring(queued)}}), preset.name);
 }

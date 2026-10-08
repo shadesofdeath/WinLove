@@ -170,6 +170,14 @@ std::vector<std::pair<ops::OpKind, std::wstring>> welcomeSlots() {
     return {{ops::OpKind::WriteFile, kScriptFile}, {ops::OpKind::WriteFile, kJsonFile}};
 }
 
+ops::ChangeSet withCurrentWelcomeScript(ops::ChangeSet changes) {
+    const auto* queued = changes.find(ops::OpKind::WriteFile, kScriptFile);
+    if (auto current = utf8::toWide(scripts::kOobe); queued && queued->value != current) {
+        changes.add(ops::Operation{ops::OpKind::WriteFile, kScriptFile, std::move(current)});
+    }
+    return changes;
+}
+
 Result<std::vector<int>> editionsWithoutWelcome(const SourceInfo& source, int onlyIndex) {
     std::vector<int> missing;
     std::shared_ptr<const ByteSource> bytes;

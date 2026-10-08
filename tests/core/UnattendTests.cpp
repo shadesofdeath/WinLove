@@ -375,3 +375,25 @@ TEST_CASE("welcome: oobe.json carries the pages, the defaults and the texts; the
     CHECK(json.find("\"Turkey Standard Time\"") != std::string::npos);
     CHECK(welcomeSetupCommand().find(L"oobe.ps1") != std::wstring::npos);
 }
+
+TEST_CASE("welcome (D-087): a preset's old script gives way to the app's own; its choices stay") {
+    WelcomePlan plan;
+    plan.theme = L"light";
+    ops::ChangeSet saved;
+    saved.addAll(welcomeOperations(plan));
+    saved.add(ops::Operation{ops::OpKind::WriteFile, LR"(ProgramData\WinLove\Oobe\oobe.ps1)", L"# an older oobe.ps1"});
+    saved.add(ops::Operation{ops::OpKind::SetServiceStart, L"SysMain", L"disabled"});
+    const auto now = withCurrentWelcomeScript(saved);
+    REQUIRE(now.size() == 3);
+    const auto* script = now.find(ops::OpKind::WriteFile, LR"(ProgramData\WinLove\Oobe\oobe.ps1)");
+    REQUIRE(script);
+    CHECK(script->value == welcomeOperations(plan)[0].value);
+    CHECK(script->value.find(L"PreserveWhitespace") != std::wstring::npos); // the empty password stays empty
+    REQUIRE(welcomePlanFromOperations(now.operations()));
+    CHECK(welcomePlanFromOperations(now.operations())->theme == L"light");
+    CHECK(now.find(ops::OpKind::SetServiceStart, L"SysMain"));
+    // Without the welcome nothing is added.
+    ops::ChangeSet other;
+    other.add(ops::Operation{ops::OpKind::SetServiceStart, L"SysMain", L"disabled"});
+    CHECK(withCurrentWelcomeScript(other).size() == 1);
+}

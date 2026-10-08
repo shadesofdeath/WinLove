@@ -260,7 +260,9 @@ Karar: PreOobe dosyayı `PreserveWhitespace` ile açar (Kurulumun biçimi korunu
 `International-Core` yoksa ya da eksikse sistemin kendi değerleri eklenir — klavyeler `HKU\.DEFAULT\Keyboard
 Layout\Preload` (+ `Substitutes`), `Get-WinSystemLocale`, `InstalledUICulture`, `Get-Culture`; dosyada olan değere
 dokunulmaz. PostOobe hesabı `PasswordNeverExpires` yapar (D-084 yolunda parolasız hesap da). WinLove'un C++ yanıt
-dosyası üreticisi boş parolayı zaten `<Value></Value>` yazıyordu.
+dosyası üreticisi boş parolayı zaten `<Value></Value>` yazıyordu. Ön ayar betiğin kaydedildiği andaki metnini taşır
+(kullanıcınınki hatalı sürümü taşıyordu): ön ayar uygulanırken betik uygulamanın güncel sürümüyle değişir, seçimler
+(`oobe.json`) kalır (`withCurrentWelcomeScript`, D-076'daki tarif yenilemesi gibi).
 Kanıt: VM `u1` (kullanıcının yanıt dosyası, Home SL, NAT ağı, "user" parolasız) ve `u2` (aynısı, parolalı) **ALL PASSED**:
 bölge / klavye sayfası yok, ZDP'nin yeniden başlatmasına rağmen kendiliğinden oturum, u1'de `PasswordRequired` False,
 ikisinde parola süresiz, tema / vurgu / tercihler / gizlilik / saat dilimi doğru; ekranlar `build\visual\u1-oobe-sheet.png`.
