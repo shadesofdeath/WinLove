@@ -288,3 +288,8 @@ Uygulama davranışı:
   hesapta `UF_DONT_EXPIRE_PASSWD` yok (SAM ACB 0x10): parola 42 günlük üst sınıra tabi. Kullanıcının VMware diski (bölünmüş
   seyrek VMDK) VM kapalıyken 7-Zip ile okunur: `7z e x.vmdk "2.Basic data partition.ntfs"`, ardından `7z x` ile
   `Windows\Panther\*`, `ProgramData\WinLove\*`.
+- [2026-10-08] [OOBE güncelleme adımı, D-089] Win11 26200.8037'de HOSTS'ta `sdx.microsoft.com` (`0.0.0.0` ve `::`)
+  engellemek OOBE'nin ZDP adımını ("Güncelleştirmeler denetleniyor", ardından yeniden başlatma) **atlatmıyor** (VM u4, NAT ağı).
+  WPF bir PowerShell betiğinde: `Start-Sleep`'li bekleme döngüsü animasyonları ve fare olaylarını kesiyor; bekleme
+  `DispatcherFrame` + `DispatcherTimer` ile (dispatcher hiç uyumaz). Kurulumun specialize geçişinde (SYSTEM, grafik sürücüsü
+  yok) `Add-Type` ile WPF'e başvuran C# derlenir ve `CompositionTarget.Rendering` çalışır (VM u3).

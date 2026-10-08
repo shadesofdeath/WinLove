@@ -241,6 +241,45 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-088 — Karşılamada akıcılık ve anlamlı bir son ekran (2026-10-08)
+Bağlam: Kullanıcı karşılamanın efektlerinin ve tıklamalarının daha akıcı / kaliteli olmasını, yeniden başlatmadan önceki
+"Her şey hazırlanıyor" ekranının "aşırı hızlı dolmamasını, anlamlı olmasını" istedi.
+Bulgu: bekleme döngüsü (`Update-Ui` + `Start-Sleep 30`) arayüz iş parçacığını 30 ms'de bir uyutuyordu: WPF animasyonları
+~30 fps'de takılarak, fare olayları uykular arasında gecikerek işleniyordu. Son ekranın asıl işi ~2 sn: adımlar bir anda
+geçiyor, çubuk sıçrıyordu.
+Karar:
+- **Döngü:** `Wait-Seconds` bir `DispatcherFrame` + `DispatcherTimer` ile bekler (dispatcher hiç uyumaz, pencere bekleme
+  boyunca çizer ve tıklama alır); D-084 yolunun "en üstte kal"ı 2 sn'lik bir zamanlayıcı.
+- **Denetimler** (şablon tetikleyicileri, animasyonlar yalnız saydamlık ve dönüşümlerde — grafik sürücüsü olmayan
+  Kurulumda da akıcı): düğmede üzerine gelme 120 ms'de gelir / 200 ms'de gider, basınca yazı kısılır, vurgu düğmesi
+  koyulaşır; alanda odakta vurgu çizgisi ortadan açılır; anahtarın topuzu kayıp büyür, iz renkle dolar; onay kutusunda
+  kare dolar, tik hafif yaylanarak çıkar; tıklanan satırlarda (tercihler, gizlilik, ağlar) Windows Ayarları'nın üzerine
+  gelme rengi.
+- **Sayfa geçişi:** eski sayfa 110 ms'de söner; yenisinde başlık, alt başlık, içerik 45 ms arayla kayarak gelir (Fluent
+  "decelerate": ExponentialEase), soldaki çizim %94'ten büyüyerek gelir (gölgeleri animasyon boyunca `BitmapCache`'te);
+  adım göstergesinde bulunulan çizgi uzar. Seçilen tema / vurgu / gizlilik işareti "pop" ile çıkar. Tema ya da vurgu
+  değişince pencerenin eski hâlinin resmi yeni renklerin üstünde 320 ms'de söner (anlık renk çakması yok).
+- **Son ekran:** Windows 11'in ilerleme halkası (yay uzayıp kısalarak döner; her karede C#), her adımın altında ne yapıldığı
+  (ad · parola durumu, bilgisayar adı · saat dilimi, gizlilik düzeyi, tema · vurgu · açık tercih sayısı, "Ardından
+  bilgisayar yeniden başlar"), etkin adımda dönen küçük yay, biten adımda tik "pop"; her adım en az 1,2–1,7 sn ekranda kalır
+  (iş daha kısa sürer; bekleme yalnız ekranda), çubuk adım boyunca yavaşlayarak ilerler; sonunda "Her şey hazır", ekran
+  0,5 sn'de siyaha kararıp Kurulumun kendi siyah ekranına geçer. Toplam ~10 sn.
+- Yeni metinler: `readyHeading`, `readySub`, `stepFinishDetail`, `prefsOn` (karşılama metni 109).
+Doğrulama: şablonlardaki 18 storyboard gerçek denetimlerde tek tek çalıştırıldı (yanlış hedef / özellik yolu pencereyi
+çalışırken düşürürdü); önizleme kareleri `build\visual\oobe-after\` (son ekran, sayfa geçişi, tema geçişi). **VM `u3`**
+(kullanıcının yanıt dosyası, Home SL, NAT ağı, parolasız "user", ekran 3 sn arayla) **ALL PASSED**: Kurulum içinde (SYSTEM,
+grafik sürücüsüz) halka derlendi, adımlar ayrıntılarıyla ~6 sn, "Her şey hazır", siyaha kararma, yeniden başlatma;
+masaüstü, parola boş ve süresiz, tema / tercihler / gizlilik doğru (`build\visual\u3-busy-sheet.png`).
+
+## D-089 — OOBE'nin güncelleme adımını HOSTS ile atlamak: denendi, işe yaramadı (2026-10-08)
+Bağlam: Kullanıcı D-087'yi kendi VM'inde doğruladı; ağ bağlıyken yeniden başlatmadan sonra OOBE'nin "Lütfen bekleyin,
+güncelleştirmeler denetleniyor" adımı (ZDP, birkaç dakika + bir yeniden başlatma) yine geliyor, atlanmasını istedi.
+Seçenekler: `SkipMachineOOBE` / `SkipUserOOBE` (Microsoft: kullanmayın), NCSI etkin yoklamasını kapatmak (Windows ve
+uygulamalar internet yok sanır), HOSTS'ta `sdx.microsoft.com` (NTLite'a göre OOBE'nin "sonraki adım / zorunlu güncelleme"
+sorgusu). Denenen: PreOobe `0.0.0.0` + `::` satırları, ilk oturumda kaldırılır. **VM `u4`** (26200.8037, NAT ağı): güncelleme
+ekranı yine geldi — bu sürümde OOBE kararı başka yerden alıyor. Karar: kod geri alındı; 1.1.0 Beta'da "Bilinen" olarak
+yazıldı. Yeniden denenecekse: NCSI (ilk oturumda geri açarak) ya da OOBE'nin ZDP'sinin hangi adrese gittiği ölçülerek.
+
 ## D-087 — Karşılamanın ilk gerçek testi: boş parola, bölge / klavye, parola süresi (2026-10-08)
 Bağlam: Kullanıcı kendi ön ayarıyla (Windows 11 Home Single Language; yanıt dosyasında dil yok, parolasız hesaba izin
 var) ISO yapıp NAT ağlı bir VMware VM'ine kurdu: sihirbazda "user", parola boş. Yeniden başlayınca Windows bölge ve

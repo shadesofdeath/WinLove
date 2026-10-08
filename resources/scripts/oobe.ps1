@@ -386,7 +386,51 @@ try {
     Add-Type -Namespace WinLove -Name Dpi -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(System.IntPtr value);'
     [void] [WinLove.Dpi]::SetProcessDpiAwarenessContext([IntPtr] -2)
 } catch { }
-Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
+Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
+# Windows 11's progress ring: an arc that grows, then shrinks from its tail, while it turns (WinUI's
+# indeterminate ring). Drawn each frame in C#: a PowerShell handler per frame would be too slow.
+$ringCode = @'
+using System;
+using System.Diagnostics;
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Shapes;
+namespace WinLove {
+public static class Ring {
+    public static void Spin(Path path, double size, double thickness) {
+        var figure = new PathFigure();
+        var arc = new ArcSegment();
+        arc.SweepDirection = SweepDirection.Clockwise;
+        double r = (size - thickness) / 2, c = size / 2;
+        arc.Size = new Size(r, r);
+        figure.Segments.Add(arc);
+        var geometry = new PathGeometry();
+        geometry.Figures.Add(figure);
+        path.Data = geometry;
+        var clock = Stopwatch.StartNew();
+        CompositionTarget.Rendering += (s, e) => {
+            double t = clock.Elapsed.TotalSeconds, period = 1.5;
+            int cycle = (int) (t / period);
+            double p = (t - cycle * period) / period;
+            double grow = Ease(Math.Min(1, p * 2)), shrink = Ease(Math.Max(0, p * 2 - 1));
+            double tail = cycle * 250 + 250 * shrink + t * 110, head = cycle * 250 + 26 + 250 * grow + t * 110;
+            double a0 = tail * Math.PI / 180, a1 = head * Math.PI / 180;
+            figure.StartPoint = new Point(c + r * Math.Sin(a0), c - r * Math.Cos(a0));
+            arc.Point = new Point(c + r * Math.Sin(a1), c - r * Math.Cos(a1));
+            arc.IsLargeArc = head - tail > 180;
+        };
+    }
+    static double Ease(double x) { return x < 0.5 ? 4 * x * x * x : 1 - Math.Pow(-2 * x + 2, 3) / 2; }
+}
+}
+'@
+$script:ring = $false
+try {
+    $refs = @([System.Windows.Shapes.Path].Assembly.Location, [System.Windows.Media.Visual].Assembly.Location,
+              [System.Windows.DependencyObject].Assembly.Location, [System.Xaml.XamlType].Assembly.Location)
+    Add-Type -TypeDefinition $ringCode -ReferencedAssemblies $refs -ErrorAction Stop
+    $script:ring = $true
+} catch { Write-Log ('progress ring: ' + $_.Exception.Message) }
 
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -395,6 +439,7 @@ $xaml = @'
         Background="{DynamicResource Bg}" UseLayoutRounding="True" SnapsToDevicePixels="True"
         FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14" Foreground="{DynamicResource Text1}">
   <Window.Resources>
+    <!-- Buttons: the hover fades in and out (a wash over the face), pressing dims the text. -->
     <Style TargetType="Button">
       <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
       <Setter Property="Cursor" Value="Hand"/>
@@ -406,13 +451,18 @@ $xaml = @'
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="B" Background="{TemplateBinding Background}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" CornerRadius="4" Padding="{TemplateBinding Padding}">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
+            <Grid>
+              <Border x:Name="B" Background="{TemplateBinding Background}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" CornerRadius="4"/>
+              <Border x:Name="H" Background="{DynamicResource Wash}" CornerRadius="4" Opacity="0"/>
+              <ContentPresenter x:Name="C" Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Grid>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="{DynamicResource Row}"/></Trigger>
-              <Trigger Property="IsPressed" Value="True"><Setter TargetName="B" Property="Opacity" Value="0.8"/></Trigger>
-              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="B" Property="Opacity" Value="0.45"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Trigger.EnterActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="H" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.12"/></Storyboard></BeginStoryboard></Trigger.EnterActions>
+                <Trigger.ExitActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="H" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.2"/></Storyboard></BeginStoryboard></Trigger.ExitActions>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="C" Property="Opacity" Value="0.72"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -424,16 +474,19 @@ $xaml = @'
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="B" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-              <Grid>
-                <Border x:Name="Edge" CornerRadius="4" BorderBrush="#2E000000" BorderThickness="0,0,0,1"/>
-                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-              </Grid>
-            </Border>
+            <Grid>
+              <Border x:Name="B" Background="{TemplateBinding Background}" CornerRadius="4"/>
+              <Border x:Name="H" Background="{DynamicResource SelHover}" CornerRadius="4" Opacity="0"/>
+              <Border CornerRadius="4" BorderBrush="#2E000000" BorderThickness="0,0,0,1"/>
+              <ContentPresenter x:Name="C" Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Grid>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="{DynamicResource SelHover}"/></Trigger>
-              <Trigger Property="IsPressed" Value="True"><Setter TargetName="B" Property="Opacity" Value="0.8"/></Trigger>
-              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="B" Property="Opacity" Value="0.4"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Trigger.EnterActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="H" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.12"/></Storyboard></BeginStoryboard></Trigger.EnterActions>
+                <Trigger.ExitActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="H" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.2"/></Storyboard></BeginStoryboard></Trigger.ExitActions>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="C" Property="Opacity" Value="0.8"/><Setter TargetName="H" Property="Background" Value="{DynamicResource SelPress}"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -446,11 +499,17 @@ $xaml = @'
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="B" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
+            <Grid>
+              <Border x:Name="B" Background="{TemplateBinding Background}" CornerRadius="4"/>
+              <Border x:Name="H" Background="{DynamicResource Soft}" CornerRadius="4" Opacity="0"/>
+              <ContentPresenter x:Name="C" Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Grid>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="{DynamicResource Soft}"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Trigger.EnterActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="H" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.12"/></Storyboard></BeginStoryboard></Trigger.EnterActions>
+                <Trigger.ExitActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="H" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.2"/></Storyboard></BeginStoryboard></Trigger.ExitActions>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="C" Property="Opacity" Value="0.7"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -465,14 +524,28 @@ $xaml = @'
     <ControlTemplate x:Key="FieldFrame" TargetType="Control">
       <Grid>
         <Border x:Name="B" Background="{DynamicResource Fill}" BorderBrush="{DynamicResource Stroke}" BorderThickness="1" CornerRadius="4"/>
+        <Border x:Name="H" Background="{DynamicResource Wash}" CornerRadius="4" Opacity="0"/>
         <Border x:Name="L" Height="1" VerticalAlignment="Bottom" Margin="1,0" Background="{DynamicResource Bottom}"/>
+        <Border x:Name="F" Height="2" VerticalAlignment="Bottom" Margin="1,0" CornerRadius="0,0,3,3" Background="{DynamicResource Sel}" RenderTransformOrigin="0.5,0.5">
+          <Border.RenderTransform><ScaleTransform ScaleX="0"/></Border.RenderTransform>
+        </Border>
         <ScrollViewer x:Name="PART_ContentHost" Margin="11,0,36,0" VerticalAlignment="Center"/>
       </Grid>
       <ControlTemplate.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Trigger.EnterActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="H" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.12"/></Storyboard></BeginStoryboard></Trigger.EnterActions>
+          <Trigger.ExitActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="H" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.2"/></Storyboard></BeginStoryboard></Trigger.ExitActions>
+        </Trigger>
         <Trigger Property="IsKeyboardFocused" Value="True">
           <Setter TargetName="B" Property="Background" Value="{DynamicResource FillFocus}"/>
-          <Setter TargetName="L" Property="Height" Value="2"/>
-          <Setter TargetName="L" Property="Background" Value="{DynamicResource Sel}"/>
+          <Trigger.EnterActions><BeginStoryboard><Storyboard>
+            <DoubleAnimation Storyboard.TargetName="F" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="1" Duration="0:0:0.26">
+              <DoubleAnimation.EasingFunction><ExponentialEase Exponent="5" EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+          </Storyboard></BeginStoryboard></Trigger.EnterActions>
+          <Trigger.ExitActions><BeginStoryboard><Storyboard>
+            <DoubleAnimation Storyboard.TargetName="F" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="0" Duration="0:0:0.16"/>
+          </Storyboard></BeginStoryboard></Trigger.ExitActions>
         </Trigger>
       </ControlTemplate.Triggers>
     </ControlTemplate>
@@ -496,16 +569,18 @@ $xaml = @'
           <ControlTemplate TargetType="CheckBox">
             <Grid Width="40" Height="20" Background="Transparent">
               <Border x:Name="Track" CornerRadius="10" BorderThickness="1" BorderBrush="{DynamicResource Bottom}" Background="Transparent"/>
-              <Ellipse x:Name="Knob" Width="10" Height="10" HorizontalAlignment="Left" Margin="5,0,0,0" Fill="{DynamicResource Text2}"/>
+              <Border x:Name="On" CornerRadius="10" Background="{DynamicResource Sel}" Opacity="0"/>
+              <Grid x:Name="Knob" Width="12" Height="12" HorizontalAlignment="Left" Margin="4,0,0,0" RenderTransformOrigin="0.5,0.5">
+                <Grid.RenderTransform><TransformGroup><ScaleTransform ScaleX="0.84" ScaleY="0.84"/><TranslateTransform X="0"/></TransformGroup></Grid.RenderTransform>
+                <Ellipse Fill="{DynamicResource Text2}"/>
+                <Ellipse x:Name="KnobOn" Fill="{DynamicResource BtnText}" Opacity="0"/>
+              </Grid>
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="Track" Property="Background" Value="{DynamicResource Sel}"/>
                 <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource Sel}"/>
-                <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource BtnText}"/>
-                <Setter TargetName="Knob" Property="Width" Value="12"/>
-                <Setter TargetName="Knob" Property="Height" Value="12"/>
-                <Setter TargetName="Knob" Property="Margin" Value="23,0,0,0"/>
+                <Trigger.EnterActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="Knob" Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.X)" To="20" Duration="0:0:0.24"><DoubleAnimation.EasingFunction><ExponentialEase Exponent="4" EasingMode="EaseOut"/></DoubleAnimation.EasingFunction></DoubleAnimation><DoubleAnimation Storyboard.TargetName="Knob" Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)" To="1" Duration="0:0:0.24"/><DoubleAnimation Storyboard.TargetName="Knob" Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)" To="1" Duration="0:0:0.24"/><DoubleAnimation Storyboard.TargetName="On" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.16"/><DoubleAnimation Storyboard.TargetName="KnobOn" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.16"/></Storyboard></BeginStoryboard></Trigger.EnterActions>
+                <Trigger.ExitActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="Knob" Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.X)" To="0" Duration="0:0:0.24"><DoubleAnimation.EasingFunction><ExponentialEase Exponent="4" EasingMode="EaseOut"/></DoubleAnimation.EasingFunction></DoubleAnimation><DoubleAnimation Storyboard.TargetName="Knob" Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)" To="0.84" Duration="0:0:0.24"/><DoubleAnimation Storyboard.TargetName="Knob" Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)" To="0.84" Duration="0:0:0.24"/><DoubleAnimation Storyboard.TargetName="On" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.16"/><DoubleAnimation Storyboard.TargetName="KnobOn" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.16"/></Storyboard></BeginStoryboard></Trigger.ExitActions>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -520,19 +595,31 @@ $xaml = @'
         <Setter.Value>
           <ControlTemplate TargetType="CheckBox">
             <StackPanel Orientation="Horizontal" Background="Transparent">
-              <Border x:Name="Sq" Width="18" Height="18" CornerRadius="4" BorderThickness="1" BorderBrush="{DynamicResource Bottom}" Background="{DynamicResource Fill}">
-                <Path x:Name="Tick" Data="M5 12.5l4.5 4.5L19 7.5" Stroke="{DynamicResource BtnText}" StrokeThickness="2.6" Width="24" Height="24"
-                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Hidden" RenderTransformOrigin="0,0">
-                  <Path.RenderTransform><ScaleTransform ScaleX="0.66" ScaleY="0.66"/></Path.RenderTransform>
-                </Path>
-              </Border>
+              <Grid Width="18" Height="18">
+                <Border CornerRadius="4" BorderThickness="1" BorderBrush="{DynamicResource Bottom}" Background="{DynamicResource Fill}"/>
+                <Border x:Name="Sq" CornerRadius="4" Background="{DynamicResource Sel}" Opacity="0"/>
+                <Viewbox x:Name="Tick" Width="13" Height="13" Opacity="0" RenderTransformOrigin="0.5,0.5">
+                  <Viewbox.RenderTransform><ScaleTransform ScaleX="0.4" ScaleY="0.4"/></Viewbox.RenderTransform>
+                  <Path Data="M5 12.5l4.5 4.5L19 7.5" Stroke="{DynamicResource BtnText}" StrokeThickness="2.8" Width="24" Height="24"
+                        StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                </Viewbox>
+              </Grid>
               <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center"/>
             </StackPanel>
             <ControlTemplate.Triggers>
               <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="Sq" Property="Background" Value="{DynamicResource Sel}"/>
-                <Setter TargetName="Sq" Property="BorderBrush" Value="{DynamicResource Sel}"/>
-                <Setter TargetName="Tick" Property="Visibility" Value="Visible"/>
+                <Trigger.EnterActions><BeginStoryboard><Storyboard>
+                  <DoubleAnimation Storyboard.TargetName="Sq" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.12"/>
+                  <DoubleAnimation Storyboard.TargetName="Tick" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.12"/>
+                  <DoubleAnimation Storyboard.TargetName="Tick" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="1" Duration="0:0:0.3"><DoubleAnimation.EasingFunction><BackEase Amplitude="0.5" EasingMode="EaseOut"/></DoubleAnimation.EasingFunction></DoubleAnimation>
+                  <DoubleAnimation Storyboard.TargetName="Tick" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="1" Duration="0:0:0.3"><DoubleAnimation.EasingFunction><BackEase Amplitude="0.5" EasingMode="EaseOut"/></DoubleAnimation.EasingFunction></DoubleAnimation>
+                </Storyboard></BeginStoryboard></Trigger.EnterActions>
+                <Trigger.ExitActions><BeginStoryboard><Storyboard>
+                  <DoubleAnimation Storyboard.TargetName="Sq" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.12"/>
+                  <DoubleAnimation Storyboard.TargetName="Tick" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.1"/>
+                  <DoubleAnimation Storyboard.TargetName="Tick" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="0.4" Duration="0:0:0.12"/>
+                  <DoubleAnimation Storyboard.TargetName="Tick" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="0.4" Duration="0:0:0.12"/>
+                </Storyboard></BeginStoryboard></Trigger.ExitActions>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -612,8 +699,14 @@ $xaml = @'
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius" Value="6"/>
     </Style>
+    <Style x:Key="RowBox" TargetType="Border" BasedOn="{StaticResource CardBox}">
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{DynamicResource RowHover}"/></Trigger>
+      </Style.Triggers>
+    </Style>
   </Window.Resources>
-  <Grid>
+  <!-- the background here too: the theme crossfade's picture of the window holds it -->
+  <Grid Background="{DynamicResource Bg}">
     <!-- Windows' bloom: soft colour clouds, drawn for 1280x800 and filling any screen. -->
     <Viewbox Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center">
       <Canvas Width="1280" Height="800" ClipToBounds="True">
@@ -853,26 +946,42 @@ $xaml = @'
       </Grid>
     </Viewbox>
 
-    <!-- while it works: Windows' own "getting ready" look, full screen -->
+    <!-- while it works: Windows' own "getting ready" look, full screen; each step says what it does -->
     <Grid x:Name="Busy" Visibility="Collapsed">
-      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,40">
-        <Grid Width="56" Height="56" HorizontalAlignment="Center" RenderTransformOrigin="0.5,0.5">
-          <Grid.RenderTransform><RotateTransform x:Name="Spin" Angle="0"/></Grid.RenderTransform>
-          <Ellipse Stroke="{DynamicResource Stroke}" StrokeThickness="4"/>
-          <Path Data="M28 2a26 26 0 0 1 26 26" Stroke="{DynamicResource Sel}" StrokeThickness="4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+      <StackPanel x:Name="BusyBody" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,40">
+        <Grid Width="56" Height="56" HorizontalAlignment="Center">
+          <Path x:Name="Ring" Width="56" Height="56" Stroke="{DynamicResource Sel}" StrokeThickness="4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+          <Grid x:Name="RingDone" Opacity="0" RenderTransformOrigin="0.5,0.5">
+            <Grid.RenderTransform><ScaleTransform ScaleX="0.5" ScaleY="0.5"/></Grid.RenderTransform>
+            <Ellipse Fill="{DynamicResource Sel}"/>
+            <Viewbox Width="28" Height="28"><Path Data="M5 12.5l4.5 4.5L19 7.5" Stroke="{DynamicResource BtnText}" StrokeThickness="2.6" Width="24" Height="24" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/></Viewbox>
+          </Grid>
         </Grid>
-        <TextBlock x:Name="BusyHeading" Margin="0,32,0,0" HorizontalAlignment="Center" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="32" FontWeight="SemiBold"/>
-        <TextBlock x:Name="BusySub" Margin="0,10,0,0" HorizontalAlignment="Center" Foreground="{DynamicResource Text2}" TextWrapping="Wrap" MaxWidth="560" TextAlignment="Center"/>
-        <Border Margin="0,36,0,0" Width="440" CornerRadius="8" Background="{DynamicResource Panel}" BorderBrush="{DynamicResource RowLine}" BorderThickness="1" Padding="6,10">
+        <Grid Margin="0,32,0,0" HorizontalAlignment="Center">
+          <TextBlock x:Name="BusyHeading" HorizontalAlignment="Center" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="32" FontWeight="SemiBold"/>
+          <TextBlock x:Name="ReadyHeading" HorizontalAlignment="Center" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="32" FontWeight="SemiBold" Opacity="0"/>
+        </Grid>
+        <Grid Margin="0,10,0,0" HorizontalAlignment="Center">
+          <TextBlock x:Name="BusySub" HorizontalAlignment="Center" Foreground="{DynamicResource Text2}" TextWrapping="Wrap" MaxWidth="560" TextAlignment="Center"/>
+          <TextBlock x:Name="ReadySub" HorizontalAlignment="Center" Foreground="{DynamicResource Text2}" TextWrapping="Wrap" MaxWidth="560" TextAlignment="Center" Opacity="0"/>
+        </Grid>
+        <Border Margin="0,36,0,0" Width="500" CornerRadius="8" Background="{DynamicResource Panel}" BorderBrush="{DynamicResource RowLine}" BorderThickness="1" Padding="6,8">
           <StackPanel x:Name="BusySteps"/>
         </Border>
-        <Grid x:Name="Track" Margin="0,20,0,0" Width="440" Height="3" Background="{DynamicResource Stroke}">
-          <Border x:Name="Fill" HorizontalAlignment="Left" Width="0" Background="{DynamicResource Sel}"/>
+        <Grid x:Name="Track" Margin="0,22,0,0" Width="500" Height="4">
+          <Border CornerRadius="2" Background="{DynamicResource Stroke}"/>
+          <Border x:Name="Fill" CornerRadius="2" Background="{DynamicResource Sel}" RenderTransformOrigin="0,0.5">
+            <Border.RenderTransform><ScaleTransform ScaleX="0"/></Border.RenderTransform>
+          </Border>
         </Grid>
         <TextBlock x:Name="Status" Margin="0,14,0,0" HorizontalAlignment="Center" FontSize="12" Foreground="{DynamicResource Err}" TextWrapping="Wrap" MaxWidth="560" TextAlignment="Center"/>
       </StackPanel>
       <TextBlock x:Name="KeepOn" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,56" Foreground="{DynamicResource Text2}"/>
     </Grid>
+    <!-- a picture of the window before a theme / accent change, fading out over the new colours -->
+    <Image x:Name="Snap" Visibility="Collapsed" IsHitTestVisible="False" Stretch="Fill"/>
+    <!-- the end: into Setup's own black screen -->
+    <Border x:Name="Dark" Background="Black" Opacity="0" Visibility="Collapsed"/>
   </Grid>
 </Window>
 '@
@@ -886,20 +995,72 @@ foreach ($name in 'Stage', 'CardFace', 'ArtNetwork', 'NetBadge', 'ArtAccount', '
                   'PageNetwork', 'NetHead', 'NetRefresh', 'NetList', 'NetState', 'PageAccount', 'NameLabel', 'UserName', 'PassLabel',
                   'Pass', 'PassShown', 'Reveal', 'Pass2Label', 'Pass2', 'PagePc', 'PcLabel', 'PcName', 'PcHint', 'ZoneLabel', 'Zone',
                   'PageLook', 'ThemeLabel', 'Themes', 'AccentLabel', 'Accents', 'TaskbarBox', 'TaskbarLabel', 'Aligns', 'Glass',
-                  'GlassLabel', 'PagePrefs', 'PagePrivacy', 'Error', 'Skip', 'Next', 'Busy', 'Spin', 'BusyHeading', 'BusySub',
-                  'BusySteps', 'Track', 'Fill', 'Status', 'KeepOn') {
+                  'GlassLabel', 'PagePrefs', 'PagePrivacy', 'Error', 'Skip', 'Next', 'Busy', 'BusyBody', 'Ring', 'RingDone', 'BusyHeading',
+                  'ReadyHeading', 'BusySub', 'ReadySub', 'BusySteps', 'Track', 'Fill', 'Status', 'KeepOn', 'Snap', 'Dark') {
     $ui[$name] = $window.FindName($name)
 }
 $brush = New-Object System.Windows.Media.BrushConverter
+
+# ---- motion ----------------------------------------------------------------------------------------------
+# Windows' own curves: things come in fast and settle (Fluent's "decelerate"), marks pop a little past
+# their size. Transforms and opacity only: they stay smooth without a graphics driver (inside Setup).
+$dp = @{ Opacity = [System.Windows.UIElement]::OpacityProperty; Width = [System.Windows.FrameworkElement]::WidthProperty
+         X = [System.Windows.Media.TranslateTransform]::XProperty; Y = [System.Windows.Media.TranslateTransform]::YProperty
+         ScaleX = [System.Windows.Media.ScaleTransform]::ScaleXProperty; ScaleY = [System.Windows.Media.ScaleTransform]::ScaleYProperty }
+function Start-Anim($target, [string] $property, [double] $to, [double] $ms, [double] $delay = 0, $from = $null, [string] $ease = 'out', [scriptblock] $done = $null) {
+    $a = New-Object System.Windows.Media.Animation.DoubleAnimation
+    $a.To = $to
+    if ($null -ne $from) { $a.From = [double] $from }
+    $a.Duration = New-Object System.Windows.Duration([TimeSpan]::FromMilliseconds($ms))
+    if ($delay -gt 0) { $a.BeginTime = [TimeSpan]::FromMilliseconds($delay) }
+    $curve = switch ($ease) {
+        'out' { $e = New-Object System.Windows.Media.Animation.ExponentialEase; $e.Exponent = 6; $e.EasingMode = 'EaseOut'; $e }
+        'back' { $e = New-Object System.Windows.Media.Animation.BackEase; $e.Amplitude = 0.5; $e.EasingMode = 'EaseOut'; $e }
+        'inout' { $e = New-Object System.Windows.Media.Animation.CubicEase; $e.EasingMode = 'EaseInOut'; $e }
+        default { $null }
+    }
+    if ($curve) { $a.EasingFunction = $curve }
+    if ($done) { $a.Add_Completed($done) }
+    $target.BeginAnimation($dp[$property], $a)
+}
+function Start-Pop($element) { # a mark that appears: from small, a little past its size, back
+    $scale = New-Object System.Windows.Media.ScaleTransform(0.4, 0.4)
+    $element.RenderTransformOrigin = '0.5,0.5'
+    $element.RenderTransform = $scale
+    Start-Anim $scale ScaleX 1 340 0 0.4 'back'
+    Start-Anim $scale ScaleY 1 340 0 0.4 'back'
+    Start-Anim $element Opacity 1 140 0 0 'none'
+}
+# A theme or accent change: a picture of the old colours fades out over the new ones.
+$script:snapState = @{ id = 0 }
+function Start-Crossfade {
+    if (-not $window.IsVisible) { return }
+    try {
+        $root = $window.Content
+        $toDevice = [System.Windows.PresentationSource]::FromVisual($window).CompositionTarget.TransformToDevice
+        $w = [int] [Math]::Ceiling($root.ActualWidth * $toDevice.M11); $h = [int] [Math]::Ceiling($root.ActualHeight * $toDevice.M22)
+        if ($w -lt 1 -or $h -lt 1) { return }
+        $ui.Snap.Visibility = 'Collapsed'
+        $picture = New-Object System.Windows.Media.Imaging.RenderTargetBitmap($w, $h, (96 * $toDevice.M11), (96 * $toDevice.M22), [System.Windows.Media.PixelFormats]::Pbgra32)
+        $picture.Render($root)
+        $ui.Snap.Source = $picture
+        $ui.Snap.Visibility = 'Visible'
+        $script:snapState.id++
+        $id = $script:snapState.id; $state = $script:snapState; $snap = $ui.Snap
+        Start-Anim $snap Opacity 0 320 0 1 'inout' ({ if ($state.id -eq $id) { $snap.Visibility = 'Collapsed'; $snap.Source = $null } }.GetNewClosure())
+    } catch { }
+}
 
 # ---- colours ------------------------------------------------------------------------------------------
 $palettes = @{
     light = @{ Bg = '#D9E4F5'; Blob1 = '#5B8FE8'; Blob2 = '#A9C6F7'; Blob3 = '#EFD3EA'; Card = '#F3F3F3'; CardLine = '#12000000'
                Text1 = '#1B1B1B'; Text2 = '#5F5F5F'; Text3 = '#8B8B8B'; Fill = '#FDFDFD'; FillFocus = '#FFFFFF'; Stroke = '#E3E3E3'
-               Bottom = '#8A8A8A'; Row = '#FBFBFB'; RowLine = '#E6E6E6'; Err = '#C42B1C'; Panel = '#8CFFFFFF' }
+               Bottom = '#8A8A8A'; Row = '#FBFBFB'; RowLine = '#E6E6E6'; Err = '#C42B1C'; Panel = '#8CFFFFFF'
+               Wash = '#09000000'; RowHover = '#F5F5F5' }
     dark  = @{ Bg = '#0B1222'; Blob1 = '#1E4FB8'; Blob2 = '#12306E'; Blob3 = '#4A2A6E'; Card = '#202020'; CardLine = '#14FFFFFF'
                Text1 = '#FFFFFF'; Text2 = '#C8C8C8'; Text3 = '#9D9D9D'; Fill = '#2D2D2D'; FillFocus = '#1F1F1F'; Stroke = '#3A3A3A'
-               Bottom = '#9A9A9A'; Row = '#2B2B2B'; RowLine = '#363636'; Err = '#FF99A4'; Panel = '#80202020' }
+               Bottom = '#9A9A9A'; Row = '#2B2B2B'; RowLine = '#363636'; Err = '#FF99A4'; Panel = '#80202020'
+               Wash = '#0DFFFFFF'; RowHover = '#323232' }
 }
 function Get-Mix([string] $hex, [int] $toward, [double] $amount) { # toward 255 (lighter) or 0 (darker): "#RRGGBB"
     $out = foreach ($i in 1, 3, 5) {
@@ -956,6 +1117,7 @@ function Set-Colors {
     $sel = if ($dark) { Get-Mix $accent 255 0.45 } else { Get-Mix $accent 0 0.2 }
     Set-Resource 'Sel' ($brush.ConvertFromString($sel))
     Set-Resource 'SelHover' ($brush.ConvertFromString($(if ($dark) { Get-Mix $sel 0 0.1 } else { Get-Mix $sel 255 0.12 })))
+    Set-Resource 'SelPress' ($brush.ConvertFromString($(if ($dark) { Get-Mix $sel 0 0.2 } else { Get-Mix $sel 255 0.24 })))
     Set-Resource 'BtnText' ($brush.ConvertFromString($(if ((Get-Light $sel) -gt 0.4) { '#000000' } else { '#FFFFFF' })))
     Set-Resource 'Soft' (New-Object System.Windows.Media.SolidColorBrush((Get-Color $accent $(if ($dark) { 0.22 } else { 0.12 }))))
     Set-Resource 'AccentBrush' ($brush.ConvertFromString($accent))
@@ -985,6 +1147,7 @@ $ui.NetRefresh.ToolTip = $t.networkRefresh
 $ui.ArtRole.Text = $t.accountRole
 $ui.BusyHeading.Text = $t.doneHeading
 $ui.BusySub.Text = $t.doneSub
+$ui.ReadyHeading.Text = $t.readyHeading
 $ui.KeepOn.Text = $t.keepOn
 
 # The finished flag lets the window close; before that Alt+F4 does nothing.
@@ -1094,7 +1257,7 @@ $script:prefRows = @{}
 foreach ($pref in @($data.prefs)) {
     if (-not $pref -or ($pref.windows11 -and -not $win11)) { continue }
     $row = New-Object System.Windows.Controls.Border
-    $row.Style = $window.FindResource('CardBox'); $row.CornerRadius = 4; $row.Margin = '0,0,0,4'; $row.Padding = '14,7'; $row.MinHeight = 50
+    $row.Style = $window.FindResource('RowBox'); $row.CornerRadius = 4; $row.Margin = '0,0,0,4'; $row.Padding = '14,7'; $row.MinHeight = 50
     $row.Cursor = 'Hand'; $row.Tag = [string] $pref.id; $row.MaxWidth = 560; $row.HorizontalAlignment = 'Left'; $row.Width = 560
     $grid = New-Object System.Windows.Controls.Grid
     foreach ($w in 'Auto', '*', 'Auto', 'Auto') { $col = New-Object System.Windows.Controls.ColumnDefinition; $col.Width = $w; $grid.ColumnDefinitions.Add($col) }
@@ -1128,7 +1291,7 @@ foreach ($pref in @($data.prefs)) {
 # Privacy: Windows' radio button, the level, what it means.
 foreach ($entry in $data.privacy) {
     $card = New-Object System.Windows.Controls.Border
-    $card.Style = $window.FindResource('CardBox'); $card.Margin = '0,0,0,8'; $card.Padding = '16,14'; $card.Cursor = 'Hand'
+    $card.Style = $window.FindResource('RowBox'); $card.Margin = '0,0,0,8'; $card.Padding = '16,14'; $card.Cursor = 'Hand'
     $card.Tag = [string] $entry.id; $card.Width = 540; $card.HorizontalAlignment = 'Left'
     $grid = New-Object System.Windows.Controls.Grid
     foreach ($w in 'Auto', '*') { $col = New-Object System.Windows.Controls.ColumnDefinition; $col.Width = $w; $grid.ColumnDefinitions.Add($col) }
@@ -1218,12 +1381,18 @@ function Show-Choices {
     foreach ($tile in $ui.Themes.Children) {
         $on = [string] $tile.Tag -eq $script:theme
         if ($on) { Set-Res $tile ([System.Windows.Controls.Border]::BorderBrushProperty) 'Sel' } else { $tile.BorderBrush = [System.Windows.Media.Brushes]::Transparent }
-        $tile.Child.Children[1].Visibility = $(if ($on) { 'Visible' } else { 'Hidden' })
+        $badge = $tile.Child.Children[1]
+        $was = $badge.Visibility -eq 'Visible'
+        $badge.Visibility = $(if ($on) { 'Visible' } else { 'Hidden' })
+        if ($on -and -not $was) { Start-Pop $badge }
     }
     foreach ($ring in $ui.Accents.Children) {
         $on = ([string] $ring.Tag).ToLower() -eq $script:accent.ToLower()
         if ($on) { Set-Res $ring ([System.Windows.Controls.Border]::BorderBrushProperty) 'Text1' } else { $ring.BorderBrush = [System.Windows.Media.Brushes]::Transparent }
-        $ring.Child.Child.Visibility = $(if ($on) { 'Visible' } else { 'Hidden' })
+        $tick = $ring.Child.Child
+        $was = $tick.Visibility -eq 'Visible'
+        $tick.Visibility = $(if ($on) { 'Visible' } else { 'Hidden' })
+        if ($on -and -not $was) { Start-Pop $tick }
     }
     foreach ($b in $ui.Aligns.Children) {
         $on = [string] $b.Tag -eq $script:align
@@ -1244,11 +1413,13 @@ function Show-Choices {
         $radio = $card.Child.Children[0]
         Set-Res $radio.Children[0] ([System.Windows.Shapes.Shape]::StrokeProperty) $(if ($on) { 'Sel' } else { 'Bottom' })
         if ($on) { Set-Res $radio.Children[0] ([System.Windows.Shapes.Shape]::FillProperty) 'Sel' } else { $radio.Children[0].Fill = [System.Windows.Media.Brushes]::Transparent }
+        $was = $radio.Children[1].Visibility -eq 'Visible'
         $radio.Children[1].Visibility = $(if ($on) { 'Visible' } else { 'Hidden' })
+        if ($on -and -not $was) { Start-Pop $radio.Children[1] }
     }
 }
-function Select-Theme([string] $id) { $script:theme = $id; Set-Colors; Show-Choices }
-function Select-Accent([string] $color) { $script:accent = $color; Set-Colors; Show-Choices }
+function Select-Theme([string] $id) { if ($id -ne $script:theme) { Start-Crossfade }; $script:theme = $id; Set-Colors; Show-Choices }
+function Select-Accent([string] $color) { if ($color -ne $script:accent) { Start-Crossfade }; $script:accent = $color; Set-Colors; Show-Choices }
 
 # ---- the live pictures ---------------------------------------------------------------------------------
 $culture = [System.Globalization.CultureInfo]::CurrentUICulture
@@ -1357,7 +1528,7 @@ function Show-Networks([bool] $scan) {
     $script:openRow = $null
     foreach ($net in ($nets | Select-Object -First 12)) {
         $row = New-Object System.Windows.Controls.Border
-        $row.Style = $window.FindResource('CardBox'); $row.Margin = '0,0,0,4'; $row.Tag = $net
+        $row.Style = $window.FindResource('RowBox'); $row.Margin = '0,0,0,4'; $row.Tag = $net
         $stack = New-Object System.Windows.Controls.StackPanel
         $head = New-Object System.Windows.Controls.Grid
         $head.Height = 46; $head.Background = [System.Windows.Media.Brushes]::Transparent; $head.Cursor = 'Hand'
@@ -1471,25 +1642,48 @@ $pages = @($allPages | Where-Object { $_.id -eq 'account' -or ($wanted -contains
 function Test-Shown([string] $id) { return [bool] ($pages | Where-Object { $_.id -eq $id }) }
 $script:page = -1
 
-function Start-Enter($element, [double] $dx) {
+function Start-Enter($element, [double] $dx, [double] $delay = 0, [double] $from = 1) {
     if (-not $element) { return }
-    $ease = New-Object System.Windows.Media.Animation.CubicEase
-    $ease.EasingMode = 'EaseOut'
+    $scale = New-Object System.Windows.Media.ScaleTransform($from, $from)
     $move = New-Object System.Windows.Media.TranslateTransform($dx, 0)
-    $element.RenderTransform = $move
-    $slide = New-Object System.Windows.Media.Animation.DoubleAnimation($dx, 0, (New-Object System.Windows.Duration([TimeSpan]::FromMilliseconds(360))))
-    $slide.EasingFunction = $ease
-    $fade = New-Object System.Windows.Media.Animation.DoubleAnimation(0, 1, (New-Object System.Windows.Duration([TimeSpan]::FromMilliseconds(260))))
-    $move.BeginAnimation([System.Windows.Media.TranslateTransform]::XProperty, $slide)
-    $element.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $fade)
+    $group = New-Object System.Windows.Media.TransformGroup
+    $group.Children.Add($scale); $group.Children.Add($move)
+    $element.RenderTransformOrigin = '0.5,0.5'
+    $element.RenderTransform = $group
+    $element.Opacity = 0 # hidden until its turn
+    $settle = $null
+    if ($from -ne 1) {
+        # A picture moves as a bitmap (its shadows are not drawn again each frame), then sharp again.
+        $element.CacheMode = New-Object System.Windows.Media.BitmapCache
+        $target = $element
+        $settle = { $target.CacheMode = $null }.GetNewClosure()
+        Start-Anim $scale ScaleX 1 560 $delay $from 'out'
+        Start-Anim $scale ScaleY 1 560 $delay $from 'out'
+    }
+    Start-Anim $move X 0 560 $delay $dx 'out' $settle
+    Start-Anim $element Opacity 1 300 $delay 0 'none'
+}
+function Start-Leave($elements) {
+    foreach ($e in $elements) { if ($e) { Start-Anim $e Opacity 0 110 0 $null 'none' } }
+    Wait-Seconds 0.11
 }
 function Update-Next {
     $id = $pages[$script:page].id
     $ui.Skip.Visibility = $(if ($id -eq 'network' -and -not $script:online) { 'Visible' } else { 'Collapsed' })
     $ui.Next.IsEnabled = ($id -ne 'network' -or $script:online)
 }
+$script:turning = $false
 function Show-Page([int] $index) {
+    if ($script:turning) { return }
+    $script:turning = $true
+    try { Show-PageNow $index } finally { $script:turning = $false }
+}
+function Show-PageNow([int] $index) {
     $forward = $index -ge $script:page
+    if ($script:page -ge 0 -and $index -ne $script:page) {
+        $old = $pages[$script:page]
+        Start-Leave @($ui.Heading, $ui.Sub, $ui[$old.panel], $ui[$old.art])
+    }
     $script:page = $index
     for ($i = 0; $i -lt $pages.Count; $i++) {
         $show = $(if ($i -eq $index) { 'Visible' } else { 'Collapsed' })
@@ -1505,14 +1699,17 @@ function Show-Page([int] $index) {
         $seg.Width = 20; $seg.Height = 4; $seg.CornerRadius = 2; $seg.Margin = '2,0'
         Set-Res $seg ([System.Windows.Controls.Border]::BackgroundProperty) $(if ($i -le $index) { 'Sel' } else { 'Stroke' })
         [void] $ui.Steps.Children.Add($seg)
+        if ($i -eq $index) { Start-Anim $seg Width 34 480 80 20 'out' } # the step you are on stretches
     }
     $ui.StepCount.Text = '{0} / {1}' -f ($index + 1), $pages.Count
     $ui.Back.Visibility = $(if ($index -gt 0) { 'Visible' } else { 'Hidden' })
     $ui.Next.Content = $(if ($index -eq $pages.Count - 1) { $t.finish } else { $t.next })
     $ui.Error.Text = ''; $ui.Error.Visibility = 'Collapsed'
-    $dx = $(if ($forward) { 28 } else { -28 })
-    foreach ($e in $ui.Heading, $ui.Sub, $ui[$page.panel]) { Start-Enter $e $dx }
-    Start-Enter $ui[$page.art] ($dx / 2)
+    $dx = $(if ($forward) { 40 } else { -40 })
+    Start-Enter $ui.Heading $dx 0
+    Start-Enter $ui.Sub $dx 45
+    Start-Enter $ui[$page.panel] $dx 90
+    Start-Enter $ui[$page.art] ($dx / 4) 30 0.94
     switch ($page.id) {
         'network' { if (-not $ui.NetList.Children.Count) { Show-Networks $true } }
         'account' { [void] $ui.UserName.Focus() }
@@ -1553,7 +1750,7 @@ function Test-Page([int] $index) {
 $ui.Back.Add_Click({ if ($script:page -gt 0) { Show-Page ($script:page - 1) } })
 $ui.Skip.Add_Click({ if ($script:page -lt $pages.Count - 1) { Show-Page ($script:page + 1) } })
 $ui.Next.Add_Click({
-    if (-not $ui.Next.IsEnabled) { return }
+    if (-not $ui.Next.IsEnabled -or $script:turning) { return }
     $problem = Test-Page $script:page
     if ($problem) { $ui.Error.Text = $problem; $ui.Error.Visibility = 'Visible'; return }
     if ($script:page -lt $pages.Count - 1) { Show-Page ($script:page + 1) } else { $script:go = $true }
@@ -1567,33 +1764,37 @@ $window.Add_KeyDown({
     $ui.Next.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent)))
 })
 
-$script:keepTop = (Get-Date).AddMinutes(3)
-$script:lastTop = Get-Date
-function Update-Ui {
+function Update-Top {
     # Windows' first sign-in screen and the Start menu it opens come up over a window started before
-    # them: for the first minutes the window takes the top again every two seconds.
-    if ((Get-Date) -lt $script:keepTop -and ((Get-Date) - $script:lastTop).TotalSeconds -ge 2 -and -not $data.preview -and -not $system) {
-        $script:lastTop = Get-Date
-        # Windows 11 opens Start at the first sign-in, and Start is above any topmost window: when
-        # Start or Search has the keyboard, one Escape closes it (VM: Start covered the pages).
-        try {
-            $owner = Get-Process -Id ([WinLove.Desk]::ForegroundProcess()) -ErrorAction Stop
-            if ($owner.ProcessName -in 'StartMenuExperienceHost', 'SearchHost', 'SearchApp', 'ShellExperienceHost') {
-                [WinLove.Desk]::Escape()
-                Write-Log ('closed ' + $owner.ProcessName)
-            }
-        } catch { }
-        $window.Topmost = $false; $window.Topmost = $true
-        [void] $window.Activate()
-    }
+    # them: for the first minutes the window takes the top again (a timer, every two seconds).
+    if ((Get-Date) -ge $script:keepTop) { $script:topTimer.Stop(); return }
+    # Windows 11 opens Start at the first sign-in, and Start is above any topmost window: when
+    # Start or Search has the keyboard, one Escape closes it (VM: Start covered the pages).
+    try {
+        $owner = Get-Process -Id ([WinLove.Desk]::ForegroundProcess()) -ErrorAction Stop
+        if ($owner.ProcessName -in 'StartMenuExperienceHost', 'SearchHost', 'SearchApp', 'ShellExperienceHost') {
+            [WinLove.Desk]::Escape()
+            Write-Log ('closed ' + $owner.ProcessName)
+        }
+    } catch { }
+    $window.Topmost = $false; $window.Topmost = $true
+    [void] $window.Activate()
+}
+function Update-Ui { # draws what changed before the thread goes on with work
     $frame = New-Object System.Windows.Threading.DispatcherFrame
     $callback = [System.Windows.Threading.DispatcherOperationCallback] { param($f) $f.Continue = $false; return $null }
     [void] [System.Windows.Threading.Dispatcher]::CurrentDispatcher.BeginInvoke([System.Windows.Threading.DispatcherPriority]::Background, $callback, $frame)
     [System.Windows.Threading.Dispatcher]::PushFrame($frame)
 }
-function Wait-Seconds([double] $seconds) {
-    $end = (Get-Date).AddSeconds($seconds)
-    while ((Get-Date) -lt $end) { Update-Ui; Start-Sleep -Milliseconds 30 }
+function Wait-Seconds([double] $seconds) { # the window lives (draws, animates, takes clicks) the whole time
+    if ($seconds -le 0) { Update-Ui; return }
+    $frame = New-Object System.Windows.Threading.DispatcherFrame
+    $timer = New-Object System.Windows.Threading.DispatcherTimer
+    $timer.Interval = [TimeSpan]::FromSeconds($seconds)
+    $timer.Tag = $frame
+    $timer.Add_Tick({ param($clock) $clock.Stop(); $clock.Tag.Continue = $false })
+    $timer.Start()
+    [System.Windows.Threading.Dispatcher]::PushFrame($frame)
 }
 
 # ---- when to show it -----------------------------------------------------------------------------------
@@ -1649,16 +1850,19 @@ Set-Colors
 Show-Choices
 $window.Show()
 [void] $window.Activate()
-# The card comes in: a short rise and fade.
+if (-not $data.preview -and -not $system) {
+    $script:keepTop = (Get-Date).AddMinutes(3)
+    $script:topTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $script:topTimer.Interval = [TimeSpan]::FromSeconds(2)
+    $script:topTimer.Add_Tick({ Update-Top })
+    $script:topTimer.Start()
+}
+# The card comes in: a rise and a fade.
 $ui.Stage.Opacity = 0
-$rise = New-Object System.Windows.Media.TranslateTransform(0, 24)
+$rise = New-Object System.Windows.Media.TranslateTransform(0, 32)
 $ui.Stage.RenderTransform = $rise
-$ease = New-Object System.Windows.Media.Animation.CubicEase
-$ease.EasingMode = 'EaseOut'
-$up = New-Object System.Windows.Media.Animation.DoubleAnimation(24, 0, (New-Object System.Windows.Duration([TimeSpan]::FromMilliseconds(520))))
-$up.EasingFunction = $ease
-$rise.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, $up)
-$ui.Stage.BeginAnimation([System.Windows.UIElement]::OpacityProperty, (New-Object System.Windows.Media.Animation.DoubleAnimation(0, 1, (New-Object System.Windows.Duration([TimeSpan]::FromMilliseconds(420))))))
+Start-Anim $rise Y 0 760 0 32 'out'
+Start-Anim $ui.Stage Opacity 1 440 0 0 'none'
 if ($data.preview -and $data.previewFill) { # screenshots: the fields filled in as a person would
     $ui.UserName.Text = $data.previewFill.name; $ui.Pass.Password = $data.previewFill.password; $ui.Pass2.Password = $data.previewFill.password
     $ui.PcName.Text = $data.previewFill.computer
@@ -1690,70 +1894,9 @@ if ($auto) {
     if ($problem) { Write-Log ('auto answers refused: ' + $problem) } else { $script:go = $true }
 }
 if ($data.preview -and $data.previewBusy) { $script:go = $true } # screenshots of the working screen
-while (-not $script:go) { Update-Ui; Start-Sleep -Milliseconds 30 }
+while (-not $script:go) { Wait-Seconds 0.1 }
 
 # ---- doing it: Windows' "getting ready" screen while it works -------------------------------------------------
-$steps = @(
-    @{ id = 'account'; text = $t.stepAccount },
-    @{ id = 'computer'; text = $t.stepComputer },
-    @{ id = 'privacy'; text = $t.stepPrivacy },
-    @{ id = 'look'; text = $t.stepLook }
-)
-$setup = [string] $data.setupAccount
-$setupSignIn = $setup -and -not $system -and $setup -eq [Environment]::UserName
-if ($setupSignIn) { $steps += @{ id = 'cleanup'; text = $t.stepCleanup } }
-$steps += @{ id = 'end'; text = $(if ($system) { $t.stepFinish } else { $t.stepRestart }) }
-$script:stepRows = @()
-foreach ($step in $steps) {
-    $line = New-Object System.Windows.Controls.StackPanel
-    $line.Orientation = 'Horizontal'; $line.Height = 34; $line.Margin = '14,0'
-    $mark = New-Object System.Windows.Controls.Border
-    $mark.Width = 18; $mark.Height = 18; $mark.CornerRadius = 9; $mark.BorderThickness = 1; $mark.VerticalAlignment = 'Center'
-    Set-Res $mark ([System.Windows.Controls.Border]::BorderBrushProperty) 'Stroke'
-    $label = New-Text $step.text 14 'Text3'
-    $label.Margin = '12,0,0,0'; $label.VerticalAlignment = 'Center'
-    [void] $line.Children.Add($mark); [void] $line.Children.Add($label)
-    [void] $ui.BusySteps.Children.Add($line)
-    $script:stepRows += @{ mark = $mark; label = $label }
-}
-function Set-Step([int] $n) { # n: 1-based, the one working now
-    for ($i = 0; $i -lt $script:stepRows.Count; $i++) {
-        $r = $script:stepRows[$i]
-        if ($i -lt $n - 1) {
-            Set-Res $r.mark ([System.Windows.Controls.Border]::BackgroundProperty) 'Sel'
-            Set-Res $r.mark ([System.Windows.Controls.Border]::BorderBrushProperty) 'Sel'
-            $r.mark.Child = New-Path $checkGeometry 'BtnText' 10 4
-            Set-Res $r.label ([System.Windows.Controls.TextBlock]::ForegroundProperty) 'Text1'
-            $r.label.FontWeight = 'Normal'
-        } elseif ($i -eq $n - 1) {
-            $r.mark.BorderThickness = 2
-            Set-Res $r.mark ([System.Windows.Controls.Border]::BorderBrushProperty) 'Sel'
-            Set-Res $r.label ([System.Windows.Controls.TextBlock]::ForegroundProperty) 'Text1'
-            $r.label.FontWeight = 'SemiBold'
-        }
-    }
-    $ui.Fill.Width = $ui.Track.Width * ($n - 1) / $script:stepRows.Count
-    Write-Log $steps[$n - 1].text
-    Update-Ui
-}
-$spin = New-Object System.Windows.Media.Animation.DoubleAnimation(0, 360, (New-Object System.Windows.Duration([TimeSpan]::FromSeconds(1.2))))
-$spin.RepeatBehavior = [System.Windows.Media.Animation.RepeatBehavior]::Forever
-$ui.Spin.BeginAnimation([System.Windows.Media.RotateTransform]::AngleProperty, $spin)
-$ui.Stage.BeginAnimation([System.Windows.UIElement]::OpacityProperty, (New-Object System.Windows.Media.Animation.DoubleAnimation(1, 0, (New-Object System.Windows.Duration([TimeSpan]::FromMilliseconds(300))))))
-Wait-Seconds 0.3
-$ui.Stage.Visibility = 'Collapsed'
-$ui.Busy.Visibility = 'Visible'
-$ui.Busy.BeginAnimation([System.Windows.UIElement]::OpacityProperty, (New-Object System.Windows.Media.Animation.DoubleAnimation(0, 1, (New-Object System.Windows.Duration([TimeSpan]::FromMilliseconds(400))))))
-
-if ($data.preview) { # never on the PC that previews it: the steps only go by
-    if ($data.previewBusy) { Set-Step 4; Wait-Seconds 60 }
-    for ($n = 1; $n -le $steps.Count; $n++) { Set-Step $n; Wait-Seconds 0.8 }
-    Write-Log 'preview: nothing done'
-    $script:finished = $true
-    $window.Close()
-    return
-}
-
 $name = $ui.UserName.Text.Trim()
 $password = $ui.Pass.Password
 # Not asked and not given: a name like Windows' own (inside Setup the answer file holds a placeholder).
@@ -1761,6 +1904,149 @@ $computer = if (Test-Shown 'computer') { $ui.PcName.Text.Trim() } elseif ($data.
             elseif ($system) { 'DESKTOP-' + (-join (1..7 | ForEach-Object { 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789'[(Get-Random -Maximum 34)] })) }
             else { $env:COMPUTERNAME }
 $zoneId = if ((Test-Shown 'computer') -and $ui.Zone.SelectedItem) { [string] $ui.Zone.SelectedItem.Tag } else { [string] $data.defaults.timeZone }
+
+# Each step says what it does with the answers (the account, the PC, the look), and stays on screen long
+# enough to be read: the work itself takes about two seconds in all.
+$dot = ' ' + [char] 0xB7 + ' '
+function Get-Named($list, [string] $key, [string] $value) {
+    return [string] (@($list) | Where-Object { $_ -and ([string] $_.$key).ToLower() -eq $value.ToLower() } | Select-Object -First 1).name
+}
+$zoneText = try { if ($zoneId) { [System.TimeZoneInfo]::FindSystemTimeZoneById($zoneId).DisplayName } else { '' } } catch { '' }
+$lookBits = @()
+if (Test-Shown 'look') { $lookBits += (Get-Named $data.themes 'id' $script:theme), (Get-Named $data.accents 'color' $script:accent) }
+if (Test-Shown 'prefs') {
+    $count = @($data.prefs | Where-Object { $_ -and -not ($_.windows11 -and -not $win11) -and $script:prefs[[string] $_.id] }).Count
+    $lookBits += ([string] $t.prefsOn) -replace '\{n\}', $count
+}
+$steps = @(
+    @{ id = 'account'; text = $t.stepAccount; time = 1.7; detail = $name + $dot + $(if ($password) { $t.accountLocked } else { $t.accountOpen }) },
+    @{ id = 'computer'; text = $t.stepComputer; time = 1.6; detail = (@($computer, $zoneText) | Where-Object { $_ }) -join $dot },
+    @{ id = 'privacy'; text = $t.stepPrivacy; time = 1.3; detail = (Get-Named $data.privacy 'id' $script:privacy) },
+    @{ id = 'look'; text = $t.stepLook; time = 1.6; detail = (@($lookBits) | Where-Object { $_ }) -join $dot }
+)
+$setup = [string] $data.setupAccount
+$setupSignIn = $setup -and -not $system -and $setup -eq [Environment]::UserName
+if ($setupSignIn) { $steps += @{ id = 'cleanup'; text = $t.stepCleanup; time = 1.2; detail = $setup } }
+$steps += @{ id = 'end'; text = $(if ($system) { $t.stepFinish } else { $t.stepRestart }); time = 1.4; detail = $(if ($system) { $t.stepFinishDetail } else { '' }) }
+$ui.ReadySub.Text = $(if ($system) { $t.readySub } else { $t.stepRestart })
+
+$script:stepRows = @()
+foreach ($step in $steps) {
+    $line = New-Object System.Windows.Controls.Grid
+    $line.Margin = '14,5'; $line.Opacity = 0
+    foreach ($w in 'Auto', '*') { $col = New-Object System.Windows.Controls.ColumnDefinition; $col.Width = $w; $line.ColumnDefinitions.Add($col) }
+    $mark = New-Object System.Windows.Controls.Grid
+    $mark.Width = 20; $mark.Height = 20; $mark.VerticalAlignment = 'Top'; $mark.Margin = '0,1,14,0'
+    $wait = New-Object System.Windows.Shapes.Ellipse # not yet: a faint ring
+    $wait.StrokeThickness = 1.5
+    Set-Res $wait ([System.Windows.Shapes.Shape]::StrokeProperty) 'Stroke'
+    $spin = New-Object System.Windows.Shapes.Path # now: an arc going round on that ring
+    $spin.Data = [System.Windows.Media.Geometry]::Parse('M10 1.75a8.25 8.25 0 0 1 8.25 8.25')
+    $spin.Width = 20; $spin.Height = 20; $spin.StrokeThickness = 2; $spin.StrokeStartLineCap = 'Round'; $spin.StrokeEndLineCap = 'Round'; $spin.Opacity = 0
+    Set-Res $spin ([System.Windows.Shapes.Shape]::StrokeProperty) 'Sel'
+    $turn = New-Object System.Windows.Media.RotateTransform
+    $spin.RenderTransformOrigin = '0.5,0.5'; $spin.RenderTransform = $turn
+    $done = New-Object System.Windows.Controls.Border # done: Windows' accent dot with a tick
+    $done.CornerRadius = 10; $done.Opacity = 0
+    Set-Res $done ([System.Windows.Controls.Border]::BackgroundProperty) 'Sel'
+    $done.Child = New-Path $checkGeometry 'BtnText' 12 3.2
+    [void] $mark.Children.Add($wait); [void] $mark.Children.Add($spin); [void] $mark.Children.Add($done)
+    [void] $line.Children.Add($mark)
+    $words = New-Object System.Windows.Controls.StackPanel
+    $words.VerticalAlignment = 'Center'
+    [System.Windows.Controls.Grid]::SetColumn($words, 1)
+    $label = New-Text $step.text 14 'Text3'
+    [void] $words.Children.Add($label)
+    $detail = New-Text ([string] $step.detail) 12 'Text2'
+    $detail.Margin = '0,2,0,0'; $detail.Opacity = 0; $detail.TextTrimming = 'CharacterEllipsis'
+    if (-not $step.detail) { $detail.Visibility = 'Collapsed' }
+    [void] $words.Children.Add($detail)
+    [void] $line.Children.Add($words)
+    [void] $ui.BusySteps.Children.Add($line)
+    $script:stepRows += @{ line = $line; wait = $wait; spin = $spin; turn = $turn; done = $done; label = $label; detail = $detail; time = $step.time; text = $step.text }
+}
+function Move-Fill([double] $to, [double] $ms) { Start-Anim $ui.Fill.RenderTransform ScaleX $to $ms 0 $null 'out' }
+$script:stepNow = 0
+$script:stepSince = Get-Date
+function Set-StepDone([int] $n) { # its time on screen first, then its tick pops
+    $r = $script:stepRows[$n - 1]
+    $left = $r.time - ((Get-Date) - $script:stepSince).TotalSeconds
+    if ($left -gt 0) { Wait-Seconds $left }
+    Start-Anim $r.spin Opacity 0 120 0 $null 'none'
+    Start-Anim $r.wait Opacity 0 120 0 $null 'none'
+    Start-Pop $r.done
+    Set-Res $r.label ([System.Windows.Controls.TextBlock]::ForegroundProperty) 'Text1'
+    $r.label.FontWeight = 'Normal'
+    Move-Fill ($n / $script:stepRows.Count) 320
+}
+function Set-Step([int] $n) { # n: 1-based, the one working now
+    if ($script:stepNow -ge 1) { Set-StepDone $script:stepNow }
+    $r = $script:stepRows[$n - 1]
+    $script:stepNow = $n
+    $script:stepSince = Get-Date
+    Start-Anim $r.spin Opacity 1 160 0 0 'none'
+    $round = New-Object System.Windows.Media.Animation.DoubleAnimation(0, 360, (New-Object System.Windows.Duration([TimeSpan]::FromSeconds(0.9))))
+    $round.RepeatBehavior = [System.Windows.Media.Animation.RepeatBehavior]::Forever
+    $r.turn.BeginAnimation([System.Windows.Media.RotateTransform]::AngleProperty, $round)
+    Set-Res $r.label ([System.Windows.Controls.TextBlock]::ForegroundProperty) 'Text1'
+    $r.label.FontWeight = 'SemiBold'
+    if ($r.detail.Visibility -eq 'Visible') { Start-Anim $r.detail Opacity 1 320 80 0 'none' }
+    # The bar keeps moving while the step works, slower as it nears the step's end.
+    Move-Fill (($n - 0.3) / $script:stepRows.Count) ($r.time * 1000)
+    Write-Log $r.text
+    Update-Ui
+}
+function Complete-Steps { # the last tick, "All set", then into Setup's own black screen
+    Set-StepDone $script:stepNow
+    Move-Fill 1 360
+    Start-Anim $ui.Ring Opacity 0 180 0 $null 'none'
+    Start-Pop $ui.RingDone
+    Start-Anim $ui.BusyHeading Opacity 0 180 0 $null 'none'
+    Start-Anim $ui.BusySub Opacity 0 180 0 $null 'none'
+    Start-Anim $ui.ReadyHeading Opacity 1 360 120 0 'none'
+    Start-Anim $ui.ReadySub Opacity 1 360 180 0 'none'
+    Wait-Seconds 1.8
+    $ui.Dark.Visibility = 'Visible'
+    Start-Anim $ui.Dark Opacity 1 520 0 0 'inout'
+    Wait-Seconds 0.56
+}
+
+# The card goes, the working screen comes up, its rows one after another.
+Start-Anim $ui.Stage Opacity 0 260 0 $null 'none'
+Start-Anim $rise Y -18 320 0 $null 'out'
+Wait-Seconds 0.27
+$ui.Stage.Visibility = 'Collapsed'
+$ui.Busy.Visibility = 'Visible'
+$ui.Busy.Opacity = 0
+Start-Anim $ui.Busy Opacity 1 380 0 0 'none'
+$lift = New-Object System.Windows.Media.TranslateTransform(0, 18)
+$ui.BusyBody.RenderTransform = $lift
+Start-Anim $lift Y 0 700 0 18 'out'
+for ($i = 0; $i -lt $script:stepRows.Count; $i++) {
+    $row = $script:stepRows[$i].line
+    $drop = New-Object System.Windows.Media.TranslateTransform(0, 10)
+    $row.RenderTransform = $drop
+    Start-Anim $drop Y 0 560 (160 + $i * 60) 10 'out'
+    Start-Anim $row Opacity 1 300 (160 + $i * 60) 0 'none'
+}
+if ($script:ring) { [WinLove.Ring]::Spin($ui.Ring, 56, 4) } else {
+    $ui.Ring.Data = [System.Windows.Media.Geometry]::Parse('M28 2a26 26 0 0 1 26 26')
+    $ui.Ring.RenderTransformOrigin = '0.5,0.5'
+    $ui.Ring.RenderTransform = New-Object System.Windows.Media.RotateTransform
+    $round = New-Object System.Windows.Media.Animation.DoubleAnimation(0, 360, (New-Object System.Windows.Duration([TimeSpan]::FromSeconds(1.2))))
+    $round.RepeatBehavior = [System.Windows.Media.Animation.RepeatBehavior]::Forever
+    $ui.Ring.RenderTransform.BeginAnimation([System.Windows.Media.RotateTransform]::AngleProperty, $round)
+}
+Wait-Seconds 0.5
+
+if ($data.preview) { # never on the PC that previews it: the steps go by at their pace
+    for ($n = 1; $n -le $steps.Count; $n++) { Set-Step $n; Wait-Seconds 0.2 }
+    Complete-Steps
+    Write-Log 'preview: nothing done'
+    $script:finished = $true
+    $window.Close()
+    return
+}
 
 function Get-Bgr([string] $hex) { # "#RRGGBB" -> 0xAABBGGRR with alpha FF (what DWM and Explorer keep)
     $r = [Convert]::ToInt64($hex.Substring(1, 2), 16); $g = [Convert]::ToInt64($hex.Substring(3, 2), 16); $b = [Convert]::ToInt64($hex.Substring(5, 2), 16)
@@ -1929,9 +2215,8 @@ try {
         Set-ItemProperty -Path $winlogon -Name DefaultPassword -Value $password
         Set-ItemProperty -Path $winlogon -Name AutoLogonCount -Value 1 -Type DWord
     }
-    $ui.Fill.Width = $ui.Track.Width
     Write-Log 'done'
-    Wait-Seconds 1.5
+    Complete-Steps
     $script:finished = $true
     if ($system) { # Setup goes on and restarts by itself
         $window.Close()

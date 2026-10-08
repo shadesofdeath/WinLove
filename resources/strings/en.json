@@ -1696,6 +1696,10 @@
     "privacyStrictFacts": "Required diagnostics;Advertising ID off;Activity history off;Typing personalization off",
     "stepFinish": "Windows is finishing setup",
     "keepOn": "Don't turn off your PC.",
-    "failedFallback": "Windows will go on with its own account page."
+    "failedFallback": "Windows will go on with its own account page.",
+    "readyHeading": "All set",
+    "readySub": "Windows finishes setup and restarts the PC.",
+    "stepFinishDetail": "Then the PC restarts",
+    "prefsOn": "{n} habits on"
   }
 }

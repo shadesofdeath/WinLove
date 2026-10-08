@@ -1584,6 +1584,7 @@ enum class Str : std::uint16_t {
     WelcomePrefWidgets10,
     WelcomePrefWidgetsDetail,
     WelcomePrefsHeading,
+    WelcomePrefsOn,
     WelcomePrefsSub,
     WelcomePrivacyHeading,
     WelcomePrivacyStrict,
@@ -1592,11 +1593,14 @@ enum class Str : std::uint16_t {
     WelcomePrivacySub,
     WelcomePrivacyWindows,
     WelcomePrivacyWindowsDetail,
+    WelcomeReadyHeading,
+    WelcomeReadySub,
     WelcomeReveal,
     WelcomeStepAccount,
     WelcomeStepCleanup,
     WelcomeStepComputer,
     WelcomeStepFinish,
+    WelcomeStepFinishDetail,
     WelcomeStepLook,
     WelcomeStepPrivacy,
     WelcomeStepRestart,
@@ -1611,7 +1615,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1601;
+inline constexpr std::size_t kStrCount = 1605;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -3190,6 +3194,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "welcome.prefWidgets10",
     "welcome.prefWidgetsDetail",
     "welcome.prefsHeading",
+    "welcome.prefsOn",
     "welcome.prefsSub",
     "welcome.privacyHeading",
     "welcome.privacyStrict",
@@ -3198,11 +3203,14 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "welcome.privacySub",
     "welcome.privacyWindows",
     "welcome.privacyWindowsDetail",
+    "welcome.readyHeading",
+    "welcome.readySub",
     "welcome.reveal",
     "welcome.stepAccount",
     "welcome.stepCleanup",
     "welcome.stepComputer",
     "welcome.stepFinish",
+    "welcome.stepFinishDetail",
     "welcome.stepLook",
     "welcome.stepPrivacy",
     "welcome.stepRestart",
