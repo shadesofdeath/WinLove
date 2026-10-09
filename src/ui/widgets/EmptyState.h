@@ -1,6 +1,7 @@
 #pragma once
 // EmptyState (progress-skeleton-empty.md): centered; icon 24 text.tertiary, 16 gap, bodyStrong
-// title, caption body (text.secondary), 12 gap, optional secondary button. Height <= 140.
+// title, caption body (text.secondary), 12 gap, optional button. D-091: the icon sits on a 56px
+// tile with a soft ring (accent icon), and the action is the page's primary way forward.
 #include "ui/widgets/Button.h"
 
 #include <string>
