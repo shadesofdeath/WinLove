@@ -213,6 +213,13 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
         return changed;
     }
     case OpKind::SetTaskState: return setTaskDisabled(session.mountPath(), op.target, op.value != L"enabled");
+    case OpKind::CreateTask: {
+        auto tasks = createdTasksFromJson(utf8::fromWide(op.value));
+        if (!tasks) {
+            return std::unexpected(tasks.error());
+        }
+        return setCreatedTasks(session.mountPath(), *tasks);
+    }
     case OpKind::SetHosts: return applyHostsSection(session.mountPath(), op.target, op.value);
     case OpKind::SetDns:
         // DNS is a set of registry values of the settings catalog (D-049); the kind is kept

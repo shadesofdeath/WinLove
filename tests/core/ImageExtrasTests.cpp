@@ -79,6 +79,48 @@ TEST_CASE("tasks: paths, the script in the image, and taking a task back") {
     CHECK_FALSE(setTaskDisabled(dir, L"no path", true));
 }
 
+TEST_CASE("created tasks: schtasks line, validation, JSON and the image round-trip (D-102)") {
+    using T = CreatedTask::Trigger;
+    // The command for each trigger shape.
+    CreatedTask weekly{L"Haftalik bakim", T::Weekly, L"03:30", 2 /*Wed*/, L"powershell -NoProfile -File C:\\maint.ps1"};
+    CHECK(createTaskCommand(weekly) ==
+          L"schtasks /Create /TN \"\\WinLove\\Haftalik bakim\" /TR \"powershell -NoProfile -File C:\\maint.ps1\" "
+          L"/SC WEEKLY /ST 03:30 /D WED /RU SYSTEM /RL HIGHEST /F");
+    CreatedTask logon{L"Hos geldin", T::AtLogon, L"", 0, L"cmd /c echo hi"};
+    CHECK(createTaskCommand(logon) ==
+          L"schtasks /Create /TN \"\\WinLove\\Hos geldin\" /TR \"cmd /c echo hi\" /SC ONLOGON /RU SYSTEM /RL HIGHEST /F");
+    // "%" is doubled so batch stores it literally for schtasks.
+    CreatedTask withVar{L"Temizle", T::Daily, L"", 0, L"cmd /c del %TEMP%\\x"};
+    CHECK(createTaskCommand(withVar).find(L"del %%TEMP%%\\x") != std::wstring::npos);
+
+    // Validation.
+    CHECK_FALSE(validCreatedTask(weekly));                                       // good
+    CHECK(validCreatedTask({L"", T::Daily, L"", 0, L"x"}) == CreatedTaskProblem::EmptyName);
+    CHECK(validCreatedTask({L"a\\b", T::Daily, L"", 0, L"x"}) == CreatedTaskProblem::BadName);   // no backslash
+    CHECK(validCreatedTask({L"ok", T::Daily, L"", 0, L""}) == CreatedTaskProblem::EmptyCommand);
+    CHECK(validCreatedTask({L"ok", T::Daily, L"", 0, L"del \"x\""}) == CreatedTaskProblem::BadCommand); // no quote
+    CHECK(validCreatedTask({L"ok", T::Daily, L"24:00", 0, L"x"}) == CreatedTaskProblem::BadTime);
+
+    // JSON round-trip keeps every field.
+    const std::vector<CreatedTask> set{weekly, logon};
+    auto back = createdTasksFromJson(createdTasksToJson(set));
+    REQUIRE(back);
+    CHECK(*back == set);
+
+    // Into the image and back, with the SetupComplete hook; the empty list removes it.
+    const auto dir = image(L"createtasks");
+    REQUIRE(setCreatedTasks(dir, set));
+    CHECK(readCreatedTasks(dir) == set);
+    const std::string script = bytesOf(setupScriptPath(dir, kCreateTasksScript));
+    CHECK(script.find("schtasks /Create /TN \"\\WinLove\\Hos geldin\"") != std::string::npos);
+    const std::string complete = bytesOf(dir / L"Windows" / L"Setup" / L"Scripts" / L"SetupComplete.cmd");
+    CHECK(complete.find("WinLove\\taskcreate.cmd") != std::string::npos);
+    REQUIRE(setCreatedTasks(dir, {}));
+    CHECK_FALSE(std::filesystem::exists(setupScriptPath(dir, kCreateTasksScript)));
+    CHECK_FALSE(std::filesystem::exists(setupScriptPath(dir, kCreateTasksData)));
+    CHECK(readCreatedTasks(dir).empty());
+}
+
 TEST_CASE("hosts: parsing, sections kept apart, the rest of the file untouched") {
     const auto entries = parseHosts(L"# comment\r\n127.0.0.1 localhost\r\n0.0.0.0 Vortex.Data.Microsoft.com  a.example.com # x\r\n"
                                     L"bad line\r\n999.1.1.1 no.example\r\n::1 six.example.com\r\n0.0.0.0 a.example.com\r\n");

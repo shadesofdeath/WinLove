@@ -72,6 +72,7 @@ struct LaunchOptions {
     bool demoRegistryDialog = false; // --demo-registry=dialog: the first value open in "Değeri düzenle"
     bool demoServices = false;   // render: fake mount + sample services (09)
     bool demoTasks = false;      // render: fake mount, two tasks off in the image, the recommended queued (D-048)
+    bool demoTaskCreate = false; // render: the "Görev oluştur" dialog open on the Tasks page (D-102)
     std::optional<std::wstring> demoFiles; // render: fake mount + queued files ("where": the destination dialog) (D-051)
     int demoDownload = -1;     // render: D-093 Windows indir — 0 list, 1 a build picked, 2 downloading, 3 converting
     bool demoHosts = false;    // render: fake mount, telemetry list in the image, ads queued, imported entries (D-049)

@@ -241,6 +241,18 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-102 — Özel zamanlanmış (yinelenen) görev oluşturma (2026-10-09)
+Bağlam: Görevler sayfası yalnız var olan görevleri DEVRE DIŞI bırakıyordu; kullanıcı imaja kendi yinelenen görevini
+(ör. haftalık bakım betiği) ekleyebilmek istedi. Windows'ta böyle bir görev kurulumdan sonra oluşur.
+Karar: Yeni tek-slot ChangeSet op'u `CreateTask` (ScheduledTasks.{h,cpp} genişletildi). SetupComplete.cmd, yeni
+`taskcreate.cmd`'den her görev için `schtasks /Create /TN "\WinLove\<ad>" /TR "<komut>" /SC <ONLOGON|ONSTART|DAILY|
+WEEKLY|HOURLY> [/ST SS:DD] [/D GÜN] /RU SYSTEM /RL HIGHEST /F` çalıştırır; görev listesi `taskcreate.json`'da tutulur (sayfa
+geri okuyabilsin). Devre dışı listesi (tasks.cmd) ayrı kalır. "%" batch için çiftlenir; ad/komutta tırnak yasak
+(validCreatedTask). UI: Görevler'de "Görev oluştur…" başlık eylemi + dialog (Ad, Komut, Tetikleyici, Saat, Gün);
+nav rozeti CreateTask'i de sayar; TaskController created-task listesini kuyrukta yönetir (ekle/kaldır/temizle).
+Doğrulanan: birim testler (satir üretimi, validasyon, JSON + imaj round-trip); gerçek Windows'ta üç örnek
+`schtasks /Create` (Weekly/Logon/Daily, /RU SYSTEM) başarıyla oluşturuldu, sorgulandı, silindi; dialog render'landı.
+
 ## D-101 — İmaj sağlık denetimi ve onarımı (2026-10-09)
 Bağlam: Kullanıcıların getirdiği modlanmış/lite ISO'lar (X-Lite gibi) bozuk olabiliyor; bize açılan imajın bileşen
 deposunun sağlığını denetleyen/onaran bir şey yoktu (yalnız host DISM denetimi + ResetBase vardı). DISM API'nin

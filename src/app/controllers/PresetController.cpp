@@ -1,5 +1,6 @@
 #include "app/controllers/PresetController.h"
 
+#include "core/image/ScheduledTasks.h"
 #include "core/image/dism/Edition.h"
 #include "core/image/icons/IconPatch.h"
 
@@ -257,6 +258,13 @@ std::vector<PresetController::Item> PresetController::items(const Preset& preset
                 for (const auto& step : plan->steps) {
                     result.push_back({kPostSetup, L"step|" + wl::text::lower(step.source),
                                       step.name.empty() ? step.source : step.name, s(stepTypeName(step.type)), {}});
+                }
+            }
+            break;
+        case OpKind::CreateTask: // D-102: one row per created task
+            if (const auto tasks = core::createdTasksFromJson(utf8::fromWide(op.value))) {
+                for (const auto& t : *tasks) {
+                    result.push_back({kTweaks, L"createtask|" + wl::text::lower(t.name), t.name, s(Str::PresetsValueAdd), {}});
                 }
             }
             break;

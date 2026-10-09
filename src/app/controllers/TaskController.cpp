@@ -1,6 +1,7 @@
 #include "app/controllers/TaskController.h"
 
 #include "base/Log.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 #include "core/image/ScheduledTasks.h"
 
@@ -170,8 +171,68 @@ bool TaskController::addCustom(std::wstring_view path) {
     return true;
 }
 
+namespace {
+constexpr wchar_t kCreateSlot[] = L"tasks-create"; // the one CreateTask op's target
+} // namespace
+
+std::vector<core::CreatedTask> TaskController::createdTasks() const {
+    for (const auto& op : m_state.changes().operations()) {
+        if (op.kind == OpKind::CreateTask) {
+            auto parsed = core::createdTasksFromJson(utf8::fromWide(op.value));
+            return parsed ? std::move(*parsed) : std::vector<core::CreatedTask>{};
+        }
+    }
+    if (const auto& mounted = m_state.mounted()) {
+        return core::readCreatedTasks(mounted->mountDir);
+    }
+    return {};
+}
+
+void TaskController::queueCreatedTasks(const std::vector<core::CreatedTask>& tasks) {
+    std::vector<std::pair<OpKind, std::wstring>> slots;
+    for (const auto& op : m_state.changes().operations()) {
+        if (op.kind == OpKind::CreateTask) {
+            slots.emplace_back(op.kind, op.target);
+        }
+    }
+    m_state.unqueueMany(slots);
+    const bool imageHasAny =
+        m_state.mounted() && !core::readCreatedTasks(m_state.mounted()->mountDir).empty();
+    if (tasks.empty() && !imageHasAny) {
+        return; // nothing queued, and the image already creates none
+    }
+    Operation op{OpKind::CreateTask, std::wstring(kCreateSlot), utf8::toWide(core::createdTasksToJson(tasks))};
+    op.risk = Risk::Low;
+    m_state.queue(std::move(op));
+}
+
+std::optional<core::CreatedTaskProblem> TaskController::addCreatedTask(const core::CreatedTask& task) {
+    if (auto problem = core::validCreatedTask(task)) {
+        return problem;
+    }
+    auto list = createdTasks();
+    const auto it = std::ranges::find_if(list, [&](const core::CreatedTask& t) { return text::iequals(t.name, task.name); });
+    if (it != list.end()) {
+        *it = task;
+    } else {
+        list.push_back(task);
+    }
+    queueCreatedTasks(list);
+    return std::nullopt;
+}
+
+void TaskController::removeCreatedTask(std::wstring_view name) {
+    auto list = createdTasks();
+    std::erase_if(list, [&](const core::CreatedTask& t) { return text::iequals(t.name, name); });
+    queueCreatedTasks(list);
+}
+
+void TaskController::clearCreatedTasks() {
+    queueCreatedTasks({});
+}
+
 int TaskController::changedCount() const {
-    return static_cast<int>(m_state.changes().count(OpKind::SetTaskState));
+    return static_cast<int>(m_state.changes().count(OpKind::SetTaskState) + m_state.changes().count(OpKind::CreateTask));
 }
 
 } // namespace wl::app

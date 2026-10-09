@@ -6,7 +6,9 @@
 // the catalog's ("Özel").
 #include "app/catalog/ImageSettingsCatalog.h"
 #include "app/state/AppState.h"
+#include "core/image/ScheduledTasks.h"
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -46,7 +48,19 @@ public:
     int applyRecommended();
     // Queues a task by path (off). False: not a task path.
     bool addCustom(std::wstring_view path);
-    [[nodiscard]] int changedCount() const; // nav badge: SetTaskState operations
+
+    // ---- D-102: custom recurring tasks the image creates after setup (one CreateTask op) --------
+    // Queued tasks, or — nothing queued — what the image already creates (an earlier run).
+    [[nodiscard]] std::vector<core::CreatedTask> createdTasks() const;
+    // Validates and queues the task (replacing one with the same name); nullopt on success.
+    [[nodiscard]] std::optional<core::CreatedTaskProblem> addCreatedTask(const core::CreatedTask& task);
+    void removeCreatedTask(std::wstring_view name);
+    void clearCreatedTasks();
+
+    [[nodiscard]] int changedCount() const; // nav badge: SetTaskState + CreateTask operations
+
+private:
+    void queueCreatedTasks(const std::vector<core::CreatedTask>& tasks);
 
 private:
     AppState& m_state;

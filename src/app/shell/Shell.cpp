@@ -953,6 +953,85 @@ void Shell::addTaskDialog() {
     host()->pushModal(std::move(dialog), &path);
 }
 
+void Shell::createTaskDialog() {
+    if (!host()) {
+        return;
+    }
+    if (!requireMount(Str::TasksNoMountTitle, Str::TasksNoMountBody)) {
+        return;
+    }
+    // The already-queued tasks, listed in the body so the dialog shows what is set (and can clear it).
+    const auto existing = m_tasks->createdTasks();
+    std::wstring body = m_strings.get(Str::TasksCreateBody);
+    if (!existing.empty()) {
+        std::wstring names;
+        for (const auto& t : existing) {
+            names += (names.empty() ? L"" : L", ") + t.name;
+        }
+        body += L"\n" + m_strings.format(Str::TasksCreateExisting, {{L"list", names}});
+    }
+    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::TasksCreateTitle), body, ui::icons::Icon::QueueClock,
+                                               ui::tokens::Color::TextSecondary, 560.0f);
+    ui::Dialog* raw = dialog.get();
+    auto& form = raw->setContent<ui::FormView>(ui::FormView::kRow * 5, 120.0f);
+    auto& name = form.addRow<ui::SearchBox>(m_strings.get(Str::TasksCreateName), std::wstring(), 400.0f, std::wstring());
+    name.setPlain(true);
+    auto& command = form.addRow<ui::SearchBox>(m_strings.get(Str::TasksCreateCommand), std::wstring(), 400.0f, std::wstring());
+    command.setPlain(true);
+    std::vector<std::wstring> triggers{m_strings.get(Str::TasksTrigLogon), m_strings.get(Str::TasksTrigStartup),
+                                       m_strings.get(Str::TasksTrigDaily), m_strings.get(Str::TasksTrigWeekly),
+                                       m_strings.get(Str::TasksTrigHourly)};
+    auto& trigger = form.addRow<ui::Dropdown>(m_strings.get(Str::TasksCreateTrigger), std::wstring(), 260.0f,
+                                              std::wstring(), std::move(triggers), 2 /*Daily*/);
+    auto& time = form.addRow<ui::SearchBox>(m_strings.get(Str::TasksCreateTime), std::wstring(), 160.0f, std::wstring());
+    time.setPlain(true);
+    time.setText(L"09:00");
+    std::vector<std::wstring> days;
+    {
+        const std::wstring all = m_strings.get(Str::TasksCreateDays);
+        std::size_t at = 0;
+        while (at <= all.size()) {
+            const std::size_t comma = std::min(all.find(L',', at), all.size());
+            days.push_back(all.substr(at, comma - at));
+            at = comma + 1;
+        }
+    }
+    auto& weekday = form.addRow<ui::Dropdown>(m_strings.get(Str::TasksCreateDay), std::wstring(), 200.0f, std::wstring(),
+                                              std::move(days), 0);
+    auto create = [this, raw, &name, &command, &trigger, &time, &weekday] {
+        core::CreatedTask task;
+        task.name = name.text();
+        task.command = command.text();
+        task.trigger = static_cast<core::CreatedTask::Trigger>(std::clamp(trigger.selected(), 0, 4));
+        task.time = time.text();
+        task.weekday = std::clamp(weekday.selected(), 0, 6);
+        if (auto problem = m_tasks->addCreatedTask(task)) {
+            const Str why = *problem == core::CreatedTaskProblem::BadTime      ? Str::TasksCreateBadTime
+                            : (*problem == core::CreatedTaskProblem::EmptyCommand ||
+                               *problem == core::CreatedTaskProblem::BadCommand)  ? Str::TasksCreateBadCommand
+                                                                                  : Str::TasksCreateBadName;
+            showToast(ui::InfoKind::Warning, m_strings.get(Str::TasksCreateInvalid), m_strings.get(why));
+            return;
+        }
+        const std::wstring created = task.name;
+        host()->popModal(raw); // the fields are gone from here on
+        showToast(ui::InfoKind::Success, m_strings.format(Str::TasksCreateQueued, {{L"name", created}}), L"");
+    };
+    name.onSubmit = create;
+    command.onSubmit = create;
+    raw->onCancel = closer(raw);
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
+    if (!existing.empty()) {
+        raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::TasksCreateClear), [this, raw] {
+            m_tasks->clearCreatedTasks();
+            host()->popModal(raw);
+            showToast(ui::InfoKind::Success, m_strings.get(Str::TasksCreateCleared), L"");
+        });
+    }
+    raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::TasksCreateDo), create, /*primary=*/true);
+    host()->pushModal(std::move(dialog), &name);
+}
+
 void Shell::addFonts(std::vector<std::filesystem::path> files) {
     if (files.empty()) {
         return;
@@ -2038,6 +2117,8 @@ void Shell::showPage(PageId page) {
                                         {{m_strings.get(Str::TweaksJpegFiles), L"*.jpg;*.jpeg"}});
                 });
         } else if (page == PageId::Tasks) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TasksCreateAction), ui::icons::Icon::QueueClock)
+                .onInvoke = [this] { createTaskDialog(); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TasksAdd), ui::icons::Icon::Add).onInvoke =
                 [this] { addTaskDialog(); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TasksApplyRecommended)).onInvoke = [this] {

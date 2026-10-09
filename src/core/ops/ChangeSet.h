@@ -51,6 +51,8 @@ enum class OpKind : std::uint8_t {
     PatchIcons,            // icons inside a Windows file: target = its path from the image root, value = JSON (IconPatch.h)
     // 2026-10-07 (D-079):
     ShrinkStore,           // WinSxS at its smallest, irreversible: target "component-store-shrink" (one slot), value = JSON (StoreShrink.h)
+    // 2026-10-09 (D-102):
+    CreateTask,            // custom recurring tasks created after setup: target "tasks-create" (one slot), value = JSON (ScheduledTasks.h)
 };
 
 enum class Risk : std::uint8_t { Low, Medium, High };
