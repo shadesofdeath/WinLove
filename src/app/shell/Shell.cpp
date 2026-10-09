@@ -1983,6 +1983,18 @@ void Shell::showPage(PageId page) {
             m_pageBody = &m_pageView->setBody<StartMenuPage>(m_state, *m_startPins, *m_taskbarPins, *m_imageSettings, m_strings, m_language,
                                                              [this] { showPage(PageId::Images); });
         } else if (page == PageId::Tweaks) {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TweaksFromThisPc), ui::icons::Icon::Download)
+                .onInvoke = [this] {
+                    if (!requireMount(Str::TweaksNoMountTitle, Str::TweaksNoMountBody)) {
+                        return;
+                    }
+                    const int changed = m_imageSettings->takeFromThisPc();
+                    if (changed > 0) {
+                        showUndoToast(m_strings.format(Str::TweaksFromThisPcDone, {{L"n", std::to_wstring(changed)}}), L"");
+                    } else {
+                        showToast(ui::InfoKind::Info, m_strings.get(Str::TweaksFromThisPcNone), L"");
+                    }
+                };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TweaksApplyRecommended)).onInvoke = [this] {
                 if (!requireMount(Str::TweaksNoMountTitle, Str::TweaksNoMountBody)) {
                     return;

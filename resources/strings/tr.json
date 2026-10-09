@@ -681,7 +681,10 @@
     "recommendedNone": "Önerilen ayarların hepsi zaten seçili",
     "inImage": "imajda",
     "noRevert": "burada geri alınamaz",
-    "pagefileProblem": "Biçim: sürücü ve iki boyut (MB), ör. \"D: 4096 8192\" ya da yalnız \"D:\""
+    "pagefileProblem": "Biçim: sürücü ve iki boyut (MB), ör. \"D: 4096 8192\" ya da yalnız \"D:\"",
+    "fromThisPc": "Bu bilgisayardan al",
+    "fromThisPcDone": "{n} ayar bu bilgisayardaki gibi ayarlandı",
+    "fromThisPcNone": "Bu bilgisayarın ayarları imajdakilerle zaten aynı"
   },
   "unattended": {
     "title": "Katılımsız Kurulum",

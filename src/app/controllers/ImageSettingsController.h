@@ -36,6 +36,11 @@ public:
     // "Önerilenleri uygula": every setting with a recommended option, as one queue edit.
     // Returns how many settings changed.
     int applyRecommended();
+    // D-095: the option this PC itself has (its own registry; settings with services or files, and
+    // options made only of deletions, are not judged: the default comes back).
+    [[nodiscard]] int thisPcOption(const ImageSetting& setting) const;
+    // "Bu bilgisayardan al": every setting to what this PC has, as one queue edit; how many changed.
+    int takeFromThisPc();
     [[nodiscard]] int changedCount() const; // nav badge: settings Uygula will change
 
     // Text and file settings: what the user typed / picked; empty = the Windows default.

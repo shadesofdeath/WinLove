@@ -681,7 +681,10 @@
     "recommendedNone": "Every recommended setting is already selected",
     "inImage": "in the image",
     "noRevert": "cannot be undone here",
-    "pagefileProblem": "Format: a drive and two sizes (MB), e.g. \"D: 4096 8192\", or \"D:\" alone"
+    "pagefileProblem": "Format: a drive and two sizes (MB), e.g. \"D: 4096 8192\", or \"D:\" alone",
+    "fromThisPc": "Take from this PC",
+    "fromThisPcDone": "{n} settings set the way this PC has them",
+    "fromThisPcNone": "This PC's settings are the image's already"
   },
   "unattended": {
     "title": "Unattended Setup",

@@ -173,6 +173,69 @@ Result<bool> OfflineRegistryReader::keyExists(std::wstring_view key) {
     return *opened != nullptr;
 }
 
+namespace {
+
+// "HKLM\Software\X" → the open root and "Software\X"; nullptr for a root this PC has no handle for.
+HKEY liveRoot(std::wstring_view key, std::wstring& rest) {
+    const auto slash = key.find(L'\\');
+    const std::wstring root(key.substr(0, slash));
+    rest = slash == std::wstring_view::npos ? std::wstring() : std::wstring(key.substr(slash + 1));
+    if (root == L"HKLM") return HKEY_LOCAL_MACHINE;
+    if (root == L"HKCU") return HKEY_CURRENT_USER;
+    if (root == L"HKU") return HKEY_USERS;
+    if (root == L"HKCR") return HKEY_CLASSES_ROOT;
+    if (root == L"HKCC") return HKEY_CURRENT_CONFIG;
+    return nullptr;
+}
+
+} // namespace
+
+bool liveRegistryHolds(const RegistryWrite& write) {
+    std::wstring path;
+    const HKEY root = liveRoot(normalizeRegistryKey(write.key), path);
+    if (!root) {
+        return false;
+    }
+    HKEY key = nullptr;
+    const bool exists = RegOpenKeyExW(root, path.c_str(), 0, KEY_READ | KEY_WOW64_64KEY, &key) == ERROR_SUCCESS;
+    auto close = [&] {
+        if (key) {
+            RegCloseKey(key);
+        }
+    };
+    switch (write.kind) {
+    case RegistryWrite::Kind::CreateKey: close(); return exists;
+    case RegistryWrite::Kind::DeleteKey: close(); return !exists;
+    case RegistryWrite::Kind::DeleteValue: {
+        const bool has = exists && RegQueryValueExW(key, write.name.empty() ? nullptr : write.name.c_str(), nullptr, nullptr,
+                                                    nullptr, nullptr) == ERROR_SUCCESS;
+        close();
+        return !has;
+    }
+    case RegistryWrite::Kind::Set: {
+        if (!exists) {
+            return false;
+        }
+        DWORD type = 0;
+        DWORD bytes = 0;
+        const wchar_t* name = write.name.empty() ? nullptr : write.name.c_str();
+        if (RegQueryValueExW(key, name, nullptr, &type, nullptr, &bytes) != ERROR_SUCCESS) {
+            close();
+            return false;
+        }
+        RegistryData data;
+        data.type = type;
+        data.data.resize(bytes);
+        const bool read = RegQueryValueExW(key, name, nullptr, &type, data.data.data(), &bytes) == ERROR_SUCCESS;
+        close();
+        data.data.resize(bytes);
+        return read && sameRegistryData(write, data);
+    }
+    }
+    close();
+    return false;
+}
+
 Result<bool> OfflineRegistryReader::holds(const RegistryWrite& write) {
     if (isPostSetupOnlyKey(write.key)) {
         return false;
