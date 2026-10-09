@@ -237,6 +237,11 @@ SettingsPage::~SettingsPage() {
     m_state.unsubscribe(m_subscription);
 }
 
+bool SettingsPage::occupiedFolder(const std::filesystem::path& folder) {
+    std::error_code ec;
+    return !folder.empty() && std::filesystem::is_directory(folder, ec) && !std::filesystem::is_empty(folder, ec);
+}
+
 bool SettingsPage::foldersLocked() const {
     return m_state.mounted().has_value() || (m_intents.busy && m_intents.busy());
 }
@@ -256,6 +261,10 @@ void SettingsPage::commitFolder(PathField& field, std::filesystem::path AppSetti
     const std::filesystem::path path = field.text();
     if (path.empty() ? !allowEmpty : !path.is_absolute()) {
         sync(); // the hint says what is wrong; nothing is saved
+        return;
+    }
+    if (member == &AppSettings::mountFolder && occupiedFolder(path)) {
+        sync(); // a mount folder with someone's files in it: never (MountHealth.h, Foreign)
         return;
     }
     edit([&](AppSettings& a) { a.*member = path.empty() ? path : path.lexically_normal(); });
@@ -300,6 +309,9 @@ void SettingsPage::sync() {
             m_form->setHint(field, s(Str::SettingsLockedHint));
         } else if (typed.empty() ? !allowEmpty : !typed.is_absolute()) {
             m_form->setHint(field, s(Str::SettingsPathInvalid), Color::StatusError);
+        } else if (&field == m_mount && (typed.empty() ? typed : typed.lexically_normal()) != saved &&
+                   occupiedFolder(typed)) {
+            m_form->setHint(field, s(Str::SettingsMountNotEmpty), Color::StatusError);
         } else if ((typed.empty() ? typed : typed.lexically_normal()) != saved) {
             m_form->setHint(field, s(Str::SettingsPressEnter));
         } else {

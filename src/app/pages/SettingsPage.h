@@ -33,6 +33,8 @@ public:
     void resetToDefaults();
     // True while the work folders must stay as they are (mounted image / running job).
     [[nodiscard]] bool foldersLocked() const;
+    // A folder that exists and has something in it: never a mount folder (DISM needs it empty).
+    [[nodiscard]] static bool occupiedFolder(const std::filesystem::path& folder);
 
     void layout() override;
 

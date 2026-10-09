@@ -17,7 +17,8 @@ enum class MountState : std::uint8_t {
     NeedsRemount, // DISM "needs remount" (after a reboot the WIM filter is detached)
     Invalid,      // DISM "invalid": nothing can be committed
     ImageMissing, // DISM record but the WIM file is gone: commit impossible
-    Orphaned,     // files in the folder but no DISM record (interrupted mount/unmount)
+    Orphaned,     // image leftovers in the folder but no DISM record (interrupted mount/unmount)
+    Foreign,      // no DISM record and files that are not an image: someone's data, never cleared
 };
 [[nodiscard]] const wchar_t* mountStateName(MountState state) noexcept;
 
@@ -31,9 +32,15 @@ enum class MountAction : std::uint8_t {
 [[nodiscard]] MountAction recommendedAction(MountState state) noexcept;
 
 // Pure classification (unit-tested): DISM record for the folder, does its WIM exist, does the
-// folder contain anything.
+// folder contain anything, and is that only what an image leaves behind (looksLikeImageLeftovers).
 [[nodiscard]] MountState classifyMount(const std::optional<MountInfo>& record, bool imageExists,
-                                       bool folderHasEntries) noexcept;
+                                       bool folderHasEntries, bool leftoversOfImage) noexcept;
+
+// True when what sits directly in `folder` can only be what a mounted image leaves behind: a
+// Windows\System32 folder, or only names an image root has (Windows, Users, Program Files, sources…).
+// Anything else (a user's documents in a folder picked as the mount folder) is never deleted.
+[[nodiscard]] bool imageRootName(std::wstring_view name) noexcept;
+[[nodiscard]] bool looksLikeImageLeftovers(const std::filesystem::path& folder);
 
 struct MountCheck {
     std::filesystem::path folder;

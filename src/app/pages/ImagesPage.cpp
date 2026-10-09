@@ -124,6 +124,7 @@ Str ImagesPage::folderStateText(core::MountState state) noexcept {
     case core::MountState::Invalid: return Str::ImagesFolderInvalid;
     case core::MountState::ImageMissing: return Str::ImagesFolderImageMissing;
     case core::MountState::Orphaned: return Str::ImagesFolderOrphaned;
+    case core::MountState::Foreign: return Str::ImagesFolderForeign;
     }
     return Str::ImagesFolderInvalid;
 }
@@ -164,7 +165,9 @@ void ImagesPage::updateFolderBar() {
         layout();
         return;
     }
-    std::wstring body = m_strings.get(remedyText(folder->state == core::MountState::NeedsRemount
+    // Someone's files in the mount folder: WinLove never clears them, there is nothing to repair.
+    const bool foreign = folder->state == core::MountState::Foreign;
+    std::wstring body = foreign ? std::wstring() : m_strings.get(remedyText(folder->state == core::MountState::NeedsRemount
                                                      ? core::Remedy::Remount
                                                  : folder->state == core::MountState::Ok ? core::Remedy::UnmountFirst
                                                                                          : core::Remedy::RepairFolder));
@@ -179,7 +182,7 @@ void ImagesPage::updateFolderBar() {
     m_folder->set(ui::InfoKind::Warning,
                   m_strings.format(Str::ImagesFolderTitle, {{L"state", m_strings.get(folderStateText(folder->state))}}),
                   body);
-    if (folder->state != core::MountState::Ok) {
+    if (folder->state != core::MountState::Ok && !foreign) {
         m_folder->setAction(m_strings.get(Str::ImagesFolderRepair), [this] {
             m_folder->setVisible(false);
             m_controller.cleanupMounts();

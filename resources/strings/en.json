@@ -144,6 +144,7 @@
     "mountedInvalid": "Broken — unmount it",
     "mountedMissing": "WIM file missing",
     "mountedOrphan": "Leftovers",
+    "mountedForeign": "Not an image (left alone)",
     "mountedInUse": "Open in WinLove",
     "mountedBusy": "Save or discard the image open in WinLove first",
     "mountedReading": "Reading the mounted images…",
@@ -251,6 +252,7 @@
     "folderInvalid": "invalid",
     "folderImageMissing": "WIM file missing",
     "folderOrphaned": "left over (stale files)",
+    "folderForeign": "holds files that are not an image — not deleted; choose an empty folder in Settings",
     "folderFound": "Mounted image found: {edition} (index {index})",
     "folderContinue": "Continue",
     "rename": "Rename…",
@@ -1043,6 +1045,7 @@
     "lockedHint": "Cannot change while an image is mounted or a job is running",
     "pathInvalid": "A full path is needed (e.g. D:\\WinLove)",
     "pressEnter": "Press Enter to apply",
+    "mountNotEmpty": "The mount folder must be empty",
     "resetDone": "Settings are back to the defaults",
     "dismAdk": "Windows ADK"
   },
