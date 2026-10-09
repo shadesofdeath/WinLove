@@ -112,7 +112,9 @@ function Add-SetupAccount($account) {
         $shell = New-Component 'Microsoft-Windows-Shell-Setup'
         [void] $settings.AppendChild($shell)
     }
-    foreach ($old in 'AutoLogon', 'UserAccounts', 'TimeZone') {
+    # The file's other accounts and the built-in Administrator's password stay: only the automatic
+    # sign-in and the time zone are the welcome's (removing all of UserAccounts dropped both, audit B1).
+    foreach ($old in 'AutoLogon', 'TimeZone') {
         $node = $shell.SelectSingleNode("u:$old", $ns)
         if ($node) { [void] $shell.RemoveChild($node) }
     }
@@ -127,7 +129,14 @@ function Add-SetupAccount($account) {
     [void] (Add-Node $pw 'Value' $account.password); [void] (Add-Node $pw 'PlainText' 'true')
     [void] (Add-Node $logon 'Enabled' 'true'); [void] (Add-Node $logon 'LogonCount' '1'); [void] (Add-Node $logon 'Username' $account.name)
     [void] $shell.PrependChild($logon)
-    $locals = Add-Node (Add-Node $shell 'UserAccounts') 'LocalAccounts'
+    $accounts = $shell.SelectSingleNode('u:UserAccounts', $ns)
+    if (-not $accounts) { $accounts = Add-Node $shell 'UserAccounts' }
+    $locals = $accounts.SelectSingleNode('u:LocalAccounts', $ns)
+    if (-not $locals) { $locals = Add-Node $accounts 'LocalAccounts' } # after AdministratorPassword, as the schema has it
+    foreach ($same in @($locals.SelectNodes('u:LocalAccount', $ns))) {
+        $name = $same.SelectSingleNode('u:Name', $ns)
+        if ($name -and $name.InnerText -eq $account.name) { [void] $locals.RemoveChild($same) } # the welcome's answer wins
+    }
     $local = $doc.CreateElement('LocalAccount', $uri)
     $action = $doc.CreateAttribute('wcm', 'action', 'http://schemas.microsoft.com/WMIConfig/2002/State')
     $action.Value = 'add'

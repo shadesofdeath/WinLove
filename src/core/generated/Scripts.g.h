@@ -122,7 +122,9 @@ function Add-SetupAccount($account) {
         $shell = New-Component 'Microsoft-Windows-Shell-Setup'
         [void] $settings.AppendChild($shell)
     }
-    foreach ($old in 'AutoLogon', 'UserAccounts', 'TimeZone') {
+    # The file's other accounts and the built-in Administrator's password stay: only the automatic
+    # sign-in and the time zone are the welcome's (removing all of UserAccounts dropped both, audit B1).
+    foreach ($old in 'AutoLogon', 'TimeZone') {
         $node = $shell.SelectSingleNode("u:$old", $ns)
         if ($node) { [void] $shell.RemoveChild($node) }
     }
@@ -137,7 +139,14 @@ function Add-SetupAccount($account) {
     [void] (Add-Node $pw 'Value' $account.password); [void] (Add-Node $pw 'PlainText' 'true')
     [void] (Add-Node $logon 'Enabled' 'true'); [void] (Add-Node $logon 'LogonCount' '1'); [void] (Add-Node $logon 'Username' $account.name)
     [void] $shell.PrependChild($logon)
-    $locals = Add-Node (Add-Node $shell 'UserAccounts') 'LocalAccounts'
+    $accounts = $shell.SelectSingleNode('u:UserAccounts', $ns)
+    if (-not $accounts) { $accounts = Add-Node $shell 'UserAccounts' }
+    $locals = $accounts.SelectSingleNode('u:LocalAccounts', $ns)
+    if (-not $locals) { $locals = Add-Node $accounts 'LocalAccounts' } # after AdministratorPassword, as the schema has it
+    foreach ($same in @($locals.SelectNodes('u:LocalAccount', $ns))) {
+        $name = $same.SelectSingleNode('u:Name', $ns)
+        if ($name -and $name.InnerText -eq $account.name) { [void] $locals.RemoveChild($same) } # the welcome's answer wins
+    }
     $local = $doc.CreateElement('LocalAccount', $uri)
     $action = $doc.CreateAttribute('wcm', 'action', 'http://schemas.microsoft.com/WMIConfig/2002/State')
     $action.Value = 'add'
@@ -188,7 +197,8 @@ function Start-NameWatcher([string] $computer) {
 }
 # The tasks here run on battery too: by default Windows holds a task until the charger is in (and the
 # password below would stay in the registry on a laptop).
-function New-TaskSettings { return New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries }
+function New-TaskSe)wlps"
+    R"wlps(ttings { return New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries }
 # The new account's first sign-in: a task, as SYSTEM, takes out the password Windows keeps for the
 # automatic sign-in (VM, 26200: AutoLogonCount 0, DefaultPassword still there in plain text).
 function Register-SignInTasks([string] $name) {
@@ -197,8 +207,7 @@ function Register-SignInTasks([string] $name) {
         '$winlogon = ''HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon''',
         'Remove-ItemProperty -Path $winlogon -Name DefaultPassword -ErrorAction SilentlyContinue',
         'Remove-ItemProperty -Path $winlogon -Name AutoLogonCount -ErrorAction SilentlyContinue',
-)wlps"
-    R"wlps(        'Set-ItemProperty -Path $winlogon -Name AutoAdminLogon -Value ''0''',
+        'Set-ItemProperty -Path $winlogon -Name AutoAdminLogon -Value ''0''',
         ('Remove-Item -LiteralPath ''{0}'' -Force -ErrorAction SilentlyContinue' -f (Join-Path $here 'oobe.json')),
         # Setup's copy of the answer file held the password (inside Setup it came through there)
         ('Remove-Item -LiteralPath ''{0}'' -Force -ErrorAction SilentlyContinue' -f (Join-Path $env:WINDIR 'Panther\unattend.xml')),
@@ -374,14 +383,14 @@ function Get-WifiProfile($net, [string] $key, [bool] $autoConnect) {
     $name = [System.Security.SecurityElement]::Escape($net.Ssid)
     $shared = ''
     if ($auth -in 'WPAPSK', 'WPA2PSK', 'WPA3SAE') {
-        $type = if ($key -match '^[0-9A-Fa-f]{64}$') { 'networkKey' } else { 'passPhrase' }
+        $type =)wlps"
+    R"wlps( if ($key -match '^[0-9A-Fa-f]{64}$') { 'networkKey' } else { 'passPhrase' }
         $shared = '<sharedKey><keyType>{0}</keyType><protected>false</protected><keyMaterial>{1}</keyMaterial></sharedKey>' -f $type, [System.Security.SecurityElement]::Escape($key)
     }
     return ('<?xml version="1.0"?><WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1"><name>{0}</name>' +
             '<SSIDConfig><SSID><hex>{1}</hex><name>{0}</name></SSID></SSIDConfig><connectionType>ESS</connectionType>' +
             '<connectionMode>{2}</connectionMode><MSM><security><authEncryption><authentication>{3}</authentication>' +
-            '<encryption>{4}</encryption><useOneX>false</use)wlps"
-    R"wlps(OneX></authEncryption>{5}</security></MSM></WLANProfile>') -f
+            '<encryption>{4}</encryption><useOneX>false</useOneX></authEncryption>{5}</security></MSM></WLANProfile>') -f
            $name, $hex, $(if ($autoConnect) { 'auto' } else { 'manual' }), $auth, $cipher, $shared
 }
 function Test-Wired {
@@ -554,7 +563,8 @@ $xaml = @'
             <DoubleAnimation Storyboard.TargetName="F" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="1" Duration="0:0:0.26">
               <DoubleAnimation.EasingFunction><ExponentialEase Exponent="5" EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
             </DoubleAnimation>
-          </Storyboard></BeginStoryboard></Trigger.EnterActions>
+          </Storyboard></BeginStoryboard></Trigger)wlps"
+    R"wlps(.EnterActions>
           <Trigger.ExitActions><BeginStoryboard><Storyboard>
             <DoubleAnimation Storyboard.TargetName="F" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="0" Duration="0:0:0.16"/>
           </Storyboard></BeginStoryboard></Trigger.ExitActions>
@@ -566,8 +576,7 @@ $xaml = @'
       <Setter Property="Template" Value="{StaticResource FieldFrame}"/>
     </Style>
     <Style TargetType="PasswordBox" BasedOn="{StaticResource Field}">
-      <Setter Property)wlps"
-    R"wlps(="CaretBrush" Value="{DynamicResource Text1}"/>
+      <Setter Property="CaretBrush" Value="{DynamicResource Text1}"/>
       <Setter Property="Template" Value="{StaticResource FieldFrame}"/>
     </Style>
     <Style x:Key="Label" TargetType="TextBlock">
@@ -706,7 +715,8 @@ $xaml = @'
         </Setter.Value>
       </Setter>
     </Style>
-    <Style x:Key="CardBox" TargetType="Border">
+    <Style x:Key="CardBo)wlps"
+    R"wlps(x" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource Row}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource RowLine}"/>
       <Setter Property="BorderThickness" Value="1"/>
@@ -719,8 +729,7 @@ $xaml = @'
     </Style>
   </Window.Resources>
   <!-- the background here too: the theme crossfade's picture of the window holds it -->
-  <Grid Background="{DynamicR)wlps"
-    R"wlps(esource Bg}">
+  <Grid Background="{DynamicResource Bg}">
     <!-- Windows' bloom: soft colour clouds, drawn for 1280x800 and filling any screen. -->
     <Viewbox Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center">
       <Canvas Width="1280" Height="800" ClipToBounds="True">
@@ -845,7 +854,8 @@ $xaml = @'
                 <StackPanel>
                   <Border Height="30" Background="{DynamicResource Fill}" BorderBrush="{DynamicResource RowLine}" BorderThickness="0,0,0,1" CornerRadius="8,8,0,0">
                     <StackPanel Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
-                      <Viewbox Width="14" Height="14"><Path Data="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" Stroke="{DynamicResource Text2}" StrokeThickness="1.8" Width="24" Height="24"/></Viewbox>
+                      <Viewbox Width="14" Height="14"><Path Data="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5)wlps"
+    R"wlps(a2 2 0 0 1-2-2z" Stroke="{DynamicResource Text2}" StrokeThickness="1.8" Width="24" Height="24"/></Viewbox>
                       <TextBlock x:Name="ExPlace" Margin="8,0,0,0" FontSize="12" Foreground="{DynamicResource Text2}"/>
                     </StackPanel>
                   </Border>
@@ -853,8 +863,7 @@ $xaml = @'
                   <Border Height="32" Background="{DynamicResource Fill}" BorderBrush="{DynamicResource RowLine}" BorderThickness="0,1,0,0" CornerRadius="0,0,8,8">
                     <StackPanel x:Name="ExBar" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                   </Border>
-                </St)wlps"
-    R"wlps(ackPanel>
+                </StackPanel>
               </Border>
 
               <Grid x:Name="ArtPrivacy" Visibility="Collapsed">
@@ -1005,13 +1014,13 @@ $window = [Windows.Markup.XamlReader]::Parse($xaml)
 $ui = @{}
 foreach ($name in 'Stage', 'CardFace', 'ArtNetwork', 'NetBadge', 'ArtAccount', 'ArtName', 'ArtRole', 'ArtChip', 'ArtLock', 'ArtPc',
                   'ArtClock', 'ArtDate', 'ArtPcName', 'ArtZone', 'ArtLook', 'MiniWall', 'MiniApp', 'MiniTitle', 'MiniLine0',
-                  'MiniLine1', 'MiniLine2', 'MiniLine3', 'MiniBar', 'MiniIcons', 'MiniIcon1', 'MiniIcon2', 'MiniIcon3', 'ArtPrefs',
+        )wlps"
+    R"wlps(          'MiniLine1', 'MiniLine2', 'MiniLine3', 'MiniBar', 'MiniIcons', 'MiniIcon1', 'MiniIcon2', 'MiniIcon3', 'ArtPrefs',
                   'ExPlace', 'ExFiles', 'ExBar', 'ArtPrivacy', 'Orbs', 'Back', 'Steps', 'StepCount', 'Heading', 'Sub', 'Body',
                   'PageNetwork', 'NetHead', 'NetRefresh', 'NetList', 'NetState', 'PageAccount', 'NameLabel', 'UserName', 'PassLabel',
                   'Pass', 'PassShown', 'Reveal', 'Pass2Label', 'Pass2', 'PagePc', 'PcLabel', 'PcName', 'PcHint', 'ZoneLabel', 'Zone',
                   'PageLook', 'ThemeLabel', 'Themes', 'AccentLabel', 'Accents', 'TaskbarBox', 'TaskbarLabel', 'Aligns', 'Glass',
-                  'GlassLabel', 'PagePrefs', )wlps"
-    R"wlps('PagePrivacy', 'Error', 'Skip', 'Next', 'Busy', 'BusyBody', 'Ring', 'RingDone', 'BusyHeading',
+                  'GlassLabel', 'PagePrefs', 'PagePrivacy', 'Error', 'Skip', 'Next', 'Busy', 'BusyBody', 'Ring', 'RingDone', 'BusyHeading',
                   'ReadyHeading', 'BusySub', 'ReadySub', 'BusySteps', 'Track', 'Fill', 'Status', 'KeepOn', 'Snap', 'Dark') {
     $ui[$name] = $window.FindName($name)
 }
@@ -1203,7 +1212,8 @@ foreach ($entry in $data.themes) {
     $isLight = [string] $entry.id -eq 'light'
     $tile = New-Object System.Windows.Controls.Border
     $tile.CornerRadius = 7; $tile.Padding = '4,4,4,6'; $tile.Margin = '0,0,12,0'; $tile.BorderThickness = 2; $tile.Cursor = 'Hand'
-    $tile.Tag = [string] $entry.id; $tile.Background = [System.Windows.Media.Brushes]::Transparent
+    $tile.Tag = [string] $entry.id; $t)wlps"
+    R"wlps(ile.Background = [System.Windows.Media.Brushes]::Transparent
     $grid = New-Object System.Windows.Controls.Grid
     $stack = New-Object System.Windows.Controls.StackPanel
     $mini = New-Object System.Windows.Controls.Grid
@@ -1212,8 +1222,7 @@ foreach ($entry in $data.themes) {
     $wall.CornerRadius = 4; $wall.BorderThickness = 1; Set-Res $wall ([System.Windows.Controls.Border]::BorderBrushProperty) 'RowLine'
     $wall.Background = $(if ($isLight) { New-Slope '#E2EBF8' '#C9D9F3' '#A9C3EE' } else { New-Slope '#22355F' '#16264C' '#08102A' })
     [void] $mini.Children.Add($wall)
-    $win = New-Object System.Windows.Cont)wlps"
-    R"wlps(rols.Border
+    $win = New-Object System.Windows.Controls.Border
     $win.Width = 90; $win.Height = 50; $win.CornerRadius = 3; $win.Margin = '30,16,0,0'; $win.HorizontalAlignment = 'Left'; $win.VerticalAlignment = 'Top'
     $win.Background = $brush.ConvertFromString($(if ($isLight) { '#FBFBFB' } else { '#2B2B2B' }))
     [void] $mini.Children.Add($win)
@@ -1395,7 +1404,8 @@ $ui.Zone.Add_SelectionChanged({ Update-Art })
 
 # Selection marks in the current colours.
 function Show-Choices {
-    foreach ($tile in $ui.Themes.Children) {
+    foreac)wlps"
+    R"wlps(h ($tile in $ui.Themes.Children) {
         $on = [string] $tile.Tag -eq $script:theme
         if ($on) { Set-Res $tile ([System.Windows.Controls.Border]::BorderBrushProperty) 'Sel' } else { $tile.BorderBrush = [System.Windows.Media.Brushes]::Transparent }
         $badge = $tile.Child.Children[1]
@@ -1405,8 +1415,7 @@ function Show-Choices {
     }
     foreach ($ring in $ui.Accents.Children) {
         $on = ([string] $ring.Tag).ToLower() -eq $script:accent.ToLower()
-        if ($on) { Set-Res $ring ([System.Windows.Controls.Border]::BorderBrushProperty) 'Text1' })wlps"
-    R"wlps( else { $ring.BorderBrush = [System.Windows.Media.Brushes]::Transparent }
+        if ($on) { Set-Res $ring ([System.Windows.Controls.Border]::BorderBrushProperty) 'Text1' } else { $ring.BorderBrush = [System.Windows.Media.Brushes]::Transparent }
         $tick = $ring.Child.Child
         $was = $tick.Visibility -eq 'Visible'
         $tick.Visibility = $(if ($on) { 'Visible' } else { 'Hidden' })
@@ -1588,7 +1597,8 @@ function Show-Networks([bool] $scan) {
             [void] $more.Children.Add($label)
             [void] $more.Children.Add($key)
         }
-        $line = New-Object System.Windows.Controls.Grid
+)wlps"
+    R"wlps(        $line = New-Object System.Windows.Controls.Grid
         $line.Margin = '0,10,0,0'
         $autoBox = New-Object System.Windows.Controls.CheckBox
         $autoBox.Style = $window.FindResource('Box'); $autoBox.Content = New-Text $t.networkAuto 13; $autoBox.IsChecked = $true; $autoBox.VerticalAlignment = 'Center'
@@ -1598,8 +1608,7 @@ function Show-Networks([bool] $scan) {
         [void] $line.Children.Add($go)
         [void] $more.Children.Add($line)
         $message = New-Text '' 12 'Err'
-        $)wlps"
-    R"wlps(message.TextWrapping = 'Wrap'; $message.Margin = '0,8,0,0'; $message.Visibility = 'Collapsed'
+        $message.TextWrapping = 'Wrap'; $message.Margin = '0,8,0,0'; $message.Visibility = 'Collapsed'
         [void] $more.Children.Add($message)
         [void] $stack.Children.Add($more)
         $row.Child = $stack
@@ -1807,7 +1816,8 @@ function Update-Ui { # draws what changed before the thread goes on with work
 }
 function Wait-Seconds([double] $seconds) { # the window lives (draws, animates, takes clicks) the whole time
     if ($seconds -le 0) { Update-Ui; return }
-    $frame = New-Object System.Windows.Threading.DispatcherFrame
+    $frame = New-Object System.Wi)wlps"
+    R"wlps(ndows.Threading.DispatcherFrame
     $timer = New-Object System.Windows.Threading.DispatcherTimer
     $timer.Interval = [TimeSpan]::FromSeconds($seconds)
     $timer.Tag = $frame
@@ -1819,8 +1829,7 @@ function Wait-Seconds([double] $seconds) { # the window lives (draws, animates, 
 # ---- when to show it -----------------------------------------------------------------------------------
 # At a setup account's first sign-in Windows shows its own first sign-in screen ("This might take
 # several minutes") on the Winlogon desktop while the account's shell starts on the Default one: no
-# window can be above it (VM). So the window )wlps"
-    R"wlps(waits until the input desktop is Default. Inside Setup
+# window can be above it (VM). So the window waits until the input desktop is Default. Inside Setup
 # (SYSTEM) there is nothing to wait for.
 if (-not $data.preview -and -not $system) {
     try {
@@ -2003,7 +2012,8 @@ function Set-Step([int] $n) { # n: 1-based, the one working now
     if ($script:stepNow -ge 1) { Set-StepDone $script:stepNow }
     $r = $script:stepRows[$n - 1]
     $script:stepNow = $n
-    $script:stepSince = Get-Date
+    $script:stepSince = Get)wlps"
+    R"wlps(-Date
     Start-Anim $r.spin Opacity 1 160 0 0 'none'
     $round = New-Object System.Windows.Media.Animation.DoubleAnimation(0, 360, (New-Object System.Windows.Duration([TimeSpan]::FromSeconds(0.9))))
     $round.RepeatBehavior = [System.Windows.Media.Animation.RepeatBehavior]::Forever
@@ -2012,8 +2022,7 @@ function Set-Step([int] $n) { # n: 1-based, the one working now
     $r.label.FontWeight = 'SemiBold'
     if ($r.detail.Visibility -eq 'Visible') { Start-Anim $r.detail Opacity 1 320 80 0 'none' }
     # The bar keeps moving while the step works, slower as it nears the step's end.
-    Move-Fill )wlps"
-    R"wlps((($n - 0.3) / $script:stepRows.Count) ($r.time * 1000)
+    Move-Fill (($n - 0.3) / $script:stepRows.Count) ($r.time * 1000)
     Write-Log $r.text
     Update-Ui
 }
@@ -2205,15 +2214,15 @@ try {
             'Remove-LocalUser -Name $name -ErrorAction SilentlyContinue',
             ('Remove-Item -LiteralPath ''{0}'' -Force -ErrorAction SilentlyContinue' -f (Join-Path $here 'oobe.json')),
             'Unregister-ScheduledTask -TaskName ''WinLove OOBE cleanup'' -Confirm:$false',
-            'Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force')
+            'Remove-Item -LiteralPath )wlps"
+    R"wlps($MyInvocation.MyCommand.Path -Force')
         [System.IO.File]::WriteAllText($cleanup, ($lines -join "`r`n"), [System.Text.Encoding]::UTF8)
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$cleanup`""
         $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
         Register-ScheduledTask -TaskName 'WinLove OOBE cleanup' -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -Principal $principal -Settings (New-TaskSettings) -Force | Out-Null
     }
     if ($auto -and $auto.check -and $system) {
-        # The lab: from the next start, Setup's logs onto the)wlps"
-    R"wlps( log disk every minute (how OOBE goes).
+        # The lab: from the next start, Setup's logs onto the log disk every minute (how OOBE goes).
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f (Join-Path $here 'oobe-watch.ps1'))
         $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
         Register-ScheduledTask -TaskName 'WinLove lab watch' -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -Principal $principal -Settings (New-TaskSettings) -Force | Out-Null
