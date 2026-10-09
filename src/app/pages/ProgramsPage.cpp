@@ -406,7 +406,7 @@ void ProgramsPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
         }
         x += kIcon + 8;
         if (searching()) {
-            const auto at = wl::text::lower(package.name).find(wl::text::lower(m_needle));
+            const auto at = wl::text::fold(package.name).find(wl::text::fold(m_needle));
             if (at != std::wstring::npos) {
                 const float x0 = x + canvas.text().measure(std::wstring_view(package.name).substr(0, at), TypeStyle::Body);
                 const float x1 = x + canvas.text().measure(std::wstring_view(package.name).substr(0, at + m_needle.size()), TypeStyle::Body);

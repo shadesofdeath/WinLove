@@ -51,10 +51,6 @@ struct PaletteResults {
     std::vector<PaletteItem> commands;
 };
 
-// Search folding, one character per character: lower case, Turkish I / İ / ı → "i", and the
-// Turkish diacritics dropped — "WINDOWS", "wındows" and "guncelleme" all find what they mean.
-[[nodiscard]] std::wstring foldForSearch(std::wstring_view text);
-
 struct PaletteMatch {
     int rank = -1; // < 0: no match. 0 name starts with the query · 1 a word of the name does ·
                    // 2 inside a word · 3 every query word somewhere in the name · 4 only with `extra`

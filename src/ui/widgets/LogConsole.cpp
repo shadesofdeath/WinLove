@@ -1,5 +1,6 @@
 #include "ui/widgets/LogConsole.h"
 
+#include "base/Text.h"
 #include "ui/platform/Clipboard.h"
 #include "ui/widget/Host.h"
 
@@ -40,11 +41,7 @@ const wchar_t* levelText(LogLevel level) {
 }
 
 std::wstring lowered(std::wstring_view text) {
-    std::wstring out(text);
-    for (auto& c : out) {
-        c = static_cast<wchar_t>(std::towlower(c));
-    }
-    return out;
+    return wl::text::fold(text); // what a person typed: every script, Turkish İ / ı (base/Text.h)
 }
 
 } // namespace

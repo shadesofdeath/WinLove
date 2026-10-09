@@ -1,5 +1,7 @@
 #include "app/shell/PaletteIndex.h"
 
+#include "base/Text.h"
+
 #include "app/Format.h"
 #include "app/pages/FeaturesPage.h"
 #include "app/pages/PageBits.h"
@@ -43,42 +45,12 @@ std::wstring widen(std::string_view text) {
 
 } // namespace
 
-std::wstring foldForSearch(std::wstring_view text) {
-    std::wstring out(text);
-    if (out.empty()) {
-        return out;
-    }
-    // Before the lower-casing: the invariant mapping would turn "I" into "i" but leave "ı" alone.
-    for (auto& c : out) {
-        if (c == L'I' || c == L'İ' || c == L'ı') {
-            c = L'i';
-        }
-    }
-    std::wstring lower(out.size(), L'\0');
-    const int written = LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_LOWERCASE, out.data(), static_cast<int>(out.size()),
-                                      lower.data(), static_cast<int>(lower.size()), nullptr, nullptr, 0);
-    if (written == static_cast<int>(out.size())) { // marks in the original text rely on equal lengths
-        out = std::move(lower);
-    }
-    for (auto& c : out) {
-        switch (c) {
-        case L'ç': c = L'c'; break; // ç
-        case L'ğ': c = L'g'; break; // ğ
-        case L'ö': c = L'o'; break; // ö
-        case L'ş': c = L's'; break; // ş
-        case L'ü': c = L'u'; break; // ü
-        default: break;
-        }
-    }
-    return out;
-}
-
 PaletteMatch matchPalette(std::wstring_view name, std::wstring_view extra, std::wstring_view query) {
-    const std::wstring q = foldForSearch(trimmed(query));
+    const std::wstring q = text::fold(trimmed(query));
     if (q.empty()) {
         return {};
     }
-    const std::wstring n = foldForSearch(name);
+    const std::wstring n = text::fold(name);
     // The whole query in the name: the best placed occurrence ("WinDefend — Microsoft Defender…"
     // matches "def" at the word, not inside "WinDefend").
     PaletteMatch best;
@@ -95,7 +67,7 @@ PaletteMatch matchPalette(std::wstring_view name, std::wstring_view extra, std::
         return best;
     }
     // Word by word: each one somewhere in the name, or at least in the extra text.
-    const std::wstring e = foldForSearch(extra);
+    const std::wstring e = text::fold(extra);
     bool allInName = true;
     PaletteMatch mark{4, 0, 0};
     std::size_t from = 0;

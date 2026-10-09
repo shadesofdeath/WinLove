@@ -111,7 +111,7 @@ DriversPage::DriversPage(AppState& state, ImageDriverController& images, const L
     m_imageTable->onSelect = [this](int) { invalidate(); };
     m_search = &add<ui::SearchBox>(strings.get(Str::DriversSearch), std::vector<std::wstring>{L"/"});
     m_search->onChange = [this](const std::wstring& text) {
-        m_needle = wl::text::lower(text);
+        m_needle = wl::text::fold(text);
         rebuild();
     };
     m_class = &add<ui::Dropdown>(strings.get(Str::DriversClass), std::vector<std::wstring>{strings.get(Str::CommonAll)}, 0);
@@ -330,8 +330,8 @@ void DriversPage::rebuild() {
         if (m_archFilter > 0 && !inf.supports(kArchFilterKeys[m_archFilter])) {
             continue;
         }
-        if (!m_needle.empty() && wl::text::lower(inf.path.filename().wstring()).find(m_needle) == std::wstring::npos &&
-            wl::text::lower(inf.provider).find(m_needle) == std::wstring::npos) {
+        if (!m_needle.empty() && wl::text::fold(inf.path.filename().wstring()).find(m_needle) == std::wstring::npos &&
+            wl::text::fold(inf.provider).find(m_needle) == std::wstring::npos) {
             continue;
         }
         g.infs.push_back(static_cast<int>(i));

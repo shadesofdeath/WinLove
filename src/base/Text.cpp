@@ -26,6 +26,36 @@ std::wstring lower(std::wstring_view text) {
     return out;
 }
 
+std::wstring fold(std::wstring_view text) {
+    std::wstring out(text);
+    if (out.empty()) {
+        return out;
+    }
+    // Before the lower-casing: the invariant mapping would turn "I" into "i" but leave "ı" alone.
+    for (auto& c : out) {
+        if (c == L'I' || c == L'İ' || c == L'ı') {
+            c = L'i';
+        }
+    }
+    std::wstring lower(out.size(), L'\0');
+    const int written = LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_LOWERCASE, out.data(), static_cast<int>(out.size()),
+                                      lower.data(), static_cast<int>(lower.size()), nullptr, nullptr, 0);
+    if (written == static_cast<int>(out.size())) { // marks in the original text rely on equal lengths
+        out = std::move(lower);
+    }
+    for (auto& c : out) {
+        switch (c) {
+        case L'ç': c = L'c'; break; // ç
+        case L'ğ': c = L'g'; break; // ğ
+        case L'ö': c = L'o'; break; // ö
+        case L'ş': c = L's'; break; // ş
+        case L'ü': c = L'u'; break; // ü
+        default: break;
+        }
+    }
+    return out;
+}
+
 std::wstring upper(std::wstring_view text) {
     std::wstring out(text);
     for (auto& c : out) {

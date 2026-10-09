@@ -28,7 +28,7 @@ FeaturesPage::FeaturesPage(AppState& state, FeatureController& controller, const
       m_goToImages(std::move(goToImages)) {
     m_search = &add<ui::SearchBox>(strings.get(Str::FeaturesSearch), std::vector<std::wstring>{L"/"});
     m_search->onChange = [this](const std::wstring& text) {
-        m_needle = wl::text::lower(text);
+        m_needle = wl::text::fold(text);
         refilter();
     };
     m_stateBox = &add<ui::Dropdown>(strings.get(Str::FeaturesState),
@@ -197,8 +197,8 @@ void FeaturesPage::refilter() {
                 (m_filter == Filter::Queued && !isQueued)) {
                 continue;
             }
-            if (!m_needle.empty() && wl::text::lower(item.displayName).find(m_needle) == std::wstring::npos &&
-                wl::text::lower(item.name).find(m_needle) == std::wstring::npos) {
+            if (!m_needle.empty() && wl::text::fold(item.displayName).find(m_needle) == std::wstring::npos &&
+                wl::text::fold(item.name).find(m_needle) == std::wstring::npos) {
                 continue;
             }
             m_rows.push_back(static_cast<int>(i));

@@ -26,7 +26,7 @@ TasksPage::TasksPage(AppState& state, TaskController& controller, const Localiza
     : m_state(state), m_controller(controller), m_strings(strings), m_language(language) {
     m_search = &add<ui::SearchBox>(strings.get(Str::TasksSearch), std::vector<std::wstring>{L"/"});
     m_search->onChange = [this](const std::wstring& text) {
-        m_needle = wl::text::lower(text);
+        m_needle = wl::text::fold(text);
         rebuild();
     };
     std::vector<std::wstring> filters{strings.get(Str::CommonAll)};
@@ -119,8 +119,8 @@ void TasksPage::rebuild() {
                 continue;
             }
         }
-        if (!m_needle.empty() && wl::text::lower(t.name.get(m_language)).find(m_needle) == std::wstring::npos &&
-            wl::text::lower(t.path).find(m_needle) == std::wstring::npos) {
+        if (!m_needle.empty() && wl::text::fold(t.name.get(m_language)).find(m_needle) == std::wstring::npos &&
+            wl::text::fold(t.path).find(m_needle) == std::wstring::npos) {
             continue;
         }
         m_rows.push_back(static_cast<int>(i));
