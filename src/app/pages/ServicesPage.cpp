@@ -74,12 +74,25 @@ ServicesPage::ServicesPage(AppState& state, ServiceController& controller, const
         refilter();
     };
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
-        {strings.get(Str::ServicesService), 0},
-        {strings.get(Str::CommonName), 180},
-        {strings.get(Str::ServicesDefault), 150},
+        {strings.get(Str::ServicesService), 0, ui::TextAlign::Leading, true},
+        {strings.get(Str::CommonName), 180, ui::TextAlign::Leading, true},
+        {strings.get(Str::ServicesDefault), 150, ui::TextAlign::Leading, true},
         {strings.get(Str::ServicesNewStart), 184},
         {strings.get(Str::RiskColumn), 80},
     });
+    // D-091: sorting by a header click.
+    m_table->sortKey = [this](int row, int column) -> ui::TableSortKey {
+        const auto* item = itemAt(row);
+        if (!item) {
+            return {};
+        }
+        switch (column) {
+        case kService: return {item->displayName};
+        case kName: return {item->name};
+        case kDefault: return {m_strings.get(startName(item->start))};
+        default: return {};
+        }
+    };
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
         paintCell(c, row, column, rect, cell);
     };

@@ -45,12 +45,28 @@ FeaturesPage::FeaturesPage(AppState& state, FeatureController& controller, const
         refilter();
     };
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
-        {strings.get(Str::FeaturesFeature), 0},
-        {strings.get(Str::FeaturesType), 140},
-        {strings.get(Str::FeaturesState), 152},
+        {strings.get(Str::FeaturesFeature), 0, ui::TextAlign::Leading, true},
+        {strings.get(Str::FeaturesType), 140, ui::TextAlign::Leading, true},
+        {strings.get(Str::FeaturesState), 152, ui::TextAlign::Leading, true},
         {strings.get(Str::FeaturesTarget), 72},
-        {strings.get(Str::FeaturesSize), 80, ui::TextAlign::Trailing},
+        {strings.get(Str::FeaturesSize), 80, ui::TextAlign::Trailing, true},
     });
+    // D-091: sorting by a header click.
+    m_table->sortKey = [this](int row, int column) -> ui::TableSortKey {
+        const auto* item = itemAt(row);
+        if (!item) {
+            return {};
+        }
+        switch (column) {
+        case kName: return {item->displayName};
+        case kType:
+            return {m_strings.get(item->kind == OptionalFeature::Kind::Feature ? Str::FeaturesKindFeature
+                                                                               : Str::FeaturesKindCapability)};
+        case kState: return {m_strings.get(statusName(m_controller.status(*item)))};
+        case kSize: return {std::wstring(), static_cast<double>(item->size)};
+        default: return {};
+        }
+    };
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
         paintCell(c, row, column, rect, cell);
     };

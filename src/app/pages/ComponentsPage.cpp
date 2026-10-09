@@ -64,7 +64,7 @@ ComponentsPage::ComponentsPage(AppState& state, ComponentController& controller,
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::CommonName), 0},
         {strings.get(Str::RiskColumn), 120},
-        {strings.get(Str::CommonSize), 96, ui::TextAlign::Trailing},
+        {strings.get(Str::CommonSize), 132, ui::TextAlign::Trailing}, // D-091: room for the size bar
     });
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
         paintCell(c, row, column, rect, cell);
@@ -443,6 +443,19 @@ void ComponentsPage::paintCell(ui::Canvas& canvas, int row, int column, RectF re
         break;
     case kSize: {
         const std::uint64_t size = isGroup ? group.size : item->size;
+        if (!isGroup && size > 0) {
+            // D-091: how big next to the biggest one of its group, as a short bar left of the number.
+            std::uint64_t largest = 1;
+            for (const auto& i : group.items) {
+                largest = std::max(largest, i.size);
+            }
+            constexpr float kBar = 36.0f;
+            const float share = std::max(static_cast<float>(static_cast<double>(size) / static_cast<double>(largest)), 0.04f);
+            const RectF track{rect.x, rect.y + rect.height / 2 - 1.5f, kBar, 3.0f};
+            canvas.fillRoundRect(track, 1.5f, Color::BgRaised);
+            canvas.fillRoundRect({track.x, track.y, std::max(std::round(kBar * share), 2.0f), track.height}, 1.5f,
+                                 size == largest ? Color::AccentBase : Color::TextTertiary);
+        }
         canvas.drawText(size ? formatBytes(size, m_language) : std::wstring(L"—"), rect, TypeStyle::Mono,
                         size ? Color::TextPrimary : Color::TextTertiary, ui::TextAlign::Trailing);
         break;
