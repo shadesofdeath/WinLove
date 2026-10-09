@@ -241,6 +241,26 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-092 — Yazı tipi ve simgeler: Inter / Geist / Segoe UI Variable, Lucide (2026-10-09)
+Bağlam: Kullanıcı IBM Plex'i ve tasarım paketinin simgelerini beğenmedi ("özensiz, çok daha kaliteli keskin güzel ikonlar").
+Simgeler 1,25 çizgiyle çiziliyordu; %175'te 2,19 piksel, kenarlar bulanık. Tasarım paketi (`WinLove-UI-Handoff`) salt
+okunur kalır; bu kayıt ondan sapmadır.
+Karar: Varsayılan yazı tipi **Inter** (OFL); Ayarlar › Görünüm › Yazı tipi: Inter · Geist (+ Geist Mono) · Segoe UI
+Variable (sistemin, gömülmez). IBM Plex kaldırıldı. Simgeler **Lucide 1.54.0** (ISC, `third_party/lucide`, yalnız
+kullanılan SVG'ler): `resources/icons/icon-map.json` paketin adlarını Lucide'ye eşler (kod `Icon` enum'unu korur),
+"extra" yeni adlar ekler (Programlar, Kişiselleştirme, Simgeler, Başlat menüsü); pencere başlığı düğmeleri ve marka
+işareti paketin kalır. Çizgi 24 ızgarada 1,75 (16 px'te 1,17). `tools/gen_icons.py` SVG öğelerini (path, circle, rect,
+line, poly*) yola çevirir, yayları doğru ölçekler. Yoğunluk (Kompakt / Rahat / Büyük) ve Windows'un metin boyutu bütün
+arayüzü ölçekler (`Window::setZoom`).
+Sonuç: Galeri sayfası bütün simgeleri sırasıyla gösterir; render `--font=inter|geist|segoe`.
+
+## D-091 — Tasarım yenilemesi: gezinme grupları, iş akışı adımları, koyu tema (2026-10-09)
+Bağlam: Kullanıcı 12 tasarım önerisinin hepsini istedi; koyu temanın "siyaha yakın" olmasını ayrıca istedi.
+Karar: Gezinmede katlanabilir grup başlıkları (ayarda saklanır), benzer simgeler ayrıldı; durum çubuğunda Kaynak › Bağla ›
+Düzenle › Uygula › ISO adımları, kuyruk özeti (Uygula düğmesinin ipucu), indirmeler; koyu temanın yüzeyleri siyaha yakın,
+katmanlar daha ayrık (`Palette.cpp` kDarkSurfaces — paketin token'larından sapma); Windows yüksek kontrastı açıksa sistem
+renkleri. Diğer maddeler bu kayda eklenir.
+
 ## D-090 — Genel incelemenin kritik düzeltmeleri: veri kaybı ve "başarılı" görünen hatalar (2026-10-09)
 Bağlam: Beş paralel kod incelemesi (`docs/AUDIT-2026-10.md`); kullanıcı kritik 10 maddenin hepsini seçti.
 Karar:
