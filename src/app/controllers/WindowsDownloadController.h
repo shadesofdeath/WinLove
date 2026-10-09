@@ -6,6 +6,7 @@
 // DISM); the conversion runs on the engine thread (it mounts). One job at a time;
 // AppState::windowsDownload() tells the page.
 #include "app/state/AppState.h"
+#include "core/uup/UupApps.h"
 #include "core/uup/UupCatalog.h"
 #include "core/uup/UupConvert.h"
 
@@ -23,6 +24,10 @@ public:
         bool updates = true;                // integrate the set's updates (longer)
         bool edge = true;
         bool esd = false;                   // install.esd: a smaller ISO
+        bool apps = true;                   // the Store apps Microsoft's media has
+        std::vector<std::wstring> excludedApps; // …but these
+        bool netFx3 = false;                // .NET Framework 3.5
+        bool resetBase = false;             // component store cleanup with /ResetBase
         std::filesystem::path output;       // the .iso
     };
 
@@ -33,6 +38,9 @@ public:
         std::function<void(std::wstring id, std::wstring language, std::vector<core::uup::Edition>)> editions;
         // The files (without links) of the selection: the sizes the page shows.
         std::function<void(std::wstring id, std::wstring language, std::vector<std::wstring> editions, core::uup::FileSet)> files;
+        // The Store apps a selection gets (no frameworks): what the picker lists.
+        std::function<void(std::wstring id, std::wstring language, std::vector<std::wstring> editions,
+                           std::vector<core::uup::AppFeature>)> apps;
         std::function<void(const Error&, bool job)> failed; // a list (false) or the job (true)
         std::function<void(const core::uup::ConvertResult&)> finished;
         std::function<void()> stopped; // cancelled by the user
@@ -45,6 +53,7 @@ public:
     void listLanguages(std::wstring id);
     void listEditions(std::wstring id, std::wstring language);
     void listFiles(std::wstring id, std::wstring language, std::vector<std::wstring> editions);
+    void listApps(core::uup::Build build, std::wstring language, std::vector<std::wstring> editions);
 
     [[nodiscard]] bool running() const { return m_state.windowsDownload().has_value(); }
     void start(Request request);

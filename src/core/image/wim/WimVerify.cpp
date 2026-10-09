@@ -337,6 +337,7 @@ struct Dentry {
     std::uint64_t next = 0; // the sibling after it (streams skipped)
     std::uint64_t subdir = 0;
     std::uint32_t attributes = 0;
+    std::array<std::uint8_t, 20> hash{}; // the unnamed data stream's SHA-1 (all zero: empty)
     std::wstring_view name;
 };
 
@@ -353,6 +354,7 @@ std::optional<Dentry> dentryAt(std::span<const std::byte> meta, std::uint64_t at
     Dentry d;
     d.attributes = le<std::uint32_t>(p + 8);
     d.subdir = le<std::uint64_t>(p + 16);
+    std::memcpy(d.hash.data(), p + 64, d.hash.size());
     const auto streams = le<std::uint16_t>(p + 96);
     const auto nameBytes = le<std::uint16_t>(p + 100);
     if (kDentryName + nameBytes > length) {
@@ -486,6 +488,39 @@ Result<std::vector<std::wstring>> wimFolderNames(const ByteSource& wim, int inde
         return std::unexpected(meta.error());
     }
     return namesInMetadata(*meta, folder);
+}
+
+Result<std::vector<std::byte>> wimFileData(const ByteSource& wim, int index, std::wstring_view path) {
+    auto table = readTable(wim);
+    if (!table) {
+        return std::unexpected(table.error());
+    }
+    auto meta = editionMetadata(wim, index);
+    if (!meta) {
+        return std::unexpected(meta.error());
+    }
+    const auto entry = entryInMetadata(*meta, path);
+    if (!entry || (entry->attributes & kDirectory) != 0) {
+        return fail(ErrorCode::NotFound, L"no such file in the edition", std::wstring(path));
+    }
+    std::vector<std::byte> data;
+    if (std::ranges::all_of(entry->hash, [](std::uint8_t b) { return b == 0; })) {
+        return data; // an empty file
+    }
+    const auto stream = std::ranges::find_if(table->entries, [&](const Entry& e) { return e.hash == entry->hash; });
+    if (stream == table->entries.end()) {
+        return fail(ErrorCode::NotFound, L"the file's data is not in this file (a split image?)", std::wstring(path));
+    }
+    Worker worker(wim, table->header.compression, table->chunkSize);
+    if (auto problem = worker.read(*stream, data); !problem.empty()) {
+        return fail(ErrorCode::ParseError, L"the file " + problem, std::wstring(path));
+    }
+    Sha1 sha;
+    sha.update(data);
+    if (sha.usable() && sha.finish() != entry->hash) {
+        return fail(ErrorCode::ParseError, L"the file does not match its SHA-1 (damaged image)", std::wstring(path));
+    }
+    return data;
 }
 
 Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task) {

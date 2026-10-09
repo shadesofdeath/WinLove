@@ -243,7 +243,7 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoBootDrivers = true;
         } else if (a.starts_with(L"--demo-download")) {
             const auto v = a.size() > 16 ? a.substr(16) : std::wstring_view(L"list");
-            options.demoDownload = v == L"pick" ? 1 : v == L"downloading" ? 2 : v == L"converting" ? 3 : 0;
+            options.demoDownload = v == L"pick" ? 1 : v == L"downloading" ? 2 : v == L"converting" ? 3 : v == L"apps" ? 4 : 0;
         } else if (a == L"--demo-hosts") {
             options.demoHosts = true;
         } else if (a == L"--demo-services") {

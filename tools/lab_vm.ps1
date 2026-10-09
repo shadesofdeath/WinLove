@@ -80,8 +80,12 @@ if ($Changes -and -not (Test-Path $Changes)) { throw "no changeset: $Changes" }
 # -Diag writes its script into the image it mounts; a ready -InstallWim is never mounted, so the
 # guest would never run it nor shut itself down (2026-10-07). Use -ShutdownAfter there.
 if ($Diag -and $InstallWim) { throw '-Diag needs the image mounted: not with -InstallWim (use -ShutdownAfter <seconds>)' }
-foreach ($need in $Cli, $vmrun, $vdisk, (Join-Path $setup 'sources\install.wim'), (Join-Path $setup 'efi\microsoft\boot\efisys_noprompt.bin')) {
+foreach ($need in $Cli, $vmrun, $vdisk, (Join-Path $setup 'efi\microsoft\boot\efisys_noprompt.bin')) {
     if (-not (Test-Path $need)) { throw "missing: $need" }
+}
+# The media's install image: install.wim, or install.esd (UUP media made with --esd).
+if (-not ((Test-Path (Join-Path $setup 'sources\install.wim')) -or (Test-Path (Join-Path $setup 'sources\install.esd')))) {
+    throw "missing: $setup\sources\install.wim (or install.esd)"
 }
 foreach ($dir in 'out', 'mount', 'vm') { New-Item -ItemType Directory -Force (Join-Path $Lab $dir) | Out-Null }
 if (Test-Path (Join-Path $mount 'Windows')) { & $Cli unmount $mount --discard | Out-Null }
@@ -224,7 +228,7 @@ try {
 
     # 2. Setup folder + ISO.
     $media = Join-Path $work 'media'
-    Native { robocopy.exe $setup $media /E /XF install.wim /NFL /NDL /NJH /NJS /NP } | Out-Null
+    Native { robocopy.exe $setup $media /E /XF install.wim install.esd /NFL /NDL /NJH /NJS /NP } | Out-Null
     Move-Item "$work\install.wim" (Join-Path $media 'sources\install.wim')
     if ($BootWim) { Copy-Item $BootWim (Join-Path $media 'sources\boot.wim') -Force }
     if ($AnswerFile) {

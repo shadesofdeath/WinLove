@@ -33,6 +33,20 @@ enum class UiFont : std::uint8_t { Inter, Geist, SegoeVariable };
     return d == Density::Large ? 1.25f : d == Density::Comfortable ? 1.125f : 1.0f;
 }
 
+// D-093: what "Windows indir" makes of a download — kept between runs, like uup-converter's
+// ConvertConfig.ini and CustomAppsList.txt.
+struct WindowsDownloadPrefs {
+    bool updates = true;
+    bool edge = true;
+    bool apps = true;
+    bool netFx3 = false;
+    bool resetBase = false;
+    bool esd = false;
+    std::vector<std::wstring> excludedApps; // Store app ids left out
+
+    [[nodiscard]] bool operator==(const WindowsDownloadPrefs&) const = default;
+};
+
 struct AppSettings {
     ThemeChoice theme = ThemeChoice::Dark;
     ui::Accent accent = ui::Accent::Copper;
@@ -46,6 +60,7 @@ struct AppSettings {
     std::filesystem::path isoFolder;   // last "ISO Oluştur" output folder (empty: Desktop)
     // D-082: the compatibility guards that are on (compat.json ids). Never chosen: the catalog's defaults.
     std::optional<std::vector<std::wstring>> guards;
+    WindowsDownloadPrefs windowsDownload;
 
     [[nodiscard]] bool operator==(const AppSettings&) const = default;
     [[nodiscard]] std::filesystem::path mountDirectory() const {

@@ -125,7 +125,8 @@ Result<IsoResult> buildIso(const IsoOptions& options, const TaskContext& task) {
         bootResult = addBootEntry(biosBoot(folder), PlatformX86, array, slot++);
     }
     if (bootResult && uefi) {
-        bootResult = addBootEntry(uefiBoot(folder, options.noPrompt), PlatformEFI, array, slot++);
+        bootResult = addBootEntry(options.efiBootImage.empty() ? uefiBoot(folder, options.noPrompt) : options.efiBootImage,
+                                  PlatformEFI, array, slot++);
     }
     if (!bootResult) {
         SafeArrayDestroy(array);

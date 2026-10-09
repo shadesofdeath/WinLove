@@ -23,6 +23,9 @@ struct IsoOptions {
     BootMode boot = BootMode::UefiAndBios;
     bool noPrompt = false;               // efisys_noprompt.bin: no "Press any key to boot from CD"
     bool writeSha256 = false;            // <output>.sha256 next to the ISO
+    // D-094: the UEFI El Torito image from here instead of the folder's efisys(_noprompt).bin —
+    // efisys_EX.bin, whose boot manager is signed by "Windows UEFI CA 2023".
+    std::filesystem::path efiBootImage;
     // Files written to the image root from memory (autounattend.xml, P13): the source folder is
     // not touched; a file of the same name in it is replaced in the image.
     struct RootFile {

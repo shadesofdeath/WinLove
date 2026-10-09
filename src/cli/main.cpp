@@ -5,6 +5,8 @@
 #include "base/Log.h"
 #include "base/Utf8.h"
 #include "base/Text.h"
+#include "core/iso/SecureBoot2023.h"
+#include "core/uup/UupApps.h"
 #include "core/uup/UupCatalog.h"
 #include "core/uup/UupConvert.h"
 #include "core/uup/UupDownload.h"
@@ -2316,7 +2318,7 @@ int cmdLanguages(const std::wstring& folder) {
 
 // P06: bootable ISO from a setup folder (IMAPI2FS, no admin).
 int cmdIso(const std::wstring& folder, const std::wstring& output, const std::wstring& label, const std::wstring& boot,
-           bool sha, bool noPrompt, const std::wstring& setupDu, const std::wstring& bootFiles) {
+           bool sha, bool noPrompt, const std::wstring& setupDu, const std::wstring& bootFiles, bool secureBoot2023) {
     core::IsoOptions options;
     // D-080: the setup folder's own files brought up to date (Setup dynamic update, then setup.exe,
     // setuphost.exe and the boot manager from an updated boot.wim: boot-patch --setup-files=).
@@ -2344,6 +2346,28 @@ int cmdIso(const std::wstring& folder, const std::wstring& output, const std::ws
                                      : core::BootMode::UefiAndBios;
     options.writeSha256 = sha;
     options.noPrompt = noPrompt;
+    // D-094: the boot manager signed by Windows UEFI CA 2023, last (over the media refresh's).
+    const auto sbFolder = std::filesystem::path(output).parent_path() / L"sb2023.tmp";
+    if (secureBoot2023) {
+        std::filesystem::path bootWim; // the refreshed one when --boot-files brought one
+        for (const auto& r : options.replacedFiles) {
+            if (wl::text::iequals(r.path, L"sources\\boot.wim")) {
+                bootWim = r.file;
+            }
+        }
+        auto sb = core::prepareSecureBoot2023(folder, bootWim, sbFolder, noPrompt);
+        if (!sb) {
+            return reportError(sb.error());
+        }
+        for (auto& f : sb->files) {
+            std::erase_if(options.replacedFiles, [&](const core::IsoOptions::ReplacedFile& r) {
+                return wl::text::iequals(r.path, f.path);
+            });
+            options.replacedFiles.push_back(std::move(f));
+        }
+        options.efiBootImage = sb->efiBootImage;
+        print(std::format(L"  Secure Boot: Windows UEFI CA 2023 boot manager {}\n", sb->bootManagerVersion));
+    }
     const auto task = progressTask(L"iso");
     auto result = core::buildIso(options, task);
     print(L"\n");
@@ -2354,7 +2378,17 @@ int cmdIso(const std::wstring& folder, const std::wstring& output, const std::ws
                       result->sha256.empty() ? std::wstring() : L"\n  sha256 " + result->sha256));
     std::error_code ec;
     std::filesystem::remove_all(duFolder, ec);
+    std::filesystem::remove_all(sbFolder, ec);
     return 0;
+}
+
+// D-094: does this PC's firmware trust the 2023 boot manager?
+int cmdSecureBootDb() {
+    const auto trusts = core::firmwareTrustsCa2023();
+    print(!trusts ? L"  unknown (BIOS boot, or not elevated)\n"
+                  : *trusts ? L"  db has Windows UEFI CA 2023: 2023 media starts here\n"
+                            : L"  db has no Windows UEFI CA 2023: only 2011 media starts here\n");
+    return trusts ? (*trusts ? 0 : 2) : 1;
 }
 
 // ---- D-093: Windows from Microsoft's update servers (UUP) ------------------------------------
@@ -2365,7 +2399,7 @@ std::wstring uupSize(std::uint64_t bytes) {
 
 int cmdUup(std::vector<std::wstring> args) {
     // Options among the words: --no-updates --no-edge --esd --apps --work=<dir> --media=<dir>
-    bool updates = true, edge = true, esd = false;
+    bool updates = true, edge = true, esd = false, apps = false, appsOnly = false, noApps = false;
     std::wstring work, media;
     std::vector<std::wstring> words;
     for (auto& a : args) {
@@ -2375,6 +2409,12 @@ int cmdUup(std::vector<std::wstring> args) {
             edge = false;
         } else if (a == L"--esd") {
             esd = true;
+        } else if (a == L"--apps") {
+            apps = true;
+        } else if (a == L"--apps-only") {
+            apps = appsOnly = true;
+        } else if (a == L"--no-apps") {
+            noApps = true;
         } else if (a.starts_with(L"--work=")) {
             work = a.substr(7);
         } else if (a.starts_with(L"--media=")) {
@@ -2475,11 +2515,21 @@ int cmdUup(std::vector<std::wstring> args) {
             }
             return again->files;
         };
-        if (auto r = core::uup::downloadFiles(files, words[5], refresh, progressTask(L"download")); !r) {
-            print(L"\n");
-            return reportError(r.error());
+        if (!appsOnly) {
+            if (auto r = core::uup::downloadFiles(files, words[5], refresh, progressTask(L"download")); !r) {
+                print(L"\n");
+                return reportError(r.error());
+            }
+            print(std::format(L"\n  downloaded and verified -> {}\n", words[5]));
         }
-        print(std::format(L"\n  downloaded and verified -> {}\n", words[5]));
+        if (apps) {
+            auto n = core::uup::downloadApps(id, words[5], editions, set->arch, progressTask(L"apps"));
+            if (!n) {
+                print(L"\n");
+                return reportError(n.error());
+            }
+            print(std::format(L"\n  {} Store app(s) -> {}\\apps\n", *n, words[5]));
+        }
         return 0;
     }
     if (sub == L"convert" && words.size() == 4) {
@@ -2498,6 +2548,7 @@ int cmdUup(std::vector<std::wstring> args) {
         }
         options.updates = updates;
         options.edge = edge;
+        options.apps = !noApps;
         options.compression = esd ? core::WimCompression::Lzms : core::WimCompression::Lzx;
         auto last = std::make_shared<std::wstring>();
         auto lastPercent = std::make_shared<int>(-1);
@@ -2524,14 +2575,55 @@ int cmdUup(std::vector<std::wstring> args) {
         }
         return 0;
     }
+    if (sub == L"apps" && (words.size() == 5 || words.size() == 6)) {
+        // apps <AggregatedMetadata.cab> <edition[,edition]> <amd64|arm64> [<id> = match against the set's app files]
+        const auto scratch = std::filesystem::temp_directory_path() / std::format(L"wl-apps-{}", GetCurrentProcessId());
+        auto all = core::uup::readAppCompDb(words[2], scratch);
+        if (!all) {
+            return reportError(all.error());
+        }
+        const auto plan = core::uup::appsFor(*all, editionList(words[3]), words[4]);
+        std::uint64_t bytes = 0;
+        int packages = 0;
+        for (const auto& a : plan) {
+            std::uint64_t size = 0;
+            for (const auto& p : a.packages) {
+                size += p.size;
+            }
+            bytes += size;
+            packages += static_cast<int>(a.packages.size());
+            print(std::format(L"  {:<10} {:>4} pkg {:>9}  {}{}\n", a.framework ? L"framework" : L"app", a.packages.size(),
+                              uupSize(size), a.id, a.license.empty() || a.framework ? L"" : L"  (licence)"));
+        }
+        print(std::format(L"  {} of {} feature(s), {} package(s), {}\n", plan.size(), all->size(), packages, uupSize(bytes)));
+        if (words.size() == 6) {
+            auto set = core::uup::listFiles(words[5], L"neutral", std::vector<std::wstring>{L"app"}, /*links=*/false, g_cancel);
+            if (!set) {
+                return reportError(set.error());
+            }
+            std::vector<std::wstring> missing;
+            const auto files = core::uup::appFiles(plan, set->files, &missing);
+            std::uint64_t matched = 0;
+            for (const auto& f : files) {
+                matched += f.size;
+            }
+            print(std::format(L"  matched {} file(s), {}; {} package(s) without a file\n", files.size(), uupSize(matched),
+                              missing.size()));
+            for (std::size_t i = 0; i < std::min<std::size_t>(missing.size(), 10); ++i) {
+                print(L"    missing " + missing[i] + L"\n");
+            }
+        }
+        return 0;
+    }
     if (sub == L"role" && words.size() == 3) {
         static constexpr const wchar_t* kRoles[] = {L"ssu", L"lcu", L"checkpoint", L"enablement", L"dotnet", L"safeos", L"setupdu", L"other"};
         print(std::format(L"  {}\n", kRoles[static_cast<int>(core::uup::updateRole(words[2]))]));
         return 0;
     }
     print(L"  wlcli uup builds [search] | langs <id> | editions <id> <lang> | files <id> <lang> <ed[,ed]>\n"
-          L"           download <id> <lang> <ed[,ed]> <folder> [--no-updates]\n"
-          L"           convert <folder> <out.iso|media folder> [--no-updates] [--no-edge] [--esd] [--work=<dir>]\n"
+          L"           download <id> <lang> <ed[,ed]> <folder> [--no-updates] [--apps | --apps-only]\n"
+          L"           convert <folder> <out.iso|media folder> [--no-updates] [--no-edge] [--no-apps] [--esd] [--work=<dir>]\n"
+          L"           apps <AggregatedMetadata.cab> <edition[,edition]> <amd64|arm64> [<id>]\n"
           L"           role <update file>\n");
     return 1;
 }
@@ -2600,7 +2692,8 @@ void printUsage() {
           L"  wlcli mounts | cleanup\n"
           L"  wlcli repair <dir>                  (inspect a mount folder and do what it needs: remount / discard / clean)\n"
           L"  wlcli packages|features|capabilities <mountdir>\n"
-          L"  wlcli iso <setup-folder> <out.iso> [--label=X] [--boot=both|uefi|bios] [--sha256] [--no-prompt] [--setup-du=<cab>] [--boot-files=<dir>]\n"
+          L"  wlcli iso <setup-folder> <out.iso> [--label=X] [--boot=both|uefi|bios] [--sha256] [--no-prompt] [--setup-du=<cab>] [--boot-files=<dir>] [--secureboot2023]\n"
+          L"  wlcli secureboot-db                       Does this PC's UEFI db trust Windows UEFI CA 2023? (elevated)\n"
           L"  wlcli unattend <answer.xml> [--welcome]   (read an answer file; print it as WinLove writes it, P13; D-084)\n"
           L"  wlcli welcome <changes.json> [--strings=<tr.json>] [--auto=<answers.json>]   (the welcome into an image, D-084)\n"
           L"  wlcli postsetup <plan.json> <mountdir>   (write post-setup scripts and payloads into the image, P14)\n"
@@ -2729,6 +2822,7 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring safeOsPath;
     std::wstring setupDuPath;
     std::wstring bootFilesPath;
+    bool secureBoot2023 = false;
     std::wstring setupFilesPath;
     std::wstring lcuPath;
     std::wstring onlyKb;
@@ -2836,6 +2930,8 @@ int wmain(int argc, wchar_t** argv) {
             setupDuPath = a.substr(11);
         } else if (a.starts_with(L"--boot-files=")) {
             bootFilesPath = a.substr(13);
+        } else if (a == L"--secureboot2023") {
+            secureBoot2023 = true;
         } else if (a.starts_with(L"--setup-files=")) {
             setupFilesPath = a.substr(14);
         } else if (a.starts_with(L"--safeos=")) {
@@ -2992,7 +3088,10 @@ int wmain(int argc, wchar_t** argv) {
         return cmdAppx(args[1], asJson);
     }
     if (command == L"iso" && args.size() == 3) {
-        return cmdIso(args[1], args[2], label, boot, sha, noPrompt, setupDuPath, bootFilesPath);
+        return cmdIso(args[1], args[2], label, boot, sha, noPrompt, setupDuPath, bootFilesPath, secureBoot2023);
+    }
+    if (command == L"secureboot-db" && args.size() == 1) {
+        return cmdSecureBootDb();
     }
     if (command == L"postsetup" && args.size() == 3) {
         return cmdPostSetup(args[1], args[2]);

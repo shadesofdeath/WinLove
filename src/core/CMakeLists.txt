@@ -52,6 +52,7 @@ add_library(wl_core STATIC
     image/wim/WimVerify.cpp
     io/ByteSource.cpp
     iso/IsoBuilder.cpp
+    iso/SecureBoot2023.cpp
     net/Http.cpp
     ops/ApplyJob.cpp
     ops/Applier.cpp
@@ -81,6 +82,7 @@ add_library(wl_core STATIC
     uup/UupCatalog.cpp
     uup/UupDownload.cpp
     uup/UupConvert.cpp
+    uup/UupApps.cpp
     updates/UupLanguages.cpp
     store/MsStore.cpp)
 wl_configure_target(wl_core)
