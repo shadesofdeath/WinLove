@@ -9,6 +9,7 @@
 #include "base/Result.h"
 #include "core/image/WorkCopy.h"
 #include "core/image/dism/Edition.h"
+#include "core/image/dism/ImageHealth.h"
 #include "core/image/wim/WimVerify.h"
 
 #include <functional>
@@ -24,7 +25,7 @@ namespace wl::app {
 
 class ImageController {
 public:
-    enum class Failure : std::uint8_t { Mount, Unmount, Export, Delete, Prepare, Cleanup, Rename, Verify, Editions };
+    enum class Failure : std::uint8_t { Mount, Unmount, Export, Delete, Prepare, Cleanup, Rename, Verify, Editions, Health };
 
     struct Events {
         std::function<void(std::function<void()>)> postToUi;
@@ -38,6 +39,8 @@ public:
         std::function<void()> mounted; // a fresh mount is up: time to read its contents (PreloadController)
         // Every stream of `file` was read: sound, or how many are damaged.
         std::function<void(const core::WimVerifyReport& report, std::wstring file)> verified;
+        // D-101: the component-store health verdict of the mounted image (check / scan / repair).
+        std::function<void(const core::ImageHealthReport& report)> checkedHealth;
         // An ISO's work copy that cannot just be used (core::WorkCopyState Modified / Unknown /
         // OtherSource, audit A5): the shell asks. proceed(true) extracts the ISO again over it,
         // proceed(false) uses the folder as it is. Not set: Modified / Unknown are used as they
@@ -92,6 +95,12 @@ public:
     // written, an ISO is read in place. The result arrives through Events::verified.
     void verify();
     void convertEsd(const std::filesystem::path& destination);
+    // D-101: component-store health of the mounted image. CheckHealth (scan=false, fast) or
+    // ScanHealth (scan=true, thorough); the verdict comes back through Events::checkedHealth.
+    void checkHealth(bool scan);
+    // RestoreHealth on the mounted image. `source` is a DISM /Source: spec (empty = WinSxS, then
+    // Windows Update), `limitAccess` stays offline. The outcome comes back through checkedHealth.
+    void repairHealth(std::wstring source, bool limitAccess);
 
     // ---- D-058 tools (Araçlar menu, row menu, Kaynak) ---------------------------------------------
     [[nodiscard]] bool isSwmSource() const;

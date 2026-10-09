@@ -418,7 +418,19 @@
     "appendedToast": "{file} edition(s) added",
     "capturedToast": "{file} created",
     "splitGo": "Split",
-    "solid": "solid"
+    "solid": "solid",
+    "healthCheck": "Check health",
+    "healthScan": "Scan health (thorough)",
+    "healthRepair": "Repair",
+    "healthWorking": "Checking health…",
+    "healthHealthy": "Image is healthy",
+    "healthHealthyBody": "No component store corruption detected.",
+    "healthRepairable": "Image can be repaired",
+    "healthRepairableBody": "Component store corruption was found; 'Repair' can fix it.",
+    "healthNonRepairable": "Image cannot be repaired",
+    "healthNonRepairableBody": "The component store has corruption that cannot be repaired.",
+    "healthRepaired": "Image repaired",
+    "healthRepairedBody": "The component store was repaired."
   },
   "components": {
     "title": "Components",

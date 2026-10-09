@@ -241,6 +241,20 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-101 — İmaj sağlık denetimi ve onarımı (2026-10-09)
+Bağlam: Kullanıcıların getirdiği modlanmış/lite ISO'lar (X-Lite gibi) bozuk olabiliyor; bize açılan imajın bileşen
+deposunun sağlığını denetleyen/onaran bir şey yoktu (yalnız host DISM denetimi + ResetBase vardı). DISM API'nin
+DismGetImageHealth'i, servis yığını ilerlemiş bir hostta modlanmış imajlarda güncellemeler gibi takılabiliyor.
+Karar: `core/image/dism/ImageHealth.{h,cpp}` — mount edilmiş imaj üzerinde Windows'un kendi dism.exe'siyle (oturumumuz
+askıya alınarak) `/Cleanup-Image /CheckHealth` (hızlı), `/ScanHealth` (ayrıntılı) ve `/RestoreHealth` çalışır;
+verdict çıktı metninden okunur (Healthy / Repairable / NonRepairable). `wlcli health <mount> [check|scan|restore]`
+(repairable/non-repairable'da exit 2; restore için `--source=<WIM:...:1|ESD:...:1|\Windows>` ve `--limit-access`).
+UI: Sürümler'de mount edilmiş sürümün bağlam menüsünde "Sağlığı denetle / tara"; bozulma bulununca toast "Onar"
+düğmesiyle RestoreHealth'i (önce imajın kendi WinSxS'i) sunar. RestoreHealth kaynaksız WinSxS'e, yoksa Windows
+Update'e bakar; çevrimdışı derin bozulma için bir kaynak (eşleşen install.wim/ESD) gerekir — 0x800F081F'te net uyarı.
+Doğrulanan: gerçek 25H2 imajında (mount edilmiş) `health check` ve `health scan` → "image is healthy" (exit 0);
+parse mantığı birim testli (healthy/repairable/non-repairable/restored örnek çıktıları).
+
 ## D-100 — Solid install.wim (uzantısı .wim ama içerik ESD) tanınır (2026-10-09)
 Bağlam: Kullanıcı, kullanıcıların mount edemediği bir özel ISO bildirdi ([Windows X-Lite] Neon Gamer, 19045.3324).
 ISO okunuyor (UDF 1.02; `wlcli info/ls` çalışıyor) ama `sources\install.wim` aslında LZMS solid (içerik olarak ESD).

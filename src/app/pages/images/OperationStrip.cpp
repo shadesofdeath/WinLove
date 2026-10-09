@@ -30,6 +30,7 @@ std::pair<Str, Str> labelsFor(EngineOperation::Kind kind) {
     case EngineOperation::Kind::Renaming: return {Str::ImagesRenaming, Str::ImagesWorkingHint};
     case EngineOperation::Kind::Verifying: return {Str::ImagesVerifying, Str::ImagesExportingHint};
     case EngineOperation::Kind::Editions: return {Str::ImagesReadingEditions, Str::ImagesWorkingHint};
+    case EngineOperation::Kind::Health: return {Str::ImagesHealthWorking, Str::ImagesWorkingHint};
     }
     return {Str::ImagesMounting, Str::ImagesWorkingHint};
 }

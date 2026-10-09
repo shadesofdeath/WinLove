@@ -443,6 +443,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         [this](std::filesystem::path source, MountedImage mounted) { restoreMount(source, std::move(mounted)); },
         [this] { startPreload(); },
         [this](const core::WimVerifyReport& report, std::wstring file) { onImageVerified(report, file); },
+        [this](const core::ImageHealthReport& report) { onImageHealth(report); },
         [this](core::WorkCopyState copy, std::filesystem::path folder, std::function<void(bool)> proceed) {
             askWorkCopy(copy, folder, std::move(proceed));
         },
@@ -3137,6 +3138,55 @@ void Shell::onImageVerified(const core::WimVerifyReport& report, const std::wstr
         page->showNotice(report.sound() ? ui::InfoKind::Success : ui::InfoKind::Error, title, body);
     }
     showToast(report.sound() ? ui::InfoKind::Success : ui::InfoKind::Error, title, report.sound() ? std::wstring() : body);
+}
+
+void Shell::onImageHealth(const core::ImageHealthReport& report) {
+    // A repair that put it right: say so and stop (no "repairable" prompt).
+    if (report.repaired) {
+        const auto title = m_strings.get(Str::ImagesHealthRepaired);
+        const auto body = m_strings.get(Str::ImagesHealthRepairedBody);
+        if (auto* page = imagesPage()) {
+            page->showNotice(ui::InfoKind::Success, title, body);
+        }
+        showToast(ui::InfoKind::Success, title, body);
+        return;
+    }
+    switch (report.state) {
+    case core::ImageHealthState::Healthy: {
+        const auto title = m_strings.get(Str::ImagesHealthHealthy);
+        const auto body = m_strings.get(Str::ImagesHealthHealthyBody);
+        if (auto* page = imagesPage()) {
+            page->showNotice(ui::InfoKind::Success, title, body);
+        }
+        showToast(ui::InfoKind::Success, title, body);
+        break;
+    }
+    case core::ImageHealthState::Repairable: {
+        const auto title = m_strings.get(Str::ImagesHealthRepairable);
+        const auto body = m_strings.get(Str::ImagesHealthRepairableBody);
+        if (auto* page = imagesPage()) {
+            page->showNotice(ui::InfoKind::Warning, title, body);
+        }
+        // Offer the repair right here: RestoreHealth from the image's own WinSxS (offline-first).
+        showActionToast(ui::InfoKind::Warning, title, body, m_strings.get(Str::ImagesHealthRepair),
+                        [this] { m_images->repairHealth(std::wstring{}, /*limitAccess=*/false); });
+        break;
+    }
+    case core::ImageHealthState::NonRepairable: {
+        const auto title = m_strings.get(Str::ImagesHealthNonRepairable);
+        const auto body = m_strings.get(Str::ImagesHealthNonRepairableBody);
+        if (auto* page = imagesPage()) {
+            page->showNotice(ui::InfoKind::Error, title, body);
+        }
+        showToast(ui::InfoKind::Error, title, body);
+        break;
+    }
+    case core::ImageHealthState::Unknown:
+        // DISM said nothing we recognise; show its own words (also in the log).
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::ImagesHealthWorking),
+                  report.detail.empty() ? m_strings.get(Str::ImagesHealthHealthyBody) : report.detail);
+        break;
+    }
 }
 
 void Shell::exportSelected() {

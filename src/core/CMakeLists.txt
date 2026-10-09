@@ -40,6 +40,7 @@ add_library(wl_core STATIC
     image/dism/DismErrors.cpp
     image/dism/DismExe.cpp
     image/dism/Edition.cpp
+    image/dism/ImageHealth.cpp
     image/dism/Intl.cpp
     image/dism/DefaultApps.cpp
     image/dism/MountHealth.cpp
