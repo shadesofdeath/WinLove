@@ -18,6 +18,8 @@ public:
     std::function<void(int)> onChange;
     void setSelected(int index); // no onChange
     [[nodiscard]] int selected() const noexcept { return m_selected; }
+    // D-091: a count after each tab's title (0 = none), e.g. the settings a tab changes.
+    void setBadges(std::vector<int> badges);
 
     [[nodiscard]] SizeF measure(SizeF available) override;
     void paint(Canvas& canvas) override;
@@ -29,7 +31,9 @@ public:
 
 private:
     [[nodiscard]] std::vector<RectF> tabRects() const;
+    [[nodiscard]] int badge(std::size_t tab) const;
     std::vector<std::wstring> m_tabs;
+    std::vector<int> m_badges;
     int m_selected;
     int m_hover = -1;
 };

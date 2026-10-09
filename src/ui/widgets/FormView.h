@@ -33,6 +33,10 @@ public:
     }
     // `color`: text.tertiary for explanations, a status color for a problem with the value.
     void setHint(const Widget& control, std::wstring hint, tokens::Color color = tokens::Color::TextTertiary);
+    // D-091: a row that will change something: accent bar at its left, label in text.primary.
+    void setMarked(const Widget& control, bool marked);
+    // A filtered-out row; a section with no row shown is hidden with it.
+    void setRowVisible(const Widget& control, bool visible);
 
     // Sections as scroll targets (step indicators).
     [[nodiscard]] int sectionCount() const noexcept;
@@ -65,7 +69,10 @@ private:
         Widget* control = nullptr;
         float width = 0;
         tokens::Color hintColor = tokens::Color::TextTertiary;
+        bool marked = false;
+        bool hidden = false; // a section: computed from its rows (shownRows)
     };
+    void updateSections();
 
     void appendRow(std::wstring label, std::wstring hint, float width, Widget* control);
     void reveal(const Widget& control);
