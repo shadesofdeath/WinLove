@@ -7,6 +7,7 @@
 #include "base/Text.h"
 #include "core/iso/SecureBoot2023.h"
 #include "core/programs/InstalledPrograms.h"
+#include "core/programs/OfflinePrograms.h"
 #include "core/uup/UupApps.h"
 #include "core/uup/UupCatalog.h"
 #include "core/uup/UupConvert.h"
@@ -594,6 +595,19 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
         }
     }
     return result;
+}
+
+// D-104: winget download a program for offline install; prints the installer and how to run it.
+int cmdProgramsDownload(const std::wstring& destFolder, const std::wstring& id, const std::wstring& name) {
+    const auto task = progressTask(L"download");
+    auto result = core::downloadProgramOffline(id, name, destFolder, task);
+    print(L"\n");
+    if (!result) {
+        return reportError(result.error());
+    }
+    print(std::format(L"{} -> {} ({:.1f} MB)\n  install: {}\n", result->id, result->file,
+                      static_cast<double>(result->bytes) / 1048576.0, result->command));
+    return 0;
 }
 
 // P07 data: provisioned apps with on-disk size.
@@ -2845,6 +2859,7 @@ void printUsage() {
           L"  wlcli boot-patch <boot.wim> <mountdir> [--bypass=tpm,secureboot,ram,cpu,storage|all] [--driver=<inf>]...\n"
           L"                                      [--legacy-setup] [--lcu=<msu> --setup-files=<dir>]   (Setup's image: LabConfig, drivers, previous Setup, D-080 update; mounts, commits)\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
+          L"  wlcli programs-download <dest folder> <winget-id> [<name>]   (D-104: winget download for offline install)\n"
           L"  wlcli health <mountdir> [check|scan|restore]   (component-store health; exit 2 if repairable/non-repairable)\n"
           L"                                      restore: [--source=<WIM:file:1|ESD:file:1|\\Windows path>] [--limit-access]\n"
           L"  wlcli apply <changeset.json> <mountdir> [--commit|--commit-with-failures] [--source=<sources\\sxs>]\n"
@@ -3180,6 +3195,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"store-shrink" && args.size() == 2) {
         return cmdStoreShrink(args[1], dryRun);
+    }
+    if (command == L"programs-download" && (args.size() == 3 || args.size() == 4)) {
+        return cmdProgramsDownload(args[1], args[2], args.size() == 4 ? args[3] : std::wstring());
     }
     if (command == L"appx" && args.size() == 2) {
         return cmdAppx(args[1], asJson);

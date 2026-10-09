@@ -52,6 +52,26 @@ TEST_CASE("post-setup: the plan survives the JSON round trip") {
     CHECK_FALSE(postSetupFromJson("{\"steps\":[{\"name\":5}]}"));
 }
 
+TEST_CASE("post-setup: offline programs ride in the plan and programs.json (D-104)") {
+    PostSetupPlan plan;
+    plan.programs = {{L"7zip.7zip", L"7-Zip"}, {L"VideoLAN.VLC", L"VLC"}};
+    plan.offlinePrograms = true;
+    plan.offlineInstallers = {{L"7zip.7zip", L"7-Zip", L"7z.msi", L"msiexec /i \"{path}\" /quiet /norestart", 1900000}};
+    // The plan survives the round trip with the offline fields.
+    const auto back = postSetupFromJson(postSetupToJson(plan));
+    REQUIRE(back);
+    CHECK(*back == plan);
+    // programs.json carries the local installer for the one we have, and none for the other.
+    const std::string json = programsJson(plan);
+    CHECK(json.find("\"offline\"") != std::string::npos);
+    CHECK(json.find("7z.msi") != std::string::npos);
+    CHECK(json.find("msiexec /i") != std::string::npos);
+    // VLC has no offline installer here -> no offline block for it (it would fall back to winget).
+    const auto at = json.find("VideoLAN.VLC");
+    REQUIRE(at != std::string::npos);
+    CHECK(json.find("\"offline\"", at) == std::string::npos);
+}
+
 TEST_CASE("post-setup: a power plan is imported and made active (SYSTEM), its GUID checked (D-096)") {
     PostSetupPlan plan;
     plan.when = PostSetupPlan::When::FirstLogon; // a power plan is a machine step even so

@@ -317,6 +317,10 @@ std::string postSetupToJson(const PostSetupPlan& plan) {
         }
         doc["programTexts"] = std::move(texts);
     }
+    if (plan.offlinePrograms) {
+        doc["offlinePrograms"] = true;
+        doc["offlineInstallers"] = Json::parse(offlineInstallersToJson(plan.offlineInstallers));
+    }
     return doc.dump();
 }
 
@@ -355,6 +359,12 @@ Result<PostSetupPlan> postSetupFromJson(std::string_view json) {
                 if (value.is_string()) {
                     plan.programTexts.emplace_back(utf8::toWide(key), utf8::toWide(value.get<std::string>()));
                 }
+            }
+        }
+        plan.offlinePrograms = doc.value("offlinePrograms", false);
+        if (const auto off = doc.find("offlineInstallers"); off != doc.end() && off->is_array()) {
+            if (auto parsed = offlineInstallersFromJson(off->dump())) {
+                plan.offlineInstallers = std::move(*parsed);
             }
         }
     } catch (const Json::exception& e) {
@@ -491,8 +501,17 @@ std::string programsJson(const PostSetupPlan& plan) {
     }
     Json programs = Json::array();
     for (const auto& program : plan.programs) {
-        programs.push_back({{"id", utf8::fromWide(program.id)},
-                            {"name", utf8::fromWide(program.name.empty() ? program.id : program.name)}});
+        Json entry{{"id", utf8::fromWide(program.id)},
+                   {"name", utf8::fromWide(program.name.empty() ? program.id : program.name)}};
+        if (plan.offlinePrograms) {
+            // D-104: the local installer (under WinLove\apps\<id>\) and how to run it, if we have it.
+            const auto it = std::ranges::find_if(plan.offlineInstallers,
+                                                 [&](const OfflineInstaller& i) { return i.id == program.id; });
+            if (it != plan.offlineInstallers.end() && !it->file.empty()) {
+                entry["offline"] = {{"file", utf8::fromWide(it->file)}, {"command", utf8::fromWide(it->command)}};
+            }
+        }
+        programs.push_back(std::move(entry));
     }
     return Json{{"title", "WinLove"}, {"texts", std::move(texts)}, {"programs", std::move(programs)}}.dump(2);
 }

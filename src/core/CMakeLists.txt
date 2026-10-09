@@ -64,6 +64,7 @@ add_library(wl_core STATIC
     postsetup/PostSetup.cpp
     programs/Winget.cpp
     programs/InstalledPrograms.cpp
+    programs/OfflinePrograms.cpp
     programs/Yaml.cpp
     postsetup/SetupScripts.cpp
     postsetup/Wifi.cpp
