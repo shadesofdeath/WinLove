@@ -169,6 +169,9 @@ public:
     // Mounting, saving, an ISO / USB being written: what a shutdown or sleep would cut (a WIM or a
     // stick left half written). Reading an image's lists does not count.
     [[nodiscard]] bool imageWorkRunning() const;
+    // D-091: the status bar's workflow steps from the state; a running download's fraction.
+    void updateWorkflow();
+    [[nodiscard]] std::optional<float> downloadProgress() const;
     void updateKeepAwake();
     // Toast body after a mount was taken over: the queue that came back with it, if any.
     [[nodiscard]] std::wstring restoredQueueText(std::size_t restored, const std::wstring& otherwise) const;

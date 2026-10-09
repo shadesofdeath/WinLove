@@ -19,7 +19,108 @@ constexpr float kCtaPaddingX = 10.0f;
 constexpr float kDot = 6.0f;
 constexpr float kDotGap = 6.0f;
 constexpr float kSegmentGap = 12.0f;
+constexpr float kStepIcon = 12.0f;
+constexpr float kStepGap = 4.0f;  // icon to label
+constexpr float kChevronW = 14.0f; // between steps
 } // namespace
+
+// ---- WorkflowSteps -----------------------------------------------------------------------------
+
+WorkflowSteps::WorkflowSteps(std::array<std::wstring, kSteps> labels) : m_labels(std::move(labels)) {
+    setFocusable(false);
+    setAccessible(ui::AccessRole::Group, m_labels[0]);
+}
+
+void WorkflowSteps::setStates(std::array<State, kSteps> states, int editCount) {
+    if (states == m_states && editCount == m_editCount) {
+        return;
+    }
+    m_states = states;
+    m_editCount = editCount;
+    invalidate();
+}
+
+std::wstring WorkflowSteps::label(int step) const {
+    const auto& text = m_labels[static_cast<std::size_t>(step)];
+    return step == 2 && m_editCount > 0 ? text + L" \u00b7 " + std::to_wstring(m_editCount) : text;
+}
+
+float WorkflowSteps::stepWidth(int step) const {
+    const float text = host() ? std::ceil(host()->text().measure(label(step), TypeStyle::Caption)) + 1 : 40.0f;
+    return kStepIcon + kStepGap + text;
+}
+
+ui::SizeF WorkflowSteps::measure(ui::SizeF /*available*/) {
+    float w = 0;
+    for (int i = 0; i < kSteps; ++i) {
+        w += stepWidth(i) + (i + 1 < kSteps ? kChevronW : 0.0f);
+    }
+    return {w, ui::tokens::size::statusBar};
+}
+
+void WorkflowSteps::onPointerMove(ui::PointF p) {
+    int hit = -1;
+    float x = bounds().x;
+    for (int i = 0; i < kSteps; ++i) {
+        const float w = stepWidth(i);
+        if (p.x >= x && p.x < x + w) {
+            hit = i;
+        }
+        x += w + kChevronW;
+    }
+    if (hit != m_hover) {
+        m_hover = hit;
+        invalidate();
+    }
+}
+
+void WorkflowSteps::onHoverChanged(bool hovered) {
+    if (!hovered && m_hover >= 0) {
+        m_hover = -1;
+        invalidate();
+    }
+}
+
+void WorkflowSteps::onClick() {
+    if (m_hover >= 0 && onStep) {
+        onStep(m_hover);
+    }
+}
+
+void WorkflowSteps::paint(ui::Canvas& canvas) {
+    const RectF b = bounds();
+    float x = b.x;
+    for (int i = 0; i < kSteps; ++i) {
+        const State state = m_states[static_cast<std::size_t>(i)];
+        const float w = stepWidth(i);
+        const bool hover = i == m_hover;
+        const Color ink = state == State::Current ? Color::TextPrimary
+                          : hover                 ? Color::TextPrimary
+                          : state == State::Done  ? Color::TextSecondary
+                                                  : Color::TextTertiary;
+        const float iconY = b.y + (b.height - kStepIcon) / 2;
+        if (state == State::Done) {
+            canvas.drawIcon(ui::icons::Icon::Check, {x, iconY}, Color::StatusSuccess, ui::IconVariant::Regular16, kStepIcon);
+        } else {
+            // A small ring, filled with the accent for the step the work is at.
+            const float d = 6.0f;
+            const RectF dot{x + (kStepIcon - d) / 2, b.y + (b.height - d) / 2, d, d};
+            if (state == State::Current) {
+                canvas.fillRoundRect(dot, d / 2, Color::AccentBase);
+            } else {
+                canvas.strokeRoundRect(dot, d / 2, Color::TextTertiary);
+            }
+        }
+        canvas.drawText(label(i), {x + kStepIcon + kStepGap, b.y, w - kStepIcon - kStepGap + 1, b.height}, TypeStyle::Caption,
+                        ink);
+        x += w;
+        if (i + 1 < kSteps) {
+            canvas.drawIcon(ui::icons::Icon::ChevronRight, {x + 2, b.y + (b.height - 10) / 2}, Color::TextDisabled,
+                            ui::IconVariant::Regular16, 10.0f);
+            x += kChevronW;
+        }
+    }
+}
 
 // ---- ApplyCta ----------------------------------------------------------------------------------
 
@@ -102,6 +203,7 @@ void ApplyCta::paint(ui::Canvas& canvas) {
 
 StatusBar::StatusBar(Labels labels) : m_labels(std::move(labels)) {
     m_cta = &add<ApplyCta>(m_labels.apply);
+    m_steps = &add<WorkflowSteps>(m_labels.steps);
     // screens.md 01: no CTA until an image is mounted.
     m_cta->setVisible(false);
     setAccessible(ui::AccessRole::Group, L"Status");
@@ -126,6 +228,8 @@ void StatusBar::layout() {
     const ui::SizeF cta = m_cta->measure({});
     m_cta->setBounds({b.right() - kPaddingRight - cta.width, b.y + std::round((b.height - kCtaHeight) / 2), cta.width,
                       kCtaHeight});
+    const ui::SizeF steps = m_steps->measure({});
+    m_steps->setBounds({b.x + kPaddingLeft, b.y, steps.width, b.height});
 }
 
 void StatusBar::paint(ui::Canvas& canvas) {
@@ -144,10 +248,13 @@ void StatusBar::paint(ui::Canvas& canvas) {
         x += kSegmentGap;
     };
 
-    // Mount segment: 6px dot (success = mounted, tertiary = nothing) + label (+ mono path).
+    // Mount segment after the workflow steps: 6px dot (success = mounted, tertiary = nothing) +
+    // label (+ mono path).
+    float x = m_steps->bounds().right();
+    separator(x);
     const float dotY = b.y + std::round((b.height - kDot) / 2);
-    canvas.fillRoundRect({b.x + kPaddingLeft, dotY, kDot, kDot}, 1, m_mountPath ? Color::StatusSuccess : Color::TextTertiary);
-    float x = b.x + kPaddingLeft + kDot + kDotGap;
+    canvas.fillRoundRect({x, dotY, kDot, kDot}, 1, m_mountPath ? Color::StatusSuccess : Color::TextTertiary);
+    x += kDot + kDotGap;
     if (m_mountPath) {
         text(x, m_labels.mounted, TypeStyle::Caption, Color::TextSecondary);
         x += kDotGap;

@@ -289,6 +289,15 @@ void NavRail::setClosedGroups(std::vector<int> groups) {
     invalidate();
 }
 
+int NavRail::badge(PageId page) const {
+    for (const auto* item : m_items) {
+        if (item->page() == page) {
+            return item->badge();
+        }
+    }
+    return 0;
+}
+
 bool NavRail::groupClosed(int group) const {
     return std::ranges::find(m_closed, group) != m_closed.end();
 }
