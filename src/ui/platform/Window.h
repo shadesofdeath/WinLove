@@ -53,6 +53,7 @@ struct WindowCallbacks {
     std::function<void(PointF, float lines)> wheel; // vertical wheel, in lines (+ = up), client DIPs
     std::function<void(wchar_t)> character;          // WM_CHAR, printable characters only
     std::function<bool()> closeRequested;            // WM_CLOSE: false keeps the window open
+    std::function<bool()> endSessionBlocked;         // WM_QUERYENDSESSION: true asks Windows not to shut down yet
 };
 
 struct WindowAppearance {

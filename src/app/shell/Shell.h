@@ -91,6 +91,9 @@ public:
         std::function<bool(const std::wstring& args)> relaunchElevated; // true = new process started
         std::function<void(UINT id, UINT ms)> startTimer;
         std::function<void(UINT id)> stopTimer;
+        // Work that must not be cut runs (`reason`) or stopped (empty): no sleep, and Windows asks
+        // before shutting down (audit A13).
+        std::function<void(const std::wstring& reason)> keepAwake;
     };
     static constexpr UINT kToastTimer = 2;
     static constexpr UINT kLogTimer = 3; // Loglar: poll the log buffer while the page is shown
@@ -163,6 +166,10 @@ public:
     // An ISO's work copy that changed since it was extracted, or is another ISO's (WorkCopy.h):
     // extract again, use it as it is (not for another ISO's), or nothing.
     void askWorkCopy(core::WorkCopyState copy, const std::filesystem::path& folder, std::function<void(bool fresh)> proceed);
+    // Mounting, saving, an ISO / USB being written: what a shutdown or sleep would cut (a WIM or a
+    // stick left half written). Reading an image's lists does not count.
+    [[nodiscard]] bool imageWorkRunning() const;
+    void updateKeepAwake();
     // Toast body after a mount was taken over: the queue that came back with it, if any.
     [[nodiscard]] std::wstring restoredQueueText(std::size_t restored, const std::wstring& otherwise) const;
     void restoreMount(const std::filesystem::path& source, MountedImage mounted);
@@ -378,6 +385,7 @@ private:
     PageId m_page = PageId::Source;
     std::uint64_t m_openSerial = 0; // latest openSource request; older results are dropped
     bool m_autoRestoreTried = false; // one automatic restore per session; then the page offers it
+    int m_keepAwake = 0;             // 0 nothing, 1 a download, 2 image work (updateKeepAwake)
     ui::Tween m_navExpansion{1.0f};
     float m_navTarget = 1.0f;
     bool m_userCollapsed = false; // the user's choice; narrow windows collapse on top of it

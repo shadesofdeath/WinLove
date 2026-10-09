@@ -60,6 +60,25 @@ def capture(hwnd) -> Image.Image:
                        visible.right - window.left, visible.bottom - window.top))
 
 
+def window_of(pid: int) -> int:
+    """The WinLove window owned by process `pid`, or 0 (never another process's)."""
+    found = []
+    proc = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+
+    def check(hwnd, _):
+        owner = wt.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        name = ctypes.create_unicode_buffer(64)
+        user32.GetClassNameW(hwnd, name, 64)
+        if owner.value == pid and name.value == "WinLove.Window":
+            found.append(hwnd)
+            return False
+        return True
+
+    user32.EnumWindows(proc(check), 0)
+    return found[0] if found else 0
+
+
 def main() -> int:
     args = sys.argv[1:]
     app_args = args[args.index("--") + 1:] if "--" in args else []
@@ -73,10 +92,16 @@ def main() -> int:
     # Never touch the user's recent list: a throw-away one unless the caller passes a fixture.
     if not any(a.startswith("--recent-file=") for a in app_args):
         app_args = [f"--recent-file={Path(tempfile.gettempdir()) / 'WinLove-capture-recent.json'}", *app_args]
+    # Its own profile (settings, answers, queue): never the user's files, and not the user's
+    # instance either — WinLove runs once per profile, a second start would only raise theirs.
+    if not any(a.startswith("--profile=") for a in app_args):
+        profile = Path(tempfile.gettempdir()) / "WinLove-capture-profile"
+        profile.mkdir(exist_ok=True)
+        app_args = [f"--profile={profile}", *app_args]
     process = subprocess.Popen([exe, "--no-elevate", *app_args])
     hwnd = 0
     for _ in range(100):
-        hwnd = user32.FindWindowW("WinLove.Window", None)
+        hwnd = window_of(process.pid)  # only the window of the process started here
         if hwnd:
             break
         time.sleep(0.05)

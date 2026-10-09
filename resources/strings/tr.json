@@ -1116,6 +1116,8 @@
     "keepOnlyBody": "Yalnız {name} kalacak; diğer {n} sürüm imajdan kalıcı olarak silinecek. İmaj dosyası yeniden yazılır.",
     "deleteIsoNote": "Önce ISO çalışma klasörüne kopyalanır; ISO dosyasının kendisi değişmez.",
     "busyCloseTitle": "Bir işlem sürüyor",
+    "busyShutdown": "WinLove imaja yazıyor; şimdi kapatmak imajı ya da belleği yarım bırakır",
+    "busyDownload": "WinLove dosya indiriyor",
     "busyCloseBody": "İmaj bağlama, uygulama veya ISO oluşturma devam ediyor. Şimdi kapatmak imajı yarım bırakabilir; işlem bitince (ya da durdurulunca) kapat.",
     "deleteManyTitle": "{n} sürüm silinsin mi?",
     "deleteManyBody": "{names} imajdan kalıcı olarak silinecek. İmaj dosyası kalan sürümlerle yeniden yazılır.",

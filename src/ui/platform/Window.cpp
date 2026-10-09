@@ -463,6 +463,12 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
             return 0;
         }
         break;
+    case WM_QUERYENDSESSION:
+        // With ShutdownBlockReasonCreate set, Windows shows the reason and lets the user decide.
+        if (m_callbacks.endSessionBlocked && m_callbacks.endSessionBlocked()) {
+            return FALSE;
+        }
+        return TRUE;
     case WM_DESTROY:
         if (m_background) {
             DeleteObject(m_background);
