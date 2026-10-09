@@ -57,6 +57,7 @@ Category categoryOf(OpKind kind) {
     case OpKind::WriteFile:
     case OpKind::CopyFile:
     case OpKind::SetTaskState:
+    case OpKind::CreateTask:
     case OpKind::SetHosts:
     case OpKind::SetDns:
     case OpKind::CopyTree:

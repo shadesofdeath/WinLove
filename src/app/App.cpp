@@ -212,6 +212,9 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoRegistryDialog = a.ends_with(L"=dialog");
         } else if (a == L"--demo-tasks") {
             options.demoTasks = true;
+        } else if (a == L"--demo-task-create") {
+            options.demoTasks = true;
+            options.demoTaskCreate = true;
         } else if (a == L"--demo-files" || startsWith(a, L"--demo-files=")) {
             options.demoFiles = a == L"--demo-files" ? std::wstring() : std::wstring(value(L"--demo-files="));
         } else if (a == L"--demo-image-drivers") {
@@ -1244,6 +1247,9 @@ int App::renderOffscreen() {
             m_shell->tasks().applyRecommended();
             m_shell->tasks().addCustom(L"\\Microsoft\\Office\\OfficeTelemetryAgentLogOn");
             m_shell->showPage(m_options.page.value_or(PageId::Tasks));
+            if (m_options.demoTaskCreate) {
+                m_shell->createTaskDialogForDemo();
+            }
         } else {
             if (hosts.lists().size() > 1) {
                 hosts.toggle(hosts.lists()[1]);

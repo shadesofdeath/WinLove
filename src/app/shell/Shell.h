@@ -271,6 +271,7 @@ private:
 
 public:
     void wifiDialogForDemo() { editPostSetupStep(core::PostSetupStep::Type::Wifi, std::nullopt); }
+    void createTaskDialogForDemo() { createTaskDialog(); } // D-102 render
     // P11: add (nullopt) or edit a typed registry value (D-067).
     void editRegistryValue(std::optional<std::size_t> entry);
     void toolDialogForDemo(const std::wstring& which, const std::filesystem::path& file); // D-058 renders
@@ -283,6 +284,7 @@ private:
     void startIso();
     void confirmUsbWrite(IsoController::Request request); // D-047: "USB belleği sil ve yaz?"
     void addTaskDialog();    // D-048: "Görev ekle…"
+    void createTaskDialog(); // D-102: "Görev oluştur…"
     void importHostsFile();  // D-049: "Hosts dosyası içe aktar…"
 
     [[nodiscard]] class FilesPage* filesPage() const;
