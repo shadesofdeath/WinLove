@@ -7,6 +7,16 @@
   P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler, P16 Uygulama Ayarları, P17 Hakkında, P18 Komut Paleti:
   🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v2 (AppX + sistem bileşenleri + depo
   temizliği, D-031), test bekliyor.
+- **İncelemenin kritik 10 maddesi yapıldı (2026-10-09, kullanıcı seçimi "kritiklerin hepsi", D-090):** bağlama klasörü
+  koruması (A1), kuyruk diskte + çözme uyarısı (A2/A3), preset uygulamaları aileyle (A4), ISO çalışma kopyası kaydı (A5),
+  aygıt kaybı / Sıfırla kilitlenmesi (A6), başarısız adımda imaj bekletilir (A7), tek örnek + uyku/kapanma engeli
+  (A12/A13), karşılamada diğer hesaplar + Administrator parolası (B1), otomatik oturum parolası temizliği (B2), yanıtlar
+  karşılamasız saklanır (B4), Türkçe arama (D2). **Kanıt:** 354 test; `tools\lab_audit_apply.ps1` ALL PASSED (gerçek imaj:
+  DISM eksik AppX'te `0x80073CF1` döndürüyor — düzeltildi); render `--demo-apply=held`; `--test-device-lost` (aynı kabuk);
+  tek örnek denemesi (aynı profil ikinci açılış kapanır). VM `b1k` (karşılama + "helper" + Administrator parolası) ve
+  `b2k` (klasik otomatik oturum, DefaultPassword) sürüyor — ilk deneme ürün anahtarı ekranında kaldı (lab yanıt dosyasında
+  sıfır anahtar, ENGINE saha notu). `dist\WinLove.exe` yeni. **Bir sonraki somut adım:** VM sonuçları; sonra kullanıcı
+  listeden "Önemli" maddeleri (11–16) seçer.
 - **Genel inceleme (2026-10-09, kullanıcı isteği):** beş paralel salt-okunur inceleme (motor, çevre modüller, uygulama
   katmanı, UI çatısı, NTLite farkı + mühendislik düzeni) → `docs/AUDIT-2026-10.md` (~100 bulgu, dosya:satır, Faz A–F +
   önerilen sıra). Kod değişmedi. **Bir sonraki somut adım:** kullanıcı sırayı seçer; öneri Faz A'nın küçük yıkıcı

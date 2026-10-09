@@ -241,6 +241,32 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-090 — Genel incelemenin kritik düzeltmeleri: veri kaybı ve "başarılı" görünen hatalar (2026-10-09)
+Bağlam: Beş paralel kod incelemesi (`docs/AUDIT-2026-10.md`); kullanıcı kritik 10 maddenin hepsini seçti.
+Karar:
+- **Bağlama klasörü:** DISM kaydı olmayan dolu klasör yalnız içi imaj artığıysa (Windows\System32 ya da yalnız imaj
+  kökü adları) temizlenir; değilse yeni durum `Foreign` — hiçbir şey silinmez. DISM'in yolu dosya kimliğiyle de eşlenir.
+  Ayarlar dolu klasörü bağlama klasörü olarak kabul etmez.
+- **Kuyruk:** her değişiklikte `queue.json`'a (answers.dat'ın yanına) yazılır, aynı WIM + index benimsenince geri gelir;
+  çözme dialogu uygulanmamış değişiklik sayısını söyler, "Önce uygula" sunar.
+- **Preset uygulamaları:** `RemoveAppx` tam adla bulunmazsa (`0x80073CF1` / `0x80070002`) paket ailesiyle imajdaki sürüm
+  kaldırılır; preset yüklenirken adlar imajdakilere çevrilir.
+- **ISO çalışma kopyası:** klasörün yanında `<ad>.source.json` kaydı (hangi ISO, çıkarma bitti mi, imaj dosyalarının boyut /
+  zamanı). Değişmemiş kopya olduğu gibi, yarım kalan tamamlanır (tam dosyalara dokunmadan); değişmiş / kaydı olmayan /
+  başka ISO'nunki için sorulur (baştan çıkar / olduğu gibi kullan).
+- **Uygula:** bir adım başarısızsa imaj kaydedilmez, bağlı kalır (`ApplyJobResult::held`); sayfa nedenleri ve "Çöz…"
+  gösterir. Diğer sürümler (D-055) eskisi gibi kaydedilir. `wlcli apply --commit` de bekletir; `--commit-with-failures`.
+- **Arayüz yeniden kurulumu:** aygıt kaybında yalnız aygıt nesneleri yeniden kurulur (kabuk ve çalışan işler yaşar);
+  Sıfırla iş sürerken dili değiştirmez; indirmeler de dil değişimini kilitler.
+- **Tek örnek:** oturum başına (ve `--profile` başına) tek WinLove; ikincisi öncekini öne getirir, UAC'den önce. İmaja
+  yazılırken uyku engellenir, kapanış nedenle sorulur.
+- **Yanıt dosyası:** karşılama açıkken diğer hesaplar ve Administrator parolası korunur (oobe.ps1 birleştirir); klasik
+  otomatik oturumun parolası ilk oturumda Winlogon'dan silinir; yanıtlar / presetler karşılama dönüşümünden geçmeden,
+  `welcome` yanında saklanır.
+- **Arama:** bütün arama kutuları `text::fold` (Türkçe İ/ı ve ç ğ ö ş ü) kullanır.
+Sonuç: `tools\lab_audit_apply.ps1` ALL PASSED (gerçek imaj: A4 + A7). VM: b1k (karşılama + ek hesap + Administrator
+parolası), b2k (otomatik oturum parolası) — sonuçları STATUS'ta.
+
 ## D-088 — Karşılamada akıcılık ve anlamlı bir son ekran (2026-10-08)
 Bağlam: Kullanıcı karşılamanın efektlerinin ve tıklamalarının daha akıcı / kaliteli olmasını, yeniden başlatmadan önceki
 "Her şey hazırlanıyor" ekranının "aşırı hızlı dolmamasını, anlamlı olmasını" istedi.
