@@ -22,7 +22,8 @@ std::string_view resourceBytes(int id) {
 
 std::vector<ui::FontBytes> embeddedFonts() {
     std::vector<ui::FontBytes> fonts;
-    for (const int id : {IDR_FONT_UI_REGULAR, IDR_FONT_UI_MEDIUM, IDR_FONT_UI_SEMIBOLD, IDR_FONT_MONO_REGULAR}) {
+    for (const int id : {IDR_FONT_INTER_REGULAR, IDR_FONT_INTER_MEDIUM, IDR_FONT_INTER_SEMIBOLD, IDR_FONT_MONO_REGULAR,
+                         IDR_FONT_GEIST_REGULAR, IDR_FONT_GEIST_MEDIUM, IDR_FONT_GEIST_SEMIBOLD, IDR_FONT_GEIST_MONO}) {
         if (const auto bytes = resourceBytes(id); !bytes.empty()) {
             fonts.push_back({bytes.data(), bytes.size()});
         }

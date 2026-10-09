@@ -72,6 +72,8 @@ AppSettings AppSettings::load(const std::filesystem::path& file) {
     if (const auto it = doc.find("reduceMotion"); it != doc.end() && it->is_boolean()) {
         settings.reduceMotion = it->get<bool>();
     }
+    const std::string font = text("font");
+    settings.font = font == "geist" ? UiFont::Geist : font == "segoe" ? UiFont::SegoeVariable : UiFont::Inter;
     const std::string density = text("density");
     settings.density = density == "large"         ? Density::Large
                        : density == "comfortable" ? Density::Comfortable
@@ -101,12 +103,14 @@ void AppSettings::save(const std::filesystem::path& file) const {
     static constexpr const char* kThemes[] = {"dark", "light", "hc", "system"};
     static constexpr const char* kAccents[] = {"copper", "sea", "pomegranate", "sky", "olive"};
     static constexpr const char* kDensities[] = {"compact", "comfortable", "large"};
+    static constexpr const char* kFonts[] = {"inter", "geist", "segoe"};
     // Through a temporary file: a crash mid-write must not reset every setting to its default.
     nlohmann::json doc{{"version", 1},
                        {"theme", kThemes[static_cast<std::size_t>(theme)]},
                        {"accent", kAccents[static_cast<std::size_t>(accent)]},
                        {"reduceMotion", reduceMotion},
                        {"density", kDensities[static_cast<std::size_t>(density)]},
+                       {"font", kFonts[static_cast<std::size_t>(font)]},
                        {"closedNavGroups", closedNavGroups},
                        {"language", language == Language::English ? "en" : "tr"},
                        {"workRoot", utf8::fromWide(workRoot.wstring())},

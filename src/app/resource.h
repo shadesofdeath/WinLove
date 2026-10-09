@@ -3,10 +3,15 @@
 
 #define IDI_WINLOVE 1
 
-#define IDR_FONT_UI_REGULAR 101
-#define IDR_FONT_UI_MEDIUM 102
-#define IDR_FONT_UI_SEMIBOLD 103
+// D-092: Inter (default) and Geist with their monospace companions; Segoe UI Variable is the system's.
+#define IDR_FONT_INTER_REGULAR 101
+#define IDR_FONT_INTER_MEDIUM 102
+#define IDR_FONT_INTER_SEMIBOLD 103
 #define IDR_FONT_MONO_REGULAR 104
+#define IDR_FONT_GEIST_REGULAR 105
+#define IDR_FONT_GEIST_MEDIUM 106
+#define IDR_FONT_GEIST_SEMIBOLD 107
+#define IDR_FONT_GEIST_MONO 108
 
 #define IDR_STRINGS_TR 201
 #define IDR_STRINGS_EN 202

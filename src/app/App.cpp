@@ -75,6 +75,22 @@ ui::ThemeKind resolveTheme(ThemeChoice choice) {
     return status == ERROR_SUCCESS && light != 0 ? ui::ThemeKind::Light : ui::ThemeKind::Dark;
 }
 
+// Windows' "Text size" (Settings > Accessibility): 100-225 %. The whole interface follows it, as the
+// layout is built for the type sizes it has (audit D9).
+float windowsTextScale() {
+    DWORD percent = 100;
+    DWORD size = sizeof(percent);
+    if (RegGetValueW(HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Accessibility", L"TextScaleFactor", RRF_RT_REG_DWORD,
+                     nullptr, &percent, &size) != ERROR_SUCCESS) {
+        return 1.0f;
+    }
+    return static_cast<float>(std::clamp<DWORD>(percent, 100, 225)) / 100.0f;
+}
+
+float zoomFor(const AppSettings& settings) {
+    return densityScale(settings.density) * windowsTextScale();
+}
+
 COLORREF colorRef(ui::ThemeKind theme, Color token) {
     const std::uint32_t argb = ui::colorArgb(theme, token);
     return RGB((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF);
@@ -297,6 +313,9 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.navCollapsed = true;
         } else if (a == L"--maximized") {
             options.maximized = true;
+        } else if (startsWith(a, L"--font=")) {
+            const std::wstring_view font = value(L"--font=");
+            options.font = font == L"geist" ? UiFont::Geist : font == L"segoe" ? UiFont::SegoeVariable : UiFont::Inter;
         } else if (a == L"--test-device-lost") {
             options.testDeviceLost = true;
         } else if (startsWith(a, L"--hover-at=")) {
@@ -441,6 +460,15 @@ Result<void> App::initialize() {
         ui::setReducedMotionForced(settings.reduceMotion);
         if (!m_options.accent) {
             ui::setAccent(settings.accent);
+        }
+        if (!m_options.font) {
+            m_options.font = settings.font;
+        }
+    }
+    // D-092: the type family; built before any widget measures with it.
+    if (m_options.font && *m_options.font != UiFont::Inter) {
+        if (auto set = m_graphics->setFamilies(fontFamilies(*m_options.font)); !set) {
+            log::warn("app", L"type family not applied: " + describe(set.error()));
         }
     }
     auto strings = embeddedStrings(m_options.language);
@@ -1573,6 +1601,7 @@ int App::runWindowed() {
     };
     callbacks.settingsChanged = [this] {
         ui::refreshReducedMotion();
+        m_window.setZoom(zoomFor(m_state->settings())); // Windows' text size may have changed
         applySettings(); // theme "Sistem" follows Windows
         m_window.invalidate();
     };
@@ -1611,6 +1640,7 @@ int App::runWindowed() {
             }
         },
     });
+    m_window.setZoom(zoomFor(m_state->settings())); // D-092: density and Windows' text size
     m_window.show();
     if (m_options.testDeviceLost) {
         m_window.post([this] {
@@ -1669,6 +1699,7 @@ void App::applySettings() {
     }
     const AppSettings& settings = m_state->settings();
     ui::setReducedMotionForced(settings.reduceMotion);
+    m_window.setZoom(zoomFor(settings));
     if (settings.accent != ui::accent()) {
         ui::setAccent(settings.accent);
         applyTheme(); // every accent brush is resolved at paint time: a repaint is enough
@@ -1677,20 +1708,28 @@ void App::applySettings() {
         m_options.theme = theme;
         applyTheme();
     }
-    if (settings.language != m_options.language) {
+    const bool fontChanged = settings.font != m_options.font.value_or(UiFont::Inter);
+    if (settings.language != m_options.language || fontChanged) {
         m_options.language = settings.language;
+        m_options.font = settings.font;
         // Later: this runs inside a control of the shell that is about to be destroyed.
-        m_window.post([this] { rebuildUi(); });
+        m_window.post([this, fontChanged] { rebuildUi(fontChanged); });
     }
 }
 
-void App::rebuildUi() {
+void App::rebuildUi(bool newFamilies) {
     auto strings = embeddedStrings(m_options.language);
     if (!strings) {
         return;
     }
     releaseShell(); // the old shell reads the old strings: it goes first
     m_strings = std::move(*strings);
+    if (newFamilies) { // nothing measures with the old text styles any more
+        if (auto set = m_graphics->setFamilies(fontFamilies(m_options.font.value_or(UiFont::Inter))); !set) {
+            log::warn("app", L"type family not applied: " + describe(set.error()));
+        }
+        m_graphics->text->setLocale(localeName(m_options.language));
+    }
     if (m_options.renderTo) {
         buildUi({}); // --switch-lang: the frame is laid out and drawn by renderOffscreen
         return;

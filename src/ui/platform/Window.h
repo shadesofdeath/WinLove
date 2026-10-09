@@ -90,6 +90,9 @@ public:
 
     [[nodiscard]] HWND hwnd() const noexcept { return m_hwnd; }
     [[nodiscard]] float scale() const noexcept { return m_scale; }
+    // D-092: the interface drawn larger than the monitor's DPI says (density, Windows text size);
+    // scale() = DPI / 96 × zoom. Lays the window out again.
+    void setZoom(float zoom);
     [[nodiscard]] SizeF clientSize() const noexcept { return m_clientSize; }
     [[nodiscard]] UINT clientWidthPx() const noexcept { return m_widthPx; }
     [[nodiscard]] UINT clientHeightPx() const noexcept { return m_heightPx; }
@@ -113,6 +116,8 @@ private:
     UINT m_widthPx = 0;
     UINT m_heightPx = 0;
     float m_scale = 1.0f;
+    float m_dpiScale = 1.0f;
+    float m_zoom = 1.0f;
     HBRUSH m_background = nullptr;
     std::mutex m_postMutex;
     std::deque<std::function<void()>> m_posted;

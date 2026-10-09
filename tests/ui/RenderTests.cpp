@@ -66,13 +66,14 @@ TEST_CASE("every generated icon parses") {
 
 TEST_CASE("bundled fonts resolve by typographic family") {
     const auto& fonts = *graphics().fonts;
-    CHECK(fonts.hasFamily(tokens::font::kUi));
-    CHECK(fonts.hasFamily(tokens::font::kMono));
+    const ui::FontFamilies families; // D-092: Inter + JetBrains Mono by default
+    CHECK(fonts.hasFamily(families.ui));
+    CHECK(fonts.hasFamily(families.mono));
     // Medium (500) must not fall back to a synthesized bold of Regular.
     auto* collection = fonts.collection();
     UINT32 index = 0;
     BOOL exists = FALSE;
-    REQUIRE(SUCCEEDED(collection->FindFamilyName(tokens::font::kUi, &index, &exists)));
+    REQUIRE(SUCCEEDED(collection->FindFamilyName(families.ui, &index, &exists)));
     ComPtr<IDWriteFontFamily> family;
     REQUIRE(SUCCEEDED(collection->GetFontFamily(index, &family)));
     ComPtr<IDWriteFont> medium;

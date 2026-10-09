@@ -22,7 +22,7 @@ ui::Graphics& graphics() {
     static std::vector<std::vector<char>> files = [] {
         const auto dir = std::filesystem::path(WL_SOURCE_DIR) / L"resources" / L"fonts";
         std::vector<std::vector<char>> data;
-        for (const auto* name : {L"IBMPlexSans-Regular.ttf", L"IBMPlexSans-Medium.ttf", L"IBMPlexSans-SemiBold.ttf",
+        for (const auto* name : {L"Inter-Regular.ttf", L"Inter-Medium.ttf", L"Inter-SemiBold.ttf",
                                  L"JetBrainsMono-Regular.ttf"}) {
             data.push_back(readFile(dir / name));
         }

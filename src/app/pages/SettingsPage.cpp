@@ -186,6 +186,21 @@ SettingsPage::SettingsPage(AppState& state, const Localization& strings, Intents
                                            std::wstring(), false);
     m_motion->setAccessible(ui::AccessRole::CheckBox, s(Str::SettingsReduceMotion));
     m_motion->onChange = [this](bool on) { edit([on](AppSettings& a) { a.reduceMotion = on; }); };
+    // D-092: the type family (rebuilds the interface, as a language change does) and the density.
+    m_font = &m_form->addRow<ui::Dropdown>(s(Str::SettingsFont), std::wstring(), kLanguageWidth, std::wstring(),
+                                           std::vector<std::wstring>{L"Inter", L"Geist", L"Segoe UI Variable"}, 0);
+    m_font->setAccessible(ui::AccessRole::Group, s(Str::SettingsFont));
+    m_font->onChange = [this](int index) {
+        edit([index](AppSettings& a) { a.font = static_cast<UiFont>(std::clamp(index, 0, 2)); });
+    };
+    m_density = &m_form->addRow<ui::Dropdown>(
+        s(Str::SettingsDensity), std::wstring(), kLanguageWidth, std::wstring(),
+        std::vector<std::wstring>{s(Str::SettingsDensityCompact), s(Str::SettingsDensityComfortable), s(Str::SettingsDensityLarge)},
+        0);
+    m_density->setAccessible(ui::AccessRole::Group, s(Str::SettingsDensity));
+    m_density->onChange = [this](int index) {
+        edit([index](AppSettings& a) { a.density = static_cast<Density>(std::clamp(index, 0, 2)); });
+    };
 
     m_form->addSection(s(Str::SettingsLanguage));
     m_language = &m_form->addRow<ui::Dropdown>(
@@ -297,9 +312,14 @@ void SettingsPage::sync() {
     }
     m_form->setHint(*m_motion, settings.reduceMotion ? std::wstring() : s(Str::SettingsFollowSystem));
     m_language->setSelected(settings.language == Language::English ? 1 : 0);
+    m_font->setSelected(static_cast<int>(settings.font));
+    m_density->setSelected(static_cast<int>(settings.density));
+    m_form->setHint(*m_density, s(Str::SettingsDensityHint));
     // A language change rebuilds every widget: not while a job reports into them.
     const bool busy = m_intents.busy && m_intents.busy();
     m_language->setEnabled(!busy);
+    m_font->setEnabled(!busy); // a new family rebuilds every widget too
+    m_form->setHint(*m_font, busy ? s(Str::SettingsLockedHint) : std::wstring());
     m_form->setHint(*m_language, busy ? s(Str::SettingsLockedHint) : std::wstring());
 
     const bool locked = foldersLocked();

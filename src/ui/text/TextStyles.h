@@ -12,9 +12,19 @@ namespace wl::ui {
 
 enum class TextAlign : std::uint8_t { Leading, Center, Trailing };
 
+// D-092: the type families, chosen in the app's settings (Inter, Geist, Segoe UI Variable). A family
+// that is not in the bundled collection comes from the system's, then the fallback.
+struct FontFamilies {
+    const wchar_t* ui = L"Inter";
+    const wchar_t* uiFallback = L"Segoe UI";
+    const wchar_t* mono = L"JetBrains Mono";
+    const wchar_t* monoFallback = L"Cascadia Mono";
+};
+
 class TextStyles {
 public:
-    [[nodiscard]] static Result<std::unique_ptr<TextStyles>> create(IDWriteFactory6* factory, const FontLibrary& fonts);
+    [[nodiscard]] static Result<std::unique_ptr<TextStyles>> create(IDWriteFactory6* factory, const FontLibrary& fonts,
+                                                                    const FontFamilies& families = {});
 
     [[nodiscard]] IDWriteTextFormat* format(tokens::TypeStyle style) const noexcept {
         return m_formats[static_cast<std::size_t>(style)].Get();
@@ -33,6 +43,7 @@ public:
     [[nodiscard]] float measureWrapped(std::wstring_view text, tokens::TypeStyle style, float width) const;
     // UI language for linguistic casing of uppercase styles (tr-TR: i → İ, ı → I).
     void setLocale(std::wstring locale) { m_locale = std::move(locale); }
+    [[nodiscard]] const std::wstring& locale() const noexcept { return m_locale; }
     // Width of the text on one line, in DIPs.
     [[nodiscard]] float measure(std::wstring_view text, tokens::TypeStyle style) const;
 

@@ -52,6 +52,8 @@ private:
     AccentSwatches* m_accent = nullptr;
     ui::Toggle* m_motion = nullptr;
     ui::Dropdown* m_language = nullptr;
+    ui::Dropdown* m_font = nullptr;    // D-092
+    ui::Dropdown* m_density = nullptr; // D-092
     PathField* m_work = nullptr;
     PathField* m_mount = nullptr;
 };
