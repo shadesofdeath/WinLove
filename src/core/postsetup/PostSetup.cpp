@@ -607,12 +607,43 @@ Result<void> applyPostSetup(const std::filesystem::path& mountDir, const PostSet
             return r;
         }
     }
+    // D-104: offline programs — winget download each installer now and embed it under apps\<id>\;
+    // the ones that come down install locally at the first logon, the rest fall back to winget.
+    PostSetupPlan effective = plan;
+    std::filesystem::remove_all(folder / L"apps", ec);
+    if (plan.offlinePrograms && !plan.programs.empty()) {
+        effective.offlineInstallers.clear();
+        const auto appsRoot = folder / L"apps";
+        const auto scratch = folder / L"apps-download";
+        std::filesystem::create_directories(appsRoot, ec);
+        for (const auto& program : plan.programs) {
+            auto installer = downloadProgramOffline(program.id, program.name, scratch, task);
+            if (!installer) {
+                log::warn("postsetup", L"offline download failed (falls back to winget): " + program.id + L" - " +
+                                           describe(installer.error()));
+                continue;
+            }
+            const auto dest = appsRoot / program.id;
+            std::filesystem::create_directories(dest, ec);
+            std::filesystem::copy_file(scratch / program.id / installer->file, dest / installer->file,
+                                       std::filesystem::copy_options::overwrite_existing, ec);
+            if (ec) {
+                log::warn("postsetup", L"could not embed installer for " + program.id + L": " + utf8::toWide(ec.message()));
+                ec.clear();
+                continue;
+            }
+            effective.offlineInstallers.push_back(std::move(*installer));
+        }
+        std::filesystem::remove_all(scratch, ec); // the downloads are copied into the image now
+        log::info("postsetup", std::format(L"offline: {} of {} program(s) embedded", effective.offlineInstallers.size(),
+                                            plan.programs.size()));
+    }
     if (!plan.programs.empty()) {
         // D-078: the window that installs them, what it reads, and its own logon task.
         if (auto r = writeBytes(folder / L"programs.ps1", scripts::kPrograms); !r) {
             return r;
         }
-        if (auto r = writeBytes(folder / L"programs.json", programsJson(plan)); !r) {
+        if (auto r = writeBytes(folder / L"programs.json", programsJson(effective)); !r) {
             return r;
         }
         if (auto r = writeBytes(folder / L"programs-task.xml", utf16File(programsTaskXml())); !r) {

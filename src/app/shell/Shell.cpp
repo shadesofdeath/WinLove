@@ -1906,6 +1906,19 @@ void Shell::showPage(PageId page) {
             };
             body.onSelectionChanged = [this] { updateComponentInspector(); };
         } else if (page == PageId::Programs) {
+            // D-104: install the picks offline (installers embedded at Apply). Toggles, then redraws
+            // so the action shows the new state.
+            const bool offline = m_programs->offline();
+            m_pageView
+                ->addAction(offline ? ui::ButtonKind::Primary : ui::ButtonKind::Secondary,
+                            m_strings.get(offline ? Str::ProgramsOfflineOn : Str::ProgramsOffline), ui::icons::Icon::AppxPackage)
+                .onInvoke = [this] {
+                const bool on = !m_programs->offline();
+                m_programs->setOffline(on);
+                showToast(ui::InfoKind::Success, m_strings.get(on ? Str::ProgramsOfflineToastOn : Str::ProgramsOfflineToastOff),
+                          on ? m_strings.get(Str::ProgramsOfflineToastBody) : std::wstring());
+                showPage(PageId::Programs);
+            };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ProgramsPreview), ui::icons::Icon::Eye).onInvoke = [this] {
                 if (auto shown = m_programs->preview(); !shown) {
                     showToast(ui::InfoKind::Error, m_strings.get(Str::ProgramsPreviewFailed), errorText(shown.error()));
