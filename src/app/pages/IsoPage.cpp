@@ -1,4 +1,6 @@
 #include "app/pages/IsoPage.h"
+
+#include "core/iso/SecureBoot2023.h"
 #include "core/image/UpdatePackage.h"
 
 #include "app/Format.h"
@@ -109,6 +111,9 @@ IsoPage::IsoPage(AppState& state, IsoController& controller, const Localization&
         m_legacyTouched = true;
         invalidate();
     };
+    m_secureBoot = &add<ui::CheckField>(strings.get(Str::IsoSecureBootBox), false);
+    m_secureBoot->onChange = [this](bool) { invalidate(); };
+    m_dbTrusts2023 = core::firmwareTrustsCa2023();
     m_mediaUpdate = &add<ui::CheckField>(strings.get(Str::IsoMediaUpdateBox), true);
     m_mediaUpdate->onChange = [this](bool on) {
         auto media = m_state.mediaUpdate();
@@ -253,6 +258,7 @@ IsoController::Request IsoPage::request() const {
     r.bootBypass = m_bootBypass->checked();
     r.legacySetup = m_legacySetup->checked();
     r.mediaUpdate = m_mediaUpdate->checked() && m_state.mediaUpdate().any();
+    r.secureBoot2023 = m_secureBoot->checked();
     if (usbTab()) {
         if (const auto* disk = selectedDisk()) {
             r.usb = IsoController::Request::UsbTarget{disk->number, disk->identity(), disk->name(),
@@ -506,6 +512,7 @@ void IsoPage::refresh() {
         m_mediaUpdate->setEnabled(!running && media.any());
         m_mediaUpdate->setTooltip(media.any() ? std::wstring() : m_strings.get(Str::IsoMediaUpdateNone));
     }
+    m_secureBoot->setEnabled(!running);
     for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_repack, m_bootBypass, m_open}) {
         w->setEnabled(!running && (w != m_repack || m_controller.canRepack()) && (w != m_bootBypass || bypasses));
     }
@@ -550,6 +557,8 @@ void IsoPage::layout() {
         place(m_legacySetup, 0);
         y += kRow;
         place(m_mediaUpdate, 0);
+        y += kRow;
+        place(m_secureBoot, 0);
         y += kRow + kSection; // BİTİNCE
         place(m_open, 0);
         return;
@@ -573,6 +582,8 @@ void IsoPage::layout() {
     place(m_legacySetup, 0);
     y += kRow;
     place(m_mediaUpdate, 0);
+    y += kRow;
+    place(m_secureBoot, 0);
     y += kRow + kSection; // DOĞRULAMA
     place(m_sha, 0);
     y += kRow;
@@ -627,6 +638,8 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
     paintLegacyHint(canvas, formRight);
     label(Str::IsoMediaUpdate);
     paintMediaHint(canvas, formRight);
+    label(Str::IsoSecureBoot);
+    paintSecureBootHint(canvas, formRight);
     section(Str::IsoVerify);
     label(Str::IsoSha);
     label(Str::IsoOpenWhenDone);
@@ -637,7 +650,7 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
     const auto& unattend = m_state.unattend();
     const bool answersUnused = !unattend.includeInIso && !(unattend.options == core::UnattendOptions{});
     const RectF box{b.right() - kSummaryWidth, b.y + kTop + ui::tokens::size::control + 2 + 12, kSummaryWidth,
-                    136 + 4 * kSummaryRow};
+                    136 + 5 * kSummaryRow};
     canvas.fillRoundRect(box, ui::tokens::radius::r3, Color::BgPanel);
     canvas.strokeRoundRect(box, ui::tokens::radius::r3, Color::LineSubtle);
     float sy = box.y + 12;
@@ -682,6 +695,8 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
         const auto [text, ink] = mediaUpdateSummary();
         row(Str::IsoMediaUpdateShort, text, false, ink);
     }
+    row(Str::IsoSecureBoot, m_strings.get(m_secureBoot->checked() ? Str::IsoSecureBoot2023 : Str::IsoSecureBoot2011), false,
+        m_secureBoot->checked() ? Color::TextPrimary : Color::TextSecondary);
     row(Str::IsoEstIso, m_sourceBytes ? formatBytes(m_sourceBytes, m_language) : std::wstring(L"…"), true);
     row(Str::IsoDuration, m_sourceBytes ? formatDuration(estimateSeconds(), m_language, true) : std::wstring(L"…"),
         true);
@@ -723,6 +738,24 @@ std::pair<std::wstring, Color> IsoPage::mediaUpdateSummary() const {
 }
 
 // Beside the box: which updates it takes, or where they come from.
+// Beside the box: whether media signed only by the 2023 CA starts on this PC (its UEFI db).
+void IsoPage::paintSecureBootHint(ui::Canvas& canvas, float formRight) {
+    const RectF box = m_secureBoot->bounds();
+    const float x = box.right() + 12;
+    if (x >= formRight) {
+        return;
+    }
+    Str text = Str::IsoSecureBootUnknown;
+    Color ink = Color::TextTertiary;
+    if (m_dbTrusts2023 && *m_dbTrusts2023) {
+        text = Str::IsoSecureBootTrusted;
+    } else if (m_dbTrusts2023) {
+        text = Str::IsoSecureBootUntrusted;
+        ink = m_secureBoot->checked() ? Color::StatusWarning : Color::TextTertiary;
+    }
+    canvas.drawText(m_strings.get(text), {x, box.y, formRight - x, box.height}, TypeStyle::Caption, ink);
+}
+
 void IsoPage::paintMediaHint(ui::Canvas& canvas, float formRight) {
     const RectF box = m_mediaUpdate->bounds();
     const float x = box.right() + 12;
@@ -798,6 +831,8 @@ void IsoPage::paintUsbForm(ui::Canvas& canvas, float y, float formRight) {
     paintLegacyHint(canvas, formRight);
     label(Str::IsoMediaUpdate);
     paintMediaHint(canvas, formRight);
+    label(Str::IsoSecureBoot);
+    paintSecureBootHint(canvas, formRight);
     section(Str::IsoUsbWhenDone);
     label(Str::IsoUsbOpenWhenDone);
 

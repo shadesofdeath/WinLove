@@ -89,6 +89,9 @@ private:
     ui::CheckField* m_bootBypass = nullptr;
     ui::CheckField* m_legacySetup = nullptr;
     ui::CheckField* m_mediaUpdate = nullptr; // D-080
+    ui::CheckField* m_secureBoot = nullptr;  // D-094: Windows UEFI CA 2023 boot manager
+    std::optional<bool> m_dbTrusts2023;      // this PC's firmware db (nullopt: not known)
+    void paintSecureBootHint(ui::Canvas& canvas, float formRight);
     bool m_legacyTouched = false;  // the user's choice is kept from then on
     std::vector<int> m_noWinre;    // 24H2+ editions without Winre.wim
     std::optional<std::vector<int>> m_cannotInstallDemo; // D-077 render demo
