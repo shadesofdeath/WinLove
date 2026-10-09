@@ -5,7 +5,7 @@
 using namespace wl::ui;
 
 TEST_CASE("token tables match the handoff") {
-    CHECK(colorArgb(ThemeKind::Dark, tokens::Color::BgBase) == 0xFF1A1918u);
+    CHECK(tokens::kDark[static_cast<std::size_t>(tokens::Color::BgBase)] == 0xFF1A1918u); // the table; D-091 draws darker
     CHECK(colorArgb(ThemeKind::Light, tokens::Color::AccentBase) == 0xFFA85C24u);
     CHECK(colorArgb(ThemeKind::HighContrast, tokens::Color::AccentBase) == 0xFF1AEBFFu);
     CHECK(colorArgb(ThemeKind::Dark, tokens::Color::Scrim) == 0x99000000u);
@@ -68,6 +68,21 @@ TEST_CASE("every accent color meets the contrast rules of the tokens, in dark an
     CHECK(colorArgb(ThemeKind::Light, tokens::Color::AccentSubtle) == tokens::kLight[static_cast<std::size_t>(tokens::Color::AccentSubtle)]);
     setAccent(Accent::Sky);
     CHECK(colorArgb(ThemeKind::Dark, tokens::Color::AccentBase) == 0xFF7FA7D9u); // the screen 19 swatch
-    CHECK(colorArgb(ThemeKind::Dark, tokens::Color::BgBase) == tokens::kDark[static_cast<std::size_t>(tokens::Color::BgBase)]);
+    CHECK(colorArgb(ThemeKind::Dark, tokens::Color::BgBase) == 0xFF111010u); // the accent leaves surfaces alone
     setAccent(Accent::Copper);
+}
+
+TEST_CASE("D-091: the dark surfaces are near black, each layer a clear step lighter") {
+    auto lum = [](tokens::Color c) {
+        const Rgba v = color(ThemeKind::Dark, c);
+        return 0.2126 * v.r + 0.7152 * v.g + 0.0722 * v.b;
+    };
+    CHECK(lum(tokens::Color::BgBase) < toRgba(tokens::kDark[static_cast<std::size_t>(tokens::Color::BgBase)]).g);
+    CHECK(lum(tokens::Color::BgInput) < lum(tokens::Color::BgBase));
+    CHECK(lum(tokens::Color::BgBase) < lum(tokens::Color::BgPanel));
+    CHECK(lum(tokens::Color::BgPanel) < lum(tokens::Color::BgRaised));
+    CHECK(lum(tokens::Color::BgRaised) < lum(tokens::Color::BgPressed));
+    CHECK(lum(tokens::Color::LineSubtle) < lum(tokens::Color::LineStrong));
+    // Light and high contrast are the handoff's.
+    CHECK(colorArgb(ThemeKind::Light, tokens::Color::BgBase) == tokens::kLight[static_cast<std::size_t>(tokens::Color::BgBase)]);
 }
