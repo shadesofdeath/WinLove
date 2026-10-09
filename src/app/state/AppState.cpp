@@ -1,7 +1,11 @@
 #include "app/state/AppState.h"
 
 #include "app/state/AnswerStore.h"
+#include "base/File.h"
+#include "base/Utf8.h"
 #include "core/image/HostsFile.h"
+
+#include <json.hpp>
 
 #include <algorithm>
 #include <cwctype>
@@ -11,6 +15,7 @@ namespace wl::app {
 
 AppState::AppState(std::filesystem::path recentFile, std::filesystem::path settingsFile, std::filesystem::path answersFile)
     : m_settings(AppSettings::load(settingsFile)), m_settingsFile(settingsFile), m_answersFile(std::move(answersFile)),
+      m_queueFile(m_answersFile.empty() ? std::filesystem::path() : m_answersFile.parent_path() / L"queue.json"),
       m_recent(std::move(recentFile)) {
     log::addSink(m_logBuffer);
     m_recent.load();
@@ -406,7 +411,66 @@ void AppState::unsubscribe(std::size_t id) {
     std::erase_if(m_listeners, [id](const auto& entry) { return entry.first == id; });
 }
 
+namespace {
+
+bool sameImagePath(const std::filesystem::path& a, const std::filesystem::path& b) {
+    return _wcsicmp(a.lexically_normal().c_str(), b.lexically_normal().c_str()) == 0;
+}
+
+} // namespace
+
+void AppState::saveQueue() const {
+    if (m_queueFile.empty()) {
+        return;
+    }
+    std::error_code ec;
+    if (m_changes.empty() || !m_mounted) {
+        std::filesystem::remove(m_queueFile, ec);
+        return;
+    }
+    using Json = nlohmann::json;
+    const Json doc{{"version", 1},
+                   {"image", utf8::fromWide(m_mounted->imagePath.wstring())},
+                   {"index", m_mounted->index},
+                   {"changes", Json::parse(m_changes.toJson())}};
+    if (auto written = writeFileAtomic(m_queueFile, doc.dump(1)); !written) {
+        log::warn("app", L"could not keep the queue: " + describe(written.error()));
+    }
+}
+
+std::size_t AppState::restoreQueue() {
+    if (m_queueFile.empty() || !m_mounted || !m_changes.empty() || queueLocked()) {
+        return 0;
+    }
+    const auto bytes = readFileBytes(m_queueFile);
+    if (!bytes) {
+        return 0;
+    }
+    using Json = nlohmann::json;
+    const Json doc = Json::parse(*bytes, nullptr, /*allow_exceptions=*/false);
+    if (!doc.is_object() || !doc.contains("changes") || !doc.value("image", Json()).is_string() ||
+        !doc.value("index", Json()).is_number_integer()) {
+        log::warn("app", L"queue.json is damaged; not restored");
+        return 0;
+    }
+    if (!sameImagePath(utf8::toWide(doc["image"].get<std::string>()), m_mounted->imagePath) ||
+        doc["index"].get<int>() != m_mounted->index) {
+        return 0; // the queue of another image: stays until this one's queue is saved over it
+    }
+    auto changes = core::ops::ChangeSet::fromJson(doc["changes"].dump());
+    if (!changes || changes->empty()) {
+        return 0;
+    }
+    m_changes = std::move(*changes);
+    log::info("app", std::format(L"queue of the last run restored: {} changes", m_changes.size()));
+    notify(Change::Queue);
+    return m_changes.size();
+}
+
 void AppState::notify(Change change) {
+    if (change == Change::Queue) {
+        saveQueue();
+    }
     // Copy: a listener may unsubscribe (page switch) while we iterate.
     const auto listeners = m_listeners;
     for (const auto& [id, listener] : listeners) {

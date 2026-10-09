@@ -610,6 +610,7 @@ enum class Str : std::uint16_t {
     ImagesPartSize,
     ImagesPreparing,
     ImagesPreparingHint,
+    ImagesQueueRestored,
     ImagesReading,
     ImagesReadingEditions,
     ImagesReadingHint,
@@ -646,10 +647,12 @@ enum class Str : std::uint16_t {
     ImagesTools,
     ImagesToolsHint,
     ImagesUnmount,
+    ImagesUnmountApplyFirst,
     ImagesUnmountBody,
     ImagesUnmountCommit,
     ImagesUnmountDiscard,
     ImagesUnmountFirst,
+    ImagesUnmountQueued,
     ImagesUnmountRecovered,
     ImagesUnmountTitle,
     ImagesUnmountedToast,
@@ -1618,7 +1621,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1608;
+inline constexpr std::size_t kStrCount = 1611;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -2223,6 +2226,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "images.partSize",
     "images.preparing",
     "images.preparingHint",
+    "images.queueRestored",
     "images.reading",
     "images.readingEditions",
     "images.readingHint",
@@ -2259,10 +2263,12 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "images.tools",
     "images.toolsHint",
     "images.unmount",
+    "images.unmountApplyFirst",
     "images.unmountBody",
     "images.unmountCommit",
     "images.unmountDiscard",
     "images.unmountFirst",
+    "images.unmountQueued",
     "images.unmountRecovered",
     "images.unmountTitle",
     "images.unmountedToast",
