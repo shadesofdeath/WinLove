@@ -419,23 +419,31 @@ function Wait-Online {
     if ($logged) { Write-Log 'network is back' }
 }
 
-Wait-Online
-Set-Status $texts.updatingSources
-if ($dryRun) {
-    Wait-Seconds 2
-} else {
-    $sourceUpdate = Start-Process -FilePath $winget -ArgumentList @('source', 'update', '--disable-interactivity') -WindowStyle Hidden -PassThru
-    $null = $sourceUpdate.Handle
-    while (-not $sourceUpdate.HasExited -and -not $script:closed) { Update-Ui; Start-Sleep -Milliseconds 30 }
+# The network and winget's sources are needed only before the first program winget installs; one with
+# its own local installer (D-104) goes in without either - on a PC with no network at all.
+$script:onlineReady = $false
+function Ensure-Online {
+    if ($script:onlineReady) { return }
+    Wait-Online
+    Set-Status $texts.updatingSources
+    if ($dryRun) {
+        Wait-Seconds 2
+    } else {
+        $sourceUpdate = Start-Process -FilePath $winget -ArgumentList @('source', 'update', '--disable-interactivity') -WindowStyle Hidden -PassThru
+        $null = $sourceUpdate.Handle
+        while (-not $sourceUpdate.HasExited -and -not $script:closed) { Update-Ui; Start-Sleep -Milliseconds 30 }
+    }
+    if ($script:closed) { Stop-Here 2 }
+    $script:onlineReady = $true
 }
-if ($script:closed) { Stop-Here 2 }
+if (-not @($programs | Where-Object { $_.offline }).Count) { Ensure-Online } # no local installers: as before
 
 # ---- the programs ---------------------------------------------------------------------------------
 $done = @{}
 if (Test-Path $doneFile) { foreach ($line in [System.IO.File]::ReadAllLines($doneFile)) { if ($line) { $done[$line] = $true } } }
 
 # winget's exit codes that mean "it is there"
-$alreadyThere = @(-1978335189, -1978335135)   # 0x8A15002B no newer version, 0x8A150061 already installed
+$alreadyThere = @(-1978335189, -1978335135, 1638)   # 0x8A15002B no newer version, 0x8A150061 already installed, MSI 1638 (another version is there)
 $needsRestart = @(-1978334967, 3010, 1641)    # 0x8A150109 restart to finish, MSI 3010 / 1641
 $refusesAdmin = -1978335146                   # 0x8A150056 the installer cannot run as administrator (Spotify)
 
@@ -483,6 +491,10 @@ foreach ($program in $programs) {
     $attempt = 0
     $state = $null
     $result = $null
+    if ($dryRun -or -not $program.offline) {
+        if (-not $winget) { $winget = Find-Winget }   # a mixed list: winget was not looked for up front
+        Ensure-Online
+    }
     while ($null -eq $state) {
         $attempt++
         Set-Status (Format-Text $texts.installing @{ name = $program.name; n = $index; total = $total })
@@ -532,8 +544,8 @@ foreach ($program in $programs) {
             $state = 'already'; $result = $texts.already
         } elseif ($needsRestart -contains $code) {
             $state = 'installed'; $result = $texts.restart
-        } elseif (-not (Test-Online)) {
-            Wait-Online                 # the connection went away: wait, then try again
+        } elseif (-not $program.offline -and -not (Test-Online)) {
+            Wait-Online                 # the connection went away: wait, then try again (a local installer needs none)
         } elseif ($attempt -ge 2) {
             $state = 'failed'; $result = Format-Text $texts.failed @{ code = ('0x{0:X8}' -f $code) }
         }
