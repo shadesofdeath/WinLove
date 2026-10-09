@@ -34,7 +34,20 @@ float baselineFor(IDWriteFontCollection* collection, const wchar_t* family, DWRI
 
 } // namespace
 
-Result<std::unique_ptr<TextStyles>> TextStyles::create(IDWriteFactory6* factory, const FontLibrary& fonts) {
+namespace {
+
+bool systemHasFamily(IDWriteFactory6* factory, const wchar_t* name) {
+    ComPtr<IDWriteFontCollection> system;
+    UINT32 index = 0;
+    BOOL exists = FALSE;
+    return SUCCEEDED(factory->GetSystemFontCollection(&system)) && SUCCEEDED(system->FindFamilyName(name, &index, &exists)) &&
+           exists;
+}
+
+} // namespace
+
+Result<std::unique_ptr<TextStyles>> TextStyles::create(IDWriteFactory6* factory, const FontLibrary& fonts,
+                                                       const FontFamilies& families) {
     auto styles = std::make_unique<TextStyles>();
     styles->m_factory = factory;
 
@@ -42,10 +55,13 @@ Result<std::unique_ptr<TextStyles>> TextStyles::create(IDWriteFactory6* factory,
     for (std::size_t i = 0; i < styles->m_formats.size(); ++i) {
         const auto& spec = tokens::kTypeStyles[i];
         const bool mono = spec.role == tokens::FontRole::Mono;
-        const wchar_t* primary = mono ? tokens::font::kMono : tokens::font::kUi;
+        const wchar_t* primary = mono ? families.mono : families.ui;
         const bool bundled = fonts.hasFamily(primary);
-        // Bundled font if present, otherwise the system fallback family from the system collection.
-        const wchar_t* family = bundled ? primary : (mono ? tokens::font::kMonoFallback : tokens::font::kUiFallback);
+        // Bundled font if present; else the system's family of that name (Segoe UI Variable), else
+        // the fallback, both from the system collection.
+        const wchar_t* family = bundled || systemHasFamily(factory, primary) ? primary
+                                : mono                                       ? families.monoFallback
+                                                                             : families.uiFallback;
         IDWriteFontCollection* collection = bundled ? fonts.collection() : nullptr;
         const auto weight = static_cast<DWRITE_FONT_WEIGHT>(spec.weight);
 

@@ -18,6 +18,7 @@
 //      --drag=valid|invalid   (Source page drop zone drag state)
 //      --mount=N              (windowed: after opening the source, mount edition N — UAC relaunch)
 //      --no-elevate           (windowed: skip the elevated relaunch at startup; main.cpp)
+//      --font=inter|geist|segoe   (the type family, as in the settings; D-092)
 //      --test-device-lost     (windowed: runs the device-loss recovery once after the window shows)
 //      --select=N[,M…]        (select edition N on the Images page; more: marked as well)
 //      --operation=mount|prepare|read|verify --progress=0.38   (render: show the operation strip)
@@ -55,6 +56,7 @@ struct LaunchOptions {
     ui::ThemeKind theme = ui::ThemeKind::Dark;
     Language language = Language::Turkish;
     bool themeGiven = false;    // --theme= / --lang= on the command line win over settings.json
+    std::optional<UiFont> font; // --font=inter|geist|segoe (D-092); else settings.json
     std::optional<ui::Accent> accent; // --accent=
     bool languageGiven = false;
     std::optional<std::filesystem::path> renderTo;
@@ -150,7 +152,7 @@ private:
     void applyTheme();
     // P16: settings.json changed (or Windows' own theme did): theme, motion, language.
     void applySettings();
-    void rebuildUi(); // a new language: strings and every widget again; AppState stays
+    void rebuildUi(bool newFamilies = false); // a new language: strings and every widget again; AppState stays
     // Keeps the page and the nav state in m_options, then destroys the widget tree (it measures with
     // the current graphics / strings, which the caller is about to replace).
     void releaseShell();

@@ -2,7 +2,17 @@
 
 namespace wl::ui {
 
-Result<std::unique_ptr<Graphics>> Graphics::create(std::span<const FontBytes> fontFiles) {
+Result<void> Graphics::setFamilies(const FontFamilies& families) {
+    auto styles = TextStyles::create(device->dwrite(), *fonts, families);
+    if (!styles) {
+        return std::unexpected(styles.error());
+    }
+    (*styles)->setLocale(text ? text->locale() : std::wstring());
+    text = std::move(*styles);
+    return {};
+}
+
+Result<std::unique_ptr<Graphics>> Graphics::create(std::span<const FontBytes> fontFiles, const FontFamilies& families) {
     auto g = std::make_unique<Graphics>();
 
     auto device = RenderDevice::create();
@@ -17,7 +27,7 @@ Result<std::unique_ptr<Graphics>> Graphics::create(std::span<const FontBytes> fo
     }
     g->fonts = std::move(*fonts);
 
-    auto text = TextStyles::create(g->device->dwrite(), *g->fonts);
+    auto text = TextStyles::create(g->device->dwrite(), *g->fonts, families);
     if (!text) {
         return std::unexpected(text.error());
     }

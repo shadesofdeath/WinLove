@@ -1186,11 +1186,17 @@ enum class Str : std::uint16_t {
     SettingsAccentSky,
     SettingsAppearance,
     SettingsBrowse,
+    SettingsDensity,
+    SettingsDensityComfortable,
+    SettingsDensityCompact,
+    SettingsDensityHint,
+    SettingsDensityLarge,
     SettingsDesc,
     SettingsDismAdk,
     SettingsDismPath,
     SettingsEnvironment,
     SettingsFollowSystem,
+    SettingsFont,
     SettingsLangEn,
     SettingsLangTr,
     SettingsLanguage,
@@ -1647,7 +1653,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1637;
+inline constexpr std::size_t kStrCount = 1643;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -2828,11 +2834,17 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "settings.accentSky",
     "settings.appearance",
     "settings.browse",
+    "settings.density",
+    "settings.densityComfortable",
+    "settings.densityCompact",
+    "settings.densityHint",
+    "settings.densityLarge",
     "settings.desc",
     "settings.dismAdk",
     "settings.dismPath",
     "settings.environment",
     "settings.followSystem",
+    "settings.font",
     "settings.langEn",
     "settings.langTr",
     "settings.language",

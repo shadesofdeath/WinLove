@@ -17,7 +17,11 @@ struct Graphics {
     std::unique_ptr<TextStyles> text;
     std::unique_ptr<IconCache> icons;
 
-    [[nodiscard]] static Result<std::unique_ptr<Graphics>> create(std::span<const FontBytes> fontFiles);
+    [[nodiscard]] static Result<std::unique_ptr<Graphics>> create(std::span<const FontBytes> fontFiles,
+                                                                  const FontFamilies& families = {});
+    // Text styles in other families (a settings change); the widget tree that measured with the
+    // old ones must be gone (App rebuilds it, as for a language change).
+    [[nodiscard]] Result<void> setFamilies(const FontFamilies& families);
 };
 
 } // namespace wl::ui

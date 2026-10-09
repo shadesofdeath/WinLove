@@ -114,9 +114,13 @@ add_executable(WinLove WIN32
 set(WL_EMBEDDED_RESOURCES
     ${PROJECT_SOURCE_DIR}/resources/WinLove.manifest
     ${PROJECT_SOURCE_DIR}/resources/brand/WinLove.ico
-    ${PROJECT_SOURCE_DIR}/resources/fonts/IBMPlexSans-Regular.ttf
-    ${PROJECT_SOURCE_DIR}/resources/fonts/IBMPlexSans-Medium.ttf
-    ${PROJECT_SOURCE_DIR}/resources/fonts/IBMPlexSans-SemiBold.ttf
+    ${PROJECT_SOURCE_DIR}/resources/fonts/Inter-Regular.ttf
+    ${PROJECT_SOURCE_DIR}/resources/fonts/Inter-Medium.ttf
+    ${PROJECT_SOURCE_DIR}/resources/fonts/Inter-SemiBold.ttf
+    ${PROJECT_SOURCE_DIR}/resources/fonts/Geist-Regular.ttf
+    ${PROJECT_SOURCE_DIR}/resources/fonts/Geist-Medium.ttf
+    ${PROJECT_SOURCE_DIR}/resources/fonts/Geist-SemiBold.ttf
+    ${PROJECT_SOURCE_DIR}/resources/fonts/GeistMono-Regular.ttf
     ${PROJECT_SOURCE_DIR}/resources/fonts/JetBrainsMono-Regular.ttf
     ${PROJECT_SOURCE_DIR}/resources/catalog/appx.json
     ${PROJECT_SOURCE_DIR}/resources/catalog/services.json

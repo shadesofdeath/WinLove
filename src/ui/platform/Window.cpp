@@ -74,7 +74,8 @@ Result<void> Window::create(const wchar_t* title, SizeF initialSize, SizeF minim
         return fail(ErrorCode::Unknown, L"CreateWindowExW failed", L"Window::create",
                     static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
     }
-    m_scale = static_cast<float>(GetDpiForWindow(m_hwnd)) / 96.0f;
+    m_dpiScale = static_cast<float>(GetDpiForWindow(m_hwnd)) / 96.0f;
+    m_scale = m_dpiScale * m_zoom;
 
     // DWM frame: dark/light system menus + border color + rounded corners (Windows 11).
     setFrameColors(appearance.darkFrame, appearance.borderColor);
@@ -94,6 +95,23 @@ Result<void> Window::create(const wchar_t* title, SizeF initialSize, SizeF minim
                  SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     updateSize();
     return {};
+}
+
+void Window::setZoom(float zoom) {
+    zoom = std::clamp(zoom, 1.0f, 2.5f);
+    if (zoom == m_zoom) {
+        return;
+    }
+    m_zoom = zoom;
+    m_scale = m_dpiScale * m_zoom;
+    if (!m_hwnd) {
+        return;
+    }
+    updateSize();
+    if (m_callbacks.resized) {
+        m_callbacks.resized(m_clientSize, m_scale);
+    }
+    InvalidateRect(m_hwnd, nullptr, FALSE);
 }
 
 void Window::show() {
@@ -297,7 +315,8 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         return 0;
     }
     case WM_DPICHANGED: {
-        m_scale = static_cast<float>(HIWORD(wParam)) / 96.0f;
+        m_dpiScale = static_cast<float>(HIWORD(wParam)) / 96.0f;
+        m_scale = m_dpiScale * m_zoom;
         const auto* suggested = reinterpret_cast<const RECT*>(lParam);
         SetWindowPos(m_hwnd, nullptr, suggested->left, suggested->top, suggested->right - suggested->left,
                      suggested->bottom - suggested->top, SWP_NOZORDER | SWP_NOACTIVATE);
@@ -309,7 +328,7 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     }
     case WM_GETMINMAXINFO: {
         auto* info = reinterpret_cast<MINMAXINFO*>(lParam);
-        const float scale = static_cast<float>(GetDpiForWindow(m_hwnd)) / 96.0f;
+        const float scale = static_cast<float>(GetDpiForWindow(m_hwnd)) / 96.0f * m_zoom;
         const int sideFrames = 2 * frameThicknessPx();
         info->ptMinTrackSize.x = static_cast<LONG>(std::lround(m_minimum.width * scale)) + sideFrames;
         info->ptMinTrackSize.y = static_cast<LONG>(std::lround(m_minimum.height * scale)) + sideFrames / 2;

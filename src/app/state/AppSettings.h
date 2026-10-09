@@ -4,6 +4,7 @@
 // are copied before mounting and where images are mounted.
 // Default work root: %LOCALAPPDATA%\WinLove (next to logs and settings; nothing in the root of C:).
 #include "app/Localization.h"
+#include "ui/text/TextStyles.h"
 #include "ui/theme/Palette.h"
 
 #include <cstdint>
@@ -18,6 +19,16 @@ enum class ThemeChoice : std::uint8_t { Dark, Light, HighContrast, System };
 // How large the interface is drawn, on top of the monitor's DPI (P16 "yoğunluk"): compact is the
 // design's 24px rows; the others scale everything, for big screens or tired eyes.
 enum class Density : std::uint8_t { Compact, Comfortable, Large };
+// D-092: the interface's type family (and its monospace companion).
+enum class UiFont : std::uint8_t { Inter, Geist, SegoeVariable };
+[[nodiscard]] constexpr ui::FontFamilies fontFamilies(UiFont font) noexcept {
+    switch (font) {
+    case UiFont::Geist: return {L"Geist", L"Segoe UI", L"Geist Mono", L"Cascadia Mono"};
+    case UiFont::SegoeVariable: return {L"Segoe UI Variable Text", L"Segoe UI", L"Cascadia Mono", L"Consolas"};
+    case UiFont::Inter: break;
+    }
+    return {L"Inter", L"Segoe UI", L"JetBrains Mono", L"Cascadia Mono"};
+}
 [[nodiscard]] constexpr float densityScale(Density d) noexcept {
     return d == Density::Large ? 1.25f : d == Density::Comfortable ? 1.125f : 1.0f;
 }
@@ -27,6 +38,7 @@ struct AppSettings {
     ui::Accent accent = ui::Accent::Copper;
     bool reduceMotion = false; // true: always; false: follow the Windows "show animations" setting
     Density density = Density::Compact;
+    UiFont font = UiFont::Inter;
     std::vector<int> closedNavGroups; // navigation groups folded away (PageInfo navGroup)
     Language language = Language::Turkish;
     std::filesystem::path workRoot = defaultWorkRoot();
