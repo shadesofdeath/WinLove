@@ -113,6 +113,11 @@ struct UnattendOptions {
 
 // The file text ("\n" line ends, 2-space indent, XML declaration first). Saved as UTF-8.
 [[nodiscard]] std::wstring buildUnattendXml(const UnattendOptions& options);
+// The options as they are, for keeping (answers.dat, presets): the welcome left out of the text —
+// it replaces the account, the time zone and OOBE's pages only in the file Setup reads; the keeper
+// stores `welcome` beside it. Saved through buildUnattendXml, an account typed before the welcome
+// was switched on was gone when it was switched off again (audit B4).
+[[nodiscard]] std::wstring unattendStateXml(const UnattendOptions& options);
 
 // Reads the options back from an answer file — ours or someone else's: what is not one of the
 // options above is ignored.

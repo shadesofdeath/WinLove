@@ -49,7 +49,8 @@ std::filesystem::path defaultAnswersFile() {
 std::string answersToJson(const StoredAnswers& answers) {
     return Json{{"version", 1},
                 {"includeInIso", answers.includeInIso},
-                {"xml", utf8::fromWide(core::buildUnattendXml(answers.options))}}
+                {"xml", utf8::fromWide(core::unattendStateXml(answers.options))},
+                {"welcome", answers.options.welcome}}
         .dump();
 }
 
@@ -62,6 +63,10 @@ std::optional<StoredAnswers> answersFromJson(std::string_view json) {
         auto options = core::parseUnattendXml(doc.value("xml", std::string{}));
         if (!options) {
             return std::nullopt;
+        }
+        // Files before 2026-10-09 kept the welcome inside the text (parseUnattendXml finds it there).
+        if (const auto welcome = doc.find("welcome"); welcome != doc.end() && welcome->is_boolean()) {
+            options->welcome = welcome->get<bool>();
         }
         return StoredAnswers{std::move(*options), doc.value("includeInIso", false)};
     } catch (const Json::exception&) {

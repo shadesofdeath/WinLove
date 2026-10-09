@@ -17,7 +17,8 @@ std::string presetToJson(const Preset& preset) {
     doc["name"] = utf8::fromWide(preset.name);
     if (preset.unattend) {
         doc["unattend"] = Json{{"includeInIso", preset.unattend->includeInIso},
-                               {"xml", utf8::fromWide(core::buildUnattendXml(preset.unattend->options))}};
+                               {"xml", utf8::fromWide(core::unattendStateXml(preset.unattend->options))},
+                               {"welcome", preset.unattend->options.welcome}};
     }
     if (!preset.bootDrivers.empty()) {
         Json drivers = Json::array();
@@ -47,6 +48,9 @@ Result<Preset> presetFromJson(std::string_view json, std::wstring fallbackName) 
             auto options = core::parseUnattendXml(it->value("xml", std::string{}));
             if (!options) {
                 return std::unexpected(options.error());
+            }
+            if (const auto welcome = it->find("welcome"); welcome != it->end() && welcome->is_boolean()) {
+                options->welcome = welcome->get<bool>(); // older presets: inside the text (B4)
             }
             preset.unattend = AppState::Unattend{std::move(*options), it->value("includeInIso", false)};
         }

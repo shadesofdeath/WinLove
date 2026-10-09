@@ -30,6 +30,13 @@ constexpr std::wstring_view kNeverExpire = L"net.exe accounts /maxpwage:UNLIMITE
 constexpr std::wstring_view kNoLockout = L"net.exe accounts /lockoutthreshold:0";
 constexpr std::wstring_view kPreventEncryption =
     L"reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\BitLocker /v PreventDeviceEncryption /t REG_DWORD /d 1 /f";
+// oobeSystem, the automatic sign-in's first logon: Windows keeps the password it signed in with in
+// Winlogon\DefaultPassword, readable by every local user, also once the count is used up (VM, 26200;
+// oobe.ps1 does the same for the welcome, D-085). Always last; read back by this text (audit B2).
+constexpr std::wstring_view kAutoLogonCleanup =
+    LR"(cmd /c reg delete "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword /f )"
+    LR"(& reg delete "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoLogonCount /f )"
+    LR"(& reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoAdminLogon /t REG_SZ /d 0 /f)";
 constexpr std::wstring_view kRecoveryGpt = L"DE94BBA4-06D1-4D40-A16A-BFD50179D6AC"; // Windows RE partition type
 constexpr std::wstring_view kRecoveryMbr = L"0x27";
 constexpr int kRecoveryMb = 1000;
@@ -324,6 +331,12 @@ UnattendOptions withWelcome(const UnattendOptions& options) {
     return o;
 }
 
+std::wstring unattendStateXml(const UnattendOptions& options) {
+    UnattendOptions plain = options;
+    plain.welcome = false;
+    return buildUnattendXml(plain);
+}
+
 std::wstring buildUnattendXml(const UnattendOptions& options) {
     const UnattendOptions o = withWelcome(options);
     const std::wstring componentAttributes = std::format(
@@ -464,9 +477,12 @@ std::wstring buildUnattendXml(const UnattendOptions& options) {
     {
         std::vector<std::wstring> commands;
         for (const auto& command : o.firstLogonCommands) {
-            if (!text::trim(command).empty()) {
+            if (!text::trim(command).empty() && text::trim(command) != kAutoLogonCleanup) {
                 commands.emplace_back(text::trim(command));
             }
+        }
+        if (o.autoLogon && !o.accountName.empty()) {
+            commands.emplace_back(kAutoLogonCleanup);
         }
         if (!commands.empty()) {
             shell.open(L"FirstLogonCommands");
@@ -639,8 +655,8 @@ Result<UnattendOptions> parseUnattendXml(std::string_view utf8) {
                     o.registeredOrganization = organization;
                 }
                 for (const auto& command : component.child("FirstLogonCommands").children("SynchronousCommand")) {
-                    if (auto line = childText(command, "CommandLine"); !line.empty()) {
-                        o.firstLogonCommands.push_back(std::move(line));
+                    if (auto line = childText(command, "CommandLine"); !line.empty() && line != kAutoLogonCleanup) {
+                        o.firstLogonCommands.push_back(std::move(line)); // the cleanup is the automatic sign-in's
                     }
                 }
                 if (const auto zone = childText(component, "TimeZone"); !zone.empty()) {

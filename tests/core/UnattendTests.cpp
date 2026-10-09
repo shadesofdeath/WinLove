@@ -397,3 +397,26 @@ TEST_CASE("welcome (D-087): a preset's old script gives way to the app's own; it
     other.add(ops::Operation{ops::OpKind::SetServiceStart, L"SysMain", L"disabled"});
     CHECK(withCurrentWelcomeScript(other).size() == 1);
 }
+
+TEST_CASE("unattend: the automatic sign-in's password does not stay in the registry (audit B2)") {
+    UnattendOptions o;
+    o.accountName = L"berkay";
+    o.password = L"secret";
+    o.autoLogon = true;
+    o.firstLogonCommands = {L"cmd /c echo mine"};
+    const std::wstring xml = buildUnattendXml(o);
+    const auto mine = xml.find(L"cmd /c echo mine");
+    const auto cleanup = xml.find(L"/v DefaultPassword /f");
+    REQUIRE(mine != std::wstring::npos);
+    REQUIRE(cleanup != std::wstring::npos);
+    CHECK(cleanup > mine); // after the user's own commands
+    CHECK(xml.find(LR"(HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon)") != std::wstring::npos);
+
+    const auto back = parseUnattendXml(utf8::fromWide(xml));
+    REQUIRE(back);
+    CHECK(back->firstLogonCommands == std::vector<std::wstring>{L"cmd /c echo mine"}); // not a command of the user's
+    CHECK(buildUnattendXml(*back) == xml); // saved and read again: one cleanup, not two
+
+    o.autoLogon = false;
+    CHECK(buildUnattendXml(o).find(L"DefaultPassword") == std::wstring::npos);
+}

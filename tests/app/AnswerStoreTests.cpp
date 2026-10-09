@@ -144,3 +144,16 @@ TEST_CASE("queue: closing the app or a crash keeps it; it comes back with the sa
     plain.queue(Operation{OpKind::DisableFeature, L"NetFx3"});
     CHECK(plain.restoreQueue() == 0);
 }
+
+TEST_CASE("answers: with the welcome on, the account typed before stays for when it is off again (audit B4)") {
+    StoredAnswers answers = sample(); // account, password, time zone …
+    answers.options.welcome = true;
+    const auto back = answersFromJson(answersToJson(answers));
+    REQUIRE(back);
+    CHECK(back->options == answers.options); // the welcome's hidden pages and WINLOVE-PC are not kept
+    CHECK(back->options.welcome);
+    CHECK(back->options.accountName == L"berkay");
+    StoredAnswers off = *back;
+    off.options.welcome = false;
+    CHECK(answersFromJson(answersToJson(off))->options.accountName == L"berkay");
+}
