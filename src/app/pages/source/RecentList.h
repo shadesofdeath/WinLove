@@ -1,8 +1,8 @@
 #pragma once
-// "Son kullanılanlar" table (screen 01): column header row + 24px rows, hover bg.raised,
-// selection accent.subtle, double click / Enter opens. One focusable widget with roving selection
-// (↑↓ Home End), painted directly — at most 10 rows, no virtualization needed.
-// Columns: name (flex, icon 16 + 6) · type 96 · version 208 · size 80 right-aligned · 8 · last opened 140.
+// "Son kullanılanlar" (screen 01), D-091 as cards: a grid of 64px cards (≥ 280 wide) — icon tile,
+// name, Windows version, type · size · last opened — hover bg.raised, selection accent.subtle, one
+// click / Enter opens, the x (hover) or Delete removes, right click the menu. One focusable widget
+// with roving selection (←→↑↓ Home End), painted directly — at most 10 entries.
 #include "app/Localization.h"
 #include "app/state/RecentSources.h"
 #include "ui/widget/Widget.h"
@@ -24,7 +24,7 @@ public:
 
     void setEntries(std::vector<RecentSource> entries);
     [[nodiscard]] bool empty() const noexcept { return m_entries.empty(); }
-    // Header row + rows.
+    // The rows of cards at the list's width.
     [[nodiscard]] float contentHeight() const noexcept;
 
     void paint(ui::Canvas& canvas) override;
@@ -38,10 +38,7 @@ public:
     [[nodiscard]] ui::RectF focusRect() const override;
 
 private:
-    struct Columns {
-        float name, type, version, sizeRight, last, right;
-    };
-    [[nodiscard]] Columns columns() const;
+    [[nodiscard]] int columnCount() const noexcept;
     [[nodiscard]] int rowAt(ui::PointF p) const;
     [[nodiscard]] ui::RectF rowRect(int index) const;
     [[nodiscard]] ui::RectF removeRect(int index) const;

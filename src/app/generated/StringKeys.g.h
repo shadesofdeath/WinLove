@@ -1237,6 +1237,7 @@ enum class Str : std::uint16_t {
     SourceFileMissing,
     SourceFilterAll,
     SourceFilterImages,
+    SourceFolderType,
     SourceHashComputing,
     SourceHashCopied,
     SourceHashCopy,
@@ -1656,7 +1657,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1646;
+inline constexpr std::size_t kStrCount = 1647;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -2888,6 +2889,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "source.fileMissing",
     "source.filterAll",
     "source.filterImages",
+    "source.folderType",
     "source.hashComputing",
     "source.hashCopied",
     "source.hashCopy",

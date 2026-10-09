@@ -117,6 +117,7 @@
     "version": "Version",
     "dropUnsupported": "Unsupported file",
     "openFailed": "Could not open:",
+    "folderType": "Folder",
     "fileMissing": "File not found",
     "filterImages": "Windows images",
     "filterAll": "All files",

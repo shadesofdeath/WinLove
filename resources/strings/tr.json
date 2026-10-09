@@ -117,6 +117,7 @@
     "version": "Sürüm",
     "dropUnsupported": "Desteklenmeyen dosya",
     "openFailed": "Açılamadı:",
+    "folderType": "Klasör",
     "fileMissing": "Dosya bulunamadı",
     "filterImages": "Windows imajları",
     "filterAll": "Tüm dosyalar",

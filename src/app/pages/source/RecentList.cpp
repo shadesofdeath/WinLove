@@ -15,15 +15,12 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kRow = 24.0f;
-constexpr float kTypeWidth = 96.0f;
-constexpr float kVersionWidth = 208.0f;
-constexpr float kSizeWidth = 80.0f;
-constexpr float kSizeGap = 8.0f;
-constexpr float kLastWidth = 140.0f;
-constexpr float kIconX = 2.0f;
-constexpr float kTextX = 22.0f;
-constexpr float kRemoveInset = 4.0f; // the x button: 16px icon, this far from the row's right end
+constexpr float kCardHeight = 64.0f;
+constexpr float kCardMinWidth = 280.0f;
+constexpr float kGap = 8.0f;
+constexpr float kPad = 12.0f;
+constexpr float kTile = 36.0f;       // the icon's tile
+constexpr float kRemoveInset = 8.0f; // the x button: 16px icon, this far from the card's corner
 
 ui::icons::Icon iconFor(const std::wstring& format) {
     if (format == L"ISO") return ui::icons::Icon::DiscIso;
@@ -49,37 +46,40 @@ void RecentList::setEntries(std::vector<RecentSource> entries) {
     invalidate();
 }
 
-float RecentList::contentHeight() const noexcept {
-    return kRow * static_cast<float>(m_entries.size() + 1);
+int RecentList::columnCount() const noexcept {
+    const float width = bounds().width;
+    return std::clamp(static_cast<int>((width + kGap) / (kCardMinWidth + kGap)), 1, 4);
 }
 
-RecentList::Columns RecentList::columns() const {
-    const RectF b = bounds();
-    Columns c{};
-    c.right = b.right();
-    c.last = c.right - kLastWidth;
-    c.sizeRight = c.last - kSizeGap;
-    c.version = c.sizeRight - kSizeWidth - kVersionWidth;
-    c.type = c.version - kTypeWidth;
-    c.name = b.x;
-    return c;
+float RecentList::contentHeight() const noexcept {
+    const int columns = columnCount();
+    const int rows = (static_cast<int>(m_entries.size()) + columns - 1) / columns;
+    return rows == 0 ? 0.0f : static_cast<float>(rows) * (kCardHeight + kGap) - kGap;
 }
 
 RectF RecentList::rowRect(int index) const {
     const RectF b = bounds();
-    return {b.x, b.y + kRow * static_cast<float>(index + 1), b.width, kRow};
+    const int columns = columnCount();
+    const float width = (b.width - kGap * static_cast<float>(columns - 1)) / static_cast<float>(columns);
+    const int col = index % columns;
+    const int row = index / columns;
+    return {std::round(b.x + static_cast<float>(col) * (width + kGap)), b.y + static_cast<float>(row) * (kCardHeight + kGap),
+            std::floor(width), kCardHeight};
 }
 
 int RecentList::rowAt(ui::PointF p) const {
-    const RectF b = bounds();
-    const int index = static_cast<int>(std::floor((p.y - b.y) / kRow)) - 1;
-    return index >= 0 && index < static_cast<int>(m_entries.size()) && b.contains(p) ? index : -1;
+    for (int i = 0; i < static_cast<int>(m_entries.size()); ++i) {
+        if (rowRect(i).contains(p)) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 RectF RecentList::removeRect(int index) const {
-    const RectF row = rowRect(index);
-    return {row.right() - kRemoveInset - ui::tokens::size::icon, row.y + (kRow - ui::tokens::size::icon) / 2,
-            ui::tokens::size::icon, ui::tokens::size::icon};
+    const RectF card = rowRect(index);
+    return {card.right() - kRemoveInset - ui::tokens::size::icon, card.y + kRemoveInset, ui::tokens::size::icon,
+            ui::tokens::size::icon};
 }
 
 void RecentList::remove(int index) {
@@ -136,23 +136,26 @@ void RecentList::onPointerDown(ui::PointF p) {
 void RecentList::onClick() {
     if (const int row = std::exchange(m_downRemove, -1); row >= 0) {
         remove(row);
+        return;
+    }
+    if (m_hoverRow >= 0 && m_hoverRow == m_selected) {
+        openSelected(); // a card opens with one click
     }
 }
 
-void RecentList::onDoubleClick() {
-    if (m_downRemove < 0) {
-        openSelected();
-    }
-}
+void RecentList::onDoubleClick() {}
 
 bool RecentList::onKeyDown(const ui::KeyEvent& key) {
     const int count = static_cast<int>(m_entries.size());
     if (count == 0) {
         return false;
     }
+    const int columns = columnCount();
     switch (key.virtualKey) {
-    case VK_UP: select(std::max(m_selected - 1, 0)); return true;
-    case VK_DOWN: select(std::min(m_selected + 1, count - 1)); return true;
+    case VK_LEFT: select(std::max(m_selected - 1, 0)); return true;
+    case VK_RIGHT: select(std::min(m_selected + 1, count - 1)); return true;
+    case VK_UP: select(std::max(m_selected - columns, 0)); return true;
+    case VK_DOWN: select(std::min(m_selected + columns, count - 1)); return true;
     case VK_HOME: select(0); return true;
     case VK_END: select(count - 1); return true;
     case VK_RETURN: openSelected(); return true;
@@ -201,44 +204,36 @@ RectF RecentList::focusRect() const {
 }
 
 void RecentList::paint(ui::Canvas& canvas) {
-    const RectF b = bounds();
-    const Columns c = columns();
-    // Column header (caption, text.tertiary)
-    const RectF header{b.x, b.y, b.width, kRow};
-    auto headerText = [&](Str key, float x, float w, ui::TextAlign align = ui::TextAlign::Leading) {
-        canvas.drawText(m_strings.get(key), {x, header.y, w, kRow}, TypeStyle::Caption, Color::TextTertiary, align);
-    };
-    headerText(Str::CommonName, c.name, c.type - c.name);
-    headerText(Str::CommonType, c.type, kTypeWidth);
-    headerText(Str::SourceVersion, c.version, kVersionWidth);
-    headerText(Str::CommonSize, c.sizeRight - kSizeWidth, kSizeWidth, ui::TextAlign::Trailing);
-    headerText(Str::SourceLastOpened, c.last, kLastWidth);
-    canvas.hairlineH(b.x, header.bottom() - 1.0f / canvas.scale(), b.width, Color::LineSubtle);
-
     for (int i = 0; i < static_cast<int>(m_entries.size()); ++i) {
         const auto& e = m_entries[static_cast<std::size_t>(i)];
-        const RectF row = rowRect(i);
-        if (i == m_selected && focused()) {
-            canvas.fillRoundRect(row, ui::tokens::radius::r2, Color::AccentSubtle);
-        } else if (i == m_hoverRow) {
-            canvas.fillRoundRect(row, ui::tokens::radius::r2, Color::BgRaised);
-        }
-        canvas.hairlineH(row.x, row.bottom() - 1.0f / canvas.scale(), row.width, Color::LineSubtle);
+        const RectF card = rowRect(i);
+        const bool selected = i == m_selected && focused();
+        const bool hover = i == m_hoverRow;
+        canvas.fillRoundRect(card, ui::tokens::radius::r3,
+                             selected ? Color::AccentSubtle : hover ? Color::BgRaised : Color::BgPanel);
+        canvas.strokeRoundRect(card, ui::tokens::radius::r3, hover || selected ? Color::LineStrong : Color::LineSubtle);
         const bool exists = m_exists[static_cast<std::size_t>(i)];
         const Color ink = exists ? Color::TextPrimary : Color::TextDisabled;
-        canvas.drawIcon(iconFor(e.format), {row.x + kIconX, row.y + 4}, exists ? Color::TextSecondary : Color::TextDisabled);
-        canvas.drawText(e.path.filename().wstring().empty() ? e.path.wstring() : e.path.filename().wstring(),
-                        {row.x + kTextX, row.y, c.type - row.x - kTextX - 8, kRow}, TypeStyle::Body, ink);
-        canvas.drawText(e.format == L"Folder" ? L"—" : e.format, {c.type, row.y, kTypeWidth - 8, kRow}, TypeStyle::Body, ink);
-        canvas.drawText(e.summary, {c.version, row.y, kVersionWidth - 8, kRow}, TypeStyle::Body, ink);
-        canvas.drawText(formatBytes(e.size, m_language), {c.sizeRight - kSizeWidth, row.y, kSizeWidth, kRow}, TypeStyle::Mono,
-                        ink, ui::TextAlign::Trailing);
-        canvas.drawText(formatRecentTime(e.lastOpened, m_language, m_strings), {c.last, row.y, kLastWidth, kRow},
-                        TypeStyle::Mono, ink);
-        if (i == m_hoverRow || (i == m_selected && focused())) {
+        const Color soft = exists ? Color::TextSecondary : Color::TextDisabled;
+
+        const RectF tile{card.x + kPad, card.y + (kCardHeight - kTile) / 2, kTile, kTile};
+        canvas.fillRoundRect(tile, ui::tokens::radius::r3, hover || selected ? Color::BgPressed : Color::BgRaised);
+        canvas.drawIcon(iconFor(e.format), {tile.x + (kTile - 20) / 2, tile.y + (kTile - 20) / 2},
+                        exists ? Color::AccentBase : Color::TextDisabled, ui::IconVariant::Regular16, 20.0f);
+
+        const float textX = tile.right() + kPad;
+        const float textW = std::max(card.right() - textX - kPad - (hover || selected ? 20.0f : 0.0f), 0.0f);
+        const std::wstring name = e.path.filename().wstring().empty() ? e.path.wstring() : e.path.filename().wstring();
+        canvas.drawText(name, {textX, card.y + 10, textW, 18}, TypeStyle::BodyStrong, ink);
+        canvas.drawText(e.summary, {textX, card.y + 27, textW, 16}, TypeStyle::Caption, soft);
+        const std::wstring meta = (e.format == L"Folder" ? m_strings.get(Str::SourceFolderType) : e.format) + L" \u00b7 " +
+                                  formatBytes(e.size, m_language) + L" \u00b7 " +
+                                  formatRecentTime(e.lastOpened, m_language, m_strings);
+        canvas.drawText(exists ? meta : m_strings.get(Str::SourceFileMissing), {textX, card.y + 43, textW, 14},
+                        TypeStyle::Caption, exists ? Color::TextTertiary : Color::StatusWarning);
+        if (hover || selected) {
             const RectF x = removeRect(i);
-            canvas.drawIcon(ui::icons::Icon::Close, {x.x, x.y},
-                            i == m_hoverRow && m_hoverRemove ? Color::TextPrimary : Color::TextTertiary);
+            canvas.drawIcon(ui::icons::Icon::Close, {x.x, x.y}, hover && m_hoverRemove ? Color::TextPrimary : Color::TextTertiary);
         }
     }
 }
