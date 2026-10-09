@@ -241,6 +241,55 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-100 — Solid install.wim (uzantısı .wim ama içerik ESD) tanınır (2026-10-09)
+Bağlam: Kullanıcı, kullanıcıların mount edemediği bir özel ISO bildirdi ([Windows X-Lite] Neon Gamer, 19045.3324).
+ISO okunuyor (UDF 1.02; `wlcli info/ls` çalışıyor) ama `sources\install.wim` aslında LZMS solid (içerik olarak ESD).
+Karar: `isEsdSource()` yalnız `.esd` uzantısına bakıyordu → Bağla açık kalıp DISM solid imajda başarısız oluyordu.
+`isSolidInstall()` başlığı okur (`header.solid` veya LZMS); böyle bir kaynak "paketlenmiş" sayılır: Bağla kapanır ve
+net mesaj gösterir, "ESD/solid → WIM" eylemi düşük riskli bir dışa aktarmayla düz (LZX) mount edilebilir WIM üretir
+(ISO ise önce çalışma kopyasına çıkarılır). Doğrulanan: X-Lite ISO okundu, solid install.wim 74 sn'de düz WIM'e döndü,
+düz WIM mount oldu (ntoskrnl var) ve sorunsuz unmount oldu.
+
+## D-099 — Karşılama sihirbazı: duvar kağıdı ve uygulama paketi sayfaları (2026-10-09)
+Bağlam: Kullanıcı sihirbaza "program paketleri + duvar kağıdı sayfaları" istedi; "görsel ekleyemem, PC başında
+değilim" dedi → duvar kağıdı sayfası Windows'un kendi hazır duvar kağıtlarını kullanır (görsel gerektirmez). Paketler
+için kullanıcı OOBE'de seçer.
+Karar: iki yeni premium sayfa (oobe.ps1), diğerleriyle aynı stil. **Masaüstü arka planı:** `Windows\Web\Wallpaper`
+(+4K/Screen) küçük resim ızgarası, solda canlı monitör önizlemesi; seçim yeni hesaba yazılır (`Control Panel\Desktop\
+WallPaper`, Default profil + .reg). **Uygulama paketleri:** operatörün tanımladığı paketler (Temel, Tarayıcılar,
+Medya, İletişim, Geliştirici, Oyun, Araçlar), kullanıcı işaretler; seçilen winget id'leri ilk oturumda kendini silen
+bir oturum göreviyle kurulur. Katılımsız modda `auto.wallpaper` / `auto.bundles` uygulanır. ScrollViewer'lara ince
+modern (Windows 11) scrollbar (kullanıcı eski scrollbar'ı fark etti). `wlcli welcome-json` + `tools/capture_oobe.py`
+ile VM'siz render doğrulaması.
+
+## D-098 — `wlcli welcome-json` + VM'siz sihirbaz render aracı (2026-10-09)
+`wlcli welcome-json <out> <strings.json>` gerçek `welcomeJson`'ı bir strings dosyasının welcome bölümünden üretir;
+`tools/capture_oobe.py` buna önizleme alanlarını ekleyip oobe.ps1'i önizleme modunda çalıştırır ve PrintWindow ile
+yalnız o pencereyi yakalar (tam ekran değil). Sihirbaz her değişiklikte 40 dk'lık VM kurulumu olmadan görülür.
+Windows 10'un tam setleri "Feature update to Windows 10, version 22H2" adıyla listelenir → `buildKind` bunları da
+Release sayar.
+
+## D-097 — Desteklenmeyen PC'de yerinde yükseltme: medyadaki betik konak denetimlerini düzeltir (2026-10-09)
+Bağlam: Temiz kurulum boot.wim'deki LabConfig ile geçiyor; yerinde yükseltme (çalışan Windows'tan setup.exe) *canlı*
+konak kayıt defterini okur, boot.wim ona erişemez. Araştırma (Rufus kaynağı, KB5053484): güvenilir yol, kullanıcının
+setup.exe yerine çalıştırdığı bir medya betiğinin konak değerlerini yazması.
+Karar: Önyükleme atlatması açıkken medyaya "Yukselt - desteklenmeyen PC.cmd" eklenir — kendini yükseltir, Setup'ın
+baktığı değerleri yazar (`AppCompatFlags\HwReqChkVars` = SecureBoot/TPM2/8GB, `MoSetup\AllowUpgrades...`=1, eski
+önbellekler temizlenir) ve setup.exe'yi başlatır. Eksik TPM, Secure Boot yok, az RAM, desteklenmeyen CPU'yu kapsar;
+normal Setup penceresini, dosya ve uygulamaları korur. (POPCNT/SSE4.2 24H2+'da aşılamayan sert alt sınır.)
+
+## D-096 — Kurulum Sonrası: .pow güç planı içe aktarma (2026-10-09)
+Yeni bir adım türü (PowerPlan): seçilen .pow imaja kopyalanır ve SetupComplete'te (SYSTEM, ilk oturumdan önce)
+üretilen bir GUID altında içe aktarılıp etkin şema yapılır (`powercfg /import` + `/setactive`). GUID adımın
+`destination` alanında taşınır (yapı değişmez). "Güç planı ekle" Kurulum Sonrası sayfasında.
+
+## D-095 — "Bu bilgisayardan al": Programlar ve Tweaks (2026-10-09)
+Bağlam: Kullanıcı bu PC'nin programlarını ve ayarlarını imaja taşımayı istedi. **Programlar:** bu PC'nin Kaldır
+kayıtları (her iki görünüm + kullanıcı; Windows'un kendileri hariç) imzalı winget dizinine eşleştirilir (ürün kodu,
+yoksa normalize ad + yayıncı — winget'in yaptığı gibi); dialogda çalışma zamanları ayrı ve kapalı, seçilenler ilk
+oturum programlarına tek kuyruk düzenlemesiyle eklenir (bu PC'de 65'in 34'ü). **Tweaks:** her ayar bu PC'nin kayıt
+defterine göre değerlendirilir (`liveRegistryHolds`); servis/dosya ayarları yargılanmaz. 61 ayar, "Geri al"lı.
+
 ## D-094 — Secure Boot 2023 önyükleme yöneticili medya (2026-10-09)
 Bağlam: Kullanıcının seçtiği 2. özellik. Microsoft PCA 2011'i DBX'e alınca eski medya açılmaz; db'sinde "Windows UEFI
 CA 2023" olmayan PC'de ise yalnız eski medya açılır. Microsoft'un yolu `Make2023BootableMedia.ps1` (KB5053484): boot.wim
