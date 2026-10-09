@@ -7,6 +7,22 @@
   P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler, P16 Uygulama Ayarları, P17 Hakkında, P18 Komut Paleti:
   🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v2 (AppX + sistem bileşenleri + depo
   temizliği, D-031), test bekliyor.
+- **Windows özellikleri (2026-10-09, kullanıcı "4,6,8,9 dışında hepsini yap", D-093 / D-094 / D-095):**
+  - **Windows indir (D-093):** yeni sayfa (İMAJ grubu) + Kaynak'ta kısayol. Liste UUP dump API'sinden (sürüm / dil /
+    sürüm / dosya), dosyalar yalnız Microsoft CDN'inden (SHA-256, 4 bağlantı, 403'te link tazeleme, `.part` devam).
+    Kendi dönüştürücümüz (wimlib yok): referanslı dışa aktarma (paket ESD + FOD CAB'leri yakalayarak), WinRE her sürüme,
+    `boot.wim` (PE + Setup), güncellemeler içerikten sınıflandırılıp Microsoft sırasıyla (Edge, SSU, enablement/.NET,
+    checkpoint+LCU, cleanup), Setup DU medyaya, Mağaza uygulamaları (app CompDB → hash eşleştirme → DISM provision).
+    Sayfa seçenekleri kalıcı (settings.json): güncellemeler, Edge, uygulamalar (gruplu seçici), .NET 3.5, ResetBase,
+    ESD; **Windows 10** (22H2) ve x86 ürün filtresi. `wlcli uup builds|langs|editions|files|download|convert|role|apps`.
+  - **Secure Boot 2023 (D-094):** ISO Oluştur › Önyükleme kutusu; `boot.wim`'den (bağlamadan, `wimFileData`) 2023
+    imzalı önyükleme dosyaları medyaya, `efisys_EX.bin` El Torito UEFI imajı. Yanında bu PC'nin db durumu.
+    `wlcli iso --secureboot2023`, `wlcli secureboot-db`. Kanıt: ISO'nun `bootx64.efi`'si Windows UEFI CA 2023 zinciri.
+  - **Bu bilgisayardan al (D-095):** Programlar (winget dizinine ürün kodu / normalize ad eşleştirme — bu PC'de 65'in
+    34'ü) ve Ayarlar/Tweaks (her ayar bu PC'nin kayıt defterine göre — 61 ayar) dialogları, "Geri al"lı.
+  - **Kanıt:** 362+ test; VM `uup1` (güncellemesiz) ve `uup2` (güncellemeli, 10.0.26300.9550) ALL PASSED;
+    `uup3` (Mağaza uygulamalı, 56 uygulama provision) sürüyor. **Sırada:** 5 yerinde yükseltme, 7 güç planı, 10 karşılama
+    sihirbazı + baştan tasarımı. `dist\WinLove.exe` yenilenecek.
 - **Tasarım yenilemesi (2026-10-09, kullanıcı "hepsini uygula", D-091 / D-092):** gezinmede katlanabilir grup başlıkları,
   ayrık simgeler; durum çubuğunda iş akışı adımları + kuyruk özeti + indirmeler; Kaynak'ta kartlar; Tweaks'te arama,
   "Yalnız değişenler", sekme sayaçları, işaretli satırlar; tablo sıralama + Bileşenler'de boyut çubukları; İmajlar sağ
