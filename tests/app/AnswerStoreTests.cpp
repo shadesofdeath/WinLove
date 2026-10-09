@@ -111,3 +111,36 @@ TEST_CASE("answers: what was filled in is there again when the app starts") {
     AppState plain{scratch(L"recent.json"), scratch(L"settings.json")};
     CHECK(plain.unattend().options == core::UnattendOptions{});
 }
+
+TEST_CASE("queue: closing the app or a crash keeps it; it comes back with the same mounted image (audit A3)") {
+    using core::ops::OpKind;
+    using core::ops::Operation;
+    const auto answers = scratch(L"queue-answers.dat");
+    const auto queueFile = answers.parent_path() / L"queue.json";
+    std::filesystem::remove(queueFile);
+    const MountedImage mounted{LR"(C:\WinLove\mount)", LR"(D:\work\sources\install.wim)", 6, L"Windows 11 Pro"};
+    {
+        AppState state{scratch(L"recent.json"), scratch(L"settings.json"), answers};
+        state.setMounted(mounted);
+        state.queue(Operation{OpKind::DisableFeature, L"NetFx3"});
+        state.queue(Operation{OpKind::SetServiceStart, L"DiagTrack", L"4"});
+        CHECK(std::filesystem::exists(queueFile)); // written on every change, not at exit
+    }
+    {
+        AppState state{scratch(L"recent.json"), scratch(L"settings.json"), answers};
+        state.setMounted(MountedImage{mounted.mountDir, mounted.imagePath, 1, L"Windows 11 Home"});
+        CHECK(state.restoreQueue() == 0); // another edition: not its queue
+        state.setMounted(std::nullopt);
+        state.setMounted(MountedImage{mounted.mountDir, L"d:/work/sources/INSTALL.wim", 6, L"Windows 11 Pro"});
+        CHECK(state.restoreQueue() == 2);
+        CHECK(state.changes().size() == 2);
+        CHECK(state.restoreQueue() == 0); // only into an empty queue
+        state.setMounted(std::nullopt);   // unmounting drops the queue …
+        CHECK_FALSE(std::filesystem::exists(queueFile)); // … and the saved copy with it
+    }
+    // Without an answers file (tests, renders) nothing is read or written.
+    AppState plain{scratch(L"recent.json"), scratch(L"settings.json")};
+    plain.setMounted(mounted);
+    plain.queue(Operation{OpKind::DisableFeature, L"NetFx3"});
+    CHECK(plain.restoreQueue() == 0);
+}

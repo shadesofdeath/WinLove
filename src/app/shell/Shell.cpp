@@ -2236,6 +2236,11 @@ void Shell::continueFolderMount() {
     restoreMount(sourceForMountedImage(m.imagePath), MountedImage{m.mountPath, m.imagePath, m.index, {}, m.readOnly});
 }
 
+std::wstring Shell::restoredQueueText(std::size_t restored, const std::wstring& otherwise) const {
+    return restored == 0 ? otherwise
+                         : m_strings.format(Str::ImagesQueueRestored, {{L"count", std::to_wstring(restored)}});
+}
+
 void Shell::restoreMount(const std::filesystem::path& source, MountedImage mounted) {
     log::info("app", L"restore: opening " + source.wstring());
     if (m_state.source() && _wcsicmp(m_state.source()->path.c_str(), nativePath(source).c_str()) == 0) {
@@ -2244,7 +2249,8 @@ void Shell::restoreMount(const std::filesystem::path& source, MountedImage mount
         mounted.edition = m_state.selectedImage() ? m_state.selectedImage()->name : std::format(L"#{}", mounted.index);
         const std::wstring edition = mounted.edition;
         m_state.setMounted(std::move(mounted));
-        showToast(ui::InfoKind::Info, m_strings.format(Str::ImagesMountRestored, {{L"edition", edition}}), L"");
+        showToast(ui::InfoKind::Info, m_strings.format(Str::ImagesMountRestored, {{L"edition", edition}}),
+                  restoredQueueText(m_state.restoreQueue(), L""));
         startPreload();
         return;
     }
@@ -2261,7 +2267,7 @@ void Shell::restoreMount(const std::filesystem::path& source, MountedImage mount
         const std::wstring edition = mounted.edition;
         m_state.setMounted(std::move(mounted));
         showToast(ui::InfoKind::Info, m_strings.format(Str::ImagesMountRestored, {{L"edition", edition}}),
-                  m_state.mounted()->imagePath.wstring());
+                  restoredQueueText(m_state.restoreQueue(), m_state.mounted()->imagePath.wstring()));
         startPreload();
     });
 }
@@ -2516,21 +2522,32 @@ void Shell::askUnmount() {
     if (!host() || !m_state.mounted()) {
         return;
     }
-    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::ImagesUnmountTitle),
-                                                           m_strings.get(Str::ImagesUnmountBody), ui::icons::Icon::Unmount,
-                                                           ui::tokens::Color::TextSecondary);
+    // Queued changes are not in the image yet: unmounting drops them (audit A2), so say so and
+    // offer the Apply page first.
+    const std::size_t queued = m_state.changes().size();
+    auto dialog = std::make_unique<ui::Dialog>(
+        m_strings.get(Str::ImagesUnmountTitle),
+        queued == 0 ? m_strings.get(Str::ImagesUnmountBody)
+                    : m_strings.format(Str::ImagesUnmountQueued, {{L"count", std::to_wstring(queued)}}),
+        ui::icons::Icon::Unmount, queued == 0 ? ui::tokens::Color::TextSecondary : ui::tokens::Color::StatusWarning);
     ui::Dialog* raw = dialog.get();
     raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
     raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesUnmountDiscard), [this, raw] {
         host()->popModal(raw);
         m_images->unmount(/*commit=*/false);
     });
-    raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::ImagesUnmountCommit),
+    raw->addButton(queued == 0 ? ui::ButtonKind::Primary : ui::ButtonKind::Secondary, m_strings.get(Str::ImagesUnmountCommit),
                    [this, raw] {
                        host()->popModal(raw);
                        m_images->unmount(/*commit=*/true);
                    },
-                   /*primary=*/true);
+                   /*primary=*/queued == 0);
+    if (queued > 0) {
+        raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::ImagesUnmountApplyFirst), [this, raw] {
+            host()->popModal(raw);
+            showPage(PageId::Apply);
+        }, /*primary=*/true);
+    }
     pushDialog(std::move(dialog));
 }
 

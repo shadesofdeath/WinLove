@@ -97,8 +97,13 @@ public:
     void setMounted(std::optional<MountedImage> mounted);
 
     // The change queue (D-003): nothing touches the image until "Uygula". Cleared when the
-    // mounted image changes (the queue belongs to that image).
+    // mounted image changes (the queue belongs to that image). Kept on disk on every change
+    // (queue.json next to answers.dat): closing the app or a crash leaves the image mounted, and
+    // the queue comes back with it — restoreQueue() when that mount is taken over again.
     [[nodiscard]] const core::ops::ChangeSet& changes() const noexcept { return m_changes; }
+    // The saved queue of the mounted image (same WIM and index), if there is one and the queue is
+    // empty now. Returns how many changes came back.
+    std::size_t restoreQueue();
     void queue(core::ops::Operation op);
     bool unqueue(core::ops::OpKind kind, std::wstring_view target);
     void unqueueIf(const std::function<bool(const core::ops::Operation&)>& which);
@@ -386,6 +391,7 @@ public:
 
 private:
     void notify(Change change);
+    void saveQueue() const;
 
     core::TaskRunner m_engine;
     core::TaskRunner m_reader;
@@ -418,6 +424,7 @@ private:
     std::optional<StoreFetch> m_storeFetch;
     std::filesystem::path m_settingsFile;
     std::filesystem::path m_answersFile;
+    std::filesystem::path m_queueFile; // empty: in memory only (tests, renders)
     std::shared_ptr<log::RingBufferSink> m_logBuffer = std::make_shared<log::RingBufferSink>();
     std::uint64_t m_logCleared = 0;
     RecentSources m_recent;

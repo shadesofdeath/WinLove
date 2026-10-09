@@ -160,6 +160,8 @@ public:
     void startPreload(); // image values first (fast), then the page lists
     // A mount from a previous run (ImageController::adoptExistingMount): reopen its source and
     // show it as mounted again.
+    // Toast body after a mount was taken over: the queue that came back with it, if any.
+    [[nodiscard]] std::wstring restoredQueueText(std::size_t restored, const std::wstring& otherwise) const;
     void restoreMount(const std::filesystem::path& source, MountedImage mounted);
     // Restores AppState::mountFolder's healthy mount (Images page "Devam et", and automatically).
     void continueFolderMount();
