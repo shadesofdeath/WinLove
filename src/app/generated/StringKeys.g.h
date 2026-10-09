@@ -571,6 +571,7 @@ enum class Str : std::uint16_t {
     ImagesFilesDirs,
     ImagesFolderBlockers,
     ImagesFolderContinue,
+    ImagesFolderForeign,
     ImagesFolderFound,
     ImagesFolderFree,
     ImagesFolderImageMissing,
@@ -1173,6 +1174,7 @@ enum class Str : std::uint16_t {
     SettingsLockedHint,
     SettingsMountDefault,
     SettingsMountDir,
+    SettingsMountNotEmpty,
     SettingsPathInvalid,
     SettingsPressEnter,
     SettingsReduceMotion,
@@ -1232,6 +1234,7 @@ enum class Str : std::uint16_t {
     SourceMountedBusy,
     SourceMountedFile,
     SourceMountedFolder,
+    SourceMountedForeign,
     SourceMountedHint,
     SourceMountedImage,
     SourceMountedInUse,
@@ -1615,7 +1618,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1605;
+inline constexpr std::size_t kStrCount = 1608;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -2181,6 +2184,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "images.filesDirs",
     "images.folderBlockers",
     "images.folderContinue",
+    "images.folderForeign",
     "images.folderFound",
     "images.folderFree",
     "images.folderImageMissing",
@@ -2783,6 +2787,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "settings.lockedHint",
     "settings.mountDefault",
     "settings.mountDir",
+    "settings.mountNotEmpty",
     "settings.pathInvalid",
     "settings.pressEnter",
     "settings.reduceMotion",
@@ -2842,6 +2847,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "source.mountedBusy",
     "source.mountedFile",
     "source.mountedFolder",
+    "source.mountedForeign",
     "source.mountedHint",
     "source.mountedImage",
     "source.mountedInUse",

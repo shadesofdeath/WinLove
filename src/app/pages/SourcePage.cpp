@@ -177,6 +177,7 @@ void SourcePage::paintMountCell(ui::Canvas& canvas, int row, int column, RectF r
         case core::MountState::NeedsRemount: state = Str::SourceMountedRemount; ink = Color::StatusWarning; break;
         case core::MountState::ImageMissing: state = Str::SourceMountedMissing; ink = Color::StatusError; break;
         case core::MountState::Orphaned: state = Str::SourceMountedOrphan; ink = Color::StatusWarning; break;
+        case core::MountState::Foreign: state = Str::SourceMountedForeign; ink = Color::StatusWarning; break;
         default: state = Str::SourceMountedInvalid; ink = Color::StatusError; break;
         }
         canvas.drawText(m_strings.get(state), rect, TypeStyle::Caption, ink);

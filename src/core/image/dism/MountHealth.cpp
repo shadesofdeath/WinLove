@@ -9,12 +9,28 @@
 
 #include <windows.h>
 
+#include <array>
+#include <cstring>
 #include <format>
 
 namespace wl::core {
 
 namespace {
 
+std::optional<FILE_ID_INFO> folderId(const std::filesystem::path& folder) {
+    HANDLE h = CreateFileW(folder.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                           nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (h == INVALID_HANDLE_VALUE) {
+        return std::nullopt;
+    }
+    FILE_ID_INFO id{};
+    const bool ok = GetFileInformationByHandleEx(h, FileIdInfo, &id, sizeof(id)) != FALSE;
+    CloseHandle(h);
+    return ok ? std::optional<FILE_ID_INFO>(id) : std::nullopt;
+}
+
+// The same folder, also when DISM spells it differently (8.3 name, a junction or SUBST on the way):
+// a live mount must never look like an unrecorded folder (its contents would then be cleared).
 bool samePath(const std::filesystem::path& a, const std::filesystem::path& b) {
     auto norm = [](const std::filesystem::path& p) {
         std::wstring s = p.lexically_normal().wstring();
@@ -23,12 +39,33 @@ bool samePath(const std::filesystem::path& a, const std::filesystem::path& b) {
         }
         return s;
     };
-    return _wcsicmp(norm(a).c_str(), norm(b).c_str()) == 0;
+    if (_wcsicmp(norm(a).c_str(), norm(b).c_str()) == 0) {
+        return true;
+    }
+    const auto ia = folderId(a);
+    const auto ib = folderId(b);
+    return ia && ib && ia->VolumeSerialNumber == ib->VolumeSerialNumber &&
+           std::memcmp(&ia->FileId, &ib->FileId, sizeof(ia->FileId)) == 0;
 }
 
 bool hasEntries(const std::filesystem::path& folder) {
     std::error_code ec;
     return std::filesystem::is_directory(folder, ec) && !std::filesystem::is_empty(folder, ec) && !ec;
+}
+
+Result<void> foreignFolder(const std::filesystem::path& folder) {
+    return fail(ErrorCode::InvalidArgument,
+                L"the mount folder holds files that are not an image; WinLove does not delete them — choose an "
+                L"empty mount folder",
+                folder.wstring());
+}
+
+// Leftovers are cleared only when they are an image's (MountHealth.h); anything else stays.
+Result<void> clearLeftovers(const std::filesystem::path& folder) {
+    if (hasEntries(folder) && !looksLikeImageLeftovers(folder)) {
+        return foreignFolder(folder);
+    }
+    return forceRemoveContents(folder);
 }
 
 bool fileExists(const std::filesystem::path& file) {
@@ -53,7 +90,9 @@ std::wstring devicePath(const std::filesystem::path& folder) {
 MountCheck check(const std::filesystem::path& folder, std::optional<MountInfo> record) {
     MountCheck c;
     c.folder = folder;
-    c.state = classifyMount(record, record && fileExists(record->imagePath), hasEntries(folder));
+    const bool entries = hasEntries(folder);
+    c.state = classifyMount(record, record && fileExists(record->imagePath), entries,
+                            entries && !record && looksLikeImageLeftovers(folder));
     c.action = recommendedAction(c.state);
     c.windowsImage = fileExists(folder / L"Windows" / L"System32" / L"config" / L"SOFTWARE");
     c.loadedHives = hivesLoadedFrom(folder);
@@ -84,6 +123,7 @@ const wchar_t* mountStateName(MountState state) noexcept {
     case MountState::Invalid: return L"invalid";
     case MountState::ImageMissing: return L"image missing";
     case MountState::Orphaned: return L"orphaned";
+    case MountState::Foreign: return L"not an image";
     }
     return L"?";
 }
@@ -101,7 +141,8 @@ const wchar_t* mountActionName(MountAction action) noexcept {
 MountAction recommendedAction(MountState state) noexcept {
     switch (state) {
     case MountState::Free:
-    case MountState::Ok: return MountAction::None;
+    case MountState::Ok:
+    case MountState::Foreign: return MountAction::None;
     case MountState::NeedsRemount: return MountAction::Remount;
     case MountState::Invalid:
     case MountState::ImageMissing: return MountAction::Discard;
@@ -110,9 +151,13 @@ MountAction recommendedAction(MountState state) noexcept {
     return MountAction::None;
 }
 
-MountState classifyMount(const std::optional<MountInfo>& record, bool imageExists, bool folderHasEntries) noexcept {
+MountState classifyMount(const std::optional<MountInfo>& record, bool imageExists, bool folderHasEntries,
+                         bool leftoversOfImage) noexcept {
     if (!record) {
-        return folderHasEntries ? MountState::Orphaned : MountState::Free;
+        if (!folderHasEntries) {
+            return MountState::Free;
+        }
+        return leftoversOfImage ? MountState::Orphaned : MountState::Foreign;
     }
     switch (record->status) {
     case DismMountStatus::Invalid: return MountState::Invalid;
@@ -122,6 +167,42 @@ MountState classifyMount(const std::optional<MountInfo>& record, bool imageExist
     case DismMountStatus::Ok: return imageExists ? MountState::Ok : MountState::ImageMissing;
     }
     return MountState::Invalid;
+}
+
+bool imageRootName(std::wstring_view name) noexcept {
+    // What the root of install.wim / boot.wim / winre.wim holds (any edition, x64 / ARM64), plus
+    // what Windows and setup add to a mounted image.
+    static constexpr std::array<std::wstring_view, 20> kNames = {
+        L"Windows",        L"Program Files",   L"Program Files (x86)", L"Program Files (Arm)",
+        L"ProgramData",    L"Users",           L"PerfLogs",            L"Recovery",
+        L"$WinREAgent",    L"$Recycle.Bin",    L"System Volume Information", L"Documents and Settings",
+        L"inetpub",        L"sources",         L"setup.exe",           L"Config.Msi",
+        L"$SysReset",      L"$Windows.~BT",    L"$Windows.~WS",        L"XboxGames",
+    };
+    for (const auto known : kNames) {
+        if (name.size() == known.size() &&
+            CompareStringOrdinal(name.data(), static_cast<int>(name.size()), known.data(), static_cast<int>(known.size()),
+                                 TRUE) == CSTR_EQUAL) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool looksLikeImageLeftovers(const std::filesystem::path& folder) {
+    std::error_code ec;
+    if (std::filesystem::is_directory(folder / L"Windows" / L"System32", ec)) {
+        return true; // a Windows tree, whatever else WinLove's Files page put next to it
+    }
+    bool any = false;
+    for (auto it = std::filesystem::directory_iterator(folder, ec); !ec && it != std::filesystem::directory_iterator();
+         it.increment(ec)) {
+        any = true;
+        if (!imageRootName(it->path().filename().wstring())) {
+            return false;
+        }
+    }
+    return any && !ec;
 }
 
 Result<MountCheck> inspectMount(Dism& dism, const std::filesystem::path& folderInput) {
@@ -244,7 +325,7 @@ Result<MountCheck> repairMount(Dism& dism, const MountCheck& check, const TaskCo
     // DISM record left, what remains is plain leftovers and is safe to delete.
     if (after && after->state == MountState::Orphaned && check.action != MountAction::None &&
         check.action != MountAction::Remount) {
-        if (auto r = forceRemoveContents(check.folder); !r) {
+        if (auto r = clearLeftovers(check.folder); !r) {
             return std::unexpected(r.error());
         }
         after = inspectMount(dism, check.folder);
@@ -339,7 +420,7 @@ namespace {
 Result<void> recreateFolder(const std::filesystem::path& folder) {
     std::error_code ec;
     if (std::filesystem::exists(folder, ec)) {
-        if (auto r = forceRemoveContents(folder); !r) {
+        if (auto r = clearLeftovers(folder); !r) {
             return r;
         }
         if (!RemoveDirectoryW(folder.c_str())) {
@@ -400,6 +481,9 @@ Result<MountOutcome> mountSafely(Dism& dism, const std::filesystem::path& wimInp
                                 check->record ? check->record->imagePath.wstring() : L"?",
                                 check->record ? check->record->index : 0),
                     static_cast<std::int32_t>(0xC1420113));
+    }
+    if (check->state == MountState::Foreign) {
+        return std::unexpected(foreignFolder(folder).error()); // says why; deletes nothing
     }
     if (check->state != MountState::Free) {
         outcome.recovered = true;

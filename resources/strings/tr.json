@@ -144,6 +144,7 @@
     "mountedInvalid": "Bozuk — ayrılmalı",
     "mountedMissing": "WIM dosyası yok",
     "mountedOrphan": "Kayıtsız artık",
+    "mountedForeign": "İmaj değil (dokunulmaz)",
     "mountedInUse": "WinLove'da açık",
     "mountedBusy": "Önce WinLove'daki imajı kaydedip ya da atarak ayır",
     "mountedReading": "Bağlı imajlar okunuyor…",
@@ -251,6 +252,7 @@
     "folderInvalid": "geçersiz",
     "folderImageMissing": "WIM dosyası kayıp",
     "folderOrphaned": "yarım kalmış (artık dosyalar)",
+    "folderForeign": "imaja ait olmayan dosyalar var — silinmez; Ayarlar'da boş bir klasör seçin",
     "folderFound": "Bağlı imaj bulundu: {edition} (index {index})",
     "folderContinue": "Devam et",
     "rename": "Yeniden adlandır…",
@@ -1043,6 +1045,7 @@
     "lockedHint": "Bağlı imaj ya da süren bir işlem varken değiştirilemez",
     "pathInvalid": "Tam yol gerekli (ör. D:\\WinLove)",
     "pressEnter": "Enter ile uygula",
+    "mountNotEmpty": "Bağlama klasörü boş olmalı",
     "resetDone": "Ayarlar varsayılana döndü",
     "dismAdk": "Windows ADK"
   },

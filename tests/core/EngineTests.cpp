@@ -179,13 +179,14 @@ TEST_CASE("mount health: DISM status + our checks → state → action") {
     auto record = [](DismMountStatus status) {
         return std::optional<wl::core::MountInfo>(wl::core::MountInfo{L"C:/WinLove/mount", L"C:/x/install.wim", 1, false, status});
     };
-    CHECK(wl::core::classifyMount(std::nullopt, false, false) == MountState::Free);
-    CHECK(wl::core::classifyMount(std::nullopt, false, true) == MountState::Orphaned);
-    CHECK(wl::core::classifyMount(record(DismMountStatus::Ok), true, true) == MountState::Ok);
-    CHECK(wl::core::classifyMount(record(DismMountStatus::Ok), false, true) == MountState::ImageMissing);
-    CHECK(wl::core::classifyMount(record(DismMountStatus::NeedsRemount), true, true) == MountState::NeedsRemount);
-    CHECK(wl::core::classifyMount(record(DismMountStatus::NeedsRemount), false, true) == MountState::ImageMissing);
-    CHECK(wl::core::classifyMount(record(DismMountStatus::Invalid), true, true) == MountState::Invalid);
+    CHECK(wl::core::classifyMount(std::nullopt, false, false, false) == MountState::Free);
+    CHECK(wl::core::classifyMount(std::nullopt, false, true, true) == MountState::Orphaned);
+    CHECK(wl::core::classifyMount(std::nullopt, false, true, false) == MountState::Foreign);
+    CHECK(wl::core::classifyMount(record(DismMountStatus::Ok), true, true, false) == MountState::Ok);
+    CHECK(wl::core::classifyMount(record(DismMountStatus::Ok), false, true, false) == MountState::ImageMissing);
+    CHECK(wl::core::classifyMount(record(DismMountStatus::NeedsRemount), true, true, false) == MountState::NeedsRemount);
+    CHECK(wl::core::classifyMount(record(DismMountStatus::NeedsRemount), false, true, false) == MountState::ImageMissing);
+    CHECK(wl::core::classifyMount(record(DismMountStatus::Invalid), true, true, false) == MountState::Invalid);
 
     CHECK(wl::core::recommendedAction(MountState::Free) == MountAction::None);
     CHECK(wl::core::recommendedAction(MountState::Ok) == MountAction::None);
@@ -193,6 +194,36 @@ TEST_CASE("mount health: DISM status + our checks → state → action") {
     CHECK(wl::core::recommendedAction(MountState::Invalid) == MountAction::Discard);
     CHECK(wl::core::recommendedAction(MountState::ImageMissing) == MountAction::Discard);
     CHECK(wl::core::recommendedAction(MountState::Orphaned) == MountAction::ClearFolder);
+    CHECK(wl::core::recommendedAction(MountState::Foreign) == MountAction::None); // someone's files: never cleared
+}
+
+TEST_CASE("mount health: only an image's leftovers count as leftovers (A1: a user folder is never cleared)") {
+    namespace fs = std::filesystem;
+    const fs::path base = fs::temp_directory_path() / L"wl-tests" / L"leftovers";
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    CHECK(wl::core::imageRootName(L"Windows"));
+    CHECK(wl::core::imageRootName(L"program files (x86)"));
+    CHECK(wl::core::imageRootName(L"$WinREAgent"));
+    CHECK_FALSE(wl::core::imageRootName(L"Documents"));
+    CHECK_FALSE(wl::core::imageRootName(L"photo.jpg"));
+
+    const fs::path image = base / L"image"; // an interrupted unmount: part of the root is left
+    fs::create_directories(image / L"Users" / L"Default", ec);
+    fs::create_directories(image / L"ProgramData", ec);
+    CHECK(wl::core::looksLikeImageLeftovers(image));
+
+    const fs::path tree = base / L"tree"; // a Windows tree plus a folder WinLove's Files page added
+    fs::create_directories(tree / L"Windows" / L"System32", ec);
+    fs::create_directories(tree / L"Tools", ec);
+    CHECK(wl::core::looksLikeImageLeftovers(tree));
+
+    const fs::path documents = base / L"documents"; // someone's folder picked as the mount folder
+    fs::create_directories(documents / L"Users", ec);
+    std::ofstream(documents / L"thesis.docx") << "x";
+    CHECK_FALSE(wl::core::looksLikeImageLeftovers(documents));
+    CHECK_FALSE(wl::core::looksLikeImageLeftovers(base / L"empty-or-missing"));
+    fs::remove_all(base, ec);
 }
 
 TEST_CASE("mount health: no hives are loaded from a folder that is not mounted") {
