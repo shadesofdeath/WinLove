@@ -2919,8 +2919,10 @@ function Find-Winget {
     return $null
 }
 
-$winget = if ($dryRun) { 'winget.exe' } else { Find-Winget }
-if (-not $winget) {
+# D-104: when every program carries its own local installer, winget is not needed at all.
+$allOffline = ($programs.Count -gt 0) -and -not (@($programs | Where-Object { -not $_.offline }).Count)
+$winget = if ($dryRun) { 'winget.exe' } elseif ($allOffline) { $null } else { Find-Winget }
+if (-not $winget -and -not $allOffline) {
     Set-Status $texts.waitingWinget
     try {
         Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction Stop
@@ -2933,7 +2935,7 @@ if (-not $winget) {
     }
 }
 if ($script:closed) { Stop-Here 2 }
-if (-not $winget) {
+if (-not $winget -and -not $allOffline) {
     Write-Log 'winget is not available: App Installer is missing from this Windows'
     foreach ($program in $programs) { Set-Row $program.id 'failed' $texts.notInstalled }
     Set-Status $texts.noWinget
@@ -3041,13 +3043,27 @@ foreach ($program in $programs) {
     $result = $null
     while ($null -eq $state) {
         $attempt++
-        Set-Status (Format-Text $texts.installing @{ name = $program.name; n = $index; total = $total })
+        Set-Status (Format-Text $texts.installing @{ name = $program.name; n = $index; total = $to)wlps"
+    R"wlps(tal })
         Set-Row $program.id 'installing' $texts.installingRow
         $output = Join-Path $env:TEMP ('winlove-winget-' + $index + '.txt')
         $arguments = @('install', '--id', $program.id, '--exact', '--silent', '--source', 'winget',
-                       ')wlps"
-    R"wlps(--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
-        if ($dryRun) {
+                       '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
+        if ($program.offline -and -not $dryRun) {
+            # D-104: install from the local installer embedded in the image (no internet, no winget).
+            $appsFile = Join-Path $here ('apps\' + $program.id + '\' + [string] $program.offline.file)
+            if (-not (Test-Path $appsFile)) {
+                Write-Log ($program.id + ': offline installer missing: ' + $appsFile)
+                $code = 1
+            } else {
+                $line = ([string] $program.offline.command).Replace('{path}', $appsFile)
+                Write-Log ($program.id + ' offline: ' + $line)
+                $proc = Start-Process -FilePath 'cmd.exe' -ArgumentList ('/d /c ' + $line) -WindowStyle Hidden -PassThru
+                $null = $proc.Handle
+                while (-not $proc.HasExited) { if ($script:closed) { Stop-Here 2 }; Update-Ui; Start-Sleep -Milliseconds 30 }
+                $code = $proc.ExitCode
+            }
+        } elseif ($dryRun) {
             # The preview: the second program "is there already", the last one fails once, then works.
             Wait-Seconds 2.5
             if ($script:closed) { Stop-Here 2 }

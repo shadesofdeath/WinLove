@@ -2,6 +2,7 @@
 // merged manifests, MSZIP, the signed index (a small SQLite file of the same shape here), and the
 // programs the post-setup plan installs at the first logon.
 #include "core/postsetup/PostSetup.h"
+#include "core/programs/OfflinePrograms.h"
 #include "core/programs/Winget.h"
 #include "core/programs/Yaml.h"
 
@@ -292,4 +293,41 @@ TEST_CASE("post-setup programs: in the plan, their own task, the window's JSON, 
     REQUIRE(applyPostSetup(mount, PostSetupPlan{}, {}).has_value());
     CHECK_FALSE(std::filesystem::exists(folder / L"programs.ps1"));
     CHECK_FALSE(std::filesystem::exists(folder / L"programs-task.xml"));
+}
+
+TEST_CASE("offline programs (D-104): manifest read, install command, JSON round-trip") {
+    // A trimmed merged manifest, as winget download writes one.
+    const std::string yaml =
+        "PackageIdentifier: 7zip.7zip\n"
+        "PackageVersion: 26.04\n"
+        "Installers:\n"
+        "- Architecture: x64\n"
+        "  InstallerType: wix\n"
+        "  InstallerUrl: https://www.7-zip.org/a/7z2604-x64.msi\n"
+        "  InstallerSwitches:\n"
+        "    Silent: /quiet /norestart\n"
+        "    SilentWithProgress: /passive /norestart\n"
+        "ManifestType: merged\n"
+        "ManifestVersion: 1.12.0\n";
+    const auto how = parseWingetManifest(yaml);
+    CHECK(how.type == L"wix");
+    CHECK(how.silent == L"/quiet /norestart");
+
+    // Install command by installer kind, with a {path} placeholder for the local file.
+    CHECK(offlineInstallCommand(L"wix", L"/quiet /norestart") == L"msiexec /i \"{path}\" /quiet /norestart");
+    CHECK(offlineInstallCommand(L"msi", L"") == L"msiexec /i \"{path}\" /quiet /norestart");
+    CHECK(offlineInstallCommand(L"nullsoft", L"") == L"\"{path}\" /S");
+    CHECK(offlineInstallCommand(L"inno", L"") == L"\"{path}\" /VERYSILENT /NORESTART");
+    CHECK(offlineInstallCommand(L"exe", L"/quiet") == L"\"{path}\" /quiet");
+    CHECK(offlineInstallCommand(L"exe", L"").find(L"{path}") != std::wstring::npos);
+    CHECK(offlineInstallCommand(L"msix", L"").find(L"Add-AppxPackage") != std::wstring::npos);
+
+    // JSON round-trip of the list programs.ps1 reads.
+    const std::vector<OfflineInstaller> list{
+        {L"7zip.7zip", L"7-Zip", L"7-Zip_26.04_x64.msi", L"msiexec /i \"{path}\" /quiet /norestart", 1500000},
+        {L"VideoLAN.VLC", L"VLC", L"vlc.exe", L"\"{path}\" /S", 42000000}};
+    auto back = offlineInstallersFromJson(offlineInstallersToJson(list));
+    REQUIRE(back);
+    CHECK(*back == list);
+    CHECK_FALSE(offlineInstallersFromJson("nope").has_value());
 }

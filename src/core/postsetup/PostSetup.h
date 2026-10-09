@@ -17,6 +17,7 @@
 //
 // Caveat (D-026): Windows skips SetupComplete.cmd when it is activated with an OEM product key.
 #include "base/Result.h"
+#include "core/programs/OfflinePrograms.h"
 #include "core/tasks/Task.h"
 
 #include <filesystem>
@@ -62,6 +63,11 @@ struct PostSetupPlan {
     // The program window's texts in the app's language (keys of programs.ps1's "texts"); a key that
     // is missing keeps its English default.
     std::vector<std::pair<std::wstring, std::wstring>> programTexts;
+    // D-104: install the programs offline. The installers (downloaded with winget) ride in the image
+    // under WinLove\apps\<id>\ (copied there separately); `offlineInstallers` says how to run each,
+    // matched to `programs` by id. programs.ps1 then installs from the local files, no internet.
+    bool offlinePrograms = false;
+    std::vector<OfflineInstaller> offlineInstallers;
 
     [[nodiscard]] bool empty() const noexcept { return steps.empty() && programs.empty(); }
 

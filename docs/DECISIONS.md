@@ -241,6 +241,21 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-104 — Çevrimdışı program kurulumu (motor) (2026-10-10)
+Bağlam: Programlar sayfasının winget programları ilk oturumda INTERNETTEN kuruluyordu (programs.ps1 → winget install).
+Kullanıcı: hedef PC internetsiz de kurabilsin diye kurulumları build anında indirip imaja gömelim. Karar (kullanıcı:
+"motoru şimdi kur, VM testini işaretle").
+Motor: `core/programs/OfflinePrograms.{h,cpp}` — `winget download --id <id> --download-directory <klasör>\<id>` installer +
+manifest getirir; manifest `parseYaml` ile okunur (InstallerType + Silent); `offlineInstallCommand` türe göre `{path}`
+yer tutuculu kurulum komutu üretir (msi/wix → msiexec; msix → Add-AppxPackage; diğerleri dosyayı sessiz anahtarıyla
+çalıştırır). `wlcli programs-download <klasör> <id> [<ad>]`. Veri yolu: `PostSetupPlan` → `offlinePrograms` + `offlineInstallers`
+(serileşir); `programsJson` her programa `offline:{file,command}` ekler; programs.ps1 çevrimdışı dalı `apps\<id>\<file>`'den
+yerel kurar (hepsi çevrimdışıysa winget hiç beklenmez). Installer dosyaları imaja CopyTree ile girer (apps klasörü).
+Doğrulanan: birim testler (manifest parse, kurulum komutu, JSON ve plan round-trip, programs.json çıktısı); gerçek
+`wlcli programs-download 7zip.7zip` → 1.9 MB .msi + `msiexec /i "{path}" /quiet /norestart`.
+AÇIK (bir sonraki): Programlar sayfasında "çevrimdışı" anahtarı + controller indirme orkestrasyonu (indir → CopyTree → plan);
+ve temiz bir VM'de internetsiz GERÇEK kurulum testi (imaj boyutu artışı operatöre gösterilir).
+
 ## D-103 — Çok dilli karşılama sihirbazı (15 dil, kurulan Windows'un diline göre) (2026-10-09)
 Bağlam: Sihirbaz metinleri yalnız TR/EN'di ve derleme anında tek dile sabitleniyordu; dağıtılan ISO'lar farklı dillerdeki
 kullanıcılara gidiyor. Hedef: sihirbaz, kurulan Windows'un diline (InstalledUICulture) göre kendini göstersin, yoksa
