@@ -133,6 +133,19 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_titleBar->closeButton().onInvoke = [this] { m_services.close(); };
     m_nav->onSelect = [this](PageId page) { showPage(page); };
     m_nav->onToggleCollapse = [this] { toggleNav(); };
+    // D-091: folded groups are a setting (settings.json), so they stay folded next time.
+    m_nav->setClosedGroups(state.settings().closedNavGroups);
+    m_nav->onToggleGroup = [this](int group) {
+        AppSettings settings = m_state.settings();
+        auto& closed = settings.closedNavGroups;
+        if (const auto it = std::ranges::find(closed, group); it != closed.end()) {
+            closed.erase(it);
+        } else {
+            closed.push_back(group);
+        }
+        m_nav->setClosedGroups(closed);
+        m_state.setSettings(std::move(settings));
+    };
 
     m_features = std::make_unique<FeatureController>(m_state, m_services.postToUi);
     {

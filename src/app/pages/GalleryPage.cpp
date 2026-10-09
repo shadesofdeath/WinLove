@@ -6,6 +6,8 @@
 #include "ui/widgets/Label.h"
 #include "ui/widgets/Splitter.h"
 
+#include <format>
+
 namespace wl::app {
 
 using namespace ui;
@@ -43,6 +45,23 @@ void buttonRow(Stack& page, const wchar_t* title, ButtonKind kind, std::optional
     }
 }
 
+// Every icon of the set with its index (Icons.g.h order): to pick one without opening the handoff.
+class IconGrid final : public Widget {
+public:
+    void paint(Canvas& canvas) override {
+        const RectF b = bounds();
+        constexpr float kCell = 44.0f;
+        const int columns = std::max(1, static_cast<int>(b.width / kCell));
+        for (std::size_t i = 0; i < icons::kIconCount; ++i) {
+            const float x = b.x + static_cast<float>(static_cast<int>(i) % columns) * kCell;
+            const float y = b.y + static_cast<float>(static_cast<int>(i) / columns) * kCell;
+            canvas.drawIcon(static_cast<icons::Icon>(i), {x + 12.0f, y + 2.0f}, tokens::Color::TextPrimary);
+            canvas.drawText(std::format(L"{}", i), {x, y + 20.0f, kCell - 4.0f, 14.0f}, tokens::TypeStyle::Caption,
+                            tokens::Color::TextTertiary, TextAlign::Center);
+        }
+    }
+};
+
 } // namespace
 
 GalleryPage::GalleryPage() : Stack(Axis::Vertical, 12.0f) {
@@ -78,6 +97,7 @@ GalleryPage::GalleryPage() : Stack(Axis::Vertical, 12.0f) {
     auto& empty = addItem<EmptyState>(Sizing::fixed(140), icons::Icon::DiscIso, L"EmptyState title",
                                       L"Caption body text explains what to do next.");
     empty.setAction(L"Secondary action");
+    addItem<IconGrid>(Sizing::fixed(300));
 }
 
 } // namespace wl::app

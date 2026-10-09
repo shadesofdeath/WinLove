@@ -30,7 +30,14 @@
     "languages": "Languages",
     "branding": "Personalization",
     "icons": "Icons",
-    "startmenu": "Start menu"
+    "startmenu": "Start menu",
+    "group0": "Image",
+    "group1": "Contents",
+    "group2": "System and look",
+    "group3": "Setup",
+    "group4": "Output",
+    "group5": "WinLove",
+    "groupFold": "Fold / unfold the group"
   },
   "title": {
     "cmdk": "Search commands, pages or components",
