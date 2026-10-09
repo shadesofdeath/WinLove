@@ -1413,7 +1413,16 @@
     "winDone": "{ok} program(s) installed",
     "winDoneWithErrors": "{ok} installed, {failed} not installed",
     "winClose": "Close",
-    "winHint": "Close the window and the rest is installed at the next sign-in."
+    "winHint": "Close the window and the rest is installed at the next sign-in.",
+    "fromThisPc": "Take from this PC",
+    "fromThisPcTitle": "Programs on this PC",
+    "fromThisPcBody": "{n} programs installed on this PC are in winget. The ones switched on are installed on the new Windows at the first sign-in.",
+    "fromThisPcPrograms": "Programs",
+    "fromThisPcRuntimes": "Runtimes",
+    "fromThisPcPicked": "Already in the list",
+    "fromThisPcAdded": "{n} programs added to the list",
+    "fromThisPcNone": "No program on this PC is in winget",
+    "fromThisPcWait": "The winget index is being prepared; try again in a moment"
   },
   "apps": {
     "title": "Apps",

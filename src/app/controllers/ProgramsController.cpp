@@ -15,6 +15,7 @@
 #include <shellapi.h>
 
 #include <algorithm>
+#include <array>
 #include <format>
 
 namespace wl::app {
@@ -165,6 +166,34 @@ int ProgramsController::toggleBundle(const Bundle& bundle) {
         m_postSetup.setPrograms(std::move(next), windowTexts());
     }
     return changed;
+}
+
+std::vector<core::InstalledMatch> ProgramsController::fromThisPc() const {
+    return m_index ? core::matchInstalled(*m_index, core::installedPrograms()) : std::vector<core::InstalledMatch>{};
+}
+
+int ProgramsController::pickAll(const std::vector<core::WingetPackage>& packages) {
+    std::vector<core::PostSetupProgram> next = picks();
+    int added = 0;
+    for (const auto& p : packages) {
+        if (!picked(p.id) && core::validWingetId(p.id)) {
+            next.push_back({p.id, p.name.empty() ? p.id : p.name});
+            ++added;
+        }
+    }
+    if (added > 0) {
+        m_postSetup.setPrograms(std::move(next), windowTexts());
+    }
+    return added;
+}
+
+bool ProgramsController::isRuntime(std::wstring_view id) {
+    static constexpr std::array kRuntimes{L"microsoft.vcredist.", L"microsoft.dotnet.", L"microsoft.xnaredist",
+                                          L"microsoft.directx", L"nvidia.physx", L"creativetechnology.openal",
+                                          L"microsoft.gameinput", L"microsoft.clrtypessqlserver", L"microsoft.vcpp",
+                                          L"microsoft.windowsappruntime", L"microsoft.edge.webview2"};
+    const std::wstring lower = text::lower(id);
+    return std::ranges::any_of(kRuntimes, [&](const wchar_t* r) { return lower.starts_with(r); });
 }
 
 std::vector<core::WingetPackage> ProgramsController::search(std::wstring_view text, std::size_t limit) const {

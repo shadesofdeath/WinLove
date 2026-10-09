@@ -1121,6 +1121,15 @@ enum class Str : std::uint16_t {
     ProgramsEverything,
     ProgramsFailedTitle,
     ProgramsFeatured,
+    ProgramsFromThisPc,
+    ProgramsFromThisPcAdded,
+    ProgramsFromThisPcBody,
+    ProgramsFromThisPcNone,
+    ProgramsFromThisPcPicked,
+    ProgramsFromThisPcPrograms,
+    ProgramsFromThisPcRuntimes,
+    ProgramsFromThisPcTitle,
+    ProgramsFromThisPcWait,
     ProgramsHomepage,
     ProgramsInstaller,
     ProgramsLicense,
@@ -1785,7 +1794,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1775;
+inline constexpr std::size_t kStrCount = 1784;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -2901,6 +2910,15 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "programs.everything",
     "programs.failedTitle",
     "programs.featured",
+    "programs.fromThisPc",
+    "programs.fromThisPcAdded",
+    "programs.fromThisPcBody",
+    "programs.fromThisPcNone",
+    "programs.fromThisPcPicked",
+    "programs.fromThisPcPrograms",
+    "programs.fromThisPcRuntimes",
+    "programs.fromThisPcTitle",
+    "programs.fromThisPcWait",
     "programs.homepage",
     "programs.installer",
     "programs.license",

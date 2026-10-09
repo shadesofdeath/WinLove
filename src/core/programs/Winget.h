@@ -74,6 +74,12 @@ public:
     // The whole repository by name, at most `limit`.
     [[nodiscard]] std::vector<WingetPackage> all(std::size_t limit) const;
     [[nodiscard]] std::vector<std::wstring> tags(std::wstring_view id) const;
+    // D-095: the packages an installed program is (InstalledPrograms): by its product code — an MSI
+    // GUID or an Uninstall key's name, any case — and by winget's normalized name, each with whether
+    // its normalized publisher is `normPublisher` too.
+    [[nodiscard]] std::vector<WingetPackage> byProductCode(std::wstring_view code) const;
+    [[nodiscard]] std::vector<std::pair<WingetPackage, bool>> byNormalizedName(std::span<const std::wstring> normNames,
+                                                                               std::wstring_view normPublisher) const;
     // The SHA-256 (lowercase hex) of the package's version list; empty when the id is unknown.
     [[nodiscard]] std::wstring versionDataHash(std::wstring_view id) const;
     // When Microsoft built this index (its metadata); epoch when it does not say.

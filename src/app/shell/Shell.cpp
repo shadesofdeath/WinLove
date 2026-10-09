@@ -67,6 +67,7 @@
 #include "ui/widgets/EmptyState.h"
 #include "ui/widgets/FormView.h"
 #include "ui/widgets/SearchBox.h"
+#include "ui/widgets/Toggle.h"
 
 #include <shellapi.h>
 
@@ -1808,6 +1809,8 @@ void Shell::showPage(PageId page) {
                     showToast(ui::InfoKind::Error, m_strings.get(Str::ProgramsPreviewFailed), errorText(shown.error()));
                 }
             };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ProgramsFromThisPc), ui::icons::Icon::Download)
+                .onInvoke = [this] { takeProgramsFromThisPc(); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ProgramsRefresh), ui::icons::Icon::Refresh)
                 .onInvoke = [this] { m_programs->load(/*refresh=*/true); };
             auto& body = m_pageView->setBody<ProgramsPage>(m_state, *m_programs, m_strings, m_language,
@@ -2316,6 +2319,68 @@ void Shell::showToast(ui::InfoKind kind, std::wstring title, std::wstring messag
     if (m_services.startTimer) {
         m_services.startTimer(kToastTimer, ui::Toast::kDurationMs);
     }
+}
+
+void Shell::takeProgramsFromThisPc() {
+    if (!requireMount(Str::ProgramsNoMountTitle, Str::ProgramsNoMountBody)) {
+        return; // the picks belong to the mounted image's plan
+    }
+    if (m_programs->status() != ProgramsController::Status::Ready) {
+        showToast(ui::InfoKind::Info, m_strings.get(Str::ProgramsFromThisPcWait), L"");
+        return;
+    }
+    const auto matches = m_programs->fromThisPc();
+    if (matches.empty()) {
+        showToast(ui::InfoKind::Info, m_strings.get(Str::ProgramsFromThisPcNone), L"");
+        return;
+    }
+    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::ProgramsFromThisPcTitle),
+                                               m_strings.format(Str::ProgramsFromThisPcBody,
+                                                                {{L"n", std::to_wstring(matches.size())}}),
+                                               ui::icons::Icon::Programs, ui::tokens::Color::TextSecondary, 600.0f);
+    ui::Dialog* raw = dialog.get();
+    auto& form = raw->setContent<ui::FormView>(440.0f, 330.0f);
+    struct Row {
+        core::WingetPackage package;
+        ui::Toggle* toggle;
+    };
+    auto rows = std::make_shared<std::vector<Row>>();
+    for (const bool runtimes : {false, true}) {
+        bool section = false;
+        for (const auto& m : matches) {
+            if (ProgramsController::isRuntime(m.package.id) != runtimes) {
+                continue;
+            }
+            if (!section) {
+                form.addSection(m_strings.get(runtimes ? Str::ProgramsFromThisPcRuntimes : Str::ProgramsFromThisPcPrograms));
+                section = true;
+            }
+            const bool already = m_programs->picked(m.package.id);
+            auto& toggle = form.addRow<ui::Toggle>(m.package.name.empty() ? m.package.id : m.package.name,
+                                                   already ? m_strings.get(Str::ProgramsFromThisPcPicked) : m.package.id,
+                                                   ui::tokens::size::toggleW, std::wstring(), !runtimes || already);
+            toggle.setEnabled(!already);
+            rows->push_back({m.package, &toggle});
+        }
+    }
+    raw->onCancel = closer(raw);
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
+    raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::CommonAdd),
+                   [this, raw, rows] {
+                       std::vector<core::WingetPackage> chosen;
+                       for (const auto& r : *rows) {
+                           if (r.toggle->isOn() && r.toggle->enabled()) {
+                               chosen.push_back(r.package);
+                           }
+                       }
+                       const int added = m_programs->pickAll(chosen);
+                       host()->popModal(raw);
+                       if (added > 0) {
+                           showUndoToast(m_strings.format(Str::ProgramsFromThisPcAdded, {{L"n", std::to_wstring(added)}}), L"");
+                       }
+                   },
+                   /*primary=*/true);
+    host()->pushModal(std::move(dialog));
 }
 
 void Shell::showUndoToast(std::wstring title, std::wstring message) {

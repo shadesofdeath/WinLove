@@ -9,6 +9,7 @@
 #include "app/catalog/ProgramCatalog.h"
 #include "app/controllers/PostSetupController.h"
 #include "app/state/AppState.h"
+#include "core/programs/InstalledPrograms.h"
 #include "core/programs/Winget.h"
 
 #include <functional>
@@ -65,6 +66,13 @@ public:
     // Picks every program of the bundle not picked yet, or — when all are — takes them out: one
     // queue edit. Returns how many changed.
     int toggleBundle(const Bundle& bundle);
+    // D-095: this PC's programs that winget has (empty until the index is ready).
+    [[nodiscard]] std::vector<core::InstalledMatch> fromThisPc() const;
+    // Picks every one of `packages` not picked yet: one queue edit. Returns how many were added.
+    int pickAll(const std::vector<core::WingetPackage>& packages);
+    // Runtimes and drivers (Visual C++, .NET, DirectX, PhysX …): offered, not ticked — the programs
+    // that need them bring their own.
+    [[nodiscard]] static bool isRuntime(std::wstring_view id);
     [[nodiscard]] std::vector<core::WingetPackage> search(std::wstring_view text, std::size_t limit) const;
     // What the index says about a package (a pick that is not in the catalog shows from here too).
     [[nodiscard]] std::optional<core::WingetPackage> package(std::wstring_view id) const;
