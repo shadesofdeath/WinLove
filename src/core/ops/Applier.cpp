@@ -102,10 +102,12 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
     case OpKind::RemoveCapability: return session.removeCapability(op.target, task);
     case OpKind::RemoveAppx: {
         auto removed = session.removeAppx(op.target);
-        // ERROR_FILE_NOT_FOUND: no package by this full name. Another version of the app (a preset
-        // from another build) is removed by its family; an edition that never had it, or an image
-        // the preset was already applied to, has nothing to remove — what "remove" asked for.
-        if (!removed && removed.error().hresult == static_cast<std::int32_t>(0x80070002)) {
+        // No package by this full name: ERROR_INSTALL_PACKAGE_NOT_FOUND (0x80073CF1, what DISM answers
+        // on 26200 — lab_audit_apply, 2026-10-09) or ERROR_FILE_NOT_FOUND. Another version of the app
+        // (a preset from another build) is removed by its family; an edition that never had it, or an
+        // image the preset was already applied to, has nothing to remove — what "remove" asked for.
+        if (!removed && (removed.error().hresult == static_cast<std::int32_t>(0x80073CF1) ||
+                         removed.error().hresult == static_cast<std::int32_t>(0x80070002))) {
             return removeAppxFamily(session, op.target, registry, task);
         }
         // 0x80073CFA: DISM will not deprovision this app (Windows Security UI, App Installer).
