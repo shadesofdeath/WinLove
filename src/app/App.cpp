@@ -180,6 +180,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             if (!options.page) {
                 return fail(ErrorCode::InvalidArgument, L"unknown page key", arg);
             }
+        } else if (a == L"--relaunched") {
+            // main.cpp: started by a WinLove that is closing; it waits for that one to go.
         } else if (a == L"--no-elevate") {
             // handled in main.cpp (skip the startup UAC relaunch)
         } else if (startsWith(a, L"--demo-apply=")) {
@@ -457,7 +459,8 @@ void App::buildUi(ui::HostServices services) {
     shellServices.postToUi = [this](std::function<void()> fn) { post(std::move(fn)); };
     shellServices.ownerWindow = [this] { return m_window.hwnd(); };
     shellServices.relaunchElevated = [this](const std::wstring& args) {
-        auto relaunched = core::relaunchElevated(args);
+        // --relaunched: the new process waits for this one to close (one WinLove at a time).
+        auto relaunched = core::relaunchElevated(args.empty() ? L"--relaunched" : args + L" --relaunched");
         if (!relaunched && relaunched.error().code != ErrorCode::Cancelled) {
             showError(relaunched.error());
         }
@@ -471,6 +474,18 @@ void App::buildUi(ui::HostServices services) {
     shellServices.stopTimer = [this](UINT id) {
         if (!m_options.renderTo) {
             m_window.stopTimer(id);
+        }
+    };
+    shellServices.keepAwake = [this](const std::wstring& reason) {
+        if (m_options.renderTo) {
+            return;
+        }
+        // No idle sleep while a job runs; a shutdown asks first, saying why (audit A13).
+        SetThreadExecutionState(reason.empty() ? ES_CONTINUOUS : ES_CONTINUOUS | ES_SYSTEM_REQUIRED);
+        if (reason.empty()) {
+            ShutdownBlockReasonDestroy(m_window.hwnd());
+        } else {
+            ShutdownBlockReasonCreate(m_window.hwnd(), reason.c_str());
         }
     };
     const Language language = m_options.language;
@@ -1510,6 +1525,7 @@ int App::runWindowed() {
         }
     };
     callbacks.closeRequested = [this] { return m_forceClose || !m_shell || m_shell->confirmClose(); };
+    callbacks.endSessionBlocked = [this] { return m_shell && m_shell->imageWorkRunning(); };
     callbacks.cursor = [this](ui::PointF p) { return m_host ? m_host->cursorAt(p) : ui::Cursor::Arrow; };
     callbacks.pointer = [this](const ui::PointerEvent& event) {
         if (m_host) {

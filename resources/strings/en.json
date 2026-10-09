@@ -1116,6 +1116,8 @@
     "keepOnlyBody": "Only {name} will stay; the other {n} editions will be permanently deleted from the image. The image file is rewritten.",
     "deleteIsoNote": "The ISO is copied to the work folder first; the ISO file itself is not changed.",
     "busyCloseTitle": "An operation is running",
+    "busyShutdown": "WinLove is writing an image; shutting down now leaves the image or the stick half written",
+    "busyDownload": "WinLove is downloading files",
     "busyCloseBody": "Mounting, applying or building an ISO is still in progress. Closing now could leave the image half-done; close once it finishes (or is stopped).",
     "deleteManyTitle": "Delete {n} editions?",
     "deleteManyBody": "{names} will be permanently deleted from the image. The image file is rewritten with the editions that stay.",

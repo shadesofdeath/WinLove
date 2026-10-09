@@ -393,6 +393,11 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         if (change == AppState::Change::Queue) {
             updateQueue();
         }
+        if (change == AppState::Change::Operation || change == AppState::Change::Apply ||
+            change == AppState::Change::Iso || change == AppState::Change::UpdateFetch ||
+            change == AppState::Change::LanguageFetch || change == AppState::Change::StoreFetch) {
+            updateKeepAwake();
+        }
         if (change == AppState::Change::Settings && m_services.settingsChanged) {
             m_services.settingsChanged(); // theme, motion, language: the App applies them
         }
@@ -2508,11 +2513,28 @@ void Shell::onImageFailure(ImageController::Failure failure, const Error& error)
               m_strings.format(Str::ToastsMountFailedBody, {{L"code", code}}));
 }
 
+bool Shell::imageWorkRunning() const {
+    const auto& op = m_state.operation();
+    const bool reading = op && op->kind == EngineOperation::Kind::Reading;
+    return (m_images->busy() && !reading) || m_apply->running() || m_iso->running();
+}
+
+void Shell::updateKeepAwake() {
+    const bool image = imageWorkRunning();
+    const bool download = m_updateCatalog->busy() || m_languageFetch->busy() || m_store->busy();
+    const int now = image ? 2 : download ? 1 : 0;
+    if (now == m_keepAwake || !m_services.keepAwake) {
+        return;
+    }
+    m_keepAwake = now;
+    m_services.keepAwake(now == 0 ? std::wstring() : m_strings.get(image ? Str::DialogsBusyShutdown : Str::DialogsBusyDownload));
+}
+
 bool Shell::confirmClose() {
     // Reading the mounted image's lists changes nothing: stop it and let the window go.
     const auto& op = m_state.operation();
     const bool reading = op && op->kind == EngineOperation::Kind::Reading;
-    const bool busy = (m_images->busy() && !reading) || m_apply->running() || m_iso->running();
+    const bool busy = imageWorkRunning();
     if (!busy || !host()) {
         if (reading) {
             m_images->cancel();

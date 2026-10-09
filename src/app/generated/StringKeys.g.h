@@ -304,6 +304,8 @@ enum class Str : std::uint16_t {
     DialogsAdminTitle,
     DialogsBusyCloseBody,
     DialogsBusyCloseTitle,
+    DialogsBusyDownload,
+    DialogsBusyShutdown,
     DialogsDeleteIndexBody,
     DialogsDeleteIndexTitle,
     DialogsDeleteIsoNote,
@@ -1632,7 +1634,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1622;
+inline constexpr std::size_t kStrCount = 1624;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -1931,6 +1933,8 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "dialogs.adminTitle",
     "dialogs.busyCloseBody",
     "dialogs.busyCloseTitle",
+    "dialogs.busyDownload",
+    "dialogs.busyShutdown",
     "dialogs.deleteIndexBody",
     "dialogs.deleteIndexTitle",
     "dialogs.deleteIsoNote",
