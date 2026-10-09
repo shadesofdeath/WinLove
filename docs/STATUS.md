@@ -7,6 +7,15 @@
   P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler, P16 Uygulama Ayarları, P17 Hakkında, P18 Komut Paleti:
   🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v2 (AppX + sistem bileşenleri + depo
   temizliği, D-031), test bekliyor.
+- **Tasarım yenilemesi (2026-10-09, kullanıcı "hepsini uygula", D-091 / D-092):** gezinmede katlanabilir grup başlıkları,
+  ayrık simgeler; durum çubuğunda iş akışı adımları + kuyruk özeti + indirmeler; Kaynak'ta kartlar; Tweaks'te arama,
+  "Yalnız değişenler", sekme sayaçları, işaretli satırlar; tablo sıralama + Bileşenler'de boyut çubukları; İmajlar sağ
+  panelinde eylemler üstte; sayfa geçişi / rozet vurgusu, yavaş animasyonlar zamanlayıcıda (D3); "Geri al"lı bildirim,
+  Ctrl+Z / Ctrl+Y, uzun dialog metni kayar; boş durumlar; koyu tema siyaha yakın, Windows yüksek kontrastı; yoğunluk +
+  Windows metin boyutu. **Yazı tipi Inter** (Geist, Segoe UI Variable seçilebilir), **simgeler Lucide**. VM `b1k`, `b2k`
+  ALL PASSED (B1 / B2 kurulan sistemde doğrulandı). `dist\WinLove.exe` yeni. **Sırada (kullanıcı seçimi):** Windows
+  özellikleri 1 ISO indirme, 2 Secure Boot 2023, 3 bu PC'den taşıma, 5 yerinde yükseltme, 7 güç planı, 10 + karşılama
+  sihirbazının baştan, çok daha üst seviye yeniden tasarımı.
 - **İncelemenin kritik 10 maddesi yapıldı (2026-10-09, kullanıcı seçimi "kritiklerin hepsi", D-090):** bağlama klasörü
   koruması (A1), kuyruk diskte + çözme uyarısı (A2/A3), preset uygulamaları aileyle (A4), ISO çalışma kopyası kaydı (A5),
   aygıt kaybı / Sıfırla kilitlenmesi (A6), başarısız adımda imaj bekletilir (A7), tek örnek + uyku/kapanma engeli
