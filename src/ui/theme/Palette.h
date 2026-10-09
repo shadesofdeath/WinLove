@@ -25,6 +25,13 @@ struct Rgba {
 };
 
 [[nodiscard]] std::uint32_t colorArgb(ThemeKind theme, tokens::Color color) noexcept;
+
+// High contrast follows Windows' own scheme (Settings › Accessibility › Contrast themes): when
+// Windows has it on, the HC theme takes its colors from GetSysColor — a light "Desert" scheme
+// included — instead of the fixed token set (audit D9). Read again on WM_SETTINGCHANGE.
+// Returns whether Windows has high contrast on.
+bool refreshSystemContrast() noexcept;
+[[nodiscard]] bool systemHighContrast() noexcept;
 [[nodiscard]] Rgba toRgba(std::uint32_t argb) noexcept;
 // The swatch of an accent (its dark-theme base, as screen 19 shows them in every theme).
 [[nodiscard]] Rgba accentSwatch(Accent accent) noexcept;

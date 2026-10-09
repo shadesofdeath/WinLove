@@ -52,8 +52,12 @@ bool deviceLost(std::int32_t hr) {
 // Headless runs (--render) must never block on a dialog: tests and AI sessions drive them.
 bool g_headless = false;
 
-// "Sistem": high contrast when Windows has it on, else the app light / dark mode.
+// "Sistem": high contrast when Windows has it on, else the app light / dark mode. Windows' high
+// contrast wins over any choice (audit D9): it is an accessibility setting, not a taste.
 ui::ThemeKind resolveTheme(ThemeChoice choice) {
+    if (ui::refreshSystemContrast()) {
+        return ui::ThemeKind::HighContrast;
+    }
     switch (choice) {
     case ThemeChoice::Dark: return ui::ThemeKind::Dark;
     case ThemeChoice::Light: return ui::ThemeKind::Light;
@@ -409,6 +413,12 @@ Result<void> App::initialize() {
     // get throw-away files unless a fixture is passed with --recent-file.
     const bool render = m_options.renderTo.has_value();
     const auto scratch = std::filesystem::temp_directory_path() / L"WinLove-render";
+    if (render) {
+        // Every render starts from the defaults: a click of an earlier one (--click-at folding a
+        // nav group, a toggle) must not carry over through the scratch settings file.
+        std::error_code ignored;
+        std::filesystem::remove(scratch / L"settings.json", ignored);
+    }
     // A windowed test run (--profile) keeps the same three files in its own folder.
     const auto& profile = m_options.profile;
     m_state = std::make_unique<AppState>(

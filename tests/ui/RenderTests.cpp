@@ -106,8 +106,8 @@ TEST_CASE("canvas: token colors and 1px hairlines are pixel exact at 150%") {
     REQUIRE(pixels.has_value());
     const UINT w = t.widthPx();
     CHECK(w == 60);
-    CHECK(pixel(*pixels, w, 5, 5) == 0xFF201E1Cu);   // bg.panel (y 0..15 px)
+    CHECK(pixel(*pixels, w, 5, 5) == colorArgb(ThemeKind::Dark, tokens::Color::BgPanel)); // y 0..15 px
     CHECK(pixel(*pixels, w, 5, 15) == 0xFFD4905Au);  // hairline: exactly one physical row at y=15
-    CHECK(pixel(*pixels, w, 5, 14) == 0xFF201E1Cu);
-    CHECK(pixel(*pixels, w, 5, 16) == 0xFF1A1918u);  // bg.base below
+    CHECK(pixel(*pixels, w, 5, 14) == colorArgb(ThemeKind::Dark, tokens::Color::BgPanel));
+    CHECK(pixel(*pixels, w, 5, 16) == colorArgb(ThemeKind::Dark, tokens::Color::BgBase)); // below
 }

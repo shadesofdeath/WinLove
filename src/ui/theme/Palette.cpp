@@ -1,5 +1,8 @@
 #include "ui/theme/Palette.h"
 
+#include <windows.h>
+
+#include <array>
 #include <cmath>
 
 namespace wl::ui {
@@ -29,6 +32,30 @@ constexpr AccentSet kAccentLight[kAccentCount] = {
 };
 
 Accent g_accent = Accent::Copper;
+
+// D-091: the dark theme's surfaces near black (user: "siyah tonlamasına yakın"), the layers further
+// apart than the handoff's (#1A1918 base / #201E1C panel): page, panel, row hover and lines each a
+// clear step. Text, accents and states keep the tokens' values (their contrast only grows).
+struct Surface {
+    tokens::Color color;
+    std::uint32_t argb;
+};
+constexpr Surface kDarkSurfaces[] = {
+    {tokens::Color::BgBase, 0xFF111010u},     {tokens::Color::BgPanel, 0xFF181716u},
+    {tokens::Color::BgRaised, 0xFF242220u},   {tokens::Color::BgPressed, 0xFF2D2A27u},
+    {tokens::Color::BgOverlay, 0xFF1C1B19u},  {tokens::Color::BgInput, 0xFF0B0A0Au},
+    {tokens::Color::LineSubtle, 0xFF282624u}, {tokens::Color::LineStrong, 0xFF3C3834u},
+};
+
+// Windows' high contrast colors, when it is on (refreshSystemContrast).
+bool g_systemContrast = false;
+std::array<std::uint32_t, tokens::kColorCount> g_contrast{};
+
+std::uint32_t sysColor(int index) noexcept {
+    const COLORREF c = GetSysColor(index);
+    return 0xFF000000u | (static_cast<std::uint32_t>(GetRValue(c)) << 16) | (static_cast<std::uint32_t>(GetGValue(c)) << 8) |
+           GetBValue(c);
+}
 
 } // namespace
 
@@ -62,12 +89,57 @@ std::uint32_t colorArgb(ThemeKind theme, tokens::Color color) noexcept {
         default: break;
         }
     }
+    if (theme == ThemeKind::HighContrast && g_systemContrast) {
+        return g_contrast[index];
+    }
+    if (theme == ThemeKind::Dark) {
+        for (const auto& surface : kDarkSurfaces) {
+            if (surface.color == color) {
+                return surface.argb;
+            }
+        }
+    }
     switch (theme) {
     case ThemeKind::Dark: return tokens::kDark[index];
     case ThemeKind::Light: return tokens::kLight[index];
     case ThemeKind::HighContrast: return tokens::kHighContrast[index];
     }
     return tokens::kDark[index];
+}
+
+bool refreshSystemContrast() noexcept {
+    HIGHCONTRASTW contrast{sizeof(HIGHCONTRASTW), 0, nullptr};
+    g_systemContrast = SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0) &&
+                       (contrast.dwFlags & HCF_HIGHCONTRASTON) != 0;
+    if (!g_systemContrast) {
+        return false;
+    }
+    using C = tokens::Color;
+    g_contrast = tokens::kHighContrast; // status colors, scrim and shadows stay the tokens'
+    const std::uint32_t window = sysColor(COLOR_WINDOW);
+    const std::uint32_t text = sysColor(COLOR_WINDOWTEXT);
+    const std::uint32_t highlight = sysColor(COLOR_HIGHLIGHT);
+    const std::uint32_t onHighlight = sysColor(COLOR_HIGHLIGHTTEXT);
+    const std::uint32_t gray = sysColor(COLOR_GRAYTEXT);
+    const std::uint32_t hot = sysColor(COLOR_HOTLIGHT);
+    for (const C c : {C::BgBase, C::BgPanel, C::BgRaised, C::BgOverlay, C::BgInput, C::AccentSubtle, C::StatusSuccessSubtle,
+                      C::StatusWarningSubtle, C::StatusErrorSubtle, C::StatusInfoSubtle}) {
+        g_contrast[static_cast<std::size_t>(c)] = window;
+    }
+    for (const C c : {C::TextPrimary, C::TextSecondary, C::TextTertiary, C::LineSubtle, C::LineStrong}) {
+        g_contrast[static_cast<std::size_t>(c)] = text;
+    }
+    for (const C c : {C::AccentBase, C::AccentHover, C::AccentPressed, C::BgPressed}) {
+        g_contrast[static_cast<std::size_t>(c)] = highlight;
+    }
+    g_contrast[static_cast<std::size_t>(C::AccentFocus)] = hot;
+    g_contrast[static_cast<std::size_t>(C::TextOnAccent)] = onHighlight;
+    g_contrast[static_cast<std::size_t>(C::TextDisabled)] = gray;
+    return true;
+}
+
+bool systemHighContrast() noexcept {
+    return g_systemContrast;
 }
 
 Rgba toRgba(std::uint32_t argb) noexcept {
