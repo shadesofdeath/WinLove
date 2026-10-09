@@ -17,9 +17,14 @@
   karşılama sihirbazı (D-103)** — 15 dil (tr, en, de, fr, es, it, pt-BR, ru, uk, pl, nl, zh-CN, zh-TW, ja, ko);
   oobe.json `textsByLang` taşır, oobe.ps1 InstalledUICulture ile seçer (İngilizce fallback), yapısal adlar da `$t`'den
   çözülür. `gen_welcome_langs.py` → `welcome-langs.json` (IDR_WELCOME_LANGS). Çeviriler `resources/strings/welcome/`.
-  Doğrulandı: birim testler + `capture_oobe.py --ui-lang` ile pt-BR ve ja (CJK) render. **Sırada:** (2) çevrimdışı
-  program kurulumu (son özellik; imaj boyutu/winget-offline). Build + tüm testler temiz. Her biri kullanıcı onayı
-  bekler (Altın kural 1).
+  Doğrulandı: birim testler + `capture_oobe.py --ui-lang` ile pt-BR ve ja (CJK) render. **Motor hazır: (2) çevrimdışı program
+  kurulumu (D-104)** — `OfflinePrograms` (winget download + manifest parse + `{path}`'li kurulum komutu), `wlcli
+  programs-download`, PostSetupPlan offline alanları, programsJson per-program offline, programs.ps1 çevrimdışı dalı.
+  Doğrulandı: birim testler + gerçek `wlcli programs-download 7zip.7zip` (1.9 MB msi + msiexec komutu). **AÇIK (kullanıcı
+  'motoru şimdi kur, VM testini işaretle' dedi):** Programlar sayfasında "çevrimdışı" anahtarı + indirme orkestrasyonu
+  (indir→CopyTree→plan) ve temiz VM'de internetsiz GERÇEK kurulum testi — bu ikisi birlikte yapılmalı (orkestrasyon
+  ancak VM'de kurarak doğrulanır). Build + tüm testler temiz. **4 özelliğin 3'ü (sağlık, görev, çok dilli) uçtan uca
+  tamam; 4.'nün (çevrimdışı programlar) motoru tamam.** Her biri kullanıcı onayı bekler (Altın kural 1).
 - **Bu oturumda tamamlananlar (2026-10-09, D-093…D-100):** Windows indir (UUP→ISO, Mağaza uygulamaları + seçici, Windows 10,
   .NET 3.5, ResetBase, install.esd); Secure Boot 2023 medyası (D-094); "Bu bilgisayardan al" — Programlar + Tweaks (D-095);
   güç planı (.pow) içe aktarma (D-096); desteklenmeyen PC'de yerinde yükseltme betiği (D-097); `wlcli welcome-json` +
