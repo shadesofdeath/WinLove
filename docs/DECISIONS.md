@@ -241,6 +241,21 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-103 — Çok dilli karşılama sihirbazı (15 dil, kurulan Windows'un diline göre) (2026-10-09)
+Bağlam: Sihirbaz metinleri yalnız TR/EN'di ve derleme anında tek dile sabitleniyordu; dağıtılan ISO'lar farklı dillerdeki
+kullanıcılara gidiyor. Hedef: sihirbaz, kurulan Windows'un diline (InstalledUICulture) göre kendini göstersin, yoksa
+İngilizce.
+Karar: Metin iki yerden geliyordu — düz `texts` ($t ile) ve yapısal adlar (themes/accents/privacy/prefs/bundles, derleme
+anında gömülü). Yapısal öğelere `nameKey`/`detailKey`/`factsKey` eklendi; oobe.ps1 bunları çalışma anında `$t`'den çözer
+(`Tr` yardımcısı, baked-in'e düşer). oobe.json artık `textsByLang` (kod→metinler) taşır; oobe.ps1 InstalledUICulture ile
+seçer (zh-Hant/TW→zh-TW, zh→zh-CN, pt→pt-BR, iki harf, 'en'). 15 dil: tr, en, de, fr, es, it, pt-BR, ru, uk, pl, nl,
+zh-CN, zh-TW, ja, ko. Çeviriler `resources/strings/welcome/<kod>.json`; `tools/gen_welcome_langs.py` bunları + tr/en
+welcome bölümlerini `welcome-langs.json`'a birleştirir (eksik anahtar İngilizce'den dolar), `IDR_WELCOME_LANGS` olarak
+gömülür; `welcomeOperations(plan, languages)` oobe.json'a koyar. Preset'e tek bir WriteFile op'u olarak girer.
+Doğrulanan: birim testler (textsByLang + key alanları + `welcomeLanguagesFromJson` round-trip); `capture_oobe.py --ui-lang`
+ile gizlilik sayfası pt-BR ve **ja (CJK, mojibake yok)** render edildi — başlık/detay/4 rozet hepsi seçili dilde, "Windows"
+marka olarak kaldı; 13 çeviri 3 paralel alt-ajanla üretildi (her biri 129 anahtar, `{n}` ve ';' facts korunarak doğrulandı).
+
 ## D-102 — Özel zamanlanmış (yinelenen) görev oluşturma (2026-10-09)
 Bağlam: Görevler sayfası yalnız var olan görevleri DEVRE DIŞI bırakıyordu; kullanıcı imaja kendi yinelenen görevini
 (ör. haftalık bakım betiği) ekleyebilmek istedi. Windows'ta böyle bir görev kurulumdan sonra oluşur.

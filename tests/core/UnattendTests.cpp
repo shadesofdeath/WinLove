@@ -376,6 +376,33 @@ TEST_CASE("welcome: oobe.json carries the pages, the defaults and the texts; the
     CHECK(welcomeSetupCommand().find(L"oobe.ps1") != std::wstring::npos);
 }
 
+TEST_CASE("welcome (D-103): the texts of every language ride in oobe.json, keyed for runtime lookup") {
+    WelcomePlan plan;
+    plan.texts = {{"privacyStrict", L"Az veri"}, {"themeDark", L"Koyu"}};
+    std::vector<WelcomeLanguage> languages{
+        {"en", {{"privacyStrict", L"Little data"}, {"themeDark", L"Dark"}}},
+        {"de", {{"privacyStrict", L"Wenig Daten"}, {"themeDark", L"Dunkel"}}},
+    };
+    const std::string json = welcomeJson(plan, languages);
+    // Structural items now carry the key so oobe.ps1 can re-read the name in the chosen language.
+    CHECK(json.find("\"nameKey\": \"privacyStrict\"") != std::string::npos);
+    CHECK(json.find("\"nameKey\": \"themeDark\"") != std::string::npos);
+    // The per-language map is present with both languages' values.
+    CHECK(json.find("\"textsByLang\"") != std::string::npos);
+    CHECK(json.find("Wenig Daten") != std::string::npos);
+    CHECK(json.find("Little data") != std::string::npos);
+    // No languages -> no textsByLang (back-compat for preview and old scripts).
+    CHECK(welcomeJson(plan).find("textsByLang") == std::string::npos);
+    // The embedded welcome-langs.json parses back to the same languages.
+    const auto parsed = welcomeLanguagesFromJson(
+        R"({"en":{"themeDark":"Dark","privacyStrict":"Little data"},"de":{"themeDark":"Dunkel","privacyStrict":"Wenig Daten"}})");
+    REQUIRE(parsed.size() == 2);
+    const auto en = std::ranges::find_if(parsed, [](const WelcomeLanguage& l) { return l.code == "en"; });
+    REQUIRE(en != parsed.end());
+    CHECK(en->texts.size() == 2);
+    CHECK(welcomeLanguagesFromJson("not json").empty());
+}
+
 TEST_CASE("welcome (D-087): a preset's old script gives way to the app's own; its choices stay") {
     WelcomePlan plan;
     plan.theme = L"light";

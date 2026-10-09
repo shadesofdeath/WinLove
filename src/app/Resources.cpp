@@ -71,6 +71,12 @@ std::string_view embeddedCompatCatalog() {
     return resourceBytes(IDR_CATALOG_COMPAT);
 }
 
+const std::vector<core::WelcomeLanguage>& embeddedWelcomeLanguages() {
+    static const std::vector<core::WelcomeLanguage> languages =
+        core::welcomeLanguagesFromJson(resourceBytes(IDR_WELCOME_LANGS));
+    return languages;
+}
+
 HICON appIcon() {
     return LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_WINLOVE));
 }

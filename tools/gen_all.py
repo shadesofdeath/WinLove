@@ -3,6 +3,7 @@ import gen_icons
 import gen_scripts
 import gen_strings
 import gen_tokens
+import gen_welcome_langs
 from genutil import write_if_changed
 
 if __name__ == "__main__":
@@ -18,3 +19,4 @@ if __name__ == "__main__":
     if not gen_scripts.DST.exists() or gen_scripts.DST.read_text(encoding="utf-8") != output:
         gen_scripts.parse_check(scripts)
     write_if_changed(gen_scripts.DST, output)
+    write_if_changed(gen_welcome_langs.DST, gen_welcome_langs.generate())

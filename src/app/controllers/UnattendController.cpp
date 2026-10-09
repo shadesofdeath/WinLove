@@ -1,5 +1,6 @@
 #include "app/controllers/UnattendController.h"
 
+#include "app/Resources.h"
 #include "app/controllers/LanguageController.h"
 #include "app/generated/StringKeys.g.h"
 #include "base/File.h"
@@ -76,14 +77,15 @@ void UnattendController::setWelcomePlan(core::WelcomePlan plan) {
     plan.timeZone = options.timeZone;
     plan.computerName = options.randomComputerName ? std::wstring() : options.computerName;
     m_state.unqueueMany(core::welcomeSlots());
-    m_state.queueMany(core::welcomeOperations(plan));
+    // Every translation rides in the oobe.json so the wizard shows the installed Windows' language (D-103).
+    m_state.queueMany(core::welcomeOperations(plan, embeddedWelcomeLanguages()));
 }
 
 Result<void> UnattendController::previewWelcome() const {
     core::WelcomePlan plan = welcomePlan();
     plan.texts = welcomeTextsNow();
-    auto json = nlohmann::json::parse(core::welcomeJson(plan));
-    json["preview"] = true; // a window, nothing done (oobe.ps1)
+    auto json = nlohmann::json::parse(core::welcomeJson(plan, embeddedWelcomeLanguages()));
+    json["preview"] = true; // a window, nothing done (oobe.ps1); the wizard still picks this PC's language
     const auto folder = std::filesystem::temp_directory_path() / L"WinLove" / L"welcome-preview";
     std::error_code ec;
     std::filesystem::create_directories(folder, ec);

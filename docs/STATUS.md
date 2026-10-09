@@ -13,9 +13,13 @@
   `ImageHealth.{h,cpp}` + `wlcli health`, Sürümler bağlam menüsünde denetle/tara + "Onar" toast'ı. Gerçek 25H2 imajında
   (mount) check & scan "image is healthy" (exit 0); parse birim testli. **Tamamlanan: (4) özel zamanlanmış görev (D-102)**
   — ChangeSet op `CreateTask`, ScheduledTasks `taskcreate.cmd`/`.json`, Görevler'de "Görev oluştur…" dialog'u. Birim
-  testler + gerçek Windows'ta `schtasks /Create` (3 örnek) oluştur/sorgula/sil başarılı; dialog render'landı. **Sırada:**
-  (2) çevrimdışı program kurulumu, (1) çok dilli sihirbaz (en büyük iş). Build + tüm testler temiz. Her biri kullanıcı
-  onayı bekler (Altın kural 1).
+  testler + gerçek Windows'ta `schtasks /Create` (3 örnek) oluştur/sorgula/sil başarılı; dialog render'landı. **Tamamlanan: (1) çok dilli
+  karşılama sihirbazı (D-103)** — 15 dil (tr, en, de, fr, es, it, pt-BR, ru, uk, pl, nl, zh-CN, zh-TW, ja, ko);
+  oobe.json `textsByLang` taşır, oobe.ps1 InstalledUICulture ile seçer (İngilizce fallback), yapısal adlar da `$t`'den
+  çözülür. `gen_welcome_langs.py` → `welcome-langs.json` (IDR_WELCOME_LANGS). Çeviriler `resources/strings/welcome/`.
+  Doğrulandı: birim testler + `capture_oobe.py --ui-lang` ile pt-BR ve ja (CJK) render. **Sırada:** (2) çevrimdışı
+  program kurulumu (son özellik; imaj boyutu/winget-offline). Build + tüm testler temiz. Her biri kullanıcı onayı
+  bekler (Altın kural 1).
 - **Bu oturumda tamamlananlar (2026-10-09, D-093…D-100):** Windows indir (UUP→ISO, Mağaza uygulamaları + seçici, Windows 10,
   .NET 3.5, ResetBase, install.esd); Secure Boot 2023 medyası (D-094); "Bu bilgisayardan al" — Programlar + Tweaks (D-095);
   güç planı (.pow) içe aktarma (D-096); desteklenmeyen PC'de yerinde yükseltme betiği (D-097); `wlcli welcome-json` +
