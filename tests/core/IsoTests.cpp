@@ -5,11 +5,14 @@
 #include "core/image/UdfImage.h"
 #include "core/image/WorkCopy.h"
 #include "core/iso/IsoBuilder.h"
+#include "core/iso/UnsupportedUpgrade.h"
+#include "core/iso/UnsupportedUpgrade.h"
 
 #include <doctest.h>
 #include <json.hpp>
 
 #include <filesystem>
+#include <algorithm>
 #include <fstream>
 
 using namespace wl;
@@ -197,4 +200,15 @@ TEST_CASE("work copy: an ISO opened again never overwrites what changed since, n
     std::filesystem::remove(workCopyRecord(work));
     CHECK(inspectWorkCopy(iso, work) == WorkCopyState::Unknown);
     std::filesystem::remove_all(dir, ec);
+}
+
+TEST_CASE("in-place upgrade script: writes the host values Setup checks, then launches setup.exe (D-097)") {
+    const std::string cmd = wl::core::unsupportedUpgradeCmd();
+    CHECK(cmd.find("AllowUpgradesWithUnsupportedTPMOrCPU") != std::string::npos);
+    CHECK(cmd.find("HwReqChkVars") != std::string::npos);
+    CHECK(cmd.find("SQ_TpmVersion=2") != std::string::npos);
+    CHECK(cmd.find("Start-Process -Verb RunAs") != std::string::npos); // self-elevates for HKLM
+    CHECK(cmd.find("%~dp0setup.exe") != std::string::npos);
+    // ASCII only (a .cmd read in the OEM codepage).
+    CHECK(std::ranges::all_of(cmd, [](char c) { return static_cast<unsigned char>(c) < 128; }));
 }

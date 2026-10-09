@@ -1,5 +1,6 @@
 // P13: answer file options in the app state — editing, save / import, what goes into the ISO.
 #include "app/controllers/IsoController.h"
+#include "core/iso/UnsupportedUpgrade.h"
 #include "app/controllers/UnattendController.h"
 #include "app/Localization.h"
 #include "core/unattend/Welcome.h"
@@ -363,8 +364,11 @@ TEST_CASE("USB: the stick gets what the ISO would — answer file at the root, p
     CHECK(written->identity == L"7|SanDisk|Ultra|42|32000000000");
     CHECK(written->scheme == core::UsbScheme::GptUefi);
     CHECK(written->sourceFolder == media);
-    REQUIRE(written->rootFiles.size() == 1);
+    // The answer file, and the in-place upgrade script the bypass adds (D-097).
+    REQUIRE(written->rootFiles.size() == 2);
     CHECK(written->rootFiles.front().name == L"autounattend.xml");
+    CHECK(written->rootFiles[1].name == core::unsupportedUpgradeName());
+    CHECK(written->rootFiles[1].content.find("AllowUpgradesWithUnsupportedTPMOrCPU") != std::string::npos);
     CHECK(written->replacedFiles.front().path == L"sources\\boot.wim");
     CHECK(patchedBoot == "boot + LabConfig");
     REQUIRE(f.state.isoRun().has_value());
