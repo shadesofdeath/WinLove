@@ -47,6 +47,15 @@ bool ImageController::isEsdSource() const {
     return _wcsicmp(source->installImage.c_str() + source->installImage.size() - 4, L".esd") == 0;
 }
 
+bool ImageController::isSolidInstall() const {
+    const auto& source = m_state.source();
+    if (!source) {
+        return false;
+    }
+    const auto& header = source->install.header;
+    return header.solid || header.compression == core::WimCompression::Lzms;
+}
+
 bool ImageController::canMount() const {
     return m_state.source() && !isPackedSource() && !m_state.mounted() && !busy();
 }
