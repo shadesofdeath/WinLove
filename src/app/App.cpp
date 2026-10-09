@@ -291,6 +291,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.navCollapsed = true;
         } else if (a == L"--maximized") {
             options.maximized = true;
+        } else if (a == L"--test-device-lost") {
+            options.testDeviceLost = true;
         } else if (startsWith(a, L"--hover-at=")) {
             ok = point(L"--hover-at=", options.hoverAt);
         } else if (startsWith(a, L"--click-at=")) {
@@ -1578,6 +1580,18 @@ int App::runWindowed() {
         },
     });
     m_window.show();
+    if (m_options.testDeviceLost) {
+        m_window.post([this] {
+            const auto* before = m_shell;
+            if (auto rebuilt = recreateGraphics(); !rebuilt) {
+                log::error("app", L"device-loss recovery failed: " + describe(rebuilt.error()));
+                return;
+            }
+            log::info("app", m_shell == before ? L"device-loss recovery: new device, same shell"
+                                               : L"device-loss recovery: the shell was rebuilt");
+            m_window.invalidate();
+        });
+    }
     if (m_options.openPath) {
         // A mount left from an earlier run must still be seen (Images page InfoBar: Onar /
         // Devam et); mountSafely itself reuses the same image or repairs leftovers.
@@ -1687,18 +1701,15 @@ void App::paint() {
 }
 
 Result<void> App::recreateGraphics() {
+    // Only what belongs to the lost device is made again: the swap chain, its context and the file
+    // icon bitmaps. The shell stays — rebuilding it threw away the controllers of running jobs, and
+    // a finished Uygula was never told (audit A6). Fonts, text formats and icon geometries hang on
+    // the factories, which survive a device loss.
     m_target.reset();
-    // Text styles are referenced by the host for measurement; swap them together.
-    auto graphics = ui::Graphics::create(embeddedFonts());
-    if (!graphics) {
-        return std::unexpected(graphics.error());
+    ui::Canvas::forgetFileIcons();
+    if (auto recreated = m_graphics->device->recreateDevice(); !recreated) {
+        return recreated;
     }
-    // The widget tree measures with the old TextStyles: it goes before the graphics it uses (the
-    // order ~App and rebuildUi keep too), then the UI is built again on the new graphics.
-    releaseShell();
-    m_graphics = std::move(*graphics);
-    buildUi(windowHostServices());
-    m_host->layout(m_window.clientSize());
     auto target = ui::SwapChainTarget::create(*m_graphics->device, m_window.hwnd(), m_window.clientWidthPx(),
                                               m_window.clientHeightPx(), m_window.scale() * 96.0f);
     if (!target) {

@@ -275,7 +275,11 @@ void SettingsPage::resetToDefaults() {
     edit([&](AppSettings& a) {
         a.theme = defaults.theme;
         a.reduceMotion = defaults.reduceMotion;
-        a.language = defaults.language;
+        // A language change rebuilds the whole UI: never while a job runs (it was reset regardless,
+        // and a running Uygula lost its controller, audit A6). The dropdown is locked then too.
+        if (!(m_intents.busy && m_intents.busy())) {
+            a.language = defaults.language;
+        }
         if (!foldersLocked()) {
             a.workRoot = defaults.workRoot;
             a.mountFolder = defaults.mountFolder;

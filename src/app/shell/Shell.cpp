@@ -1736,7 +1736,12 @@ void Shell::showPage(PageId page) {
                 SettingsPage::Intents{[this]() -> std::optional<std::filesystem::path> {
                                           return ui::pickFolder(owner(), m_strings.get(Str::SettingsWorkDir));
                                       },
-                                      [this] { return m_images->busy() || m_apply->running() || m_iso->running(); }});
+                                      // A language change rebuilds every controller: not while a job or a
+                                      // download reports into one (audit A6).
+                                      [this] {
+                                          return m_images->busy() || m_apply->running() || m_iso->running() ||
+                                                 m_updateCatalog->busy() || m_languageFetch->busy() || m_store->busy();
+                                      }});
             m_pageBody = &body;
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::CommonReset)).onInvoke = [this, &body] {
                 const bool locked = body.foldersLocked();

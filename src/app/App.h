@@ -18,6 +18,7 @@
 //      --drag=valid|invalid   (Source page drop zone drag state)
 //      --mount=N              (windowed: after opening the source, mount edition N — UAC relaunch)
 //      --no-elevate           (windowed: skip the elevated relaunch at startup; main.cpp)
+//      --test-device-lost     (windowed: runs the device-loss recovery once after the window shows)
 //      --select=N[,M…]        (select edition N on the Images page; more: marked as well)
 //      --operation=mount|prepare|read|verify --progress=0.38   (render: show the operation strip)
 //      --verified=sound|damaged   (render: the result of "Doğrula" on the Images page)
@@ -106,6 +107,7 @@ struct LaunchOptions {
     std::wstring demoCatalog;     // render (with --demo-updates): "dialog" | "download" — the update catalog (D-046)
     std::wstring demoApply;    // render (with --demo-features): "running" | "done" | "skipped" — fake Uygula run; "confirm" — the risk dialog, 40 rows
     bool maximized = false;
+    bool testDeviceLost = false; // windowed: App::recreateGraphics once, as after a GPU reset (audit A6)
     std::optional<ui::PointF> hoverAt;
     std::optional<ui::PointF> contextAt; // --context-at=x,y: right click (context menu)
     std::optional<ui::PointF> pressAt;
