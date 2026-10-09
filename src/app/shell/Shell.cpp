@@ -1574,6 +1574,11 @@ void Shell::updateStatus() {
                           : op->kind == EngineOperation::Kind::Verifying ? Str::StatusVerifying
                                                                          : Str::StatusWorking;
         m_status->setTask(m_strings.get(label), static_cast<float>(op->fraction));
+    } else if (const auto& windows = m_state.windowsDownload()) {
+        // D-093: from any page — the download, then the conversion into an ISO.
+        const bool converting = windows->stage == AppState::WindowsDownload::Stage::Converting;
+        m_status->setTask(m_strings.get(converting ? Str::StatusBuilding : Str::StatusDownloading),
+                          static_cast<float>(windows->fraction));
     } else if (const auto download = downloadProgress()) {
         // A download (updates, languages, Store) runs on any page: the status bar says so too.
         m_status->setTask(m_strings.get(Str::StatusDownloading), *download);
@@ -1690,6 +1695,9 @@ void Shell::showPage(PageId page) {
         const std::wstring title = m_strings.get(info.title);
         m_pageView = &add<PageView>(title, info.description ? m_strings.get(*info.description) : std::wstring{});
         if (page == PageId::Source) {
+            // D-093: no ISO at hand — one from Microsoft.
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::NavDownload), ui::icons::Icon::WindowsDownload)
+                .onInvoke = [this] { showPage(PageId::Download); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::SourceOpenFile), ui::icons::Icon::OpenFolder)
                 .onInvoke = [this] { pickSourceFile(); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::SourceOpenFolder)).onInvoke = [this] {

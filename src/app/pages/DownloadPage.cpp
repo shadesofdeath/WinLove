@@ -245,7 +245,10 @@ public:
         m_start->setBounds({x, y, w, kControl + 4});
         m_jobTop = y;
         const ui::SizeF stop = m_stop->measure({});
-        m_stop->setBounds({b.right() - kPad - stop.width, y + 52, stop.width, kControl});
+        // Under the progress: below the button's place, or at the top when no build is picked (the
+        // page was opened again while a job runs).
+        const float stopTop = m_build ? y + 52 : b.y + kPad + kLine + kGap + 52;
+        m_stop->setBounds({b.right() - kPad - stop.width, stopTop, stop.width, kControl});
         m_noteTop = y + kControl + 4 + kGap;
     }
 
@@ -256,7 +259,12 @@ public:
         const float x = b.x + kPad;
         const float w = b.width - 2 * kPad;
         if (!m_build) {
-            return; // the page's empty state says what to do
+            // Back on the page while a job runs: its progress, where the button would be.
+            if (const auto& job = m_state.windowsDownload()) {
+                canvas.drawText(job->title, {x, b.y + kPad, w, kLine}, TypeStyle::BodyStrong, Color::TextPrimary);
+                paintJob(canvas, *job, {x, b.y + kPad + kLine + kGap, w, 80});
+            }
+            return; // otherwise the page says what to do
         }
         float y = b.y + kPad;
         canvas.drawText(m_build->title, {x, y, w, kLine}, TypeStyle::BodyStrong, Color::TextPrimary);
@@ -647,7 +655,7 @@ void DownloadPage::layout() {
 }
 
 void DownloadPage::paint(ui::Canvas& canvas) {
-    if (!m_panel->build()) {
+    if (!m_panel->build() && !m_state.windowsDownload()) {
         // The panel's place says what to do first.
         const RectF p = m_panel->bounds();
         canvas.drawText(m_strings.get(Str::DownloadPickTitle), {p.x + kPad, p.y + kPad, p.width - 2 * kPad, kLine},
