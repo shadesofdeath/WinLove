@@ -2101,6 +2101,8 @@ if ($auto) {
     if ($auto.taskbar) { $script:align = [string] $auto.taskbar }
     if ($null -ne $auto.transparency) { $ui.Glass.IsChecked = [bool] $auto.transparency }
     if ($auto.prefs) { foreach ($p in $auto.prefs.PSObject.Properties) { $script:prefs[$p.Name] = [bool] $p.Value } }
+    if ($null -ne $auto.wallpaper) { $script:wallpaper = [string] $auto.wallpaper }
+    if ($null -ne $auto.bundles) { foreach ($b in @($data.bundles)) { if ($b) { $script:bundles[[string] $b.id] = ([string[]] $auto.bundles -contains [string] $b.id) } } }
     $script:privacy = [string] $auto.privacy
     Show-Choices
     $problem = ''
