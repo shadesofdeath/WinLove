@@ -46,8 +46,9 @@ nlohmann::json welcomePrefs(const WelcomePlan& plan) {
     constexpr char kAdvanced[] = R"(HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced)";
     auto write = [](const char* key, const char* name, int value) { return nlohmann::json{{"key", key}, {"name", name}, {"value", value}}; };
     auto pref = [&](const char* id, const char* nameKey, const char* detailKey, bool on, nlohmann::json onWrites, nlohmann::json offWrites) {
-        return nlohmann::json{{"id", id}, {"name", text(plan, nameKey)}, {"detail", text(plan, detailKey)}, {"default", on},
-                              {"on", std::move(onWrites)}, {"off", std::move(offWrites)}};
+        // nameKey/detailKey stay so oobe.ps1 can re-read the name in the installed language (D-103).
+        return nlohmann::json{{"id", id}, {"name", text(plan, nameKey)}, {"nameKey", nameKey}, {"detail", text(plan, detailKey)},
+                              {"detailKey", detailKey}, {"default", on}, {"on", std::move(onWrites)}, {"off", std::move(offWrites)}};
     };
     const auto none = nlohmann::json::array();
     auto classic = pref("classic", "prefClassic", "prefClassicDetail", false,
@@ -59,6 +60,7 @@ nlohmann::json welcomePrefs(const WelcomePlan& plan) {
                         nlohmann::json::array({write(R"(HKLM\SOFTWARE\Policies\Microsoft\Dsh)", "AllowNewsAndInterests", 0),
                                                write(R"(HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds)", "EnableFeeds", 0)}));
     widgets["name10"] = text(plan, "prefWidgets10");
+    widgets["name10Key"] = "prefWidgets10";
     return nlohmann::json::array({
         pref("ext", "prefExt", "prefExtDetail", true, nlohmann::json::array({write(kAdvanced, "HideFileExt", 0)}),
              nlohmann::json::array({write(kAdvanced, "HideFileExt", 1)})),
@@ -82,8 +84,9 @@ nlohmann::json welcomeBundles(const WelcomePlan& plan) {
         for (const char* app : programs) {
             apps.push_back(app);
         }
-        return nlohmann::json{{"id", id}, {"name", text(plan, nameKey)}, {"detail", text(plan, detailKey)},
-                              {"default", on}, {"programs", std::move(apps)}};
+        return nlohmann::json{{"id", id}, {"name", text(plan, nameKey)}, {"nameKey", nameKey},
+                              {"detail", text(plan, detailKey)}, {"detailKey", detailKey}, {"default", on},
+                              {"programs", std::move(apps)}};
     };
     return nlohmann::json::array({
         bundle("essentials", "bundleEssentials", "bundleEssentialsDetail", true,
@@ -118,7 +121,7 @@ nlohmann::json splitFacts(const std::string& joined) {
 
 } // namespace
 
-std::string welcomeJson(const WelcomePlan& plan) {
+std::string welcomeJson(const WelcomePlan& plan, const std::vector<WelcomeLanguage>& languages) {
     nlohmann::json pages = nlohmann::json::array();
     for (const auto& [on, id] : {std::pair{plan.networkPage, "network"}, std::pair{plan.computerPage, "computer"},
                                  std::pair{plan.lookPage, "look"}, std::pair{plan.wallpaperPage, "wallpaper"},
@@ -130,7 +133,7 @@ std::string welcomeJson(const WelcomePlan& plan) {
     }
     nlohmann::json accents = nlohmann::json::array();
     for (const auto& [key, color] : kWelcomeAccents) {
-        accents.push_back({{"name", text(plan, key)}, {"color", utf8::fromWide(color)}});
+        accents.push_back({{"name", text(plan, key)}, {"nameKey", key}, {"color", utf8::fromWide(color)}});
     }
     nlohmann::json texts = nlohmann::json::object();
     for (const auto& [key, value] : plan.texts) {
@@ -143,26 +146,64 @@ std::string welcomeJson(const WelcomePlan& plan) {
         {"defaults", {{"theme", utf8::fromWide(plan.theme)}, {"accent", utf8::fromWide(plan.accent)}, {"privacy", utf8::fromWide(plan.privacy)},
                       {"taskbar", "center"}, {"transparency", true}, {"timeZone", utf8::fromWide(plan.timeZone)}}},
         {"pages", pages},
-        {"themes", nlohmann::json::array({{{"id", "dark"}, {"name", text(plan, "themeDark")}}, {{"id", "light"}, {"name", text(plan, "themeLight")}}})},
+        {"themes", nlohmann::json::array({{{"id", "dark"}, {"name", text(plan, "themeDark")}, {"nameKey", "themeDark"}},
+                                          {{"id", "light"}, {"name", text(plan, "themeLight")}, {"nameKey", "themeLight"}}})},
         {"accents", accents},
         {"prefs", welcomePrefs(plan)},
         {"bundles", welcomeBundles(plan)},
-        {"privacy", nlohmann::json::array({{{"id", "strict"}, {"name", text(plan, "privacyStrict")}, {"detail", text(plan, "privacyStrictDetail")},
-                                            {"facts", splitFacts(text(plan, "privacyStrictFacts"))}, {"writes", strictWrites()}},
-                                           {{"id", "windows"}, {"name", text(plan, "privacyWindows")}, {"detail", text(plan, "privacyWindowsDetail")}, {"writes", nlohmann::json::array()}}})},
+        {"privacy", nlohmann::json::array({{{"id", "strict"}, {"name", text(plan, "privacyStrict")}, {"nameKey", "privacyStrict"},
+                                            {"detail", text(plan, "privacyStrictDetail")}, {"detailKey", "privacyStrictDetail"},
+                                            {"facts", splitFacts(text(plan, "privacyStrictFacts"))}, {"factsKey", "privacyStrictFacts"},
+                                            {"writes", strictWrites()}},
+                                           {{"id", "windows"}, {"name", text(plan, "privacyWindows")}, {"nameKey", "privacyWindows"},
+                                            {"detail", text(plan, "privacyWindowsDetail")}, {"detailKey", "privacyWindowsDetail"},
+                                            {"writes", nlohmann::json::array()}}})},
         {"texts", texts},
     };
+    if (!languages.empty()) {
+        nlohmann::json byLang = nlohmann::json::object();
+        for (const auto& lang : languages) {
+            nlohmann::json one = nlohmann::json::object();
+            for (const auto& [key, value] : lang.texts) {
+                one[key] = utf8::fromWide(value);
+            }
+            byLang[lang.code] = std::move(one);
+        }
+        doc["textsByLang"] = std::move(byLang);
+    }
     if (!plan.computerName.empty()) {
         doc["computerName"] = utf8::fromWide(plan.computerName);
     }
     return doc.dump(1);
 }
 
-std::vector<ops::Operation> welcomeOperations(const WelcomePlan& plan) {
+std::vector<ops::Operation> welcomeOperations(const WelcomePlan& plan, const std::vector<WelcomeLanguage>& languages) {
     using ops::OpKind;
     using ops::Operation;
     return {Operation{OpKind::WriteFile, kScriptFile, utf8::toWide(scripts::kOobe)},
-            Operation{OpKind::WriteFile, kJsonFile, utf8::toWide(welcomeJson(plan))}};
+            Operation{OpKind::WriteFile, kJsonFile, utf8::toWide(welcomeJson(plan, languages))}};
+}
+
+std::vector<WelcomeLanguage> welcomeLanguagesFromJson(std::string_view json) {
+    const auto doc = nlohmann::json::parse(json, nullptr, /*allow_exceptions=*/false);
+    std::vector<WelcomeLanguage> languages;
+    if (doc.is_discarded() || !doc.is_object()) {
+        return languages;
+    }
+    for (const auto& [code, texts] : doc.items()) {
+        if (!texts.is_object()) {
+            continue;
+        }
+        WelcomeLanguage lang;
+        lang.code = code;
+        for (const auto& [key, value] : texts.items()) {
+            if (value.is_string()) {
+                lang.texts.emplace_back(key, utf8::toWide(value.get<std::string>()));
+            }
+        }
+        languages.push_back(std::move(lang));
+    }
+    return languages;
 }
 
 std::optional<WelcomePlan> welcomePlanFromOperations(const std::vector<ops::Operation>& ops) {

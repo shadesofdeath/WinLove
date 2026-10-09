@@ -74,6 +74,9 @@ def main():
     page = next((int(a.split("=", 1)[1]) for a in args if a.startswith("--page=")), 0)
     theme = next((a.split("=", 1)[1] for a in args if a.startswith("--theme=")), "dark")
     lang = next((a.split("=", 1)[1] for a in args if a.startswith("--lang=")), "tr")
+    # --ui-lang=<code>: show the wizard in that language via the real welcome-langs.json (D-103),
+    # the same path the installed image uses (textsByLang + the installed-culture pick).
+    ui_lang = next((a.split("=", 1)[1] for a in args if a.startswith("--ui-lang=")), None)
 
     folder = Path(tempfile.gettempdir()) / "WinLove-oobe-capture"
     folder.mkdir(exist_ok=True)
@@ -94,6 +97,10 @@ def main():
         {"ssid": "Komsu", "signal": 1, "secure": True, "auth": 0, "connected": False},
     ]
     data["previewFill"] = {"name": "Berkay", "password": "", "computer": "BERKAY-PC"}
+    if ui_lang:
+        langs_file = ROOT / "resources" / "strings" / "welcome-langs.json"
+        data["textsByLang"] = json.loads(langs_file.read_text(encoding="utf-8"))
+        data["previewLang"] = ui_lang
     (folder / "oobe.json").write_text(json.dumps(data, ensure_ascii=True), encoding="ascii")
     script = ROOT / "resources" / "scripts" / "oobe.ps1"
     (folder / "oobe.ps1").write_text(script.read_text(encoding="ascii"), encoding="ascii")

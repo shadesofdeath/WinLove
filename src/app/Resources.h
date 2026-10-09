@@ -1,6 +1,7 @@
 #pragma once
 // Access to data embedded in WinLove.exe (see WinLove.rc / resource.h).
 #include "app/Localization.h"
+#include "core/unattend/Welcome.h"
 #include "ui/text/FontLibrary.h"
 
 #include <windows.h>
@@ -28,6 +29,8 @@ namespace wl::app {
 // resources/catalog/programs.json (D-078).
 [[nodiscard]] std::string_view embeddedProgramsCatalog();
 [[nodiscard]] std::string_view embeddedCompatCatalog(); // D-082
+// D-103: every welcome translation (welcome-langs.json), parsed once. English is always present.
+[[nodiscard]] const std::vector<core::WelcomeLanguage>& embeddedWelcomeLanguages();
 
 [[nodiscard]] HICON appIcon();
 

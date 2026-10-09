@@ -49,10 +49,26 @@ inline constexpr std::pair<const char*, const wchar_t*> kWelcomeAccents[] = {
     {"accentGreen", L"#107C10"},  {"accentPurple", L"#8764B8"}, {"accentPink", L"#E3008C"},
     {"accentRed", L"#E81123"},    {"accentOrange", L"#CA5010"}, {"accentCopper", L"#D4905A"}};
 
-// oobe.json: the pages, the choices, the texts.
-[[nodiscard]] std::string welcomeJson(const WelcomePlan& plan);
-// The script and its oobe.json into the image (WriteFile, ProgramData\WinLove\Oobe).
-[[nodiscard]] std::vector<ops::Operation> welcomeOperations(const WelcomePlan& plan);
+// D-103: a language the wizard can show itself in — its code (the installed Windows' culture, e.g.
+// "de", "pt-BR", "zh-CN") and the welcome texts (key → value). English ("en") must be among them.
+struct WelcomeLanguage {
+    std::string code;
+    std::vector<std::pair<std::string, std::wstring>> texts;
+
+    [[nodiscard]] bool operator==(const WelcomeLanguage&) const = default;
+};
+
+// oobe.json: the pages, the choices, the texts. `languages`, when given, adds a per-language text
+// map (textsByLang) that oobe.ps1 picks from by the installed Windows' language (English fallback);
+// `plan.texts` stays as the operator-language copy for preview and older scripts.
+[[nodiscard]] std::string welcomeJson(const WelcomePlan& plan, const std::vector<WelcomeLanguage>& languages = {});
+// The script and its oobe.json into the image (WriteFile, ProgramData\WinLove\Oobe). `languages`
+// (all the welcome translations) ride in the oobe.json so the wizard can pick the installed
+// Windows' language.
+[[nodiscard]] std::vector<ops::Operation> welcomeOperations(const WelcomePlan& plan,
+                                                            const std::vector<WelcomeLanguage>& languages = {});
+// Parses the embedded welcome-langs.json ({ code: {key:value} }) into WelcomeLanguage list.
+[[nodiscard]] std::vector<WelcomeLanguage> welcomeLanguagesFromJson(std::string_view json);
 [[nodiscard]] std::optional<WelcomePlan> welcomePlanFromOperations(const std::vector<ops::Operation>& ops);
 [[nodiscard]] std::vector<std::pair<ops::OpKind, std::wstring>> welcomeSlots();
 // A preset keeps the script as it was when it was saved: the app's own one goes in when the preset is

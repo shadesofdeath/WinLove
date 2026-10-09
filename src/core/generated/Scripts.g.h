@@ -37,6 +37,28 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $system = [Security.Principal.WindowsIdentity]::GetCurrent().IsSystem
 $data = [System.IO.File]::ReadAllText((Join-Path $here 'oobe.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json
 $t = $data.texts
+# D-103: show the wizard in the installed Windows' language when we have it, English otherwise. A
+# preview forces a language through previewLang.
+if ($data.textsByLang) {
+    $want = New-Object System.Collections.Generic.List[string]
+    if ($data.previewLang) { $want.Add([string] $data.previewLang) }
+    try {
+        $ci = [System.Globalization.CultureInfo]::InstalledUICulture
+        $want.Add($ci.Name)
+        if ($ci.Name -match 'Hant|-TW|-HK|-MO') { $want.Add('zh-TW') } elseif ($ci.Name -match '^zh') { $want.Add('zh-CN') }
+        if ($ci.TwoLetterISOLanguageName -eq 'pt') { $want.Add('pt-BR') }
+        $want.Add($ci.TwoLetterISOLanguageName)
+    } catch { }
+    $want.Add('en')
+    foreach ($code in $want) {
+        if ($code -and $data.textsByLang.PSObject.Properties[$code]) { $t = $data.textsByLang.$code; break }
+    }
+}
+# A structural name (theme / accent / pref / privacy / bundle) in the chosen language, or its baked-in copy.
+function Tr([string] $key, $fallback) {
+    if ($key -and $t.PSObject.Properties[$key]) { return [string] $t.$key }
+    return [string] $fallback
+}
 $auto = $data.auto
 $stateDir = if ($data.preview) { $here } else { Join-Path $env:ProgramData 'WinLove' } # a preview leaves nothing on this PC
 New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
@@ -180,7 +202,8 @@ function Start-NameWatcher([string] $computer) {
         '$names = ''HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName''',
         '$tcp = ''HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters''',
         '$until = (Get-Date).AddMinutes(15)',
-        'while ((Get-Date) -lt $until) {',
+        'while )wlps"
+    R"wlps(((Get-Date) -lt $until) {',
         '    try {',
         '        $now = (Get-ItemProperty -Path $names).ComputerName',
         '        if ($now -ne $want) {',
@@ -197,8 +220,7 @@ function Start-NameWatcher([string] $computer) {
 }
 # The tasks here run on battery too: by default Windows holds a task until the charger is in (and the
 # password below would stay in the registry on a laptop).
-function New-TaskSe)wlps"
-    R"wlps(ttings { return New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries }
+function New-TaskSettings { return New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries }
 # The new account's first sign-in: a task, as SYSTEM, takes out the password Windows keeps for the
 # automatic sign-in (VM, 26200: AutoLogonCount 0, DefaultPassword still there in plain text).
 function Register-SignInTasks([string] $name) {
@@ -361,7 +383,8 @@ public static class Wifi {
                 return WlanConnect(handle, ref g, ref parameters, IntPtr.Zero);
             }
             return 2;
-        } finally { WlanCloseHandle(handle, IntPtr.Zero); }
+        } finally { WlanCloseHandle(handle, IntPt)wlps"
+    R"wlps(r.Zero); }
     }
 }
 }
@@ -383,8 +406,7 @@ function Get-WifiProfile($net, [string] $key, [bool] $autoConnect) {
     $name = [System.Security.SecurityElement]::Escape($net.Ssid)
     $shared = ''
     if ($auth -in 'WPAPSK', 'WPA2PSK', 'WPA3SAE') {
-        $type =)wlps"
-    R"wlps( if ($key -match '^[0-9A-Fa-f]{64}$') { 'networkKey' } else { 'passPhrase' }
+        $type = if ($key -match '^[0-9A-Fa-f]{64}$') { 'networkKey' } else { 'passPhrase' }
         $shared = '<sharedKey><keyType>{0}</keyType><protected>false</protected><keyMaterial>{1}</keyMaterial></sharedKey>' -f $type, [System.Security.SecurityElement]::Escape($key)
     }
     return ('<?xml version="1.0"?><WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1"><name>{0}</name>' +
@@ -553,7 +575,8 @@ $xaml = @'
         <ScrollViewer x:Name="PART_ContentHost" Margin="11,0,36,0" VerticalAlignment="Center"/>
       </Grid>
       <ControlTemplate.Triggers>
-        <Trigger Property="IsMouseOver" Value="True">
+        )wlps"
+    R"wlps(<Trigger Property="IsMouseOver" Value="True">
           <Trigger.EnterActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="H" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.12"/></Storyboard></BeginStoryboard></Trigger.EnterActions>
           <Trigger.ExitActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="H" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.2"/></Storyboard></BeginStoryboard></Trigger.ExitActions>
         </Trigger>
@@ -563,8 +586,7 @@ $xaml = @'
             <DoubleAnimation Storyboard.TargetName="F" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="1" Duration="0:0:0.26">
               <DoubleAnimation.EasingFunction><ExponentialEase Exponent="5" EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
             </DoubleAnimation>
-          </Storyboard></BeginStoryboard></Trigger)wlps"
-    R"wlps(.EnterActions>
+          </Storyboard></BeginStoryboard></Trigger.EnterActions>
           <Trigger.ExitActions><BeginStoryboard><Storyboard>
             <DoubleAnimation Storyboard.TargetName="F" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="0" Duration="0:0:0.16"/>
           </Storyboard></BeginStoryboard></Trigger.ExitActions>
@@ -699,7 +721,8 @@ $xaml = @'
                       <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="{DynamicResource Row}"/></Trigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
-                </ToggleButton.Template>
+                </ToggleButton.Template>)wlps"
+    R"wlps(
               </ToggleButton>
               <ContentPresenter Margin="11,0,32,0" VerticalAlignment="Center" IsHitTestVisible="False"
                                 Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"/>
@@ -715,8 +738,7 @@ $xaml = @'
         </Setter.Value>
       </Setter>
     </Style>
-    <Style x:Key="CardBo)wlps"
-    R"wlps(x" TargetType="Border">
+    <Style x:Key="CardBox" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource Row}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource RowLine}"/>
       <Setter Property="BorderThickness" Value="1"/>
@@ -858,7 +880,8 @@ $xaml = @'
                   <Border x:Name="MiniWall" CornerRadius="8"/>
                   <Ellipse Width="300" Height="190" Margin="-90,0,0,-110" HorizontalAlignment="Left" VerticalAlignment="Bottom" Fill="{DynamicResource MiniBlobA}"/>
                   <Ellipse Width="230" Height="170" Margin="0,-70,-80,0" HorizontalAlignment="Right" VerticalAlignment="Top" Fill="{DynamicResource MiniBlobB}"/>
-                  <Border x:Name="MiniApp" Width="196" Height="118" CornerRadius="6" Margin="58,30,0,0" HorizontalAlignment="Left" VerticalAlignment="Top">
+                  <Border x:Name="MiniA)wlps"
+    R"wlps(pp" Width="196" Height="118" CornerRadius="6" Margin="58,30,0,0" HorizontalAlignment="Left" VerticalAlignment="Top">
                     <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.3"/></Border.Effect>
                     <StackPanel>
                       <Border x:Name="MiniTitle" Height="18" CornerRadius="6,6,0,0">
@@ -869,8 +892,7 @@ $xaml = @'
                       </Border>
                       <Border x:Name="MiniLine1" Width="120" Height="6" CornerRadius="3" Margin="10,8,0,0" HorizontalAlignment="Left"/>
                       <Border x:Name="MiniLine2" Width="150" Height="6" CornerRadius="3" Margin="10,6,0,0" HorizontalAlignment="Left"/>
-                      <Border x:Name="MiniLine3" Width="90" Height="6" Corner)wlps"
-    R"wlps(Radius="3" Margin="10,6,0,0" HorizontalAlignment="Left"/>
+                      <Border x:Name="MiniLine3" Width="90" Height="6" CornerRadius="3" Margin="10,6,0,0" HorizontalAlignment="Left"/>
                       <Border Width="56" Height="16" CornerRadius="3" Margin="10,14,0,0" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}"/>
                     </StackPanel>
                   </Border>
@@ -1003,7 +1025,8 @@ $xaml = @'
                 </StackPanel>
 
                 <StackPanel x:Name="PageLook" Visibility="Collapsed">
-                  <TextBlock x:Name="ThemeLabel" Style="{StaticResource Label}"/>
+                  <TextBlock x:Name="Them)wlps"
+    R"wlps(eLabel" Style="{StaticResource Label}"/>
                   <StackPanel x:Name="Themes" Orientation="Horizontal" Margin="0,0,0,16"/>
                   <TextBlock x:Name="AccentLabel" Style="{StaticResource Label}"/>
                   <WrapPanel x:Name="Accents" MaxWidth="470" HorizontalAlignment="Left" Margin="0,0,0,14"/>
@@ -1016,8 +1039,7 @@ $xaml = @'
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom" Margin="0,0,0,6">
                       <CheckBox x:Name="Glass" Style="{StaticResource Switch}" VerticalAlignment="Center"/>
-                      <TextBlock x:Name="GlassLabel)wlps"
-    R"wlps(" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                      <TextBlock x:Name="GlassLabel" Margin="12,0,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
                   </StackPanel>
                 </StackPanel>
@@ -1167,7 +1189,8 @@ $palettes = @{
     dark  = @{ Bg = '#0B1222'; Blob1 = '#1E4FB8'; Blob2 = '#12306E'; Blob3 = '#4A2A6E'; Card = '#202020'; CardLine = '#14FFFFFF'
                Text1 = '#FFFFFF'; Text2 = '#C8C8C8'; Text3 = '#9D9D9D'; Fill = '#2D2D2D'; FillFocus = '#1F1F1F'; Stroke = '#3A3A3A'
                Bottom = '#9A9A9A'; Row = '#2B2B2B'; RowLine = '#363636'; Err = '#FF99A4'; Panel = '#80202020'
-               Wash = '#0DFFFFFF'; RowHover = '#323232' }
+               Wash = '#0DFFFFFF'; RowHover = '#32323)wlps"
+    R"wlps(2' }
 }
 function Get-Mix([string] $hex, [int] $toward, [double] $amount) { # toward 255 (lighter) or 0 (darker): "#RRGGBB"
     $out = foreach ($i in 1, 3, 5) {
@@ -1192,8 +1215,7 @@ function Get-Light([string] $hex) { # relative luminance, 0..1
 }
 function New-Cloud([string] $hex, [double] $alpha) { # a colour cloud: solid in the middle, gone at the edge
     $b = New-Object System.Windows.Media.RadialGradientBrush
-    $b.GradientStops.Add((New-Object System.Windows.Media.GradientS)wlps"
-    R"wlps(top((Get-Color $hex $alpha), 0)))
+    $b.GradientStops.Add((New-Object System.Windows.Media.GradientStop((Get-Color $hex $alpha), 0)))
     $b.GradientStops.Add((New-Object System.Windows.Media.GradientStop((Get-Color $hex ($alpha * 0.55)), 0.45)))
     $b.GradientStops.Add((New-Object System.Windows.Media.GradientStop((Get-Color $hex 0), 1)))
     return $b
@@ -1317,7 +1339,7 @@ foreach ($entry in $data.themes) {
     Set-Res $dot ([System.Windows.Controls.Border]::BackgroundProperty) 'AccentBrush'
     [void] $mini.Children.Add($dot)
     [void] $stack.Children.Add($mini)
-    $name = New-Text ([string] $entry.name)
+    $name = New-Text (Tr $entry.nameKey $entry.name)
     $name.HorizontalAlignment = 'Center'; $name.Margin = '0,6,0,0'
     [void] $stack.Children.Add($name)
     [void] $grid.Children.Add($stack)
@@ -1334,7 +1356,7 @@ foreach ($entry in $data.themes) {
 foreach ($entry in $data.accents) {
     $ring = New-Object System.Windows.Controls.Border
     $ring.CornerRadius = 7; $ring.Padding = 3; $ring.BorderThickness = 2; $ring.Margin = '0,0,6,6'; $ring.Cursor = 'Hand'
-    $ring.Tag = [string] $entry.color; $ring.ToolTip = [string] $entry.name; $ring.Background = [System.Windows.Media.Brushes]::Transparent
+    $ring.Tag = [string] $entry.color; $ring.ToolTip = (Tr $entry.nameKey $entry.name); $ring.Background = [System.Windows.Media.Brushes]::Transparent
     $swatch = New-Object System.Windows.Controls.Border
     $swatch.Width = 34; $swatch.Height = 34; $swatch.CornerRadius = 4
     $swatch.Background = $brush.ConvertFromString([string] $entry.color)
@@ -1373,11 +1395,12 @@ foreach ($pref in @($data.prefs)) {
     $icon.Margin = '0,0,14,0'; $icon.VerticalAlignment = 'Center'
     [void] $grid.Children.Add($icon)
     $words = New-Object System.Windows.Controls.StackPanel
-    $words.VerticalAlignment = 'Center'
+    $words.VerticalAlignment = 'Cent)wlps"
+    R"wlps(er'
     [System.Windows.Controls.Grid]::SetColumn($words, 1)
-    $nameText = if (-not $win11 -and $pref.name10) { [string] $pref.name10 } else { [string] $pref.name }
+    $nameText = if (-not $win11 -and $pref.name10) { (Tr $pref.name10Key $pref.name10) } else { (Tr $pref.nameKey $pref.name) }
     [void] $words.Children.Add((New-Text $nameText))
-    $detail = New-Text ([string] $pref.detail) 12 'Text2'
+    $detail = New-Text (Tr $pref.detailKey $pref.detail) 12 'Text2'
     $detail.TextWrapping = 'Wrap'
     [void] $words.Children.Add($detail)
     [void] $grid.Children.Add($words)
@@ -1391,8 +1414,7 @@ foreach ($pref in @($data.prefs)) {
     [System.Windows.Controls.Grid]::SetColumn($switch, 3)
     [void] $grid.Children.Add($switch)
     $row.Child = $grid
-    $row.Add_MouseLeftButtonUp({ param($s) $id = [string] $s.Tag; $script:prefs[$id] = -not $script:prefs[$id]; Show-Cho)wlps"
-    R"wlps(ices; Update-Art })
+    $row.Add_MouseLeftButtonUp({ param($s) $id = [string] $s.Tag; $script:prefs[$id] = -not $script:prefs[$id]; Show-Choices; Update-Art })
     $script:prefRows[[string] $pref.id] = @{ row = $row; switch = $switch; state = $state }
     [void] $ui.PagePrefs.Children.Add($row)
 }
@@ -1415,13 +1437,14 @@ foreach ($entry in $data.privacy) {
     [void] $grid.Children.Add($radio)
     $words = New-Object System.Windows.Controls.StackPanel
     [System.Windows.Controls.Grid]::SetColumn($words, 1)
-    $title = New-Text ([string] $entry.name)
+    $title = New-Text (Tr $entry.nameKey $entry.name)
     $title.FontWeight = 'SemiBold'
     [void] $words.Children.Add($title)
-    $detail = New-Text ([string] $entry.detail) 12 'Text2'
+    $detail = New-Text (Tr $entry.detailKey $entry.detail) 12 'Text2'
     $detail.TextWrapping = 'Wrap'; $detail.Margin = '0,4,0,0'
     [void] $words.Children.Add($detail)
-    $facts = @($entry.facts | Where-Object { $_ })
+    $factsText = Tr $entry.factsKey ''
+    $facts = if ($factsText) { @($factsText -split ';' | Where-Object { $_ }) } else { @($entry.facts | Where-Object { $_ }) }
     if ($facts.Count) {
         $wrap = New-Object System.Windows.Controls.WrapPanel
         $wrap.Margin = '0,8,0,0'
@@ -1559,7 +1582,8 @@ function Update-Art {
     $ui.MiniIcons.HorizontalAlignment = $(if ($win11 -and $script:align -eq 'center') { 'Center' } else { 'Left' })
     # habits: a small Explorer and taskbar that follow the switches
     $ext = $script:prefs['ext']; $hidden = $script:prefs['hidden']
-    $ui.ExPlace.Text = $(if ($script:prefs['thispc']) { $t.prefPlaceThisPc } else { $t.prefPlaceDocs })
+    $ui.ExPlace.Text = $(if ($sc)wlps"
+    R"wlps(ript:prefs['thispc']) { $t.prefPlaceThisPc } else { $t.prefPlaceDocs })
     $ui.ExFiles.Children.Clear()
     $files = @(@('.config', '', '#8A8A8A', $true), @($t.prefFileReport, '.docx', '#2F6FD0', $false), @($t.prefFileBudget, '.xlsx', '#2E9D5B', $false),
                @($t.prefFileHoliday, '.jpg', '#E8A23B', $false), @('setup', '.exe', '#C04A3A', $false))
@@ -1582,8 +1606,7 @@ function Update-Art {
         }
         [void] $ui.ExFiles.Children.Add($line)
     }
-)wlps"
-    R"wlps(    $ui.ExBar.Children.Clear()
+    $ui.ExBar.Children.Clear()
     $items = @()
     if ($script:prefs['widgets']) { $items += 'widgets' }
     $items += 'start'
@@ -1713,8 +1736,8 @@ function Build-Bundles {
         $grid = New-Object System.Windows.Controls.Grid
         foreach ($w in '*', 'Auto') { $col = New-Object System.Windows.Controls.ColumnDefinition; $col.Width = $w; $grid.ColumnDefinitions.Add($col) }
         $words = New-Object System.Windows.Controls.StackPanel; $words.VerticalAlignment = 'Center'
-        [void] $words.Children.Add((New-Text ([string] $b.name)))
-        $detail = New-Text ([string] $b.detail) 12 'Text2'; $detail.TextWrapping = 'Wrap'
+        [void] $words.Children.Add((New-Text (Tr $b.nameKey $b.name)))
+        $detail = New-Text (Tr $b.detailKey $b.detail) 12 'Text2'; $detail.TextWrapping = 'Wrap'
         [void] $words.Children.Add($detail)
         [void] $grid.Children.Add($words)
         $switch = New-Object System.Windows.Controls.CheckBox
@@ -1765,7 +1788,8 @@ function Show-Networks([bool] $scan) {
         $row = New-Object System.Windows.Controls.Border
         $row.Style = $window.FindResource('RowBox'); $row.Margin = '0,0,0,4'; $row.Tag = $net
         $stack = New-Object System.Windows.Controls.StackPanel
-        $head = New-Object System.Windows.Controls.Grid
+      )wlps"
+    R"wlps(  $head = New-Object System.Windows.Controls.Grid
         $head.Height = 46; $head.Background = [System.Windows.Media.Brushes]::Transparent; $head.Cursor = 'Hand'
         foreach ($w in 'Auto', '*', 'Auto') { $col = New-Object System.Windows.Controls.ColumnDefinition; $col.Width = $w; $head.ColumnDefinitions.Add($col) }
         # the signal: three arcs, the ones above the strength faint
@@ -1784,8 +1808,7 @@ function Show-Networks([bool] $scan) {
         [System.Windows.Controls.Grid]::SetColumn($words, 1)
         [void] $words.Children.Add((New-Text $net.Ssid))
         $supported = [bool] (Get-WifiProfile $net 'x' $true)
-        $meta = if ($net.Connected) { $t.networkC)wlps"
-    R"wlps(onnected } elseif (-not $supported) { $t.networkEnterprise } elseif ($net.Secure) { $t.networkSecure } else { $t.networkOpen }
+        $meta = if ($net.Connected) { $t.networkConnected } elseif (-not $supported) { $t.networkEnterprise } elseif ($net.Secure) { $t.networkSecure } else { $t.networkOpen }
         [void] $words.Children.Add((New-Text $meta 12 $(if ($net.Connected) { 'Sel' } else { 'Text2' })))
         [void] $head.Children.Add($words)
         if ($net.Secure) {
@@ -1979,7 +2002,8 @@ function Test-Page([int] $index) {
         if ($reserved -contains $name.ToLower()) { return $t.errorNameTaken }
         if (Get-LocalUser -Name $name -ErrorAction SilentlyContinue) { return $t.errorNameTaken }
         if ($ui.Pass.Password -ne $ui.Pass2.Password) { return $t.errorPasswords }
-        if (-not $ui.Pass.Password -and -not $data.allowEmptyPassword) { return $t.errorPasswordEmpty }
+        if (-not $ui.Pass.Password -and -)wlps"
+    R"wlps(not $data.allowEmptyPassword) { return $t.errorPasswordEmpty }
     } elseif ($id -eq 'computer') {
         $pc = $ui.PcName.Text.Trim()
         if ($pc -notmatch '^[A-Za-z0-9-]{1,15}$' -or $pc -match '^[0-9]+$') { return $t.errorComputer }
@@ -2005,8 +2029,7 @@ $window.Add_KeyDown({
 })
 
 function Update-Top {
-    # Windows' first sign-in screen and the Start menu it op)wlps"
-    R"wlps(ens come up over a window started before
+    # Windows' first sign-in screen and the Start menu it opens come up over a window started before
     # them: for the first minutes the window takes the top again (a timer, every two seconds).
     if ((Get-Date) -ge $script:keepTop) { $script:topTimer.Stop(); return }
     # Windows 11 opens Start at the first sign-in, and Start is above any topmost window: when
@@ -2152,7 +2175,9 @@ $zoneId = if ((Test-Shown 'computer') -and $ui.Zone.SelectedItem) { [string] $ui
 # enough to be read: the work itself takes about two seconds in all.
 $dot = ' ' + [char] 0xB7 + ' '
 function Get-Named($list, [string] $key, [string] $value) {
-    return [string] (@($list) | Where-Object { $_ -and ([string] $_.$key).ToLower() -eq $value.ToLower() } | Select-Object -First 1).name
+    $m = @($list) | Where-Object { $_ -and ([string] $_.$key).ToLower() -eq $value.ToLower() } | Select-Object -First 1
+    if ($m) { return (Tr $m.nameKey $m.name) }
+    return ''
 }
 $zoneText = try { if ($zoneId) { [System.TimeZoneInfo]::FindSystemTimeZoneById($zoneId).DisplayName } else { '' } } catch { '' }
 $lookBits = @()
@@ -2177,7 +2202,8 @@ $script:stepRows = @()
 foreach ($step in $steps) {
     $line = New-Object System.Windows.Controls.Grid
     $line.Margin = '14,5'; $line.Opacity = 0
-    foreach ($w in 'Auto', '*') { $col = New-Object System.Windows.Controls.ColumnDefinition; $col.Width = $w; $line.ColumnDefinitions.Add($col) }
+    foreach ($w in 'A)wlps"
+    R"wlps(uto', '*') { $col = New-Object System.Windows.Controls.ColumnDefinition; $col.Width = $w; $line.ColumnDefinitions.Add($col) }
     $mark = New-Object System.Windows.Controls.Grid
     $mark.Width = 20; $mark.Height = 20; $mark.VerticalAlignment = 'Top'; $mark.Margin = '0,1,14,0'
     $wait = New-Object System.Windows.Shapes.Ellipse # not yet: a faint ring
@@ -2193,8 +2219,7 @@ foreach ($step in $steps) {
     $done.CornerRadius = 10; $done.Opacity = 0
     Set-Res $done ([System.Windows.Controls.Border]::BackgroundProperty) 'Sel'
     $done.Child = New-Path $checkGeometry 'BtnText' 12 3.2
-    [void] $mark.Children.Add($wait); [void] $mark.Chi)wlps"
-    R"wlps(ldren.Add($spin); [void] $mark.Children.Add($done)
+    [void] $mark.Children.Add($wait); [void] $mark.Children.Add($spin); [void] $mark.Children.Add($done)
     [void] $line.Children.Add($mark)
     $words = New-Object System.Windows.Controls.StackPanel
     $words.VerticalAlignment = 'Center'
@@ -2382,7 +2407,8 @@ try {
         # theme goes in only through the .reg.
         $script:userReg.AddRange([string[]] @(
             '[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize]',
-            ('"AppsUseLightTheme"=dword:{0:x8}' -f $light), ('"SystemUsesLightTheme"=dword:{0:x8}' -f $light),
+            ('"AppsUseLightTheme"=dword:{0:x8}' -f $light), ('"SystemUsesLightTheme"=dword:{0:x8}' -)wlps"
+    R"wlps(f $light),
             ('"EnableTransparency"=dword:{0:x8}' -f [int] [bool] $ui.Glass.IsChecked), '',
             '[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Accent]',
             ('"AccentPalette"=hex:' + $palette), ('"AccentColorMenu"=dword:{0:x8}' -f (Get-Bgr $base)),
@@ -2400,8 +2426,7 @@ try {
             foreach ($write in @($writes)) { if ($write) { Set-Write $write } }
         }
     }
-    # D-099: the chosen desktop background (a stable Windows\Web path), f)wlps"
-    R"wlps(or the new account.
+    # D-099: the chosen desktop background (a stable Windows\Web path), for the new account.
     if ((Test-Shown 'wallpaper') -and $script:wallpaper) {
         Add-UserValue 'Control Panel\Desktop' 'WallPaper' 'sz' $script:wallpaper
         Add-UserValue 'Control Panel\Desktop' 'WallpaperStyle' 'sz' '10'

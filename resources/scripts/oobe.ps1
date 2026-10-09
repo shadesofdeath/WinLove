@@ -27,6 +27,28 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $system = [Security.Principal.WindowsIdentity]::GetCurrent().IsSystem
 $data = [System.IO.File]::ReadAllText((Join-Path $here 'oobe.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json
 $t = $data.texts
+# D-103: show the wizard in the installed Windows' language when we have it, English otherwise. A
+# preview forces a language through previewLang.
+if ($data.textsByLang) {
+    $want = New-Object System.Collections.Generic.List[string]
+    if ($data.previewLang) { $want.Add([string] $data.previewLang) }
+    try {
+        $ci = [System.Globalization.CultureInfo]::InstalledUICulture
+        $want.Add($ci.Name)
+        if ($ci.Name -match 'Hant|-TW|-HK|-MO') { $want.Add('zh-TW') } elseif ($ci.Name -match '^zh') { $want.Add('zh-CN') }
+        if ($ci.TwoLetterISOLanguageName -eq 'pt') { $want.Add('pt-BR') }
+        $want.Add($ci.TwoLetterISOLanguageName)
+    } catch { }
+    $want.Add('en')
+    foreach ($code in $want) {
+        if ($code -and $data.textsByLang.PSObject.Properties[$code]) { $t = $data.textsByLang.$code; break }
+    }
+}
+# A structural name (theme / accent / pref / privacy / bundle) in the chosen language, or its baked-in copy.
+function Tr([string] $key, $fallback) {
+    if ($key -and $t.PSObject.Properties[$key]) { return [string] $t.$key }
+    return [string] $fallback
+}
 $auto = $data.auto
 $stateDir = if ($data.preview) { $here } else { Join-Path $env:ProgramData 'WinLove' } # a preview leaves nothing on this PC
 New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
@@ -1300,7 +1322,7 @@ foreach ($entry in $data.themes) {
     Set-Res $dot ([System.Windows.Controls.Border]::BackgroundProperty) 'AccentBrush'
     [void] $mini.Children.Add($dot)
     [void] $stack.Children.Add($mini)
-    $name = New-Text ([string] $entry.name)
+    $name = New-Text (Tr $entry.nameKey $entry.name)
     $name.HorizontalAlignment = 'Center'; $name.Margin = '0,6,0,0'
     [void] $stack.Children.Add($name)
     [void] $grid.Children.Add($stack)
@@ -1317,7 +1339,7 @@ foreach ($entry in $data.themes) {
 foreach ($entry in $data.accents) {
     $ring = New-Object System.Windows.Controls.Border
     $ring.CornerRadius = 7; $ring.Padding = 3; $ring.BorderThickness = 2; $ring.Margin = '0,0,6,6'; $ring.Cursor = 'Hand'
-    $ring.Tag = [string] $entry.color; $ring.ToolTip = [string] $entry.name; $ring.Background = [System.Windows.Media.Brushes]::Transparent
+    $ring.Tag = [string] $entry.color; $ring.ToolTip = (Tr $entry.nameKey $entry.name); $ring.Background = [System.Windows.Media.Brushes]::Transparent
     $swatch = New-Object System.Windows.Controls.Border
     $swatch.Width = 34; $swatch.Height = 34; $swatch.CornerRadius = 4
     $swatch.Background = $brush.ConvertFromString([string] $entry.color)
@@ -1358,9 +1380,9 @@ foreach ($pref in @($data.prefs)) {
     $words = New-Object System.Windows.Controls.StackPanel
     $words.VerticalAlignment = 'Center'
     [System.Windows.Controls.Grid]::SetColumn($words, 1)
-    $nameText = if (-not $win11 -and $pref.name10) { [string] $pref.name10 } else { [string] $pref.name }
+    $nameText = if (-not $win11 -and $pref.name10) { (Tr $pref.name10Key $pref.name10) } else { (Tr $pref.nameKey $pref.name) }
     [void] $words.Children.Add((New-Text $nameText))
-    $detail = New-Text ([string] $pref.detail) 12 'Text2'
+    $detail = New-Text (Tr $pref.detailKey $pref.detail) 12 'Text2'
     $detail.TextWrapping = 'Wrap'
     [void] $words.Children.Add($detail)
     [void] $grid.Children.Add($words)
@@ -1397,13 +1419,14 @@ foreach ($entry in $data.privacy) {
     [void] $grid.Children.Add($radio)
     $words = New-Object System.Windows.Controls.StackPanel
     [System.Windows.Controls.Grid]::SetColumn($words, 1)
-    $title = New-Text ([string] $entry.name)
+    $title = New-Text (Tr $entry.nameKey $entry.name)
     $title.FontWeight = 'SemiBold'
     [void] $words.Children.Add($title)
-    $detail = New-Text ([string] $entry.detail) 12 'Text2'
+    $detail = New-Text (Tr $entry.detailKey $entry.detail) 12 'Text2'
     $detail.TextWrapping = 'Wrap'; $detail.Margin = '0,4,0,0'
     [void] $words.Children.Add($detail)
-    $facts = @($entry.facts | Where-Object { $_ })
+    $factsText = Tr $entry.factsKey ''
+    $facts = if ($factsText) { @($factsText -split ';' | Where-Object { $_ }) } else { @($entry.facts | Where-Object { $_ }) }
     if ($facts.Count) {
         $wrap = New-Object System.Windows.Controls.WrapPanel
         $wrap.Margin = '0,8,0,0'
@@ -1694,8 +1717,8 @@ function Build-Bundles {
         $grid = New-Object System.Windows.Controls.Grid
         foreach ($w in '*', 'Auto') { $col = New-Object System.Windows.Controls.ColumnDefinition; $col.Width = $w; $grid.ColumnDefinitions.Add($col) }
         $words = New-Object System.Windows.Controls.StackPanel; $words.VerticalAlignment = 'Center'
-        [void] $words.Children.Add((New-Text ([string] $b.name)))
-        $detail = New-Text ([string] $b.detail) 12 'Text2'; $detail.TextWrapping = 'Wrap'
+        [void] $words.Children.Add((New-Text (Tr $b.nameKey $b.name)))
+        $detail = New-Text (Tr $b.detailKey $b.detail) 12 'Text2'; $detail.TextWrapping = 'Wrap'
         [void] $words.Children.Add($detail)
         [void] $grid.Children.Add($words)
         $switch = New-Object System.Windows.Controls.CheckBox
@@ -2131,7 +2154,9 @@ $zoneId = if ((Test-Shown 'computer') -and $ui.Zone.SelectedItem) { [string] $ui
 # enough to be read: the work itself takes about two seconds in all.
 $dot = ' ' + [char] 0xB7 + ' '
 function Get-Named($list, [string] $key, [string] $value) {
-    return [string] (@($list) | Where-Object { $_ -and ([string] $_.$key).ToLower() -eq $value.ToLower() } | Select-Object -First 1).name
+    $m = @($list) | Where-Object { $_ -and ([string] $_.$key).ToLower() -eq $value.ToLower() } | Select-Object -First 1
+    if ($m) { return (Tr $m.nameKey $m.name) }
+    return ''
 }
 $zoneText = try { if ($zoneId) { [System.TimeZoneInfo]::FindSystemTimeZoneById($zoneId).DisplayName } else { '' } } catch { '' }
 $lookBits = @()

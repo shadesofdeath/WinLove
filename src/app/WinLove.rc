@@ -15,6 +15,7 @@ IDR_FONT_GEIST_MONO RCDATA "../../resources/fonts/GeistMono-Regular.ttf"
 
 IDR_STRINGS_TR RCDATA "../../resources/strings/tr.json"
 IDR_STRINGS_EN RCDATA "../../resources/strings/en.json"
+IDR_WELCOME_LANGS RCDATA "../../resources/strings/welcome-langs.json"
 
 IDR_CATALOG_APPX RCDATA "../../resources/catalog/appx.json"
 IDR_CATALOG_SERVICES RCDATA "../../resources/catalog/services.json"
