@@ -9,6 +9,8 @@ using tokens::Color;
 using tokens::TypeStyle;
 constexpr float kHintGap = 8.0f;
 constexpr float kRowPad = (FormView::kRow - tokens::size::control) / 2;
+constexpr float kLabelInset = 10.0f; // room for the changed-row bar left of the labels (D-091)
+constexpr float kMarkHeight = 14.0f;
 } // namespace
 
 FormView::FormView(float labelWidth) : m_labelWidth(labelWidth) {
@@ -47,10 +49,54 @@ void FormView::setHint(const Widget& control, std::wstring hint, tokens::Color c
     }
 }
 
+void FormView::setMarked(const Widget& control, bool marked) {
+    const auto row = std::ranges::find(m_rows, &control, &Row::control);
+    if (row != m_rows.end() && row->marked != marked) {
+        row->marked = marked;
+        invalidate();
+    }
+}
+
+void FormView::setRowVisible(const Widget& control, bool visible) {
+    const auto row = std::ranges::find(m_rows, &control, &Row::control);
+    if (row != m_rows.end() && row->hidden == visible) {
+        row->hidden = !visible;
+        updateSections();
+        layout();
+        invalidate();
+    }
+}
+
+void FormView::updateSections() {
+    // A section shows while one of its rows does.
+    Row* section = nullptr;
+    bool any = false;
+    for (auto& row : m_rows) {
+        if (!row.control) {
+            if (section) {
+                section->hidden = !any;
+            }
+            section = &row;
+            any = false;
+        } else {
+            any = any || !row.hidden;
+        }
+    }
+    if (section) {
+        section->hidden = !any;
+    }
+}
+
+namespace {
+float heightOf(bool control, bool hidden) {
+    return hidden ? 0.0f : control ? FormView::kRow : FormView::kSection;
+}
+} // namespace
+
 float FormView::contentHeight() const {
     float height = 0;
     for (const auto& row : m_rows) {
-        height += row.control ? kRow : kSection;
+        height += heightOf(row.control != nullptr, row.hidden);
     }
     return height;
 }
@@ -66,7 +112,7 @@ float FormView::sectionTop(int index) const {
         if (!row.control && section++ == index) {
             return y;
         }
-        y += row.control ? kRow : kSection;
+        y += heightOf(row.control != nullptr, row.hidden);
     }
     return -1;
 }
@@ -112,7 +158,11 @@ void FormView::layout() {
     const float x = b.x + m_labelWidth;
     for (const auto& row : m_rows) {
         if (!row.control) {
-            y += kSection;
+            y += heightOf(false, row.hidden);
+            continue;
+        }
+        row.control->setVisible(!row.hidden);
+        if (row.hidden) {
             continue;
         }
         const float width = row.width > 0 ? row.width : row.control->measure({}).width;
@@ -132,13 +182,20 @@ void FormView::paint(Canvas& canvas) {
     canvas.pushClip(b);
     float y = b.y - m_offset;
     for (const auto& row : m_rows) {
+        if (row.hidden) {
+            continue;
+        }
         if (!row.control) {
             canvas.drawText(row.label, {b.x, y + 10, b.width, 20}, TypeStyle::Section, Color::TextSecondary);
             canvas.hairlineH(b.x, y + kSection - 1, b.width, Color::LineSubtle);
             y += kSection;
             continue;
         }
-        canvas.drawText(row.label, {b.x, y, m_labelWidth - 8, kRow}, TypeStyle::Body, Color::TextSecondary);
+        if (row.marked) {
+            canvas.fillRoundRect({b.x, y + (kRow - kMarkHeight) / 2, 2, kMarkHeight}, 1, Color::AccentBase);
+        }
+        canvas.drawText(row.label, {b.x + kLabelInset, y, m_labelWidth - 8 - kLabelInset, kRow}, TypeStyle::Body,
+                        row.marked ? Color::TextPrimary : Color::TextSecondary);
         if (!row.hint.empty()) {
             const float hx = row.control->bounds().right() + kHintGap;
             canvas.drawText(row.hint, {hx, y, std::max(b.right() - hx, 0.0f), kRow}, TypeStyle::Caption, row.hintColor);

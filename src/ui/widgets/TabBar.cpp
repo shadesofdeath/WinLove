@@ -17,6 +17,7 @@ constexpr float kRadioGap = 8.0f;
 constexpr float kOptionGap = 16.0f;
 
 constexpr float kTextFallback = 60.0f; // a plausible tab width before the bar has a host
+constexpr float kBadgeGap = 6.0f;
 } // namespace
 
 // ---- TabBar ---------------------------------------------------------------------------------
@@ -31,6 +32,17 @@ void TabBar::setSelected(int index) {
     invalidate();
 }
 
+void TabBar::setBadges(std::vector<int> badges) {
+    if (badges != m_badges) {
+        m_badges = std::move(badges);
+        invalidate();
+    }
+}
+
+int TabBar::badge(std::size_t tab) const {
+    return tab < m_badges.size() ? m_badges[tab] : 0;
+}
+
 SizeF TabBar::measure(SizeF available) {
     return {available.width, tokens::size::control + 2};
 }
@@ -39,8 +51,10 @@ std::vector<RectF> TabBar::tabRects() const {
     std::vector<RectF> rects;
     const RectF b = bounds();
     float x = b.x;
-    for (const auto& tab : m_tabs) {
-        const float w = textWidth(tab, TypeStyle::BodyStrong, kTextFallback) + 2 * kTabPadding;
+    for (std::size_t i = 0; i < m_tabs.size(); ++i) {
+        const int n = badge(i);
+        const float count = n > 0 ? kBadgeGap + textWidth(std::to_wstring(n), TypeStyle::Mono, 10.0f) : 0.0f;
+        const float w = textWidth(m_tabs[i], TypeStyle::BodyStrong, kTextFallback) + count + 2 * kTabPadding;
         rects.push_back({x, b.y, w, b.height});
         x += w + kTabGap;
     }
@@ -60,8 +74,18 @@ void TabBar::paint(Canvas& canvas) {
         } else if (static_cast<int>(i) == m_hover) {
             canvas.fillRoundRect({r.x, r.y + 1, r.width, r.height - 4}, tokens::radius::r2, Color::BgRaised);
         }
-        canvas.drawText(m_tabs[i], {r.x, r.y, r.width, r.height - 2}, selected ? TypeStyle::BodyStrong : TypeStyle::Body,
-                        selected ? Color::TextPrimary : Color::TextSecondary, TextAlign::Center);
+        const int n = badge(i);
+        if (n > 0) {
+            const std::wstring count = std::to_wstring(n);
+            const float cw = textWidth(count, TypeStyle::Mono, 10.0f);
+            const RectF text{r.x + kTabPadding, r.y, r.width - 2 * kTabPadding - cw - kBadgeGap, r.height - 2};
+            canvas.drawText(m_tabs[i], text, selected ? TypeStyle::BodyStrong : TypeStyle::Body,
+                            selected ? Color::TextPrimary : Color::TextSecondary);
+            canvas.drawText(count, {text.right() + kBadgeGap, r.y, cw + 1, r.height - 2}, TypeStyle::Mono, Color::AccentBase);
+        } else {
+            canvas.drawText(m_tabs[i], {r.x, r.y, r.width, r.height - 2}, selected ? TypeStyle::BodyStrong : TypeStyle::Body,
+                            selected ? Color::TextPrimary : Color::TextSecondary, TextAlign::Center);
+        }
         if (selected) {
             canvas.fillRect({r.x + 8, r.bottom() - 3, r.width - 16, 2}, Color::AccentBase);
         }

@@ -1,5 +1,6 @@
 #include "app/pages/TweaksPage.h"
 
+#include "base/Text.h"
 #include "ui/widget/Host.h"
 
 #include <algorithm>
@@ -16,6 +17,9 @@ constexpr float kLabelWidth = 240.0f; // screens.md: "240px etiket sütunu"
 constexpr float kDropdownWidth = 280.0f;
 constexpr float kBrowseWidth = 28.0f;
 constexpr float kBrowseGap = 4.0f;
+constexpr float kFilterHeight = ui::tokens::size::control;
+constexpr float kFilterGap = 10.0f;   // tabs → filter row → form
+constexpr float kSearchWidth = 240.0f;
 } // namespace
 
 PictureField::PictureField(std::wstring browseTooltip) {
@@ -56,6 +60,19 @@ TweaksPage::TweaksPage(AppState& state, ImageSettingsController& controller, con
     }
     m_tabs = &add<ui::TabBar>(std::move(tabs), 0);
     m_form = &add<ui::FormView>(kLabelWidth);
+    m_search = &add<ui::SearchBox>(strings.get(Str::TweaksSearch));
+    m_search->setAccessible(ui::AccessRole::Edit, strings.get(Str::TweaksSearch));
+    m_search->onChange = [this](const std::wstring& text) {
+        m_query = wl::text::fold(wl::text::trim(text));
+        if (filtering() != m_allTabs) {
+            rebuild(); // the search box is not in the form: rebuilding it is safe here
+        } else {
+            applyFilter();
+        }
+    };
+    m_onlyChanged = &add<ui::Toggle>(strings.get(Str::TweaksOnlyChanged), false);
+    m_onlyChanged->setAccessible(ui::AccessRole::CheckBox, strings.get(Str::TweaksOnlyChanged));
+    m_onlyChanged->onChange = [this](bool) { rebuild(); };
     m_tabs->onChange = [this](int index) { showTab(m_controller.catalog().tabs()[static_cast<std::size_t>(index)].id); };
     m_empty = &add<ui::EmptyState>(ui::icons::Icon::TweaksSliders, strings.get(Str::TweaksNoMountTitle),
                                    strings.get(Str::TweaksNoMountBody));
@@ -68,6 +85,7 @@ TweaksPage::TweaksPage(AppState& state, ImageSettingsController& controller, con
         } else if (change == AppState::Change::Queue || change == AppState::Change::ImageValues ||
                    change == AppState::Change::Services) {
             sync();
+            updateCounts();
         }
     });
     if (!m_onlyTab.empty()) {
@@ -83,13 +101,47 @@ TweaksPage::~TweaksPage() {
 }
 
 void TweaksPage::showTab(const std::string& tab) {
-    // Rebuilds the controls: only the tab bar and the constructor call this, never a control.
+    // Rebuilds the controls: only the tab bar, the filters and the constructor call this, never a
+    // control of the form.
+    m_tab = tab;
+    if (m_search && !m_search->text().empty()) {
+        m_search->setText(L""); // a tab picked: the search over every tab is over
+        m_query.clear();
+    }
+    rebuild();
+}
+
+bool TweaksPage::filtering() const {
+    return m_onlyTab.empty() && (!m_query.empty() || (m_onlyChanged && m_onlyChanged->isOn()));
+}
+
+bool TweaksPage::changed(const ImageSetting& setting) const {
+    return m_controller.current(setting) != m_controller.imageOption(setting);
+}
+
+const ui::Widget* TweaksPage::controlOf(const Binding& b) {
+    return b.toggle     ? static_cast<const ui::Widget*>(b.toggle)
+           : b.dropdown ? static_cast<const ui::Widget*>(b.dropdown)
+           : b.radio    ? static_cast<const ui::Widget*>(b.radio)
+           : b.text     ? static_cast<const ui::Widget*>(b.text)
+                        : static_cast<const ui::Widget*>(b.file);
+}
+
+void TweaksPage::rebuild() {
     m_form->clear();
     m_bindings.clear();
+    m_allTabs = filtering();
     const auto& catalog = m_controller.catalog();
     for (const auto& section : catalog.sections()) {
-        if (section.tab != tab) {
+        if (!m_allTabs && section.tab != m_tab) {
             continue;
+        }
+        std::wstring title = section.title.get(m_language);
+        if (m_allTabs) {
+            const auto tab = std::ranges::find(catalog.tabs(), section.tab, &ImageSettingTab::id);
+            if (tab != catalog.tabs().end()) {
+                title = tab->title.get(m_language) + L" \u203a " + title;
+            }
         }
         bool titled = false;
         for (const auto& setting : catalog.settings()) {
@@ -97,13 +149,48 @@ void TweaksPage::showTab(const std::string& tab) {
                 continue;
             }
             if (!titled) {
-                m_form->addSection(section.title.get(m_language));
+                m_form->addSection(title);
                 titled = true;
             }
             addSetting(setting);
         }
     }
     sync();
+    applyFilter();
+    updateCounts();
+    layout();
+    invalidate();
+}
+
+void TweaksPage::applyFilter() {
+    const bool onlyChanged = m_onlyChanged && m_onlyChanged->isOn() && m_onlyTab.empty();
+    for (const auto& b : m_bindings) {
+        bool shown = !onlyChanged || changed(*b.setting);
+        if (shown && !m_query.empty()) {
+            shown = wl::text::fold(b.setting->label.get(m_language)).find(m_query) != std::wstring::npos ||
+                    wl::text::fold(b.setting->hint.get(m_language)).find(m_query) != std::wstring::npos;
+        }
+        m_form->setRowVisible(*controlOf(b), shown);
+    }
+}
+
+void TweaksPage::updateCounts() {
+    const auto& catalog = m_controller.catalog();
+    std::vector<int> perTab(catalog.tabs().size(), 0);
+    int total = 0;
+    for (const auto& setting : catalog.settings()) {
+        if (!changed(setting)) {
+            continue;
+        }
+        ++total;
+        const auto section = std::ranges::find(catalog.sections(), setting.section, &ImageSettingSection::id);
+        for (std::size_t t = 0; section != catalog.sections().end() && t < catalog.tabs().size(); ++t) {
+            perTab[t] += catalog.tabs()[t].id == section->tab ? 1 : 0;
+        }
+    }
+    m_tabs->setBadges(std::move(perTab));
+    m_summary = total > 0 ? m_strings.format(Str::TweaksSummary, {{L"n", std::to_wstring(total)}}) : std::wstring();
+    invalidate();
 }
 
 void TweaksPage::reveal(const std::string& settingId) {
@@ -218,12 +305,23 @@ void TweaksPage::sync() {
         const int current = m_controller.current(*b.setting);
         const int image = m_controller.imageOption(*b.setting); // D-045
         const bool changed = current != image;
-        std::wstring mark = m_strings.get(changed                                ? Str::TweaksChanged
-                                          : image != b.setting->defaultOption ? Str::TweaksInImage
-                                                                               : Str::TweaksIsDefault);
+        // D-091: "değiştirilecek" / "imajda" when it applies; nothing for a row that stays as
+        // Windows has it (the switch itself says on / off).
+        std::wstring mark = changed                                ? m_strings.get(Str::TweaksChanged)
+                            : image != b.setting->defaultOption ? m_strings.get(Str::TweaksInImage)
+                                                                 : std::wstring();
         if (!changed && image != b.setting->defaultOption && m_controller.revertOperations(*b.setting).empty()) {
             mark += separator + m_strings.get(Str::TweaksNoRevert);
         }
+        if (const ui::Widget* control = controlOf(b)) {
+            m_form->setMarked(*control, changed);
+        }
+        auto withNote = [&](std::wstring text) {
+            if (const std::wstring& note = b.setting->hint.get(m_language); !note.empty()) {
+                text += (text.empty() ? L"" : separator) + note;
+            }
+            return text;
+        };
         const auto color = changed ? ui::tokens::Color::AccentBase : ui::tokens::Color::TextTertiary;
         if (b.text) {
             // What the image has, shown until something is typed over it.
@@ -249,11 +347,7 @@ void TweaksPage::sync() {
                                                                                                   : Str::TweaksFileProblem),
                                 ui::tokens::Color::StatusError);
             } else {
-                std::wstring hint = mark;
-                if (const std::wstring& note = b.setting->hint.get(m_language); !note.empty()) {
-                    hint += separator + note;
-                }
-                m_form->setHint(control, std::move(hint), color);
+                m_form->setHint(control, withNote(mark), color);
             }
             continue;
         }
@@ -261,11 +355,7 @@ void TweaksPage::sync() {
             if (b.toggle->isOn() != (current == 1)) {
                 b.toggle->setOn(current == 1);
             }
-            std::wstring hint = m_strings.get(current == 1 ? Str::TweaksStateOn : Str::TweaksStateOff) + separator + mark;
-            if (const std::wstring& note = b.setting->hint.get(m_language); !note.empty()) {
-                hint += separator + note;
-            }
-            m_form->setHint(*b.toggle, std::move(hint), color);
+            m_form->setHint(*b.toggle, withNote(mark), color);
         } else if (b.dropdown) {
             b.dropdown->setSelected(current);
             m_form->setHint(*b.dropdown, mark, color);
@@ -280,6 +370,8 @@ void TweaksPage::refresh() {
     const bool mounted = m_state.mounted().has_value();
     m_empty->setVisible(!mounted);
     m_tabs->setVisible(mounted && m_onlyTab.empty());
+    m_search->setVisible(mounted && m_onlyTab.empty());
+    m_onlyChanged->setVisible(mounted && m_onlyTab.empty());
     m_form->setVisible(mounted);
     sync();
     layout();
@@ -290,8 +382,22 @@ void TweaksPage::layout() {
     const RectF b = bounds();
     m_empty->setBounds(b);
     m_tabs->setBounds({b.x, b.y + kTabsTop, b.width, kTabsHeight});
-    const float top = m_onlyTab.empty() ? b.y + kTabsTop + kTabsHeight + kFormGap : b.y;
+    const float filters = b.y + kTabsTop + kTabsHeight + kFilterGap;
+    m_search->setBounds({b.x, filters, kSearchWidth, kFilterHeight});
+    const ui::SizeF toggle = m_onlyChanged->measure({});
+    m_onlyChanged->setBounds({b.x + kSearchWidth + 16.0f, filters, toggle.width, kFilterHeight});
+    const float top = m_onlyTab.empty() ? filters + kFilterHeight + kFormGap : b.y;
     m_form->setBounds({b.x, top, b.width, std::max(b.bottom() - top, 0.0f)});
+}
+
+void TweaksPage::paint(ui::Canvas& canvas) {
+    if (m_summary.empty() || !m_search->visible()) {
+        return;
+    }
+    const RectF s = m_search->bounds();
+    const RectF b = bounds();
+    canvas.drawText(m_summary, {s.x, s.y, b.right() - s.x, s.height}, ui::tokens::TypeStyle::Caption,
+                    ui::tokens::Color::TextSecondary, ui::TextAlign::Trailing);
 }
 
 } // namespace wl::app

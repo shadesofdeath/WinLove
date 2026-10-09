@@ -2,6 +2,9 @@
 // P12 Ayarlar / Tweaks (docs/pages/12-tweaks.md, screen 10): tabs + a form. Each tab lists its
 // sections (caps title + rule) and 32px rows: label (240px column) and a toggle (+ hint), a
 // dropdown or a radio group. The controls show what the queue says (ImageSettingsController).
+// D-091: a search and "Yalnız değişenler" over every tab (the form then holds all tabs, titled
+// "Tab › Section"), changed rows marked, each tab's count of changes on the tab, and hints that
+// only say something when there is something to say (no "Açık · Windows varsayılanı" on every row).
 #include "app/Localization.h"
 #include "app/controllers/ImageSettingsController.h"
 #include "ui/widgets/Dropdown.h"
@@ -51,6 +54,7 @@ public:
     void reveal(const std::string& settingId);
 
     void layout() override;
+    void paint(ui::Canvas& canvas) override;
 
 private:
     struct Binding { // one form row ↔ one catalog setting (exactly one control is set)
@@ -63,9 +67,15 @@ private:
         std::wstring shown;   // text / file: the queue's value the box was last in step with
         bool problem = false; // file: what is typed is not a file the image can take
     };
+    [[nodiscard]] static const ui::Widget* controlOf(const Binding& b);
     void valueTyped(std::size_t binding, const std::wstring& value);
     void refresh();
     void showTab(const std::string& tab);
+    void rebuild();     // the form for the tab, or for every tab while filtering
+    void applyFilter(); // which rows the search and "only changed" leave
+    void updateCounts(); // the tabs' badges and the summary
+    [[nodiscard]] bool filtering() const;
+    [[nodiscard]] bool changed(const ImageSetting& setting) const;
     void addSetting(const ImageSetting& setting);
     void sync(); // control positions from the queue
 
@@ -80,6 +90,12 @@ private:
     std::string m_onlyTab;
     ui::TabBar* m_tabs = nullptr;
     ui::FormView* m_form = nullptr;
+    ui::SearchBox* m_search = nullptr;
+    ui::Toggle* m_onlyChanged = nullptr;
+    std::wstring m_query;    // folded (text::fold)
+    std::string m_tab;       // the tab shown when not filtering
+    bool m_allTabs = false;  // the form holds every tab
+    std::wstring m_summary;  // "6 ayar değişecek" right of the filters
     ui::EmptyState* m_empty = nullptr;
 };
 
