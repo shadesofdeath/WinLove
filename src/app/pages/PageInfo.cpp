@@ -13,6 +13,7 @@ using ui::icons::Icon;
 // no two pages share a look (D-091: Güncellemeler / Programlar, Kaynak / Kişiselleştirme did).
 constexpr std::array<PageInfo, static_cast<std::size_t>(PageId::Count)> kPages = {{
     {PageId::Source, "source", Str::NavSource, Str::SourceTitle, Str::SourceDesc, Icon::Source, 0, "P01"},
+    {PageId::Download, "download", Str::NavDownload, Str::DownloadTitle, Str::DownloadDesc, Icon::WindowsDownload, 0, "D-093"},
     {PageId::Images, "images", Str::NavImages, Str::ImagesTitle, Str::ImagesDesc, Icon::LayersEditions, 0, "P02"},
     {PageId::Components, "components", Str::NavComponents, Str::ComponentsTitle, Str::ComponentsDesc, Icon::ComponentsRemove, 1, "P07"},
     {PageId::Apps, "apps", Str::NavApps, Str::AppsTitle, Str::AppsDesc, Icon::AppxPackage, 1, "D-050"},

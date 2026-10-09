@@ -4,6 +4,10 @@
 #include "base/File.h"
 #include "base/Log.h"
 #include "base/Utf8.h"
+#include "base/Text.h"
+#include "core/uup/UupCatalog.h"
+#include "core/uup/UupConvert.h"
+#include "core/uup/UupDownload.h"
 #include "core/image/ComponentStore.h"
 #include "core/image/SystemComponents.h"
 #include "core/image/dism/StoreCleanup.h"
@@ -2353,14 +2357,196 @@ int cmdIso(const std::wstring& folder, const std::wstring& output, const std::ws
     return 0;
 }
 
+// ---- D-093: Windows from Microsoft's update servers (UUP) ------------------------------------
+
+std::wstring uupSize(std::uint64_t bytes) {
+    return std::format(L"{:.2f} GB", static_cast<double>(bytes) / 1e9);
+}
+
+int cmdUup(std::vector<std::wstring> args) {
+    // Options among the words: --no-updates --no-edge --esd --apps --work=<dir> --media=<dir>
+    bool updates = true, edge = true, esd = false;
+    std::wstring work, media;
+    std::vector<std::wstring> words;
+    for (auto& a : args) {
+        if (a == L"--no-updates") {
+            updates = false;
+        } else if (a == L"--no-edge") {
+            edge = false;
+        } else if (a == L"--esd") {
+            esd = true;
+        } else if (a.starts_with(L"--work=")) {
+            work = a.substr(7);
+        } else if (a.starts_with(L"--media=")) {
+            media = a.substr(8);
+        } else {
+            words.push_back(std::move(a));
+        }
+    }
+    const std::wstring sub = words.size() > 1 ? words[1] : L"";
+    auto editionList = [](const std::wstring& text) {
+        std::vector<std::wstring> list;
+        std::wstring cur;
+        for (const wchar_t c : text + L",") {
+            if (c == L',') {
+                if (!cur.empty()) {
+                    list.push_back(cur);
+                }
+                cur.clear();
+            } else {
+                cur += c;
+            }
+        }
+        return list;
+    };
+    if (sub == L"builds") {
+        auto builds = core::uup::listBuilds(words.size() > 2 ? words[2] : L"", g_cancel);
+        if (!builds) {
+            return reportError(builds.error());
+        }
+        static constexpr const wchar_t* kKinds[] = {L"release", L"insider", L"server", L"update"};
+        for (const auto& b : *builds) {
+            print(std::format(L"  {}  {:<7} {:<6} {}\n", b.id, kKinds[static_cast<int>(b.kind)], b.arch, b.title));
+        }
+        return 0;
+    }
+    if (sub == L"langs" && words.size() == 3) {
+        auto langs = core::uup::listLanguages(words[2], g_cancel);
+        if (!langs) {
+            return reportError(langs.error());
+        }
+        for (const auto& l : *langs) {
+            print(std::format(L"  {:<12} {}\n", l.code, l.name));
+        }
+        return 0;
+    }
+    if (sub == L"editions" && words.size() == 4) {
+        auto eds = core::uup::listEditions(words[2], words[3], g_cancel);
+        if (!eds) {
+            return reportError(eds.error());
+        }
+        for (const auto& e : *eds) {
+            print(std::format(L"  {:<24} {}\n", e.code, e.name));
+        }
+        return 0;
+    }
+    if (sub == L"files" && words.size() == 5) {
+        const auto editions = editionList(words[4]);
+        auto set = core::uup::listFiles(words[2], words[3], editions, /*links=*/false, g_cancel);
+        if (!set) {
+            return reportError(set.error());
+        }
+        print(std::format(L"  {} — {} {}, {} file(s), {}{}\n", set->updateName, set->build, set->arch, set->files.size(),
+                          uupSize(set->totalSize()), set->hasUpdates ? L", with updates" : L""));
+        for (const auto& f : set->files) {
+            print(std::format(L"  {:>10}  {}\n", f.size, f.name));
+        }
+        return 0;
+    }
+    if (sub == L"download" && words.size() == 6) {
+        const std::wstring id = words[2], lang = words[3];
+        const auto editions = editionList(words[4]);
+        auto set = core::uup::listFiles(id, lang, editions, /*links=*/true, g_cancel);
+        if (!set) {
+            return reportError(set.error());
+        }
+        std::vector<core::uup::File> files;
+        for (const auto& f : set->files) {
+            // Without updates the ISO needs no .msu nor KB cabinet: leave them out.
+            const std::wstring lower = wl::text::lower(f.name);
+            const bool update = lower.starts_with(L"windows1") && lower.find(L"-kb") != std::wstring::npos;
+            if (!updates && (update || f.kind == core::uup::FileKind::Edge)) {
+                continue;
+            }
+            if (f.kind == core::uup::FileKind::App) {
+                continue;
+            }
+            files.push_back(f);
+        }
+        std::uint64_t bytes = 0;
+        for (const auto& f : files) {
+            bytes += f.size;
+        }
+        print(std::format(L"  {}: {} file(s), {}\n", set->updateName, files.size(), uupSize(bytes)));
+        auto refresh = [&]() -> Result<std::vector<core::uup::File>> {
+            auto again = core::uup::listFiles(id, lang, editions, true, g_cancel);
+            if (!again) {
+                return std::unexpected(again.error());
+            }
+            return again->files;
+        };
+        if (auto r = core::uup::downloadFiles(files, words[5], refresh, progressTask(L"download")); !r) {
+            print(L"\n");
+            return reportError(r.error());
+        }
+        print(std::format(L"\n  downloaded and verified -> {}\n", words[5]));
+        return 0;
+    }
+    if (sub == L"convert" && words.size() == 4) {
+        auto d = dism();
+        if (!d) {
+            return reportError(d.error());
+        }
+        const std::filesystem::path out = words[3];
+        core::uup::ConvertOptions options;
+        options.uupFolder = words[2];
+        options.workFolder = work.empty() ? out.parent_path() / L"uup-work" : std::filesystem::path(work);
+        options.mediaFolder = media.empty() ? out.parent_path() / L"uup-media" : std::filesystem::path(media);
+        options.output = wl::text::iendsWith(out.wstring(), L".iso") ? out : std::filesystem::path();
+        if (options.output.empty()) {
+            options.mediaFolder = out;
+        }
+        options.updates = updates;
+        options.edge = edge;
+        options.compression = esd ? core::WimCompression::Lzms : core::WimCompression::Lzx;
+        auto last = std::make_shared<std::wstring>();
+        auto lastPercent = std::make_shared<int>(-1);
+        const core::TaskContext task{g_cancel, [last, lastPercent](double f, std::wstring_view stage) {
+                                         const int percent = static_cast<int>(f * 100);
+                                         if (percent != *lastPercent || stage != *last) {
+                                             *lastPercent = percent;
+                                             *last = stage;
+                                             print(std::format(L"\r  convert {:>3}%  {:<24}", percent, stage));
+                                         }
+                                     }};
+        auto r = core::uup::convertUup(**d, options, task);
+        print(L"\n");
+        if (!r) {
+            return reportError(r.error());
+        }
+        print(std::format(L"  {} {}\n  label {}  version {}\n", r->iso.empty() ? L"media" : L"iso",
+                          r->iso.empty() ? r->media.wstring() : r->iso.wstring(), r->label, r->version));
+        for (const auto& e : r->editions) {
+            print(L"  edition " + e + L"\n");
+        }
+        for (const auto& w : r->warnings) {
+            print(L"  warning " + w + L"\n");
+        }
+        return 0;
+    }
+    if (sub == L"role" && words.size() == 3) {
+        static constexpr const wchar_t* kRoles[] = {L"ssu", L"lcu", L"checkpoint", L"enablement", L"dotnet", L"safeos", L"setupdu", L"other"};
+        print(std::format(L"  {}\n", kRoles[static_cast<int>(core::uup::updateRole(words[2]))]));
+        return 0;
+    }
+    print(L"  wlcli uup builds [search] | langs <id> | editions <id> <lang> | files <id> <lang> <ed[,ed]>\n"
+          L"           download <id> <lang> <ed[,ed]> <folder> [--no-updates]\n"
+          L"           convert <folder> <out.iso|media folder> [--no-updates] [--no-edge] [--esd] [--work=<dir>]\n"
+          L"           role <update file>\n");
+    return 1;
+}
+
 int cmdExport(const std::wstring& source, const std::wstring& index, const std::wstring& destination,
-              const std::wstring& compression) {
+              const std::wstring& compression, const std::vector<std::filesystem::path>& references) {
     const auto c = parseCompression(compression, core::WimCompression::Lzx);
     if (!c) {
         return reportError(c.error());
     }
     const auto task = progressTask(L"export");
-    if (auto r = core::exportImage(source, parseIndex(index), destination, *c, task); !r) {
+    if (auto r = references.empty()
+                     ? core::exportImage(source, parseIndex(index), destination, *c, task)
+                     : core::exportImageWithReferences(source, parseIndex(index), references, destination, *c, task);
+        !r) {
         print(L"\n");
         return reportError(r.error());
     }
@@ -2487,6 +2673,7 @@ void printUsage() {
           L"  wlcli plan <changeset.json>              Show the ordered apply plan\n"
           L"  wlcli extract-all <iso> <dir>             Copy the whole ISO into a folder (resumable)\n"
           L"  wlcli export <wim|esd> <index> <dst.wim> [--compress=lzx|xpress|none|esd]   (lzx when left out)\n"
+          L"         [--ref=<file>]... (a UUP metadata ESD: the package ESDs that hold its files)\n"
           L"  wlcli delete-index <wim> <index>[,<index>...]   Remove editions; the WIM is rewritten with the rest\n"
           L"  wlcli optimize <wim>                      Rewrite a WIM without what commits left behind\n"
           L"  wlcli verify <iso|wim|folder>             Read every stream and check its SHA-1 (exit 3: damaged)\n"
@@ -2510,6 +2697,7 @@ int wmain(int argc, wchar_t** argv) {
     int commit = -1;
     bool commitWithFailures = false;
     std::wstring compress;
+    std::vector<std::filesystem::path> references;
     std::wstring source;
     std::wstring label;
     std::wstring serviceSet;
@@ -2570,6 +2758,8 @@ int wmain(int argc, wchar_t** argv) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
             asJson = true;
+        } else if (a.starts_with(L"--ref=")) {
+            references.emplace_back(std::wstring(a.substr(6)));
         } else if (a.starts_with(L"--compress=")) {
             compress = std::wstring(a.substr(11));
         } else if (a == L"--native") {
@@ -2729,8 +2919,11 @@ int wmain(int argc, wchar_t** argv) {
     if (command == L"unmount" && args.size() == 2 && commit >= 0) {
         return cmdUnmount(args[1], commit == 1);
     }
+    if (command == L"uup") {
+        return cmdUup(args);
+    }
     if (command == L"export" && args.size() == 4) {
-        return cmdExport(args[1], args[2], args[3], compress);
+        return cmdExport(args[1], args[2], args[3], compress, references);
     }
     if (command == L"verify" && args.size() == 2) {
         return cmdVerify(args[1]);
@@ -2854,6 +3047,13 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"append" && args.size() == 3) {
         return cmdAppend(args[1], args[2], indexList, compress);
+    }
+    if (command == L"capture-ref" && args.size() == 3) {
+        if (auto r = core::captureReference(args[1], args[2], progressTask(L"capture")); !r) {
+            return reportError(r.error());
+        }
+        print(std::format(L"\n  reference {} -> {}\n", args[1], args[2]));
+        return 0;
     }
     if (command == L"capture" && args.size() == 4) {
         return cmdCapture(args[1], args[2], args[3], compress);

@@ -28,6 +28,8 @@ add_executable(wl_tests
     core/UnattendPlacementTests.cpp
     core/UpdateTests.cpp
     core/UpdateCatalogTests.cpp
+    core/UupCatalogTests.cpp
+    core/UupConvertTests.cpp
     core/LanguageFilesTests.cpp
     core/MsStoreTests.cpp
     core/UsbMediaTests.cpp
@@ -62,6 +64,7 @@ add_executable(wl_tests
     app/SourceTests.cpp
     app/UnattendControllerTests.cpp
     app/UpdateCatalogControllerTests.cpp
+    app/WindowsDownloadTests.cpp
     app/NewPagesTests.cpp
     app/BrandingControllerTests.cpp
     app/IconTests.cpp)

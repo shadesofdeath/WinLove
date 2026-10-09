@@ -58,7 +58,7 @@ struct EngineOperation {
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch, Intl, LanguageFetch, SystemMounts, StoreFetch, Programs, Host };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch, Intl, LanguageFetch, SystemMounts, StoreFetch, Programs, Host, WindowsDownload };
     using Listener = std::function<void(Change)>;
 
     // `answersFile`: where the answer file being edited is kept between runs (AnswerStore.h).
@@ -326,6 +326,24 @@ public:
     [[nodiscard]] std::optional<UpdateFetch>& updateFetchMutable() noexcept { return m_updateFetch; }
     void setUpdateFetch(std::optional<UpdateFetch> fetch);
     void notifyUpdateFetch() { notify(Change::UpdateFetch); }
+    // D-093: "Windows indir" — a UUP set being downloaded from Microsoft and turned into an ISO
+    // (WindowsDownloadController). Change::WindowsDownload.
+    struct WindowsDownload {
+        enum class Stage : std::uint8_t { Preparing, Downloading, Converting };
+        Stage stage = Stage::Preparing;
+        std::wstring title;          // "Windows 11, version 26H2 (26300.9550)"
+        std::wstring step;           // the converter's stage key ("references", "export", "cleanup" …)
+        double fraction = 0;         // of the stage
+        std::uint64_t doneBytes = 0; // download
+        std::uint64_t totalBytes = 0;
+        double startedMs = 0;        // of the stage (ETA)
+        std::filesystem::path output;
+        core::CancelToken cancel;
+    };
+    [[nodiscard]] const std::optional<WindowsDownload>& windowsDownload() const noexcept { return m_windowsDownload; }
+    [[nodiscard]] std::optional<WindowsDownload>& windowsDownloadMutable() noexcept { return m_windowsDownload; }
+    void setWindowsDownload(std::optional<WindowsDownload> job);
+    void notifyWindowsDownload() { notify(Change::WindowsDownload); }
     // D-078: the Programs page's data (index loaded, a package's details or icon arrived).
     void notifyPrograms() { notify(Change::Programs); }
 
@@ -425,6 +443,7 @@ private:
     Unattend m_unattend;
     std::optional<IsoRun> m_iso;
     std::optional<UpdateFetch> m_updateFetch;
+    std::optional<WindowsDownload> m_windowsDownload;
     std::optional<LanguageFetch> m_languageFetch;
     std::optional<SystemMounts> m_systemMounts;
     std::optional<core::HostDismReport> m_hostDism;

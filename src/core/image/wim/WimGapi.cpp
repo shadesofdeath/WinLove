@@ -789,6 +789,18 @@ Error explainFailure(Error error, const std::filesystem::path& source, const std
 
 } // namespace
 
+Result<void> exportImageWithReferences(const std::filesystem::path& source, int index,
+                                       std::span<const std::filesystem::path> references,
+                                       const std::filesystem::path& destination, WimCompression compression,
+                                       const TaskContext& task) {
+    std::vector<std::filesystem::path> refs;
+    for (const auto& r : references) {
+        refs.push_back(nativePath(r));
+    }
+    const UseLibrary use{source};
+    return exportImageOnce(source, index, destination, compression, task, 0, refs);
+}
+
 Result<void> exportImages(const std::filesystem::path& sourceInput, std::span<const int> indexes,
                           const std::filesystem::path& destinationInput, WimCompression compression, const TaskContext& task) {
     const std::filesystem::path source = nativePath(sourceInput);
@@ -1023,6 +1035,40 @@ Result<int> captureImage(const std::filesystem::path& folderInput, const std::fi
     }
     task.report(1.0, L"capture");
     return added;
+}
+
+Result<void> captureReference(const std::filesystem::path& folderInput, const std::filesystem::path& wimInput,
+                              const TaskContext& task) {
+    const std::filesystem::path folder = nativePath(folderInput);
+    const std::filesystem::path wim = nativePath(wimInput);
+    auto a = api();
+    if (!a) {
+        return std::unexpected(a.error());
+    }
+    const Api* w = *a;
+    std::error_code ec;
+    std::filesystem::remove(wim, ec);
+    DWORD created = 0;
+    WimHandle file{w, w->createFile(wim.c_str(), GENERIC_WRITE | GENERIC_READ, kCreateNew, 0,
+                                    compressionCode(WimCompression::Xpress), &created)};
+    if (!file.h) {
+        return std::unexpected(lastError(L"create " + wim.wstring()));
+    }
+    const auto tempDir = wim.parent_path().empty() ? std::filesystem::temp_directory_path() : wim.parent_path();
+    w->setTemporaryPath(file.h, tempDir.c_str());
+    CallbackState state{&task};
+    w->registerCallback(file.h, reinterpret_cast<FARPROC>(&onMessage), &state);
+    constexpr DWORD kNoAclsNoRpFix = 0x10 | 0x20 | 0x100; // WIM_FLAG_NO_DIRACL | NO_FILEACL | NO_RP_FIX
+    WimHandle image{w, w->captureImage(file.h, folder.c_str(), kNoAclsNoRpFix)};
+    const DWORD error = GetLastError();
+    w->unregisterCallback(file.h, reinterpret_cast<FARPROC>(&onMessage));
+    if (!image.h) {
+        if (task.cancel.cancelled()) {
+            return fail(ErrorCode::Cancelled, L"capture cancelled", wim.wstring());
+        }
+        return fail(ErrorCode::WimFailure, L"capture failed", folder.wstring(), static_cast<std::int32_t>(HRESULT_FROM_WIN32(error)));
+    }
+    return {};
 }
 
 Result<void> setBootImage(const std::filesystem::path& wimInput, int index) {

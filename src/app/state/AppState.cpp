@@ -251,6 +251,11 @@ void AppState::setUpdateFetch(std::optional<UpdateFetch> fetch) {
     notify(Change::UpdateFetch);
 }
 
+void AppState::setWindowsDownload(std::optional<WindowsDownload> job) {
+    m_windowsDownload = std::move(job);
+    notify(Change::WindowsDownload);
+}
+
 void AppState::setStoreFetch(std::optional<StoreFetch> fetch) {
     m_storeFetch = std::move(fetch);
     notify(Change::StoreFetch);

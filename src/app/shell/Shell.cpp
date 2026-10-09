@@ -50,6 +50,7 @@
 #include "app/pages/TweaksPage.h"
 #include "app/pages/UnattendedPage.h"
 #include "app/pages/UpdatesPage.h"
+#include "app/pages/DownloadPage.h"
 #include "app/pages/images/ImageInspector.h"
 #include "app/shell/CommandPalette.h"
 #include "base/File.h"
@@ -374,6 +375,46 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         },
         [this] { showToast(ui::InfoKind::Warning, m_strings.get(Str::UpdatesDownloadStopped), L""); },
     });
+    m_windowsDownload = std::make_unique<WindowsDownloadController>(m_state, WindowsDownloadController::Events{
+        m_services.postToUi,
+        [this](std::vector<core::uup::Build> builds) {
+            if (auto* page = downloadPage()) {
+                page->setBuilds(std::move(builds));
+            }
+        },
+        [this](std::wstring id, std::vector<core::uup::Language> list) {
+            if (auto* page = downloadPage()) {
+                page->setLanguages(id, std::move(list));
+            }
+        },
+        [this](std::wstring id, std::wstring language, std::vector<core::uup::Edition> list) {
+            if (auto* page = downloadPage()) {
+                page->setEditions(id, language, std::move(list));
+            }
+        },
+        [this](std::wstring id, std::wstring language, std::vector<std::wstring> editions, core::uup::FileSet files) {
+            if (auto* page = downloadPage()) {
+                page->setFiles(id, language, editions, files);
+            }
+        },
+        [this](const Error& e, bool job) {
+            if (job) {
+                showToast(ui::InfoKind::Error, m_strings.get(Str::DownloadFailedTitle), errorText(e));
+            } else if (auto* page = downloadPage()) {
+                page->setListFailed(e);
+            }
+        },
+        [this](const core::uup::ConvertResult& result) {
+            const std::filesystem::path iso = result.iso;
+            showActionToast(ui::InfoKind::Success, m_strings.get(Str::DownloadDoneTitle), iso.filename().wstring(),
+                            m_strings.get(Str::DownloadDoneOpen), [this, iso] { openSource(iso); });
+            updateKeepAwake();
+        },
+        [this] {
+            showToast(ui::InfoKind::Warning, m_strings.get(Str::DownloadStoppedTitle), m_strings.get(Str::DownloadStoppedBody));
+            updateKeepAwake();
+        },
+    });
     m_apply = std::make_unique<ApplyController>(m_state, ApplyController::Events{
         m_services.postToUi,
         [this](core::SourceInfo source) {
@@ -413,7 +454,8 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         }
         if (change == AppState::Change::Operation || change == AppState::Change::Apply ||
             change == AppState::Change::Iso || change == AppState::Change::UpdateFetch ||
-            change == AppState::Change::LanguageFetch || change == AppState::Change::StoreFetch) {
+            change == AppState::Change::LanguageFetch || change == AppState::Change::StoreFetch ||
+            change == AppState::Change::WindowsDownload) {
             updateKeepAwake();
         }
         if (change == AppState::Change::Settings && m_services.settingsChanged) {
@@ -512,6 +554,10 @@ void Shell::updateProgramInspector() {
         layout();
     }
     invalidate();
+}
+
+DownloadPage* Shell::downloadPage() const {
+    return m_page == PageId::Download ? dynamic_cast<DownloadPage*>(m_pageBody) : nullptr;
 }
 
 UpdatesPage* Shell::updatesPage() const {
@@ -1814,7 +1860,8 @@ void Shell::showPage(PageId page) {
                                       // download reports into one (audit A6).
                                       [this] {
                                           return m_images->busy() || m_apply->running() || m_iso->running() ||
-                                                 m_updateCatalog->busy() || m_languageFetch->busy() || m_store->busy();
+                                                 m_updateCatalog->busy() || m_languageFetch->busy() || m_store->busy() ||
+                                                 m_windowsDownload->running();
                                       }});
             m_pageBody = &body;
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::CommonReset)).onInvoke = [this, &body] {
@@ -2114,6 +2161,13 @@ void Shell::showPage(PageId page) {
             m_pageBody = &m_pageView->setBody<DriversPage>(
                 m_state, *m_imageDriverCtl, m_strings, m_language,
                 DriversPage::Intents{[this] { scanDriverFolder(); }, [this] { showPage(PageId::Images); }});
+        } else if (page == PageId::Download) {
+            m_pageBody = &m_pageView->setBody<DownloadPage>(
+                m_state, m_strings, m_language, *m_windowsDownload,
+                DownloadPage::Intents{[this](const std::filesystem::path& suggested) {
+                    return ui::pickSaveFile(owner(), m_strings.get(Str::DownloadPickOutput),
+                                            {{m_strings.get(Str::IsoTitle), L"*.iso"}}, suggested.filename().wstring(), L"iso");
+                }});
         } else if (page == PageId::Updates) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesFind), ui::icons::Icon::Download)
                 .onInvoke = [this] { findUpdates(); };
@@ -2256,6 +2310,15 @@ void Shell::showUndoToast(std::wstring title, std::wstring message) {
     layout();
     if (m_services.startTimer) {
         m_services.startTimer(kToastTimer, ui::Toast::kDurationMs + 2000); // time to read and decide
+    }
+}
+
+void Shell::showActionToast(ui::InfoKind kind, std::wstring title, std::wstring message, std::wstring action,
+                            std::function<void()> onAction) {
+    m_toast->show(kind, std::move(title), std::move(message), std::move(action), std::move(onAction));
+    layout();
+    if (m_services.startTimer) {
+        m_services.startTimer(kToastTimer, ui::Toast::kDurationMs + 4000);
     }
 }
 
@@ -2596,12 +2659,15 @@ void Shell::onImageFailure(ImageController::Failure failure, const Error& error)
 bool Shell::imageWorkRunning() const {
     const auto& op = m_state.operation();
     const bool reading = op && op->kind == EngineOperation::Kind::Reading;
-    return (m_images->busy() && !reading) || m_apply->running() || m_iso->running();
+    // D-093: converting a downloaded Windows mounts images of its own.
+    const auto& download = m_state.windowsDownload();
+    const bool converting = download && download->stage == AppState::WindowsDownload::Stage::Converting;
+    return (m_images->busy() && !reading) || m_apply->running() || m_iso->running() || converting;
 }
 
 void Shell::updateKeepAwake() {
     const bool image = imageWorkRunning();
-    const bool download = m_updateCatalog->busy() || m_languageFetch->busy() || m_store->busy();
+    const bool download = m_updateCatalog->busy() || m_languageFetch->busy() || m_store->busy() || m_windowsDownload->running();
     const int now = image ? 2 : download ? 1 : 0;
     if (now == m_keepAwake || !m_services.keepAwake) {
         return;
