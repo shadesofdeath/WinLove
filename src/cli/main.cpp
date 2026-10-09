@@ -552,7 +552,7 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
     const auto& report = job->report;
     const std::wstring commitText = job->committed ? std::wstring(L"ok")
                                     : job->commitError ? describe(*job->commitError)
-                                    : job->held ? std::wstring(L"held — a step failed, the image is still mounted "
+                                    : job->held ? std::wstring(L"held - a step failed, the image is still mounted "
                                                                L"(wlcli unmount <dir> --commit|--discard, or "
                                                                L"--commit-with-failures)")
                                                        : std::wstring(L"skipped");
