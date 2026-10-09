@@ -28,6 +28,8 @@ TEST_CASE("UUP: builds are classified by title and come newest first") {
     CHECK((*builds)[3].kind == BuildKind::Update); // a preview cumulative update alone
     CHECK((*builds)[4].kind == BuildKind::Server);
     CHECK(buildKind(L"Windows 10, version 22H2 (19045.6332)") == BuildKind::Release);
+    CHECK(buildKind(L"Feature update to Windows 10, version 22H2 (19045.7727)") == BuildKind::Release);
+    CHECK(buildKind(L"Cumulative Update for Windows 10 Version 22H2 (19045.7725)") == BuildKind::Update);
     CHECK(buildKind(L"Cumulative Update for Windows 11 Insider Preview (27965.1010)") == BuildKind::Update);
 }
 

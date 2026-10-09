@@ -85,6 +85,22 @@ AppSettings AppSettings::load(const std::filesystem::path& file) {
             }
         }
     }
+    if (const auto it = doc.find("windowsDownload"); it != doc.end() && it->is_object()) {
+        auto& w = settings.windowsDownload;
+        w.updates = it->value("updates", w.updates);
+        w.edge = it->value("edge", w.edge);
+        w.apps = it->value("apps", w.apps);
+        w.netFx3 = it->value("netFx3", w.netFx3);
+        w.resetBase = it->value("resetBase", w.resetBase);
+        w.esd = it->value("esd", w.esd);
+        if (const auto ex = it->find("excludedApps"); ex != it->end() && ex->is_array()) {
+            for (const auto& id : *ex) {
+                if (id.is_string() && !id.get<std::string>().empty()) {
+                    w.excludedApps.push_back(utf8::toWide(id.get<std::string>()));
+                }
+            }
+        }
+    }
     if (const auto it = doc.find("guards"); it != doc.end() && it->is_array()) {
         std::vector<std::wstring> guards;
         for (const auto& id : *it) {
@@ -116,6 +132,15 @@ void AppSettings::save(const std::filesystem::path& file) const {
                        {"workRoot", utf8::fromWide(workRoot.wstring())},
                        {"mountFolder", utf8::fromWide(mountFolder.wstring())},
                        {"isoFolder", utf8::fromWide(isoFolder.wstring())}};
+    {
+        const auto& w = windowsDownload;
+        auto& out = doc["windowsDownload"] = nlohmann::json{{"updates", w.updates}, {"edge", w.edge}, {"apps", w.apps},
+                                                            {"netFx3", w.netFx3}, {"resetBase", w.resetBase}, {"esd", w.esd}};
+        auto& list = out["excludedApps"] = nlohmann::json::array();
+        for (const auto& id : w.excludedApps) {
+            list.push_back(utf8::fromWide(id));
+        }
+    }
     if (guards) {
         auto& list = doc["guards"] = nlohmann::json::array();
         for (const auto& id : *guards) {

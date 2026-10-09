@@ -36,6 +36,8 @@ public:
     void setEditions(const std::wstring& id, const std::wstring& language, std::vector<core::uup::Edition> editions);
     void setFiles(const std::wstring& id, const std::wstring& language, const std::vector<std::wstring>& editions,
                   const core::uup::FileSet& files);
+    void setApps(const std::wstring& id, const std::wstring& language, const std::vector<std::wstring>& editions,
+                 std::vector<core::uup::AppFeature> apps);
 
     void layout() override;
     void paint(ui::Canvas& canvas) override;
@@ -50,6 +52,9 @@ private:
     void refreshList();
     void select(int row);
     void requestFiles();
+    void loadBuilds();     // the product's list (Windows 11 / 10 / all)
+    void savePrefs();      // the panel's choices into settings.json
+    void openAppPicker();  // which Store apps go in
     void updatePanel();
     [[nodiscard]] const core::uup::Build* selectedBuild() const;
     void paintCell(ui::Canvas& canvas, int row, int column, ui::RectF rect);
@@ -63,10 +68,12 @@ private:
 
     std::vector<core::uup::Build> m_all;   // the API's list
     std::vector<core::uup::Build> m_shown; // after search and filters
+    std::vector<core::uup::AppFeature> m_apps; // the selection's Store apps (the picker's list)
     bool m_loading = true;
     std::optional<Error> m_listError;
 
     ui::SearchBox* m_search = nullptr;
+    ui::Dropdown* m_product = nullptr; // Windows 11 / Windows 10 / all
     ui::Dropdown* m_kind = nullptr;
     ui::Dropdown* m_arch = nullptr;
     ui::Button* m_refresh = nullptr;

@@ -14,6 +14,7 @@
 #include "core/io/ByteSource.h"
 #include "core/iso/IsoBuilder.h"
 #include "core/system/Process.h"
+#include "core/uup/UupApps.h"
 #include "core/uup/UupCatalog.h"
 
 #include <algorithm>
@@ -254,6 +255,9 @@ Result<UupSetFiles> scanUupFolder(const std::filesystem::path& folderInput) {
             }
             break;
         case FileKind::Cab:
+            if (lower.ends_with(L".aggregatedmetadata.cab")) {
+                set.aggregatedMetadata = path;
+            }
             if (lower.starts_with(L"windows1") && lower.find(L"-kb") != std::wstring::npos) {
                 set.updates.push_back(path);
             } else if (lower.find(L"aggregatedmetadata") == std::wstring::npos && lower != L"desktopdeployment.cab") {
@@ -265,6 +269,9 @@ Result<UupSetFiles> scanUupFolder(const std::filesystem::path& folderInput) {
     }
     if (set.editions.empty()) {
         return fail(ErrorCode::NotFound, L"no edition metadata (edition_language.esd) in the folder", folder.wstring());
+    }
+    if (std::filesystem::is_directory(folder / L"apps", ec)) {
+        set.apps = folder / L"apps";
     }
     // Pro before Home before the rest, like Microsoft's media lists them.
     std::ranges::sort(set.editions, [](const UupEdition& a, const UupEdition& b) {
@@ -356,6 +363,7 @@ struct Context {
     UupSetFiles set;
     std::filesystem::path work, media, refs, mount, winre, saved;
     std::vector<std::filesystem::path> references;
+    std::vector<AppFeature> apps; // the set's app database (empty: no apps)
     ConvertResult result;
 };
 
@@ -486,12 +494,12 @@ Result<void> serviceEditions(Context& c, const UpdatePlan& plan, const TaskConte
             return std::unexpected(m.error());
         }
         auto work = [&]() -> Result<void> {
-            if (c.options.updates) {
+            if (c.options.updates || !c.apps.empty() || c.options.netFx3) {
                 auto session = c.dism.openSession(c.mount);
                 if (!session) {
                     return std::unexpected(session.error());
                 }
-                if (c.options.edge && !c.set.edge.empty()) {
+                if (c.options.updates && c.options.edge && !c.set.edge.empty()) {
                     task.report(base + share * 0.06, L"edge");
                     auto edge = runDismExe(**session, std::format(L"/Add-Edge /SupportPath:\"{}\"", c.set.edge.parent_path().wstring()));
                     if (!edge || edge->exitCode != 0) {
@@ -500,9 +508,26 @@ Result<void> serviceEditions(Context& c, const UpdatePlan& plan, const TaskConte
                         c.result.warnings.push_back(L"Edge: " + why);
                     }
                 }
+                if (!c.apps.empty()) {
+                    // Microsoft's media: the edition's Store apps, before the updates.
+                    const auto& edition = c.set.editions[static_cast<std::size_t>(i - 1)];
+                    auto appPlan = appsFor(c.apps, {edition.editionId},
+                                           edition.architecture == L"x64" ? L"amd64" : edition.architecture);
+                    excludeApps(appPlan, c.options.excludedApps);
+                    for (auto& w : provisionApps(**session, appPlan, c.set.apps, sub(0.06, 0.1))) {
+                        c.result.warnings.push_back(std::move(w));
+                    }
+                }
                 if (!plan.ssu.empty()) {
                     if (auto r = addPackageOrDismExe(**session, plan.ssu, sub(0.1, 0.15)); !r) {
                         return r;
+                    }
+                }
+                if (c.options.netFx3) {
+                    // Before the .NET and cumulative updates: they service it too.
+                    if (auto r = (*session)->enableFeature(L"NetFx3", sub(0.15, 0.18), {c.media / L"sources" / L"sxs"}); !r) {
+                        log::warn("uup", L".NET Framework 3.5 not enabled: " + describe(r.error()));
+                        c.result.warnings.push_back(L".NET Framework 3.5: " + r.error().message);
                     }
                 }
                 for (std::size_t k = 0; k < plan.packages.size(); ++k) {
@@ -523,8 +548,10 @@ Result<void> serviceEditions(Context& c, const UpdatePlan& plan, const TaskConte
                         return r;
                     }
                 }
-                if (updating) {
-                    auto cleaned = runDismExe(**session, L"/Cleanup-Image /StartComponentCleanup",
+                if (updating || c.options.resetBase) {
+                    auto cleaned = runDismExe(**session,
+                                              c.options.resetBase ? L"/Cleanup-Image /StartComponentCleanup /ResetBase"
+                                                                  : L"/Cleanup-Image /StartComponentCleanup",
                                               [&](double f) { task.report(base + share * (0.85 + 0.05 * f), L"cleanup"); });
                     if (!cleaned || cleaned->exitCode != 0) {
                         log::warn("uup", L"component cleanup did not run");
@@ -774,6 +801,14 @@ Result<ConvertResult> convertUup(Dism& dism, const ConvertOptions& options, cons
         return std::unexpected(r.error());
     }
     const UpdatePlan plan = updates ? planUpdates(c) : UpdatePlan{};
+    if (options.apps && !c.set.apps.empty() && !c.set.aggregatedMetadata.empty()) {
+        auto apps = readAppCompDb(c.set.aggregatedMetadata, c.work / L"appdb");
+        if (apps) {
+            c.apps = std::move(*apps);
+        } else {
+            c.result.warnings.push_back(L"Store apps: " + apps.error().message);
+        }
+    }
     if (auto r = serviceEditions(c, plan, phase(task, s4, s5, updates ? L"updates" : L"service")); !r) {
         return std::unexpected(r.error());
     }

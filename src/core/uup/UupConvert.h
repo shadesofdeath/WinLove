@@ -47,6 +47,8 @@ struct UupSetFiles {
     std::vector<std::filesystem::path> featureCabs;  // references once expanded and captured
     std::vector<std::filesystem::path> updates;      // Windows1x.0-KB*.msu / .cab
     std::filesystem::path edge;                      // Edge.wim, empty when none
+    std::filesystem::path aggregatedMetadata;        // *.AggregatedMetadata.cab: the app database
+    std::filesystem::path apps;                      // <folder>\apps when the Store apps were downloaded
 };
 
 // What is in `folder` (a downloaded set). NotFound when there is no metadata ESD.
@@ -67,6 +69,10 @@ struct ConvertOptions {
     std::filesystem::path output;      // .iso; empty = keep the media folder only
     bool updates = true;               // integrate the set's updates (DISM; long)
     bool edge = true;                  // Edge.wim into the editions (with updates only: the image is mounted anyway)
+    bool apps = true;                  // the Store apps (UupApps) when the set has them in <uupFolder>\apps
+    std::vector<std::wstring> excludedApps; // app ids left out (the picker); required ones stay
+    bool netFx3 = false;               // .NET Framework 3.5 from the media's sources\sxs
+    bool resetBase = false;            // component cleanup with /ResetBase (smaller; updates cannot be removed)
     WimCompression compression = WimCompression::Lzx; // Lzms → sources\install.esd
 };
 

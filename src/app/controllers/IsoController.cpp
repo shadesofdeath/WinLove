@@ -1,5 +1,9 @@
 #include "app/controllers/IsoController.h"
 
+#include "base/Text.h"
+
+#include "core/iso/SecureBoot2023.h"
+
 #include "app/controllers/UnattendController.h"
 #include "base/Log.h"
 #include "core/image/MediaRefresh.h"
@@ -41,6 +45,19 @@ Result<core::BootPatchReport> patchWithDism(const std::filesystem::path& bootWim
 }
 
 // Deletes the patched copy when the build is over, however it ends.
+struct ScratchFolder {
+    std::filesystem::path folder;
+    ScratchFolder() = default;
+    ScratchFolder(const ScratchFolder&) = delete;
+    ScratchFolder& operator=(const ScratchFolder&) = delete;
+    ~ScratchFolder() {
+        if (!folder.empty()) {
+            std::error_code ignored;
+            std::filesystem::remove_all(folder, ignored);
+        }
+    }
+};
+
 struct ScratchFile {
     std::filesystem::path file;
     ScratchFile() = default;
@@ -309,6 +326,28 @@ void IsoController::start(Request request) {
                     options.replacedFiles.push_back({file.path, file.file, file.isNew});
                 }
                 log::info("iso", std::format(L"setup media: {} file(s) from the updates", files.size()));
+            }
+            // D-094: the 2023-signed boot manager — last, over what the media refresh put there.
+            ScratchFolder secureBoot; // outlives the build, which reads its files
+            if (request.secureBoot2023) {
+                std::filesystem::path bootWim;
+                for (const auto& r : options.replacedFiles) {
+                    if (text::iequals(r.path, L"sources\\boot.wim")) {
+                        bootWim = r.file;
+                    }
+                }
+                secureBoot.folder = bootFolder / L"sb2023";
+                auto sb = core::prepareSecureBoot2023(folder, bootWim, secureBoot.folder, request.noPrompt);
+                if (!sb) {
+                    return std::unexpected(sb.error());
+                }
+                for (auto& f : sb->files) {
+                    std::erase_if(options.replacedFiles, [&](const core::IsoOptions::ReplacedFile& r) {
+                        return text::iequals(r.path, f.path);
+                    });
+                    options.replacedFiles.push_back(std::move(f));
+                }
+                options.efiBootImage = sb->efiBootImage;
             }
             if (request.usb) {
                 core::UsbOptions usb;

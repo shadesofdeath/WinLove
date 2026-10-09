@@ -47,6 +47,10 @@ struct WimVerifyReport {
 // The names in folder `folder` of edition `index` (files and folders; empty when there is no such
 // folder). Same reading and limits as wimFileExists.
 [[nodiscard]] Result<std::vector<std::wstring>> wimFolderNames(const ByteSource& wim, int index, std::wstring_view folder);
+// The content of file `path` in edition `index`, read and checked against its SHA-1 — a few boot
+// files out of boot.wim without a mount (D-094). NotFound when the edition has no such file. Same
+// limits as wimFileExists; meant for small files (the whole file is in memory).
+[[nodiscard]] Result<std::vector<std::byte>> wimFileData(const ByteSource& wim, int index, std::wstring_view path);
 
 // The solid resources of an ESD as their own headers describe them (compression, chunk size): what
 // tells an ESD Windows wrote (LZMS, 64 MiB chunks) from one another tool wrote in a form this PC's

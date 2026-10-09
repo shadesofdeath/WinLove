@@ -2,6 +2,10 @@
 
 #include "app/Format.h"
 #include "base/Text.h"
+#include "base/Utf8.h"
+#include "ui/widgets/Dialog.h"
+#include "ui/widgets/FormView.h"
+#include "ui/widgets/Toggle.h"
 #include "ui/anim/Tween.h"
 #include "ui/widget/Host.h"
 
@@ -65,6 +69,22 @@ std::wstring localLanguageName(const core::uup::Language& language) {
     return language.name;
 }
 
+// A Store app's name in the UI language (strings uupApps.<key>), else from its id
+// ("Microsoft.WindowsCalculator" → "WindowsCalculator").
+std::wstring appName(const Localization& strings, const std::wstring& id) {
+    const std::string key = "uupApps." + utf8::fromWide(core::uup::appKey(id));
+    for (std::size_t i = 0; i < kStrCount; ++i) {
+        if (key == kStrKeys[i]) {
+            return strings.get(static_cast<Str>(i));
+        }
+    }
+    std::wstring name = id.substr(0, id.find(L'_'));
+    if (const auto dot = name.find_last_of(L'.'); dot != std::wstring::npos) {
+        name = name.substr(dot + 1);
+    }
+    return name;
+}
+
 std::filesystem::path downloadsFolder() {
     PWSTR path = nullptr;
     std::filesystem::path out;
@@ -95,7 +115,30 @@ public:
             invalidate();
         };
         m_edge = &add<ui::CheckField>(strings.get(Str::DownloadEdge), true);
+        m_apps = &add<ui::CheckField>(strings.get(Str::DownloadApps), true);
+        m_apps->onChange = [this](bool) {
+            refreshVisibility();
+            invalidate();
+            changed();
+        };
+        m_pick = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::DownloadAppsPick));
+        m_pick->onInvoke = [this] {
+            if (onPickApps) {
+                onPickApps();
+            }
+        };
+        m_netFx3 = &add<ui::CheckField>(strings.get(Str::DownloadNetFx3), false);
+        m_resetBase = &add<ui::CheckField>(strings.get(Str::DownloadResetBase), false);
         m_esd = &add<ui::CheckField>(strings.get(Str::DownloadEsd), false);
+        for (auto* box : {m_updates, m_edge, m_netFx3, m_resetBase, m_esd}) {
+            auto previous = box->onChange;
+            box->onChange = [this, previous](bool on) {
+                if (previous) {
+                    previous(on);
+                }
+                changed();
+            };
+        }
         m_change = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::DownloadChange));
         m_change->onInvoke = [this] {
             if (onChangeOutput) {
@@ -118,6 +161,55 @@ public:
     }
 
     std::function<void(std::wstring)> onLanguage;
+    std::function<void()> onPickApps;
+    std::function<void()> onPrefsChanged;
+
+    // The saved choices (settings.json) onto the boxes; no callbacks.
+    void setPrefs(const WindowsDownloadPrefs& p) {
+        m_updates->setChecked(p.updates);
+        m_edge->setChecked(p.edge);
+        m_apps->setChecked(p.apps);
+        m_netFx3->setChecked(p.netFx3);
+        m_resetBase->setChecked(p.resetBase);
+        m_esd->setChecked(p.esd);
+        m_excluded = p.excludedApps;
+        refreshVisibility();
+    }
+    [[nodiscard]] WindowsDownloadPrefs prefs() const {
+        WindowsDownloadPrefs p;
+        p.updates = m_updates->checked();
+        p.edge = m_edge->checked();
+        p.apps = m_apps->checked();
+        p.netFx3 = m_netFx3->checked();
+        p.resetBase = m_resetBase->checked();
+        p.esd = m_esd->checked();
+        p.excludedApps = m_excluded;
+        return p;
+    }
+    void setExcluded(std::vector<std::wstring> excluded) {
+        m_excluded = std::move(excluded);
+        invalidate();
+        changed();
+    }
+    void setAppCount(int total) {
+        m_appTotal = total;
+        refreshVisibility();
+        invalidate();
+    }
+    [[nodiscard]] int appsIncluded() const {
+        int n = 0;
+        for (const auto& id : m_appIds) {
+            if (std::ranges::none_of(m_excluded, [&](const std::wstring& e) { return text::iequals(e, id); }) ||
+                core::uup::appRequired(id)) {
+                ++n;
+            }
+        }
+        return n;
+    }
+    void setAppIds(std::vector<std::wstring> ids) {
+        m_appIds = std::move(ids);
+        setAppCount(static_cast<int>(m_appIds.size()));
+    }
     std::function<void()> onEditionsChanged;
     std::function<void()> onChangeOutput;
     std::function<void()> onStart;
@@ -175,6 +267,10 @@ public:
         m_size = download;
         invalidate();
     }
+    void setAppsSize(std::uint64_t bytes) {
+        m_appsSize = bytes;
+        invalidate();
+    }
     void setOutput(std::filesystem::path path) {
         m_output = std::move(path);
         invalidate();
@@ -196,12 +292,17 @@ public:
     [[nodiscard]] bool updates() const { return m_updates->checked(); }
     [[nodiscard]] bool edge() const { return m_edge->checked(); }
     [[nodiscard]] bool esd() const { return m_esd->checked(); }
+    [[nodiscard]] bool apps() const { return m_apps->checked(); }
+    [[nodiscard]] bool netFx3() const { return m_netFx3->checked(); }
+    [[nodiscard]] bool resetBase() const { return m_resetBase->checked(); }
+    [[nodiscard]] const std::vector<std::wstring>& excluded() const { return m_excluded; }
     [[nodiscard]] const std::optional<core::uup::Build>& build() const { return m_build; }
 
     void refreshVisibility() {
         const bool has = m_build.has_value();
         const bool running = m_state.windowsDownload().has_value();
-        for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_lang, m_updates, m_edge, m_esd, m_change}) {
+        for (ui::Widget* w :
+             std::initializer_list<ui::Widget*>{m_lang, m_updates, m_edge, m_apps, m_pick, m_netFx3, m_resetBase, m_esd, m_change}) {
             w->setVisible(has);
             w->setEnabled(!running);
         }
@@ -210,6 +311,7 @@ public:
             b->setEnabled(!running);
         }
         m_edge->setEnabled(!running && m_updates->checked());
+        m_pick->setEnabled(!running && m_apps->checked() && m_appTotal > 0);
         m_start->setVisible(has && !running);
         m_start->setEnabled(!m_languages.empty() && !editions().empty() && !m_output.empty());
         m_stop->setVisible(running);
@@ -233,6 +335,15 @@ public:
         m_hintTop = y;
         y += hintHeight() + 4;
         m_edge->setBounds({x, y, w, kControl});
+        y += kControl;
+        const ui::SizeF pick = m_pick->measure({});
+        m_apps->setBounds({x, y, w - pick.width - 64, kControl});
+        m_pick->setBounds({b.right() - kPad - pick.width, y, pick.width, kControl});
+        m_appsRow = y;
+        y += kControl;
+        m_netFx3->setBounds({x, y, w, kControl});
+        y += kControl;
+        m_resetBase->setBounds({x, y, w, kControl});
         y += kControl;
         m_esd->setBounds({x, y, w, kControl});
         y += kControl + kGap + kLine + 4;                 // "Kayıt yeri"
@@ -285,6 +396,12 @@ public:
                                TypeStyle::Caption, Color::TextTertiary);
         canvas.drawText(m_strings.get(Str::DownloadOutput), {x, m_pathTop - kLine - 4, w, kLine}, TypeStyle::Section,
                         Color::TextTertiary);
+        // How many Store apps go in, left of "Seç…".
+        if (m_apps->checked() && m_appTotal > 0) {
+            canvas.drawText(std::format(L"{} / {}", appsIncluded(), m_appTotal),
+                            {m_pick->bounds().x - 64, m_appsRow, 56, kControl}, TypeStyle::Mono, Color::TextSecondary,
+                            ui::TextAlign::Trailing);
+        }
         canvas.drawText(m_output.filename().wstring(), {x, m_pathTop, m_change->bounds().x - x - 8, kLine}, TypeStyle::Body,
                         Color::TextPrimary);
         canvas.drawText(m_output.parent_path().wstring(), {x, m_pathTop + kLine, m_change->bounds().x - x - 8, kLine},
@@ -294,8 +411,9 @@ public:
         if (editions().empty()) {
             size = m_strings.get(Str::DownloadNoEditions);
         } else if (m_size) {
-            const std::uint64_t disk = *m_size + (updates() ? 16ull : 9ull) * 1'000'000'000ull;
-            size = m_strings.format(Str::DownloadSize, {{L"size", formatBytes(*m_size, m_language)},
+            const std::uint64_t download = *m_size + (apps() ? m_appsSize : 0);
+            const std::uint64_t disk = download + (updates() ? 16ull : 9ull) * 1'000'000'000ull;
+            size = m_strings.format(Str::DownloadSize, {{L"size", formatBytes(download, m_language)},
                                                         {L"disk", formatBytes(disk, m_language)}});
         }
         canvas.drawText(size, {x, m_sizeTop, w, kLine}, TypeStyle::Caption, Color::TextSecondary);
@@ -313,6 +431,11 @@ public:
     void setNow(double now) { m_now = now; }
 
 private:
+    void changed() {
+        if (onPrefsChanged) {
+            onPrefsChanged();
+        }
+    }
     void clearEditions() {
         for (auto* box : m_editionBoxes) {
             removeChild(box);
@@ -373,11 +496,20 @@ private:
     std::vector<core::uup::Edition> m_editions;
     std::vector<ui::CheckField*> m_editionBoxes;
     std::optional<std::uint64_t> m_size;
+    std::uint64_t m_appsSize = 0; // UUP dump's app set (what the apps take at most)
     std::filesystem::path m_output;
     ui::Dropdown* m_lang = nullptr;
     ui::CheckField* m_updates = nullptr;
     ui::CheckField* m_edge = nullptr;
+    ui::CheckField* m_apps = nullptr;
+    ui::Button* m_pick = nullptr;
+    ui::CheckField* m_netFx3 = nullptr;
+    ui::CheckField* m_resetBase = nullptr;
     ui::CheckField* m_esd = nullptr;
+    std::vector<std::wstring> m_excluded; // app ids left out
+    std::vector<std::wstring> m_appIds;   // the selection's apps
+    int m_appTotal = 0;
+    float m_appsRow = 0;
     ui::Button* m_change = nullptr;
     ui::Button* m_start = nullptr;
     ui::Button* m_stop = nullptr;
@@ -392,21 +524,18 @@ DownloadPage::DownloadPage(AppState& state, const Localization& strings, Languag
     : m_state(state), m_strings(strings), m_language(language), m_controller(controller), m_intents(std::move(intents)) {
     m_search = &add<ui::SearchBox>(strings.get(Str::DownloadSearch));
     m_search->onChange = [this](const std::wstring&) { refreshList(); };
+    m_product = &add<ui::Dropdown>(L"", std::vector<std::wstring>{L"Windows 11", L"Windows 10", strings.get(Str::DownloadFilterAll)}, 0);
+    m_product->onChange = [this](int) { loadBuilds(); };
     m_kind = &add<ui::Dropdown>(L"", std::vector<std::wstring>{strings.get(Str::DownloadFilterRelease),
                                                                strings.get(Str::DownloadFilterInsider),
                                                                strings.get(Str::DownloadFilterServer),
                                                                strings.get(Str::DownloadFilterAll)},
                                 0);
     m_kind->onChange = [this](int) { refreshList(); };
-    m_arch = &add<ui::Dropdown>(L"", std::vector<std::wstring>{L"x64", L"ARM64", strings.get(Str::DownloadFilterAll)}, 0);
+    m_arch = &add<ui::Dropdown>(L"", std::vector<std::wstring>{L"x64", L"ARM64", L"x86", strings.get(Str::DownloadFilterAll)}, 0);
     m_arch->onChange = [this](int) { refreshList(); };
     m_refresh = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::DownloadRefresh), ui::icons::Icon::Refresh);
-    m_refresh->onInvoke = [this] {
-        m_loading = true;
-        m_listError.reset();
-        refreshList();
-        m_controller.listBuilds();
-    };
+    m_refresh->onInvoke = [this] { loadBuilds(); };
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::DownloadColVersion), 0, ui::TextAlign::Leading, true},
         {strings.get(Str::DownloadColBuild), 110, ui::TextAlign::Leading, true},
@@ -438,6 +567,9 @@ DownloadPage::DownloadPage(AppState& state, const Localization& strings, Languag
         }
     };
     m_panel->onEditionsChanged = [this] { requestFiles(); };
+    m_panel->onPickApps = [this] { openAppPicker(); };
+    m_panel->onPrefsChanged = [this] { savePrefs(); };
+    m_panel->setPrefs(state.settings().windowsDownload);
     m_panel->onChangeOutput = [this] {
         if (m_intents.pickOutput) {
             if (auto path = m_intents.pickOutput(m_panel->output())) {
@@ -458,6 +590,10 @@ DownloadPage::DownloadPage(AppState& state, const Localization& strings, Languag
         request.updates = m_panel->updates();
         request.edge = m_panel->edge();
         request.esd = m_panel->esd();
+        request.apps = m_panel->apps();
+        request.excludedApps = m_panel->excluded();
+        request.netFx3 = m_panel->netFx3();
+        request.resetBase = m_panel->resetBase();
         request.output = m_panel->output();
         m_controller.start(std::move(request));
     };
@@ -473,8 +609,7 @@ DownloadPage::DownloadPage(AppState& state, const Localization& strings, Languag
             }
         }
     });
-    refreshList();
-    m_controller.listBuilds();
+    loadBuilds();
     if (m_state.windowsDownload()) {
         animate();
     }
@@ -495,6 +630,107 @@ void DownloadPage::setBuilds(std::vector<core::uup::Build> builds) {
     m_loading = false;
     m_listError.reset();
     refreshList();
+}
+
+void DownloadPage::loadBuilds() {
+    m_loading = true;
+    m_listError.reset();
+    m_all.clear();
+    refreshList();
+    // Windows 10's full sets are "Feature update to Windows 10, version 22H2": its build finds them.
+    const int product = m_product->selected();
+    m_controller.listBuilds(product == 0 ? L"Windows 11" : product == 1 ? L"19045" : L"");
+}
+
+void DownloadPage::savePrefs() {
+    AppSettings settings = m_state.settings();
+    settings.windowsDownload = m_panel->prefs();
+    if (!(settings == m_state.settings())) {
+        m_state.setSettings(std::move(settings));
+    }
+}
+
+void DownloadPage::setApps(const std::wstring& id, const std::wstring& language, const std::vector<std::wstring>& editions,
+                           std::vector<core::uup::AppFeature> apps) {
+    const auto* b = selectedBuild();
+    if (!b || b->id != id || m_panel->language() != language || m_panel->editions() != editions) {
+        return;
+    }
+    m_apps = std::move(apps);
+    std::vector<std::wstring> ids;
+    for (const auto& a : m_apps) {
+        ids.push_back(a.id);
+    }
+    m_panel->setAppIds(std::move(ids));
+}
+
+void DownloadPage::openAppPicker() {
+    if (m_apps.empty() || !host()) {
+        return;
+    }
+    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::DownloadAppsTitle), m_strings.get(Str::DownloadAppsBody),
+                                               ui::icons::Icon::AppxPackage, Color::TextSecondary, 560.0f);
+    ui::Dialog* raw = dialog.get();
+    auto& form = raw->setContent<ui::FormView>(440.0f, 300.0f);
+    struct Row {
+        std::wstring id;
+        ui::Toggle* toggle;
+    };
+    auto rows = std::make_shared<std::vector<Row>>();
+    const auto excluded = m_panel->excluded();
+    static constexpr Str kGroups[] = {Str::DownloadAppsEssential, Str::DownloadAppsMedia, Str::DownloadAppsCodecs,
+                                      Str::DownloadAppsOther};
+    for (int g = 0; g < 4; ++g) {
+        std::vector<const core::uup::AppFeature*> inGroup;
+        for (const auto& a : m_apps) {
+            if (static_cast<int>(core::uup::appGroup(a.id)) == g) {
+                inGroup.push_back(&a);
+            }
+        }
+        if (inGroup.empty()) {
+            continue;
+        }
+        std::ranges::sort(inGroup, [&](const auto* l, const auto* r) {
+            return text::fold(appName(m_strings, l->id)) < text::fold(appName(m_strings, r->id));
+        });
+        form.addSection(m_strings.get(kGroups[g]));
+        for (const auto* a : inGroup) {
+            const bool required = core::uup::appRequired(a->id);
+            const bool on = required || std::ranges::none_of(excluded, [&](const std::wstring& e) { return text::iequals(e, a->id); });
+            auto& toggle = form.addRow<ui::Toggle>(appName(m_strings, a->id),
+                                                   required ? m_strings.get(Str::DownloadAppsRequired) : std::wstring(),
+                                                   ui::tokens::size::toggleW, std::wstring(), on);
+            toggle.setEnabled(!required);
+            rows->push_back({a->id, &toggle});
+        }
+    }
+    auto setAll = [rows](auto pick) {
+        for (auto& r : *rows) {
+            if (r.toggle->enabled()) {
+                r.toggle->setOn(pick(r.id));
+            }
+        }
+    };
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::DownloadAppsRecommended),
+                   [setAll] { setAll([](const std::wstring&) { return true; }); });
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::DownloadAppsEssentialOnly), [setAll] {
+        setAll([](const std::wstring& id) { return core::uup::appGroup(id) == core::uup::AppGroup::Essential; });
+    });
+    auto close = [this, raw] { host()->popModal(raw); };
+    raw->onCancel = close;
+    raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::CommonOk),
+                   [this, raw, rows] {
+                       std::vector<std::wstring> out;
+                       for (const auto& r : *rows) {
+                           if (!r.toggle->isOn()) {
+                               out.push_back(r.id);
+                           }
+                       }
+                       m_panel->setExcluded(std::move(out));
+                       host()->popModal(raw);
+                   },
+                   /*primary=*/true);
+    host()->pushModal(std::move(dialog));
 }
 
 void DownloadPage::setListFailed(const Error& error) {
@@ -522,6 +758,7 @@ void DownloadPage::setLanguages(const std::wstring& id, std::vector<core::uup::L
         m_controller.listEditions(id, pick);
     }
     m_panel->setOutput(downloadsFolder() / WindowsDownloadController::isoName(*b, pick));
+    m_controller.listFiles(id, L"neutral", {L"app"}); // the apps' size
 }
 
 void DownloadPage::setEditions(const std::wstring& id, const std::wstring& language, std::vector<core::uup::Edition> editions) {
@@ -537,6 +774,10 @@ void DownloadPage::setEditions(const std::wstring& id, const std::wstring& langu
 void DownloadPage::setFiles(const std::wstring& id, const std::wstring& language, const std::vector<std::wstring>& editions,
                             const core::uup::FileSet& files) {
     const auto* b = selectedBuild();
+    if (b && b->id == id && language == L"neutral") {
+        m_panel->setAppsSize(files.totalSize()); // the Store apps' set
+        return;
+    }
     if (!b || b->id != id || m_panel->language() != language || m_panel->editions() != editions) {
         return;
     }
@@ -552,8 +793,11 @@ void DownloadPage::requestFiles() {
     const auto* b = selectedBuild();
     const auto editions = m_panel->editions();
     m_panel->refreshVisibility();
+    m_apps.clear();
+    m_panel->setAppIds({});
     if (b && !editions.empty() && !m_panel->language().empty()) {
         m_controller.listFiles(b->id, m_panel->language(), editions);
+        m_controller.listApps(*b, m_panel->language(), editions); // the picker's list (a 3 MB catalogue)
     }
 }
 
@@ -576,6 +820,7 @@ void DownloadPage::refreshList() {
     const std::wstring query = text::fold(m_search->text());
     const int kind = m_kind->selected();
     const int arch = m_arch->selected();
+    const int product = m_product->selected();
     const std::wstring keepId = selectedBuild() ? selectedBuild()->id : std::wstring();
     m_shown.clear();
     for (const auto& b : m_all) {
@@ -585,6 +830,9 @@ void DownloadPage::refreshList() {
         if (kind == 3 && b.kind == BuildKind::Update) continue;
         if (arch == 0 && b.arch != L"amd64") continue;
         if (arch == 1 && b.arch != L"arm64") continue;
+        if (arch == 2 && b.arch != L"x86") continue;
+        if (product == 0 && b.title.find(L"Windows 11") == std::wstring::npos) continue;
+        if (product == 1 && b.title.find(L"Windows 10") == std::wstring::npos) continue;
         if (!query.empty() && text::fold(b.title + L" " + b.build).find(query) == std::wstring::npos) continue;
         m_shown.push_back(b);
     }
@@ -643,10 +891,12 @@ void DownloadPage::layout() {
     const float y = b.y + kTop;
     const ui::SizeF refresh = m_refresh->measure({});
     m_refresh->setBounds({b.x + listWidth - kGap - refresh.width, y, refresh.width, kControl});
-    m_search->setBounds({x, y, 280, kControl});
-    x += 280 + 8;
-    m_kind->setBounds({x, y, 120, kControl});
+    m_search->setBounds({x, y, 240, kControl});
+    x += 240 + 8;
+    m_product->setBounds({x, y, 120, kControl});
     x += 120 + 8;
+    m_kind->setBounds({x, y, 110, kControl});
+    x += 110 + 8;
     m_arch->setBounds({x, y, 96, kControl});
     const RectF list{b.x, y + kControl + kGap, listWidth - kGap, b.bottom() - (y + kControl + kGap)};
     m_table->setBounds(list);
@@ -696,7 +946,33 @@ void DownloadPage::demo(int what) {
         m_panel->setOutput(std::filesystem::path(L"C:\\Users\\shades\\Downloads") /
                            WindowsDownloadController::isoName(*selectedBuild(), L"tr-tr"));
         m_panel->setSize(8'656'597'514ull);
+        m_panel->setAppsSize(1'245'574'462ull);
+        for (const wchar_t* id :
+             {L"Microsoft.WindowsStore_8wekyb3d8bbwe", L"Microsoft.SecHealthUI_8wekyb3d8bbwe",
+              L"Microsoft.DesktopAppInstaller_8wekyb3d8bbwe", L"Microsoft.WindowsCalculator_8wekyb3d8bbwe",
+              L"Microsoft.WindowsNotepad_8wekyb3d8bbwe", L"Microsoft.Windows.Photos_8wekyb3d8bbwe",
+              L"Microsoft.WindowsTerminal_8wekyb3d8bbwe", L"Microsoft.Paint_8wekyb3d8bbwe",
+              L"Microsoft.ZuneMusic_8wekyb3d8bbwe", L"Microsoft.GamingApp_8wekyb3d8bbwe",
+              L"Microsoft.YourPhone_8wekyb3d8bbwe", L"Clipchamp.Clipchamp_yxz26nhyzhsrt",
+              L"Microsoft.HEVCVideoExtension_8wekyb3d8bbwe", L"Microsoft.WebpImageExtension_8wekyb3d8bbwe",
+              L"Microsoft.BingNews_8wekyb3d8bbwe", L"Microsoft.BingWeather_8wekyb3d8bbwe",
+              L"Microsoft.OutlookForWindows_8wekyb3d8bbwe", L"MSTeams_8wekyb3d8bbwe"}) {
+            core::uup::AppFeature f;
+            f.id = id;
+            m_apps.push_back(std::move(f));
+        }
+        std::vector<std::wstring> ids;
+        for (const auto& a : m_apps) {
+            ids.push_back(a.id);
+        }
+        m_panel->setAppIds(std::move(ids));
+        m_panel->setExcluded({L"Microsoft.BingNews_8wekyb3d8bbwe", L"MSTeams_8wekyb3d8bbwe"});
         m_panel->refreshVisibility();
+    }
+    if (what == 4) {
+        layout();
+        openAppPicker();
+        return;
     }
     if (what >= 2) {
         AppState::WindowsDownload job;

@@ -113,8 +113,9 @@ BuildKind buildKind(std::wstring_view title) {
         // is still an update.
         return t.find(L"cumulative update") != std::wstring::npos ? BuildKind::Update : BuildKind::Insider;
     }
-    // "Windows 11, version 26H2 (26300.9550)", "Windows 10, version 22H2 (19045.6332)"
-    static const std::wregex release{LR"(^windows 1[01], version \w+ \()"};
+    // "Windows 11, version 26H2 (26300.9550)"; Windows 10's full sets are "Feature update to
+    // Windows 10, version 22H2 (19045.7727)".
+    static const std::wregex release{LR"(^(feature update to )?windows 1[01], version \w+ \()"};
     if (std::regex_search(t, release)) {
         return BuildKind::Release;
     }

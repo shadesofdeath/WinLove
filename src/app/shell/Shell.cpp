@@ -397,6 +397,12 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
                 page->setFiles(id, language, editions, files);
             }
         },
+        [this](std::wstring id, std::wstring language, std::vector<std::wstring> editions,
+               std::vector<core::uup::AppFeature> apps) {
+            if (auto* page = downloadPage()) {
+                page->setApps(id, language, editions, std::move(apps));
+            }
+        },
         [this](const Error& e, bool job) {
             if (job) {
                 showToast(ui::InfoKind::Error, m_strings.get(Str::DownloadFailedTitle), errorText(e));

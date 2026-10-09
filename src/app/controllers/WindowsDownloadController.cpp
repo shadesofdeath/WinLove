@@ -3,6 +3,7 @@
 #include "base/Log.h"
 #include "base/Text.h"
 #include "core/image/dism/Dism.h"
+#include "core/uup/UupApps.h"
 #include "core/uup/UupDownload.h"
 #include "ui/anim/Tween.h"
 
@@ -121,6 +122,31 @@ void WindowsDownloadController::listFiles(std::wstring id, std::wstring language
         });
 }
 
+void WindowsDownloadController::listApps(core::uup::Build build, std::wstring language, std::vector<std::wstring> editions) {
+    Request where;
+    where.build = build;
+    where.language = language;
+    where.editions = editions;
+    const auto folder = setFolder(where);
+    auto post = m_events.postToUi;
+    std::weak_ptr<bool> alive = m_alive;
+    m_lists->run<std::vector<core::uup::AppFeature>>(
+        [build, language, editions, folder](const core::TaskContext& t) {
+            return core::uup::setApps(build.id, language, editions, build.arch, folder, t.cancel);
+        },
+        [this, post, alive, id = build.id, language, editions](Result<std::vector<core::uup::AppFeature>> r) {
+            onUi(post, alive, [this, id, language, editions, r = std::move(r)]() mutable {
+                if (!r) {
+                    log::warn("uup", L"app list: " + describe(r.error()));
+                    r = std::vector<core::uup::AppFeature>{}; // the picker says there is nothing to pick
+                }
+                if (m_events.apps) {
+                    m_events.apps(id, language, editions, std::move(*r));
+                }
+            });
+        });
+}
+
 std::filesystem::path WindowsDownloadController::setFolder(const Request& request) const {
     std::wstring name = std::format(L"{}_{}_{}", request.build.build, request.build.arch, text::lower(request.language));
     for (const auto& e : request.editions) {
@@ -206,6 +232,30 @@ void WindowsDownloadController::start(Request request) {
                 return std::unexpected(set.error());
             }
             auto files = filesFor(*set, request.updates);
+            // The apps: which ones the set's app database says (its cabinet first, it is small),
+            // downloaded with the rest so one bar shows it all.
+            core::uup::AppDownload apps;
+            if (request.apps) {
+                std::vector<core::uup::File> meta;
+                for (const auto& f : files) {
+                    if (text::iendsWith(f.name, L".AggregatedMetadata.cab")) {
+                        meta.push_back(f);
+                    }
+                }
+                if (auto r = core::uup::downloadFiles(meta, folder, {}, core::TaskContext{cancel, {}}); !r) {
+                    return std::unexpected(r.error());
+                }
+                auto planned = core::uup::planAppDownload(request.build.id, folder, request.editions, request.build.arch, cancel,
+                                                          request.excludedApps);
+                if (planned) {
+                    apps = std::move(*planned);
+                    files.insert(files.end(), apps.files.begin(), apps.files.end());
+                } else if (planned.error().code == ErrorCode::Cancelled) {
+                    return std::unexpected(planned.error());
+                } else {
+                    log::warn("uup", L"no Store apps: " + describe(planned.error())); // the ISO without them
+                }
+            }
             std::uint64_t total = 0;
             for (const auto& f : files) {
                 total += f.size;
@@ -220,6 +270,12 @@ void WindowsDownloadController::start(Request request) {
                 auto again = core::uup::listFiles(request.build.id, request.language, request.editions, true, cancel);
                 if (!again) {
                     return std::unexpected(again.error());
+                }
+                if (!apps.files.empty()) {
+                    if (auto more = core::uup::planAppDownload(request.build.id, folder, request.editions,
+                                                               request.build.arch, cancel, request.excludedApps)) {
+                        again->files.insert(again->files.end(), more->files.begin(), more->files.end());
+                    }
                 }
                 return again->files;
             };
@@ -284,6 +340,10 @@ void WindowsDownloadController::convert(Request request, std::filesystem::path f
     options.output = request.output;
     options.updates = request.updates;
     options.edge = request.edge;
+    options.apps = request.apps;
+    options.excludedApps = request.excludedApps;
+    options.netFx3 = request.netFx3;
+    options.resetBase = request.resetBase;
     options.compression = request.esd ? core::WimCompression::Lzms : core::WimCompression::Lzx;
     m_state.engine().run<core::uup::ConvertResult>(
         [options, cancel, report](const core::TaskContext&) -> Result<core::uup::ConvertResult> {

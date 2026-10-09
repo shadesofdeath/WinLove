@@ -263,6 +263,7 @@ struct Node {
     bool directory = false;
     std::vector<Node> children;
     std::uint16_t extraStreams = 0; // named data streams after the entry, to be skipped
+    std::array<std::uint8_t, 20> hash{}; // the data stream's SHA-1 (D-094: wimFileData)
 };
 
 void putAt(std::vector<std::byte>& out, std::size_t at, const void* value, std::size_t size) {
@@ -282,6 +283,7 @@ std::size_t writeDentry(std::vector<std::byte>& out, const Node& node) {
     const std::uint32_t attributes = node.directory ? 0x10 : 0x80;
     putAt(out, at + 8, &attributes, 4);
     const auto nameBytes = static_cast<std::uint16_t>(node.name.size() * 2);
+    putAt(out, at + 64, node.hash.data(), node.hash.size());
     putAt(out, at + 96, &node.extraStreams, 2);
     putAt(out, at + 100, &nameBytes, 2);
     putAt(out, at + 102, node.name.data(), nameBytes);
@@ -466,6 +468,34 @@ MemorySource solidEsd(std::uint64_t& lookupAtOut) {
 }
 
 } // namespace
+
+TEST_CASE("wim file data: a file's bytes by its path, checked against its hash (D-094)") {
+    const auto content = bytesOf("bootmgfw_EX.efi content");
+    Node efi{u"EFI_EX", true, {{u"bootmgfw_EX.efi", false, {}, 0, sha1(content)}, {u"empty.txt"}}};
+    Node boot{u"Boot", true, {std::move(efi)}};
+    Node windows{u"Windows", true, {std::move(boot)}};
+    const auto meta = metadataOf(Node{u"", true, {std::move(windows)}});
+    const Stream file{content, content, false, false};
+    const Stream list{meta, meta, false, true};
+    const MemorySource wim = buildWim({file, list});
+
+    const auto data = wimFileData(wim, 1, L"windows/boot/efi_ex/BOOTMGFW_EX.EFI");
+    REQUIRE(data.has_value());
+    CHECK(*data == content);
+    const auto empty = wimFileData(wim, 1, L"Windows/Boot/EFI_EX/empty.txt");
+    REQUIRE(empty.has_value());
+    CHECK(empty->empty());
+    CHECK(wimFileData(wim, 1, L"Windows/Boot/EFI_EX/bootmgr_EX.efi").error().code == ErrorCode::NotFound);
+    CHECK(wimFileData(wim, 1, L"Windows/Boot").error().code == ErrorCode::NotFound); // a folder
+
+    // The stored bytes changed: the hash says so.
+    MemorySource damaged = wim;
+    const std::size_t at = 208; // the first stream, right after the header
+    damaged.data[at] = std::byte{'B'};
+    const auto bad = wimFileData(damaged, 1, L"Windows/Boot/EFI_EX/bootmgfw_EX.efi");
+    REQUIRE_FALSE(bad.has_value());
+    CHECK(bad.error().code == ErrorCode::ParseError);
+}
 
 TEST_CASE("solid resources: an ESD's are read from their own headers; a plain WIM has none") {
     std::uint64_t lookupAt = 0;
