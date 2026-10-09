@@ -32,6 +32,20 @@ void forceWimgapi(std::filesystem::path dll);
                                        const std::filesystem::path& destination, WimCompression compression,
                                        const TaskContext& task);
 
+// Like exportImage, with the files `references` lending their streams: a UUP edition's metadata ESD
+// holds only the file list of its install image, the files themselves are in the package ESDs next
+// to it (Microsoft-Windows-*-Package.ESD …). wimgapi resolves each stream by its hash across them.
+[[nodiscard]] Result<void> exportImageWithReferences(const std::filesystem::path& source, int index,
+                                                     std::span<const std::filesystem::path> references,
+                                                     const std::filesystem::path& destination,
+                                                     WimCompression compression, const TaskContext& task);
+
+// `folder` as a new WIM (XPRESS) without security descriptors and reparse fix-ups: only its files'
+// contents matter — a reference for exportImageWithReferences (a UUP feature-on-demand .cab,
+// expanded, holds files the edition's list points into). No privileges needed.
+[[nodiscard]] Result<void> captureReference(const std::filesystem::path& folder, const std::filesystem::path& wim,
+                                            const TaskContext& task);
+
 // Rewrites `wim` without the streams no image refers to any more. A commit only appends: the old
 // versions of changed files (the registry hives, above all) stay in the file, and 7-Zip lists them
 // under "[DELETED]". Every image is exported in order, with the file's own compression, into a new

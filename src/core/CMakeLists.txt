@@ -78,6 +78,9 @@ add_library(wl_core STATIC
     unattend/Welcome.cpp
     usb/UsbMedia.cpp
     updates/UpdateCatalog.cpp
+    uup/UupCatalog.cpp
+    uup/UupDownload.cpp
+    uup/UupConvert.cpp
     updates/UupLanguages.cpp
     store/MsStore.cpp)
 wl_configure_target(wl_core)

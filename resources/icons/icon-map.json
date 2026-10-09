@@ -121,6 +121,7 @@
     "personalize": "palette",
     "icon-set": "shapes",
     "start-menu": "layout-grid",
-    "workflow": "git-commit-horizontal"
+    "workflow": "git-commit-horizontal",
+    "windows-download": "monitor-down"
   }
 }

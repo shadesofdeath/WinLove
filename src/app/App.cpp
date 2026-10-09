@@ -8,6 +8,7 @@
 #include "core/image/DriverInf.h"
 #include "core/image/RegistryInput.h"
 
+#include "app/pages/DownloadPage.h"
 #include "app/pages/AppsPage.h"
 #include "app/pages/DriversPage.h"
 #include "app/pages/IconsPage.h"
@@ -240,6 +241,9 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoBranding = true;
         } else if (a == L"--demo-boot-drivers") {
             options.demoBootDrivers = true;
+        } else if (a.starts_with(L"--demo-download")) {
+            const auto v = a.size() > 16 ? a.substr(16) : std::wstring_view(L"list");
+            options.demoDownload = v == L"pick" ? 1 : v == L"downloading" ? 2 : v == L"converting" ? 3 : 0;
         } else if (a == L"--demo-hosts") {
             options.demoHosts = true;
         } else if (a == L"--demo-services") {
@@ -1006,6 +1010,12 @@ int App::renderOffscreen() {
             if (auto* page = m_shell->startMenuPageForDemo()) {
                 page->showTab(m_options.demoTaskbar ? StartMenuPage::kTabTaskbar : StartMenuPage::kTabSettings);
             }
+        }
+    }
+    if (m_options.demoDownload >= 0) {
+        m_shell->showPage(PageId::Download);
+        if (auto* page = m_shell->downloadPageForDemo()) {
+            page->demo(m_options.demoDownload);
         }
     }
     if (m_options.demoIcons) {

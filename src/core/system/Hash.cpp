@@ -32,15 +32,18 @@ std::wstring normalizeSha256(std::wstring_view text) {
     return hex.size() == 64 ? hex : std::wstring();
 }
 
-Result<std::wstring> sha256File(const std::filesystem::path& file, const TaskContext& task) {
+namespace {
+
+template <std::size_t N>
+Result<std::wstring> hashFile(const std::filesystem::path& file, LPCWSTR algorithm, const TaskContext& task) {
     BCRYPT_ALG_HANDLE alg = nullptr;
     BCRYPT_HASH_HANDLE hash = nullptr;
-    if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, nullptr, 0))) {
-        return fail(ErrorCode::Unknown, L"SHA-256 provider unavailable", L"bcrypt");
+    if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&alg, algorithm, nullptr, 0))) {
+        return fail(ErrorCode::Unknown, L"hash provider unavailable", L"bcrypt");
     }
     if (!BCRYPT_SUCCESS(BCryptCreateHash(alg, &hash, nullptr, 0, nullptr, 0, 0))) {
         BCryptCloseAlgorithmProvider(alg, 0);
-        return fail(ErrorCode::Unknown, L"SHA-256 hash object", L"bcrypt");
+        return fail(ErrorCode::Unknown, L"hash object", L"bcrypt");
     }
     std::ifstream in(file, std::ios::binary);
     const std::uint64_t size = treeBytes(file); // progress only
@@ -61,7 +64,7 @@ Result<std::wstring> sha256File(const std::filesystem::path& file, const TaskCon
         }
         if (!BCRYPT_SUCCESS(BCryptHashData(hash, reinterpret_cast<PUCHAR>(buffer.data()), got, 0))) {
             ok = false;
-            result = fail(ErrorCode::Unknown, L"SHA-256 update failed", file.wstring());
+            result = fail(ErrorCode::Unknown, L"hash update failed", file.wstring());
             break;
         }
         done += got;
@@ -71,10 +74,10 @@ Result<std::wstring> sha256File(const std::filesystem::path& file, const TaskCon
         ok = false;
         result = fail(ErrorCode::IoError, L"read error while hashing", file.wstring());
     }
-    std::array<UCHAR, 32> digest{};
+    std::array<UCHAR, N> digest{};
     if (ok && !BCRYPT_SUCCESS(BCryptFinishHash(hash, digest.data(), static_cast<ULONG>(digest.size()), 0))) {
         ok = false;
-        result = fail(ErrorCode::Unknown, L"SHA-256 finish failed", file.wstring());
+        result = fail(ErrorCode::Unknown, L"hash finish failed", file.wstring());
     }
     if (ok) {
         result = hexLower(digest);
@@ -82,6 +85,16 @@ Result<std::wstring> sha256File(const std::filesystem::path& file, const TaskCon
     BCryptDestroyHash(hash);
     BCryptCloseAlgorithmProvider(alg, 0);
     return result;
+}
+
+} // namespace
+
+Result<std::wstring> sha256File(const std::filesystem::path& file, const TaskContext& task) {
+    return hashFile<32>(file, BCRYPT_SHA256_ALGORITHM, task);
+}
+
+Result<std::wstring> sha1File(const std::filesystem::path& file, const TaskContext& task) {
+    return hashFile<20>(file, BCRYPT_SHA1_ALGORITHM, task);
 }
 
 } // namespace wl::core

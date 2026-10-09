@@ -32,6 +32,7 @@
 #include "app/controllers/TaskController.h"
 #include "app/controllers/PreloadController.h"
 #include "app/controllers/UpdateCatalogController.h"
+#include "app/controllers/WindowsDownloadController.h"
 #include "app/controllers/PresetController.h"
 #include "app/pages/PageInfo.h"
 #include "app/shell/NavRail.h"
@@ -130,6 +131,7 @@ public:
     StartPinsController& taskbarPinsForDemo() { return *m_taskbarPins; }
     class IconsPage* iconsPageForDemo() const;
     class StartMenuPage* startMenuPageForDemo() const;
+    class DownloadPage* downloadPageForDemo() const { return downloadPage(); }
     // "Paket yükle…": a menu under the action — an archive (.7z / .zip, 7TSP or WinLove layout) or a folder.
     void showIconPackMenu(ui::RectF anchor);
     void loadIconPack(bool archive);
@@ -156,6 +158,9 @@ public:
     void showToast(ui::InfoKind kind, std::wstring title, std::wstring message);
     // A toast with "Geri al": undoes the queue change it reports.
     void showUndoToast(std::wstring title, std::wstring message);
+    // A toast with an action of its own ("Aç"), kept a little longer.
+    void showActionToast(ui::InfoKind kind, std::wstring title, std::wstring message, std::wstring action,
+                         std::function<void()> onAction);
 
     // ---- sources --------------------------------------------------------------------------
     // `then` runs after a successful open (e.g. --mount=N after a UAC relaunch).
@@ -243,6 +248,7 @@ private:
     void updateComponentInspector();
     void loadPreset();
     [[nodiscard]] UpdatesPage* updatesPage() const;
+    [[nodiscard]] class DownloadPage* downloadPage() const;
     void addUpdates(const std::vector<std::filesystem::path>& files);
     void findUpdates(); // D-046: Microsoft Update Catalog → check list → download → queue
     [[nodiscard]] DriversPage* driversPage() const;
@@ -336,6 +342,7 @@ private:
     std::unique_ptr<ApplyController> m_apply;
     std::unique_ptr<IsoController> m_iso;
     std::unique_ptr<UpdateCatalogController> m_updateCatalog;
+    std::unique_ptr<WindowsDownloadController> m_windowsDownload; // D-093
     std::unique_ptr<TaskController> m_tasks;   // D-048
     std::unique_ptr<HostsController> m_hosts;  // D-049
     std::unique_ptr<BrandingController> m_branding; // D-056

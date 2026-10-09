@@ -36,6 +36,7 @@ add_library(wl_app STATIC
     pages/icons/IconFilesView.cpp
     controllers/StoreController.cpp
     controllers/UpdateCatalogController.cpp
+    controllers/WindowsDownloadController.cpp
     ApplyReport.cpp
     Format.cpp
     Localization.cpp
@@ -84,6 +85,7 @@ add_library(wl_app STATIC
     pages/TweaksPage.cpp
     pages/UnattendedPage.cpp
     pages/UpdatesPage.cpp
+    pages/DownloadPage.cpp
     pages/TasksPage.cpp
     pages/HostsPage.cpp
     pages/BrandingPage.cpp

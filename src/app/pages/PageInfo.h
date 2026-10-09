@@ -13,6 +13,7 @@ namespace wl::app {
 
 enum class PageId : std::uint8_t {
     Source,
+    Download, // D-093 Windows indir
     Images,
     Components,
     Apps, // D-050 / D-054

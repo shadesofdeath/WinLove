@@ -11,6 +11,8 @@ namespace wl::core {
 
 // SHA-256 of a file as lowercase hex, with progress; cancellable.
 [[nodiscard]] Result<std::wstring> sha256File(const std::filesystem::path& file, const TaskContext& task);
+// SHA-1 the same way: what older UUP sets publish (D-093).
+[[nodiscard]] Result<std::wstring> sha1File(const std::filesystem::path& file, const TaskContext& task);
 
 // What a pasted hash says, lower-case hex like sha256File: hex digits only (spaces, dashes, "SHA256:" and case ignored); empty
 // when it is not 64 hex digits.

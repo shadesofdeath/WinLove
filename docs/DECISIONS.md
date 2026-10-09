@@ -241,6 +241,38 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-093 — Windows indir: UUP'tan ISO, kendi dönüştürücümüzle (2026-10-09)
+Bağlam: Kullanıcı Microsoft'tan ISO indirmeyi istedi. Önce Microsoft'un sitesi denendi: API'si otomatik istekleri
+"Sentinel" ile reddediyor (Fido'nun yaptığı gibi tarayıcı parmak izi taklidi bot korumasını aşmak olur, yapılmadı).
+Media Creation Tool'un `products.cab` adresi (fwlink 2156292) 24H2'de kalmış. Download Center 25H2'nin `products.xml`'ini
+veriyor. Güncel MCT (`SetupPrep.exe` 26100.7019) kataloğu artık Windows Update'in meta veri servisinden alıyor
+(`SetupMgr.dll` → `DownloadProductsCabFromDCAT`, `udiapi.dll` → `fe3.delivery.mp.microsoft.com`; MCT'nin gömülü
+CAB'i açılarak bakıldı). Kullanıcı UUP API'sini önerdi; iki yol karşılaştırıldı (ESD kataloğu: tek dosya, hızlı ama yalnız
+güncel sürüm, adresi gizli; UUP: her sürüm, son yama dahil ama parçalı). Kullanıcı "mantık olarak hangisi" diye sordu,
+UUP önerildi.
+Karar:
+- **Liste UUP dump'tan** (`api.uupdump.net`: listid / listlangs / listeditions / get), **dosyalar Microsoft'tan**:
+  yalnız `trustedUupUrl` sunucuları (D-061'deki kontrol), her dosya SHA-256'sıyla (yoksa SHA-1) doğrulanır. Linkler
+  ~15 dakikada sona eriyor (HTTP 403): indirici linkleri yeniden ister, `.part` kaldığı yerden sürer, 4 bağlantı.
+  `get.php` farklı bir set için 10 sn'de bir yanıt veriyor (`USER_RATE_LIMITED`): bir kez beklenip yeniden denenir.
+- **Dönüştürücü kendi kodumuz** (`core/uup/UupConvert`, wimlib yok): uup-converter-wimlib'in (abbodi1406) adımları
+  kaynaktan çıkarıldı, wimgapi + DISM ile yapıldı. Metadata ESD'nin 3. imajı yalnız dosya listesi; dosyalar paket
+  ESD'lerinde ve `update.mum`'lu FOD CAB'lerinde. CAB'ler açılıp ACL'siz referans WIM'e yakalanır (`captureReference`:
+  `WIM_FLAG_NO_DIRACL | NO_FILEACL | NO_RP_FIX`; yine de SeBackupPrivilege ister → yönetici), sonra
+  `exportImageWithReferences` (WIMSetReferenceFile farklı GUID'li dosyaları da kabul ediyor; ölçüldü: wimlib 2,97 GB,
+  wimgapi 3,0 GB, aynı imaj). WinRE (2. imaj) her sürüme `Winre.wim` olarak girer; `boot.wim` WinRE'den kurulur
+  (1: "Microsoft Windows PE" FLAGS 9, `SystemRoot` / `InstRoot` = `X:\$windows.~bt`; 2: "Microsoft Windows Setup"
+  FLAGS 2, `X:\setup.exe` + Setup'ın `sources` dosya listesi; ikisinde de `winpeshl.ini` silinir, `CustomBackground`,
+  `CustomShell` silinir; önyükleme imajı 2).
+- **Güncellemeler** (isteğe bağlı, varsayılan açık): rolü dosya adından değil **içerikten** (expand.exe `update.mum` +
+  dosya listesi). Her `update.mum` bir "ServicingStack" adı taşıyor; SSU yalnız `-servicingstack_` manifesti olan pakettir.
+  Sıra: Edge (`dism /Add-Edge`), SSU, enablement + .NET + diğer, en yeni LCU MSU'su (checkpoint aynı klasörde, DISM
+  kendisi bulur), `StartComponentCleanup`. Setup DU medyanın `sources`'una (D-080'in kuralı), güncel Windows'tan
+  önyükleme yöneticisi. Mağaza uygulamaları ayrı ve parçalı (2.798 dosya), bu sürümde alınmıyor.
+- Arayüz: İMAJ grubunda **Windows indir** sayfası (tablo + sağ panel). İndirme ağ iş parçacığında, dönüştürme motor
+  iş parçacığında. Başarıda set silinir (~9 GB), hatada kalır (sonraki deneme sürer). Bitince "ISO hazır · Aç" bildirimi.
+Doğrulanan: `wlcli uup convert --no-updates` 375 sn, 4,28 GB ISO; VM kurulumu (`uup1`) aşağıda STATUS'ta.
+
 ## D-092 — Yazı tipi ve simgeler: Inter / Geist / Segoe UI Variable, Lucide (2026-10-09)
 Bağlam: Kullanıcı IBM Plex'i ve tasarım paketinin simgelerini beğenmedi ("özensiz, çok daha kaliteli keskin güzel ikonlar").
 Simgeler 1,25 çizgiyle çiziliyordu; %175'te 2,19 piksel, kenarlar bulanık. Tasarım paketi (`WinLove-UI-Handoff`) salt
