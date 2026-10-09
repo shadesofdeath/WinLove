@@ -158,6 +158,8 @@ public:
     void showToast(ui::InfoKind kind, std::wstring title, std::wstring message);
     // A toast with "Geri al": undoes the queue change it reports.
     void showUndoToast(std::wstring title, std::wstring message);
+    // D-095: Programlar › "Bu bilgisayardan al".
+    void takeProgramsFromThisPc();
     // A toast with an action of its own ("Aç"), kept a little longer.
     void showActionToast(ui::InfoKind kind, std::wstring title, std::wstring message, std::wstring action,
                          std::function<void()> onAction);

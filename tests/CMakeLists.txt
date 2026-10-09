@@ -31,6 +31,7 @@ add_executable(wl_tests
     core/UupCatalogTests.cpp
     core/UupConvertTests.cpp
     core/UupAppsTests.cpp
+    core/InstalledProgramsTests.cpp
     core/LanguageFilesTests.cpp
     core/MsStoreTests.cpp
     core/UsbMediaTests.cpp

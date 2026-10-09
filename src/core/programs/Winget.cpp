@@ -311,6 +311,49 @@ std::optional<WingetPackage> WingetIndex::find(std::wstring_view id) const {
     return packageFrom(q.get());
 }
 
+std::vector<WingetPackage> WingetIndex::byProductCode(std::wstring_view code) const {
+    std::vector<WingetPackage> out;
+    Statement q(m_db, "SELECT DISTINCT p.id, p.name, p.moniker, p.latest_version FROM packages p "
+                      "JOIN productcodes2 c ON c.package = p.rowid WHERE c.productcode = ?1 LIMIT 8");
+    if (!q || code.empty()) {
+        return out;
+    }
+    q.bind(1, lowerAscii(utf8::fromWide(std::wstring(code))));
+    while (q.step()) {
+        out.push_back(packageFrom(q.get()));
+    }
+    return out;
+}
+
+std::vector<std::pair<WingetPackage, bool>> WingetIndex::byNormalizedName(std::span<const std::wstring> normNames,
+                                                                          std::wstring_view normPublisher) const {
+    std::vector<std::pair<WingetPackage, bool>> out;
+    if (normNames.empty()) {
+        return out;
+    }
+    std::string placeholders;
+    for (std::size_t i = 0; i < normNames.size(); ++i) {
+        placeholders += i == 0 ? "?" : ",?";
+    }
+    const std::string sql =
+        "SELECT DISTINCT p.id, p.name, p.moniker, p.latest_version, "
+        "EXISTS(SELECT 1 FROM norm_publishers2 np WHERE np.package = p.rowid AND np.norm_publisher = ?) "
+        "FROM packages p JOIN norm_names2 n ON n.package = p.rowid WHERE n.norm_name IN (" + placeholders + ") LIMIT 16";
+    Statement q(m_db, sql.c_str());
+    if (!q) {
+        return out;
+    }
+    int at = 1;
+    q.bind(at++, utf8::fromWide(std::wstring(normPublisher)));
+    for (const auto& n : normNames) {
+        q.bind(at++, utf8::fromWide(n));
+    }
+    while (q.step()) {
+        out.emplace_back(packageFrom(q.get()), sqlite3_column_int64(q.get(), 4) != 0);
+    }
+    return out;
+}
+
 std::vector<WingetPackage> WingetIndex::tagged(std::span<const std::wstring> tags, std::size_t limit) const {
     std::vector<WingetPackage> out;
     if (tags.empty() || limit == 0) {

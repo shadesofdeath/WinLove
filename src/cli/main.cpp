@@ -6,6 +6,7 @@
 #include "base/Utf8.h"
 #include "base/Text.h"
 #include "core/iso/SecureBoot2023.h"
+#include "core/programs/InstalledPrograms.h"
 #include "core/uup/UupApps.h"
 #include "core/uup/UupCatalog.h"
 #include "core/uup/UupConvert.h"
@@ -2185,6 +2186,23 @@ Result<core::WingetIndex> openWingetIndex(const std::filesystem::path& cache, bo
     return core::WingetIndex::open(*path);
 }
 
+// D-095: the programs of this PC that winget has (what "Bu bilgisayardan al" offers).
+int cmdProgramsHere(const std::wstring& cache) {
+    auto index = openWingetIndex(wingetCache(cache), false);
+    print(L"\n");
+    if (!index) {
+        return reportError(index.error());
+    }
+    const auto installed = core::installedPrograms();
+    const auto matches = core::matchInstalled(*index, installed);
+    for (const auto& m : matches) {
+        print(std::format(L"  {:<40} {:<28} {}{}\n", m.package.id, m.installed.name.substr(0, 28), m.installed.version,
+                          m.byProductCode ? L"" : L"  (by name)"));
+    }
+    print(std::format(L"  {} of {} installed program(s) are in winget\n", matches.size(), installed.size()));
+    return 0;
+}
+
 int cmdProgramsIndex(const std::wstring& cache, bool refresh) {
     const auto started = std::chrono::steady_clock::now();
     auto index = openWingetIndex(wingetCache(cache), refresh);
@@ -3183,6 +3201,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"usb-write" && args.size() == 3) {
         return cmdUsbWrite(args[1], args[2], label, gpt, unattendFile, allowVirtual, yes);
+    }
+    if (command == L"programs-here" && args.size() == 1) {
+        return cmdProgramsHere(wingetCacheDir);
     }
     if (command == L"programs-index" && args.size() == 1) {
         return cmdProgramsIndex(wingetCacheDir, refreshIndex);

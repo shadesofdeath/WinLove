@@ -1413,7 +1413,16 @@
     "winDone": "{ok} program kuruldu",
     "winDoneWithErrors": "{ok} program kuruldu, {failed} kurulamadı",
     "winClose": "Kapat",
-    "winHint": "Pencereyi kapatırsan kalanlar bir sonraki oturumda kurulur."
+    "winHint": "Pencereyi kapatırsan kalanlar bir sonraki oturumda kurulur.",
+    "fromThisPc": "Bu bilgisayardan al",
+    "fromThisPcTitle": "Bu bilgisayardaki programlar",
+    "fromThisPcBody": "Bu bilgisayarda kurulu {n} program winget'te var. Açık olanlar yeni Windows'a ilk oturumda kurulur.",
+    "fromThisPcPrograms": "Programlar",
+    "fromThisPcRuntimes": "Çalışma zamanları",
+    "fromThisPcPicked": "Zaten listede",
+    "fromThisPcAdded": "{n} program listeye eklendi",
+    "fromThisPcNone": "Bu bilgisayarda winget'te olan program bulunamadı",
+    "fromThisPcWait": "winget dizini hazırlanıyor; birazdan tekrar dene"
   },
   "apps": {
     "title": "Uygulamalar",
