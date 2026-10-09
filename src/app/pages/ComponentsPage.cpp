@@ -34,7 +34,7 @@ ComponentsPage::ComponentsPage(AppState& state, ComponentController& controller,
       m_goToImages(std::move(goToImages)) {
     m_search = &add<ui::SearchBox>(strings.get(Str::ComponentsSearch), std::vector<std::wstring>{L"/"});
     m_search->onChange = [this](const std::wstring& text) {
-        m_needle = wl::text::lower(text);
+        m_needle = wl::text::fold(text);
         rebuildRows();
     };
     m_category = &add<ui::Dropdown>(strings.get(Str::ComponentsCategory), std::vector<std::wstring>{strings.get(Str::CommonAll)}, 0);
@@ -242,8 +242,8 @@ bool ComponentsPage::itemVisible(const Item& item) const {
     if (m_riskFilter > 0 && static_cast<int>(item.risk) != m_riskFilter - 1) {
         return false;
     }
-    if (!m_needle.empty() && wl::text::lower(item.name).find(m_needle) == std::wstring::npos &&
-        wl::text::lower(item.identity).find(m_needle) == std::wstring::npos) {
+    if (!m_needle.empty() && wl::text::fold(item.name).find(m_needle) == std::wstring::npos &&
+        wl::text::fold(item.identity).find(m_needle) == std::wstring::npos) {
         return false;
     }
     return true;
@@ -418,7 +418,7 @@ void ComponentsPage::paintCell(ui::Canvas& canvas, int row, int column, RectF re
         x += ui::tokens::size::icon + 6;
         const std::wstring& name = isGroup ? group.name : item->name;
         if (!isGroup && !m_needle.empty()) {
-            const auto at = wl::text::lower(name).find(m_needle);
+            const auto at = wl::text::fold(name).find(m_needle);
             if (at != std::wstring::npos) {
                 const float x0 = x + canvas.text().measure(std::wstring_view(name).substr(0, at), TypeStyle::Body);
                 const float x1 = x + canvas.text().measure(std::wstring_view(name).substr(0, at + m_needle.size()), TypeStyle::Body);

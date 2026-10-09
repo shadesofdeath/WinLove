@@ -48,7 +48,7 @@ public:
     std::function<void(const std::wstring& relative)> onSelect;
 
     void setFilter(const std::wstring& filter) {
-        m_filter = text::lower(filter);
+        m_filter = text::fold(filter);
         rebuild();
     }
     void setSelected(const std::wstring& relative) {
@@ -60,7 +60,7 @@ public:
         m_rows.clear();
         const auto& files = m_controller.files();
         for (std::size_t i = 0; i < files.size(); ++i) {
-            if (m_filter.empty() || text::lower(files[i].name).find(m_filter) != std::wstring::npos) {
+            if (m_filter.empty() || text::fold(files[i].name).find(m_filter) != std::wstring::npos) {
                 m_rows.push_back(i);
             }
         }

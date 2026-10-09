@@ -1,5 +1,6 @@
 #include "ui/widgets/Dropdown.h"
 
+#include "base/Text.h"
 #include "ui/anim/Tween.h"
 #include "ui/widget/Host.h"
 
@@ -250,13 +251,11 @@ bool MenuPopup::onChar(wchar_t ch) {
         m_typed.clear();
     }
     m_typedAt = now;
-    m_typed.push_back(static_cast<wchar_t>(std::towlower(ch)));
+    m_typed += wl::text::fold(std::wstring_view(&ch, 1)); // "ş" finds "Şeffaflık", "i" finds "İngilizce"
     const int count = static_cast<int>(m_items.size());
     for (int i = 0; i < count; ++i) {
         const auto& item = m_items[static_cast<std::size_t>(i)];
-        if (item.size() >= m_typed.size() &&
-            std::equal(m_typed.begin(), m_typed.end(), item.begin(),
-                       [](wchar_t a, wchar_t b) { return a == static_cast<wchar_t>(std::towlower(b)); })) {
+        if (item.size() >= m_typed.size() && wl::text::fold(item).starts_with(m_typed)) {
             m_hover = i;
             reveal(i);
             invalidate();

@@ -1,6 +1,7 @@
 // P18: search folding, match ranks, and what the palette index finds in which state.
 #include "app/shell/CommandPalette.h"
 #include "app/shell/PaletteIndex.h"
+#include "base/Text.h"
 #include "support/TestGraphics.h"
 #include "ui/widget/Host.h"
 
@@ -111,12 +112,12 @@ bool hasCommand(const PaletteResults& found, PaletteCommand command) {
 } // namespace
 
 TEST_CASE("palette folding: one character per character, Turkish letters find their plain spelling") {
-    CHECK(foldForSearch(L"WINDOWS") == L"windows");
-    CHECK(foldForSearch(L"wındows") == L"windows");
-    CHECK(foldForSearch(L"İŞIK") == L"isik");
-    CHECK(foldForSearch(L"Güncellemeler") == L"guncellemeler");
-    CHECK(foldForSearch(L"Çöğüş — Ünite").size() == std::wstring(L"Çöğüş — Ünite").size());
-    CHECK(foldForSearch(L"").empty());
+    CHECK(wl::text::fold(L"WINDOWS") == L"windows");
+    CHECK(wl::text::fold(L"wındows") == L"windows");
+    CHECK(wl::text::fold(L"İŞIK") == L"isik");
+    CHECK(wl::text::fold(L"Güncellemeler") == L"guncellemeler");
+    CHECK(wl::text::fold(L"Çöğüş — Ünite").size() == std::wstring(L"Çöğüş — Ünite").size());
+    CHECK(wl::text::fold(L"").empty());
 }
 
 TEST_CASE("palette match: start of the name, start of a word, inside a word, words apart, extra text") {

@@ -1,5 +1,6 @@
 #include "base/Log.h"
 #include "base/Result.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 
 #include <doctest.h>
@@ -61,4 +62,16 @@ TEST_CASE("RingBufferSink::since returns only new entries, oldest first, also af
     auto third = sink.since(version);
     REQUIRE(third.size() == 1);
     CHECK(third[0].message == L"8");
+}
+
+TEST_CASE("text::fold: what a person types finds Turkish names (audit D2)") {
+    using wl::text::fold;
+    CHECK(fold(L"Çalışma Klasörleri").find(fold(L"çalışma")) == 0);
+    CHECK(fold(L"Çalışma Klasörleri").find(fold(L"calisma")) == 0);
+    CHECK(fold(L"İnternet Explorer") == fold(L"internet explorer"));
+    CHECK(fold(L"WINDOWS") == fold(L"wındows"));
+    CHECK(fold(L"Güncelleştirmeler").find(fold(L"GUNCELLESTIR")) == 0);
+    CHECK(fold(L"ŞEFFAFLIK") == L"seffaflik");
+    CHECK(fold(L"Défense Ελληνικά").find(L"ελληνικά") != std::wstring::npos); // other scripts too
+    CHECK(fold(L"İnternet").size() == std::wstring(L"İnternet").size());  // positions still mark the original
 }

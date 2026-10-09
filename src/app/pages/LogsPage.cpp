@@ -30,7 +30,7 @@ LogsPage::LogsPage(AppState& state, const Localization& strings, Language langua
     : m_state(state), m_strings(strings), m_language(language) {
     m_search = &add<ui::SearchBox>(strings.get(Str::LogsSearchLog), std::vector<std::wstring>{L"Ctrl", L"F"});
     m_search->onChange = [this](const std::wstring& text) {
-        m_needle = wl::text::lower(text);
+        m_needle = wl::text::fold(text);
         m_console->setHighlight(text);
         rebuild();
     };
@@ -104,7 +104,7 @@ bool LogsPage::passes(const log::Entry& entry) const {
     if (!m_source.empty() && entry.source != m_source) {
         return false;
     }
-    return m_needle.empty() || wl::text::lower(entry.message).find(m_needle) != std::wstring::npos;
+    return m_needle.empty() || wl::text::fold(entry.message).find(m_needle) != std::wstring::npos;
 }
 
 void LogsPage::updateSources() {

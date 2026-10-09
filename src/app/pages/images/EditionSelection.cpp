@@ -10,11 +10,11 @@ bool EditionFilter::matches(const core::ImageInfo& image) const {
     if (!arch.empty() && std::wstring_view(core::architectureName(image.architecture)) != arch) {
         return false;
     }
-    const std::wstring needle = wl::text::lower(text);
+    const std::wstring needle = wl::text::fold(text);
     if (needle.find_first_not_of(L' ') == std::wstring::npos) {
         return true;
     }
-    const std::wstring hay = wl::text::lower(image.name + L"\n" + image.displayName + L"\n" + image.editionId + L"\n" + image.description +
+    const std::wstring hay = wl::text::fold(image.name + L"\n" + image.displayName + L"\n" + image.editionId + L"\n" + image.description +
                                      L"\n" + std::to_wstring(image.index));
     return hay.find(needle) != std::wstring::npos;
 }

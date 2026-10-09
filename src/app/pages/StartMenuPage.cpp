@@ -64,14 +64,14 @@ public:
         rebuild();
     }
     void setFilter(const std::wstring& filter) {
-        m_filter = text::lower(filter);
+        m_filter = text::fold(filter);
         rebuild();
     }
     void rebuild() {
         m_rows.clear();
         if (const auto* apps = m_pins->apps()) {
             for (std::size_t i = 0; i < apps->size(); ++i) {
-                if (m_filter.empty() || text::lower((*apps)[i].name).find(m_filter) != std::wstring::npos) {
+                if (m_filter.empty() || text::fold((*apps)[i].name).find(m_filter) != std::wstring::npos) {
                     m_rows.push_back(i);
                 }
             }

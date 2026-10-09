@@ -1,5 +1,7 @@
 #include "app/shell/CommandPalette.h"
 
+#include "base/Text.h"
+
 #include "ui/widget/Host.h"
 #include "ui/widgets/Kbd.h"
 
@@ -71,7 +73,7 @@ void CommandPalette::updateCompletion() {
     if (!m_query.empty() && m_selected >= 0 && m_selected < count()) {
         const std::wstring& name = itemAt(m_selected).name;
         if (name.size() > m_query.size() &&
-            foldForSearch(name).starts_with(foldForSearch(m_query))) {
+            wl::text::fold(name).starts_with(wl::text::fold(m_query))) {
             rest = name.substr(m_query.size());
         }
     }

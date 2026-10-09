@@ -56,7 +56,7 @@ ServicesPage::ServicesPage(AppState& state, ServiceController& controller, const
       m_intents(std::move(intents)) {
     m_search = &add<ui::SearchBox>(strings.get(Str::ServicesSearch), std::vector<std::wstring>{L"/"});
     m_search->onChange = [this](const std::wstring& text) {
-        m_needle = wl::text::lower(text);
+        m_needle = wl::text::fold(text);
         refilter();
     };
     std::vector<std::wstring> filters{strings.get(Str::CommonAll)};
@@ -201,8 +201,8 @@ void ServicesPage::refilter() {
             if (!matchesFilter(m_controller.target(s), m_startFilter)) {
                 continue;
             }
-            if (!m_needle.empty() && wl::text::lower(s.displayName).find(m_needle) == std::wstring::npos &&
-                wl::text::lower(s.name).find(m_needle) == std::wstring::npos) {
+            if (!m_needle.empty() && wl::text::fold(s.displayName).find(m_needle) == std::wstring::npos &&
+                wl::text::fold(s.name).find(m_needle) == std::wstring::npos) {
                 continue;
             }
             m_rows.push_back(static_cast<int>(i));
