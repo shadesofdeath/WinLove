@@ -53,6 +53,7 @@ add_library(wl_core STATIC
     io/ByteSource.cpp
     iso/IsoBuilder.cpp
     iso/SecureBoot2023.cpp
+    iso/UnsupportedUpgrade.cpp
     net/Http.cpp
     ops/ApplyJob.cpp
     ops/Applier.cpp

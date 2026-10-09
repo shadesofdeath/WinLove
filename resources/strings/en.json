@@ -990,7 +990,7 @@
     "prompt": "Boot prompt",
     "noPrompt": "No \"Press any key to boot from CD\" prompt",
     "setupImage": "Setup image",
-    "bootBypass": "Also write the requirement bypasses into boot.wim",
+    "bootBypass": "Write the requirement bypasses into boot.wim too (+ in-place upgrade script)",
     "bootBypassNone": "No requirement check is switched off on the Unattended page",
     "bootBypassN": "{n} requirement check(s) bypassed",
     "bootUntouched": "unchanged",

@@ -3,6 +3,7 @@
 #include "base/Text.h"
 
 #include "core/iso/SecureBoot2023.h"
+#include "core/iso/UnsupportedUpgrade.h"
 
 #include "app/controllers/UnattendController.h"
 #include "base/Log.h"
@@ -279,6 +280,12 @@ void IsoController::start(Request request) {
             options.writeSha256 = request.sha256;
             if (!answerFile.empty()) {
                 options.rootFiles.push_back({L"autounattend.xml", answerFile});
+            }
+            // D-097: the requirement bypasses also cover an in-place upgrade — a script on the
+            // media the user runs in place of setup.exe (boot.wim's LabConfig reaches only a clean
+            // install). Written whenever boot.wim's bypass is.
+            if (!boot.empty() && !boot.labConfigValues().empty()) {
+                options.rootFiles.push_back({core::unsupportedUpgradeName(), core::unsupportedUpgradeCmd()});
             }
             // Setup's own image: patched in a copy, so the setup folder keeps the file it has and
             // the next build starts from that again (nothing to undo when the box is cleared).
