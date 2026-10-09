@@ -295,3 +295,18 @@ Uygulama davranışı:
   WPF bir PowerShell betiğinde: `Start-Sleep`'li bekleme döngüsü animasyonları ve fare olaylarını kesiyor; bekleme
   `DispatcherFrame` + `DispatcherTimer` ile (dispatcher hiç uyumaz). Kurulumun specialize geçişinde (SYSTEM, grafik sürücüsü
   yok) `Add-Type` ile WPF'e başvuran C# derlenir ve `CompositionTarget.Rendering` çalışır (VM u3).
+- [2026-10-09] [UUP, D-093] Bir sürümün metadata ESD'si (`professional_tr-tr.esd`): 1 = kurulum medyası, 2 = WinRE,
+  3 = sürüm, ama yalnız dosya listesi; dosyalar paket ESD'lerinde ve `update.mum`'lu FOD CAB'lerinde. wimgapi
+  `WIMSetReferenceFile` farklı GUID'li ESD'leri de referans alıyor; CAB'ler açılıp ACL'siz yakalanınca referans olur
+  (`WIM_FLAG_NO_DIRACL|NO_FILEACL|NO_RP_FIX` ile bile SeBackupPrivilege istiyor: 0x80070522 yönetici olmayınca).
+  Yalnız ESD'lerle dışa aktarma 0x80070714 (Media Player manifesti gibi CAB'deki bloblar eksik). UUP dump linkleri
+  ~15 dk'da 403 veriyor; `get.php` linkli istek 10 sn'de bir farklı set için (`USER_RATE_LIMITED`). Her `update.mum`
+  "ServicingStack" geçiyor: SSU yalnız dosya listesindeki `-servicingstack_` manifestinden tanınır. 26300.9550 seti:
+  Edge + enablement + .NET + checkpoint/LCU MSU'su DISM API ile ~8 dk; LZMS'e sıkıştırma ~11 GB bellek, ~10 dk.
+  Mağaza uygulamaları ayrı: `AggregatedMetadata.cab` → `DesktopTargetCompDB_App_Neutral.xml.cab` (CAB içinde CAB),
+  her paketin `PayloadHash`'i base64 SHA-256; bundle 8 KB'lık "düz" bundle, paketleri yanında ister. Windows 10'un tam
+  setleri "Feature update to Windows 10, version 22H2" adıyla listelenir, uygulamalar `Microsoft.ModernApps.*.esd`
+  referanslarıyla imajın içinde.
+- [2026-10-09] [Secure Boot 2023, D-094] 25H2 ve 26100.1 `boot.wim` 1. imajında `Windows\Boot\EFI_EX`, `DVD_EX`,
+  `Fonts_EX` var (Win10 19041.3636'da yok). `bootmgfw_EX.efi` Windows UEFI CA 2023'e, `bootmgr_EX.efi` hâlâ PCA 2011'e
+  zincirleniyor. `efisys_EX.bin` El Torito UEFI imajı olarak verilince ISO'nun `bootx64.efi`'si 2023 zinciri gösterdi.
