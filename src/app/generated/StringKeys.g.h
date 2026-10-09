@@ -897,6 +897,13 @@ enum class Str : std::uint16_t {
     NavExpand,
     NavFeatures,
     NavFiles,
+    NavGroup0,
+    NavGroup1,
+    NavGroup2,
+    NavGroup3,
+    NavGroup4,
+    NavGroup5,
+    NavGroupFold,
     NavHosts,
     NavIcons,
     NavImages,
@@ -1634,7 +1641,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1624;
+inline constexpr std::size_t kStrCount = 1631;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -2526,6 +2533,13 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "nav.expand",
     "nav.features",
     "nav.files",
+    "nav.group0",
+    "nav.group1",
+    "nav.group2",
+    "nav.group3",
+    "nav.group4",
+    "nav.group5",
+    "nav.groupFold",
     "nav.hosts",
     "nav.icons",
     "nav.images",

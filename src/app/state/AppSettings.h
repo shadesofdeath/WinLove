@@ -15,11 +15,19 @@
 namespace wl::app {
 
 enum class ThemeChoice : std::uint8_t { Dark, Light, HighContrast, System };
+// How large the interface is drawn, on top of the monitor's DPI (P16 "yoğunluk"): compact is the
+// design's 24px rows; the others scale everything, for big screens or tired eyes.
+enum class Density : std::uint8_t { Compact, Comfortable, Large };
+[[nodiscard]] constexpr float densityScale(Density d) noexcept {
+    return d == Density::Large ? 1.25f : d == Density::Comfortable ? 1.125f : 1.0f;
+}
 
 struct AppSettings {
     ThemeChoice theme = ThemeChoice::Dark;
     ui::Accent accent = ui::Accent::Copper;
     bool reduceMotion = false; // true: always; false: follow the Windows "show animations" setting
+    Density density = Density::Compact;
+    std::vector<int> closedNavGroups; // navigation groups folded away (PageInfo navGroup)
     Language language = Language::Turkish;
     std::filesystem::path workRoot = defaultWorkRoot();
     std::filesystem::path mountFolder; // empty: <workRoot>\mount

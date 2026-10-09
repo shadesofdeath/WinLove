@@ -72,6 +72,17 @@ AppSettings AppSettings::load(const std::filesystem::path& file) {
     if (const auto it = doc.find("reduceMotion"); it != doc.end() && it->is_boolean()) {
         settings.reduceMotion = it->get<bool>();
     }
+    const std::string density = text("density");
+    settings.density = density == "large"         ? Density::Large
+                       : density == "comfortable" ? Density::Comfortable
+                                                  : Density::Compact;
+    if (const auto it = doc.find("closedNavGroups"); it != doc.end() && it->is_array()) {
+        for (const auto& group : *it) {
+            if (group.is_number_integer() && group.get<int>() >= 0 && group.get<int>() < 16) {
+                settings.closedNavGroups.push_back(group.get<int>());
+            }
+        }
+    }
     if (const auto it = doc.find("guards"); it != doc.end() && it->is_array()) {
         std::vector<std::wstring> guards;
         for (const auto& id : *it) {
@@ -89,11 +100,14 @@ void AppSettings::save(const std::filesystem::path& file) const {
     std::filesystem::create_directories(file.parent_path(), ec);
     static constexpr const char* kThemes[] = {"dark", "light", "hc", "system"};
     static constexpr const char* kAccents[] = {"copper", "sea", "pomegranate", "sky", "olive"};
+    static constexpr const char* kDensities[] = {"compact", "comfortable", "large"};
     // Through a temporary file: a crash mid-write must not reset every setting to its default.
     nlohmann::json doc{{"version", 1},
                        {"theme", kThemes[static_cast<std::size_t>(theme)]},
                        {"accent", kAccents[static_cast<std::size_t>(accent)]},
                        {"reduceMotion", reduceMotion},
+                       {"density", kDensities[static_cast<std::size_t>(density)]},
+                       {"closedNavGroups", closedNavGroups},
                        {"language", language == Language::English ? "en" : "tr"},
                        {"workRoot", utf8::fromWide(workRoot.wstring())},
                        {"mountFolder", utf8::fromWide(mountFolder.wstring())},

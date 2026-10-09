@@ -1,8 +1,10 @@
 #pragma once
 // Navigation rail per 03_components/navigation-rail.md: 200 / 44 wide, groups separated by
 // 1px line.subtle, 24px items (icon 16, label, mono badge), active item bg.raised inset 4 + 2×12
-// accent bar, footer "Daralt · Ctrl B". Keyboard: the rail is one Tab stop (the active item);
-// ↑↓ move, Enter/Space select (roving focus). When the items outgrow the rail (short windows)
+// accent bar, footer "Daralt · Ctrl B". D-091: each group has a small header (section type) that
+// folds it away; a folded group keeps its active page and shows its badges summed on the header.
+// Collapsed to 44, the headers are the old separators and every item is there.
+// Keyboard: the rail is one Tab stop (the active item); ↑↓ move, Enter/Space select (roving focus). When the items outgrow the rail (short windows)
 // they scroll under the wheel above the pinned footer, with an overlay ScrollBar.
 #include "app/pages/PageInfo.h"
 #include "ui/anim/Tween.h"
@@ -24,7 +26,9 @@ public:
 
     [[nodiscard]] PageId page() const noexcept { return m_page; }
     void setActive(bool active);
+    [[nodiscard]] bool active() const noexcept { return m_active; }
     void setBadge(int count);
+    [[nodiscard]] int badge() const noexcept { return m_badge; }
     void setCollapsedTooltip(bool collapsed);
 
     void paint(ui::Canvas& canvas) override;
@@ -40,6 +44,22 @@ private:
     ui::icons::Icon m_icon;
     int m_badge = 0;
     bool m_active = false;
+};
+
+class NavGroupHeader : public ui::Widget {
+public:
+    NavGroupHeader(NavRail& rail, int group, std::wstring label, std::wstring tooltip);
+    [[nodiscard]] int group() const noexcept { return m_group; }
+    void setBadge(int count) { m_badge = count; }
+    void paint(ui::Canvas& canvas) override;
+    void onClick() override;
+    bool onKeyDown(const ui::KeyEvent& key) override;
+
+private:
+    NavRail& m_rail;
+    int m_group;
+    std::wstring m_label;
+    int m_badge = 0;
 };
 
 class NavFooter : public ui::Widget {
@@ -70,8 +90,11 @@ public:
 
     std::function<void(PageId)> onSelect;
     std::function<void()> onToggleCollapse;
+    std::function<void(int group)> onToggleGroup; // a header was clicked: fold or unfold its group
 
     void setActive(PageId page);
+    void setClosedGroups(std::vector<int> groups);
+    [[nodiscard]] bool groupClosed(int group) const;
     void setBadge(PageId page, int count);
     // 0 = fully collapsed (44), 1 = fully expanded (200); drives label fade during the animation.
     void setExpansion(float amount);
@@ -91,6 +114,8 @@ private:
     friend class NavList;
     NavList* m_list = nullptr;
     std::vector<NavItem*> m_items;
+    std::vector<NavGroupHeader*> m_headers;
+    std::vector<int> m_closed;
     std::vector<float> m_separators; // content y of group separators (before the scroll offset)
     NavFooter* m_footer = nullptr;
     ui::ScrollBar* m_scroll = nullptr;

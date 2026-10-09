@@ -1,5 +1,6 @@
 #include "app/pages/PageInfo.h"
 
+#include <algorithm>
 #include <array>
 
 namespace wl::app {
@@ -8,7 +9,8 @@ namespace {
 
 using ui::icons::Icon;
 
-// Order and groups follow the prototype nav (06_prototype NAV) and docs/ROADMAP.md step ids.
+// Order and groups follow the prototype nav (06_prototype NAV) and docs/ROADMAP.md step ids. Icons:
+// no two pages share a look (D-091: Güncellemeler / Programlar, Kaynak / Kişiselleştirme did).
 constexpr std::array<PageInfo, static_cast<std::size_t>(PageId::Count)> kPages = {{
     {PageId::Source, "source", Str::NavSource, Str::SourceTitle, Str::SourceDesc, Icon::Source, 0, "P01"},
     {PageId::Images, "images", Str::NavImages, Str::ImagesTitle, Str::ImagesDesc, Icon::LayersEditions, 0, "P02"},
@@ -16,7 +18,7 @@ constexpr std::array<PageInfo, static_cast<std::size_t>(PageId::Count)> kPages =
     {PageId::Apps, "apps", Str::NavApps, Str::AppsTitle, Str::AppsDesc, Icon::AppxPackage, 1, "D-050"},
     {PageId::Programs, "programs", Str::NavPrograms, Str::ProgramsTitle, Str::ProgramsDesc, Icon::Download, 1, "D-078"},
     {PageId::Features, "features", Str::NavFeatures, Str::FeaturesTitle, Str::FeaturesDesc, Icon::PuzzleFeatures, 1, "P04"},
-    {PageId::Updates, "updates", Str::NavUpdates, Str::UpdatesTitle, Str::UpdatesDesc, Icon::UpdateDownload, 1, "P08"},
+    {PageId::Updates, "updates", Str::NavUpdates, Str::UpdatesTitle, Str::UpdatesDesc, Icon::Refresh, 1, "P08"},
     {PageId::Languages, "languages", Str::NavLanguages, Str::LanguagesTitle, Str::LanguagesDesc, Icon::LanguageGlobe, 1, "D-053"},
     {PageId::Drivers, "drivers", Str::NavDrivers, Str::DriversTitle, Str::DriversDesc, Icon::DriverChip, 1, "P09"},
     {PageId::Registry, "registry", Str::NavRegistry, Str::RegistryTitle, Str::RegistryDesc, Icon::Registry, 2, "P11"},
@@ -25,8 +27,8 @@ constexpr std::array<PageInfo, static_cast<std::size_t>(PageId::Count)> kPages =
     {PageId::Tweaks, "tweaks", Str::NavTweaks, Str::TweaksTitle, Str::TweaksDesc, Icon::TweaksSliders, 2, "P12"},
     {PageId::StartMenu, "startmenu", Str::NavStartmenu, Str::StartmenuTitle, Str::StartmenuDesc, Icon::Pin, 2, "D-069"},
     {PageId::Hosts, "hosts", Str::NavHosts, Str::HostsTitle, Str::HostsDesc, Icon::Network, 2, "D-049"},
-    {PageId::Branding, "branding", Str::NavBranding, Str::BrandingTitle, Str::BrandingDesc, Icon::WindowsLogoGeneric, 2, "D-056"},
-    {PageId::Icons, "icons", Str::NavIcons, Str::IconsTitle, Str::IconsDesc, Icon::DensityComfortable, 2, "D-065"},
+    {PageId::Branding, "branding", Str::NavBranding, Str::BrandingTitle, Str::BrandingDesc, Icon::ImageWim, 2, "D-056"},
+    {PageId::Icons, "icons", Str::NavIcons, Str::IconsTitle, Str::IconsDesc, Icon::DragHandle, 2, "D-065"},
     {PageId::Unattended, "unattended", Str::NavUnattended, Str::UnattendedTitle, Str::UnattendedDesc, Icon::UnattendedRobot, 3, "P13"},
     {PageId::PostSetup, "postsetup", Str::NavPostsetup, Str::PostsetupTitle, Str::PostsetupDesc, Icon::PostSetupRocket, 3, "P14"},
     {PageId::Files, "files", Str::NavFiles, Str::FilesTitle, Str::FilesDesc, Icon::Folder, 3, "D-051"},
@@ -40,6 +42,12 @@ constexpr std::array<PageInfo, static_cast<std::size_t>(PageId::Count)> kPages =
 }};
 
 } // namespace
+
+Str navGroupLabel(int group) noexcept {
+    static constexpr std::array<Str, kNavGroups> kGroups = {Str::NavGroup0, Str::NavGroup1, Str::NavGroup2,
+                                                           Str::NavGroup3, Str::NavGroup4, Str::NavGroup5};
+    return kGroups[static_cast<std::size_t>(std::clamp(group, 0, kNavGroups - 1))];
+}
 
 std::span<const PageInfo> allPages() noexcept {
     return kPages;

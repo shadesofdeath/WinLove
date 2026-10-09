@@ -54,6 +54,9 @@ struct PageInfo {
 };
 
 [[nodiscard]] std::span<const PageInfo> allPages() noexcept;
+// The nav rail's group headers (navGroup 0…kNavGroups-1).
+inline constexpr int kNavGroups = 6;
+[[nodiscard]] Str navGroupLabel(int group) noexcept;
 [[nodiscard]] const PageInfo& pageInfo(PageId id) noexcept;
 [[nodiscard]] std::optional<PageId> pageFromKey(std::string_view key) noexcept;
 

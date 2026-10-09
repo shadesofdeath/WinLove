@@ -30,7 +30,14 @@
     "languages": "Diller",
     "branding": "Kişiselleştirme",
     "icons": "Simgeler",
-    "startmenu": "Başlat menüsü"
+    "startmenu": "Başlat menüsü",
+    "group0": "İmaj",
+    "group1": "İçerik",
+    "group2": "Sistem ve görünüm",
+    "group3": "Kurulum",
+    "group4": "Çıktı",
+    "group5": "WinLove",
+    "groupFold": "Grubu daralt / aç"
   },
   "title": {
     "cmdk": "Komut, sayfa veya bileşen ara",
@@ -40,7 +47,7 @@
     "close": "Kapat"
   },
   "status": {
-    "mounted": "Mounted",
+    "mounted": "Bağlı",
     "noMount": "Bağlı imaj yok",
     "image": "İmaj",
     "apply": "Uygula",
