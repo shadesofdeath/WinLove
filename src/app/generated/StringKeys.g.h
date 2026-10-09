@@ -1015,6 +1015,7 @@ enum class Str : std::uint16_t {
     PostsetupAddApp,
     PostsetupAddCommand,
     PostsetupAddFile,
+    PostsetupAddPower,
     PostsetupAddWifi,
     PostsetupCatNetwork,
     PostsetupCatPower,
@@ -1045,6 +1046,9 @@ enum class Str : std::uint16_t {
     PostsetupPickTitle,
     PostsetupPopular,
     PostsetupPopularNone,
+    PostsetupPowerAdded,
+    PostsetupPowerFiles,
+    PostsetupPowerPick,
     PostsetupRunAt,
     PostsetupSetupComplete,
     PostsetupSourceCol,
@@ -1797,7 +1801,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1787;
+inline constexpr std::size_t kStrCount = 1791;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -2807,6 +2811,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "postsetup.addApp",
     "postsetup.addCommand",
     "postsetup.addFile",
+    "postsetup.addPower",
     "postsetup.addWifi",
     "postsetup.catNetwork",
     "postsetup.catPower",
@@ -2837,6 +2842,9 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "postsetup.pickTitle",
     "postsetup.popular",
     "postsetup.popularNone",
+    "postsetup.powerAdded",
+    "postsetup.powerFiles",
+    "postsetup.powerPick",
     "postsetup.runAt",
     "postsetup.setupComplete",
     "postsetup.sourceCol",

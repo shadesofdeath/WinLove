@@ -2,7 +2,13 @@
   "comment": "D-092: the app's icons are Lucide's (third_party/lucide, ISC), mapped onto the names of the design handoff (WinLove-UI-Handoff/02_icons) so the code keeps its Icon enum. 'keep' stays the handoff's own (window caption glyphs, the brand mark); 'extra' adds names the handoff does not have. tools/gen_icons.py reads this file.",
   "lucide": "1.54.0",
   "strokeWidth": 1.75,
-  "keep": ["brand-mark", "caption-close", "caption-maximize", "caption-minimize", "caption-restore"],
+  "keep": [
+    "brand-mark",
+    "caption-close",
+    "caption-maximize",
+    "caption-minimize",
+    "caption-restore"
+  ],
   "map": {
     "about-info": "info",
     "add": "plus",
@@ -122,6 +128,7 @@
     "icon-set": "shapes",
     "start-menu": "layout-grid",
     "workflow": "git-commit-horizontal",
-    "windows-download": "monitor-down"
+    "windows-download": "monitor-down",
+    "power": "power"
   }
 }

@@ -846,7 +846,11 @@
     "wifiSecurity": "Security",
     "wifiOpen": "Open (no password)",
     "wifiHidden": "Hidden network",
-    "wifiHiddenHint": "Does not broadcast its name"
+    "wifiHiddenHint": "Does not broadcast its name",
+    "addPower": "Add power plan",
+    "powerPick": "Choose a power plan (.pow)",
+    "powerFiles": "Power plan (*.pow)",
+    "powerAdded": "Power plan added: {name}"
   },
   "apply": {
     "title": "Apply",

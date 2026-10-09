@@ -39,6 +39,7 @@ StepDialog makeStepDialog(const Localization& strings, Step initial, bool editin
                       : initial.type == Step::Type::Winget   ? Str::PostsetupAddApp
                       : initial.type == Step::Type::Copy     ? Str::PostsetupAddFile
                       : initial.type == Step::Type::Wifi     ? Str::PostsetupAddWifi
+                      : initial.type == Step::Type::PowerPlan ? Str::PostsetupAddPower
                                                              : Str::PostsetupAddCommand;
     // Wi-Fi: where the key ends up is said up front.
     const std::wstring message = initial.type == Step::Type::Wifi ? s(Str::PostsetupWifiKeyHint) : std::wstring();
@@ -191,6 +192,12 @@ StepDialog makeStepDialog(const Localization& strings, Step initial, bool editin
             refresh();
         };
         focus = &ssid;
+        break;
+    }
+    case Step::Type::PowerPlan: {
+        text(Str::PostsetupName, &Step::name, std::nullopt);
+        source = &text(Str::PostsetupSourcePath, &Step::source, Str::PostsetupPowerPick);
+        focus = source;
         break;
     }
     case Step::Type::Command: {

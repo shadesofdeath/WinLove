@@ -52,6 +52,27 @@ TEST_CASE("post-setup: the plan survives the JSON round trip") {
     CHECK_FALSE(postSetupFromJson("{\"steps\":[{\"name\":5}]}"));
 }
 
+TEST_CASE("post-setup: a power plan is imported and made active (SYSTEM), its GUID checked (D-096)") {
+    PostSetupPlan plan;
+    plan.when = PostSetupPlan::When::FirstLogon; // a power plan is a machine step even so
+    plan.steps = {{Step::Type::PowerPlan, L"Ultimate", L"C:\\plans\\ultimate.pow", L"{11111111-2222-3333-4444-555555555555}", true}};
+    CHECK(validatePostSetup(plan).empty());
+    const auto scripts = buildPostSetupScripts(plan);
+    CHECK(scripts.machine.find(L"powercfg /import \"%WL%\\files\\1\\plan.pow\" {11111111-2222-3333-4444-555555555555}") !=
+          std::wstring::npos);
+    CHECK(scripts.machine.find(L"powercfg /setactive {11111111-2222-3333-4444-555555555555}") != std::wstring::npos);
+    CHECK(scripts.user.find(L"powercfg") == std::wstring::npos); // SYSTEM, not the user script
+    // A destination that is not a GUID is refused.
+    plan.steps[0].destination = L"not a guid";
+    REQUIRE(validatePostSetup(plan).size() == 1);
+    CHECK(validatePostSetup(plan)[0].second == PostSetupProblem::BadDestination);
+    // Survives the JSON round trip.
+    plan.steps[0].destination = L"{11111111-2222-3333-4444-555555555555}";
+    const auto back = postSetupFromJson(postSetupToJson(plan));
+    REQUIRE(back);
+    CHECK(back->steps[0].type == Step::Type::PowerPlan);
+}
+
 TEST_CASE("post-setup: validation points at the step") {
     CHECK(validatePostSetup(sample()).empty());
     PostSetupPlan plan;

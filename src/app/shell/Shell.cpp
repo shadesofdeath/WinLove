@@ -684,6 +684,28 @@ void Shell::editPostSetupStep(core::PostSetupStep::Type type, std::optional<std:
     showModal(slot, std::move(built.dialog), built.initialFocus);
 }
 
+void Shell::addPowerPlan() {
+    if (!requireMount(Str::PostsetupNoMountTitle, Str::PostsetupNoMountBody)) {
+        return;
+    }
+    const auto file = ui::pickFile(owner(), m_strings.get(Str::PostsetupPowerPick),
+                                   {{m_strings.get(Str::PostsetupPowerFiles), L"*.pow"}});
+    if (!file) {
+        return;
+    }
+    GUID g{};
+    CoCreateGuid(&g);
+    core::PostSetupStep step;
+    step.type = core::PostSetupStep::Type::PowerPlan;
+    step.source = file->wstring();
+    step.name = file->stem().wstring();
+    step.destination = std::format(L"{{{:08x}-{:04x}-{:04x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}}}", g.Data1,
+                                   g.Data2, g.Data3, g.Data4[0], g.Data4[1], g.Data4[2], g.Data4[3], g.Data4[4], g.Data4[5],
+                                   g.Data4[6], g.Data4[7]);
+    m_postSetup->add(std::move(step));
+    showUndoToast(m_strings.format(Str::PostsetupPowerAdded, {{L"name", file->stem().wstring()}}), L"");
+}
+
 void Shell::pickPostSetupCommands() {
     if (!host()) {
         return;
@@ -1954,6 +1976,8 @@ void Shell::showPage(PageId page) {
                 .onInvoke = [this] { editPostSetupStep(Type::Winget, std::nullopt); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupAddWifi), ui::icons::Icon::Network)
                 .onInvoke = [this] { editPostSetupStep(Type::Wifi, std::nullopt); };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupAddPower), ui::icons::Icon::Power)
+                .onInvoke = [this] { addPowerPlan(); };
             // D-078: the programs have a page of their own, over winget's whole repository.
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupCatalog), ui::icons::Icon::Download)
                 .onInvoke = [this] { showPage(PageId::Programs); };

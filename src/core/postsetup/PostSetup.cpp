@@ -61,6 +61,7 @@ const char* typeKey(Step::Type type) {
     case Step::Type::Winget: return "winget";
     case Step::Type::Copy: return "copy";
     case Step::Type::Wifi: return "wifi";
+    case Step::Type::PowerPlan: return "powerplan";
     default: return "command";
     }
 }
@@ -163,6 +164,13 @@ void emitStep(Script& s, const Step& step, std::size_t number, std::size_t total
             s.line(std::format(L"start \"\" cmd /d /s /c \"{}\"", oneLine(step.source)));
         }
         break;
+    case Step::Type::PowerPlan:
+        // The scheme is imported under its own GUID and made the active one (machine-wide; SYSTEM).
+        s.line(std::format(L"powercfg /import \"%WL%\\files\\{}\\plan.pow\" {} >>\"%LOG%\" 2>&1", number, step.destination));
+        afterStep(s, tag, 1, continueOnError);
+        s.line(std::format(L"powercfg /setactive {} >>\"%LOG%\" 2>&1", step.destination));
+        afterStep(s, tag, 1, continueOnError);
+        break;
     }
 }
 
@@ -179,8 +187,8 @@ void waitForWinget(Script& s) {
 }
 
 bool runsAtLogon(const PostSetupPlan& plan, const Step& step) {
-    if (step.type == Step::Type::Wifi) {
-        return false; // WLAN profiles for all users: SYSTEM, before the first logon
+    if (step.type == Step::Type::Wifi || step.type == Step::Type::PowerPlan) {
+        return false; // machine-wide: SYSTEM, before the first logon
     }
     return plan.when == PostSetupPlan::When::FirstLogon || step.type == Step::Type::Winget;
 }
@@ -325,10 +333,11 @@ Result<PostSetupPlan> postSetupFromJson(std::string_view json) {
         for (const auto& entry : doc.value("steps", Json::array())) {
             Step step;
             const std::string type = entry.value("type", std::string{"command"});
-            step.type = type == "winget" ? Step::Type::Winget
-                        : type == "copy"   ? Step::Type::Copy
-                        : type == "wifi"   ? Step::Type::Wifi
-                                           : Step::Type::Command;
+            step.type = type == "winget"      ? Step::Type::Winget
+                        : type == "copy"      ? Step::Type::Copy
+                        : type == "wifi"      ? Step::Type::Wifi
+                        : type == "powerplan" ? Step::Type::PowerPlan
+                                              : Step::Type::Command;
             step.name = utf8::toWide(entry.value("name", std::string{}));
             step.source = utf8::toWide(entry.value("source", std::string{}));
             step.destination = utf8::toWide(entry.value("destination", std::string{}));
@@ -378,6 +387,16 @@ std::vector<std::pair<std::size_t, PostSetupProblem>> validatePostSetup(const Po
             if (step.destination.empty()) {
                 problems.emplace_back(i, PostSetupProblem::EmptyDestination);
             } else if (step.destination.find(L'"') != std::wstring::npos) {
+                problems.emplace_back(i, PostSetupProblem::BadDestination);
+            }
+        } else if (step.type == Step::Type::PowerPlan) {
+            // The destination is the GUID that goes on the powercfg command line.
+            const bool guid = step.destination.size() >= 36 &&
+                              std::ranges::all_of(step.destination, [](wchar_t c) {
+                                  return (c >= L'0' && c <= L'9') || (c >= L'a' && c <= L'f') || (c >= L'A' && c <= L'F') ||
+                                         c == L'-' || c == L'{' || c == L'}';
+                              });
+            if (!guid) {
                 problems.emplace_back(i, PostSetupProblem::BadDestination);
             }
         }
@@ -486,6 +505,7 @@ double estimatePostSetupSeconds(const PostSetupPlan& plan) {
         case Step::Type::Copy: seconds += 5; break;
         case Step::Type::Command: seconds += step.wait ? 10 : 1; break;
         case Step::Type::Wifi: seconds += 2; break;
+        case Step::Type::PowerPlan: seconds += 2; break;
         }
     }
     return seconds + 60.0 * static_cast<double>(plan.programs.size()); // download + silent install each
@@ -532,6 +552,15 @@ Result<void> applyPostSetup(const std::filesystem::path& mountDir, const PostSet
             std::filesystem::create_directories(target, ec);
             if (auto r = writeBytes(target / L"wifi.xml", utf8::fromWide(step.source)); !r) {
                 return r;
+            }
+            continue;
+        }
+        if (step.type == Step::Type::PowerPlan) {
+            const auto target = folder / L"files" / std::to_wstring(i + 1);
+            std::filesystem::create_directories(target, ec);
+            std::filesystem::copy_file(step.source, target / L"plan.pow", std::filesystem::copy_options::overwrite_existing, ec);
+            if (ec) {
+                return fail(ErrorCode::IoError, L"cannot copy the power plan", step.source, ec.value());
             }
             continue;
         }

@@ -160,6 +160,8 @@ public:
     void showUndoToast(std::wstring title, std::wstring message);
     // D-095: Programlar › "Bu bilgisayardan al".
     void takeProgramsFromThisPc();
+    // D-096: Kurulum Sonrası › "Güç planı ekle" — a .pow of this PC, made the active scheme.
+    void addPowerPlan();
     // A toast with an action of its own ("Aç"), kept a little longer.
     void showActionToast(ui::InfoKind kind, std::wstring title, std::wstring message, std::wstring action,
                          std::function<void()> onAction);
