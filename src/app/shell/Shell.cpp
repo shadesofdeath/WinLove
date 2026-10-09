@@ -2098,7 +2098,7 @@ void Shell::showPage(PageId page) {
             auto& body = m_pageView->setBody<ApplyPage>(
                 m_state, *m_apply, m_imageSettings->catalog(), m_strings, m_language,
                 ApplyPage::Intents{[this] { showApplyConfirm(); }, [this] { showPage(PageId::Images); },
-                                   [this] { showPage(PageId::Features); }});
+                                   [this] { showPage(PageId::Features); }, [this] { askUnmount(); }});
             m_pageBody = &body;
             const auto [applyTitle, applyDescription] = body.header();
             m_pageView->setHeader(applyTitle, applyDescription);

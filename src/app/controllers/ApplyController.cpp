@@ -292,6 +292,7 @@ void ApplyController::start() {
                         m_state.unqueue(r.step.operation.kind, r.step.operation.target);
                     }
                 }
+                run->queueVersionAtEnd = m_state.changes().version();
                 if (outcome.source) {
                     for (const auto& image : outcome.source->install.images) {
                         if (image.index == mounted.index) {

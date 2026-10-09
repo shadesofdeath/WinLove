@@ -644,25 +644,31 @@ int App::renderOffscreen() {
                     result.report.results.push_back({step, {}});
                     result.stepTimes.push_back(std::chrono::milliseconds(14'000));
                 }
-                if (m_options.demoApply == L"skipped" && !result.report.results.empty()) {
+                const bool held = m_options.demoApply == L"held"; // a failed step: not saved, still mounted (A7)
+                if ((m_options.demoApply == L"skipped" || held) && !result.report.results.empty()) {
                     // "--demo-apply=skipped": the first step refused as a permanent package.
                     result.report.results.front().outcome = fail(ErrorCode::DismFailure, L"DISM error",
                                                                  L"remove capability", static_cast<std::int32_t>(0x800F0825));
                     run.stepState.front() = 3;
                 }
-                result.committed = true;
-                result.commitTime = std::chrono::milliseconds(81'000);
+                result.committed = !held;
+                result.held = held;
+                result.commitTime = std::chrono::milliseconds(held ? 0 : 81'000);
                 result.elapsed = std::chrono::milliseconds(112'000);
                 run.result = std::move(result);
+                run.queueVersionAtEnd = m_state->changes().version();
                 m_state->setApplyRun(std::move(run));
-                m_state->setMounted(std::nullopt);
+                if (!held) {
+                    m_state->setMounted(std::nullopt);
+                }
             }
             if (m_state->applyRun() == std::nullopt) {
                 m_state->setApplyRun(std::move(run));
             }
         }
         // A finished run is shown on the Apply page; a running one (and no run) on Features.
-        const bool finished = m_options.demoApply == L"done" || m_options.demoApply == L"skipped";
+        const bool finished = m_options.demoApply == L"done" || m_options.demoApply == L"skipped" ||
+                              m_options.demoApply == L"held";
         if (m_options.demoApply != L"confirm") {
             m_shell->showPage(m_options.page.value_or(finished ? PageId::Apply : PageId::Features));
         }

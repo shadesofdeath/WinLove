@@ -282,6 +282,9 @@ public:
         };
         std::vector<ExtraEdition> extras;
         int extraCurrent = -1; // index into extras while one runs
+        // ChangeSet::version() as the run left the queue: a held or stopped run (failed steps still
+        // queued) stays on the Apply page with its reasons until the queue is changed.
+        std::uint64_t queueVersionAtEnd = 0;
     };
     [[nodiscard]] const std::optional<ApplyRun>& applyRun() const noexcept { return m_apply; }
     [[nodiscard]] std::optional<ApplyRun>& applyRunMutable() noexcept { return m_apply; }

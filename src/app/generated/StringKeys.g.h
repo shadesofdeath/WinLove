@@ -60,6 +60,10 @@ enum class Str : std::uint16_t {
     ApplyGain,
     ApplyGainValue,
     ApplyGoFeatures,
+    ApplyHeldBody,
+    ApplyHeldDesc,
+    ApplyHeldTitle,
+    ApplyHeldUnmount,
     ApplyHighRiskBody,
     ApplyHighRiskBodyMixed,
     ApplyHighRiskBodySettings,
@@ -1628,7 +1632,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1618;
+inline constexpr std::size_t kStrCount = 1622;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -1683,6 +1687,10 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "apply.gain",
     "apply.gainValue",
     "apply.goFeatures",
+    "apply.heldBody",
+    "apply.heldDesc",
+    "apply.heldTitle",
+    "apply.heldUnmount",
     "apply.highRiskBody",
     "apply.highRiskBodyMixed",
     "apply.highRiskBodySettings",

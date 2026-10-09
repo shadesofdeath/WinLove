@@ -176,3 +176,20 @@ TEST_CASE("apply report: one HTML page with the sizes and every step's result") 
     CHECK(failed.find("DISM needs an elevated") != std::string::npos);
     CHECK(failed.find("</html>") != std::string::npos);
 }
+
+TEST_CASE("Apply page: a held run (a step failed, nothing saved) shows its report until the queue changes (A7)") {
+    AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
+    state.setMounted(MountedImage{LR"(C:\m)", LR"(C:\w\install.wim)", 1, L"Pro"});
+    state.queue(Operation{OpKind::RemoveCapability, L"OpenSSH.Client"}); // the step that failed stays queued
+    AppState::ApplyRun run;
+    run.stage = AppState::ApplyRun::Stage::Done;
+    core::ops::ApplyJobResult result;
+    result.report.completed = true;
+    result.held = true;
+    run.result = result;
+    run.queueVersionAtEnd = state.changes().version();
+    state.setApplyRun(run);
+    CHECK(ApplyPage::modeFor(state) == ApplyPage::Mode::Done); // the reasons first
+    state.queue(Operation{OpKind::EnableFeature, L"WSL"});
+    CHECK(ApplyPage::modeFor(state) == ApplyPage::Mode::Summary); // the user moved on
+}

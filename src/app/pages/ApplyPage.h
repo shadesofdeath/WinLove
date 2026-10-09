@@ -26,6 +26,7 @@ public:
         std::function<void()> review;     // "İncele" on the risk InfoBar (opens the confirm dialog)
         std::function<void()> goImages;   // EmptyState action
         std::function<void()> goFeatures;
+        std::function<void()> unmount;    // held run (audit A7): the unmount dialog — save or discard
     };
 
     ApplyPage(AppState& state, ApplyController& controller, const ImageSettingsCatalog& settings,

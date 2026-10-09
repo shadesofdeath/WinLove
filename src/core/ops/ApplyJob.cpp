@@ -85,7 +85,9 @@ Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& moun
                                         task.report(fraction * stepsWeight / total, stage);
                                     }};
         result.report = apply(plan, **session, stepsTask, ErrorPolicy::Skip, steps, options.apply);
-        if (result.report.completed && !options.setupFolder.empty() && languagesChanged(result.report)) {
+        const bool holding = options.commitAndUnmount && !options.commitWithFailures && result.report.failures() > 0;
+        // Setup's language list follows a commit; a held image may still be discarded (audit A21).
+        if (result.report.completed && !holding && !options.setupFolder.empty() && languagesChanged(result.report)) {
             result.langIniWritten = writeLangIni(**session, options.setupFolder);
         }
     } // session closed here: DISM refuses to unmount an image with an open session
@@ -93,6 +95,15 @@ Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& moun
     if (!result.report.completed) {
         // Cancelled: nothing more; the image stays mounted with whatever ran.
         result.elapsed = since(started);
+        return result;
+    }
+    if (options.commitAndUnmount && !options.commitWithFailures && result.report.failures() > 0) {
+        log::warn("apply", std::format(L"{} step(s) failed: the image is not saved and stays mounted — save or discard "
+                                       L"it once the failures are looked at",
+                                       result.report.failures()));
+        result.held = true;
+        result.elapsed = since(started);
+        task.report(1.0, L"held");
         return result;
     }
     if (options.commitAndUnmount) {
@@ -167,6 +178,7 @@ Result<ApplyJobResult> applyToEdition(Dism& dism, const std::filesystem::path& w
     }
     ApplyJobOptions own = options;
     own.commitAndUnmount = true;
+    own.commitWithFailures = true; // the next edition needs the folder: its failures are reported, not held
     own.optimizeWim.clear();  // once, after the last edition
     own.editionTexts.reset(); // no edition change on these
     const TaskContext jobTask{task.cancel, [&](double f, std::wstring_view stage) {

@@ -1,7 +1,8 @@
 #pragma once
 // The whole "Uygula" run on the engine thread (P05): open a DISM session on the mounted image,
 // run the plan (errors are skipped and reported, never silently), close the session, then
-// commit + unmount (MountHealth::unmountSafely). Progress: the plan's steps and the commit share
+// commit + unmount (MountHealth::unmountSafely) — unless a step failed: then the image waits,
+// mounted, for the user (ApplyJobOptions::commitWithFailures). Progress: the plan's steps and the commit share
 // one 0…1 scale, weighted by their time estimates.
 #include "core/image/wim/WimGapi.h"
 #include "core/ops/Applier.h"
@@ -13,6 +14,10 @@ namespace wl::core::ops {
 struct ApplyJobOptions {
     ApplyOptions apply;
     bool commitAndUnmount = true; // false: leave the image mounted (changes stay in the mount)
+    // A failed step may have left the image half changed (a component's packages unlocked, hives
+    // edited, files gone): then the image is not saved but stays mounted for the user to decide
+    // (ApplyJobResult::held, audit A7). True keeps the old way: save whatever ran.
+    bool commitWithFailures = false;
     // After a commit: rewrite this WIM without what the commit orphaned (optimizeWim). Empty: no.
     std::filesystem::path optimizeWim;
     // After a commit in which the edition change succeeded: the texts of that edition in the WIM
@@ -38,6 +43,7 @@ struct ApplyJobResult {
     ApplyReport report;
     bool committed = false;
     std::optional<Error> commitError; // steps ran but saving failed: the image is still mounted
+    bool held = false;                // steps failed: not saved, still mounted (ApplyJobOptions::commitWithFailures)
     bool optimized = false;           // the WIM was rewritten without the commit's leftovers
     bool editionRenamed = false;      // the WIM names the new edition (ApplyJobOptions::editionTexts)
     bool langIniWritten = false;      // <setupFolder>\sources\lang.ini generated from the image

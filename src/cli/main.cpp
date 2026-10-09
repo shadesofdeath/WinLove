@@ -513,8 +513,8 @@ int cmdPlan(const std::wstring& changeSetPath) {
     return 0;
 }
 
-int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bool commit, const std::wstring& source,
-             const std::wstring& also, const std::wstring& wim, const std::wstring& setupFolder) {
+int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bool commit, bool commitWithFailures,
+             const std::wstring& source, const std::wstring& also, const std::wstring& wim, const std::wstring& setupFolder) {
     if (!also.empty() && (!commit || wim.empty())) {
         // Silently skipped before: the further editions are applied after a commit, from that WIM.
         return reportError(Error{ErrorCode::InvalidArgument, L"--also needs --commit and --wim=<file>", also});
@@ -531,6 +531,7 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
     const auto p = core::ops::plan(*set);
     core::ops::ApplyJobOptions options;
     options.commitAndUnmount = commit;
+    options.commitWithFailures = commitWithFailures; // else a failed step keeps the image mounted, unsaved
     options.setupFolder = setupFolder; // D-062: <folder>\sources\lang.ini follows the languages
     if (!source.empty()) {
         options.apply.featureSources.push_back(source);
@@ -551,6 +552,9 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
     const auto& report = job->report;
     const std::wstring commitText = job->committed ? std::wstring(L"ok")
                                     : job->commitError ? describe(*job->commitError)
+                                    : job->held ? std::wstring(L"held — a step failed, the image is still mounted "
+                                                               L"(wlcli unmount <dir> --commit|--discard, or "
+                                                               L"--commit-with-failures)")
                                                        : std::wstring(L"skipped");
     print(std::format(L"  {} of {} step(s) ran, {} failed{}; commit: {} ({} ms)\n", report.results.size(), p.steps.size(),
                       report.failures(), report.completed ? L"" : L" (stopped)", commitText, job->elapsed.count()));
@@ -2476,7 +2480,8 @@ void printUsage() {
           L"  wlcli boot-patch <boot.wim> <mountdir> [--bypass=tpm,secureboot,ram,cpu,storage|all] [--driver=<inf>]...\n"
           L"                                      [--legacy-setup] [--lcu=<msu> --setup-files=<dir>]   (Setup's image: LabConfig, drivers, previous Setup, D-080 update; mounts, commits)\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
-          L"  wlcli apply <changeset.json> <mountdir> [--commit] [--source=<sources\\sxs>]\n"
+          L"  wlcli apply <changeset.json> <mountdir> [--commit|--commit-with-failures] [--source=<sources\\sxs>]\n"
+          L"                                      (--commit holds the image mounted, unsaved, when a step failed)\n"
           L"                                      [--also=2,3 --wim=<file>] [--setup=<setup folder>]   (with --commit: then the same on further editions)\n"
           L"\n  Change sets (no admin):\n"
           L"  wlcli plan <changeset.json>              Show the ordered apply plan\n"
@@ -2503,6 +2508,7 @@ int wmain(int argc, wchar_t** argv) {
     bool asJson = false;
     bool readOnly = false;
     int commit = -1;
+    bool commitWithFailures = false;
     std::wstring compress;
     std::wstring source;
     std::wstring label;
@@ -2674,6 +2680,9 @@ int wmain(int argc, wchar_t** argv) {
             readOnly = true;
         } else if (a == L"--commit") {
             commit = 1;
+        } else if (a == L"--commit-with-failures") {
+            commit = 1;
+            commitWithFailures = true;
         } else if (a == L"--discard") {
             commit = 0;
         } else if (a.starts_with(L"--out=")) {
@@ -2751,7 +2760,7 @@ int wmain(int argc, wchar_t** argv) {
         return cmdPlan(args[1]);
     }
     if (command == L"apply" && args.size() == 3) {
-        return cmdApply(args[1], args[2], commit == 1, source, alsoEditions, wimPath, setupFolder);
+        return cmdApply(args[1], args[2], commit == 1, commitWithFailures, source, alsoEditions, wimPath, setupFolder);
     }
     if (command == L"mounts") {
         return cmdMounts(asJson);
