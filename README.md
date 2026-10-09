@@ -81,7 +81,7 @@ Hata ya da öneri için bir [issue](https://github.com/shadesofdeath/WinLove/iss
 
 ## Lisans
 
-[GNU GPL v3.0](LICENSE). Pakete giren üçüncü taraf bileşenler ve lisansları: IBM Plex Sans ve JetBrains Mono
+[GNU GPL v3.0](LICENSE). Pakete giren üçüncü taraf bileşenler ve lisansları: Inter, Geist ve JetBrains Mono (OFL 1.1), Lucide simgeleri (ISC)
 (SIL OFL 1.1), nlohmann/json ve pugixml (MIT), Win11Debloat boş Başlat şablonu (MIT) — bkz. `third_party/`.
 
 ---
