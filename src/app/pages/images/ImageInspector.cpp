@@ -16,7 +16,7 @@ using ui::tokens::TypeStyle;
 
 namespace {
 constexpr float kPadding = 16.0f;
-constexpr float kKeyWidth = 96.0f;
+constexpr float kKeyWidth = 112.0f;
 constexpr float kRow = 24.0f;
 constexpr float kLine = 16.0f;
 
@@ -123,7 +123,8 @@ void ImageInspector::layout() {
     // Disabled buttons still show their tooltip: the tooltip explains why (e.g. ESD).
     const ui::SizeF primary = m_primary->measure({});
     const ui::SizeF del = m_delete->measure({});
-    const float y = b.bottom() - 12 - primary.height;
+    // D-091: the actions under the title, where the eye starts — not at the foot of a tall panel.
+    const float y = b.y + kPadding + 2 * kLine + 10;
     m_primary->setBounds({b.x + kPadding, y, primary.width, primary.height});
     m_delete->setBounds({b.x + kPadding + primary.width + 4, y, del.width, del.height});
     m_rename->setBounds({b.right() - kPadding - kRow, b.y + kPadding - 4, kRow, kRow});
@@ -150,7 +151,17 @@ void ImageInspector::paint(ui::Canvas& canvas) {
                                 m_strings.get(Str::ImagesIndex), image.index),
                     {x + 24, y + kLine, width - 24, kLine}, TypeStyle::Caption, Color::TextTertiary);
 
-    y = b.y + 69; // design: first key row at y+69 (panel top 33 → text 102)
+    // Under the actions (layout): a note when there is one, then the facts.
+    y = m_primary->bounds().bottom() + 8;
+    const bool queued = m_mountedHere && !m_upgradeQueued.empty();
+    if (queued || m_marked > 1) {
+        canvas.drawText(queued ? m_upgradeQueued : m_strings.format(Str::ImagesSelectedHint, {{L"n", std::to_wstring(m_marked)}}),
+                        {x, y, width, kLine}, TypeStyle::Caption, queued ? Color::AccentBase : Color::TextTertiary);
+        y += kLine;
+    }
+    y += 8;
+    canvas.hairlineH(b.x + 1, y, b.width - 1, Color::LineSubtle);
+    y += 8;
     auto row = [&](Str key, const std::wstring& value, bool mono = false) {
         canvas.drawText(m_strings.get(key), {x, y, kKeyWidth, kRow}, TypeStyle::Caption, Color::TextSecondary);
         canvas.drawText(value, {x + kKeyWidth, y, width - kKeyWidth, kRow}, mono ? TypeStyle::Mono : TypeStyle::Caption,
@@ -203,13 +214,6 @@ void ImageInspector::paint(ui::Canvas& canvas) {
     row(Str::ImagesSplit, header.totalParts > 1 ? std::format(L"{} / {}", header.partNumber, header.totalParts)
                                                 : m_strings.get(Str::CommonNo));
     row(Str::ImagesBootIndex, header.bootIndex ? std::to_wstring(header.bootIndex) : m_strings.get(Str::ImagesNone));
-
-    section(Str::ImagesActionsTitle);
-    const bool queued = m_mountedHere && !m_upgradeQueued.empty();
-    canvas.drawText(queued         ? m_upgradeQueued
-                    : m_marked > 1 ? m_strings.format(Str::ImagesSelectedHint, {{L"n", std::to_wstring(m_marked)}})
-                                   : m_strings.get(Str::ImagesActionsHint),
-                    {x, y - 4, width, kLine}, TypeStyle::Caption, queued ? Color::AccentBase : Color::TextTertiary);
 }
 
 } // namespace wl::app
