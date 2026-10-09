@@ -16,6 +16,26 @@ HRESULT createD3D(D3D_DRIVER_TYPE type, ComPtr<ID3D11Device>& device) {
 
 } // namespace
 
+Result<void> RenderDevice::recreateDevice() {
+    constexpr auto code = ErrorCode::RenderFailure;
+    ComPtr<ID3D11Device> d3d;
+    if (FAILED(createD3D(D3D_DRIVER_TYPE_HARDWARE, d3d))) {
+        WL_TRY_HR(createD3D(D3D_DRIVER_TYPE_WARP, d3d), code, L"creating D3D11 device");
+    }
+    ComPtr<IDXGIDevice1> dxgiDevice;
+    WL_TRY_HR(d3d.As(&dxgiDevice), code, L"querying DXGI device");
+    ComPtr<IDXGIAdapter> adapter;
+    WL_TRY_HR(dxgiDevice->GetAdapter(&adapter), code, L"getting DXGI adapter");
+    ComPtr<IDXGIFactory2> dxgiFactory;
+    WL_TRY_HR(adapter->GetParent(IID_PPV_ARGS(&dxgiFactory)), code, L"getting DXGI factory");
+    ComPtr<ID2D1Device2> d2dDevice;
+    WL_TRY_HR(m_d2dFactory->CreateDevice(dxgiDevice.Get(), &d2dDevice), code, L"creating D2D device");
+    m_d3d = std::move(d3d);
+    m_dxgiFactory = std::move(dxgiFactory);
+    m_d2dDevice = std::move(d2dDevice);
+    return {};
+}
+
 Result<std::unique_ptr<RenderDevice>> RenderDevice::create() {
     auto device = std::make_unique<RenderDevice>();
     constexpr auto code = ErrorCode::RenderFailure;

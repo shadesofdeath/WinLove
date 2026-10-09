@@ -1,6 +1,7 @@
 #pragma once
-// Everything needed to draw: device, fonts, text styles, icon geometries. Rebuilt as a whole on
-// device loss (cheap: fonts are copied bytes, geometries are rebuilt lazily).
+// Everything needed to draw: device, fonts, text styles, icon geometries. On device loss only the
+// device is made again (RenderDevice::recreateDevice): the rest hangs on the factories, and the
+// widget tree that measures with the text styles must outlive it (running jobs report into it).
 #include "ui/icons/IconCache.h"
 #include "ui/render/RenderDevice.h"
 #include "ui/text/FontLibrary.h"

@@ -29,6 +29,11 @@ public:
     [[nodiscard]] IWICImagingFactory* wic() const noexcept { return m_wic.Get(); }
 
     [[nodiscard]] Result<ComPtr<ID2D1DeviceContext2>> createContext() const;
+    // After a device loss (GPU reset, driver update, adapter change): a new D3D / D2D device from
+    // the same factories. DirectWrite, WIC and the D2D factory stay, and with them the fonts, text
+    // formats and icon geometries built on them: only device resources (contexts, swap chains,
+    // bitmaps) are made again — the widget tree and the jobs it reports into live on (audit A6).
+    [[nodiscard]] Result<void> recreateDevice();
 
 private:
     ComPtr<ID3D11Device> m_d3d;
