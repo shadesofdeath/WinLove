@@ -7,6 +7,15 @@
   P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler, P16 Uygulama Ayarları, P17 Hakkında, P18 Komut Paleti:
   🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v2 (AppX + sistem bileşenleri + depo
   temizliği, D-031), test bekliyor.
+- **Bu oturumda tamamlananlar (2026-10-09, D-093…D-100):** Windows indir (UUP→ISO, Mağaza uygulamaları + seçici, Windows 10,
+  .NET 3.5, ResetBase, install.esd); Secure Boot 2023 medyası (D-094); "Bu bilgisayardan al" — Programlar + Tweaks (D-095);
+  güç planı (.pow) içe aktarma (D-096); desteklenmeyen PC'de yerinde yükseltme betiği (D-097); `wlcli welcome-json` +
+  `tools/capture_oobe.py` VM'siz sihirbaz render (D-098); **karşılama sihirbazına duvar kağıdı + uygulama paketi sayfaları
+  + modern scrollbar** (D-099); **solid install.wim tanıma** (X-Lite gibi lite ISO'lar artık "ESD/solid → WIM" ile mount
+  edilebilir, D-100). VM `uup1`/`uup2`/`uup3` ALL PASSED; Windows 10 dönüşümü de başarılı; X-Lite ISO uçtan uca doğrulandı
+  (dönüştürülen WIM mount oldu). `dist\WinLove.exe` yeni. **Açık doğrulama:** sihirbazın yeni sayfaları (duvar kağıdı +
+  paketler) render ile doğrulandı ama tam OOBE VM kurulumunda henüz denenmedi (welcome harness'ı gerekir). **Bir sonraki
+  somut adım:** sihirbaz yeni sayfalarının VM testi veya kullanıcının yeni isteği.
 - **Windows özellikleri (2026-10-09, kullanıcı "4,6,8,9 dışında hepsini yap", D-093 / D-094 / D-095):**
   - **Windows indir (D-093):** yeni sayfa (İMAJ grubu) + Kaynak'ta kısayol. Liste UUP dump API'sinden (sürüm / dil /
     sürüm / dosya), dosyalar yalnız Microsoft CDN'inden (SHA-256, 4 bağlantı, 403'te link tazeleme, `.part` devam).
