@@ -10,6 +10,7 @@ namespace {
 // Offsets under the page description, from screen 01 (content top 88).
 constexpr float kTopGap = 20.0f;
 constexpr float kZoneHeight = 160.0f;
+constexpr float kZoneCompact = 112.0f; // D-091: with recent sources
 constexpr float kGap = 16.0f;
 constexpr float kSectionGap = 24.0f;
 constexpr float kSectionLine = 16.0f;
@@ -208,8 +209,10 @@ void SourcePage::setDragState(ui::DropZone::DragState state) {
 void SourcePage::layout() {
     const RectF b = bounds();
     float y = b.y + kTopGap;
-    m_drop->setBounds({b.x, y, b.width, kZoneHeight}); // live-system card removed (D-021): full width
-    y += kZoneHeight;
+    // D-091: with recent sources below, the drop zone gives them the room (they are what is opened most).
+    const float zone = m_recent->empty() ? kZoneHeight : kZoneCompact;
+    m_drop->setBounds({b.x, y, b.width, zone}); // live-system card removed (D-021): full width
+    y += zone;
     if (m_error->visible()) {
         y += kGap;
         m_error->setBounds({b.x, y, b.width, kInfoBarHeight});
@@ -228,6 +231,7 @@ void SourcePage::layout() {
         y += h + 4 + kSectionLine; // the hint under it
     }
     y += kSectionGap + kSectionLine + kSectionToTable;
+    m_recent->setBounds({b.x, y, b.width, 0}); // the cards per row follow the width
     m_recent->setBounds({b.x, y, b.width, m_recent->contentHeight()});
 }
 
