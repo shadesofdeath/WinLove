@@ -61,6 +61,7 @@
 #include "core/unattend/Unattend.h"
 #include "core/unattend/Welcome.h"
 
+#include <fstream>
 #include <json.hpp>
 
 #include <windows.h>
@@ -2646,6 +2647,33 @@ int cmdUup(std::vector<std::wstring> args) {
     return 1;
 }
 
+// D-098: a preview oobe.json built from a strings file (tools/capture_oobe.py renders the wizard
+// without a VM). Not used on an image; the choices are the defaults.
+int cmdWelcomeJson(const std::wstring& out, const std::wstring& stringsFile) {
+    std::ifstream in(std::filesystem::path(stringsFile), std::ios::binary);
+    if (!in) {
+        return reportError(Error{ErrorCode::NotFound, L"cannot read the strings file", stringsFile});
+    }
+    const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const auto doc = json::parse(bytes, nullptr, false);
+    if (doc.is_discarded() || !doc.contains("welcome")) {
+        return reportError(Error{ErrorCode::ParseError, L"not a strings file (no welcome section)", stringsFile});
+    }
+    core::WelcomePlan plan;
+    for (const auto& [key, value] : doc["welcome"].items()) {
+        if (value.is_string()) {
+            plan.texts.emplace_back(key, utf8::toWide(value.get<std::string>()));
+        }
+    }
+    std::ofstream file(std::filesystem::path(out), std::ios::binary | std::ios::trunc);
+    file << core::welcomeJson(plan);
+    if (!file) {
+        return reportError(Error{ErrorCode::IoError, L"cannot write", out});
+    }
+    print(std::format(L"  {}\n", out));
+    return 0;
+}
+
 int cmdExport(const std::wstring& source, const std::wstring& index, const std::wstring& destination,
               const std::wstring& compression, const std::vector<std::filesystem::path>& references) {
     const auto c = parseCompression(compression, core::WimCompression::Lzx);
@@ -3035,6 +3063,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"uup") {
         return cmdUup(args);
+    }
+    if (command == L"welcome-json" && args.size() == 3) {
+        return cmdWelcomeJson(args[1], args[2]);
     }
     if (command == L"export" && args.size() == 4) {
         return cmdExport(args[1], args[2], args[3], compress, references);
