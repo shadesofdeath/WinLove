@@ -673,6 +673,13 @@ enum class Str : std::uint16_t {
     ImagesVerifySoundBody,
     ImagesVerifying,
     ImagesWimFile,
+    ImagesWorkCopyFresh,
+    ImagesWorkCopyKeep,
+    ImagesWorkCopyModified,
+    ImagesWorkCopyOther,
+    ImagesWorkCopyOtherSource,
+    ImagesWorkCopyTitle,
+    ImagesWorkCopyUnknown,
     ImagesWorkingHint,
     IsoAioAction,
     IsoAioBody,
@@ -1621,7 +1628,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1611;
+inline constexpr std::size_t kStrCount = 1618;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -2289,6 +2296,13 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "images.verifySoundBody",
     "images.verifying",
     "images.wimFile",
+    "images.workCopyFresh",
+    "images.workCopyKeep",
+    "images.workCopyModified",
+    "images.workCopyOther",
+    "images.workCopyOtherSource",
+    "images.workCopyTitle",
+    "images.workCopyUnknown",
     "images.workingHint",
     "iso.aioAction",
     "iso.aioBody",

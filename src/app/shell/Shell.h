@@ -160,6 +160,9 @@ public:
     void startPreload(); // image values first (fast), then the page lists
     // A mount from a previous run (ImageController::adoptExistingMount): reopen its source and
     // show it as mounted again.
+    // An ISO's work copy that changed since it was extracted, or is another ISO's (WorkCopy.h):
+    // extract again, use it as it is (not for another ISO's), or nothing.
+    void askWorkCopy(core::WorkCopyState copy, const std::filesystem::path& folder, std::function<void(bool fresh)> proceed);
     // Toast body after a mount was taken over: the queue that came back with it, if any.
     [[nodiscard]] std::wstring restoredQueueText(std::size_t restored, const std::wstring& otherwise) const;
     void restoreMount(const std::filesystem::path& source, MountedImage mounted);

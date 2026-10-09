@@ -6,6 +6,7 @@
 // sources\boot.wim is patched and takes the place of the folder's file in the ISO.
 #include "app/state/AppState.h"
 #include "core/image/BootImage.h"
+#include "core/image/WorkCopy.h"
 #include "core/iso/IsoBuilder.h"
 #include "core/usb/UsbMedia.h"
 
@@ -37,6 +38,10 @@ public:
             core::UsbScheme scheme = core::UsbScheme::MbrBiosUefi;
         };
         std::optional<UsbTarget> usb;
+        // An ISO source's work copy that changed since or is another ISO's (core::WorkCopyState):
+        // Ask goes through Events::workCopyChoice, which starts again with Fresh or Keep.
+        enum class WorkCopy : std::uint8_t { Ask, Fresh, Keep };
+        WorkCopy workCopy = WorkCopy::Ask;
     };
     // Why a build cannot start now (nullopt = it can).
     // UnattendInvalid: "ISO'ya ekle" is on and the answer file has a value Setup would reject.
@@ -47,6 +52,9 @@ public:
         std::function<void(const Error&)> failed;
         std::function<void(const core::IsoResult&, const std::filesystem::path&, bool openFolder)> finished;
         std::function<void(std::wstring relaunchArgs)> needsAdmin; // USB: diskpart needs an elevated process
+        // See ImageController::Events::workCopyChoice; proceed(true) = Request::WorkCopy::Fresh.
+        std::function<void(core::WorkCopyState state, std::filesystem::path folder, std::function<void(bool fresh)> proceed)>
+            workCopyChoice;
     };
 
     IsoController(AppState& state, Events events);

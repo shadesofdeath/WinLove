@@ -3,6 +3,7 @@
 #include "base/Utf8.h"
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
+#include "core/image/WorkCopy.h"
 #include "core/iso/IsoBuilder.h"
 
 #include <doctest.h>
@@ -136,5 +137,64 @@ TEST_CASE("ISO build: root files from memory are in the image; the source folder
     CHECK(read(media / L"autounattend.xml") == "the folder's own answer file");
     CHECK_FALSE(std::filesystem::exists(media / L"extra.txt"));
     iso = std::unexpected(Error{}); // close the ISO before deleting it
+    std::filesystem::remove_all(dir, ec);
+}
+
+TEST_CASE("work copy: an ISO opened again never overwrites what changed since, nor mixes two ISOs (audit A5)") {
+    const auto dir = std::filesystem::temp_directory_path() / L"wl-tests" / L"work-copy";
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    auto write = [](const std::filesystem::path& file, const std::string& content) {
+        std::filesystem::create_directories(file.parent_path());
+        std::ofstream out(file, std::ios::binary);
+        out.write(content.data(), static_cast<std::streamsize>(content.size()));
+    };
+    auto read = [](const std::filesystem::path& file) {
+        std::ifstream in(file, std::ios::binary);
+        return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    };
+    auto build = [&](const std::filesystem::path& output, const std::string& wim) {
+        const auto media = dir / L"media";
+        std::filesystem::remove_all(media);
+        write(media / L"boot" / L"etfsboot.com", std::string(4096, '\0'));
+        write(media / L"sources" / L"install.wim", wim);
+        write(media / L"sources" / L"lang.ini", "[Available UI Languages]");
+        IsoOptions options;
+        options.sourceFolder = media;
+        options.output = output;
+        options.volumeLabel = L"WL_TEST";
+        options.boot = BootMode::BiosOnly;
+        REQUIRE(buildIso(options, TaskContext{}).has_value());
+    };
+    const auto iso = dir / L"Win11.iso";
+    const auto work = dir / L"work" / L"Win11";
+    build(iso, "original image");
+
+    CHECK(inspectWorkCopy(iso, work) == WorkCopyState::Missing);
+    REQUIRE(extractWorkCopy(iso, work, /*fresh=*/false, TaskContext{}).has_value());
+    CHECK(std::filesystem::exists(workCopyRecord(work)));
+    CHECK_FALSE(std::filesystem::exists(work / L"Win11.source.json")); // next to the folder, not in the ISO's files
+    CHECK(inspectWorkCopy(iso, work) == WorkCopyState::Pristine);
+
+    // The image was mounted and saved: the copy is the user's work now.
+    write(work / L"sources" / L"install.wim", "customised image, longer than before");
+    write(work / L"sources" / L"lang.ini", "[Available UI Languages] en-US");
+    CHECK(inspectWorkCopy(iso, work) == WorkCopyState::Modified);
+    REQUIRE(extractWorkCopy(iso, work, /*fresh=*/false, TaskContext{}).has_value());
+    CHECK(read(work / L"sources" / L"install.wim") == "customised image, longer than before"); // kept
+    CHECK(read(work / L"sources" / L"lang.ini") == "[Available UI Languages] en-US");
+    REQUIRE(extractWorkCopy(iso, work, /*fresh=*/true, TaskContext{}).has_value()); // "Baştan çıkar"
+    CHECK(read(work / L"sources" / L"install.wim") == "original image");
+    CHECK(inspectWorkCopy(iso, work) == WorkCopyState::Pristine);
+
+    // Another ISO under the same file name: its copy is not this one's.
+    const auto other = dir / L"other" / L"Win11.iso";
+    std::filesystem::create_directories(other.parent_path());
+    build(other, "a different edition set");
+    CHECK(inspectWorkCopy(other, work) == WorkCopyState::OtherSource);
+
+    // A folder from before the record existed.
+    std::filesystem::remove(workCopyRecord(work));
+    CHECK(inspectWorkCopy(iso, work) == WorkCopyState::Unknown);
     std::filesystem::remove_all(dir, ec);
 }

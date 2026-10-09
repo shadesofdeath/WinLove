@@ -28,6 +28,7 @@ add_library(wl_core STATIC
     image/MediaRefresh.cpp
     image/ImageFormat.cpp
     image/Source.cpp
+    image/WorkCopy.cpp
     image/SystemComponents.cpp
     image/UdfImage.cpp
     image/UpdatePackage.cpp

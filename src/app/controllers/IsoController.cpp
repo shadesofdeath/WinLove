@@ -4,7 +4,7 @@
 #include "base/Log.h"
 #include "core/image/MediaRefresh.h"
 #include "core/image/Source.h"
-#include "core/image/UdfImage.h"
+#include "core/image/WorkCopy.h"
 #include "core/image/dism/Dism.h"
 #include "core/system/Privileges.h"
 
@@ -119,6 +119,42 @@ void IsoController::start(Request request) {
         request.repack = Repack::AsIs;
     }
     const std::filesystem::path workFolder = m_state.settings().workDirectoryFor(source.path);
+    // An ISO is built from its work copy (WorkCopy.h): extracted when missing or unfinished, used
+    // as it is when untouched; one that changed since or is another ISO's is asked about (audit A5).
+    bool extract = false;
+    bool fresh = false;
+    if (source.format == core::ImageFormat::Iso) {
+        const core::WorkCopyState copy = core::inspectWorkCopy(source.path, workFolder);
+        log::info("iso", std::format(L"work copy {}: {}", workFolder.wstring(), core::workCopyStateName(copy)));
+        switch (copy) {
+        case core::WorkCopyState::Missing:
+        case core::WorkCopyState::Partial: extract = true; break;
+        case core::WorkCopyState::Pristine: break;
+        case core::WorkCopyState::Modified:
+        case core::WorkCopyState::Unknown:
+        case core::WorkCopyState::OtherSource:
+            if (request.workCopy == Request::WorkCopy::Ask && m_events.workCopyChoice) {
+                std::weak_ptr<bool> alive = m_alive;
+                m_events.workCopyChoice(copy, workFolder, [this, alive, request](bool again) mutable {
+                    if (const auto a = alive.lock(); !a || !*a) {
+                        return;
+                    }
+                    request.workCopy = again ? Request::WorkCopy::Fresh : Request::WorkCopy::Keep;
+                    start(std::move(request));
+                });
+                return;
+            }
+            if (request.workCopy == Request::WorkCopy::Ask && copy == core::WorkCopyState::OtherSource) {
+                if (m_events.failed) {
+                    m_events.failed(Error{ErrorCode::InvalidArgument, L"the work folder holds another ISO's copy",
+                                          workFolder.wstring(), 0});
+                }
+                return;
+            }
+            extract = fresh = request.workCopy == Request::WorkCopy::Fresh;
+            break;
+        }
+    }
     const std::string answerFile = UnattendController::isoFile(m_state); // empty: not asked for
     core::BootPatch boot = request.bootBypass ? bootPatch(m_state) : core::BootPatch{};
     boot.legacySetup = request.legacySetup; // D-074
@@ -196,26 +232,20 @@ void IsoController::start(Request request) {
     auto usbRoot = std::make_shared<std::wstring>(); // the stick's drive, set by the job
     m_state.engine().run<core::IsoResult>(
         [source, workFolder, request, cancel, report, answerFile, boot, bootFolder, patcher, usbWriter, usbRoot,
-         setupDu](const core::TaskContext&) -> Result<core::IsoResult> {
+         setupDu, extract, fresh](const core::TaskContext&) -> Result<core::IsoResult> {
             // Weights: extract 0.30 (ISO sources), repack 0.30 (if asked), boot image 0.15 (if
             // asked), build the rest.
-            const bool extract = source.format == core::ImageFormat::Iso;
             const bool repack = request.repack != Repack::AsIs;
             const double we = extract ? 0.30 : 0.0;
             const double wr = repack ? 0.30 : 0.0;
             const double wp = boot.empty() ? 0.0 : boot.lcu.empty() ? 0.15 : 0.6; // a cumulative update: minutes per image
             const double wb = 1.0 - we - wr - wp;
-            std::filesystem::path folder = source.path;
+            std::filesystem::path folder = source.format == core::ImageFormat::Iso ? workFolder : source.path;
             if (extract) {
-                auto iso = core::UdfImage::open(source.path);
-                if (!iso) {
-                    return std::unexpected(iso.error());
-                }
                 const core::TaskContext t{cancel, [&](double f, std::wstring_view) { report(f * we, 0); }};
-                if (auto r = iso->extractAll(workFolder, t); !r) {
+                if (auto r = core::extractWorkCopy(source.path, workFolder, fresh, t); !r) {
                     return std::unexpected(r.error());
                 }
-                folder = workFolder;
             }
             if (repack) {
                 const core::TaskContext t{cancel, [&](double f, std::wstring_view) { report(we + f * wr, 1); }};
