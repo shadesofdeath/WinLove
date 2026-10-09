@@ -20,6 +20,7 @@ public:
     void layout() override;
     void paint(ui::Canvas& canvas) override;
     bool tick(double now) override;
+    [[nodiscard]] float tickIntervalMs() const override { return 100.0f; } // spinner and ETA: 10 frames a second
     void start(); // begin the spinner animation
 
 private:

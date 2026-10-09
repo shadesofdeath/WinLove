@@ -19,6 +19,9 @@ constexpr float kActionGap = 4.0f;
 
 PageView::PageView(std::wstring title, std::wstring description)
     : m_title(std::move(title)), m_description(std::move(description)) {
+    if (m_enter.animateTo(1.0f, ui::tokens::motion::enterMs, ui::tokens::motion::decelerate)) {
+        animate();
+    }
     setAccessible(ui::AccessRole::Group, m_title);
 }
 
@@ -68,6 +71,12 @@ void PageView::paint(ui::Canvas& canvas) {
         canvas.drawText(m_description, {x, b.y + kPadding + kTitleLine + kDescGap, width, kDescLine}, TypeStyle::Caption,
                         Color::TextSecondary);
     }
+}
+
+bool PageView::tick(double now) {
+    const bool running = m_enter.tick(now);
+    invalidate();
+    return running;
 }
 
 } // namespace wl::app

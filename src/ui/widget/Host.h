@@ -60,6 +60,7 @@ public:
     void release(Widget* widget); // widget hidden or disabled: hover / press / focus end normally
 
     static constexpr UINT kTooltipTimer = 1;
+    static constexpr UINT kFrameTimer = 5; // the next frame of slow animations (Widget::tickIntervalMs)
 
 private:
     void setHovered(Widget* widget);

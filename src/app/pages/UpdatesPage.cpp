@@ -39,6 +39,7 @@ public:
         m_now = ui::nowMs();
         animate();
     }
+    [[nodiscard]] float tickIntervalMs() const override { return 100.0f; } // spinner and ETA
     bool tick(double now) override {
         m_now = now;
         invalidate();

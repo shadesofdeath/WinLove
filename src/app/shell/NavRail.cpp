@@ -84,8 +84,20 @@ void NavItem::setActive(bool active) {
 }
 
 void NavItem::setBadge(int count) {
+    if (count > m_badge) {
+        m_pulse.snapTo(1.0f);
+        if (m_pulse.animateTo(0.0f, 600.0f, ui::tokens::motion::standard)) {
+            animate();
+        }
+    }
     m_badge = count;
     invalidate();
+}
+
+bool NavItem::tick(double now) {
+    const bool running = m_pulse.tick(now);
+    invalidate();
+    return running;
 }
 
 void NavItem::setCollapsedTooltip(bool collapsed) {
@@ -147,8 +159,13 @@ void NavItem::paint(ui::Canvas& canvas) {
         canvas.drawText(m_label, {labelX, b.y, std::max(labelRight - labelX, 0.0f), b.height}, TypeStyle::Body,
                         ui::Ink(ink, ink, 0, expansion));
         if (!badge.empty()) {
-            canvas.drawText(badge, {b.right() - kBadgeRight - badgeWidth, b.y, badgeWidth + 1, b.height},
-                            TypeStyle::Mono, ui::Ink(Color::TextTertiary, Color::TextTertiary, 0, expansion));
+            const float pulse = m_pulse.value();
+            if (pulse > 0.01f) {
+                canvas.fillRoundRect({b.right() - kBadgeRight - badgeWidth - 4, b.y + 4, badgeWidth + 8, b.height - 8},
+                                     ui::tokens::radius::r2, ui::Ink(Color::AccentSubtle, Color::AccentSubtle, 0, pulse * expansion));
+            }
+            canvas.drawText(badge, {b.right() - kBadgeRight - badgeWidth, b.y, badgeWidth + 1, b.height}, TypeStyle::Mono,
+                            ui::Ink(Color::TextTertiary, Color::AccentBase, pulse, expansion));
         }
     }
     if (m_badge > 0 && expansion < 1.0f) {

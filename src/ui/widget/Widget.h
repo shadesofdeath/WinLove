@@ -130,6 +130,12 @@ public:
     // ---- animation ---------------------------------------------------------------------------
     // Called every frame while registered through animate(). Return true to keep ticking.
     virtual bool tick(double /*nowMs*/) { return false; }
+    // How often tick() needs to run: 0 = every frame (a tween), more = a slow change (a spinner, an
+    // ETA) that is fine at that pace — the window is then not redrawn at the screen's rate for the
+    // length of a job (audit D3).
+    [[nodiscard]] virtual float tickIntervalMs() const { return 0.0f; }
+    // Drawn with this opacity, children included (D-091: a page fading in).
+    [[nodiscard]] virtual float paintOpacity() const { return 1.0f; }
     void animate(); // request ticks from the host
 
 private:

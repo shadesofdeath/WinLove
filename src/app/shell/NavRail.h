@@ -44,6 +44,9 @@ private:
     ui::icons::Icon m_icon;
     int m_badge = 0;
     bool m_active = false;
+    ui::Tween m_pulse; // D-091: 1 → 0 after the badge grew (something was queued)
+public:
+    bool tick(double now) override;
 };
 
 class NavGroupHeader : public ui::Widget {
