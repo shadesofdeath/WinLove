@@ -46,7 +46,15 @@
     "restore": "Restore",
     "close": "Close"
   },
+  "workflow": {
+    "source": "Source",
+    "mount": "Mount",
+    "edit": "Edit",
+    "apply": "Apply",
+    "iso": "ISO"
+  },
   "status": {
+    "downloading": "Downloading",
     "mounted": "Mounted",
     "noMount": "No image mounted",
     "image": "Image",

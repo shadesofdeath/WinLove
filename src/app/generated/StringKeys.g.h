@@ -1329,6 +1329,7 @@ enum class Str : std::uint16_t {
     StatusApply,
     StatusApplying,
     StatusBuilding,
+    StatusDownloading,
     StatusImage,
     StatusMounted,
     StatusMounting,
@@ -1638,10 +1639,15 @@ enum class Str : std::uint16_t {
     WelcomeThemeLight,
     WelcomeTimeZone,
     WelcomeTransparency,
+    WorkflowApply,
+    WorkflowEdit,
+    WorkflowIso,
+    WorkflowMount,
+    WorkflowSource,
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1631;
+inline constexpr std::size_t kStrCount = 1637;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -2965,6 +2971,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "status.apply",
     "status.applying",
     "status.building",
+    "status.downloading",
     "status.image",
     "status.mounted",
     "status.mounting",
@@ -3274,6 +3281,11 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "welcome.themeLight",
     "welcome.timeZone",
     "welcome.transparency",
+    "workflow.apply",
+    "workflow.edit",
+    "workflow.iso",
+    "workflow.mount",
+    "workflow.source",
 };
 
 } // namespace wl::app

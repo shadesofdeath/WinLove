@@ -46,7 +46,15 @@
     "restore": "Önceki boyut",
     "close": "Kapat"
   },
+  "workflow": {
+    "source": "Kaynak",
+    "mount": "Bağla",
+    "edit": "Düzenle",
+    "apply": "Uygula",
+    "iso": "ISO"
+  },
   "status": {
+    "downloading": "İndiriliyor",
     "mounted": "Bağlı",
     "noMount": "Bağlı imaj yok",
     "image": "İmaj",

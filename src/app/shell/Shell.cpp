@@ -115,8 +115,13 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_nav = &add<NavRail>(NavRail::Labels{s(Str::NavCollapse), s(Str::NavExpand), s(Str::KbdCtrl),
                                           s(Str::TooltipsCollapseNav)},
                           [&](Str key) { return strings.get(key); });
-    m_status = &add<StatusBar>(StatusBar::Labels{s(Str::StatusNoMount), s(Str::StatusMounted), s(Str::StatusImage),
-                                                 s(Str::StatusApply)});
+    m_status = &add<StatusBar>(StatusBar::Labels{
+        s(Str::StatusNoMount), s(Str::StatusMounted), s(Str::StatusImage), s(Str::StatusApply),
+        {s(Str::WorkflowSource), s(Str::WorkflowMount), s(Str::WorkflowEdit), s(Str::WorkflowApply), s(Str::WorkflowIso)}});
+    m_status->steps().onStep = [this](int step) {
+        static constexpr PageId kPages[] = {PageId::Source, PageId::Images, PageId::Components, PageId::Apply, PageId::Iso};
+        showPage(kPages[std::clamp(step, 0, 4)]);
+    };
     m_status->cta().onInvoke = [this] {
         if (m_apply && m_apply->running()) {
             m_apply->cancel();
@@ -1438,6 +1443,7 @@ void Shell::updateBreadcrumb() {
 void Shell::updateQueue() {
     const auto& changes = m_state.changes();
     m_status->cta().setQueue(static_cast<int>(changes.size()));
+    updateWorkflow();
     const auto featureOps = static_cast<int>(m_features->queuedCount());
     m_nav->setBadge(PageId::Features, featureOps);
     m_nav->setBadge(PageId::Apply, static_cast<int>(changes.size()));
@@ -1464,6 +1470,36 @@ void Shell::updateQueue() {
     if (m_actionReset) {
         m_actionReset->setEnabled(featureOps > 0);
     }
+    // What the queue holds, by page, on the Apply button's tooltip ("Bileşenler 3 · Ayarlar 9").
+    std::wstring summary;
+    for (const auto& page : allPages()) {
+        if (page.navGroup < 0 || page.id == PageId::Apply) {
+            continue;
+        }
+        if (const int n = m_nav->badge(page.id); n > 0) {
+            summary += (summary.empty() ? L"" : L" \u00b7 ") + m_strings.get(page.navLabel) + L" " + std::to_wstring(n);
+        }
+    }
+    m_status->cta().setTooltip(std::move(summary));
+}
+
+void Shell::updateWorkflow() {
+    using State = WorkflowSteps::State;
+    const auto& run = m_state.applyRun();
+    const bool applied = run && run->stage == AppState::ApplyRun::Stage::Done && run->result && run->result->committed;
+    const auto& iso = m_state.isoRun();
+    const bool built = iso && !iso->running && iso->result.has_value();
+    const bool source = m_state.source().has_value();
+    const bool mounted = m_state.mounted().has_value();
+    const int queued = static_cast<int>(m_state.changes().size());
+    std::array<bool, WorkflowSteps::kSteps> done{source || mounted || applied, mounted || applied, queued > 0 || applied, applied, built};
+    std::array<State, WorkflowSteps::kSteps> states{};
+    bool current = false;
+    for (std::size_t i = 0; i < done.size(); ++i) {
+        states[i] = done[i] ? State::Done : current ? State::Pending : State::Current;
+        current = current || !done[i];
+    }
+    m_status->steps().setStates(states, queued);
 }
 
 void Shell::updateStatus() {
@@ -1492,9 +1528,29 @@ void Shell::updateStatus() {
                           : op->kind == EngineOperation::Kind::Verifying ? Str::StatusVerifying
                                                                          : Str::StatusWorking;
         m_status->setTask(m_strings.get(label), static_cast<float>(op->fraction));
+    } else if (const auto download = downloadProgress()) {
+        // A download (updates, languages, Store) runs on any page: the status bar says so too.
+        m_status->setTask(m_strings.get(Str::StatusDownloading), *download);
     } else {
         m_status->setTask(std::nullopt, 0);
     }
+    updateWorkflow();
+}
+
+std::optional<float> Shell::downloadProgress() const {
+    auto fraction = [](std::uint64_t done, std::uint64_t total) {
+        return total > 0 ? static_cast<float>(static_cast<double>(done) / static_cast<double>(total)) : 0.0f;
+    };
+    if (const auto& f = m_state.updateFetch()) {
+        return fraction(f->doneBytes, f->totalBytes);
+    }
+    if (const auto& f = m_state.languageFetch()) {
+        return fraction(f->doneBytes, f->totalBytes);
+    }
+    if (const auto& f = m_state.storeFetch()) {
+        return fraction(f->doneBytes, f->totalBytes);
+    }
+    return std::nullopt;
 }
 
 void Shell::updateImagesChrome() {

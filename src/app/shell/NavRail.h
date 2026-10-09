@@ -96,6 +96,7 @@ public:
     void setClosedGroups(std::vector<int> groups);
     [[nodiscard]] bool groupClosed(int group) const;
     void setBadge(PageId page, int count);
+    [[nodiscard]] int badge(PageId page) const;
     // 0 = fully collapsed (44), 1 = fully expanded (200); drives label fade during the animation.
     void setExpansion(float amount);
     [[nodiscard]] float expansion() const noexcept { return m_expansion; }
