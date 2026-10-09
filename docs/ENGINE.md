@@ -310,3 +310,23 @@ Uygulama davranışı:
 - [2026-10-09] [Secure Boot 2023, D-094] 25H2 ve 26100.1 `boot.wim` 1. imajında `Windows\Boot\EFI_EX`, `DVD_EX`,
   `Fonts_EX` var (Win10 19041.3636'da yok). `bootmgfw_EX.efi` Windows UEFI CA 2023'e, `bootmgr_EX.efi` hâlâ PCA 2011'e
   zincirleniyor. `efisys_EX.bin` El Torito UEFI imajı olarak verilince ISO'nun `bootx64.efi`'si 2023 zinciri gösterdi.
+- [2026-10-09] [Lite ISO, D-100] Bazı "lite" ISO'ların (X-Lite) `sources\install.wim`'i LZMS solid — içerik olarak ESD;
+  DISM mount edemez. Uzantıya değil WIM başlığına (solid bayrağı / LZMS) bakılır; düz LZX'e export edilince mount olur.
+- [2026-10-09] [D-101] Mount edilmiş ISO'dan kopyalanan dosya salt-okunur özniteliğini taşır; read-write mount o zaman
+  0xC1510111 "You do not have permissions to mount and modify this image" verir — önce IsReadOnly kaldırılır.
+  `wlcli cleanup` yalnız ayarlardaki mount klasörünü temizler; başka klasördeki mount için
+  `wlcli unmount <dir> --discard` (bayrak zorunlu: `--commit`/`--discard` olmadan yardım metni basar) ya da
+  `dism /Unmount-Image /MountDir:<dir> /Discard`. Mount edilmiş 25H2'de
+  `/Cleanup-Image /CheckHealth` ve `/ScanHealth` → "No component store corruption detected." (/English çıktı ayrıştırılır).
+- [2026-10-09] [D-102] `schtasks /Create ... /RU SYSTEM /RL HIGHEST /F`: `/SC WEEKLY /ST 03:30 /D WED`, `/SC ONLOGON`,
+  `/SC DAILY /ST 09:00` Windows 11'de kabul edildi (oluştur/sorgula/sil). Batch içinde `%` çiftlenmeli (`%%`).
+- [2026-10-10] [D-104] `winget download --id X -e --download-directory D` installer'ı ve aynı gövde adlı birleşik manifesti
+  (alt klasör yok) D'ye yazar; manifestte `Installers[0].InstallerType` ve `InstallerSwitches.Silent` var (wix/msi için
+  Silent değeri msiexec argümanlarıdır: `/quiet /norestart`). Hostta yönetici olarak da çalışır (Apply sırasında).
+  programs.ps1 ilk programdan önce AĞ bekliyordu → ağsız PC'de tümü çevrimdışı liste hiç başlamıyordu (düzeltildi:
+  ağ/kaynak güncelleme yalnız winget ile kurulacak ilk programdan önce).
+- [2026-10-10] [D-104, VM] Ağ kartı olmayan VM'de gömülü installer'lar kuruldu: msi/wix `msiexec /i "<yol>" /quiet
+  /norestart`, inno ve nullsoft dosyanın kendisi + manifestin Silent anahtarıyla (`cmd /d /c` içinden; yol boşluksuz,
+  tırnaklar cmd'nin kuralıyla sorunsuz). winget Notepad++ için nullsoft yerine wix'i seçti; Git'in indirileni
+  `User_X64_inno` olsa da yükseltilmiş kurulumda `C:\Program Files\Git`'e gitti. Kontrol için WLDIAG bölümü
+  `Add-PartitionAccessPath` ile bir klasöre bağlanır (harfi yok), betiği SYSTEM bir oturum-açılışı görevi çalıştırır.

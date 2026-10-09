@@ -371,6 +371,23 @@ TEST_CASE("plan: component removals with the other removals, the store cleanup r
     CHECK(back->find(OpKind::CleanupImage, L"component-store"));
 }
 
+TEST_CASE("plan: offline programs add their download time to the post-setup step (D-104)") {
+    ChangeSet set;
+    const std::wstring online = LR"({"when":"firstLogon","steps":[],"programs":[{"id":"7zip.7zip"},{"id":"Git.Git"}]})";
+    set.add({OpKind::SetPostSetup, L"postsetup", online});
+    auto plan = ops::plan(set);
+    REQUIRE(plan.steps.size() == 1);
+    CHECK(ops::estimateSeconds(plan, 0) == doctest::Approx(ops::estimateSeconds(OpKind::SetPostSetup)));
+    const std::wstring offline =
+        LR"({"when":"firstLogon","steps":[],"programs":[{"id":"7zip.7zip"},{"id":"Git.Git"}],"offlinePrograms":true})";
+    set.add({OpKind::SetPostSetup, L"postsetup", offline});
+    plan = ops::plan(set);
+    CHECK(ops::estimateSeconds(plan, 0) == doctest::Approx(ops::estimateSeconds(OpKind::SetPostSetup) + 50.0));
+    set.add({OpKind::SetPostSetup, L"postsetup", L"not json"}); // a hand-written preset: no crash, the base time
+    plan = ops::plan(set);
+    CHECK(ops::estimateSeconds(plan, 0) == doctest::Approx(ops::estimateSeconds(OpKind::SetPostSetup)));
+}
+
 TEST_CASE("the recipes tools/lab_components.ps1 feeds to wlcli are valid") {
     for (const wchar_t* name : {L"recipe-onedrive.json", L"recipe-edge.json", L"recipe-winre.json"}) {
         CAPTURE(name);

@@ -112,6 +112,16 @@ double estimateSeconds(const ApplyPlan& plan, std::size_t step) noexcept {
         })) {
         return 600.0; // the updates of this run left superseded versions behind
     }
+    if (op.kind == OpKind::SetPostSetup) {
+        // D-104: offline programs are downloaded during this step (lab: 7-Zip + Notepad++ ~10 MB in seconds;
+        // a large installer takes minutes) - a rough 25 s each. Read straight from the plan's JSON
+        // (PostSetup.h would bring <windows.h> and its CopyFile macro into this file).
+        const auto doc = nlohmann::json::parse(utf8::fromWide(op.value), nullptr, /*allow_exceptions=*/false);
+        if (doc.is_object() && doc.contains("offlinePrograms") && doc["offlinePrograms"].is_boolean() &&
+            doc["offlinePrograms"].get<bool>() && doc.contains("programs") && doc["programs"].is_array()) {
+            return estimateSeconds(op.kind) + 25.0 * static_cast<double>(doc["programs"].size());
+        }
+    }
     return estimateSeconds(op.kind);
 }
 
