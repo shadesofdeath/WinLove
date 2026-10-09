@@ -1464,7 +1464,12 @@
     "fromThisPcPicked": "Zaten listede",
     "fromThisPcAdded": "{n} program listeye eklendi",
     "fromThisPcNone": "Bu bilgisayarda winget'te olan program bulunamadı",
-    "fromThisPcWait": "winget dizini hazırlanıyor; birazdan tekrar dene"
+    "fromThisPcWait": "winget dizini hazırlanıyor; birazdan tekrar dene",
+    "offline": "Çevrimdışı kur",
+    "offlineOn": "Çevrimdışı: açık",
+    "offlineToastOn": "Çevrimdışı kurulum açık",
+    "offlineToastOff": "Çevrimdışı kurulum kapalı",
+    "offlineToastBody": "Seçilen programların kurulumları Uygula'da indirilip imaja gömülür; hedef PC internetsiz kurar (imaj büyür)."
   },
   "apps": {
     "title": "Uygulamalar",

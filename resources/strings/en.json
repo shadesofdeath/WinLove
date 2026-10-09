@@ -1464,7 +1464,12 @@
     "fromThisPcPicked": "Already in the list",
     "fromThisPcAdded": "{n} programs added to the list",
     "fromThisPcNone": "No program on this PC is in winget",
-    "fromThisPcWait": "The winget index is being prepared; try again in a moment"
+    "fromThisPcWait": "The winget index is being prepared; try again in a moment",
+    "offline": "Install offline",
+    "offlineOn": "Offline: on",
+    "offlineToastOn": "Offline install on",
+    "offlineToastOff": "Offline install off",
+    "offlineToastBody": "The selected programs' installers are downloaded during Apply and embedded in the image; the target PC installs them without internet (the image grows)."
   },
   "apps": {
     "title": "Apps",

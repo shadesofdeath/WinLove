@@ -71,6 +71,19 @@ void PostSetupController::setPrograms(std::vector<core::PostSetupProgram> progra
     store(std::move(next));
 }
 
+void PostSetupController::setOfflinePrograms(bool offline) {
+    PostSetupPlan next = plan();
+    if (next.offlinePrograms == offline) {
+        return;
+    }
+    next.offlinePrograms = offline;
+    store(std::move(next));
+}
+
+bool PostSetupController::offlinePrograms() const {
+    return plan().offlinePrograms;
+}
+
 void PostSetupController::add(PostSetupStep step) {
     PostSetupPlan next = plan();
     next.steps.push_back(std::move(step));

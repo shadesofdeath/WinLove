@@ -82,6 +82,9 @@ public:
     void clear();
     [[nodiscard]] const std::vector<core::PostSetupProgram>& picks() const { return m_postSetup.programs(); }
     [[nodiscard]] std::size_t pickCount() const { return picks().size(); }
+    // D-104: install the picks offline — their installers are downloaded and embedded at Apply.
+    [[nodiscard]] bool offline() const { return m_postSetup.offlinePrograms(); }
+    void setOffline(bool on) { m_postSetup.setOfflinePrograms(on); }
     // App Installer (winget) is queued for removal: nothing could install the programs.
     [[nodiscard]] bool wingetRemoved() const;
 

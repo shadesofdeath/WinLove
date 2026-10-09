@@ -33,6 +33,9 @@ public:
     [[nodiscard]] const std::vector<core::PostSetupProgram>& programs() const { return plan().programs; }
     // `texts`: the install window's texts in the app's language; they travel with the plan.
     void setPrograms(std::vector<core::PostSetupProgram> programs, std::vector<std::pair<std::wstring, std::wstring>> texts);
+    // D-104: install the programs offline (winget download at Apply, embed, local install at logon).
+    void setOfflinePrograms(bool offline);
+    [[nodiscard]] bool offlinePrograms() const;
 
     void add(core::PostSetupStep step);
     // Ready command steps ("Hazır komutlar"): power plan and network settings that are commands,

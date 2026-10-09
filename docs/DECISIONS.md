@@ -251,10 +251,15 @@ yer tutuculu kurulum komutu üretir (msi/wix → msiexec; msix → Add-AppxPacka
 çalıştırır). `wlcli programs-download <klasör> <id> [<ad>]`. Veri yolu: `PostSetupPlan` → `offlinePrograms` + `offlineInstallers`
 (serileşir); `programsJson` her programa `offline:{file,command}` ekler; programs.ps1 çevrimdışı dalı `apps\<id>\<file>`'den
 yerel kurar (hepsi çevrimdışıysa winget hiç beklenmez). Installer dosyaları imaja CopyTree ile girer (apps klasörü).
+Orkestrasyon: indir+göm `applyPostSetup` içinde Apply anında yapılır (bayrakla; CopyTree'ye gerek yok) — her program
+`winget download` edilir, installer imaja `apps\<id>\<file>` olarak kopyalanır, programs.json offline bilgisini alır;
+inen programlar yerel kurulur, inmeyenler winget'e düşer. UI: Programlar sayfasında "Çevrimdışı kur" başlık anahtarı
+(PostSetupController.setOfflinePrograms → plan bayrağı).
 Doğrulanan: birim testler (manifest parse, kurulum komutu, JSON ve plan round-trip, programs.json çıktısı); gerçek
-`wlcli programs-download 7zip.7zip` → 1.9 MB .msi + `msiexec /i "{path}" /quiet /norestart`.
-AÇIK (bir sonraki): Programlar sayfasında "çevrimdışı" anahtarı + controller indirme orkestrasyonu (indir → CopyTree → plan);
-ve temiz bir VM'de internetsiz GERÇEK kurulum testi (imaj boyutu artışı operatöre gösterilir).
+`wlcli programs-download 7zip.7zip` → 1.9 MB .msi + doğru msiexec komutu; anahtar render edildi; **gerçek imajda (mount)
+`wlcli apply` ile offline changeset uygulandı → winget download Apply'da çalıştı, 7-Zip .msi (1.9 MB) `apps\7zip.7zip\`'e
+gömüldü, programs.json offline+msiexec taşıyor** (apply exit 0, temiz unmount).
+AÇIK (tek kalan): temiz bir VM'de internetsiz ilk-oturum GERÇEK kurulum testi (imaj boyutu artışı operatöre gösterilir).
 
 ## D-103 — Çok dilli karşılama sihirbazı (15 dil, kurulan Windows'un diline göre) (2026-10-09)
 Bağlam: Sihirbaz metinleri yalnız TR/EN'di ve derleme anında tek dile sabitleniyordu; dağıtılan ISO'lar farklı dillerdeki
