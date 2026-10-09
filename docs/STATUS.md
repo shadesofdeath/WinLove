@@ -23,9 +23,10 @@
   Doğrulandı: birim testler + gerçek `wlcli programs-download 7zip.7zip` (1.9 MB msi + msiexec komutu). Orkestrasyon + UI tamam: Programlar
   sayfasında "Çevrimdışı kur" anahtarı; indir+göm `applyPostSetup` içinde Apply anında (bayrakla). **Doğrulandı: gerçek
   imajda (mount) `wlcli apply` ile offline changeset → winget download Apply'da çalıştı, 7-Zip .msi apps'e gömüldü,
-  programs.json offline+msiexec taşıyor (apply exit 0).** **AÇIK (tek kalan):** temiz VM'de internetsiz ilk-oturum GERÇEK
-  kurulum testi. **4 özelliğin 4'ü de uçtan uca yapıldı (sağlık, görev, çok dilli, çevrimdışı programlar); yalnız
-  çevrimdışı programların VM kurulum testi açık.** Build + tüm testler temiz. Her biri kullanıcı onayı bekler (Altın kural 1).
+  programs.json offline+msiexec taşıyor (apply exit 0).** **VM'de doğrulandı (ağ kartı YOK):** offline1 (7-Zip +
+  Notepad++, msi) ve offline2 (Git inno + Steam nullsoft) — dördü de internetsiz kuruldu, ALL PASSED; VM, programs.ps1'in
+  ağ bekleme hatasını yakaladı (düzeltildi). **4 özelliğin 4'ü de uçtan uca yapıldı ve doğrulandı (sağlık, görev,
+  çok dilli, çevrimdışı programlar).** Bir sonraki somut adım: kullanıcının yeni isteği. Build + tüm testler temiz. Her biri kullanıcı onayı bekler (Altın kural 1).
 - **Bu oturumda tamamlananlar (2026-10-09, D-093…D-100):** Windows indir (UUP→ISO, Mağaza uygulamaları + seçici, Windows 10,
   .NET 3.5, ResetBase, install.esd); Secure Boot 2023 medyası (D-094); "Bu bilgisayardan al" — Programlar + Tweaks (D-095);
   güç planı (.pow) içe aktarma (D-096); desteklenmeyen PC'de yerinde yükseltme betiği (D-097); `wlcli welcome-json` +

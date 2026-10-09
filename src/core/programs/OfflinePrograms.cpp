@@ -97,9 +97,12 @@ Result<OfflineInstaller> downloadProgramOffline(const std::wstring& id, const st
     std::filesystem::remove_all(dest, ec);          // a fresh download; an older one may be a different version
     std::filesystem::create_directories(dest, ec);
 
+    // --skip-dependencies: only the program's own installer is embedded and run; a runtime it needs
+    // (VC++ redist and the like) is a winget package of its own the operator can pick, offline too.
     const std::wstring commandLine = L"winget.exe download --id \"" + id +
                                      L"\" -e --download-directory \"" + dest.wstring() +
-                                     L"\" --accept-package-agreements --accept-source-agreements --disable-interactivity";
+                                     L"\" --skip-dependencies --accept-package-agreements --accept-source-agreements"
+                                     L" --disable-interactivity";
     std::string output;
     task.report(0.0, L"winget download " + id);
     const auto run = runProcess(commandLine, [&](std::string_view chunk) { output += chunk; });

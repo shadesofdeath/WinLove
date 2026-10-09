@@ -259,7 +259,15 @@ Doğrulanan: birim testler (manifest parse, kurulum komutu, JSON ve plan round-t
 `wlcli programs-download 7zip.7zip` → 1.9 MB .msi + doğru msiexec komutu; anahtar render edildi; **gerçek imajda (mount)
 `wlcli apply` ile offline changeset uygulandı → winget download Apply'da çalıştı, 7-Zip .msi (1.9 MB) `apps\7zip.7zip\`'e
 gömüldü, programs.json offline+msiexec taşıyor** (apply exit 0, temiz unmount).
-AÇIK (tek kalan): temiz bir VM'de internetsiz ilk-oturum GERÇEK kurulum testi (imaj boyutu artışı operatöre gösterilir).
+**VM (ağ kartı YOK, `lab_vm -LogDisk`):** offline1 — 7-Zip + Notepad++ (ikisi de wix/msi) `msiexec /quiet` ile exit 0,
+ikisi de kurulu, 79 sn; offline2 — Git (inno, `/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`) + Steam (nullsoft, `/S`)
+exit 0, ikisi de kurulu, 120 sn; programs.log'da `winget:` boş (hiç gerekmedi). Kontrol betiği bir D-102 göreviyle
+(oturum açılışı, SYSTEM) çalıştı — D-102 de gerçek kurulumda doğrulandı. VM'in yakaladığı hata: programs.ps1 ilk
+programdan önce ağ bekliyordu (ağsız PC'de liste hiç başlamıyordu) → ağ + `winget source update` artık yalnız winget ile
+kurulacak ilk programdan önce; MSI 1638 'zaten var' sayılır. Ayrıca: `--skip-dependencies` (yalnız programın kendi
+installer'ı; gereken runtime ayrı bir winget programı olarak seçilir), Apply süre tahmini çevrimdışı program başına +25 sn.
+Bilinen sınır: winget olmayan imajda karışık liste (bazıları inmedi) hepsini durdurur; installer adında/sessiz anahtarında
+tırnak olursa `cmd /c` tırnak kuralı sorun çıkarabilir (winget'in dosya adlarında görülmedi).
 
 ## D-103 — Çok dilli karşılama sihirbazı (15 dil, kurulan Windows'un diline göre) (2026-10-09)
 Bağlam: Sihirbaz metinleri yalnız TR/EN'di ve derleme anında tek dile sabitleniyordu; dağıtılan ISO'lar farklı dillerdeki
