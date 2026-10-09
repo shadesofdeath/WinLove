@@ -7,6 +7,9 @@
   P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler, P16 Uygulama Ayarları, P17 Hakkında, P18 Komut Paleti:
   🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v2 (AppX + sistem bileşenleri + depo
   temizliği, D-031), test bekliyor.
+- **YAYINLANDI: v1.2.0-beta (2026-10-10)** — https://github.com/shadesofdeath/WinLove/releases/tag/v1.2.0-beta
+  (ön sürüm, `WinLove.exe` 10.051.584 bayt, SHA-256 `D0A93F9ED2051083D8FDC61F2597C8D76C039E799972DDD68EC85A526470100D`).
+  `main` push edildi (a849531). Bilinen sınır (D-104): winget'siz imajda karışık çevrimdışı liste durur — sıradaki aday.
 - **Yeni özellik turu (2026-10-09, kullanıcı seçimi): 4 özellik — (1) çok dilli sihirbaz, (2) çevrimdışı program
   kurulumu, (3) imaj sağlık denetimi + onarım, (4) özel zamanlanmış görev.** Not: "bu PC sürücüleri", OEM bilgileri ve
   disk bölümleme zaten vardı (önerilenler kodda kontrol edildi). **Tamamlanan: (3) imaj sağlık denetimi + onarım (D-101)** —
