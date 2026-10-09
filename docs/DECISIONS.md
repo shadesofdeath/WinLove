@@ -241,6 +241,22 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-094 — Secure Boot 2023 önyükleme yöneticili medya (2026-10-09)
+Bağlam: Kullanıcının seçtiği 2. özellik. Microsoft PCA 2011'i DBX'e alınca eski medya açılmaz; db'sinde "Windows UEFI
+CA 2023" olmayan PC'de ise yalnız eski medya açılır. Microsoft'un yolu `Make2023BootableMedia.ps1` (KB5053484): boot.wim
+1. imajını bağlayıp `EFI_EX` / `DVD_EX` / `Fonts_EX` dosyalarını medyaya kopyalar, `efisys_EX.bin` ile oscdimg.
+Karar:
+- Bağlama yok: `wimFileData` (WimVerify'nin okuyucusu; dosya listesinden akışın SHA-1'i, sözlük tablosundan akış,
+  LZX/XPRESS çözme, SHA-1 doğrulama) dosyaları doğrudan okur; yönetici gerekmez.
+- Medya klasörü değişmez: dosyalar ISO'ya (ve USB'ye) `replacedFiles` ile girer, `IsoOptions::efiBootImage` UEFI
+  El Torito imajını değiştirir. BIOS önyüklemesi, BCD, boot.wim aynı kalır. Medya güncellemesinden (D-080) sonra
+  uygulanır; boot.wim güncellenmişse en yeni önyükleme yöneticisi ondan alınır.
+- Seçenek, varsayılan kapalı (ISO Oluştur › Önyükleme › Secure Boot); yanında bu PC'nin db durumu
+  (`GetFirmwareEnvironmentVariable(db)` içinde "Windows UEFI CA 2023"): tanıyor / tanımıyor (uyarı) / bilinmiyor.
+- `wlcli iso --secureboot2023`, `wlcli secureboot-db`.
+Doğrulanan: ISO'daki `bootx64.efi` imza zinciri Windows UEFI CA 2023 (varsayılan ISO'da PCA 2011).
+Doğrulanmayan: Secure Boot açık bir VM'de açılış (VMware Workstation'ın varsayılan db'si bilinmiyor).
+
 ## D-093 — Windows indir: UUP'tan ISO, kendi dönüştürücümüzle (2026-10-09)
 Bağlam: Kullanıcı Microsoft'tan ISO indirmeyi istedi. Önce Microsoft'un sitesi denendi: API'si otomatik istekleri
 "Sentinel" ile reddediyor (Fido'nun yaptığı gibi tarayıcı parmak izi taklidi bot korumasını aşmak olur, yapılmadı).
