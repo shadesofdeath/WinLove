@@ -5,7 +5,8 @@
 namespace wl::ui {
 
 namespace {
-constexpr float kIconSize = 24.0f;
+constexpr float kIconSize = 56.0f; // the tile; the icon itself is 24 in its middle
+constexpr float kGlyph = 24.0f;
 constexpr float kIconGap = 16.0f;
 constexpr float kTextGap = 4.0f;
 constexpr float kActionGap = 12.0f;
@@ -22,7 +23,7 @@ Button& EmptyState::setAction(std::wstring label) {
         m_action->setText(std::move(label));
         m_action->setVisible(true);
     } else {
-        m_action = &add<Button>(ButtonKind::Secondary, std::move(label));
+        m_action = &add<Button>(ButtonKind::Primary, std::move(label));
     }
     layout();
     return *m_action;
@@ -71,7 +72,11 @@ void EmptyState::layout() {
 void EmptyState::paint(Canvas& canvas) {
     const RectF b = bounds();
     float y = contentTop();
-    canvas.drawIcon(m_icon, {b.x + std::round((b.width - kIconSize) / 2), y}, tokens::Color::TextTertiary,
+    const RectF tile{b.x + std::round((b.width - kIconSize) / 2), y, kIconSize, kIconSize};
+    canvas.fillRoundRect(tile.inset(-6, -6), kIconSize / 2 + 6, tokens::Color::BgPanel);
+    canvas.fillRoundRect(tile, kIconSize / 2, tokens::Color::BgRaised);
+    canvas.strokeRoundRect(tile, kIconSize / 2, tokens::Color::LineSubtle);
+    canvas.drawIcon(m_icon, {tile.x + (kIconSize - kGlyph) / 2, tile.y + (kIconSize - kGlyph) / 2}, tokens::Color::AccentBase,
                     IconVariant::Regular24);
     y += kIconSize + kIconGap;
     canvas.drawText(m_title, {b.x, y, b.width, kTextLine}, tokens::TypeStyle::BodyStrong, tokens::Color::TextPrimary,
