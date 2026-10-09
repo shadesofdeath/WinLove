@@ -1,5 +1,7 @@
 #include "app/controllers/ImageSettingsController.h"
 
+#include "core/image/RegistryRead.h"
+
 #include "app/controllers/ImageValuesController.h"
 #include "core/image/ImageFiles.h"
 
@@ -346,6 +348,54 @@ int ImageSettingsController::applyRecommended() {
         ++changed;
         collectQueued(setting, slots);
         auto add = operationsFor(setting, setting.recommended);
+        ops.insert(ops.end(), std::make_move_iterator(add.begin()), std::make_move_iterator(add.end()));
+    }
+    m_state.unqueueMany(slots);
+    m_state.queueMany(std::move(ops));
+    return changed;
+}
+
+int ImageSettingsController::thisPcOption(const ImageSetting& setting) const {
+    if (takesValue(setting)) {
+        return setting.defaultOption;
+    }
+    int best = setting.defaultOption;
+    std::size_t bestSize = 0;
+    for (int i = 0; i < static_cast<int>(setting.options.size()); ++i) {
+        if (i == setting.defaultOption) {
+            continue;
+        }
+        const auto ops = operationsFor(setting, i);
+        bool asserts = false;
+        bool all = !ops.empty();
+        for (const auto& op : ops) {
+            const auto write = registryWriteOf(op);
+            if (!write || !core::liveRegistryHolds(*write)) {
+                all = false; // a service or a file: this PC is not read for those
+                break;
+            }
+            asserts = asserts || assertsSomething(*write);
+        }
+        if (all && asserts && ops.size() > bestSize) {
+            best = i;
+            bestSize = ops.size();
+        }
+    }
+    return best;
+}
+
+int ImageSettingsController::takeFromThisPc() {
+    std::vector<std::pair<OpKind, std::wstring>> slots;
+    std::vector<Operation> ops;
+    int changed = 0;
+    for (const auto& setting : m_catalog.settings()) {
+        const int here = thisPcOption(setting);
+        if (here == setting.defaultOption || here == current(setting)) {
+            continue;
+        }
+        ++changed;
+        collectQueued(setting, slots);
+        auto add = operationsFor(setting, here);
         ops.insert(ops.end(), std::make_move_iterator(add.begin()), std::make_move_iterator(add.end()));
     }
     m_state.unqueueMany(slots);

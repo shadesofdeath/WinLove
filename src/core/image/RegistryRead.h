@@ -28,6 +28,10 @@ struct RegistryData {
 // their terminating nulls (a .reg "text" carries one, a value written by some tool may not).
 [[nodiscard]] bool sameRegistryData(const RegistryWrite& write, const RegistryData& data);
 
+// D-095: the same question asked of this PC's own registry (HKLM, HKCU — the signed-in user — HKU,
+// HKCR; 64-bit view): is the write's result there? For "Bu bilgisayarın ayarlarını al".
+[[nodiscard]] bool liveRegistryHolds(const RegistryWrite& write);
+
 class OfflineRegistryReader {
 public:
     explicit OfflineRegistryReader(std::filesystem::path mountDir);
