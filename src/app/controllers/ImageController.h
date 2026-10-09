@@ -59,7 +59,11 @@ public:
     [[nodiscard]] std::optional<Str> verifyRefusal() const;
     [[nodiscard]] bool canDelete() const { return !deleteRefusal(); }
     [[nodiscard]] bool isEsdSource() const;
-    [[nodiscard]] bool isPackedSource() const { return isEsdSource(); } // read for its editions, not mounted / edited
+    // D-100: a solid / LZMS install image — an ESD by content even when it is named install.wim (a
+    // "lite" ISO, X-Lite and the like). It cannot be mounted either; it is converted to a plain WIM
+    // first, like an ESD.
+    [[nodiscard]] bool isSolidInstall() const;
+    [[nodiscard]] bool isPackedSource() const { return isEsdSource() || isSolidInstall(); } // read for its editions, not mounted / edited
     [[nodiscard]] std::optional<int> failedIndex() const noexcept { return m_failedIndex; }
 
     void mount(int index);
