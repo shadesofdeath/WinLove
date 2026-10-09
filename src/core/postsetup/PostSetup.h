@@ -28,12 +28,14 @@
 namespace wl::core {
 
 struct PostSetupStep {
-    enum class Type : std::uint8_t { Winget, Command, Copy, Wifi };
+    enum class Type : std::uint8_t { Winget, Command, Copy, Wifi, PowerPlan };
     Type type = Type::Command;
     std::wstring name;        // shown in the list, echoed while it runs (Wi-Fi: the SSID)
     std::wstring source;      // winget: package id · command: the command line · copy: file / folder on this PC
                               // · wifi: the WLAN profile XML (Wifi.h; always a machine step, deleted after use)
-    std::wstring destination; // copy only: folder on the installed system (%VARIABLES% allowed)
+                              // · powerplan: a .pow file of this PC (powercfg /export), made the active scheme
+    std::wstring destination; // copy: folder on the installed system (%VARIABLES% allowed)
+                              // · powerplan: the GUID it is imported under ("{…}"; the page makes one)
     bool wait = true;         // command only: finish before the next step starts
 
     [[nodiscard]] bool operator==(const PostSetupStep&) const = default;

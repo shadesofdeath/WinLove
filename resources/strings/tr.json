@@ -846,7 +846,11 @@
     "wifiSecurity": "Güvenlik",
     "wifiOpen": "Açık (parolasız)",
     "wifiHidden": "Gizli ağ",
-    "wifiHiddenHint": "Adını yayınlamıyor"
+    "wifiHiddenHint": "Adını yayınlamıyor",
+    "addPower": "Güç planı ekle",
+    "powerPick": "Güç planı seç (.pow)",
+    "powerFiles": "Güç planı (*.pow)",
+    "powerAdded": "Güç planı eklendi: {name}"
   },
   "apply": {
     "title": "Uygula",
