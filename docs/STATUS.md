@@ -7,6 +7,10 @@
   P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler, P16 Uygulama Ayarları, P17 Hakkında, P18 Komut Paleti:
   🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v2 (AppX + sistem bileşenleri + depo
   temizliği, D-031), test bekliyor.
+- **Genel inceleme (2026-10-09, kullanıcı isteği):** beş paralel salt-okunur inceleme (motor, çevre modüller, uygulama
+  katmanı, UI çatısı, NTLite farkı + mühendislik düzeni) → `docs/AUDIT-2026-10.md` (~100 bulgu, dosya:satır, Faz A–F +
+  önerilen sıra). Kod değişmedi. **Bir sonraki somut adım:** kullanıcı sırayı seçer; öneri Faz A'nın küçük yıkıcı
+  hataları (A1–A6, A12, A13, D2, B1, B2, B4), ardından E1 Secure Boot 2023 CA (PCA 2011 2026-10-19'da sona eriyor).
 - **Çalışma şekli:** kullanıcı "her seferinde durma" dedi — sayfa bitince build + test + `-Dist` + yerel commit,
   sonra doğrudan bir sonraki sayfa. Kullanıcı `dist\WinLove.exe`'yi paralel test ediyor.
 - **Faz 3'ün bütün sayfaları yazıldı** (P01–P04 onaylı, P05–P18 kullanıcı testi bekliyor). Kural 1 gereği Faz 4'e
