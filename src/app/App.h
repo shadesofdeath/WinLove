@@ -105,7 +105,7 @@ struct LaunchOptions {
     bool demoNoWinre = false;     // render (with a source): ISO page, edition 1 has no WinRE (D-074)
     bool demoAio = false;         // render (with a source): ISO page, edition 2 cannot be installed by the media (D-077)
     std::wstring demoCatalog;     // render (with --demo-updates): "dialog" | "download" — the update catalog (D-046)
-    std::wstring demoApply;    // render (with --demo-features): "running" | "done" | "skipped" — fake Uygula run; "confirm" — the risk dialog, 40 rows
+    std::wstring demoApply;    // render (with --demo-features): "running" | "done" | "skipped" | "held" — fake Uygula run; "confirm" — the risk dialog, 40 rows
     bool maximized = false;
     bool testDeviceLost = false; // windowed: App::recreateGraphics once, as after a GPU reset (audit A6)
     std::optional<ui::PointF> hoverAt;

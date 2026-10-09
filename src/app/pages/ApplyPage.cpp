@@ -77,6 +77,12 @@ ApplyPage::Mode ApplyPage::modeFor(const AppState& state) {
     if (run && run->stage != Run::Stage::Done) {
         return Mode::Running;
     }
+    // Held (a step failed, nothing saved) or stopped: the image is still mounted with what failed
+    // still queued. The report with the reasons comes first, until the queue is touched (A7).
+    if (run && run->result && state.mounted() && state.changes().version() == run->queueVersionAtEnd &&
+        (run->result->held || !run->result->report.completed)) {
+        return Mode::Done;
+    }
     if (state.mounted() && !state.changes().empty()) {
         return Mode::Summary;
     }
@@ -232,6 +238,10 @@ std::pair<std::wstring, std::wstring> ApplyPage::header() const {
             return {m_strings.get(Str::ApplyFailedTitle),
                     m_strings.format(Str::ApplyCommitFailedBody, {{L"e", r.commitError->message}})};
         }
+        if (r.held) {
+            return {m_strings.format(Str::ApplyHeldTitle, {{L"n", std::to_wstring(r.report.failures())}}),
+                    m_strings.get(Str::ApplyHeldDesc)};
+        }
         return {m_strings.get(Str::ApplyDoneTitle),
                 m_strings.format(Str::ApplyDoneDesc,
                                  {{L"n", std::to_wstring(run->plan.steps.size())}, {L"t", took}})};
@@ -371,6 +381,14 @@ void ApplyPage::buildDone() {
         } else if (!r.report.completed) {
             m_infoBar = &add<ui::InfoBar>(ui::InfoKind::Warning, m_strings.get(Str::ApplyStoppedTitle),
                                           m_strings.get(Str::ApplyStoppedBody), m_strings.get(Str::CommonClose));
+        } else if (r.held) {
+            // A failed step may have left the image half changed: nothing was saved (audit A7).
+            m_infoBar = &add<ui::InfoBar>(ui::InfoKind::Warning,
+                                          m_strings.format(Str::ApplyHeldTitle, {{L"n", std::to_wstring(failures)}}),
+                                          m_strings.get(Str::ApplyHeldBody), m_strings.get(Str::CommonClose));
+            if (m_intents.unmount && m_state.mounted()) {
+                m_infoBar->setAction(m_strings.get(Str::ApplyHeldUnmount), m_intents.unmount);
+            }
         } else if (failures > 0) {
             m_infoBar = &add<ui::InfoBar>(ui::InfoKind::Warning,
                                           m_strings.format(Str::ApplySkippedTitle, {{L"n", std::to_wstring(failures)}}),
