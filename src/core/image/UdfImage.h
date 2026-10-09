@@ -36,8 +36,11 @@ public:
     [[nodiscard]] Result<void> extract(const Node& file, const std::filesystem::path& destination,
                                        const TaskContext& task) const;
     // Copies the whole image into `destination` (created if needed). Progress is by bytes across
-    // all files. Existing files of the same size are kept (resumable after a cancel).
-    [[nodiscard]] Result<void> extractAll(const std::filesystem::path& destination, const TaskContext& task) const;
+    // all files. Existing files of the same size are kept (resumable after a cancel); with
+    // `keepExisting` every existing file is (a work copy: a file is only ever written whole, through
+    // a ".partial", so one under its own name is complete — or was changed on purpose).
+    [[nodiscard]] Result<void> extractAll(const std::filesystem::path& destination, const TaskContext& task,
+                                          bool keepExisting = false) const;
 
     [[nodiscard]] std::wstring_view volumeLabel() const noexcept { return m_label; }
 

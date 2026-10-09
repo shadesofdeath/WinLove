@@ -7,6 +7,7 @@
 #include "app/generated/StringKeys.g.h"
 #include "app/state/AppState.h"
 #include "base/Result.h"
+#include "core/image/WorkCopy.h"
 #include "core/image/dism/Edition.h"
 #include "core/image/wim/WimVerify.h"
 
@@ -37,6 +38,12 @@ public:
         std::function<void()> mounted; // a fresh mount is up: time to read its contents (PreloadController)
         // Every stream of `file` was read: sound, or how many are damaged.
         std::function<void(const core::WimVerifyReport& report, std::wstring file)> verified;
+        // An ISO's work copy that cannot just be used (core::WorkCopyState Modified / Unknown /
+        // OtherSource, audit A5): the shell asks. proceed(true) extracts the ISO again over it,
+        // proceed(false) uses the folder as it is. Not set: Modified / Unknown are used as they
+        // are (nothing is lost), another ISO's copy is refused.
+        std::function<void(core::WorkCopyState state, std::filesystem::path folder, std::function<void(bool fresh)> proceed)>
+            workCopyChoice;
     };
 
     ImageController(AppState& state, Events events);
@@ -126,6 +133,8 @@ private:
     void run(EngineOperation op, Work work, std::function<void()> onSuccess, Failure failure);
     // For ISO sources: extracts to the work folder, switches the source to it, then `next`.
     void withWritableSource(int index, std::function<void()> next);
+    void prepareWorkCopy(const std::filesystem::path& iso, const std::filesystem::path& folder, int index, bool extract,
+                         bool fresh, std::function<void()> next);
     [[nodiscard]] std::optional<std::filesystem::path> installWimPath() const;
     [[nodiscard]] std::wstring editionName(int index) const;
 

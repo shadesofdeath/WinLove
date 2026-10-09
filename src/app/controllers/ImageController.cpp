@@ -184,18 +184,53 @@ void ImageController::withWritableSource(int index, std::function<void()> next) 
         next();
         return;
     }
-    // DISM and wimgapi need real files: copy the ISO to the work folder once (resumable).
+    // DISM and wimgapi need real files: the ISO is copied to its work folder (WorkCopy.h). A copy
+    // that changed since, or is another ISO's, is never overwritten without asking (audit A5).
     const std::filesystem::path iso = source->path;
     const std::filesystem::path folder = m_state.settings().workDirectoryFor(iso);
+    const core::WorkCopyState copy = core::inspectWorkCopy(iso, folder);
+    log::info("app", std::format(L"work copy {}: {}", folder.wstring(), core::workCopyStateName(copy)));
+    std::weak_ptr<bool> alive = m_alive; // the answer to a dialog may come after a UI rebuild
+    auto prepare = [this, alive, iso, folder, index, next = std::move(next)](bool extract, bool fresh) mutable {
+        if (const auto a = alive.lock(); !a || !*a) {
+            return;
+        }
+        prepareWorkCopy(iso, folder, index, extract, fresh, std::move(next));
+    };
+    switch (copy) {
+    case core::WorkCopyState::Missing:
+    case core::WorkCopyState::Partial: prepare(/*extract=*/true, /*fresh=*/false); return;
+    case core::WorkCopyState::Pristine: prepare(/*extract=*/false, /*fresh=*/false); return;
+    case core::WorkCopyState::Modified:
+    case core::WorkCopyState::Unknown:
+    case core::WorkCopyState::OtherSource: break;
+    }
+    if (!m_events.workCopyChoice) {
+        if (copy == core::WorkCopyState::OtherSource) {
+            m_events.refused(Str::ImagesWorkCopyOther);
+            return;
+        }
+        prepare(/*extract=*/false, /*fresh=*/false);
+        return;
+    }
+    m_events.workCopyChoice(copy, folder, [prepare = std::move(prepare)](bool fresh) mutable {
+        prepare(/*extract=*/fresh, fresh);
+    });
+}
+
+void ImageController::prepareWorkCopy(const std::filesystem::path& iso, const std::filesystem::path& folder, int index,
+                                      bool extract, bool fresh, std::function<void()> next) {
+    if (busy()) {
+        m_events.refused(Str::ImagesBusy);
+        return;
+    }
     auto opened = std::make_shared<std::optional<core::SourceInfo>>();
     run(EngineOperation{EngineOperation::Kind::Preparing, iso.filename().wstring(), folder, index},
-        [iso, folder, opened](const core::TaskContext& task) -> Result<void> {
-            auto image = core::UdfImage::open(iso);
-            if (!image) {
-                return std::unexpected(image.error());
-            }
-            if (auto r = image->extractAll(folder, task); !r) {
-                return r;
+        [iso, folder, opened, extract, fresh](const core::TaskContext& task) -> Result<void> {
+            if (extract) {
+                if (auto r = core::extractWorkCopy(iso, folder, fresh, task); !r) {
+                    return r;
+                }
             }
             auto info = core::openSource(folder);
             if (!info) {

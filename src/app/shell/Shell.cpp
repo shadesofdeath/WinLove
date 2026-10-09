@@ -313,6 +313,9 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
             }
         },
         [this](std::wstring args) { showAdminRequired(std::move(args)); },
+        [this](core::WorkCopyState copy, std::filesystem::path folder, std::function<void(bool)> proceed) {
+            askWorkCopy(copy, folder, std::move(proceed));
+        },
     });
     m_updateCatalog = std::make_unique<UpdateCatalogController>(m_state, UpdateCatalogController::Events{
         m_services.postToUi,
@@ -374,6 +377,9 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         [this](std::filesystem::path source, MountedImage mounted) { restoreMount(source, std::move(mounted)); },
         [this] { startPreload(); },
         [this](const core::WimVerifyReport& report, std::wstring file) { onImageVerified(report, file); },
+        [this](core::WorkCopyState copy, std::filesystem::path folder, std::function<void(bool)> proceed) {
+            askWorkCopy(copy, folder, std::move(proceed));
+        },
     });
 
     m_subscription = m_state.subscribe([this](AppState::Change change) {
@@ -2547,6 +2553,35 @@ void Shell::askUnmount() {
             host()->popModal(raw);
             showPage(PageId::Apply);
         }, /*primary=*/true);
+    }
+    pushDialog(std::move(dialog));
+}
+
+void Shell::askWorkCopy(core::WorkCopyState copy, const std::filesystem::path& folder, std::function<void(bool fresh)> proceed) {
+    if (!host()) {
+        return;
+    }
+    const Str body = copy == core::WorkCopyState::OtherSource ? Str::ImagesWorkCopyOtherSource
+                     : copy == core::WorkCopyState::Modified  ? Str::ImagesWorkCopyModified
+                                                              : Str::ImagesWorkCopyUnknown;
+    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::ImagesWorkCopyTitle),
+                                               m_strings.format(body, {{L"folder", folder.wstring()}}),
+                                               ui::icons::Icon::WarningTriangle, ui::tokens::Color::StatusWarning);
+    ui::Dialog* raw = dialog.get();
+    auto shared = std::make_shared<std::function<void(bool)>>(std::move(proceed));
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesWorkCopyFresh), [this, raw, shared] {
+        host()->popModal(raw);
+        (*shared)(true);
+    });
+    // Another ISO's copy is never used for this one: only extracting again or nothing.
+    if (copy != core::WorkCopyState::OtherSource) {
+        raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::ImagesWorkCopyKeep),
+                       [this, raw, shared] {
+                           host()->popModal(raw);
+                           (*shared)(false);
+                       },
+                       /*primary=*/true);
     }
     pushDialog(std::move(dialog));
 }

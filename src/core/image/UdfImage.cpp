@@ -398,7 +398,8 @@ Result<void> UdfImage::extract(const Node& file, const std::filesystem::path& de
     return copyNode(file, destination, task, 0, file.size);
 }
 
-Result<void> UdfImage::extractAll(const std::filesystem::path& destination, const TaskContext& task) const {
+Result<void> UdfImage::extractAll(const std::filesystem::path& destination, const TaskContext& task,
+                                  bool keepExisting) const {
     // Pass 1: collect files and total size so progress is by bytes.
     struct Item {
         Node node;
@@ -447,7 +448,8 @@ Result<void> UdfImage::extractAll(const std::filesystem::path& destination, cons
     std::uint64_t done = 0;
     for (const auto& item : files) {
         std::error_code ec;
-        if (std::filesystem::exists(item.target, ec) && std::filesystem::file_size(item.target, ec) == item.node.size) {
+        if (std::filesystem::exists(item.target, ec) &&
+            (keepExisting || std::filesystem::file_size(item.target, ec) == item.node.size)) {
             done += item.node.size;
             task.report(total ? static_cast<double>(done) / static_cast<double>(total) : 1.0, item.node.name);
             continue;
