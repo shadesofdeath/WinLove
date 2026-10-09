@@ -20,6 +20,8 @@ struct WelcomePlan {
     bool networkPage = true; // shown only where the PC has a wireless adapter
     bool computerPage = true;
     bool lookPage = true;
+    bool wallpaperPage = true; // D-099: a desktop background from Windows' own set
+    bool bundlesPage = true;   // D-099: program bundles the user picks, installed at the first sign-in
     bool prefsPage = true;
     bool privacyPage = true;
     bool allowEmptyPassword = true;

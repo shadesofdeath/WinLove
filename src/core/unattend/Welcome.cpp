@@ -72,6 +72,37 @@ nlohmann::json welcomePrefs(const WelcomePlan& plan) {
     });
 }
 
+// D-099: the program bundles the welcome wizard offers — the user ticks which to install, each a
+// handful of well-known winget packages. Installed at the first sign-in like the Programlar page's
+// picks (programs.ps1). Names and one-line descriptions are texts (bundle<Id> / bundle<Id>Detail).
+nlohmann::json welcomeBundles(const WelcomePlan& plan) {
+    auto bundle = [&](const char* id, const char* nameKey, const char* detailKey, bool on,
+                      std::vector<const char*> programs) {
+        nlohmann::json apps = nlohmann::json::array();
+        for (const char* app : programs) {
+            apps.push_back(app);
+        }
+        return nlohmann::json{{"id", id}, {"name", text(plan, nameKey)}, {"detail", text(plan, detailKey)},
+                              {"default", on}, {"programs", std::move(apps)}};
+    };
+    return nlohmann::json::array({
+        bundle("essentials", "bundleEssentials", "bundleEssentialsDetail", true,
+               {"Google.Chrome", "7zip.7zip", "VideoLAN.VLC", "Notepad++.Notepad++", "Adobe.Acrobat.Reader.64-bit"}),
+        bundle("browsers", "bundleBrowsers", "bundleBrowsersDetail", false,
+               {"Google.Chrome", "Mozilla.Firefox", "Brave.Brave"}),
+        bundle("media", "bundleMedia", "bundleMediaDetail", false,
+               {"VideoLAN.VLC", "Spotify.Spotify", "OBSProject.OBSStudio", "GIMP.GIMP"}),
+        bundle("chat", "bundleChat", "bundleChatDetail", false,
+               {"Discord.Discord", "Telegram.TelegramDesktop", "Zoom.Zoom", "WhatsApp.WhatsApp"}),
+        bundle("dev", "bundleDev", "bundleDevDetail", false,
+               {"Microsoft.VisualStudioCode", "Git.Git", "Python.Python.3.13", "OpenJS.NodeJS.LTS", "Microsoft.PowerToys"}),
+        bundle("gaming", "bundleGaming", "bundleGamingDetail", false,
+               {"Valve.Steam", "EpicGames.EpicGamesLauncher", "Discord.Discord"}),
+        bundle("utilities", "bundleUtilities", "bundleUtilitiesDetail", false,
+               {"Microsoft.PowerToys", "voidtools.Everything", "WinDirStat.WinDirStat", "CrystalDewWorld.CrystalDiskInfo"}),
+    });
+}
+
 nlohmann::json splitFacts(const std::string& joined) {
     nlohmann::json facts = nlohmann::json::array();
     size_t start = 0;
@@ -90,7 +121,8 @@ nlohmann::json splitFacts(const std::string& joined) {
 std::string welcomeJson(const WelcomePlan& plan) {
     nlohmann::json pages = nlohmann::json::array();
     for (const auto& [on, id] : {std::pair{plan.networkPage, "network"}, std::pair{plan.computerPage, "computer"},
-                                 std::pair{plan.lookPage, "look"}, std::pair{plan.prefsPage, "prefs"},
+                                 std::pair{plan.lookPage, "look"}, std::pair{plan.wallpaperPage, "wallpaper"},
+                                 std::pair{plan.bundlesPage, "bundles"}, std::pair{plan.prefsPage, "prefs"},
                                  std::pair{plan.privacyPage, "privacy"}}) {
         if (on) {
             pages.push_back(id);
@@ -114,6 +146,7 @@ std::string welcomeJson(const WelcomePlan& plan) {
         {"themes", nlohmann::json::array({{{"id", "dark"}, {"name", text(plan, "themeDark")}}, {{"id", "light"}, {"name", text(plan, "themeLight")}}})},
         {"accents", accents},
         {"prefs", welcomePrefs(plan)},
+        {"bundles", welcomeBundles(plan)},
         {"privacy", nlohmann::json::array({{{"id", "strict"}, {"name", text(plan, "privacyStrict")}, {"detail", text(plan, "privacyStrictDetail")},
                                             {"facts", splitFacts(text(plan, "privacyStrictFacts"))}, {"writes", strictWrites()}},
                                            {{"id", "windows"}, {"name", text(plan, "privacyWindows")}, {"detail", text(plan, "privacyWindowsDetail")}, {"writes", nlohmann::json::array()}}})},
@@ -147,6 +180,8 @@ std::optional<WelcomePlan> welcomePlanFromOperations(const std::vector<ops::Oper
         plan.networkPage = shown("network");
         plan.computerPage = shown("computer");
         plan.lookPage = shown("look");
+        plan.wallpaperPage = shown("wallpaper");
+        plan.bundlesPage = shown("bundles");
         plan.prefsPage = shown("prefs");
         plan.privacyPage = shown("privacy");
         plan.allowEmptyPassword = doc.value("allowEmptyPassword", true);
