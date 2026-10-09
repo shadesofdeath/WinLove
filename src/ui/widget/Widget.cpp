@@ -129,6 +129,10 @@ void Widget::paintTree(Canvas& canvas) {
     if (dimmed) {
         canvas.pushOpacity(tokens::opacity::disabled);
     }
+    const float own = paintOpacity();
+    if (own < 1.0f) {
+        canvas.pushOpacity(own);
+    }
     paint(canvas);
     if (!m_children.empty()) {
         const bool clip = clipsChildren();
@@ -143,6 +147,9 @@ void Widget::paintTree(Canvas& canvas) {
         }
     }
     paintOverlay(canvas);
+    if (own < 1.0f) {
+        canvas.popOpacity();
+    }
     if (dimmed) {
         canvas.popOpacity();
     }

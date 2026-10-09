@@ -34,8 +34,12 @@ public:
 
     void layout() override;
     void paint(ui::Canvas& canvas) override;
+    // D-091: a page fades in when it is shown (motion.enter; at once with reduced motion).
+    bool tick(double now) override;
+    [[nodiscard]] float paintOpacity() const override { return m_enter.value(); }
 
 private:
+    ui::Tween m_enter{0.0f};
     [[nodiscard]] float headerHeight() const;
 
     std::wstring m_title;

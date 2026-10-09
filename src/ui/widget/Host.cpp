@@ -198,7 +198,16 @@ void Host::paint(Canvas& canvas) {
         paintTooltip(canvas);
     }
     if (!m_animating.empty()) {
-        requestFrame(); // keep frames coming (Present waits for vsync)
+        float interval = -1;
+        for (const Widget* w : m_animating) {
+            const float own = w->tickIntervalMs();
+            interval = interval < 0 ? own : std::min(interval, own);
+        }
+        if (interval <= 0 || !m_services.startTimer) {
+            requestFrame(); // keep frames coming (Present waits for vsync)
+        } else {
+            m_services.startTimer(kFrameTimer, static_cast<UINT>(interval));
+        }
     }
 }
 
@@ -415,6 +424,13 @@ void Host::onChar(wchar_t ch) {
 }
 
 void Host::onTimer(UINT id) {
+    if (id == kFrameTimer) {
+        if (m_services.stopTimer) {
+            m_services.stopTimer(kFrameTimer);
+        }
+        requestFrame();
+        return;
+    }
     if (id != kTooltipTimer) {
         return;
     }

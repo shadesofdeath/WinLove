@@ -25,6 +25,7 @@ public:
 
     void start(); // call when it becomes visible
     bool tick(double now) override;
+    [[nodiscard]] float tickIntervalMs() const override { return 100.0f; } // spinner and ETA: 10 frames a second
     void layout() override;
     void paint(ui::Canvas& canvas) override;
 
