@@ -3,6 +3,7 @@
 #include "base/Log.h"
 #include "base/Utf8.h"
 #include "core/image/ComponentStore.h"
+#include "core/image/dism/Appx.h"
 #include "core/image/dism/StoreCleanup.h"
 #include "core/image/dism/StoreShrink.h"
 
@@ -292,6 +293,33 @@ Operation ComponentController::operationFor(const Item& item) {
 
 core::ops::ChangeSet ComponentController::withCurrentRecipes(core::ops::ChangeSet changes) const {
     const std::vector<Operation> saved = changes.operations();
+    // Apps by their full name, version included: a preset from another build names another
+    // version. With this image's list at hand the queue gets this image's name for the app, so
+    // the Components page shows it as queued (audit A4; the Applier also finds it by family).
+    const auto& list = m_state.appxList();
+    if (list && list->status == AppState::AppxList::Status::Ready) {
+        for (const auto& op : saved) {
+            if (op.kind != OpKind::RemoveAppx) {
+                continue;
+            }
+            const std::wstring family = core::appxFamilyName(op.target);
+            const bool asNamed = std::ranges::any_of(list->items, [&](const core::AppxComponent& app) {
+                return _wcsicmp(app.package.packageName.c_str(), op.target.c_str()) == 0;
+            });
+            if (family.empty() || asNamed) {
+                continue; // not a package name, or this image has it by this very name
+            }
+            for (const auto& app : list->items) {
+                if (_wcsicmp(core::appxFamilyName(app.package.packageName).c_str(), family.c_str()) == 0) {
+                    Operation mapped = op;
+                    mapped.target = app.package.packageName;
+                    changes.remove(op.kind, op.target);
+                    changes.add(std::move(mapped));
+                    break;
+                }
+            }
+        }
+    }
     for (const auto& op : saved) {
         if (op.kind != OpKind::RemoveComponent) {
             continue;
