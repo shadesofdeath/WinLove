@@ -438,7 +438,7 @@ TEST_CASE("unattend controller: the welcome (D-084) — the setup account in the
 
     // The window's texts: every "welcome." key, without its prefix.
     const auto texts = UnattendController::welcomeTexts(tr);
-    CHECK(texts.size() == 109);
+    CHECK(texts.size() == 129);
     CHECK(std::ranges::find(texts, std::pair<std::string, std::wstring>{"accountHeading", L"Hoş geldin"}) != texts.end());
 
     CHECK_FALSE(controller.welcome());
@@ -448,7 +448,7 @@ TEST_CASE("unattend controller: the welcome (D-084) — the setup account in the
     CHECK(controller.xml().find(L"oobe.ps1") != std::wstring::npos);
     CHECK(controller.xml().find(L"WinLoveSetup") == std::wstring::npos);
     // No UI language in the file: the app's (Turkish by default).
-    CHECK(controller.welcomePlan().texts.size() == 109);
+    CHECK(controller.welcomePlan().texts.size() == 129);
     const auto title = [&] {
         for (const auto& [k, v] : controller.welcomePlan().texts) {
             if (k == "accountHeading") {

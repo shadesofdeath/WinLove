@@ -727,6 +727,41 @@ $xaml = @'
         <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{DynamicResource RowHover}"/></Trigger>
       </Style.Triggers>
     </Style>
+    <!-- a thin, modern scrollbar (Windows 11 style): a rounded thumb, no arrow buttons, a faint track -->
+    <Style x:Key="ThumbStyle" TargetType="Thumb">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Thumb">
+            <Border x:Name="T" CornerRadius="3" Margin="3,2" Background="{DynamicResource Text3}" Opacity="0.55"/>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="T" Property="Opacity" Value="0.85"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="ScrollBar">
+      <Setter Property="Width" Value="10"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Grid Background="Transparent">
+              <Track x:Name="PART_Track" IsDirectionReversed="True">
+                <Track.Thumb><Thumb Style="{StaticResource ThumbStyle}"/></Track.Thumb>
+                <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False"/></Track.IncreaseRepeatButton>
+                <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False"/></Track.DecreaseRepeatButton>
+              </Track>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <Trigger Property="Orientation" Value="Horizontal">
+          <Setter Property="Width" Value="Auto"/><Setter Property="Height" Value="10"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
   </Window.Resources>
   <!-- the background here too: the theme crossfade's picture of the window holds it -->
   <Grid Background="{DynamicResource Bg}">
@@ -834,7 +869,8 @@ $xaml = @'
                       </Border>
                       <Border x:Name="MiniLine1" Width="120" Height="6" CornerRadius="3" Margin="10,8,0,0" HorizontalAlignment="Left"/>
                       <Border x:Name="MiniLine2" Width="150" Height="6" CornerRadius="3" Margin="10,6,0,0" HorizontalAlignment="Left"/>
-                      <Border x:Name="MiniLine3" Width="90" Height="6" CornerRadius="3" Margin="10,6,0,0" HorizontalAlignment="Left"/>
+                      <Border x:Name="MiniLine3" Width="90" Height="6" Corner)wlps"
+    R"wlps(Radius="3" Margin="10,6,0,0" HorizontalAlignment="Left"/>
                       <Border Width="56" Height="16" CornerRadius="3" Margin="10,14,0,0" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}"/>
                     </StackPanel>
                   </Border>
@@ -854,8 +890,7 @@ $xaml = @'
                 <StackPanel>
                   <Border Height="30" Background="{DynamicResource Fill}" BorderBrush="{DynamicResource RowLine}" BorderThickness="0,0,0,1" CornerRadius="8,8,0,0">
                     <StackPanel Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
-                      <Viewbox Width="14" Height="14"><Path Data="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5)wlps"
-    R"wlps(a2 2 0 0 1-2-2z" Stroke="{DynamicResource Text2}" StrokeThickness="1.8" Width="24" Height="24"/></Viewbox>
+                      <Viewbox Width="14" Height="14"><Path Data="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" Stroke="{DynamicResource Text2}" StrokeThickness="1.8" Width="24" Height="24"/></Viewbox>
                       <TextBlock x:Name="ExPlace" Margin="8,0,0,0" FontSize="12" Foreground="{DynamicResource Text2}"/>
                     </StackPanel>
                   </Border>
@@ -874,6 +909,37 @@ $xaml = @'
                 </Border>
                 <Canvas x:Name="Orbs" Width="400" Height="640"/>
               </Grid>
+
+              <Grid x:Name="ArtWallpaper" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border Width="336" Height="210" CornerRadius="10" ClipToBounds="True" Background="{DynamicResource Tile}">
+                  <Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="16" Direction="270" Opacity="0.3"/></Border.Effect>
+                  <Grid>
+                    <Image x:Name="WallArt" Stretch="UniformToFill"/>
+                    <Border x:Name="WallArtEmpty" Background="{DynamicResource MiniBlobA}"/>
+                    <Border VerticalAlignment="Bottom" Height="30" Background="#33000000">
+                      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Border Width="13" Height="13" CornerRadius="3" Margin="3,0" Background="{DynamicResource AccentBrush}"/>
+                        <Border Width="13" Height="13" CornerRadius="3" Margin="3,0" Background="#59FFFFFF"/>
+                        <Border Width="13" Height="13" CornerRadius="3" Margin="3,0" Background="#59FFFFFF"/>
+                      </StackPanel>
+                    </Border>
+                  </Grid>
+                </Border>
+                <Border Width="74" Height="10" CornerRadius="0,0,5,5" Margin="0,210,0,0" VerticalAlignment="Top" HorizontalAlignment="Center" Background="{DynamicResource Tile}"/>
+              </Grid>
+
+              <Border x:Name="ArtBundles" Visibility="Collapsed" Width="300" Style="{StaticResource CardBox}" CornerRadius="10" VerticalAlignment="Center" ClipToBounds="True">
+                <Border.Effect><DropShadowEffect BlurRadius="36" ShadowDepth="14" Direction="270" Opacity="0.22"/></Border.Effect>
+                <StackPanel>
+                  <Border Height="34" Background="{DynamicResource Fill}" BorderBrush="{DynamicResource RowLine}" BorderThickness="0,0,0,1" CornerRadius="10,10,0,0">
+                    <StackPanel Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
+                      <Viewbox Width="15" Height="15"><Path Data="M3 7l9-4l9 4l-9 4z M3 7v10l9 4 M21 7v10l-9 4 M12 11v10" Stroke="{DynamicResource Sel}" StrokeThickness="1.6" Width="24" Height="24" StrokeStartLineCap="Round" StrokeLineJoin="Round"/></Viewbox>
+                      <TextBlock x:Name="BundleArtCount" Margin="8,0,0,0" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Text1}"/>
+                    </StackPanel>
+                  </Border>
+                  <StackPanel x:Name="BundleArtList" Margin="0,6"/>
+                </StackPanel>
+              </Border>
             </Grid>
 
             <!-- the question on the right -->
@@ -950,10 +1016,25 @@ $xaml = @'
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom" Margin="0,0,0,6">
                       <CheckBox x:Name="Glass" Style="{StaticResource Switch}" VerticalAlignment="Center"/>
-                      <TextBlock x:Name="GlassLabel" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                      <TextBlock x:Name="GlassLabel)wlps"
+    R"wlps(" Margin="12,0,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
                   </StackPanel>
                 </StackPanel>
+
+                <Grid x:Name="PageWallpaper" Visibility="Collapsed">
+                  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Width="580" MaxHeight="320" HorizontalAlignment="Left">
+                    <WrapPanel x:Name="WallGrid" Width="560" HorizontalAlignment="Left"/>
+                  </ScrollViewer>
+                </Grid>
+
+                <Grid x:Name="PageBundles" Visibility="Collapsed">
+                  <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                  <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Width="600" MaxHeight="330" HorizontalAlignment="Left">
+                    <StackPanel x:Name="BundleList" Width="580" HorizontalAlignment="Left"/>
+                  </ScrollViewer>
+                  <TextBlock x:Name="BundleNote" Grid.Row="1" Margin="0,12,0,0" FontSize="12" Foreground="{DynamicResource Text3}" TextWrapping="Wrap" MaxWidth="560" HorizontalAlignment="Left"/>
+                </Grid>
 
                 <StackPanel x:Name="PagePrefs" Visibility="Collapsed"/>
 
@@ -1014,13 +1095,14 @@ $window = [Windows.Markup.XamlReader]::Parse($xaml)
 $ui = @{}
 foreach ($name in 'Stage', 'CardFace', 'ArtNetwork', 'NetBadge', 'ArtAccount', 'ArtName', 'ArtRole', 'ArtChip', 'ArtLock', 'ArtPc',
                   'ArtClock', 'ArtDate', 'ArtPcName', 'ArtZone', 'ArtLook', 'MiniWall', 'MiniApp', 'MiniTitle', 'MiniLine0',
-        )wlps"
-    R"wlps(          'MiniLine1', 'MiniLine2', 'MiniLine3', 'MiniBar', 'MiniIcons', 'MiniIcon1', 'MiniIcon2', 'MiniIcon3', 'ArtPrefs',
+                  'MiniLine1', 'MiniLine2', 'MiniLine3', 'MiniBar', 'MiniIcons', 'MiniIcon1', 'MiniIcon2', 'MiniIcon3', 'ArtPrefs',
                   'ExPlace', 'ExFiles', 'ExBar', 'ArtPrivacy', 'Orbs', 'Back', 'Steps', 'StepCount', 'Heading', 'Sub', 'Body',
                   'PageNetwork', 'NetHead', 'NetRefresh', 'NetList', 'NetState', 'PageAccount', 'NameLabel', 'UserName', 'PassLabel',
                   'Pass', 'PassShown', 'Reveal', 'Pass2Label', 'Pass2', 'PagePc', 'PcLabel', 'PcName', 'PcHint', 'ZoneLabel', 'Zone',
                   'PageLook', 'ThemeLabel', 'Themes', 'AccentLabel', 'Accents', 'TaskbarBox', 'TaskbarLabel', 'Aligns', 'Glass',
-                  'GlassLabel', 'PagePrefs', 'PagePrivacy', 'Error', 'Skip', 'Next', 'Busy', 'BusyBody', 'Ring', 'RingDone', 'BusyHeading',
+                  'GlassLabel', 'PagePrefs', 'PagePrivacy', 'ArtWallpaper', 'WallArt', 'WallArtEmpty', 'PageWallpaper', 'WallGrid',
+                  'ArtBundles', 'BundleArtCount', 'BundleArtList', 'PageBundles', 'BundleList', 'BundleNote',
+                  'Error', 'Skip', 'Next', 'Busy', 'BusyBody', 'Ring', 'RingDone', 'BusyHeading',
                   'ReadyHeading', 'BusySub', 'ReadySub', 'BusySteps', 'Track', 'Fill', 'Status', 'KeepOn', 'Snap', 'Dark') {
     $ui[$name] = $window.FindName($name)
 }
@@ -1110,7 +1192,8 @@ function Get-Light([string] $hex) { # relative luminance, 0..1
 }
 function New-Cloud([string] $hex, [double] $alpha) { # a colour cloud: solid in the middle, gone at the edge
     $b = New-Object System.Windows.Media.RadialGradientBrush
-    $b.GradientStops.Add((New-Object System.Windows.Media.GradientStop((Get-Color $hex $alpha), 0)))
+    $b.GradientStops.Add((New-Object System.Windows.Media.GradientS)wlps"
+    R"wlps(top((Get-Color $hex $alpha), 0)))
     $b.GradientStops.Add((New-Object System.Windows.Media.GradientStop((Get-Color $hex ($alpha * 0.55)), 0.45)))
     $b.GradientStops.Add((New-Object System.Windows.Media.GradientStop((Get-Color $hex 0), 1)))
     return $b
@@ -1212,8 +1295,7 @@ foreach ($entry in $data.themes) {
     $isLight = [string] $entry.id -eq 'light'
     $tile = New-Object System.Windows.Controls.Border
     $tile.CornerRadius = 7; $tile.Padding = '4,4,4,6'; $tile.Margin = '0,0,12,0'; $tile.BorderThickness = 2; $tile.Cursor = 'Hand'
-    $tile.Tag = [string] $entry.id; $t)wlps"
-    R"wlps(ile.Background = [System.Windows.Media.Brushes]::Transparent
+    $tile.Tag = [string] $entry.id; $tile.Background = [System.Windows.Media.Brushes]::Transparent
     $grid = New-Object System.Windows.Controls.Grid
     $stack = New-Object System.Windows.Controls.StackPanel
     $mini = New-Object System.Windows.Controls.Grid
@@ -1309,7 +1391,8 @@ foreach ($pref in @($data.prefs)) {
     [System.Windows.Controls.Grid]::SetColumn($switch, 3)
     [void] $grid.Children.Add($switch)
     $row.Child = $grid
-    $row.Add_MouseLeftButtonUp({ param($s) $id = [string] $s.Tag; $script:prefs[$id] = -not $script:prefs[$id]; Show-Choices; Update-Art })
+    $row.Add_MouseLeftButtonUp({ param($s) $id = [string] $s.Tag; $script:prefs[$id] = -not $script:prefs[$id]; Show-Cho)wlps"
+    R"wlps(ices; Update-Art })
     $script:prefRows[[string] $pref.id] = @{ row = $row; switch = $switch; state = $state }
     [void] $ui.PagePrefs.Children.Add($row)
 }
@@ -1404,8 +1487,7 @@ $ui.Zone.Add_SelectionChanged({ Update-Art })
 
 # Selection marks in the current colours.
 function Show-Choices {
-    foreac)wlps"
-    R"wlps(h ($tile in $ui.Themes.Children) {
+    foreach ($tile in $ui.Themes.Children) {
         $on = [string] $tile.Tag -eq $script:theme
         if ($on) { Set-Res $tile ([System.Windows.Controls.Border]::BorderBrushProperty) 'Sel' } else { $tile.BorderBrush = [System.Windows.Media.Brushes]::Transparent }
         $badge = $tile.Child.Children[1]
@@ -1500,7 +1582,8 @@ function Update-Art {
         }
         [void] $ui.ExFiles.Children.Add($line)
     }
-    $ui.ExBar.Children.Clear()
+)wlps"
+    R"wlps(    $ui.ExBar.Children.Clear()
     $items = @()
     if ($script:prefs['widgets']) { $items += 'widgets' }
     $items += 'start'
@@ -1525,7 +1608,132 @@ function Update-Art {
         }
         [void] $ui.ExBar.Children.Add($b)
     }
+    # wallpaper: the chosen picture on the little monitor
+    if ($script:wallpaper) {
+        try {
+            $bmp = New-Object System.Windows.Media.Imaging.BitmapImage
+            $bmp.BeginInit(); $bmp.CacheOption = 'OnLoad'; $bmp.DecodePixelWidth = 336
+            $bmp.UriSource = New-Object System.Uri($script:wallpaper); $bmp.EndInit()
+            $ui.WallArt.Source = $bmp; $ui.WallArt.Visibility = 'Visible'; $ui.WallArtEmpty.Visibility = 'Collapsed'
+        } catch { $ui.WallArt.Visibility = 'Collapsed'; $ui.WallArtEmpty.Visibility = 'Visible' }
+    } else {
+        $ui.WallArt.Visibility = 'Collapsed'; $ui.WallArtEmpty.Visibility = 'Visible'
+    }
+    # bundles: the apps the ticked bundles add, no repeats
+    if ($ui.BundleArtList) {
+        $chosen = New-Object System.Collections.Generic.List[string]
+        foreach ($b in @($data.bundles)) {
+            if ($b -and $script:bundles[[string] $b.id]) {
+                foreach ($p in @($b.programs)) { $parts = [string] $p -split '\.'; $name = if ($parts.Count -gt 1) { $parts[1] } else { $parts[0] }; if (-not $chosen.Contains($name)) { [void] $chosen.Add($name) } }
+            }
+        }
+        $ui.BundleArtCount.Text = ($t.bundlesHeading + '  -  ' + $chosen.Count)
+        $ui.BundleArtList.Children.Clear()
+        foreach ($name in ($chosen | Select-Object -First 9)) {
+            $line = New-Object System.Windows.Controls.StackPanel
+            $line.Orientation = 'Horizontal'; $line.Height = 28; $line.Margin = '14,0,0,0'
+            $sq = New-Object System.Windows.Controls.Border
+            $sq.Width = 16; $sq.Height = 16; $sq.CornerRadius = 4; $sq.VerticalAlignment = 'Center'
+            Set-Res $sq ([System.Windows.Controls.Border]::BackgroundProperty) 'AccentBrush'
+            [void] $line.Children.Add($sq)
+            $lbl = New-Text $name 13; $lbl.Margin = '10,0,0,0'; $lbl.VerticalAlignment = 'Center'
+            [void] $line.Children.Add($lbl)
+            [void] $ui.BundleArtList.Children.Add($line)
+        }
+        if ($chosen.Count -gt 9) {
+            $more = New-Text ('+' + ($chosen.Count - 9)) 12 'Text3'; $more.Margin = '40,2,0,0'
+            [void] $ui.BundleArtList.Children.Add($more)
+        }
+    }
 }
+
+# ---- the wallpaper page (D-099): Windows' own backgrounds, a grid of thumbnails -----------------------
+$script:wallpaper = ''
+function Build-Wallpapers {
+    if ($ui.WallGrid.Children.Count) { return }
+    $found = New-Object System.Collections.Generic.List[string]
+    foreach ($root in @("$env:SystemRoot\Web\Wallpaper", "$env:SystemRoot\Web\4K\Wallpaper", "$env:SystemRoot\Web\Screen")) {
+        if (Test-Path $root) {
+            foreach ($f in Get-ChildItem -Path $root -Recurse -Include *.jpg, *.png -ErrorAction SilentlyContinue | Sort-Object Name) {
+                if ($found.Count -lt 24 -and -not ($found -contains $f.FullName)) { [void] $found.Add($f.FullName) }
+            }
+        }
+    }
+    # The first tile keeps Windows' default (nothing is written).
+    foreach ($path in @('') + $found) {
+        $tile = New-Object System.Windows.Controls.Border
+        $tile.Width = 126; $tile.Height = 80; $tile.CornerRadius = 6; $tile.Margin = '0,0,8,8'; $tile.Cursor = 'Hand'
+        $tile.BorderThickness = 2; $tile.ClipToBounds = $true; $tile.Tag = $path
+        $tile.Background = $brush.ConvertFromString('#33000000')
+        $tile.BorderBrush = [System.Windows.Media.Brushes]::Transparent
+        $grid = New-Object System.Windows.Controls.Grid
+        if ($path) {
+            $img = New-Object System.Windows.Controls.Image; $img.Stretch = 'UniformToFill'
+            try {
+                $bmp = New-Object System.Windows.Media.Imaging.BitmapImage
+                $bmp.BeginInit(); $bmp.CacheOption = 'OnLoad'; $bmp.DecodePixelWidth = 160
+                $bmp.UriSource = New-Object System.Uri($path); $bmp.EndInit(); $img.Source = $bmp
+            } catch { }
+            [void] $grid.Children.Add($img)
+        } else {
+            $kw = New-Text $t.wallpaperKeep 12; $kw.HorizontalAlignment = 'Center'; $kw.VerticalAlignment = 'Center'; $kw.TextAlignment = 'Center'; $kw.TextWrapping = 'Wrap'; $kw.Margin = '8,0'
+            [void] $grid.Children.Add($kw)
+        }
+        $badge = New-Object System.Windows.Controls.Border
+        $badge.Width = 22; $badge.Height = 22; $badge.CornerRadius = 11; $badge.HorizontalAlignment = 'Right'; $badge.VerticalAlignment = 'Top'; $badge.Margin = '0,6,6,0'; $badge.Visibility = 'Collapsed'
+        Set-Res $badge ([System.Windows.Controls.Border]::BackgroundProperty) 'Sel'
+        $badge.Child = New-Path 'M5 12l4 4l10 -10' 'BtnText' 12 2
+        [void] $grid.Children.Add($badge)
+        $tile.Child = $grid
+        $tile.Add_MouseLeftButtonUp({ param($s) $script:wallpaper = [string] $s.Tag; Show-Wallpapers; Update-Art })
+        [void] $ui.WallGrid.Children.Add($tile)
+    }
+    if ($data.preview -and -not $script:wallpaper -and $found.Count) { $script:wallpaper = $found[0] } # a screenshot shows one picked
+    Show-Wallpapers
+}
+function Show-Wallpapers {
+    foreach ($tile in $ui.WallGrid.Children) {
+        $on = ([string] $tile.Tag) -eq $script:wallpaper
+        if ($on) { Set-Res $tile ([System.Windows.Controls.Border]::BorderBrushProperty) 'Sel' } else { $tile.BorderBrush = [System.Windows.Media.Brushes]::Transparent }
+        $tile.Child.Children[$tile.Child.Children.Count - 1].Visibility = $(if ($on) { 'Visible' } else { 'Collapsed' })
+    }
+}
+
+# ---- the bundles page (D-099): program bundles the user picks ----------------------------------------
+$script:bundles = @{}
+foreach ($b in @($data.bundles)) { if ($b) { $script:bundles[[string] $b.id] = [bool] $b.default } }
+function Build-Bundles {
+    if ($ui.BundleList.Children.Count) { return }
+    $ui.BundleNote.Text = $t.bundlesNote
+    foreach ($b in @($data.bundles)) {
+        if (-not $b) { continue }
+        $row = New-Object System.Windows.Controls.Border
+        $row.Style = $window.FindResource('RowBox'); $row.CornerRadius = 6; $row.Margin = '0,0,0,6'; $row.Padding = '16,10'; $row.MinHeight = 56
+        $row.Cursor = 'Hand'; $row.Tag = [string] $b.id; $row.Width = 560; $row.HorizontalAlignment = 'Left'
+        $grid = New-Object System.Windows.Controls.Grid
+        foreach ($w in '*', 'Auto') { $col = New-Object System.Windows.Controls.ColumnDefinition; $col.Width = $w; $grid.ColumnDefinitions.Add($col) }
+        $words = New-Object System.Windows.Controls.StackPanel; $words.VerticalAlignment = 'Center'
+        [void] $words.Children.Add((New-Text ([string] $b.name)))
+        $detail = New-Text ([string] $b.detail) 12 'Text2'; $detail.TextWrapping = 'Wrap'
+        [void] $words.Children.Add($detail)
+        [void] $grid.Children.Add($words)
+        $switch = New-Object System.Windows.Controls.CheckBox
+        $switch.Style = $window.FindResource('Switch'); $switch.VerticalAlignment = 'Center'; $switch.IsHitTestVisible = $false
+        $switch.IsChecked = $script:bundles[[string] $b.id]
+        [System.Windows.Controls.Grid]::SetColumn($switch, 1)
+        [void] $grid.Children.Add($switch)
+        $row.Child = $grid
+        $row.Add_MouseLeftButtonUp({ param($s) $id = [string] $s.Tag; $script:bundles[$id] = -not $script:bundles[$id]; Show-Bundles; Update-Art })
+        [void] $ui.BundleList.Children.Add($row)
+    }
+    Show-Bundles
+}
+function Show-Bundles {
+    foreach ($row in $ui.BundleList.Children) {
+        $row.Child.Children[1].IsChecked = $script:bundles[[string] $row.Tag]
+    }
+}
+
 $ui.UserName.Add_TextChanged({ Update-Art })
 $ui.PcName.Add_TextChanged({ Update-Art })
 $ui.Pass.Add_PasswordChanged({ Update-Art })
@@ -1576,7 +1784,8 @@ function Show-Networks([bool] $scan) {
         [System.Windows.Controls.Grid]::SetColumn($words, 1)
         [void] $words.Children.Add((New-Text $net.Ssid))
         $supported = [bool] (Get-WifiProfile $net 'x' $true)
-        $meta = if ($net.Connected) { $t.networkConnected } elseif (-not $supported) { $t.networkEnterprise } elseif ($net.Secure) { $t.networkSecure } else { $t.networkOpen }
+        $meta = if ($net.Connected) { $t.networkC)wlps"
+    R"wlps(onnected } elseif (-not $supported) { $t.networkEnterprise } elseif ($net.Secure) { $t.networkSecure } else { $t.networkOpen }
         [void] $words.Children.Add((New-Text $meta 12 $(if ($net.Connected) { 'Sel' } else { 'Text2' })))
         [void] $head.Children.Add($words)
         if ($net.Secure) {
@@ -1597,8 +1806,7 @@ function Show-Networks([bool] $scan) {
             [void] $more.Children.Add($label)
             [void] $more.Children.Add($key)
         }
-)wlps"
-    R"wlps(        $line = New-Object System.Windows.Controls.Grid
+        $line = New-Object System.Windows.Controls.Grid
         $line.Margin = '0,10,0,0'
         $autoBox = New-Object System.Windows.Controls.CheckBox
         $autoBox.Style = $window.FindResource('Box'); $autoBox.Content = New-Text $t.networkAuto 13; $autoBox.IsChecked = $true; $autoBox.VerticalAlignment = 'Center'
@@ -1661,10 +1869,12 @@ $allPages = @(
     @{ id = 'account'; panel = 'PageAccount'; art = 'ArtAccount'; heading = $t.accountHeading; sub = $t.accountSub },
     @{ id = 'computer'; panel = 'PagePc'; art = 'ArtPc'; heading = $t.pcHeading; sub = $t.pcSub },
     @{ id = 'look'; panel = 'PageLook'; art = 'ArtLook'; heading = $t.lookHeading; sub = $t.lookSub },
+    @{ id = 'wallpaper'; panel = 'PageWallpaper'; art = 'ArtWallpaper'; heading = $t.wallpaperHeading; sub = $t.wallpaperSub },
+    @{ id = 'bundles'; panel = 'PageBundles'; art = 'ArtBundles'; heading = $t.bundlesHeading; sub = $t.bundlesSub },
     @{ id = 'prefs'; panel = 'PagePrefs'; art = 'ArtPrefs'; heading = $t.prefsHeading; sub = $t.prefsSub },
     @{ id = 'privacy'; panel = 'PagePrivacy'; art = 'ArtPrivacy'; heading = $t.privacyHeading; sub = $t.privacySub }
 )
-$wanted = if ($null -ne $data.pages) { @($data.pages) } else { @('network', 'computer', 'look', 'prefs', 'privacy') }
+$wanted = if ($null -ne $data.pages) { @($data.pages) } else { @('network', 'computer', 'look', 'wallpaper', 'bundles', 'prefs', 'privacy') }
 # The wireless page only where there is a wireless adapter (a preview shows it anyway, to be seen).
 $pages = @($allPages | Where-Object { $_.id -eq 'account' -or ($wanted -contains $_.id -and ($_.id -ne 'network' -or $script:wifi -or $data.preview)) })
 function Test-Shown([string] $id) { return [bool] ($pages | Where-Object { $_.id -eq $id }) }
@@ -1745,6 +1955,8 @@ function Show-PageNow([int] $index) {
             if (-not $ui.PcName.Text) { $ui.PcName.Text = Get-DefaultComputerName $ui.UserName.Text }
             [void] $ui.PcName.Focus()
         }
+        'wallpaper' { Build-Wallpapers }
+        'bundles' { Build-Bundles }
     }
     Update-Art
     Update-Next
@@ -1793,7 +2005,8 @@ $window.Add_KeyDown({
 })
 
 function Update-Top {
-    # Windows' first sign-in screen and the Start menu it opens come up over a window started before
+    # Windows' first sign-in screen and the Start menu it op)wlps"
+    R"wlps(ens come up over a window started before
     # them: for the first minutes the window takes the top again (a timer, every two seconds).
     if ((Get-Date) -ge $script:keepTop) { $script:topTimer.Stop(); return }
     # Windows 11 opens Start at the first sign-in, and Start is above any topmost window: when
@@ -1816,8 +2029,7 @@ function Update-Ui { # draws what changed before the thread goes on with work
 }
 function Wait-Seconds([double] $seconds) { # the window lives (draws, animates, takes clicks) the whole time
     if ($seconds -le 0) { Update-Ui; return }
-    $frame = New-Object System.Wi)wlps"
-    R"wlps(ndows.Threading.DispatcherFrame
+    $frame = New-Object System.Windows.Threading.DispatcherFrame
     $timer = New-Object System.Windows.Threading.DispatcherTimer
     $timer.Interval = [TimeSpan]::FromSeconds($seconds)
     $timer.Tag = $frame
@@ -1984,7 +2196,8 @@ foreach ($step in $steps) {
     $words = New-Object System.Windows.Controls.StackPanel
     $words.VerticalAlignment = 'Center'
     [System.Windows.Controls.Grid]::SetColumn($words, 1)
-    $label = New-Text $step.text 14 'Text3'
+    $label =)wlps"
+    R"wlps( New-Text $step.text 14 'Text3'
     [void] $words.Children.Add($label)
     $detail = New-Text ([string] $step.detail) 12 'Text2'
     $detail.Margin = '0,2,0,0'; $detail.Opacity = 0; $detail.TextTrimming = 'CharacterEllipsis'
@@ -2012,8 +2225,7 @@ function Set-Step([int] $n) { # n: 1-based, the one working now
     if ($script:stepNow -ge 1) { Set-StepDone $script:stepNow }
     $r = $script:stepRows[$n - 1]
     $script:stepNow = $n
-    $script:stepSince = Get)wlps"
-    R"wlps(-Date
+    $script:stepSince = Get-Date
     Start-Anim $r.spin Opacity 1 160 0 0 'none'
     $round = New-Object System.Windows.Media.Animation.DoubleAnimation(0, 360, (New-Object System.Windows.Duration([TimeSpan]::FromSeconds(0.9))))
     $round.RepeatBehavior = [System.Windows.Media.Animation.RepeatBehavior]::Forever
@@ -2186,6 +2398,14 @@ try {
             foreach ($write in @($writes)) { if ($write) { Set-Write $write } }
         }
     }
+    # D-099: the chosen desktop background (a stable Windows\Web path), for the new account.
+    if ((Test-Shown 'wallpaper') -and $script:wallpaper) {
+        Add-UserValue 'Control Panel\Desktop' 'WallPaper' 'sz' $script:wallpaper
+        Add-UserValue 'Control Panel\Desktop' 'WallpaperStyle' 'sz' '10'
+        Add-UserValue ')wlps"
+    R"wlps(Control Panel\Desktop' 'TileWallpaper' 'sz' '0'
+        Write-Log ('wallpaper ' + $script:wallpaper)
+    }
     if ($script:userReg.Count) {
         $regFile = Join-Path $stateDir 'oobe-user.reg'
         $text = (@('Windows Registry Editor Version 5.00', '') + $script:userReg) -join "`r`n"
@@ -2203,6 +2423,44 @@ try {
         Write-Log ('new account values: ' + $script:defaultWrites.Count + ' in the Default profile, .reg at its first sign-in')
     }
 
+    # D-099: the picked program bundles install at the first sign-in (winget, like the Programlar page).
+    if (Test-Shown 'bundles') {
+        $ids = New-Object System.Collections.Generic.List[string]
+        foreach ($b in @($data.bundles)) {
+            if ($b -and $script:bundles[[string] $b.id]) {
+                foreach ($p in @($b.programs)) { if (-not $ids.Contains([string] $p)) { [void] $ids.Add([string] $p) } }
+            }
+        }
+        if ($ids.Count) {
+            $appDir = Join-Path $env:ProgramData 'WinLove'
+            if (-not (Test-Path $appDir)) { New-Item -ItemType Directory -Path $appDir -Force | Out-Null }
+            $runner = Join-Path $appDir 'welcome-apps.cmd'
+            $lines = New-Object System.Collections.Generic.List[string]
+            $lines.Add('@echo off')
+            $lines.Add('set "LOG=%ProgramData%\WinLove\welcome-apps.log"')
+            $lines.Add('set WLN=0')
+            $lines.Add(':wlw')
+            $lines.Add('where winget >nul 2>&1 && goto wlr')
+            $lines.Add('set /a WLN+=1')
+            $lines.Add('if %WLN% geq 60 goto wlr')
+            $lines.Add('ping -n 6 127.0.0.1 >nul & goto wlw')
+            $lines.Add(':wlr')
+            foreach ($id in $ids) {
+                $lines.Add(('winget install --id {0} -e --silent --accept-package-agreements --accept-source-agreements --disable-interactivity >>"%LOG%" 2>&1' -f $id))
+            }
+            $lines.Add('schtasks /delete /tn "WinLove Welcome Apps" /f >nul 2>&1')
+            $lines.Add('del /f /q "%~f0" >nul 2>&1')
+            [System.IO.File]::WriteAllText($runner, ($lines -join "`r`n"), [System.Text.Encoding]::ASCII)
+            try {
+                $act = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/d /c "' + $runner + '"')
+                $trig = New-ScheduledTaskTrigger -AtLogOn
+                $prin = New-ScheduledTaskPrincipal -GroupId 'S-1-5-32-545' -RunLevel Highest
+                Register-ScheduledTask -TaskName 'WinLove Welcome Apps' -Action $act -Trigger $trig -Principal $prin -Settings (New-TaskSettings) -Force | Out-Null
+                Write-Log ('welcome apps: ' + $ids.Count + ' at the first sign-in')
+            } catch { Write-Log ('welcome apps task: ' + $_.Exception.Message) }
+        }
+    }
+
     $n = 5
     if ($setupSignIn) {
         # 5. The setup account goes at the next start (its profile is free then).
@@ -2214,8 +2472,7 @@ try {
             'Remove-LocalUser -Name $name -ErrorAction SilentlyContinue',
             ('Remove-Item -LiteralPath ''{0}'' -Force -ErrorAction SilentlyContinue' -f (Join-Path $here 'oobe.json')),
             'Unregister-ScheduledTask -TaskName ''WinLove OOBE cleanup'' -Confirm:$false',
-            'Remove-Item -LiteralPath )wlps"
-    R"wlps($MyInvocation.MyCommand.Path -Force')
+            'Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force')
         [System.IO.File]::WriteAllText($cleanup, ($lines -join "`r`n"), [System.Text.Encoding]::UTF8)
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$cleanup`""
         $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
