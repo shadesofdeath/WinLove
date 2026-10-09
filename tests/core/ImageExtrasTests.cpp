@@ -8,6 +8,7 @@
 #include "core/image/ScheduledTasks.h"
 #include "core/image/UpdatePackage.h"
 #include "core/image/dism/DefaultApps.h"
+#include "core/image/dism/ImageHealth.h"
 #include "core/image/dism/Intl.h"
 #include "core/ops/ApplyJob.h"
 #include "core/ops/Planner.h"
@@ -264,4 +265,28 @@ TEST_CASE("apps: dism.exe arguments and the queued details") {
     CHECK(ops::phaseOf(ops::OpKind::RemoveDriver) == ops::Phase::Remove);
     CHECK(ops::phaseOf(ops::OpKind::SetIntl) == ops::Phase::Settings);
     CHECK(ops::opKindFromKey("setTaskState").value() == ops::OpKind::SetTaskState);
+}
+
+TEST_CASE("image health: DISM's verdict read from its /English output (D-101)") {
+    // CheckHealth / ScanHealth on a clean image.
+    CHECK(imageHealthFromOutput(
+              "Deployment Image Servicing and Management tool\r\n\r\n"
+              "[==========================100.0%==========================]\r\n"
+              "No component store corruption detected.\r\n"
+              "The operation completed successfully.\r\n") == ImageHealthState::Healthy);
+    // ScanHealth that found mendable corruption.
+    CHECK(imageHealthFromOutput(
+              "[==========================100.0%==========================]\r\n"
+              "Component store corruption was detected.\r\n"
+              "The component store is repairable.\r\n"
+              "The operation completed successfully.\r\n") == ImageHealthState::Repairable);
+    // The rare unrecoverable case.
+    CHECK(imageHealthFromOutput("The component store cannot be repaired.\r\n") ==
+          ImageHealthState::NonRepairable);
+    // After a successful RestoreHealth.
+    CHECK(imageHealthFromOutput("The restore operation completed successfully.\r\n"
+                                "The operation completed successfully.\r\n") == ImageHealthState::Repairable);
+    // Nothing recognisable.
+    CHECK(imageHealthFromOutput("Deployment Image Servicing and Management tool\r\n") ==
+          ImageHealthState::Unknown);
 }

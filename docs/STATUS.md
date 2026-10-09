@@ -7,6 +7,13 @@
   P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler, P16 Uygulama Ayarları, P17 Hakkında, P18 Komut Paleti:
   🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v2 (AppX + sistem bileşenleri + depo
   temizliği, D-031), test bekliyor.
+- **Yeni özellik turu (2026-10-09, kullanıcı seçimi): 4 özellik — (1) çok dilli sihirbaz, (2) çevrimdışı program
+  kurulumu, (3) imaj sağlık denetimi + onarım, (4) özel zamanlanmış görev.** Not: "bu PC sürücüleri", OEM bilgileri ve
+  disk bölümleme zaten vardı (önerilenler kodda kontrol edildi). **Tamamlanan: (3) imaj sağlık denetimi + onarım (D-101)**
+  — `ImageHealth.{h,cpp}` + `wlcli health`, Sürümler bağlam menüsünde denetle/tara + "Onar" toast'ı. Gerçek 25H2
+  imajında (mount) check & scan "image is healthy" (exit 0); parse birim testli; build+testler temiz. **Sırada:** (4)
+  özel zamanlanmış görev, (2) çevrimdışı program kurulumu, (1) çok dilli sihirbaz (en büyük iş). Her biri kullanıcı
+  onayı bekler (Altın kural 1).
 - **Bu oturumda tamamlananlar (2026-10-09, D-093…D-100):** Windows indir (UUP→ISO, Mağaza uygulamaları + seçici, Windows 10,
   .NET 3.5, ResetBase, install.esd); Secure Boot 2023 medyası (D-094); "Bu bilgisayardan al" — Programlar + Tweaks (D-095);
   güç planı (.pow) içe aktarma (D-096); desteklenmeyen PC'de yerinde yükseltme betiği (D-097); `wlcli welcome-json` +

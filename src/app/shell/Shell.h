@@ -219,6 +219,7 @@ public:
     // Reads the open source again (F5 on the Images page): a WIM changed by another tool.
     void refreshSource();
     void onImageVerified(const core::WimVerifyReport& report, const std::wstring& file);
+    void onImageHealth(const core::ImageHealthReport& report);
     void exportSelected();
     void convertEsd();
     // D-058

@@ -262,6 +262,9 @@ bool ImagesPage::showRowMenu(ui::PointF at) {
             }
         }
         if (const auto& mounted = m_state.mounted(); mounted && mounted->index == *index) {
+            // D-101: component-store health of the mounted edition (repair is offered on a hit).
+            item(Str::ImagesHealthCheck, [&controller = m_controller] { controller.checkHealth(false); });
+            item(Str::ImagesHealthScan, [&controller = m_controller] { controller.checkHealth(true); });
             item(Str::ImagesExploreMount, onExploreMount);
             item(Str::ImagesTerminalHere, onTerminal);
         }

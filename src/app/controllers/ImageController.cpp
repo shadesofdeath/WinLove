@@ -574,6 +574,79 @@ void ImageController::readEditions(std::function<void(const core::ImageEditions&
         Failure::Editions);
 }
 
+void ImageController::checkHealth(bool scan) {
+    const auto mounted = m_state.mounted();
+    if (!mounted) {
+        m_events.refused(Str::ApplyNoMountTitle);
+        return;
+    }
+    if (busy()) {
+        m_events.refused(Str::ImagesBusy);
+        return;
+    }
+    auto report = std::make_shared<std::optional<core::ImageHealthReport>>();
+    run(EngineOperation{EngineOperation::Kind::Health, mounted->edition, mounted->mountDir, mounted->index},
+        [mountDir = mounted->mountDir, scan, report](const core::TaskContext& task) -> Result<void> {
+            auto dism = core::Dism::instance();
+            if (!dism) {
+                return std::unexpected(dism.error());
+            }
+            auto session = (*dism)->openSession(mountDir);
+            if (!session) {
+                return std::unexpected(session.error());
+            }
+            auto r = core::checkImageHealth(**session, scan, task);
+            if (!r) {
+                return std::unexpected(r.error());
+            }
+            *report = std::move(*r);
+            return {};
+        },
+        [this, report] {
+            if (m_events.checkedHealth && *report) {
+                m_events.checkedHealth(**report);
+            }
+        },
+        Failure::Health);
+}
+
+void ImageController::repairHealth(std::wstring source, bool limitAccess) {
+    const auto mounted = m_state.mounted();
+    if (!mounted) {
+        m_events.refused(Str::ApplyNoMountTitle);
+        return;
+    }
+    if (busy()) {
+        m_events.refused(Str::ImagesBusy);
+        return;
+    }
+    auto report = std::make_shared<std::optional<core::ImageHealthReport>>();
+    run(EngineOperation{EngineOperation::Kind::Health, mounted->edition, mounted->mountDir, mounted->index},
+        [mountDir = mounted->mountDir, source = std::move(source), limitAccess, report](
+            const core::TaskContext& task) -> Result<void> {
+            auto dism = core::Dism::instance();
+            if (!dism) {
+                return std::unexpected(dism.error());
+            }
+            auto session = (*dism)->openSession(mountDir);
+            if (!session) {
+                return std::unexpected(session.error());
+            }
+            auto r = core::restoreImageHealth(**session, source, limitAccess, task);
+            if (!r) {
+                return std::unexpected(r.error());
+            }
+            *report = std::move(*r);
+            return {};
+        },
+        [this, report] {
+            if (m_events.checkedHealth && *report) {
+                m_events.checkedHealth(**report);
+            }
+        },
+        Failure::Health);
+}
+
 void ImageController::rememberEditions(core::ImageEditions editions) {
     if (const auto& mounted = m_state.mounted()) {
         m_editions = KnownEditions{mounted->mountDir, mounted->imagePath, mounted->index, std::move(editions)};

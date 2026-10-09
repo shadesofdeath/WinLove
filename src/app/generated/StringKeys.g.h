@@ -652,6 +652,18 @@ enum class Str : std::uint16_t {
     ImagesFolderOrphaned,
     ImagesFolderRepair,
     ImagesFolderTitle,
+    ImagesHealthCheck,
+    ImagesHealthHealthy,
+    ImagesHealthHealthyBody,
+    ImagesHealthNonRepairable,
+    ImagesHealthNonRepairableBody,
+    ImagesHealthRepair,
+    ImagesHealthRepairable,
+    ImagesHealthRepairableBody,
+    ImagesHealthRepaired,
+    ImagesHealthRepairedBody,
+    ImagesHealthScan,
+    ImagesHealthWorking,
     ImagesImageCount,
     ImagesImageState,
     ImagesIndex,
@@ -1821,7 +1833,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1811;
+inline constexpr std::size_t kStrCount = 1823;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -2468,6 +2480,18 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "images.folderOrphaned",
     "images.folderRepair",
     "images.folderTitle",
+    "images.healthCheck",
+    "images.healthHealthy",
+    "images.healthHealthyBody",
+    "images.healthNonRepairable",
+    "images.healthNonRepairableBody",
+    "images.healthRepair",
+    "images.healthRepairable",
+    "images.healthRepairableBody",
+    "images.healthRepaired",
+    "images.healthRepairedBody",
+    "images.healthScan",
+    "images.healthWorking",
     "images.imageCount",
     "images.imageState",
     "images.index",

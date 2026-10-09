@@ -46,6 +46,7 @@
 #include "core/image/dism/Dism.h"
 #include "core/image/dism/Edition.h"
 #include "core/image/dism/Appx.h"
+#include "core/image/dism/ImageHealth.h"
 #include "core/image/dism/MountHealth.h"
 #include "core/image/dism/OptionalFeatures.h"
 #include "core/iso/IsoBuilder.h"
@@ -1055,6 +1056,45 @@ int cmdStoreCleanup(const std::wstring& dir, bool resetBase) {
         return reportError(cleaned.error());
     }
     print(L"component store cleaned (image not committed)\n");
+    return 0;
+}
+
+// D-101: component-store health of a mounted image. `what` is "check" (fast), "scan" (thorough) or
+// "restore" (repair; --source=<WIM:...:1|ESD:...:1|\Windows path> and --limit-access stay offline).
+int cmdImageHealth(const std::wstring& dir, const std::wstring& what, const std::wstring& source, bool limitAccess) {
+    auto session = openImageSession(dir);
+    if (!session) {
+        return reportError(session.error());
+    }
+    const auto stateWord = [](core::ImageHealthState s) -> const wchar_t* {
+        switch (s) {
+        case core::ImageHealthState::Healthy: return L"healthy";
+        case core::ImageHealthState::Repairable: return L"repairable";
+        case core::ImageHealthState::NonRepairable: return L"non-repairable";
+        case core::ImageHealthState::Unknown: break;
+        }
+        return L"unknown";
+    };
+    const auto report = [&]() -> Result<core::ImageHealthReport> {
+        if (what == L"restore") {
+            const auto task = progressTask(L"restore");
+            return core::restoreImageHealth(**session, source, limitAccess, task);
+        }
+        const bool scan = (what == L"scan");
+        const auto task = progressTask(scan ? L"scan" : L"check");
+        return core::checkImageHealth(**session, scan, task);
+    }();
+    print(L"\n");
+    if (!report) {
+        return reportError(report.error());
+    }
+    print(std::format(L"image is {}{}{}\n", stateWord(report->state),
+                      report->repaired ? L" (repaired this run)" : L"",
+                      report->detail.empty() ? L"" : (L" - " + report->detail)));
+    // exit 2 when the image needs attention, so scripts and the lab can tell at a glance.
+    if (report->state == core::ImageHealthState::Repairable || report->state == core::ImageHealthState::NonRepairable) {
+        return 2;
+    }
     return 0;
 }
 
@@ -2805,6 +2845,8 @@ void printUsage() {
           L"  wlcli boot-patch <boot.wim> <mountdir> [--bypass=tpm,secureboot,ram,cpu,storage|all] [--driver=<inf>]...\n"
           L"                                      [--legacy-setup] [--lcu=<msu> --setup-files=<dir>]   (Setup's image: LabConfig, drivers, previous Setup, D-080 update; mounts, commits)\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
+          L"  wlcli health <mountdir> [check|scan|restore]   (component-store health; exit 2 if repairable/non-repairable)\n"
+          L"                                      restore: [--source=<WIM:file:1|ESD:file:1|\\Windows path>] [--limit-access]\n"
           L"  wlcli apply <changeset.json> <mountdir> [--commit|--commit-with-failures] [--source=<sources\\sxs>]\n"
           L"                                      (--commit holds the image mounted, unsaved, when a step failed)\n"
           L"                                      [--also=2,3 --wim=<file>] [--setup=<setup folder>]   (with --commit: then the same on further editions)\n"
@@ -2857,6 +2899,7 @@ int wmain(int argc, wchar_t** argv) {
     bool remove = false;
     bool resetBase = false;
     bool dryRun = false;
+    bool limitAccess = false;
     std::wstring arch;
     std::wstring downloadDir;
     std::wstring wingetCacheDir;
@@ -3004,6 +3047,8 @@ int wmain(int argc, wchar_t** argv) {
             resetBase = true;
         } else if (a == L"--dry-run") {
             dryRun = true;
+        } else if (a == L"--limit-access") {
+            limitAccess = true;
         } else if (a.starts_with(L"--source=")) {
             source = std::wstring(a.substr(9));
         } else if (a == L"--skip-errors") {
@@ -3126,6 +3171,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"store-cleanup" && args.size() == 2) {
         return cmdStoreCleanup(args[1], resetBase);
+    }
+    if (command == L"health" && (args.size() == 2 || args.size() == 3)) {
+        return cmdImageHealth(args[1], args.size() == 3 ? args[2] : std::wstring(L"check"), source, limitAccess);
     }
     if (command == L"winre-update" && args.size() == 2) {
         return cmdWinReUpdate(args[1], safeOsPath, lcuPath);

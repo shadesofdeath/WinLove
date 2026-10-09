@@ -418,7 +418,19 @@
     "appendedToast": "{file} sürüm eklendi",
     "capturedToast": "{file} oluşturuldu",
     "splitGo": "Böl",
-    "solid": "solid (tek blok)"
+    "solid": "solid (tek blok)",
+    "healthCheck": "Sağlığı denetle",
+    "healthScan": "Sağlığı tara (ayrıntılı)",
+    "healthRepair": "Onar",
+    "healthWorking": "Sağlık denetleniyor…",
+    "healthHealthy": "İmaj sağlıklı",
+    "healthHealthyBody": "Bileşen deposunda bozulma yok.",
+    "healthRepairable": "İmaj onarılabilir",
+    "healthRepairableBody": "Bileşen deposunda bozulma bulundu; 'Onar' ile düzeltilebilir.",
+    "healthNonRepairable": "İmaj onarılamıyor",
+    "healthNonRepairableBody": "Bileşen deposunda onarılamayan bozulma var.",
+    "healthRepaired": "İmaj onarıldı",
+    "healthRepairedBody": "Bileşen deposu onarıldı."
   },
   "components": {
     "title": "Bileşenler",
