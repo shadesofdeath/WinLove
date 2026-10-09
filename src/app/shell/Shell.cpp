@@ -829,7 +829,7 @@ void Shell::applyPreset(const Preset& preset) {
     Preset current = preset;
     current.changes = core::withCurrentWelcomeScript(m_components->withCurrentRecipes(preset.changes));
     const std::size_t queued = m_presets->apply(current);
-    showToast(ui::InfoKind::Success, m_strings.format(Str::PresetsLoaded, {{L"n", std::to_wstring(queued)}}), preset.name);
+    showUndoToast(m_strings.format(Str::PresetsLoaded, {{L"n", std::to_wstring(queued)}}), preset.name);
 }
 
 void Shell::importPreset() {
@@ -1924,10 +1924,11 @@ void Shell::showPage(PageId page) {
                     return;
                 }
                 const int changed = m_imageSettings->applyRecommended();
-                showToast(ui::InfoKind::Success,
-                          changed > 0 ? m_strings.format(Str::TweaksRecommendedApplied, {{L"n", std::to_wstring(changed)}})
-                                      : m_strings.get(Str::TweaksRecommendedNone),
-                          L"");
+                if (changed > 0) {
+                    showUndoToast(m_strings.format(Str::TweaksRecommendedApplied, {{L"n", std::to_wstring(changed)}}), L"");
+                } else {
+                    showToast(ui::InfoKind::Success, m_strings.get(Str::TweaksRecommendedNone), L"");
+                }
             };
             m_pageBody = &m_pageView->setBody<TweaksPage>(
                 m_state, *m_imageSettings, m_strings, m_language, [this] { showPage(PageId::Images); },
@@ -1943,10 +1944,11 @@ void Shell::showPage(PageId page) {
                     return;
                 }
                 const int n = m_tasks->applyRecommended();
-                showToast(ui::InfoKind::Success,
-                          n > 0 ? m_strings.format(Str::TasksRecommendedDone, {{L"n", std::to_wstring(n)}})
-                                : m_strings.get(Str::TasksRecommendedNone),
-                          L"");
+                if (n > 0) {
+                    showUndoToast(m_strings.format(Str::TasksRecommendedDone, {{L"n", std::to_wstring(n)}}), L"");
+                } else {
+                    showToast(ui::InfoKind::Success, m_strings.get(Str::TasksRecommendedNone), L"");
+                }
             };
             m_pageBody = &m_pageView->setBody<TasksPage>(m_state, *m_tasks, m_strings, m_language,
                                                          [this] { showPage(PageId::Images); });
@@ -2245,6 +2247,15 @@ void Shell::showToast(ui::InfoKind kind, std::wstring title, std::wstring messag
     layout();
     if (m_services.startTimer) {
         m_services.startTimer(kToastTimer, ui::Toast::kDurationMs);
+    }
+}
+
+void Shell::showUndoToast(std::wstring title, std::wstring message) {
+    m_toast->show(ui::InfoKind::Success, std::move(title), std::move(message), m_strings.get(Str::CommonUndo),
+                  [this] { m_state.undoQueue(); });
+    layout();
+    if (m_services.startTimer) {
+        m_services.startTimer(kToastTimer, ui::Toast::kDurationMs + 2000); // time to read and decide
     }
 }
 
@@ -3431,6 +3442,15 @@ bool Shell::handleShortcut(const ui::KeyEvent& key) {
     }
     if (key.ctrl && !key.shift && !key.alt && key.virtualKey == 'K') {
         openPalette();
+        return true;
+    }
+    // The queue's history; a text box keeps Ctrl+Z for its own text.
+    if (key.ctrl && !key.alt && (key.virtualKey == 'Z' || key.virtualKey == 'Y') &&
+        !(host() && dynamic_cast<ui::SearchBox*>(host()->focused()))) {
+        const bool redo = key.virtualKey == 'Y' || key.shift;
+        if (redo ? m_state.redoQueue() : m_state.undoQueue()) {
+            showToast(ui::InfoKind::Info, m_strings.get(redo ? Str::QueueRedone : Str::QueueUndone), L"");
+        }
         return true;
     }
     // interaction.md "Kısayollar": Ctrl+Enter applies the queue, Ctrl+S / Ctrl+O save / load a preset.

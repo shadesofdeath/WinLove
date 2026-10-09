@@ -53,6 +53,10 @@
     "apply": "Uygula",
     "iso": "ISO"
   },
+  "queue": {
+    "undone": "Kuyruk bir adım geri alındı",
+    "redone": "Kuyruk bir adım yinelendi"
+  },
   "status": {
     "downloading": "İndiriliyor",
     "mounted": "Bağlı",
@@ -68,6 +72,7 @@
     "working": "İmaj işleniyor"
   },
   "common": {
+    "undo": "Geri al",
     "all": "Tümü",
     "cancel": "Vazgeç",
     "ok": "Tamam",

@@ -36,6 +36,7 @@ public:
     void layout() override;
     void paint(Canvas& canvas) override;
     bool onKeyDown(const KeyEvent& key) override;
+    bool onWheel(PointF p, float lines) override;
     void onPointerUp(PointF p) override;
     void onClick() override;
 
@@ -46,7 +47,9 @@ private:
     tokens::Color m_iconColor;
     float m_width;
     RectF m_box{};
-    float m_bodyHeight = 0;
+    float m_bodyHeight = 0;     // shown (at most what the window leaves)
+    float m_bodyFull = 0;       // the whole text
+    float m_bodyOffset = 0;     // scrolled, when the text is taller than shown
     std::vector<Button*> m_buttons;
     Widget* m_content = nullptr;
     float m_contentHeight = 0;

@@ -254,6 +254,7 @@ enum class Str : std::uint16_t {
     CommonSize,
     CommonStatus,
     CommonType,
+    CommonUndo,
     CommonYes,
     CompatAction,
     CompatBody,
@@ -1098,6 +1099,8 @@ enum class Str : std::uint16_t {
     ProgramsWinWaitingWinget,
     ProgramsWingetRemovedBody,
     ProgramsWingetRemovedTitle,
+    QueueRedone,
+    QueueUndone,
     RegistryAddValue,
     RegistryAddValueTitle,
     RegistryCustomTitle,
@@ -1657,7 +1660,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1647;
+inline constexpr std::size_t kStrCount = 1650;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -1906,6 +1909,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "common.size",
     "common.status",
     "common.type",
+    "common.undo",
     "common.yes",
     "compat.action",
     "compat.body",
@@ -2750,6 +2754,8 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "programs.winWaitingWinget",
     "programs.wingetRemovedBody",
     "programs.wingetRemovedTitle",
+    "queue.redone",
+    "queue.undone",
     "registry.addValue",
     "registry.addValueTitle",
     "registry.customTitle",

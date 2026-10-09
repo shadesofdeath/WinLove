@@ -154,6 +154,8 @@ public:
     bool handleShortcut(const ui::KeyEvent& key);
     void onTimer(UINT id);
     void showToast(ui::InfoKind kind, std::wstring title, std::wstring message);
+    // A toast with "Geri al": undoes the queue change it reports.
+    void showUndoToast(std::wstring title, std::wstring message);
 
     // ---- sources --------------------------------------------------------------------------
     // `then` runs after a successful open (e.g. --mount=N after a UAC relaunch).

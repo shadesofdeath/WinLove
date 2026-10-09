@@ -53,6 +53,10 @@
     "apply": "Apply",
     "iso": "ISO"
   },
+  "queue": {
+    "undone": "The queue went one step back",
+    "redone": "The queue went one step forward"
+  },
   "status": {
     "downloading": "Downloading",
     "mounted": "Mounted",
@@ -68,6 +72,7 @@
     "working": "Working on the image"
   },
   "common": {
+    "undo": "Undo",
     "all": "All",
     "cancel": "Cancel",
     "ok": "OK",

@@ -112,6 +112,10 @@ public:
     // While Uygula runs the queue is frozen: edits would be lost (commit clears it) or undone
     // by the post-run cleanup. Pages call the mutators freely; they are ignored then.
     [[nodiscard]] bool queueLocked() const noexcept;
+    // Undo / redo of the queue (Ctrl+Z / Ctrl+Y, a toast's "Geri al"): one step is one action — a
+    // toggle, a preset, "Önerilenleri uygula". The history starts again with each mounted image.
+    bool undoQueue();
+    bool redoQueue();
 
     // P04 data for the mounted image (read once per mount, FeatureController).
     struct OptionalFeatures {

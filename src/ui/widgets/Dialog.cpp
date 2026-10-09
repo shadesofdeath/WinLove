@@ -39,7 +39,15 @@ void Dialog::layout() {
     const RectF b = bounds();
     const float contentWidth = m_width - 2 * kPadding;
     if (host()) {
-        m_bodyHeight = std::ceil(host()->text().measureWrapped(m_body, tokens::TypeStyle::Body, contentWidth));
+        m_bodyFull = std::ceil(host()->text().measureWrapped(m_body, tokens::TypeStyle::Body, contentWidth));
+        m_bodyHeight = m_bodyFull;
+        if (b.height > 0) {
+            // A long body (an error with paths, DISM's text) never pushes the buttons off the window.
+            const float others = kPadding + kTitleLine + kTitleGap + kButtonsGap + tokens::size::control + kPadding +
+                                 (m_content ? kTitleGap + kMinContent : 0.0f);
+            m_bodyHeight = std::max(std::min(m_bodyFull, std::floor(b.height - 2 * kWindowMargin - others)), 40.0f);
+        }
+        m_bodyOffset = std::clamp(m_bodyOffset, 0.0f, std::max(m_bodyFull - m_bodyHeight, 0.0f));
     }
     const float chrome = kPadding + kTitleLine + kTitleGap + m_bodyHeight + kButtonsGap + tokens::size::control + kPadding;
     // The box never outgrows the window: tall content (a long list) gets what is left and
@@ -79,8 +87,27 @@ void Dialog::paint(Canvas& canvas) {
     }
     canvas.drawText(m_title, {x, y, m_box.right() - kPadding - x, kTitleLine}, tokens::TypeStyle::BodyStrong,
                     tokens::Color::TextPrimary);
-    canvas.drawTextWrapped(m_body, {m_box.x + kPadding, y + kTitleLine + kTitleGap, m_width - 2 * kPadding, m_bodyHeight},
-                           tokens::TypeStyle::Body, tokens::Color::TextSecondary);
+    const RectF body{m_box.x + kPadding, y + kTitleLine + kTitleGap, m_width - 2 * kPadding, m_bodyHeight};
+    canvas.pushClip(body);
+    canvas.drawTextWrapped(m_body, {body.x, body.y - m_bodyOffset, body.width, m_bodyFull}, tokens::TypeStyle::Body,
+                           tokens::Color::TextSecondary);
+    canvas.popClip();
+    if (m_bodyFull > m_bodyHeight) {
+        // Where in the text the view is: a thin bar at the body's right edge.
+        const float track = body.height;
+        const float thumb = std::max(track * m_bodyHeight / m_bodyFull, 16.0f);
+        const float top = body.y + (track - thumb) * (m_bodyOffset / std::max(m_bodyFull - m_bodyHeight, 1.0f));
+        canvas.fillRoundRect({body.right() + 6, top, 3, thumb}, 1.5f, tokens::Color::LineStrong);
+    }
+}
+
+bool Dialog::onWheel(PointF /*p*/, float lines) {
+    if (m_bodyFull <= m_bodyHeight) {
+        return false;
+    }
+    m_bodyOffset = std::clamp(m_bodyOffset - lines * 18.0f, 0.0f, m_bodyFull - m_bodyHeight);
+    invalidate();
+    return true;
 }
 
 bool Dialog::onKeyDown(const KeyEvent& key) {
