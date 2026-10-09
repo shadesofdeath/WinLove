@@ -386,3 +386,23 @@ TEST_CASE("ComponentController: a preset's saved recipes are replaced by the cat
     CHECK(current.find(OpKind::RemoveComponent, L"gone-from-catalog")->value == saved.operations()[2].value);
     CHECK(current.find(OpKind::RemoveAppx, L"Microsoft.GamingApp_1_neutral__8wekyb3d8bbwe"));
 }
+
+TEST_CASE("ComponentController: a preset's app removals get this image's version of the app (audit A4)") {
+    AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
+    ComponentController controller(state, shippedCatalog(), Language::Turkish, [](std::function<void()> fn) { fn(); },
+                                   shippedComponents());
+    state.setAppxList(AppState::AppxList{AppState::AppxList::Status::Ready, L"C:/m",
+                                         {makeApp(L"Microsoft.GamingApp", 400), makeApp(L"Microsoft.WindowsStore", 50)},
+                                         {}});
+    ChangeSet saved; // made on another build: other versions
+    saved.add({OpKind::RemoveAppx, L"Microsoft.GamingApp_2410.1001.4.0_neutral_~_8wekyb3d8bbwe", L"Xbox"});
+    saved.add({OpKind::RemoveAppx, L"Microsoft.WindowsStore_1.0.0.0_neutral_~_8wekyb3d8bbwe", L"Store"});
+    saved.add({OpKind::RemoveAppx, L"Microsoft.BingNews_4.1.0.0_neutral_~_8wekyb3d8bbwe", L"News"});
+
+    const ChangeSet current = controller.withCurrentRecipes(saved);
+    CHECK(current.size() == 3);
+    CHECK(current.find(OpKind::RemoveAppx, L"Microsoft.GamingApp_1.0.0.0_neutral_~_8wekyb3d8bbwe"));
+    CHECK_FALSE(current.find(OpKind::RemoveAppx, L"Microsoft.GamingApp_2410.1001.4.0_neutral_~_8wekyb3d8bbwe"));
+    CHECK(current.find(OpKind::RemoveAppx, L"Microsoft.WindowsStore_1.0.0.0_neutral_~_8wekyb3d8bbwe")); // same name
+    CHECK(current.find(OpKind::RemoveAppx, L"Microsoft.BingNews_4.1.0.0_neutral_~_8wekyb3d8bbwe")); // not here: as saved
+}

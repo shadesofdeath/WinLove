@@ -32,6 +32,51 @@ namespace wl::core::ops {
 
 namespace {
 
+// RemoveAppx names a package by its full name, version included. A preset made on another build
+// names another version of the same app: DISM answers "not found" and the app stayed while the
+// report said done (audit A4). Removes what this image provisions for the app's family instead;
+// only an app the image really does not have counts as removed.
+Result<void> removeAppxFamily(DismSession& session, const std::wstring& fullName,
+                              std::unique_ptr<OfflineRegistry>& registry, const TaskContext& task) {
+    const std::wstring family = appxFamilyName(fullName);
+    if (family.empty()) {
+        log::info("apply", L"app not in the image: " + fullName);
+        return {};
+    }
+    registry.reset(); // listing the apps loads the image's SOFTWARE hive in DISM
+    auto provisioned = session.appxPackages();
+    if (!provisioned) {
+        return std::unexpected(provisioned.error());
+    }
+    Result<void> outcome;
+    bool found = false;
+    for (const auto& app : *provisioned) {
+        if (_wcsicmp(appxFamilyName(app.packageName).c_str(), family.c_str()) != 0) {
+            continue;
+        }
+        found = true;
+        log::info("apply", L"another version of the app is in this image; removing it: " + app.packageName);
+        auto removed = session.removeAppx(app.packageName);
+        if (!removed && removed.error().hresult == kAppxRemovalRefused) {
+            removed = removeAppxNative(session, app.packageName, TaskContext{task.cancel, {}});
+        }
+        if (!removed) {
+            outcome = std::move(removed);
+            break;
+        }
+    }
+    if (!found) {
+        log::info("apply", L"app not in the image (already removed or never there): " + fullName);
+    }
+    // The listing keeps SOFTWARE loaded by DISM until the session closes; later registry steps of
+    // the run would fail with 0x80070020 (SystemComponents.cpp). A new session lets go of it.
+    session.suspend();
+    if (auto reopened = session.reload(); !reopened) {
+        return reopened;
+    }
+    return outcome;
+}
+
 Result<void> runStep(const Operation& op, DismSession& session, const TaskContext& task, const ApplyOptions& options,
                      std::unique_ptr<OfflineRegistry>& registry, std::unique_ptr<DeferredRegistry>& deferred) {
     auto reg = [&]() -> OfflineRegistry& {
@@ -57,12 +102,11 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
     case OpKind::RemoveCapability: return session.removeCapability(op.target, task);
     case OpKind::RemoveAppx: {
         auto removed = session.removeAppx(op.target);
-        // ERROR_FILE_NOT_FOUND: the package is not provisioned in this image — an edition that
-        // never had it, or a preset applied to an image it was already applied to. Absent is
-        // what "remove" asked for.
+        // ERROR_FILE_NOT_FOUND: no package by this full name. Another version of the app (a preset
+        // from another build) is removed by its family; an edition that never had it, or an image
+        // the preset was already applied to, has nothing to remove — what "remove" asked for.
         if (!removed && removed.error().hresult == static_cast<std::int32_t>(0x80070002)) {
-            log::info("apply", L"app not in the image (already removed): " + op.target);
-            return {};
+            return removeAppxFamily(session, op.target, registry, task);
         }
         // 0x80073CFA: DISM will not deprovision this app (Windows Security UI, App Installer).
         // WinLove then changes in the image what DISM changes for the apps it lets go (D-038).
