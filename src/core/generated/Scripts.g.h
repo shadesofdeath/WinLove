@@ -2122,6 +2122,8 @@ if ($auto) {
     if ($auto.taskbar) { $script:align = [string] $auto.taskbar }
     if ($null -ne $auto.transparency) { $ui.Glass.IsChecked = [bool] $auto.transparency }
     if ($auto.prefs) { foreach ($p in $auto.prefs.PSObject.Properties) { $script:prefs[$p.Name] = [bool] $p.Value } }
+    if ($null -ne $auto.wallpaper) { $script:wallpaper = [string] $auto.wallpaper }
+    if ($null -ne $auto.bundles) { foreach ($b in @($data.bundles)) { if ($b) { $script:bundles[[string] $b.id] = ([string[]] $auto.bundles -contains [string] $b.id) } } }
     $script:privacy = [string] $auto.privacy
     Show-Choices
     $problem = ''
@@ -2191,13 +2193,13 @@ foreach ($step in $steps) {
     $done.CornerRadius = 10; $done.Opacity = 0
     Set-Res $done ([System.Windows.Controls.Border]::BackgroundProperty) 'Sel'
     $done.Child = New-Path $checkGeometry 'BtnText' 12 3.2
-    [void] $mark.Children.Add($wait); [void] $mark.Children.Add($spin); [void] $mark.Children.Add($done)
+    [void] $mark.Children.Add($wait); [void] $mark.Chi)wlps"
+    R"wlps(ldren.Add($spin); [void] $mark.Children.Add($done)
     [void] $line.Children.Add($mark)
     $words = New-Object System.Windows.Controls.StackPanel
     $words.VerticalAlignment = 'Center'
     [System.Windows.Controls.Grid]::SetColumn($words, 1)
-    $label =)wlps"
-    R"wlps( New-Text $step.text 14 'Text3'
+    $label = New-Text $step.text 14 'Text3'
     [void] $words.Children.Add($label)
     $detail = New-Text ([string] $step.detail) 12 'Text2'
     $detail.Margin = '0,2,0,0'; $detail.Opacity = 0; $detail.TextTrimming = 'CharacterEllipsis'
@@ -2398,12 +2400,12 @@ try {
             foreach ($write in @($writes)) { if ($write) { Set-Write $write } }
         }
     }
-    # D-099: the chosen desktop background (a stable Windows\Web path), for the new account.
+    # D-099: the chosen desktop background (a stable Windows\Web path), f)wlps"
+    R"wlps(or the new account.
     if ((Test-Shown 'wallpaper') -and $script:wallpaper) {
         Add-UserValue 'Control Panel\Desktop' 'WallPaper' 'sz' $script:wallpaper
         Add-UserValue 'Control Panel\Desktop' 'WallpaperStyle' 'sz' '10'
-        Add-UserValue ')wlps"
-    R"wlps(Control Panel\Desktop' 'TileWallpaper' 'sz' '0'
+        Add-UserValue 'Control Panel\Desktop' 'TileWallpaper' 'sz' '0'
         Write-Log ('wallpaper ' + $script:wallpaper)
     }
     if ($script:userReg.Count) {
