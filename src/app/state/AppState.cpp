@@ -97,9 +97,13 @@ void AppState::setMounted(std::optional<MountedImage> mounted) {
         m_imageValues.reset();
         m_imageDrivers.reset();
         m_imageIntl.reset();
-        if (!m_changes.empty()) {
-            m_changes.clear();
-            notify(Change::Queue);
+        if (!m_changes.empty() || m_changes.canUndo()) {
+            // A new image: a new queue, and no undo back into the old image's.
+            const bool had = !m_changes.empty();
+            m_changes = core::ops::ChangeSet{};
+            if (had) {
+                notify(Change::Queue);
+            }
         }
         notify(Change::Features);
         notify(Change::Components);
@@ -111,6 +115,22 @@ void AppState::setMounted(std::optional<MountedImage> mounted) {
 
 bool AppState::queueLocked() const noexcept {
     return m_apply && m_apply->stage != ApplyRun::Stage::Done;
+}
+
+bool AppState::undoQueue() {
+    if (queueLocked() || !m_changes.undo()) {
+        return false;
+    }
+    notify(Change::Queue);
+    return true;
+}
+
+bool AppState::redoQueue() {
+    if (queueLocked() || !m_changes.redo()) {
+        return false;
+    }
+    notify(Change::Queue);
+    return true;
 }
 
 void AppState::queue(core::ops::Operation op) {
