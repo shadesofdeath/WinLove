@@ -246,7 +246,7 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoBootDrivers = true;
         } else if (a.starts_with(L"--demo-download")) {
             const auto v = a.size() > 16 ? a.substr(16) : std::wstring_view(L"list");
-            options.demoDownload = v == L"pick" ? 1 : v == L"downloading" ? 2 : v == L"converting" ? 3 : v == L"apps" ? 4 : v == L"win10" ? 5 : 0;
+            options.demoDownload = v == L"pick" ? 1 : v == L"downloading" ? 2 : v == L"converting" ? 3 : v == L"apps" ? 4 : v == L"win10" ? 5 : v == L"failed" ? 6 : v == L"warnings" ? 7 : 0;
         } else if (a == L"--demo-hosts") {
             options.demoHosts = true;
         } else if (a == L"--demo-services") {
@@ -694,6 +694,11 @@ int App::renderOffscreen() {
                 log::info("apply", L"[1/2] removeCapability OpenSSH.Client~~~~0.0.1.0");
                 log::info("dism", L"remove capability OpenSSH.Client~~~~0.0.1.0 \u2026 ok");
                 log::info("apply", L"[2/2] enableFeature Microsoft-Windows-Subsystem-Linux");
+            } else if (m_options.demoApply == L"paused") {
+                // D-106: the steps are done; it waits before the save for changes by hand.
+                run.stage = AppState::ApplyRun::Stage::Paused;
+                run.fraction = 0.8;
+                log::info("apply", L"paused before saving: C:\\WinLove\\mount is open for changes by hand");
             } else {
                 run.stage = AppState::ApplyRun::Stage::Done;
                 run.fraction = 1.0;
@@ -1558,7 +1563,7 @@ int App::runWindowed() {
     callbacks.resized = [this](ui::SizeF size, float scale) {
         if (m_target) {
             if (auto resized = m_target->resize(m_window.clientWidthPx(), m_window.clientHeightPx(), scale * 96.0f);
-                !resized) {
+                !resized && !deviceLost(resized.error().hresult)) { // a lost device is made again by paint()
                 showError(resized.error());
             }
         }
@@ -1657,19 +1662,8 @@ int App::runWindowed() {
         },
     });
     m_window.setZoom(zoomFor(m_state->settings())); // D-092: density and Windows' text size
+    m_simulateDeviceLoss = m_options.testDeviceLost;
     m_window.show();
-    if (m_options.testDeviceLost) {
-        m_window.post([this] {
-            const auto* before = m_shell;
-            if (auto rebuilt = recreateGraphics(); !rebuilt) {
-                log::error("app", L"device-loss recovery failed: " + describe(rebuilt.error()));
-                return;
-            }
-            log::info("app", m_shell == before ? L"device-loss recovery: new device, same shell"
-                                               : L"device-loss recovery: the shell was rebuilt");
-            m_window.invalidate();
-        });
-    }
     if (m_options.openPath) {
         // A mount left from an earlier run must still be seen (Images page InfoBar: Onar /
         // Devam et); mountSafely itself reuses the same image or repairs leftovers.
@@ -1768,22 +1762,31 @@ void App::paint() {
     if (!m_target || !m_host) {
         return;
     }
-    ui::Canvas canvas(m_target->beginDraw(), m_options.theme, m_window.scale(), *m_graphics->text,
-                      *m_graphics->icons);
-    canvas.clear(Color::BgBase);
-    m_host->paint(canvas);
-    auto presented = m_target->endDrawAndPresent();
-    if (!presented) {
-        const auto hr = presented.error().hresult;
-        if (deviceLost(hr)) {
-            if (auto rebuilt = recreateGraphics(); !rebuilt) {
-                showError(rebuilt.error());
-                m_forceClose = true;
-                m_window.close();
-                return;
-            }
-            m_window.invalidate();
+    // The canvas goes before a lost device is let go: its brush holds the old device, which then
+    // keeps the old swap chain on the window, and the new one is refused (E_ACCESSDENIED).
+    auto presented = [this] {
+        ui::Canvas canvas(m_target->beginDraw(), m_options.theme, m_window.scale(), *m_graphics->text,
+                          *m_graphics->icons);
+        canvas.clear(Color::BgBase);
+        m_host->paint(canvas);
+        return m_target->endDrawAndPresent();
+    }();
+    std::int32_t hr = presented ? 0 : presented.error().hresult;
+    if (std::exchange(m_simulateDeviceLoss, false)) {
+        hr = static_cast<std::int32_t>(0x887A0005); // DXGI_ERROR_DEVICE_REMOVED
+    }
+    if (deviceLost(hr)) {
+        const auto* shell = m_shell;
+        if (auto rebuilt = recreateGraphics(); !rebuilt) {
+            log::error("app", L"device-loss recovery failed: " + describe(rebuilt.error()));
+            showError(rebuilt.error());
+            m_forceClose = true;
+            m_window.close();
+            return;
         }
+        log::info("app", m_shell == shell ? L"device-loss recovery: new device, same shell"
+                                          : L"device-loss recovery: the shell was rebuilt");
+        m_window.invalidate();
     }
 }
 

@@ -24,6 +24,8 @@ public:
     struct Intents {
         // The ISO's path from a save dialog; nullopt = cancelled.
         std::function<std::optional<std::filesystem::path>(const std::filesystem::path& suggested)> pickOutput;
+        // Not elevated: the conversion needs DISM, so the job does not start (the download would be wasted).
+        std::function<void()> adminRequired;
     };
     DownloadPage(AppState& state, const Localization& strings, Language language, WindowsDownloadController& controller,
                  Intents intents);

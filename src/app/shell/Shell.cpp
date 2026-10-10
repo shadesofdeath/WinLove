@@ -56,6 +56,7 @@
 #include "base/File.h"
 #include "base/Log.h"
 #include "base/Path.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 #include "core/image/Source.h"
 #include "core/image/UpdatePackage.h"
@@ -75,6 +76,7 @@
 #include <atomic>
 #include <cmath>
 #include <format>
+#include <regex>
 #include <string>
 #include <utility>
 
@@ -404,17 +406,44 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
                 page->setApps(id, language, editions, std::move(apps));
             }
         },
-        [this](const Error& e, bool job) {
-            if (job) {
-                showToast(ui::InfoKind::Error, m_strings.get(Str::DownloadFailedTitle), errorText(e));
-            } else if (auto* page = downloadPage()) {
-                page->setListFailed(e);
+        [this](const Error& e, WindowsDownloadController::Failed what) {
+            if (what == WindowsDownloadController::Failed::List) {
+                if (auto* page = downloadPage()) {
+                    page->setListFailed(e);
+                }
+                return;
             }
+            const std::wstring title = m_strings.get(what == WindowsDownloadController::Failed::Convert
+                                                         ? Str::DownloadConvertFailedTitle
+                                                         : Str::DownloadFailedTitle);
+            const std::wstring text = errorText(e);
+            using Notice = AppState::WindowsDownloadNotice;
+            m_state.setWindowsDownloadNotice(Notice{Notice::Kind::Failed, title, text, true}); // stays on the page
+            showToast(ui::InfoKind::Error, title, text);
         },
         [this](const core::uup::ConvertResult& result) {
             const std::filesystem::path iso = result.iso;
-            showActionToast(ui::InfoKind::Success, m_strings.get(Str::DownloadDoneTitle), iso.filename().wstring(),
-                            m_strings.get(Str::DownloadDoneOpen), [this, iso] { openSource(iso); });
+            // What the ISO went without stays on the page too: the toast only names the file.
+            std::wstring text;
+            std::size_t others = result.warnings.size();
+            if (!result.esuSkipped.empty()) {
+                static const std::wregex kKb(LR"(kb\d+)", std::regex::icase);
+                const std::wstring file = result.esuSkipped.filename().wstring();
+                std::wsmatch kb;
+                text = m_strings.format(Str::DownloadEsuSkipped,
+                                        {{L"kb", std::regex_search(file, kb, kKb) ? text::upper(kb.str()) : file}});
+                others -= std::min<std::size_t>(others, 1);
+            }
+            if (others > 0) {
+                text += (text.empty() ? L"" : L" ") + m_strings.format(Str::DownloadWarnings, {{L"n", std::to_wstring(others)}});
+            }
+            if (!text.empty()) {
+                using Notice = AppState::WindowsDownloadNotice;
+                m_state.setWindowsDownloadNotice(Notice{Notice::Kind::Warning, m_strings.get(Str::DownloadDoneWarningsTitle), text});
+            }
+            showActionToast(text.empty() ? ui::InfoKind::Success : ui::InfoKind::Warning,
+                            m_strings.get(text.empty() ? Str::DownloadDoneTitle : Str::DownloadDoneWarningsTitle),
+                            iso.filename().wstring(), m_strings.get(Str::DownloadDoneOpen), [this, iso] { openSource(iso); });
             updateKeepAwake();
         },
         [this] {
@@ -2314,9 +2343,11 @@ void Shell::showPage(PageId page) {
             m_pageBody = &m_pageView->setBody<DownloadPage>(
                 m_state, m_strings, m_language, *m_windowsDownload,
                 DownloadPage::Intents{[this](const std::filesystem::path& suggested) {
-                    return ui::pickSaveFile(owner(), m_strings.get(Str::DownloadPickOutput),
-                                            {{m_strings.get(Str::IsoTitle), L"*.iso"}}, suggested.filename().wstring(), L"iso");
-                }});
+                                          return ui::pickSaveFile(owner(), m_strings.get(Str::DownloadPickOutput),
+                                                                  {{m_strings.get(Str::IsoTitle), L"*.iso"}},
+                                                                  suggested.filename().wstring(), L"iso");
+                                      },
+                                      [this] { showAdminRequired(L"--page=download"); }});
         } else if (page == PageId::Updates) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesFind), ui::icons::Icon::Download)
                 .onInvoke = [this] { findUpdates(); };
@@ -2359,6 +2390,14 @@ void Shell::showPage(PageId page) {
             } else if (mode == ApplyPage::Mode::Running) {
                 m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ApplyStop), ui::icons::Icon::Stop)
                     .onInvoke = [this] { m_apply->cancel(); };
+            } else if (mode == ApplyPage::Mode::Paused) {
+                // D-106: the folder for changes by hand, then save (or leave it unsaved).
+                m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ApplyOpenFolder), ui::icons::Icon::OpenFolder)
+                    .onInvoke = [this] { exploreMount(); };
+                m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ApplyStop), ui::icons::Icon::Stop)
+                    .onInvoke = [this] { m_apply->cancel(); };
+                m_pageView->addAction(ui::ButtonKind::Primary, m_strings.get(Str::ApplySaveContinue), ui::icons::Icon::Save)
+                    .onInvoke = [this] { m_apply->resume(); };
             } else if (mode == ApplyPage::Mode::Done) {
                 m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ApplySaveLog), ui::icons::Icon::Save)
                     .onInvoke = [this] { saveApplyLog(); };
@@ -2381,7 +2420,7 @@ void Shell::showPage(PageId page) {
             m_pageBody = &body;
             const auto [applyTitle, applyDescription] = body.header();
             m_pageView->setHeader(applyTitle, applyDescription);
-            if (mode == ApplyPage::Mode::Running && m_services.startTimer) {
+            if ((mode == ApplyPage::Mode::Running || mode == ApplyPage::Mode::Paused) && m_services.startTimer) {
                 m_services.startTimer(kLogTimer, 250);
             }
         } else if (page == PageId::Iso) {

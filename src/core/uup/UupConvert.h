@@ -54,6 +54,10 @@ struct UupSetFiles {
 // What is in `folder` (a downloaded set). NotFound when there is no metadata ESD.
 [[nodiscard]] Result<UupSetFiles> scanUupFolder(const std::filesystem::path& folder);
 
+// An update of the set by its name: "Windows11.0-KB…-x64.msu / .cab" and the servicing stack
+// "SSU-19041.7714-x64.cab" — Windows 10's cumulative update refuses to go in before it (0x800F0823).
+[[nodiscard]] bool isUpdatePackage(std::wstring_view fileName);
+
 // An update package's role from what it holds (expand.exe: its update.mum and file list) — the
 // names of UUP's update files do not say. Checkpoint: one of the known baseline LCUs.
 [[nodiscard]] UpdateRole updateRole(const std::filesystem::path& file);
@@ -83,8 +87,14 @@ struct ConvertResult {
     std::wstring version;         // the editions' version after the updates ("10.0.26300.9550")
     std::vector<std::wstring> editions;
     std::vector<std::wstring> warnings; // a package that would not go in, …
+    // Windows 10's cumulative update of the ESU years refuses an offline image (its Extended
+    // Security Updates installer: 0x80073713): the editions were made again without it.
+    std::filesystem::path esuSkipped;
     std::uint64_t bytes = 0;
 };
+
+// That refusal: Windows 10 (build < 22000), the cumulative update, ERROR_ADVANCED_INSTALLER_FAILED.
+[[nodiscard]] bool esuRefusal(int build, std::int32_t hresult) noexcept;
 
 // The ISO volume label of a set: CPRA_X64FRE_TR-TR_DV9 (one Pro edition), CCSA_… (several).
 [[nodiscard]] std::wstring isoLabel(const UupSetFiles& set);

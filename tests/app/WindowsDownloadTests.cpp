@@ -24,13 +24,24 @@ TEST_CASE("Windows download: the files of a request") {
     core::uup::FileSet set;
     set.files = {file(L"professional_tr-tr.esd", 554), file(L"Microsoft-Windows-Foundation-Package.ESD", 100),
                  file(L"Microsoft-Windows-MediaPlayer-Package-amd64.cab", 10), file(L"Windows11.0-KB5124010-x64.msu", 4689),
-                 file(L"Windows11.0-KB5121794-x64.cab", 1), file(L"Edge.wim", 180), file(L"AppInstaller_x64.msix", 59)};
+                 file(L"Windows11.0-KB5121794-x64.cab", 1), file(L"Edge.wim", 180), file(L"AppInstaller_x64.msix", 59),
+                 file(L"SSU-19041.7714-x64.cab", 15)};
     const auto all = WindowsDownloadController::filesFor(set, /*updates=*/true);
-    CHECK(all.size() == 6); // no Store app
+    CHECK(all.size() == 7); // no Store app
     const auto base = WindowsDownloadController::filesFor(set, /*updates=*/false);
     REQUIRE(base.size() == 3); // the edition, its package ESD and the feature cab only
     CHECK(base[0].name == L"professional_tr-tr.esd");
     CHECK(base[2].name == L"Microsoft-Windows-MediaPlayer-Package-amd64.cab");
+}
+
+TEST_CASE("Windows download: the servicing stack is an update, not a feature (Windows 10, 0x800F0823)") {
+    CHECK(core::uup::isUpdatePackage(L"SSU-19041.7714-x64.cab"));
+    CHECK(core::uup::isUpdatePackage(L"Windows10.0-KB5129236-x64.cab"));
+    CHECK(core::uup::isUpdatePackage(L"windows10.0-kb5015684-x64.cab"));
+    CHECK(core::uup::isUpdatePackage(L"Windows11.0-KB5124010-x64.msu"));
+    CHECK_FALSE(core::uup::isUpdatePackage(L"Microsoft-Windows-MediaPlayer-Package-amd64.cab"));
+    CHECK_FALSE(core::uup::isUpdatePackage(L"Microsoft-Windows-Foundation-Package.ESD"));
+    CHECK_FALSE(core::uup::isUpdatePackage(L"ssu-notes.txt"));
 }
 
 TEST_CASE("Windows download: the ISO's name") {

@@ -216,6 +216,18 @@ std::wstring versionOf(const std::filesystem::path& wim, int index) {
 
 // ---- scanning ------------------------------------------------------------------------------
 
+bool esuRefusal(int build, std::int32_t hresult) noexcept {
+    return build > 0 && build < 22000 && static_cast<std::uint32_t>(hresult) == 0x80073713u;
+}
+
+bool isUpdatePackage(std::wstring_view fileName) {
+    const std::wstring lower = text::lower(fileName);
+    if (!lower.ends_with(L".cab") && !lower.ends_with(L".msu")) {
+        return false;
+    }
+    return (lower.starts_with(L"windows1") && lower.find(L"-kb") != std::wstring::npos) || lower.starts_with(L"ssu-");
+}
+
 Result<UupSetFiles> scanUupFolder(const std::filesystem::path& folderInput) {
     const std::filesystem::path folder = nativePath(folderInput);
     UupSetFiles set;
@@ -250,7 +262,7 @@ Result<UupSetFiles> scanUupFolder(const std::filesystem::path& folderInput) {
         case FileKind::PackageEsd: set.packageEsds.push_back(path); break;
         case FileKind::Edge: set.edge = path; break;
         case FileKind::Msu:
-            if (lower.starts_with(L"windows1") && lower.find(L"-kb") != std::wstring::npos) {
+            if (isUpdatePackage(name)) {
                 set.updates.push_back(path);
             }
             break;
@@ -258,7 +270,7 @@ Result<UupSetFiles> scanUupFolder(const std::filesystem::path& folderInput) {
             if (lower.ends_with(L".aggregatedmetadata.cab")) {
                 set.aggregatedMetadata = path;
             }
-            if (lower.starts_with(L"windows1") && lower.find(L"-kb") != std::wstring::npos) {
+            if (isUpdatePackage(name)) {
                 set.updates.push_back(path);
             } else if (lower.find(L"aggregatedmetadata") == std::wstring::npos && lower != L"desktopdeployment.cab") {
                 set.featureCabs.push_back(path);
@@ -365,13 +377,32 @@ struct Context {
     std::vector<std::filesystem::path> references;
     std::vector<AppFeature> apps; // the set's app database (empty: no apps)
     ConvertResult result;
+    bool skipLcu = false;    // an edition met the ESU refusal: the rest go without the LCU
+    bool lcuRefused = false; // the edition being serviced just met it
 };
 
-// 1. The feature-on-demand cabinets as reference WIMs.
+// 1. The feature-on-demand cabinets as reference WIMs. A second run of the same set reuses them;
+// another set's never (cab names carry no build number: a failed run of one build left references
+// the next build's export took for its own), nor one a cancel cut short (captured beside, renamed).
 Result<void> prepareReferences(Context& c, const TaskContext& task) {
     c.references = c.set.packageEsds;
     std::error_code ec;
-    std::filesystem::create_directories(c.refs, ec);
+    const auto stamp = c.refs / L"set.txt";
+    const UupEdition& first = c.set.editions.front();
+    const std::string owner = utf8::fromWide(std::format(L"{}|{}.{}|{}", text::lower(nativePath(c.options.uupFolder).wstring()),
+                                                         first.build, first.revision, first.architecture));
+    std::string stamped;
+    if (std::ifstream in(stamp, std::ios::binary); in) {
+        stamped.assign(std::istreambuf_iterator<char>(in), {});
+    }
+    if (stamped != owner) {
+        if (std::filesystem::exists(c.refs, ec)) {
+            log::info("uup", L"references of another set removed: " + c.refs.wstring());
+        }
+        std::filesystem::remove_all(c.refs, ec);
+        std::filesystem::create_directories(c.refs, ec);
+        std::ofstream(stamp, std::ios::binary | std::ios::trunc) << owner;
+    }
     const double n = static_cast<double>(std::max<std::size_t>(c.set.featureCabs.size(), 1));
     for (std::size_t i = 0; i < c.set.featureCabs.size(); ++i) {
         if (auto go = task.cancel.check(L"references"); !go) {
@@ -391,8 +422,15 @@ Result<void> prepareReferences(Context& c, const TaskContext& task) {
             return x;
         }
         if (std::filesystem::exists(dir / L"update.mum", ec)) {
-            if (auto r = captureReference(dir, wim, TaskContext{task.cancel, {}}); !r) {
+            const auto part = c.refs / (stem + L".part.wim");
+            std::filesystem::remove(part, ec);
+            if (auto r = captureReference(dir, part, TaskContext{task.cancel, {}}); !r) {
+                std::filesystem::remove(part, ec);
                 return r;
+            }
+            std::filesystem::rename(part, wim, ec);
+            if (ec) {
+                return fail(ErrorCode::IoError, L"cannot rename the captured reference", wim.wstring(), ec.value());
             }
             c.references.push_back(wim);
         }
@@ -522,6 +560,11 @@ Result<void> serviceEditions(Context& c, const UpdatePlan& plan, const TaskConte
                     if (auto r = addPackageOrDismExe(**session, plan.ssu, sub(0.1, 0.15)); !r) {
                         return r;
                     }
+                    // A session keeps the servicing stack it was opened with: without a new one the
+                    // packages after it still meet the image's old stack (Windows 10: 0x800F0823).
+                    if (auto r = (*session)->reload(); !r) {
+                        return r;
+                    }
                 }
                 if (c.options.netFx3) {
                     // Before the .NET and cumulative updates: they service it too.
@@ -532,6 +575,11 @@ Result<void> serviceEditions(Context& c, const UpdatePlan& plan, const TaskConte
                 }
                 for (std::size_t k = 0; k < plan.packages.size(); ++k) {
                     const auto& p = plan.packages[k];
+                    if ((*session)->reloadRequired()) {
+                        if (auto r = (*session)->reload(); !r) {
+                            return r;
+                        }
+                    }
                     if (auto r = addPackageOrDismExe(**session, p, sub(0.15, 0.25)); !r) {
                         // One package that does not apply (an enablement for another edition) must
                         // not cost the image.
@@ -539,12 +587,18 @@ Result<void> serviceEditions(Context& c, const UpdatePlan& plan, const TaskConte
                         c.result.warnings.push_back(p.filename().wstring() + L": " + r.error().message);
                     }
                 }
-                if (!plan.lcu.empty()) {
+                if (!plan.lcu.empty() && !c.skipLcu) {
+                    if ((*session)->reloadRequired()) { // an enablement / .NET package asked for it
+                        if (auto r = (*session)->reload(); !r) {
+                            return r;
+                        }
+                    }
                     auto r = addPackageOrDismExe(**session, plan.lcu, sub(0.25, 0.85));
                     if (!r && r.error().hresult == static_cast<std::int32_t>(0x8007007E)) {
                         r = addPackageOrDismExe(**session, plan.lcu, sub(0.25, 0.85)); // known first-pass stop
                     }
                     if (!r) {
+                        c.lcuRefused = esuRefusal(c.set.editions[static_cast<std::size_t>(i - 1)].build, r.error().hresult);
                         return r;
                     }
                 }
@@ -599,6 +653,17 @@ Result<void> serviceEditions(Context& c, const UpdatePlan& plan, const TaskConte
         if (!work) {
             log::error("uup", std::format(L"edition {}: {}; discarding", i, describe(work.error())));
             (void)unmountSafely(c.dism, c.mount, /*commit=*/false, unmountTask);
+            if (std::exchange(c.lcuRefused, false) && !c.skipLcu) {
+                // The edition again without it (its servicing stack and the other packages still
+                // go in); the editions after it go straight without. Setup shows the base build.
+                log::warn("uup", L"the cumulative update refuses an offline image (Windows 10 ESU): the editions are made "
+                                 L"without it — " + plan.lcu.filename().wstring());
+                c.skipLcu = true;
+                c.result.esuSkipped = plan.lcu;
+                c.result.warnings.push_back(plan.lcu.filename().wstring() + L": Windows 10 ESU, not for an offline image");
+                --i;
+                continue;
+            }
             return work;
         }
         if (auto u = unmountSafely(c.dism, c.mount, /*commit=*/true, unmountTask); !u) {

@@ -47,3 +47,10 @@ TEST_CASE("UUP: the ISO label says edition, architecture and language") {
     set.editions[0].language = L"en-us";
     CHECK(isoLabel(set) == L"CPRA_A64FRE_EN-US_DV9");
 }
+
+TEST_CASE("UUP: Windows 10's ESU-era cumulative update refusing an offline image is recognised") {
+    CHECK(esuRefusal(19041, static_cast<std::int32_t>(0x80073713)));
+    CHECK_FALSE(esuRefusal(26100, static_cast<std::int32_t>(0x80073713))); // Windows 11: a real failure
+    CHECK_FALSE(esuRefusal(19041, static_cast<std::int32_t>(0x800F0823)));  // the servicing stack: our bug, not ESU
+    CHECK_FALSE(esuRefusal(0, static_cast<std::int32_t>(0x80073713)));
+}

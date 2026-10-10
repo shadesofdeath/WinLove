@@ -1,6 +1,9 @@
 #include "app/pages/DownloadPage.h"
 
 #include "app/Format.h"
+#include "core/system/Files.h"
+#include "core/system/Privileges.h"
+#include "base/Log.h"
 #include "base/Text.h"
 #include "base/Utf8.h"
 #include "ui/widgets/Dialog.h"
@@ -389,6 +392,8 @@ public:
             if (const auto& job = m_state.windowsDownload()) {
                 canvas.drawText(job->title, {x, b.y + kPad, w, kLine}, TypeStyle::BodyStrong, Color::TextPrimary);
                 paintJob(canvas, *job, {x, b.y + kPad + kLine + kGap, w, 80});
+            } else if (const float notice = noticeHeight(w); notice > 0) {
+                paintNotice(canvas, *m_state.windowsDownloadNotice(), {x, b.y + kPad, w, notice});
             }
             return; // otherwise the page says what to do
         }
@@ -439,16 +444,18 @@ public:
         if (editions().empty()) {
             size = m_strings.get(Str::DownloadNoEditions);
         } else if (m_size) {
-            const std::uint64_t download = *m_size + (apps() ? m_appsSize : 0);
-            const std::uint64_t disk = download + (updates() ? 16ull : 9ull) * 1'000'000'000ull;
-            size = m_strings.format(Str::DownloadSize, {{L"size", formatBytes(download, m_language)},
-                                                        {L"disk", formatBytes(disk, m_language)}});
+            size = m_strings.format(Str::DownloadSize, {{L"size", formatBytes(downloadBytes(), m_language)},
+                                                        {L"disk", formatBytes(diskBytes(), m_language)}});
         }
         canvas.drawText(size, {x, m_sizeTop, w, kLine}, TypeStyle::Caption, Color::TextSecondary);
         if (const auto& job = m_state.windowsDownload()) {
             paintJob(canvas, *job, {x, m_jobTop, w, 80});
         }
-        const float noteTop = m_state.windowsDownload() ? m_jobTop + 92 : m_noteTop;
+        float noteTop = m_state.windowsDownload() ? m_jobTop + 92 : m_noteTop;
+        if (const float notice = noticeHeight(w); notice > 0) {
+            paintNotice(canvas, *m_state.windowsDownloadNotice(), {x, m_noteTop, w, notice});
+            noteTop += notice + kGap;
+        }
         const float noteHeight = host() ? std::ceil(host()->text().measureWrapped(m_strings.get(Str::DownloadNote),
                                                                                    TypeStyle::Caption, w))
                                         : 32.0f;
@@ -458,7 +465,45 @@ public:
 
     void setNow(double now) { m_now = now; }
 
+    // What goes over the network, and the room the job needs on the work drive on top of it (the
+    // "gereken boş alan" line; 0 while the size is not known).
+    [[nodiscard]] std::uint64_t downloadBytes() const { return m_size ? *m_size + (apps() ? m_appsSize : 0) : 0; }
+    [[nodiscard]] std::uint64_t diskBytes() const {
+        return m_size && !editions().empty() ? downloadBytes() + (updates() ? 16ull : 9ull) * 1'000'000'000ull : 0;
+    }
+
 private:
+    // How the last start ended (AppState) while no job runs: under the button, the note moves down.
+    using Notice = AppState::WindowsDownloadNotice;
+    [[nodiscard]] static bool hinted(const Notice& notice) { return notice.kind == Notice::Kind::Failed && notice.job; }
+    [[nodiscard]] std::wstring noticeHint() const {
+        return m_strings.get(Str::DownloadStoppedBody) + L" " + m_strings.get(Str::DownloadFailedLog);
+    }
+    [[nodiscard]] float noticeHeight(float w) const {
+        const auto& notice = m_state.windowsDownloadNotice();
+        if (!notice || m_state.windowsDownload() || !host()) {
+            return 0;
+        }
+        float h = kLine + 4 + std::ceil(host()->text().measureWrapped(notice->text, TypeStyle::Caption, w - 24));
+        if (hinted(*notice)) {
+            h += 4 + std::ceil(host()->text().measureWrapped(noticeHint(), TypeStyle::Caption, w - 24));
+        }
+        return h;
+    }
+    void paintNotice(ui::Canvas& canvas, const Notice& notice, RectF r) {
+        const bool failed = notice.kind == Notice::Kind::Failed;
+        canvas.drawIcon(failed ? ui::icons::Icon::ErrorOctagon : ui::icons::Icon::WarningTriangle, {r.x, r.y},
+                        failed ? Color::StatusError : Color::StatusWarning);
+        canvas.drawText(notice.title, {r.x + 24, r.y, r.width - 24, kLine}, TypeStyle::BodyStrong, Color::TextPrimary);
+        const float textTop = r.y + kLine + 4;
+        const float textHeight = std::ceil(host()->text().measureWrapped(notice.text, TypeStyle::Caption, r.width - 24));
+        canvas.drawTextWrapped(notice.text, {r.x + 24, textTop, r.width - 24, textHeight}, TypeStyle::Caption,
+                               Color::TextSecondary);
+        if (hinted(notice)) {
+            canvas.drawTextWrapped(noticeHint(), {r.x + 24, textTop + textHeight + 4, r.width - 24, r.bottom() - textTop - textHeight - 4},
+                                   TypeStyle::Caption, Color::TextTertiary);
+        }
+    }
     [[nodiscard]] bool appsOffered() const { return m_appList != AppList::InImage && m_appList != AppList::NotOffered; }
     void changed() {
         if (onPrefsChanged) {
@@ -625,6 +670,33 @@ DownloadPage::DownloadPage(AppState& state, const Localization& strings, Languag
         request.netFx3 = m_panel->netFx3();
         request.resetBase = m_panel->resetBase();
         request.output = m_panel->output();
+        // The conversion runs DISM: unelevated, an hour of download would end in "needs an elevated process".
+        if (!core::isElevated()) {
+            if (m_intents.adminRequired) {
+                m_intents.adminRequired();
+            }
+            return;
+        }
+        // Room first: a work drive that fills up an hour into the conversion ends with no ISO.
+        // What an earlier run downloaded is already there.
+        if (const std::uint64_t need = m_panel->diskBytes(); need > 0) {
+            const std::filesystem::path root = m_state.settings().workRoot;
+            std::error_code ec;
+            const auto space = std::filesystem::space(std::filesystem::exists(root, ec) ? root : root.root_path(), ec);
+            const std::uint64_t have = std::min(core::treeBytes(m_controller.setFolder(request)), need);
+            if (!ec && space.available < need - have) {
+                log::warn("uup", std::format(L"not started: {} free on {}, {} needed", space.available, root.wstring(),
+                                             need - have));
+                m_state.setWindowsDownloadNotice(AppState::WindowsDownloadNotice{
+                    AppState::WindowsDownloadNotice::Kind::Failed,
+                    m_strings.get(Str::DownloadNoSpaceTitle),
+                    m_strings.format(Str::DownloadNoSpaceBody, {{L"drive", root.root_name().wstring()},
+                                                                {L"free", formatBytes(space.available, m_language)},
+                                                                {L"need", formatBytes(need - have, m_language)}}),
+                    false});
+                return;
+            }
+        }
         m_controller.start(std::move(request));
     };
     m_panel->onStop = [this] { m_controller.cancel(); };
@@ -1058,6 +1130,19 @@ void DownloadPage::demo(int what) {
     if (what == 4) {
         layout();
         openAppPicker();
+        return;
+    }
+    if (what == 6 || what == 7) { // 6: the conversion failed an hour in; 7: the ISO came without the ESU update
+        using Notice = AppState::WindowsDownloadNotice;
+        m_state.setWindowsDownloadNotice(
+            what == 6 ? Notice{Notice::Kind::Failed, m_strings.get(Str::DownloadConvertFailedTitle),
+                               L"DISM error (add package C:\\Users\\shades\\AppData\\Local\\WinLove\\uup\\"
+                               L"19045.7727_amd64_tr-tr_professional\\Windows10.0-KB5129236-x64.cab)",
+                               true}
+                      : Notice{Notice::Kind::Warning, m_strings.get(Str::DownloadDoneWarningsTitle),
+                               m_strings.format(Str::DownloadEsuSkipped, {{L"kb", L"KB5129236"}}) + L" " +
+                                   m_strings.format(Str::DownloadWarnings, {{L"n", L"1"}})});
+        layout();
         return;
     }
     if (what >= 2) {

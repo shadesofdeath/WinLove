@@ -72,6 +72,9 @@ AppSettings AppSettings::load(const std::filesystem::path& file) {
     if (const auto it = doc.find("reduceMotion"); it != doc.end() && it->is_boolean()) {
         settings.reduceMotion = it->get<bool>();
     }
+    if (const auto it = doc.find("pauseBeforeSave"); it != doc.end() && it->is_boolean()) {
+        settings.pauseBeforeSave = it->get<bool>();
+    }
     const std::string font = text("font");
     settings.font = font == "geist" ? UiFont::Geist : font == "segoe" ? UiFont::SegoeVariable : UiFont::Inter;
     const std::string density = text("density");
@@ -131,7 +134,8 @@ void AppSettings::save(const std::filesystem::path& file) const {
                        {"language", language == Language::English ? "en" : "tr"},
                        {"workRoot", utf8::fromWide(workRoot.wstring())},
                        {"mountFolder", utf8::fromWide(mountFolder.wstring())},
-                       {"isoFolder", utf8::fromWide(isoFolder.wstring())}};
+                       {"isoFolder", utf8::fromWide(isoFolder.wstring())},
+                       {"pauseBeforeSave", pauseBeforeSave}};
     {
         const auto& w = windowsDownload;
         auto& out = doc["windowsDownload"] = nlohmann::json{{"updates", w.updates}, {"edge", w.edge}, {"apps", w.apps},

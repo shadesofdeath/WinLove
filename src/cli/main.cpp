@@ -72,6 +72,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cwctype>
+#include <iostream>
 #include <sstream>
 #include <format>
 #include <optional>
@@ -525,7 +526,8 @@ int cmdPlan(const std::wstring& changeSetPath) {
 }
 
 int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bool commit, bool commitWithFailures,
-             const std::wstring& source, const std::wstring& also, const std::wstring& wim, const std::wstring& setupFolder) {
+             const std::wstring& source, const std::wstring& also, const std::wstring& wim, const std::wstring& setupFolder,
+             bool pause) {
     if (!also.empty() && (!commit || wim.empty())) {
         // Silently skipped before: the further editions are applied after a commit, from that WIM.
         return reportError(Error{ErrorCode::InvalidArgument, L"--also needs --commit and --wim=<file>", also});
@@ -556,6 +558,16 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
         print(r.outcome ? std::wstring(L"        ok\n") : L"        FAILED: " + describe(r.outcome.error()) + L"\n");
     };
     callbacks.committing = [] { print(L"  saving and unmounting...\n"); };
+    if (pause) {
+        // D-106: before each save the mount folder is open for changes by hand; a line on stdin
+        // goes on ("keep": leave the image mounted, not saved).
+        callbacks.beforeCommit = [&mountDir] {
+            print(L"  paused before saving: " + mountDir + L" - Enter saves, \"keep\" leaves it mounted\n");
+            std::string line;
+            std::getline(std::cin, line);
+            return line.find("keep") == std::string::npos;
+        };
+    }
     auto job = core::ops::runApplyJob(**d, mountDir, p, options, core::TaskContext{g_cancel, {}}, callbacks);
     if (!job) {
         return reportError(job.error());
@@ -566,6 +578,7 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
                                     : job->held ? std::wstring(L"held - a step failed, the image is still mounted "
                                                                L"(wlcli unmount <dir> --commit|--discard, or "
                                                                L"--commit-with-failures)")
+                                    : job->kept ? std::wstring(L"kept - left mounted after the pause, not saved")
                                                        : std::wstring(L"skipped");
     print(std::format(L"  {} of {} step(s) ran, {} failed{}; commit: {} ({} ms)\n", report.results.size(), p.steps.size(),
                       report.failures(), report.completed ? L"" : L" (stopped)", commitText, job->elapsed.count()));
@@ -2889,6 +2902,7 @@ void printUsage() {
           L"  wlcli apply <changeset.json> <mountdir> [--commit|--commit-with-failures] [--source=<sources\\sxs>]\n"
           L"                                      (--commit holds the image mounted, unsaved, when a step failed)\n"
           L"                                      [--also=2,3 --wim=<file>] [--setup=<setup folder>]   (with --commit: then the same on further editions)\n"
+          L"                                      [--pause]   (D-106: before each save, wait for a line on stdin; \"keep\" leaves it mounted)\n"
           L"\n  Change sets (no admin):\n"
           L"  wlcli plan <changeset.json>              Show the ordered apply plan\n"
           L"  wlcli extract-all <iso> <dir>             Copy the whole ISO into a folder (resumable)\n"
@@ -2916,6 +2930,7 @@ int wmain(int argc, wchar_t** argv) {
     bool readOnly = false;
     int commit = -1;
     bool commitWithFailures = false;
+    bool pause = false;
     std::wstring compress;
     std::vector<std::filesystem::path> references;
     std::wstring source;
@@ -3099,6 +3114,8 @@ int wmain(int argc, wchar_t** argv) {
         } else if (a == L"--commit-with-failures") {
             commit = 1;
             commitWithFailures = true;
+        } else if (a == L"--pause") {
+            pause = true;
         } else if (a == L"--discard") {
             commit = 0;
         } else if (a.starts_with(L"--out=")) {
@@ -3182,7 +3199,7 @@ int wmain(int argc, wchar_t** argv) {
         return cmdPlan(args[1]);
     }
     if (command == L"apply" && args.size() == 3) {
-        return cmdApply(args[1], args[2], commit == 1, commitWithFailures, source, alsoEditions, wimPath, setupFolder);
+        return cmdApply(args[1], args[2], commit == 1, commitWithFailures, source, alsoEditions, wimPath, setupFolder, pause);
     }
     if (command == L"mounts") {
         return cmdMounts(asJson);

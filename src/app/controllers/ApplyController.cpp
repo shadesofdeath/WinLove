@@ -11,6 +11,7 @@
 #include <atomic>
 #include <cmath>
 #include <format>
+#include <utility>
 
 namespace wl::app {
 
@@ -22,6 +23,21 @@ ApplyController::ApplyController(AppState& state, Events events) : m_state(state
 
 ApplyController::~ApplyController() {
     *m_alive = false;
+    m_gate->decide(false); // a run paused before saving lets the engine thread go: the image stays mounted
+}
+
+void ApplyController::Gate::decide(bool save) {
+    {
+        std::scoped_lock lock(mutex);
+        decision = save;
+    }
+    cv.notify_all();
+}
+
+bool ApplyController::Gate::wait() {
+    std::unique_lock lock(mutex);
+    cv.wait(lock, [this] { return decision.has_value(); });
+    return *std::exchange(decision, std::nullopt);
 }
 
 core::ops::ApplyPlan ApplyController::currentPlan() const {
@@ -157,6 +173,14 @@ void ApplyController::start() {
         update([i, ok](Run& r) { r.stepState[i] = ok ? 2 : 3; });
     };
     callbacks.committing = [update] { update([](Run& r) { r.stage = Run::Stage::Committing; }); };
+    m_gate = std::make_shared<Gate>(); // nothing a click on an earlier run left behind
+    if (m_state.settings().pauseBeforeSave) {
+        // D-106: the engine thread waits here, the session closed, until "Kaydet ve devam et" / "Durdur".
+        callbacks.beforeCommit = [update, gate = m_gate] {
+            update([](Run& r) { r.stage = Run::Stage::Paused; });
+            return gate->wait();
+        };
+    }
 
     struct Outcome {
         core::ops::ApplyJobResult job;
@@ -226,6 +250,7 @@ void ApplyController::start() {
                         update([s, ok](Run& r) { r.stepState[s] = ok ? 2 : 3; });
                     };
                     own.committing = [update] { update([](Run& r) { r.stage = Run::Stage::Committing; }); };
+                    own.beforeCommit = callbacks.beforeCommit; // every edition stops before its save
                     const core::TaskContext editionTask{cancel, progress(1.0 + static_cast<double>(i))};
                     auto other = core::ops::applyToEdition(**dism, mounted.imagePath, extra.index, mounted.mountDir, plan,
                                                            options, editionTask, own);
@@ -326,10 +351,32 @@ void ApplyController::start() {
 }
 
 void ApplyController::cancel() {
-    if (auto& run = m_state.applyRunMutable(); run && run->stage == Run::Stage::Running) {
+    auto& run = m_state.applyRunMutable();
+    if (run && run->stage == Run::Stage::Running) {
         run->cancel.cancel();
         log::warn("apply", L"stop requested: the current DISM call is cancelled, the rest is skipped");
+    } else if (run && run->stage == Run::Stage::Paused) {
+        run->cancel.cancel(); // the editions after it are skipped
+        run->stage = Run::Stage::Running;
+        m_state.notifyApply();
+        log::warn("apply", L"stopped at the pause: this edition is not saved, the rest is skipped");
+        m_gate->decide(false);
     }
+}
+
+bool ApplyController::paused() const {
+    const auto& run = m_state.applyRun();
+    return run && run->stage == Run::Stage::Paused;
+}
+
+void ApplyController::resume() {
+    auto& run = m_state.applyRunMutable();
+    if (!run || run->stage != Run::Stage::Paused) {
+        return; // a second click: the next pause is the next edition's own
+    }
+    run->stage = Run::Stage::Committing;
+    m_state.notifyApply();
+    m_gate->decide(true);
 }
 
 } // namespace wl::app
