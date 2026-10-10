@@ -14,6 +14,9 @@
   boyutlarına tamamlanır (256, 64, 48, 40, 32, 24, 20, 16 ya da o simgenin kendi seti, ör. 96 px). Tek boyutlu bir
   .ico'nun eksik boyutları en iyi görüntüsünden üretilir; Masaüstü / Gezgin simgeleri de aynı şekilde. Kaynak 256 px'ten
   küçükse uyarı çıkar. Küçültme artık kenarlarda koyu saçak bırakmıyor.
+- **Windows indir: Mağaza uygulamalarının "Seç…" düğmesi.** Windows 10 derlemelerinde hiç açılmıyordu, çünkü Windows
+  10'un ayrı bir uygulama seti yok (uygulamalar imajın içinde geliyor). Artık kutunun yanında "imajın içinde" yazıyor.
+  Liste yüklenirken "…" görünüyor; liste alınamazsa "Seç…" yeniden deniyor.
 
 ### 1.2.0 Beta — 2026-10-10
 
@@ -173,6 +176,9 @@ WinLove alfadan çıkıp **beta** oldu. 1.0.2 Alpha'dan bu yana gelenler:
   40, 32, 24, 20, 16, or that icon's own set, e.g. 96 px). The missing sizes of a single-size .ico are made from its
   best image; Desktop / Explorer icons too. A source smaller than 256 px shows a warning. Shrinking no longer leaves
   dark fringes at the edges.
+- **Download Windows: the Store apps' "Pick…" button.** It never turned on for Windows 10 builds: Windows 10 has no
+  separate app set (its apps come inside the image). The box now says "in the image". While the list loads it shows
+  "…", and when the list cannot be loaded "Pick…" tries again.
 
 ### 1.2.0 Beta — 2026-10-10
 

@@ -101,6 +101,10 @@ std::filesystem::path downloadsFolder() {
 
 class DownloadPage::Panel : public ui::Widget {
 public:
+    // The Store apps of the selection. Windows 10's sets have no app set of their own: the apps are
+    // in the edition's image (Microsoft.ModernApps.*.esd); other builds without one have none.
+    enum class AppList : std::uint8_t { Loading, Ready, Failed, InImage, NotOffered };
+
     Panel(const Localization& strings, Language language, const AppState& state)
         : m_strings(strings), m_language(language), m_state(state) {
         m_lang = &add<ui::Dropdown>(L"", std::vector<std::wstring>{}, 0);
@@ -210,6 +214,12 @@ public:
         m_appIds = std::move(ids);
         setAppCount(static_cast<int>(m_appIds.size()));
     }
+    void setAppList(AppList list) {
+        m_appList = list;
+        refreshVisibility();
+        invalidate();
+    }
+    [[nodiscard]] AppList appList() const { return m_appList; }
     std::function<void()> onEditionsChanged;
     std::function<void()> onChangeOutput;
     std::function<void()> onStart;
@@ -292,7 +302,7 @@ public:
     [[nodiscard]] bool updates() const { return m_updates->checked(); }
     [[nodiscard]] bool edge() const { return m_edge->checked(); }
     [[nodiscard]] bool esd() const { return m_esd->checked(); }
-    [[nodiscard]] bool apps() const { return m_apps->checked(); }
+    [[nodiscard]] bool apps() const { return m_apps->checked() && appsOffered(); }
     [[nodiscard]] bool netFx3() const { return m_netFx3->checked(); }
     [[nodiscard]] bool resetBase() const { return m_resetBase->checked(); }
     [[nodiscard]] const std::vector<std::wstring>& excluded() const { return m_excluded; }
@@ -311,7 +321,12 @@ public:
             b->setEnabled(!running);
         }
         m_edge->setEnabled(!running && m_updates->checked());
-        m_pick->setEnabled(!running && m_apps->checked() && m_appTotal > 0);
+        // No app set: the box says so (it keeps its saved state for the builds that have one) and
+        // "Seç…" goes. A list that failed to load is asked for again by "Seç…".
+        m_apps->setEnabled(!running && appsOffered());
+        m_pick->setVisible(has && appsOffered());
+        m_pick->setEnabled(!running && m_apps->checked() &&
+                           ((m_appList == AppList::Ready && m_appTotal > 0) || m_appList == AppList::Failed));
         m_start->setVisible(has && !running);
         m_start->setEnabled(!m_languages.empty() && !editions().empty() && !m_output.empty());
         m_stop->setVisible(running);
@@ -396,11 +411,24 @@ public:
                                TypeStyle::Caption, Color::TextTertiary);
         canvas.drawText(m_strings.get(Str::DownloadOutput), {x, m_pathTop - kLine - 4, w, kLine}, TypeStyle::Section,
                         Color::TextTertiary);
-        // How many Store apps go in, left of "Seç…".
-        if (m_apps->checked() && m_appTotal > 0) {
-            canvas.drawText(std::format(L"{} / {}", appsIncluded(), m_appTotal),
-                            {m_pick->bounds().x - 64, m_appsRow, 56, kControl}, TypeStyle::Mono, Color::TextSecondary,
+        // How many Store apps go in, left of "Seç…" ("…" while the list loads); without an app set,
+        // why in the button's place.
+        if (!appsOffered()) {
+            const float left = m_apps->bounds().right();
+            canvas.drawText(m_strings.get(m_appList == AppList::InImage ? Str::DownloadAppsInImage : Str::DownloadAppsNone),
+                            {left, m_appsRow, b.right() - kPad - left, kControl}, TypeStyle::Caption, Color::TextTertiary,
                             ui::TextAlign::Trailing);
+        } else if (m_apps->checked()) {
+            const RectF count{m_pick->bounds().x - 64, m_appsRow, 56, kControl};
+            if (m_appList == AppList::Ready && m_appTotal > 0) {
+                canvas.drawText(std::format(L"{} / {}", appsIncluded(), m_appTotal), count, TypeStyle::Mono,
+                                Color::TextSecondary, ui::TextAlign::Trailing);
+            } else if (m_appList == AppList::Failed) {
+                canvas.drawText(m_strings.get(Str::DownloadAppsFailed), count, TypeStyle::Caption, Color::TextTertiary,
+                                ui::TextAlign::Trailing);
+            } else {
+                canvas.drawText(L"…", count, TypeStyle::Mono, Color::TextTertiary, ui::TextAlign::Trailing);
+            }
         }
         canvas.drawText(m_output.filename().wstring(), {x, m_pathTop, m_change->bounds().x - x - 8, kLine}, TypeStyle::Body,
                         Color::TextPrimary);
@@ -431,6 +459,7 @@ public:
     void setNow(double now) { m_now = now; }
 
 private:
+    [[nodiscard]] bool appsOffered() const { return m_appList != AppList::InImage && m_appList != AppList::NotOffered; }
     void changed() {
         if (onPrefsChanged) {
             onPrefsChanged();
@@ -509,6 +538,7 @@ private:
     std::vector<std::wstring> m_excluded; // app ids left out
     std::vector<std::wstring> m_appIds;   // the selection's apps
     int m_appTotal = 0;
+    AppList m_appList = AppList::Loading;
     float m_appsRow = 0;
     ui::Button* m_change = nullptr;
     ui::Button* m_start = nullptr;
@@ -657,14 +687,46 @@ void DownloadPage::setApps(const std::wstring& id, const std::wstring& language,
         return;
     }
     m_apps = std::move(apps);
+    m_appsArrived = true;
     std::vector<std::wstring> ids;
     for (const auto& a : m_apps) {
         ids.push_back(a.id);
     }
     m_panel->setAppIds(std::move(ids));
+    updateAppList();
+}
+
+void DownloadPage::requestApps() {
+    const auto* b = selectedBuild();
+    const auto editions = m_panel->editions();
+    m_apps.clear();
+    m_appsArrived = false;
+    m_panel->setAppIds({});
+    updateAppList();
+    if (b && !editions.empty() && !m_panel->language().empty()) {
+        m_controller.listApps(*b, m_panel->language(), editions); // the picker's list (a 3 MB catalogue)
+    }
+}
+
+void DownloadPage::updateAppList() {
+    using AppList = Panel::AppList;
+    const auto* b = selectedBuild();
+    AppList list = AppList::Loading;
+    if (m_appSet == false) {
+        list = b && b->title.find(L"Windows 10") != std::wstring::npos ? AppList::InImage : AppList::NotOffered;
+    } else if (m_appsArrived && !m_apps.empty()) {
+        list = AppList::Ready;
+    } else if (m_appsArrived && m_appSet == true) {
+        list = AppList::Failed; // the build has apps but their list did not come
+    }
+    m_panel->setAppList(list);
 }
 
 void DownloadPage::openAppPicker() {
+    if (m_apps.empty() && m_panel->appList() == Panel::AppList::Failed) {
+        requestApps(); // "Seç…" after a failed list: ask again
+        return;
+    }
     if (m_apps.empty() || !host()) {
         return;
     }
@@ -786,19 +848,18 @@ void DownloadPage::setFiles(const std::wstring& id, const std::wstring& language
         bytes += f.size;
     }
     m_panel->setSize(bytes);
-    m_panel->refreshVisibility();
+    m_appSet = files.appxPresent;
+    updateAppList();
 }
 
 void DownloadPage::requestFiles() {
     const auto* b = selectedBuild();
     const auto editions = m_panel->editions();
-    m_panel->refreshVisibility();
-    m_apps.clear();
-    m_panel->setAppIds({});
+    m_appSet.reset();
     if (b && !editions.empty() && !m_panel->language().empty()) {
         m_controller.listFiles(b->id, m_panel->language(), editions);
-        m_controller.listApps(*b, m_panel->language(), editions); // the picker's list (a 3 MB catalogue)
     }
+    requestApps();
 }
 
 const core::uup::Build* DownloadPage::selectedBuild() const {
@@ -810,6 +871,11 @@ void DownloadPage::select(int row) {
     (void)row;
     const auto* b = selectedBuild();
     m_panel->setBuild(b);
+    m_appSet.reset(); // the new build's files tell
+    m_apps.clear();
+    m_appsArrived = false;
+    m_panel->setAppIds({});
+    updateAppList();
     if (b) {
         m_controller.listLanguages(b->id);
     }
@@ -935,7 +1001,25 @@ void DownloadPage::demo(int what) {
     add(L"a6", L"Windows 11 Insider Preview 27965.1000 (rs_prerelease)", L"27965.1000", L"amd64", 1790500000);
     add(L"a7", L"Windows 10, version 22H2 (19045.6456)", L"19045.6456", L"amd64", 1788700000);
     add(L"a8", L"Windows 11, version 26H2 (26300.9550)", L"26300.9550", L"arm64", 1790096445);
+    if (what == 5) {
+        m_product->setSelected(1); // Windows 10
+    }
     setBuilds(std::move(builds));
+    if (what == 5) {
+        // Windows 10: its Store apps are in the image, there is no set to pick from.
+        m_table->setSelected(0, false);
+        m_panel->setBuild(selectedBuild());
+        m_panel->setLanguages({{L"tr-tr", localLanguageName({L"tr-tr", L"Turkish"})}}, L"tr-tr");
+        m_panel->setEditions({{L"PROFESSIONAL", L"Windows Pro"}, {L"CORE", L"Windows Home"}});
+        m_panel->setOutput(std::filesystem::path(L"C:\\Users\\shades\\Downloads") /
+                           WindowsDownloadController::isoName(*selectedBuild(), L"tr-tr"));
+        m_panel->setSize(4'123'456'789ull);
+        m_appSet = false;
+        m_appsArrived = true;
+        updateAppList();
+        layout();
+        return;
+    }
     if (what >= 1) {
         m_table->setSelected(0, false);
         m_panel->setBuild(selectedBuild());
@@ -967,7 +1051,9 @@ void DownloadPage::demo(int what) {
         }
         m_panel->setAppIds(std::move(ids));
         m_panel->setExcluded({L"Microsoft.BingNews_8wekyb3d8bbwe", L"MSTeams_8wekyb3d8bbwe"});
-        m_panel->refreshVisibility();
+        m_appSet = true;
+        m_appsArrived = true;
+        updateAppList();
     }
     if (what == 4) {
         layout();

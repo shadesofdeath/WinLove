@@ -74,7 +74,8 @@ struct LaunchOptions {
     bool demoTasks = false;      // render: fake mount, two tasks off in the image, the recommended queued (D-048)
     bool demoTaskCreate = false; // render: the "Görev oluştur" dialog open on the Tasks page (D-102)
     std::optional<std::wstring> demoFiles; // render: fake mount + queued files ("where": the destination dialog) (D-051)
-    int demoDownload = -1;     // render: D-093 Windows indir — 0 list, 1 a build picked, 2 downloading, 3 converting
+    int demoDownload = -1;     // render: D-093 Windows indir — 0 list, 1 a build picked, 2 downloading, 3 converting,
+                               // 4 the app picker, 5 a Windows 10 build (apps in the image)
     bool demoHosts = false;    // render: fake mount, telemetry list in the image, ads queued, imported entries (D-049)
     bool demoBranding = false; // render: Kişiselleştirme with OEM text, pictures and fonts queued (D-056)
     std::wstring demoTool; // render, with a source: recompress | split | duplicate | capture | hash | append (D-058)

@@ -16,6 +16,12 @@
   Doğrulandı: birim testler, `wlcli icon-patch` gerçek imageres kopyasında, gerçek imajda (mount) `wlcli apply`
   (Windows 369 grubu 0 hatayla yüklüyor; imaj discard ile ayrıldı, bağlı imaj yok). Uyarı toast'ı dosya seçimi
   gerektirdiği için render'la görülmedi.
+- **Hata düzeltmesi (2026-10-10, kullanıcı bildirdi):** Windows indir'de "Mağaza uygulamaları → Seç…" Windows 10'da
+  hiç açılmıyordu: UUP dump'ta Windows 10 setinin `appxPresent`'i false, `lang=neutral&edition=app` →
+  UNSUPPORTED_LANG, liste boş kalıyordu (uygulamalar zaten imajın içinde, ENGINE saha notu). Panel artık
+  `FileSet::appxPresent` + liste sonucuyla durum tutuyor (yükleniyor "…" / hazır "x / y" / alınamadı → Seç yeniden
+  dener / Windows 10 "imajın içinde" / yok "bu derlemede yok"). `--demo-download=win10` render'ı eklendi; Windows 10 ve
+  11 render'la doğrulandı.
 - **Yeni özellik turu (2026-10-09, kullanıcı seçimi): 4 özellik — (1) çok dilli sihirbaz, (2) çevrimdışı program
   kurulumu, (3) imaj sağlık denetimi + onarım, (4) özel zamanlanmış görev.** Not: "bu PC sürücüleri", OEM bilgileri ve
   disk bölümleme zaten vardı (önerilenler kodda kontrol edildi). **Tamamlanan: (3) imaj sağlık denetimi + onarım (D-101)** —
