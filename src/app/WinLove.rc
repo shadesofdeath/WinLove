@@ -27,8 +27,8 @@ IDR_CATALOG_PROGRAMS RCDATA "../../resources/catalog/programs.json"
 IDR_CATALOG_COMPAT RCDATA "../../resources/catalog/compat.json"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,2,1,0
- PRODUCTVERSION 1,2,1,0
+ FILEVERSION 1,2,2,0
+ PRODUCTVERSION 1,2,2,0
  FILEOS VOS_NT_WINDOWS32
  FILETYPE VFT_APP
 BEGIN
@@ -38,8 +38,8 @@ BEGIN
         BEGIN
             VALUE "FileDescription", "WinLove - Windows image customization"
             VALUE "ProductName", "WinLove"
-            VALUE "FileVersion", "1.2.1"
-            VALUE "ProductVersion", "1.2.1 Beta"
+            VALUE "FileVersion", "1.2.2"
+            VALUE "ProductVersion", "1.2.2 Beta"
             VALUE "OriginalFilename", "WinLove.exe"
         END
     END
