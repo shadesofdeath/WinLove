@@ -337,6 +337,16 @@ std::size_t ApplyReport::failures() const {
     return static_cast<std::size_t>(std::ranges::count_if(results, [](const StepResult& r) { return !r.outcome; }));
 }
 
+std::size_t ApplyReport::holdingFailures() const {
+    return static_cast<std::size_t>(
+        std::ranges::count_if(results, [](const StepResult& r) { return !r.outcome && !unchangedByFailure(r); }));
+}
+
+bool unchangedByFailure(const StepResult& result) noexcept {
+    return !result.outcome && result.step.operation.kind == OpKind::CleanupImage &&
+           static_cast<std::uint32_t>(result.outcome.error().hresult) == 0x800F0806;
+}
+
 ApplyReport apply(const ApplyPlan& plan, DismSession& session, const TaskContext& task, ErrorPolicy policy,
                   const ApplyCallbacks& callbacks, const ApplyOptions& given) {
     ApplyReport report;

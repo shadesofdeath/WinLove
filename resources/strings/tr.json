@@ -233,6 +233,7 @@
     "doneOpen": "Aç",
     "doneWarningsTitle": "ISO hazır, uyarılarla",
     "esuSkipped": "Windows 10'un toplu güncelleştirmesi {kb} ESU kapsamında; Microsoft çevrimdışı imaja eklenmesine izin vermiyor. ISO onsuz oluştu: kurulan sistem onu ESU kaydıyla Windows Update'ten alabilir.",
+    "hotpatchSkipped": "{kb} bir hotpatch güncelleştirmesi; hotpatch çevrimdışı imaja girmez. ISO'da onun dayandığı toplu güncelleştirme var ({version}); kalan küçük fark kurulumdan sonra Windows Update'ten gelir.",
     "warnings": "{n} uyarı daha; ayrıntılar Loglar sayfasında.",
     "failedTitle": "Windows indirilemedi",
     "convertFailedTitle": "ISO oluşturulamadı",

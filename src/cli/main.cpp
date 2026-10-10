@@ -8,6 +8,7 @@
 #include "core/iso/SecureBoot2023.h"
 #include "core/programs/InstalledPrograms.h"
 #include "core/programs/OfflinePrograms.h"
+#include "core/uup/PsfPackage.h"
 #include "core/uup/UupApps.h"
 #include "core/uup/UupCatalog.h"
 #include "core/uup/UupConvert.h"
@@ -846,6 +847,46 @@ int cmdWimFile(const std::wstring& path, const std::wstring& index, const std::w
     print(std::format(L"  [{}] {}: {} ({:.1f} s)\n", index, file, *found ? L"present" : L"MISSING",
                       static_cast<double>(GetTickCount64() - started) / 1000.0));
     return *found ? 0 : 1;
+}
+
+int cmdWimLs(const std::wstring& path, const std::wstring& index, const std::wstring& folder) {
+    auto source = core::openSource(path);
+    if (!source) {
+        return reportError(source.error());
+    }
+    auto bytes = core::openInstallImage(*source);
+    if (!bytes) {
+        return reportError(bytes.error());
+    }
+    auto names = core::wimFolderNames(**bytes, _wtoi(index.c_str()), folder);
+    if (!names) {
+        return reportError(names.error());
+    }
+    for (const auto& name : *names) {
+        print(L"  " + name + L"\n");
+    }
+    return names->empty() ? 1 : 0;
+}
+
+int cmdPsfExpand(const std::wstring& container, const std::wstring& folder) {
+    const auto started = GetTickCount64();
+    auto mum = core::uup::expandUpdatePackage(container, folder, progressTask(L"expand"));
+    print(L"\n");
+    if (!mum) {
+        return reportError(mum.error());
+    }
+    print(std::format(L"  {} ({:.1f} s)\n", mum->wstring(), static_cast<double>(GetTickCount64() - started) / 1000.0));
+    return 0;
+}
+
+int cmdWimApply(const std::wstring& wim, const std::wstring& index, const std::wstring& folder) {
+    const auto started = GetTickCount64();
+    if (auto r = core::applyImage(wim, _wtoi(index.c_str()), folder, progressTask(L"apply")); !r) {
+        print(L"\n");
+        return reportError(r.error());
+    }
+    print(std::format(L"\n  [{}] -> {} ({:.1f} s)\n", index, folder, static_cast<double>(GetTickCount64() - started) / 1000.0));
+    return 0;
 }
 
 // D-058: Images page tools (no admin except capture).
@@ -2509,10 +2550,12 @@ std::wstring uupSize(std::uint64_t bytes) {
 int cmdUup(std::vector<std::wstring> args) {
     // Options among the words: --no-updates --no-edge --esd --apps --work=<dir> --media=<dir>
     bool updates = true, edge = true, esd = false, apps = false, appsOnly = false, noApps = false;
-    std::wstring work, media;
+    std::wstring work, media, only;
     std::vector<std::wstring> words;
     for (auto& a : args) {
-        if (a == L"--no-updates") {
+        if (a.starts_with(L"--only=")) {
+            only = wl::text::lower(a.substr(7));
+        } else if (a == L"--no-updates") {
             updates = false;
         } else if (a == L"--no-edge") {
             edge = false;
@@ -2607,7 +2650,7 @@ int cmdUup(std::vector<std::wstring> args) {
             if (!updates && (update || f.kind == core::uup::FileKind::Edge)) {
                 continue;
             }
-            if (f.kind == core::uup::FileKind::App) {
+            if (f.kind == core::uup::FileKind::App || (!only.empty() && lower.find(only) == std::wstring::npos)) {
                 continue;
             }
             files.push_back(f);
@@ -2730,7 +2773,7 @@ int cmdUup(std::vector<std::wstring> args) {
         return 0;
     }
     print(L"  wlcli uup builds [search] | langs <id> | editions <id> <lang> | files <id> <lang> <ed[,ed]>\n"
-          L"           download <id> <lang> <ed[,ed]> <folder> [--no-updates] [--apps | --apps-only]\n"
+          L"           download <id> <lang> <ed[,ed]> <folder> [--no-updates] [--apps | --apps-only] [--only=<text in the name>]\n"
           L"           convert <folder> <out.iso|media folder> [--no-updates] [--no-edge] [--no-apps] [--esd] [--work=<dir>]\n"
           L"           apps <AggregatedMetadata.cab> <edition[,edition]> <amd64|arm64> [<id>]\n"
           L"           role <update file>\n");
@@ -2912,6 +2955,9 @@ void printUsage() {
           L"  wlcli optimize <wim>                      Rewrite a WIM without what commits left behind\n"
           L"  wlcli verify <iso|wim|folder>             Read every stream and check its SHA-1 (exit 3: damaged)\n"
           L"  wlcli wim-file <iso|wim|folder> <index> <path>   Is the file in the edition? (file list, no mount; exit 1: no)\n"
+          L"  wlcli wim-ls <iso|wim|folder> <index> [folder]   The names in a folder of the edition (no mount)\n"
+          L"  wlcli wim-apply <wim|esd|msu> <index> <folder>   The edition's files into a folder (no security descriptors)\n"
+          L"  wlcli psf-expand <KB….wim> <folder>     An LCU's container + .psf as the folder CBS installs (update.mum; admin)\n"
           L"  wlcli set-info <wim> <index> <name> [<description>] [--flags=<EditionId>]\n"
           L"  wlcli host-check                          This PC's DISM / wimgapi files (exit 3: a problem)\n"
           L"  wlcli wimgapi <wim|esd>                   The wimgapi.dll that reads it; an ESD's solid resources\n"
@@ -3182,6 +3228,15 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"wim-file" && args.size() == 4) {
         return cmdWimFile(args[1], args[2], args[3]);
+    }
+    if (command == L"psf-expand" && args.size() == 3) {
+        return cmdPsfExpand(args[1], args[2]);
+    }
+    if (command == L"wim-apply" && args.size() == 4) {
+        return cmdWimApply(args[1], args[2], args[3]);
+    }
+    if (command == L"wim-ls" && (args.size() == 3 || args.size() == 4)) {
+        return cmdWimLs(args[1], args[2], args.size() == 4 ? args[3] : L"");
     }
     if (command == L"set-info" && (args.size() == 4 || args.size() == 5)) {
         return cmdSetInfo(args[1], args[2], args[3], args.size() == 5 ? args[4] : L"", flags);

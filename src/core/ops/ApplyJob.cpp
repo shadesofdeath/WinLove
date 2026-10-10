@@ -85,7 +85,7 @@ Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& moun
                                         task.report(fraction * stepsWeight / total, stage);
                                     }};
         result.report = apply(plan, **session, stepsTask, ErrorPolicy::Skip, steps, options.apply);
-        const bool holding = options.commitAndUnmount && !options.commitWithFailures && result.report.failures() > 0;
+        const bool holding = options.commitAndUnmount && !options.commitWithFailures && result.report.holdingFailures() > 0;
         // Setup's language list follows a commit; a held image may still be discarded (audit A21).
         if (result.report.completed && !holding && !options.setupFolder.empty() && languagesChanged(result.report)) {
             result.langIniWritten = writeLangIni(**session, options.setupFolder);
@@ -97,14 +97,18 @@ Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& moun
         result.elapsed = since(started);
         return result;
     }
-    if (options.commitAndUnmount && !options.commitWithFailures && result.report.failures() > 0) {
+    if (options.commitAndUnmount && !options.commitWithFailures && result.report.holdingFailures() > 0) {
         log::warn("apply", std::format(L"{} step(s) failed: the image is not saved and stays mounted — save or discard "
                                        L"it once the failures are looked at",
-                                       result.report.failures()));
+                                       result.report.holdingFailures()));
         result.held = true;
         result.elapsed = since(started);
         task.report(1.0, L"held");
         return result;
+    }
+    if (options.commitAndUnmount && result.report.failures() > result.report.holdingFailures()) {
+        log::info("apply", L"saved all the same: the component store cleanup did not run (an operation of this run is "
+                           L"pending until first boot) and changed nothing");
     }
     if (options.commitAndUnmount && callbacks.beforeCommit) {
         log::info("apply", L"paused before saving: " + mountDir.wstring() + L" is open for changes by hand");

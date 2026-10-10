@@ -372,6 +372,7 @@ enum class Str : std::uint16_t {
     DownloadFilterInsider,
     DownloadFilterRelease,
     DownloadFilterServer,
+    DownloadHotpatchSkipped,
     DownloadLanguage,
     DownloadListFailed,
     DownloadListFailedBody,
@@ -1884,7 +1885,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1874;
+inline constexpr std::size_t kStrCount = 1875;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -2251,6 +2252,7 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "download.filterInsider",
     "download.filterRelease",
     "download.filterServer",
+    "download.hotpatchSkipped",
     "download.language",
     "download.listFailed",
     "download.listFailedBody",

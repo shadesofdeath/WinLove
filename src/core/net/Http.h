@@ -27,6 +27,7 @@ struct HttpResponse {
                                             const CancelToken& cancel = {});
 
 // Downloads `url` to `target`. The bytes go to "<target>.part" first — an interrupted download
+// (a read error, or a server that closed the connection before `expectedSize`: an error too)
 // continues from there with a Range request (the server may refuse: then it starts over) — and
 // the file is renamed to `target` when complete. Progress: fraction of `expectedSize` (or of the
 // Content-Length when 0). An existing `target` is replaced.

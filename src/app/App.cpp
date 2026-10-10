@@ -246,7 +246,7 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoBootDrivers = true;
         } else if (a.starts_with(L"--demo-download")) {
             const auto v = a.size() > 16 ? a.substr(16) : std::wstring_view(L"list");
-            options.demoDownload = v == L"pick" ? 1 : v == L"downloading" ? 2 : v == L"converting" ? 3 : v == L"apps" ? 4 : v == L"win10" ? 5 : v == L"failed" ? 6 : v == L"warnings" ? 7 : 0;
+            options.demoDownload = v == L"pick" ? 1 : v == L"downloading" ? 2 : v == L"converting" ? 3 : v == L"apps" ? 4 : v == L"win10" ? 5 : v == L"failed" ? 6 : v == L"warnings" ? 7 : v == L"hotpatch" ? 8 : 0;
         } else if (a == L"--demo-hosts") {
             options.demoHosts = true;
         } else if (a == L"--demo-services") {
@@ -1682,6 +1682,7 @@ int App::runWindowed() {
     } else {
         m_shell->images().adoptExistingMount();
     }
+    m_shell->windowsDownload().releaseLeftovers(); // a conversion the app closed or crashed in
     const int exitCode = ui::Window::runMessageLoop();
     if (m_dropTarget) {
         m_dropTarget->revoke();

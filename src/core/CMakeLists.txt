@@ -87,6 +87,7 @@ add_library(wl_core STATIC
     uup/UupDownload.cpp
     uup/UupConvert.cpp
     uup/UupApps.cpp
+    uup/PsfPackage.cpp
     updates/UupLanguages.cpp
     store/MsStore.cpp)
 wl_configure_target(wl_core)

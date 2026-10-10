@@ -7,6 +7,33 @@
   P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler, P16 Uygulama Ayarları, P17 Hakkında, P18 Komut Paleti:
   🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v2 (AppX + sistem bileşenleri + depo
   temizliği, D-031), test bekliyor.
+- **1.2.2 sonrası düzeltmeler (2026-10-10/11, yayınlanmadı, commit yok):**
+  - **Uygula `0x800F0806`'da kaydetmiyordu (forum):** özellik adımları (LegacyComponents / Search; bu hostta NetFx3)
+    ilk açılışa bekleyen işlem bırakınca `/ResetBase` temizliği reddedilir, imaj değişmez; WinLove bunu "başarısız"
+    sayıp 190 değişikliği kaydetmeden bağlı bırakıyordu. `unchangedByFailure` + `ApplyReport::holdingFailures()`:
+    bu ret kaydı durdurmaz ("1 işlem atlandı"), diğer hatalar eskisi gibi tutar. Lab `build\lab\pending\run.ps1`
+    (`changeset-netfx.json`): 0x800F0806 üretildi, "saved all the same", imaj bağlı kalmadı, kuyruktaki dosya WIM'de.
+  - **ARM64 ISO:** raporun "etfsboot.com yok" tahmini yanlıştı (UUP ARM64 medyasında var); asıl neden aşağıdaki hotpatch
+    reddi. Dönüştürme ARM64 ISO'yu Microsoft / uup-converter gibi yalnız UEFI yapar; ISO sayfası dosya hiç yoksa
+    `bootModeFor` ile yalnız UEFI'ye düşer (birim testli). **Uçtan uca lab `build\lab\uup\run-arm64.ps1` (wlcli17,
+    26200.9448 ARM64 Pro tr-tr, güncellemeler + 53 uygulama + kalan bağlama):** exit 0 (2.620 sn), ISO 8,2 GB,
+    10.0.26200.9445, `CPRA_A64FRE_TR-TR_DV9`, hotpatch uyarısı; bağlı imaj kalmadı. Bu ISO "yalnız UEFI" değişikliğinden
+    önce yapıldı (UEFI+BIOS); o tek satırlık değişiklik uçtan uca yeniden denenmedi. ARM64 ISO bir cihazda kurulmadı.
+  - **Çökme sonrası kalan bağlama:** `releaseWorkMount` dönüştürme başında ve uygulama açılışında (`WindowsDownloadController::
+    releaseLeftovers`, yöneticiyse) `uup\work\mount`'taki bağlamayı atar, yeniden kullanmaz. Lab: önceden bağlanmış
+    boot.wim "a mount an earlier conversion left … discarded". Uygulama açılışındaki yol canlı denenmedi.
+  - **İndirme kesintileri:** Microsoft CDN'i bağlantıyı MiB sınırlarında kesiyordu, 3 denemede iş düşüyordu; artık
+    `.part`'tan devam eder (ilerlemesiz 3 deneme üst üste olursa hata).
+  - **Hotpatch LCU (asıl ARM64 nedeni, x64'ü de vuruyor):** 26200.9448'in LCU'su KB5129241 "hotpatch capable";
+    Windows Update ajanı çevrimdışı imajda reddediyor (`0x800F8012`) — x64'te de (lab). Yeni `core/uup/PsfPackage`
+    (`express.psf.cix.xml` + `.psf` → `update.mum` klasörü; PA30/PA31 `UpdateCompression.dll`, SHA-256 denetimli) ve
+    `UupConvert::addLcuExpanded`: hotpatch'li ya da ARM64 imajda `.msu` açılır, SSU → checkpoint → temel LCU klasörden
+    eklenir; hotpatch atlanır, panelde `download.hotpatchSkipped` notu (render `--demo-download=hotpatch`). Elle lab:
+    ARM64 ve x64'te 26100.1 → 26100.1742 → 26100.9445. `wlcli` yenileri: `wim-ls`, `wim-apply`, `psf-expand`,
+    `uup download --only=`. **Doğrulanmayan:** x64 26200.9448'in uçtan uca dönüştürmesi (tam x64 set indirilmedi; yol
+    aynı, x64'te elle lab geçti); Windows 10 hostta (UpdateCompression.dll yoksa) PA30/PA31; uygulama içinden canlı
+    dönüştürme. Lab artıkları: `build\lab\uup\x64-hotpatch\` (2,6 GB MSU), `out\arm64.iso`.
+  - **Sıradaki somut adım:** kullanıcı onayıyla commit; isterse x64 26200.9448 uçtan uca (≈4 GB indirme) ve sürüm.
 - **YAYINLANDI: v1.2.0-beta (2026-10-10)** — https://github.com/shadesofdeath/WinLove/releases/tag/v1.2.0-beta
   (ön sürüm, `WinLove.exe` 10.051.584 bayt, SHA-256 `D0A93F9ED2051083D8FDC61F2597C8D76C039E799972DDD68EC85A526470100D`).
   `main` push edildi (a849531). Bilinen sınır (D-104): winget'siz imajda karışık çevrimdışı liste durur — sıradaki aday.

@@ -143,6 +143,37 @@ TEST_CASE("ISO build: root files from memory are in the image; the source folder
     std::filesystem::remove_all(dir, ec);
 }
 
+TEST_CASE("ISO build: ARM64 media (no BIOS boot sector) boot by UEFI; an explicit BIOS mode still says what is missing") {
+    const auto dir = std::filesystem::temp_directory_path() / L"wl-tests" / L"iso-arm64";
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    const auto media = dir / L"media";
+    std::filesystem::create_directories(media / L"efi" / L"microsoft" / L"boot");
+    std::filesystem::create_directories(media / L"sources");
+    {
+        std::ofstream(media / L"efi" / L"microsoft" / L"boot" / L"efisys.bin", std::ios::binary) << std::string(1474560, '\0');
+        std::ofstream(media / L"sources" / L"marker.txt", std::ios::binary) << "setup files";
+    }
+    CHECK(bootModeFor(media, BootMode::UefiAndBios) == BootMode::UefiOnly);
+    CHECK(bootModeFor(media, BootMode::BiosOnly) == BootMode::BiosOnly);
+
+    IsoOptions options;
+    options.sourceFolder = media;
+    options.output = dir / L"arm64.iso";
+    options.volumeLabel = L"CCSA_A64FRE_TR-TR_DV9";
+    options.boot = BootMode::UefiAndBios; // what the conversion and the ISO page ask for
+    const auto built = buildIso(options, TaskContext{});
+    REQUIRE_MESSAGE(built.has_value(), utf8::fromWide(describe(built.error())).c_str());
+    CHECK(built->bytes > 0);
+
+    options.boot = BootMode::BiosOnly;
+    options.output = dir / L"bios.iso";
+    const auto bios = buildIso(options, TaskContext{});
+    REQUIRE_FALSE(bios.has_value());
+    CHECK(bios.error().code == ErrorCode::NotFound);
+    std::filesystem::remove_all(dir, ec);
+}
+
 TEST_CASE("work copy: an ISO opened again never overwrites what changed since, nor mixes two ISOs (audit A5)") {
     const auto dir = std::filesystem::temp_directory_path() / L"wl-tests" / L"work-copy";
     std::error_code ec;

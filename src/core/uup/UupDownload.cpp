@@ -145,6 +145,8 @@ Result<void> downloadFiles(std::vector<File> files, const std::filesystem::path&
             int linkGeneration = 0;
             std::wstring url;
             int attempts = 0;
+            int resumed = 0; // dropped connections, all told
+            int stalled = 0; // …in a row that brought nothing
             for (;;) {
                 if (stopped()) {
                     return;
@@ -155,6 +157,8 @@ Result<void> downloadFiles(std::vector<File> files, const std::filesystem::path&
                     linkGeneration = generation;
                 }
                 const TaskContext one{stopAll, {}};
+                std::optional<std::uint64_t> from; // the file's bytes when this attempt started…
+                std::uint64_t reached = 0;          // …and where it got
                 // Only Microsoft's servers (the list comes from a third party; the bytes must not).
                 if (!url.empty() && !trustedUupUrl(url)) {
                     setError(Error{ErrorCode::AccessDenied, L"the link is not a Microsoft download server", url});
@@ -166,6 +170,10 @@ Result<void> downloadFiles(std::vector<File> files, const std::filesystem::path&
                                                           if (task.cancel.cancelled()) {
                                                               stopAll.cancel();
                                                           }
+                                                          if (!from) {
+                                                              from = have;
+                                                          }
+                                                          reached = have;
                                                           inFlight[slot] = have;
                                                           report(L"download");
                                                       },
@@ -193,10 +201,12 @@ Result<void> downloadFiles(std::vector<File> files, const std::filesystem::path&
                     continue;
                 }
                 if (!got) {
-                    if (!stopped() && attempts < 2 && !expired(got.error())) {
-                        ++attempts; // a dropped connection: the .part continues
+                    // A dropped connection: the .part continues. Microsoft's CDN closes some at a few MB
+                    // every time (a 43 MB ESD ended at 20, 12 and 2 MB); while each one brings bytes, it goes on.
+                    stalled = from && reached > *from ? 0 : stalled + 1;
+                    if (!stopped() && !expired(got.error()) && stalled <= 2 && ++resumed <= 200) {
                         log::warn("uup", std::format(L"{}: {}; again", file.name, got.error().message));
-                        std::this_thread::sleep_for(std::chrono::seconds(2));
+                        std::this_thread::sleep_for(std::chrono::seconds(stalled ? 2 : 1));
                         continue;
                     }
                     if (!stopped()) {

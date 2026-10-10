@@ -76,7 +76,7 @@ struct LaunchOptions {
     std::optional<std::wstring> demoFiles; // render: fake mount + queued files ("where": the destination dialog) (D-051)
     int demoDownload = -1;     // render: D-093 Windows indir — 0 list, 1 a build picked, 2 downloading, 3 converting,
                                // 4 the app picker, 5 a Windows 10 build (apps in the image), 6 the last run
-                               // failed, 7 the ISO came with warnings
+                               // failed, 7 the ISO came with warnings, 8 with a hotpatch LCU's baseline
     bool demoHosts = false;    // render: fake mount, telemetry list in the image, ads queued, imported entries (D-049)
     bool demoBranding = false; // render: Kişiselleştirme with OEM text, pictures and fonts queued (D-056)
     std::wstring demoTool; // render, with a source: recompress | split | duplicate | capture | hash | append (D-058)

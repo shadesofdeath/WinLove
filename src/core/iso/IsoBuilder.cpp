@@ -71,6 +71,14 @@ Result<void> addBootEntry(const std::filesystem::path& file, PlatformId platform
 
 } // namespace
 
+BootMode bootModeFor(const std::filesystem::path& folder, BootMode wanted) {
+    std::error_code ec;
+    if (wanted == BootMode::UefiAndBios && !std::filesystem::is_regular_file(biosBoot(nativePath(folder)), ec)) {
+        return BootMode::UefiOnly;
+    }
+    return wanted;
+}
+
 Result<void> checkBootFiles(const std::filesystem::path& folder, BootMode mode, bool noPrompt) {
     std::error_code ec;
     if (mode != BootMode::UefiOnly && !std::filesystem::is_regular_file(biosBoot(folder), ec)) {
@@ -90,7 +98,12 @@ Result<IsoResult> buildIso(const IsoOptions& options, const TaskContext& task) {
     const auto started = std::chrono::steady_clock::now();
     const std::filesystem::path folder = nativePath(options.sourceFolder);
     const std::filesystem::path output = nativePath(options.output);
-    if (auto r = checkBootFiles(folder, options.boot, options.noPrompt); !r) {
+    // ARM64 media have no BIOS boot sector: "UEFI and BIOS" is UEFI there, as on Microsoft's ARM64 ISO.
+    const BootMode mode = bootModeFor(folder, options.boot);
+    if (mode != options.boot) {
+        log::info("iso", L"no boot\\etfsboot.com in the setup files (ARM64 media): UEFI boot only");
+    }
+    if (auto r = checkBootFiles(folder, mode, options.noPrompt); !r) {
         return std::unexpected(r.error());
     }
     ComScope com;
@@ -116,8 +129,8 @@ Result<IsoResult> buildIso(const IsoOptions& options, const TaskContext& task) {
     }
 
     // El Torito: BIOS first (entry used by legacy firmware), then UEFI.
-    const bool bios = options.boot != BootMode::UefiOnly;
-    const bool uefi = options.boot != BootMode::BiosOnly;
+    const bool bios = mode != BootMode::UefiOnly;
+    const bool uefi = mode != BootMode::BiosOnly;
     SAFEARRAY* array = SafeArrayCreateVector(VT_VARIANT, 0, (bios ? 1u : 0u) + (uefi ? 1u : 0u));
     LONG slot = 0;
     Result<void> bootResult{};

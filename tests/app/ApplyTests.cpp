@@ -193,3 +193,24 @@ TEST_CASE("Apply page: a held run (a step failed, nothing saved) shows its repor
     state.queue(Operation{OpKind::EnableFeature, L"WSL"});
     CHECK(ApplyPage::modeFor(state) == ApplyPage::Mode::Summary); // the user moved on
 }
+
+TEST_CASE("a component store cleanup refused for pending operations is skipped, not a reason to hold the save") {
+    using core::ops::StepResult;
+    const auto pending = static_cast<std::int32_t>(0x800F0806);
+    core::ops::ApplyReport report;
+    report.completed = true;
+    report.results.push_back(StepResult{{Phase::Features, Operation{OpKind::DisableFeature, L"SearchEngine-Client-Package"}}, {}});
+    report.results.push_back(StepResult{{Phase::Cleanup, Operation{OpKind::CleanupImage, L"component-store"}},
+                                        fail(ErrorCode::Unsupported, L"component store cleanup skipped", L"", pending)});
+    CHECK(report.failures() == 1);
+    CHECK(report.holdingFailures() == 0); // forum report: 190 changes held for this one
+    CHECK(core::ops::unchangedByFailure(report.results[1]));
+
+    // Any other failure still holds it, and so does the same code from another step.
+    report.results.push_back(StepResult{{Phase::Features, Operation{OpKind::EnableFeature, L"NetFx3"}},
+                                        fail(ErrorCode::DismFailure, L"enable failed", L"", pending)});
+    report.results.push_back(StepResult{{Phase::Cleanup, Operation{OpKind::CleanupImage, L"component-store"}},
+                                        fail(ErrorCode::IoError, L"component store cleanup failed", L"", 0x2)});
+    CHECK(report.failures() == 3);
+    CHECK(report.holdingFailures() == 2);
+}

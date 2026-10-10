@@ -21,7 +21,15 @@ struct ApplyReport {
     std::vector<StepResult> results;
     bool completed = false; // every step ran (some may have failed under Skip)
     [[nodiscard]] std::size_t failures() const;
+    // The failures that may have left the image half changed, the ones a save waits for: all but
+    // those that changed nothing (unchangedByFailure).
+    [[nodiscard]] std::size_t holdingFailures() const;
 };
+
+// A failed step that left the image as it was: the component store cleanup DISM refuses while an
+// earlier step of the run has an operation pending until first boot (0x800F0806; enabling or
+// disabling a feature does that).
+[[nodiscard]] bool unchangedByFailure(const StepResult& result) noexcept;
 
 struct ApplyOptions {
     std::vector<std::filesystem::path> featureSources; // DismEnableFeature SourcePaths (sources\sxs)

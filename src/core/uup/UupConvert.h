@@ -90,6 +90,9 @@ struct ConvertResult {
     // Windows 10's cumulative update of the ESU years refuses an offline image (its Extended
     // Security Updates installer: 0x80073713): the editions were made again without it.
     std::filesystem::path esuSkipped;
+    // A hotpatch-capable LCU: its hotpatch does not go into an offline image; the editions have the
+    // cumulative update it builds on (expanded, PsfPackage.h) — `version` is that one's.
+    std::filesystem::path hotpatchSkipped;
     std::uint64_t bytes = 0;
 };
 
@@ -98,6 +101,12 @@ struct ConvertResult {
 
 // The ISO volume label of a set: CPRA_X64FRE_TR-TR_DV9 (one Pro edition), CCSA_… (several).
 [[nodiscard]] std::wstring isoLabel(const UupSetFiles& set);
+
+// The mount a conversion left in <workFolder>\mount when it never got to unmount (the app closed or
+// crashed, the PC restarted): discarded, never reused — a half-serviced edition must not end up in
+// an ISO, nor stay mounted on the PC. True when there was one. convertUup does it first; the app at
+// startup. Needs admin.
+[[nodiscard]] Result<bool> releaseWorkMount(Dism& dism, const std::filesystem::path& workFolder);
 
 [[nodiscard]] Result<ConvertResult> convertUup(Dism& dism, const ConvertOptions& options, const TaskContext& task);
 

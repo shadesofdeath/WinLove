@@ -426,13 +426,20 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
             // What the ISO went without stays on the page too: the toast only names the file.
             std::wstring text;
             std::size_t others = result.warnings.size();
-            if (!result.esuSkipped.empty()) {
+            auto kbOf = [](const std::filesystem::path& update) {
                 static const std::wregex kKb(LR"(kb\d+)", std::regex::icase);
-                const std::wstring file = result.esuSkipped.filename().wstring();
+                const std::wstring file = update.filename().wstring();
                 std::wsmatch kb;
-                text = m_strings.format(Str::DownloadEsuSkipped,
-                                        {{L"kb", std::regex_search(file, kb, kKb) ? text::upper(kb.str()) : file}});
+                return std::regex_search(file, kb, kKb) ? text::upper(kb.str()) : file;
+            };
+            if (!result.esuSkipped.empty()) {
+                text = m_strings.format(Str::DownloadEsuSkipped, {{L"kb", kbOf(result.esuSkipped)}});
                 others -= std::min<std::size_t>(others, 1);
+            }
+            if (!result.hotpatchSkipped.empty()) {
+                text += (text.empty() ? L"" : L" ") +
+                        m_strings.format(Str::DownloadHotpatchSkipped,
+                                         {{L"kb", kbOf(result.hotpatchSkipped)}, {L"version", result.version}});
             }
             if (others > 0) {
                 text += (text.empty() ? L"" : L" ") + m_strings.format(Str::DownloadWarnings, {{L"n", std::to_wstring(others)}});
