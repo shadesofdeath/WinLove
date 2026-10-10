@@ -233,6 +233,7 @@
     "doneOpen": "Open",
     "doneWarningsTitle": "The ISO is ready, with warnings",
     "esuSkipped": "Windows 10's cumulative update {kb} is an ESU update; Microsoft does not let it into an offline image. The ISO was made without it: the installed system can get it from Windows Update with an ESU enrollment.",
+    "hotpatchSkipped": "{kb} is a hotpatch update; a hotpatch does not go into an offline image. The ISO has the cumulative update it builds on ({version}); the small rest comes from Windows Update after setup.",
     "warnings": "{n} more warning(s); the details are on the Logs page.",
     "failedTitle": "Windows could not be downloaded",
     "convertFailedTitle": "The ISO could not be built",

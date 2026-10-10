@@ -48,6 +48,9 @@ struct IsoResult {
     std::wstring sha256; // hex, empty unless requested
 };
 
+// The boot mode an ISO of `folder` gets: "UEFI and BIOS" without boot\etfsboot.com (ARM64 setup
+// media have none) is UEFI only; an explicit BIOS mode stays and fails in checkBootFiles.
+[[nodiscard]] BootMode bootModeFor(const std::filesystem::path& folder, BootMode wanted);
 // Boot files for `mode` inside `folder`; fails with NotFound naming the missing one.
 [[nodiscard]] Result<void> checkBootFiles(const std::filesystem::path& folder, BootMode mode, bool noPrompt);
 // Sum of file sizes under `folder` (the ISO is this + a few MB of file system metadata).

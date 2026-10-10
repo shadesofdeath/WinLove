@@ -1132,16 +1132,20 @@ void DownloadPage::demo(int what) {
         openAppPicker();
         return;
     }
-    if (what == 6 || what == 7) { // 6: the conversion failed an hour in; 7: the ISO came without the ESU update
+    if (what >= 6 && what <= 8) { // 6: the conversion failed an hour in; 7: the ISO came without the ESU update;
+                                  // 8: with the baseline of a hotpatch LCU
         using Notice = AppState::WindowsDownloadNotice;
         m_state.setWindowsDownloadNotice(
             what == 6 ? Notice{Notice::Kind::Failed, m_strings.get(Str::DownloadConvertFailedTitle),
                                L"DISM error (add package C:\\Users\\shades\\AppData\\Local\\WinLove\\uup\\"
                                L"19045.7727_amd64_tr-tr_professional\\Windows10.0-KB5129236-x64.cab)",
                                true}
-                      : Notice{Notice::Kind::Warning, m_strings.get(Str::DownloadDoneWarningsTitle),
-                               m_strings.format(Str::DownloadEsuSkipped, {{L"kb", L"KB5129236"}}) + L" " +
-                                   m_strings.format(Str::DownloadWarnings, {{L"n", L"1"}})});
+            : what == 7 ? Notice{Notice::Kind::Warning, m_strings.get(Str::DownloadDoneWarningsTitle),
+                                 m_strings.format(Str::DownloadEsuSkipped, {{L"kb", L"KB5129236"}}) + L" " +
+                                     m_strings.format(Str::DownloadWarnings, {{L"n", L"1"}})}
+                        : Notice{Notice::Kind::Warning, m_strings.get(Str::DownloadDoneWarningsTitle),
+                                 m_strings.format(Str::DownloadHotpatchSkipped,
+                                                  {{L"kb", L"KB5129241"}, {L"version", L"10.0.26200.9445"}})});
         layout();
         return;
     }

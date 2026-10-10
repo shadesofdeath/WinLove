@@ -60,6 +60,9 @@ public:
     [[nodiscard]] bool running() const { return m_state.windowsDownload().has_value(); }
     void start(Request request);
     void cancel();
+    // At startup (elevated): the mount a conversion left when the app closed or crashed mid-way
+    // goes (core::uup::releaseWorkMount), not only once the next conversion starts.
+    void releaseLeftovers();
 
     // Where a build's files are kept (a second run continues there): <work>\uup\<build>_<arch>_<lang>.
     [[nodiscard]] std::filesystem::path setFolder(const Request& request) const;

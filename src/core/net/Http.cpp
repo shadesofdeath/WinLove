@@ -250,7 +250,11 @@ Result<std::uint64_t> httpDownload(std::wstring_view url, const std::filesystem:
         return fail(ErrorCode::IoError, L"cannot write the download", part.wstring());
     }
     if (expectedSize && done != expectedSize) {
-        std::filesystem::remove(part, ec);
+        // Shorter: the server closed the connection early (Microsoft's CDN does that every few MB on
+        // some files) — the .part stays and the next attempt resumes it. Longer: not this file.
+        if (done > expectedSize) {
+            std::filesystem::remove(part, ec);
+        }
         return fail(ErrorCode::IoError, std::format(L"download ended at {} of {} bytes", done, expectedSize),
                     std::wstring(url));
     }

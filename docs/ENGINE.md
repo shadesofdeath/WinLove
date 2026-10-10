@@ -59,6 +59,7 @@ wlcli info <iso|wim|esd|swm> [--json]         # sürümler: ISO'yu yerinde okur 
 wlcli ls <iso> [dir] [--json]                 # ISO içinde dizin listesi
 wlcli extract <iso> <path-in-iso> <dest>      # ISO'dan dosya çıkar (Ctrl+C iptal, .partial temizlenir)
 wlcli plan <changeset.json>                   # ApplyPlan'ı yazdır
+wlcli wim-ls <wim> <index> [folder]           # sürümdeki bir klasörün adları (WIM-biçimli .msu'yu .wim adlı sabit bağla oku)
 wlcli elevated
 # Var olanlar (admin)
 wlcli mount <wim> <index> <dir> [--readonly]
@@ -66,6 +67,8 @@ wlcli unmount <dir> --commit|--discard
 wlcli mounts [--json] | cleanup
 wlcli packages|features|capabilities <dir> [--json]
 wlcli apply <changeset.json> <dir> [--skip-errors]
+wlcli wim-apply <wim|esd|msu> <index> <folder>  # sürümün dosyaları bir klasöre (güvenlik tanımlayıcısız)
+wlcli psf-expand <KB….wim> <folder>           # LCU kabı + .psf → CBS'nin kurduğu klasör (update.mum)
 # Planlanan
 wlcli export <wim> <index> <dst> [--compress=max|fast|none|recovery]
 wlcli appx|drivers <dir>
@@ -350,3 +353,41 @@ Uygulama davranışı:
 - [2026-10-10] [lab] Yükseltilmiş lab betiği wlcli'nin çıktısını `*>> log` ile alınca PowerShell UTF-8'i konsolun OEM
   kod sayfasıyla (cp857) çözer: "ş" → "┼ş", log dosyasında "<%_" görünür. DISM'in mesajı bozuk değildir (uygulama metni
   doğrudan wide string alır); lab loglarındaki Türkçe karakterlere güvenme.
+- [2026-10-10] [UUP, ağ] Microsoft'un CDN'i (`tlu.dl.delivery.mp.microsoft.com`) bazı bağlantıları MiB sınırlarında
+  kapatır (43 MB'lık bir ESD 2, 4, 6, 12, 18, 20, 35, 37 MiB'de bitti); `Range` ile kalınan yerden devam eder. Bazen
+  devam isteği 0 bayt getirip yine kapanır: ilerlemesiz üç deneme üst üste olunca vazgeçilir. Dosyayı baştan indirmek
+  (eski davranış) büyük dosyayı hiç bitirmeyebilir. Aynı set bir sonraki denemede hiç kesintisiz de inebilir.
+- [2026-10-11] [ISO, ARM64] UUP'nin ARM64 kurulum medyasında `boot\etfsboot.com` **var** (4.096 bayt; önceki "ARM64'te yok,
+  ISO bu yüzden çıkmıyor" tahmini yanlıştı: asıl neden hotpatch LCU reddiydi). ARM64 cihaz yalnız UEFI'den açılır;
+  uup-converter ("Create UEFI-only iso for arm64 builds") ve Microsoft'un ARM64 ISO'su El Torito'da yalnız UEFI girdisi
+  (`efi\microsoft\boot\efisys.bin`, platform 0xEF) taşır — dönüştürme de öyle yapar. Dosya hiç yoksa (başka medya) ISO
+  sayfası da "UEFI ve BIOS"u yalnız UEFI'ye düşürür (`bootModeFor`).
+- [2026-10-10] [DISM, 0x800F0806] Özellik açma/kapama ilk açılışa bekleyen işlem bırakırsa
+  `/Cleanup-Image /StartComponentCleanup /ResetBase` `CBS_E_PENDING` (0x800F0806) ile reddedilir; imaj değişmez. Hangi
+  özelliğin bekleyen işlem bıraktığı host DISM'ine göre değişir: forumdaki kullanıcının Windows 10 hostunda (DISM
+  10.0.19041) LegacyComponents açma / SearchEngine-Client-Package kapama yetti; bu makinede (DISM 26100) aynı
+  değişiklikler reddetmedi, NetFx3 (`--source=sources\sxs`) açmak reddi üretti.
+- [2026-10-10] [DISM, çapraz mimari] ARM64 imaja x64 hosttan bağlanınca DISM imajın `Windows\SysWOW64\Dism`'ini (x86)
+  scratch'e kopyalayıp onunla çalışır ve imajın x86 servis yığınını (`x86_microsoft-windows-servicingstack`) yükler.
+  UUP'nin taban imajında (26100.1) `Dism\MsuProvider.dll` yok (25H2 26200.8037 x64 imajında var):
+  "Failed to get the provider MsuManager from the remote provider store (0x80070032)". Bu uyarı her pakette çıkar ve
+  zararsızdır: `.msu` yine CBS → UpdateAgent (msu'nun `DesktopDeployment*.cab`'ından) yoluyla kurulur.
+- [2026-10-10] [UUP, hotpatch] Yeni `.msu`'lar cab değil WIM kabıdır (ilk baytlar `MSWIM`; `expand -D` açamaz,
+  `dism /Apply-Image /ImageFile:x.msu /Index:1` açar). "Hotpatch capable" LCU (ARM64 26200.9448, KB5129241) içinde: SSU
+  cab, temel LCU (KB5124008 `.wim` + `.psf` + `.mumx.esd`), `…-Hotpatch-arm64.cab` ve `…-Hotpatch-arm64-baseless.cab/.psf`.
+  UpdateAgent (`HotpatchCompDB_KB5129241.xml`) çevrimdışı imajda "Failed to create deviceGatherer object: 87af000e" →
+  "Hotpatching is not supported on this machine/image" → `0x800F8012` ile tüm paketi reddeder ("An error occurred
+  applying the Unattend.xml file from the .msu package"). **x64'te de aynı** (lab `run-hotpatch-x64.ps1`: UUP'nin x64
+  26100.1 Pro taban imajı + KB5129241-x64.msu, 17 sn'de red); imaja `DeviceGuard\EnableVirtualizationBasedSecurity=0`
+  yazmak değiştirmez (ajan 0 okur, yine reddeder). Önce SSU eklemek de değiştirmez. Ajan karar listesi:
+  CumulativeUpdate_KB5043080 (checkpoint), CumulativeUpdate_KB5124008 (temel), ServicingStackUpdate_KB5124007, sonra
+  HotPatchUpdate_KB5129241 → red. abbodi1406'nın convert-UUP.cmd'sinde (v126) aynı durum için yorum satırına alınmış bir
+  "Not Supported: [HotPatchUpdate]" kontrolü var; araçları LCU'yu `.psf`'den açıp `update.mum` ile kurar (LCUmsuExpand).
+- [2026-10-10] [DISM] `dism /Add-Package` `.wim` paket yolunu kabul etmez (0x80070057); `.cab` adı verilen WIM kabını CBS
+  açamaz (0xca00a005). ARM64 imajda x64 hosttan checkpoint `.msu`'su tek başına da ajanda düşer ("Failed to initialize
+  offline session: E_INVALIDARG").
+- [2026-10-10] [PSF] `express.psf.cix.xml`: `Container/Files/File[name,length,time]` + `Hash[SHA256]` (yazılan dosyanın) +
+  `Delta/Source[type,offset,length]` (`.psf` içindeki yeri). 24H2 LCU'larının PA30 delta'larını (`GetDeltaInfoB` bayrakları
+  0xA060000) `msdelta.dll` boş kaynağa uygulayamaz (ERROR_INVALID_DATA); `UpdateCompression.dll` (aynı `ApplyDeltaB`)
+  uygular. ARM64 26200.9448: checkpoint 115.589 dosya / 1,1 GB (61 sn), temel LCU 288.273 dosya / 3,5 GB (215 sn).
+  LCU `.wim`'i LZMS (katı) sıkıştırmalıdır; yanında `…mumx.esd` (26100.9441+) bulunur.

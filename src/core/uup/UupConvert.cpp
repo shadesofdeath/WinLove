@@ -11,9 +11,11 @@
 #include "core/image/dism/DismExe.h"
 #include "core/image/dism/MountHealth.h"
 #include "core/image/wim/WimGapi.h"
+#include "core/image/wim/WimVerify.h"
 #include "core/io/ByteSource.h"
 #include "core/iso/IsoBuilder.h"
 #include "core/system/Process.h"
+#include "core/uup/PsfPackage.h"
 #include "core/uup/UupApps.h"
 #include "core/uup/UupCatalog.h"
 
@@ -379,6 +381,7 @@ struct Context {
     ConvertResult result;
     bool skipLcu = false;    // an edition met the ESU refusal: the rest go without the LCU
     bool lcuRefused = false; // the edition being serviced just met it
+    bool lcuExpanded = false; // the LCU goes in expanded (addLcuExpanded), for every edition
 };
 
 // 1. The feature-on-demand cabinets as reference WIMs. A second run of the same set reuses them;
@@ -518,6 +521,112 @@ UpdatePlan planUpdates(const Context& c) {
     return plan;
 }
 
+// The names in a 24H2+ .msu: a WIM, not compressed (empty for an older, cabinet one).
+std::vector<std::wstring> msuNames(const std::filesystem::path& msu) {
+    auto file = DiskFile::open(nativePath(msu));
+    if (!file) {
+        return {};
+    }
+    auto names = wimFolderNames(**file, 1, L"");
+    return names ? std::move(*names) : std::vector<std::wstring>{};
+}
+
+bool hotpatchInside(const std::vector<std::wstring>& names) {
+    return std::ranges::any_of(names, [](const std::wstring& n) { return text::lower(n).find(L"-hotpatch-") != std::wstring::npos; });
+}
+
+// Windows Update's agent unpacks such an .msu itself, but offline not always: a hotpatch-capable LCU
+// stops it ("Hotpatching is not supported on this machine/image", 0x800F8012), and an ARM64 image
+// serviced from x64 gets the image's own x86 agent, which fails on the update's containers
+// (E_INVALIDARG) — even for a checkpoint with no hotpatch. Those go in expanded.
+bool agentRefuses(const std::vector<std::wstring>& names, std::wstring_view architecture) {
+    return !names.empty() && (hotpatchInside(names) || text::lower(architecture) == L"arm64");
+}
+
+// The LCU without the agent: each .msu — the checkpoints oldest first, then the LCU — unpacked once
+// into <work>\lcu, its cumulative update (.wim + .psf) expanded (PsfPackage.h), then the LCU's
+// servicing stack (when the set has none of its own) and every expanded package added by its folder.
+// A hotpatch is left out: the offline image gets the baseline it belongs to.
+Result<void> addLcuExpanded(Context& c, DismSession& session, const UpdatePlan& plan, std::wstring_view architecture,
+                            const TaskContext& task) {
+    const auto root = c.work / L"lcu";
+    std::vector<std::filesystem::path> msus;
+    for (const wchar_t* kb : kCheckpointKbs) {
+        for (const auto& f : c.set.updates) {
+            const std::wstring name = text::lower(f.filename().wstring());
+            if (name.find(kb) != std::wstring::npos && name.ends_with(L".msu")) {
+                msus.push_back(f);
+            }
+        }
+    }
+    msus.push_back(plan.lcu);
+    // UpdateCompression.dll of the image when this PC has none (Windows 10): only of the same architecture.
+    const auto dlls = text::lower(architecture) == L"arm64" ? std::filesystem::path() : c.mount / L"Windows" / L"System32";
+    std::vector<std::filesystem::path> packages;
+    std::error_code ec;
+    for (std::size_t k = 0; k < msus.size(); ++k) {
+        const auto& msu = msus[k];
+        const auto unpacked = root / msu.stem();
+        const auto expanded = root / (msu.stem().wstring() + L".x");
+        const auto done = root / (msu.stem().wstring() + L".done"); // beside: CBS reads the folder
+        packages.push_back(expanded);
+        if (std::filesystem::is_regular_file(done, ec)) {
+            continue; // an edition before this one expanded it
+        }
+        const auto sub = part(task, 0.4 * static_cast<double>(k) / msus.size(), 0.4 * static_cast<double>(k + 1) / msus.size());
+        std::filesystem::remove_all(unpacked, ec);
+        std::filesystem::remove_all(expanded, ec);
+        if (auto r = applyImage(msu, 1, unpacked, part(sub, 0.0, 0.1)); !r) {
+            return r;
+        }
+        std::filesystem::path container;
+        for (const auto& item : std::filesystem::directory_iterator(unpacked, ec)) {
+            const std::wstring name = text::lower(item.path().filename().wstring());
+            auto psf = item.path();
+            psf.replace_extension(L".psf");
+            if (name.starts_with(L"windows1") && name.ends_with(L".wim") && name.find(L"-hotpatch-") == std::wstring::npos &&
+                std::filesystem::is_regular_file(psf, ec)) {
+                container = item.path();
+            } else if (name.starts_with(L"ssu-") && name.ends_with(L".cab") && k + 1 == msus.size()) {
+                std::filesystem::create_directories(root / L"ssu", ec);
+                std::filesystem::rename(item.path(), root / L"ssu" / item.path().filename(), ec);
+            }
+        }
+        if (container.empty()) {
+            return fail(ErrorCode::NotFound, L"no cumulative update (.wim + .psf) in the .msu", msu.wstring());
+        }
+        log::info("uup", std::format(L"{}: expanded from {} (without Windows Update's agent)", msu.filename().wstring(),
+                                     container.filename().wstring()));
+        if (auto mum = expandUpdatePackage(container, expanded, part(sub, 0.1, 1.0), dlls); !mum) {
+            return std::unexpected(mum.error());
+        }
+        std::filesystem::remove_all(unpacked, ec); // its .psf: gigabytes
+        std::ofstream(done).put('1');
+    }
+    if (plan.ssu.empty()) {
+        for (const auto& item : std::filesystem::directory_iterator(root / L"ssu", ec)) {
+            if (auto r = addPackageOrDismExe(session, item.path(), part(task, 0.4, 0.45)); !r) {
+                return r;
+            }
+            if (auto r = session.reload(); !r) {
+                return r;
+            }
+        }
+    }
+    for (std::size_t k = 0; k < packages.size(); ++k) {
+        if (session.reloadRequired()) {
+            if (auto r = session.reload(); !r) {
+                return r;
+            }
+        }
+        const double from = 0.45 + 0.55 * static_cast<double>(k) / packages.size();
+        if (auto r = addPackageOrDismExe(session, packages[k], part(task, from, from + 0.55 / packages.size())); !r) {
+            return r;
+        }
+    }
+    return {};
+}
+
 // 5. Every edition mounted once: Edge, updates, WinRE; the first one gives the media its boot
 // fonts, the boot manager (when updated) and Setup's xmllite.dll.
 Result<void> serviceEditions(Context& c, const UpdatePlan& plan, const TaskContext& task) {
@@ -593,9 +702,27 @@ Result<void> serviceEditions(Context& c, const UpdatePlan& plan, const TaskConte
                             return r;
                         }
                     }
-                    auto r = addPackageOrDismExe(**session, plan.lcu, sub(0.25, 0.85));
-                    if (!r && r.error().hresult == static_cast<std::int32_t>(0x8007007E)) {
+                    const std::wstring& arch = c.set.editions[static_cast<std::size_t>(i - 1)].architecture;
+                    const auto names = msuNames(plan.lcu);
+                    if (!c.lcuExpanded && agentRefuses(names, arch)) {
+                        log::info("uup", std::format(L"{}: {} — the cumulative update goes in expanded", plan.lcu.filename().wstring(),
+                                                     hotpatchInside(names) ? L"hotpatch-capable" : L"an ARM64 image from x64"));
+                        c.lcuExpanded = true;
+                    }
+                    auto r = c.lcuExpanded ? addLcuExpanded(c, **session, plan, arch, sub(0.25, 0.85))
+                                           : addPackageOrDismExe(**session, plan.lcu, sub(0.25, 0.85));
+                    if (!c.lcuExpanded && !r && r.error().hresult == static_cast<std::int32_t>(0x8007007E)) {
                         r = addPackageOrDismExe(**session, plan.lcu, sub(0.25, 0.85)); // known first-pass stop
+                    }
+                    if (!c.lcuExpanded && !r && !names.empty() &&
+                        static_cast<std::uint32_t>(r.error().hresult) == 0x800F8012u) { // the agent's refusal, nothing changed
+                        log::warn("uup", L"Windows Update's agent refused the cumulative update offline (" + describe(r.error()) +
+                                             L"): it goes in expanded");
+                        c.lcuExpanded = true;
+                        r = addLcuExpanded(c, **session, plan, arch, sub(0.25, 0.85));
+                    }
+                    if (r && c.lcuExpanded && hotpatchInside(names)) {
+                        c.result.hotpatchSkipped = plan.lcu;
                     }
                     if (!r) {
                         c.lcuRefused = esuRefusal(c.set.editions[static_cast<std::size_t>(i - 1)].build, r.error().hresult);
@@ -830,6 +957,33 @@ Result<void> buildBootWim(Context& c, const TaskContext& task) {
 
 } // namespace
 
+Result<bool> releaseWorkMount(Dism& dism, const std::filesystem::path& workFolder) {
+    const auto folder = nativePath(workFolder) / L"mount";
+    auto check = inspectMount(dism, folder);
+    if (!check) {
+        return std::unexpected(check.error());
+    }
+    if (check->state == MountState::Free || check->state == MountState::Foreign) {
+        return false; // nothing of an image there (a folder of someone's files is never cleared)
+    }
+    log::warn("uup", std::format(L"a mount an earlier conversion left in {} ({}{}): discarded", folder.wstring(),
+                                 mountStateName(check->state),
+                                 check->record ? L", " + check->record->imagePath.wstring() : std::wstring()));
+    MountCheck discard = *check;
+    if (discard.record) {
+        discard.action = MountAction::Discard; // a healthy-looking one too: it was never finished
+    }
+    auto after = repairMount(dism, discard, TaskContext{});
+    if (!after) {
+        return std::unexpected(after.error());
+    }
+    if (after->state != MountState::Free) {
+        return fail(ErrorCode::DismFailure, L"the mount an earlier conversion left could not be removed",
+                    std::format(L"{} ({})", folder.wstring(), mountStateName(after->state)));
+    }
+    return true;
+}
+
 Result<ConvertResult> convertUup(Dism& dism, const ConvertOptions& options, const TaskContext& task) {
     auto scanned = scanUupFolder(options.uupFolder);
     if (!scanned) {
@@ -845,6 +999,10 @@ Result<ConvertResult> convertUup(Dism& dism, const ConvertOptions& options, cons
     c.result.label = isoLabel(c.set);
     std::error_code ec;
     std::filesystem::create_directories(c.work, ec);
+    // An earlier run's mount would hold the media's install.wim (never rebuilt) and be "reused".
+    if (auto r = releaseWorkMount(dism, c.work); !r) {
+        return std::unexpected(r.error());
+    }
     log::info("uup", std::format(L"convert {}: {} edition(s), {} package ESD(s), {} feature cab(s), {} update(s)",
                                  options.uupFolder.wstring(), c.set.editions.size(), c.set.packageEsds.size(),
                                  c.set.featureCabs.size(), c.set.updates.size()));
@@ -899,7 +1057,9 @@ Result<ConvertResult> convertUup(Dism& dism, const ConvertOptions& options, cons
         iso.sourceFolder = c.media;
         iso.output = nativePath(options.output);
         iso.volumeLabel = c.result.label;
-        iso.boot = BootMode::UefiAndBios;
+        // ARM64 PCs start only from UEFI: Microsoft's ARM64 media have no BIOS entry (its etfsboot.com
+        // is on the media all the same), as uup-converter makes them.
+        iso.boot = text::lower(c.set.editions.front().architecture) == L"arm64" ? BootMode::UefiOnly : BootMode::UefiAndBios;
         auto built = buildIso(iso, phase(task, s7, 1.0, L"iso"));
         if (!built) {
             return std::unexpected(built.error());

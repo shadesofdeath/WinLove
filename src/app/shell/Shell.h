@@ -104,6 +104,7 @@ public:
 
     TitleBar& titleBar() { return *m_titleBar; }
     ImageController& images() { return *m_images; }
+    WindowsDownloadController& windowsDownload() { return *m_windowsDownload; }
     ComponentController& components() { return *m_components; }
     ServiceController& services() { return *m_serviceCtl; }
     IsoPage* isoPageForDemo() const { return isoPage(); } // render: --demo-usb

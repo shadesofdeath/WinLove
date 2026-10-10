@@ -3,6 +3,7 @@
 #include "base/Log.h"
 #include "base/Text.h"
 #include "core/image/dism/Dism.h"
+#include "core/system/Privileges.h"
 #include "core/uup/UupApps.h"
 #include "core/uup/UupDownload.h"
 #include "ui/anim/Tween.h"
@@ -384,6 +385,30 @@ void WindowsDownloadController::cancel() {
     if (const auto& job = m_state.windowsDownload()) {
         job->cancel.cancel();
     }
+}
+
+void WindowsDownloadController::releaseLeftovers() {
+    const auto work = m_state.settings().workRoot / L"uup" / L"work";
+    std::error_code ec;
+    if (!core::isElevated() || !std::filesystem::exists(work / L"mount", ec)) {
+        return; // a finished conversion removes its work folder
+    }
+    m_state.engine().run<bool>(
+        [work](const core::TaskContext&) -> Result<bool> {
+            auto dism = core::Dism::instance();
+            if (!dism) {
+                return std::unexpected(dism.error());
+            }
+            return core::uup::releaseWorkMount(**dism, work);
+        },
+        [](Result<bool> released) {
+            if (!released) {
+                log::warn("uup", L"the mount an earlier conversion left: " + describe(released.error()));
+            } else if (*released) {
+                log::info("uup", L"the mount an earlier conversion left is gone");
+            }
+        },
+        {});
 }
 
 } // namespace wl::app
