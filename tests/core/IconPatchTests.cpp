@@ -314,6 +314,160 @@ TEST_CASE("icons: a picture becomes Windows' eight sizes (bitmaps + a 256 px PNG
     CHECK_FALSE(loadIconSource(scratch(L"missing.png")));
 }
 
+namespace {
+
+// size × size BGRA: an opaque disc (blue-green) on transparency, top row first.
+std::string discPixels(int size) {
+    std::string pixels(static_cast<std::size_t>(size) * size * 4, '\0');
+    const double r = size * 0.4;
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            const double dx = x + 0.5 - size / 2.0;
+            const double dy = y + 0.5 - size / 2.0;
+            if (dx * dx + dy * dy <= r * r) {
+                const std::size_t at = (static_cast<std::size_t>(y) * size + x) * 4;
+                pixels[at] = static_cast<char>(0xC0);
+                pixels[at + 1] = static_cast<char>(0x80);
+                pixels[at + 3] = static_cast<char>(0xFF);
+            }
+        }
+    }
+    return pixels;
+}
+
+std::vector<int> widthsOf(const std::vector<IconImage>& images) {
+    std::vector<int> out;
+    for (const auto& i : images) {
+        out.push_back(i.width);
+    }
+    return out;
+}
+
+// The alpha of a 32-bit DIB icon image's pixel (x, y from the top left).
+std::uint8_t dibAlpha(const IconImage& img, int x, int y) {
+    return static_cast<std::uint8_t>(img.data[40 + (static_cast<std::size_t>(img.height - 1 - y) * img.width + x) * 4 + 3]);
+}
+
+} // namespace
+
+TEST_CASE("icons: a one-size icon is completed to Windows' sizes; what it had stays byte for byte (D-105)") {
+    const IconImage only48 = dibIconImage(discPixels(48), 48);
+    auto full = completeIconSizes({only48}, kIconSizes);
+    REQUIRE(full);
+    CHECK(widthsOf(*full) == std::vector<int>(std::begin(kIconSizes), std::end(kIconSizes))); // largest first
+    CHECK((*full)[0].png);                                                                      // 256 as PNG, like Windows
+    const auto& kept = *std::ranges::find(*full, std::uint16_t{48}, &IconImage::width);
+    CHECK(kept.data == only48.data);
+    const auto& made16 = full->back();
+    CHECK_FALSE(made16.png);
+    CHECK(made16.bitCount == 32);
+    CHECK(dibAlpha(made16, 8, 8) == 0xFF); // the disc, scaled down
+    CHECK(dibAlpha(made16, 0, 0) == 0);    // its transparent corner
+    // Nothing missing: the images as given, in their order.
+    std::vector<IconImage> reversed(full->rbegin(), full->rend());
+    auto same = completeIconSizes(reversed, kIconSizes);
+    REQUIRE(same);
+    CHECK(widthsOf(*same) == widthsOf(reversed));
+    CHECK_FALSE(completeIconSizes({}, kIconSizes));
+    CHECK(iconSizesOf({only48, dibIconImage(discPixels(16), 16), only48}) == std::vector<int>{48, 16});
+}
+
+TEST_CASE("icons: shrinking is done premultiplied — no colour of transparent pixels at the edges") {
+    // Left half: transparent but red underneath; right half: opaque blue.
+    std::string pixels(64 * 64 * 4, '\0');
+    for (int y = 0; y < 64; ++y) {
+        for (int x = 0; x < 64; ++x) {
+            const std::size_t at = (static_cast<std::size_t>(y) * 64 + x) * 4;
+            if (x < 32) {
+                pixels[at + 2] = static_cast<char>(0xFF);
+            } else {
+                pixels[at] = static_cast<char>(0xFF);
+                pixels[at + 3] = static_cast<char>(0xFF);
+            }
+        }
+    }
+    auto png = encodePngBgra(pixels, 64);
+    REQUIRE(png);
+    auto small = pictureBytesBgraSquare(*png, 16);
+    REQUIRE(small);
+    int edge = 0;
+    for (std::size_t at = 0; at < small->size(); at += 4) {
+        const auto alpha = static_cast<std::uint8_t>((*small)[at + 3]);
+        if (alpha > 0 && alpha < 0xFF) {
+            ++edge;
+        }
+        if (alpha > 0) {
+            CHECK(static_cast<std::uint8_t>((*small)[at + 2]) < 16); // no red bled in
+        }
+    }
+    CHECK(edge > 0); // there was an edge to look at
+    CHECK_FALSE(pictureBytesBgraSquare("not a picture", 16));
+}
+
+TEST_CASE("icons: a replacement gets the sizes of the group it replaces, and Windows loads it") {
+    if (!std::filesystem::exists(kImageres)) {
+        return;
+    }
+    const std::string original = bytesOf(kImageres);
+    auto pe = PeImage::parse(original);
+    REQUIRE(pe);
+    const auto groups = listIconGroups(pe->resources());
+    // A group with a size outside kIconSizes (96 px and the like) and one with low-depth images.
+    const auto odd = std::ranges::find_if(groups, [](const IconGroupInfo& g) {
+        return std::ranges::any_of(iconSizesOf(g.images), [](int s) { return std::ranges::find(kIconSizes, s) == std::end(kIconSizes); });
+    });
+    const auto paletted = std::ranges::find_if(groups, [](const IconGroupInfo& g) {
+        return std::ranges::any_of(g.images, [](const IconImage& i) { return !i.png && i.bitCount <= 8 && i.width >= 32; });
+    });
+    REQUIRE(odd != groups.end());
+    REQUIRE(paletted != groups.end());
+    const IconImage lowDepth = *std::ranges::find_if(paletted->images, [](const IconImage& i) { return !i.png && i.bitCount <= 8 && i.width >= 32; });
+
+    const IconImage only32 = dibIconImage(discPixels(32), 32);
+    std::vector<IconReplacement> replacements{{odd->key, {only32}}, {ResourceKey{3, {}}, {lowDepth}}};
+    auto fitted = fitIconReplacements(*pe, replacements);
+    REQUIRE(fitted);
+    // The group's sizes plus what the replacement brought.
+    const auto expected = [](std::vector<IconImage> group, const IconImage& given) {
+        group.push_back(given);
+        return iconSizesOf(group);
+    };
+    CHECK(iconSizesOf((*fitted)[0].images) == expected(odd->images, only32));
+    CHECK(iconSizesOf((*fitted)[1].images) == expected(groupOf(groups, 3).images, lowDepth));
+    CHECK(std::ranges::any_of((*fitted)[1].images, [&](const IconImage& i) { return i.data == lowDepth.data; }));
+
+    auto patched = patchIconBytes(original, *fitted);
+    REQUIRE(patched);
+    const auto out = scratch(L"imageres.fitted.mun");
+    REQUIRE(writeFileAtomic(out, *patched));
+    auto check = verifyIconFileWithWindows(out);
+    REQUIRE(check);
+    CHECK(check->failed == 0);
+    // A group the file does not have stays as given (patchIconBytes refuses it).
+    auto unknown = fitIconReplacements(*pe, {{ResourceKey{65000, {}}, {only32}}});
+    REQUIRE(unknown);
+    CHECK((*unknown)[0].images.size() == 1);
+}
+
+TEST_CASE("icons: an icon copied into the image (the redirect mode) carries every size (D-105)") {
+    const auto root = std::filesystem::temp_directory_path() / L"wl-tests" / L"icons" / L"redirect";
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root / L"ProgramData");
+    const auto source = scratch(L"one-size.ico");
+    REQUIRE(writeFileAtomic(source, makeIco({dibIconImage(discPixels(32), 32)})));
+    CHECK(iconSourceLargest(source).value_or(0) == 32);
+
+    REQUIRE(copyIconIntoImage(root, L"ProgramData\\WinLove\\Icons\\this-pc.ico", source));
+    auto copied = parseIco(bytesOf(root / L"ProgramData" / L"WinLove" / L"Icons" / L"this-pc.ico"));
+    REQUIRE(copied);
+    CHECK(widthsOf(*copied) == std::vector<int>(std::begin(kIconSizes), std::end(kIconSizes)));
+
+    CHECK_FALSE(copyIconIntoImage(root, L"Windows\\System32\\x.ico", source)); // copyImageFile's places only
+    CHECK_FALSE(copyIconIntoImage(root, L"ProgramData\\WinLove\\Icons\\x.ico", scratch(L"missing.ico")));
+    std::filesystem::remove_all(root, ec);
+}
+
 TEST_CASE("icons: a queued patch is JSON with group keys and sources, or a restore") {
     IconPatchRequest request;
     request.groups = {{ResourceKey{3, {}}, LR"(C:\Icons\folder.ico)"}, {ResourceKey{0, L"ICO_MYCOMPUTER"}, LR"(D:\pc.png)"}};

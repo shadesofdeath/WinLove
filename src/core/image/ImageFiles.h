@@ -58,6 +58,10 @@ inline constexpr std::size_t kImageFileLimit = 1u << 20; // 1 MiB: these are con
 inline constexpr std::uint64_t kImageCopyLimit = 64ull << 20;
 [[nodiscard]] Result<void> copyImageFile(const std::filesystem::path& mountDir, std::wstring_view relative,
                                          const std::filesystem::path& source);
+// Bytes WinLove made from a file of this PC (D-105: an icon completed to every size), under the
+// rules and the limit of copyImageFile.
+[[nodiscard]] Result<void> writeImageCopy(const std::filesystem::path& mountDir, std::wstring_view relative,
+                                          std::string_view bytes);
 
 // ---- D-051: files and folders of this PC anywhere in the image (the "Dosyalar" page) --------
 // A CopyTree operation: target = where the item ends up in the image, from its root

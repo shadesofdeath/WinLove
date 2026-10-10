@@ -42,6 +42,7 @@
 #include "core/image/BootImage.h"
 #include "core/image/SetupMedia.h"
 #include "core/image/icons/IconPatch.h"
+#include "core/image/icons/IconSource.h"
 #include "core/image/icons/ResFile.h"
 #include "core/image/StartMenu.h"
 #include "core/image/dism/Dism.h"
@@ -1516,7 +1517,7 @@ int cmdIconExtract(const std::wstring& file, const std::wstring& group, const st
     return 2;
 }
 
-// "<group>=<file.ico>" arguments → replacements.
+// "<group>=<file.ico or picture>" arguments → replacements.
 Result<std::vector<core::IconReplacement>> iconReplacements(const std::vector<std::wstring>& specs) {
     std::vector<core::IconReplacement> out;
     for (const auto& spec : specs) {
@@ -1524,17 +1525,26 @@ Result<std::vector<core::IconReplacement>> iconReplacements(const std::vector<st
         if (eq == std::wstring::npos) {
             return fail(ErrorCode::InvalidArgument, L"expected <group>=<file.ico>", spec);
         }
-        auto ico = readFileBytes(spec.substr(eq + 1));
-        if (!ico) {
-            return std::unexpected(ico.error());
-        }
-        auto images = core::parseIco(*ico);
+        auto images = core::loadIconSource(spec.substr(eq + 1));
         if (!images) {
-            return std::unexpected(Error{images.error().code, images.error().message, spec.substr(eq + 1), 0});
+            return std::unexpected(images.error());
         }
         out.push_back({iconKey(spec.substr(0, eq)), std::move(*images)});
     }
     return out;
+}
+
+// D-105: what each replacement brought and what was made for its group's other sizes (*).
+void printFitted(const std::vector<core::IconReplacement>& given, const std::vector<core::IconReplacement>& fitted) {
+    for (std::size_t i = 0; i < given.size() && i < fitted.size(); ++i) {
+        std::wstring sizes;
+        for (const auto& img : fitted[i].images) {
+            const bool made = std::ranges::none_of(given[i].images, [&](const core::IconImage& g) { return g.data == img.data; });
+            sizes += std::format(L" {}{}{}", img.width, img.png ? L"p" : L"", made ? L"*" : L"");
+        }
+        print(std::format(L"  {}: {} given, {} made:{}\n", given[i].group.text(), given[i].images.size(),
+                          fitted[i].images.size() - given[i].images.size(), sizes));
+    }
 }
 
 int cmdIconPatch(const std::wstring& file, const std::vector<std::wstring>& specs, const std::wstring& out) {
@@ -1547,7 +1557,16 @@ int cmdIconPatch(const std::wstring& file, const std::vector<std::wstring>& spec
         return reportError(replacements.error());
     }
     const auto started = std::chrono::steady_clock::now();
-    auto patched = core::patchIconBytes(*bytes, *replacements);
+    auto pe = core::PeImage::parse(*bytes);
+    if (!pe) {
+        return reportError(pe.error());
+    }
+    auto fitted = core::fitIconReplacements(*pe, *replacements);
+    if (!fitted) {
+        return reportError(fitted.error());
+    }
+    printFitted(*replacements, *fitted);
+    auto patched = core::patchIconBytes(*bytes, *fitted);
     if (!patched) {
         return reportError(patched.error());
     }
@@ -1637,7 +1656,11 @@ int cmdIconPack(const std::wstring& source, const std::wstring& out, const std::
             replacements.push_back({key, std::move(*images)});
         }
         const auto started = std::chrono::steady_clock::now();
-        auto patched = core::patchIconBytes(*bytes, replacements);
+        auto fitted = core::fitIconReplacements(*pe, replacements);
+        if (!fitted) {
+            return reportError(fitted.error());
+        }
+        auto patched = core::patchIconBytes(*bytes, *fitted);
         if (!patched) {
             print(std::format(L"  {}: ", file.target));
             reportError(patched.error());
@@ -2839,7 +2862,8 @@ void printUsage() {
           L"  wlcli start-apps <mountdir> [--json]       (apps the Start menu can pin; D-069)\n"
           L"  wlcli icons <file> [--json]               (icon groups of a .mun / .dll / .exe; D-068)\n"
           L"  wlcli icon-extract <file> <group> <out.ico>   (group: #3, 3 or a name)\n"
-          L"  wlcli icon-patch <file> <group>=<ico>... --out=<file>   (writes a patched copy, checked by Windows)\n"
+          L"  wlcli icon-patch <file> <group>=<ico|picture>... --out=<file>   (writes a patched copy, checked by\n"
+          L"                                      Windows; each icon completed to its group's sizes, D-105)\n"
           L"  wlcli icon-verify <file>                   (Windows loads every icon image of the file)\n"
           L"  wlcli icon-pack <pack.7z|zip|folder> <outdir> [--source=<folder of .mun files>]   (7TSP pack -> WinLove\n"
           L"                                             pack; with --source each target is patched into <outdir>\\patched)\n"

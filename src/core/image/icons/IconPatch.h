@@ -34,8 +34,13 @@ struct IconReplacement {
 };
 
 // Original bytes + replacements → the new file, checked by our parser (see 3.). The PE must
-// have resources and the groups must exist.
+// have resources and the groups must exist. The images go in exactly as given.
 [[nodiscard]] Result<std::string> patchIconBytes(const std::string& original, const std::vector<IconReplacement>& replacements);
+// D-105: each replacement completed to the sizes of the group it replaces (completeIconSizes), so
+// the shell finds every size Microsoft's icon had (a group with 96 px gets a 96 px image too).
+// A group the file does not have is left as given (patchIconBytes refuses it).
+[[nodiscard]] Result<std::vector<IconReplacement>> fitIconReplacements(const PeImage& pe,
+                                                                       std::vector<IconReplacement> replacements);
 
 // Windows' loader on `file`: how many icon groups it found and how many images failed to load.
 struct IconLoadCheck {
@@ -55,7 +60,7 @@ struct IconLoadCheck {
 [[nodiscard]] std::wstring iconBackupPath(std::wstring_view relative);
 
 // Steps 1–5 on a mounted image (elevated: SeBackup / SeRestore). Each replacement's .ico comes
-// from this PC. Returns the backup path.
+// from this PC and is fitted to its group first (fitIconReplacements). Returns the backup path.
 [[nodiscard]] Result<std::wstring> patchImageIcons(const std::filesystem::path& mountDir, std::wstring_view relative,
                                                    const std::vector<IconReplacement>& replacements);
 // The backup back in place (same write path as a patch); NotFound when there is no backup.

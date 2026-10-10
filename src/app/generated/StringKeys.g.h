@@ -577,6 +577,8 @@ enum class Str : std::uint16_t {
     IconsSlotSystemDrive,
     IconsSlotThisPc,
     IconsSlotUserFiles,
+    IconsSmallSource,
+    IconsSmallSourceBody,
     IconsTabFiles,
     IconsTabRedirect,
     IconsTitle,
@@ -1861,7 +1863,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1851;
+inline constexpr std::size_t kStrCount = 1853;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -2433,6 +2435,8 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "icons.slotSystemDrive",
     "icons.slotThisPc",
     "icons.slotUserFiles",
+    "icons.smallSource",
+    "icons.smallSourceBody",
     "icons.tabFiles",
     "icons.tabRedirect",
     "icons.title",
