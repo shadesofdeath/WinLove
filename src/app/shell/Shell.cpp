@@ -1911,7 +1911,8 @@ void Shell::showPage(PageId page) {
             const bool offline = m_programs->offline();
             m_pageView
                 ->addAction(offline ? ui::ButtonKind::Primary : ui::ButtonKind::Secondary,
-                            m_strings.get(offline ? Str::ProgramsOfflineOn : Str::ProgramsOffline), ui::icons::Icon::AppxPackage)
+                            m_strings.get(offline ? Str::ProgramsOfflineOn : Str::ProgramsOffline),
+                            offline ? ui::icons::Icon::Check : ui::icons::Icon::AppxPackage)
                 .onInvoke = [this] {
                 const bool on = !m_programs->offline();
                 m_programs->setOffline(on);

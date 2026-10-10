@@ -1468,7 +1468,7 @@
     "fromThisPcAdded": "{n} program listeye eklendi",
     "fromThisPcNone": "Bu bilgisayarda winget'te olan program bulunamadı",
     "fromThisPcWait": "winget dizini hazırlanıyor; birazdan tekrar dene",
-    "offline": "Çevrimdışı kur",
+    "offline": "Çevrimdışı: kapalı",
     "offlineOn": "Çevrimdışı: açık",
     "offlineToastOn": "Çevrimdışı kurulum açık",
     "offlineToastOff": "Çevrimdışı kurulum kapalı",

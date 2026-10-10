@@ -162,6 +162,25 @@ TEST_CASE("post-setup controller: options chosen before the first step go into t
     CHECK(f.state.changes().size() == 1);
 }
 
+TEST_CASE("post-setup controller: \"offline\" switched before any program is kept and toggles (D-104)") {
+    Fixture f;
+    CHECK_FALSE(f.controller.offlinePrograms());
+    f.controller.setOfflinePrograms(true);
+    CHECK(f.state.changes().empty()); // an empty plan is not queued…
+    CHECK(f.controller.offlinePrograms()); // …but the switch stays on
+    f.controller.setOfflinePrograms(!f.controller.offlinePrograms());
+    CHECK_FALSE(f.controller.offlinePrograms()); // a second click turns it off
+    f.controller.setOfflinePrograms(true);
+
+    f.controller.setPrograms({{L"7zip.7zip", L"7-Zip"}}, {});
+    CHECK(f.controller.plan().offlinePrograms); // the first program carries it
+    f.controller.setOfflinePrograms(false);
+    CHECK_FALSE(f.controller.plan().offlinePrograms);
+    CHECK(f.state.changes().size() == 1);
+    f.controller.setPrograms({}, {}); // the list emptied: the choice is still what was last set
+    CHECK_FALSE(f.controller.offlinePrograms());
+}
+
 TEST_CASE("post-setup controller: a preset carries the plan; a broken one reads as empty") {
     Fixture f;
     f.controller.add(command(L"G\u00fc\u00e7", L"powercfg /h off"));

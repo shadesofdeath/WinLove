@@ -6,7 +6,9 @@
 
 ## Türkçe
 
-### Yayımlanmamış
+### 1.2.1 Beta — 2026-10-10
+
+1.2.0 Beta'dan bu yana gelenler:
 
 #### Düzeltmeler
 
@@ -17,6 +19,9 @@
 - **Windows indir: Mağaza uygulamalarının "Seç…" düğmesi.** Windows 10 derlemelerinde hiç açılmıyordu, çünkü Windows
   10'un ayrı bir uygulama seti yok (uygulamalar imajın içinde geliyor). Artık kutunun yanında "imajın içinde" yazıyor.
   Liste yüklenirken "…" görünüyor; liste alınamazsa "Seç…" yeniden deniyor.
+- **Programlar: "Çevrimdışı kur" düğmesi.** Henüz program seçilmemişken açılınca ayar kayboluyordu; her tıklama
+  yine "açıldı" diyordu. Artık ayar korunuyor ve düğme durumunu açıkça yazıyor: "Çevrimdışı: kapalı" ya da
+  "Çevrimdışı: açık".
 
 ### 1.2.0 Beta — 2026-10-10
 
@@ -168,7 +173,9 @@ WinLove alfadan çıkıp **beta** oldu. 1.0.2 Alpha'dan bu yana gelenler:
 
 ## English
 
-### Unreleased
+### 1.2.1 Beta — 2026-10-10
+
+What changed since 1.2.0 Beta:
 
 #### Fixes
 
@@ -179,6 +186,8 @@ WinLove alfadan çıkıp **beta** oldu. 1.0.2 Alpha'dan bu yana gelenler:
 - **Download Windows: the Store apps' "Pick…" button.** It never turned on for Windows 10 builds: Windows 10 has no
   separate app set (its apps come inside the image). The box now says "in the image". While the list loads it shows
   "…", and when the list cannot be loaded "Pick…" tries again.
+- **Programs: the "Install offline" button.** Switched on before any program was picked, the choice was lost and
+  every click said "on" again. The choice now stays, and the button says its state: "Offline: off" or "Offline: on".
 
 ### 1.2.0 Beta — 2026-10-10
 

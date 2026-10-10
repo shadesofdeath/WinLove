@@ -17,7 +17,7 @@
 
 ---
 
-> **1.2.0 Beta.** Değişiklikleri yine önce bir sanal makinede dene; asıl imajının yedeğini tut. Neler değişti:
+> **1.2.1 Beta.** Değişiklikleri yine önce bir sanal makinede dene; asıl imajının yedeğini tut. Neler değişti:
 > [CHANGELOG](CHANGELOG.md).
 > WinLove yalnızca **çevrimdışı imajlarla** çalışır (ISO / WIM / ESD); çalışan sistemine dokunmaz.
 

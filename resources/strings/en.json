@@ -1468,7 +1468,7 @@
     "fromThisPcAdded": "{n} programs added to the list",
     "fromThisPcNone": "No program on this PC is in winget",
     "fromThisPcWait": "The winget index is being prepared; try again in a moment",
-    "offline": "Install offline",
+    "offline": "Offline: off",
     "offlineOn": "Offline: on",
     "offlineToastOn": "Offline install on",
     "offlineToastOff": "Offline install off",
