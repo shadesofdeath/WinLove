@@ -74,6 +74,7 @@ private:
     // for an empty plan): they go into the plan with the first step.
     core::PostSetupPlan::When m_nextWhen = core::PostSetupPlan::When::FirstLogon;
     bool m_nextContinue = true;
+    bool m_nextOffline = false; // "Çevrimdışı kur" before any program is picked
     mutable core::PostSetupPlan m_cached;
     mutable std::uint64_t m_cachedVersion = ~0ull;
     std::map<std::wstring, std::uint64_t> m_sizes; // copy source → bytes (walking a folder is slow)

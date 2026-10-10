@@ -22,6 +22,7 @@ const PostSetupPlan& PostSetupController::plan() const {
         m_cached = {};
         m_cached.when = m_nextWhen;
         m_cached.continueOnError = m_nextContinue;
+        m_cached.offlinePrograms = m_nextOffline;
         if (const auto* op = m_state.changes().find(OpKind::SetPostSetup, kTarget)) {
             if (auto parsed = core::postSetupFromJson(utf8::fromWide(op->value))) {
                 m_cached = std::move(*parsed);
@@ -73,6 +74,7 @@ void PostSetupController::setPrograms(std::vector<core::PostSetupProgram> progra
 
 void PostSetupController::setOfflinePrograms(bool offline) {
     PostSetupPlan next = plan();
+    m_nextOffline = offline; // an empty plan is not queued: kept for the first program
     if (next.offlinePrograms == offline) {
         return;
     }

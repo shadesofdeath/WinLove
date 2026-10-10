@@ -10,7 +10,12 @@
 - **YAYINLANDI: v1.2.0-beta (2026-10-10)** — https://github.com/shadesofdeath/WinLove/releases/tag/v1.2.0-beta
   (ön sürüm, `WinLove.exe` 10.051.584 bayt, SHA-256 `D0A93F9ED2051083D8FDC61F2597C8D76C039E799972DDD68EC85A526470100D`).
   `main` push edildi (a849531). Bilinen sınır (D-104): winget'siz imajda karışık çevrimdışı liste durur — sıradaki aday.
-- **Yayın sonrası (2026-10-10, D-105, henüz yayımlanmadı):** simgeler artık değiştirdikleri grubun boyutlarına
+- **YAYINLANDI: v1.2.1-beta (2026-10-10)** — https://github.com/shadesofdeath/WinLove/releases/tag/v1.2.1-beta
+  (ön sürüm, `WinLove.exe` 10.079.232 bayt, SHA-256 `A2B544B84DC647F456CE451E110F7F17FC590F36DF3D4AB903CD811C46DCA1A8`).
+  Üç düzeltme: simge boyutları (D-105), Windows indir Mağaza uygulamaları "Seç…" (Windows 10), Programlar "Çevrimdışı
+  kur" düğmesinin boş planda unutulması (`PostSetupController::m_nextOffline`, birim testli; düğme artık
+  "Çevrimdışı: kapalı / açık" yazar).
+- **1.2.1'e giren (2026-10-10, D-105):** simgeler artık değiştirdikleri grubun boyutlarına
   tamamlanıyor (forumdaki "tek boyutlu simge" uyarısı). Tek boyutlu .ico'nun eksik boyutları en iyi görüntüden üretilir,
   yönlendirme modunun .ico'su da 8 boyuta tamamlanır, ölçekleme premultiplied; kaynak < 256 px ise uyarı toast'ı.
   Doğrulandı: birim testler, `wlcli icon-patch` gerçek imageres kopyasında, gerçek imajda (mount) `wlcli apply`
