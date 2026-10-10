@@ -6,6 +6,15 @@
 
 ## Türkçe
 
+### Yayımlanmamış
+
+#### Düzeltmeler
+
+- **Simgeler bütün boyutlarıyla.** Sistem simgesi değiştirilirken seçilen simge, yerini aldığı Windows simgesinin
+  boyutlarına tamamlanır (256, 64, 48, 40, 32, 24, 20, 16 ya da o simgenin kendi seti, ör. 96 px). Tek boyutlu bir
+  .ico'nun eksik boyutları en iyi görüntüsünden üretilir; Masaüstü / Gezgin simgeleri de aynı şekilde. Kaynak 256 px'ten
+  küçükse uyarı çıkar. Küçültme artık kenarlarda koyu saçak bırakmıyor.
+
 ### 1.2.0 Beta — 2026-10-10
 
 1.1.0 Beta'dan bu yana gelenler:
@@ -155,6 +164,15 @@ WinLove alfadan çıkıp **beta** oldu. 1.0.2 Alpha'dan bu yana gelenler:
 ---
 
 ## English
+
+### Unreleased
+
+#### Fixes
+
+- **Icons in every size.** A system icon you replace now gets the sizes of the Windows icon it replaces (256, 64, 48,
+  40, 32, 24, 20, 16, or that icon's own set, e.g. 96 px). The missing sizes of a single-size .ico are made from its
+  best image; Desktop / Explorer icons too. A source smaller than 256 px shows a warning. Shrinking no longer leaves
+  dark fringes at the edges.
 
 ### 1.2.0 Beta — 2026-10-10
 

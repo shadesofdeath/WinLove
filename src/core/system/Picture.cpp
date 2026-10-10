@@ -24,20 +24,33 @@ Error wicError(HRESULT hr, std::wstring_view what, const std::filesystem::path& 
 
 struct Decoded {
     ComPtr<IWICImagingFactory> factory;
+    ComPtr<IWICStream> stream; // a picture in memory: the decoder reads it while the frame lives
     ComPtr<IWICBitmapFrameDecode> frame;
     UINT width = 0;
     UINT height = 0;
 };
 
-Result<Decoded> decode(const std::filesystem::path& file) {
+// `bytes` empty: the file; otherwise the picture in `bytes` (`file` only names it in errors).
+Result<Decoded> decode(const std::filesystem::path& file, std::string_view bytes = {}) {
     Decoded d;
     HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&d.factory));
     if (FAILED(hr)) {
         return std::unexpected(wicError(hr, L"WIC is not available", file));
     }
     ComPtr<IWICBitmapDecoder> decoder;
-    hr = d.factory->CreateDecoderFromFilename(file.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand,
-                                              &decoder);
+    if (bytes.empty()) {
+        hr = d.factory->CreateDecoderFromFilename(file.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand,
+                                                  &decoder);
+    } else {
+        hr = d.factory->CreateStream(&d.stream);
+        if (SUCCEEDED(hr)) {
+            hr = d.stream->InitializeFromMemory(reinterpret_cast<BYTE*>(const_cast<char*>(bytes.data())),
+                                                static_cast<DWORD>(bytes.size()));
+        }
+        if (SUCCEEDED(hr)) {
+            hr = d.factory->CreateDecoderFromStream(d.stream.Get(), nullptr, WICDecodeMetadataCacheOnDemand, &decoder);
+        }
+    }
     if (FAILED(hr)) {
         return std::unexpected(wicError(hr, L"not a picture Windows can read", file));
     }
@@ -49,6 +62,54 @@ Result<Decoded> decode(const std::filesystem::path& file) {
         return std::unexpected(wicError(hr, L"the picture cannot be decoded", file));
     }
     return d;
+}
+
+// The decoded picture fitted into a size × size square (see pictureBgraSquare).
+Result<std::string> bgraSquare(const Decoded& d, int size, const std::filesystem::path& source) {
+    // Contain: the longer side becomes `size`, the other is centred on transparency.
+    const double scale = std::min(static_cast<double>(size) / d.width, static_cast<double>(size) / d.height);
+    const UINT w = std::max<UINT>(1, static_cast<UINT>(d.width * scale + 0.5));
+    const UINT h = std::max<UINT>(1, static_cast<UINT>(d.height * scale + 0.5));
+    // Scaled premultiplied: with straight alpha the colour of transparent pixels bleeds into the
+    // edges (dark fringes around an icon's shape).
+    ComPtr<IWICFormatConverter> premultiplied;
+    HRESULT hr = d.factory->CreateFormatConverter(&premultiplied);
+    if (SUCCEEDED(hr)) {
+        hr = premultiplied->Initialize(d.frame.Get(), GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, nullptr, 0.0,
+                                       WICBitmapPaletteTypeCustom);
+    }
+    ComPtr<IWICBitmapScaler> scaler;
+    if (SUCCEEDED(hr)) {
+        hr = d.factory->CreateBitmapScaler(&scaler);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = scaler->Initialize(premultiplied.Get(), w, h, WICBitmapInterpolationModeHighQualityCubic);
+    }
+    ComPtr<IWICFormatConverter> converter;
+    if (SUCCEEDED(hr)) {
+        hr = d.factory->CreateFormatConverter(&converter);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = converter->Initialize(scaler.Get(), GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone, nullptr, 0.0,
+                                   WICBitmapPaletteTypeCustom);
+    }
+    std::string pixels(static_cast<std::size_t>(size) * size * 4, '\0');
+    if (SUCCEEDED(hr)) {
+        std::string scaled(static_cast<std::size_t>(w) * h * 4, '\0');
+        hr = converter->CopyPixels(nullptr, w * 4, static_cast<UINT>(scaled.size()), reinterpret_cast<BYTE*>(scaled.data()));
+        if (SUCCEEDED(hr)) {
+            const UINT left = (static_cast<UINT>(size) - w) / 2;
+            const UINT top = (static_cast<UINT>(size) - h) / 2;
+            for (UINT y = 0; y < h; ++y) {
+                std::memcpy(pixels.data() + ((top + y) * static_cast<std::size_t>(size) + left) * 4,
+                            scaled.data() + static_cast<std::size_t>(y) * w * 4, static_cast<std::size_t>(w) * 4);
+            }
+        }
+    }
+    if (FAILED(hr)) {
+        return std::unexpected(wicError(hr, L"the picture cannot be scaled to an icon", source));
+    }
+    return pixels;
 }
 
 } // namespace
@@ -186,40 +247,19 @@ Result<std::string> pictureBgraSquare(const std::filesystem::path& source, int s
     if (!d) {
         return std::unexpected(d.error());
     }
-    // Contain: the longer side becomes `size`, the other is centred on transparency.
-    const double scale = std::min(static_cast<double>(size) / d->width, static_cast<double>(size) / d->height);
-    const UINT w = std::max<UINT>(1, static_cast<UINT>(d->width * scale + 0.5));
-    const UINT h = std::max<UINT>(1, static_cast<UINT>(d->height * scale + 0.5));
-    ComPtr<IWICBitmapScaler> scaler;
-    HRESULT hr = d->factory->CreateBitmapScaler(&scaler);
-    if (SUCCEEDED(hr)) {
-        hr = scaler->Initialize(d->frame.Get(), w, h, WICBitmapInterpolationModeHighQualityCubic);
+    return bgraSquare(*d, size, source);
+}
+
+Result<std::string> pictureBytesBgraSquare(std::string_view bytes, int size) {
+    if (size <= 0 || size > 1024 || bytes.empty() || bytes.size() > (64u << 20)) {
+        return fail(ErrorCode::InvalidArgument, L"bad icon size or picture", L"");
     }
-    ComPtr<IWICFormatConverter> converter;
-    if (SUCCEEDED(hr)) {
-        hr = d->factory->CreateFormatConverter(&converter);
+    ComScope com;
+    auto d = decode(L"(picture in memory)", bytes);
+    if (!d) {
+        return std::unexpected(d.error());
     }
-    if (SUCCEEDED(hr)) {
-        hr = converter->Initialize(scaler.Get(), GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone, nullptr, 0.0,
-                                   WICBitmapPaletteTypeCustom);
-    }
-    std::string pixels(static_cast<std::size_t>(size) * size * 4, '\0');
-    if (SUCCEEDED(hr)) {
-        std::string scaled(static_cast<std::size_t>(w) * h * 4, '\0');
-        hr = converter->CopyPixels(nullptr, w * 4, static_cast<UINT>(scaled.size()), reinterpret_cast<BYTE*>(scaled.data()));
-        if (SUCCEEDED(hr)) {
-            const UINT left = (static_cast<UINT>(size) - w) / 2;
-            const UINT top = (static_cast<UINT>(size) - h) / 2;
-            for (UINT y = 0; y < h; ++y) {
-                std::memcpy(pixels.data() + ((top + y) * static_cast<std::size_t>(size) + left) * 4,
-                            scaled.data() + static_cast<std::size_t>(y) * w * 4, static_cast<std::size_t>(w) * 4);
-            }
-        }
-    }
-    if (FAILED(hr)) {
-        return std::unexpected(wicError(hr, L"the picture cannot be scaled to an icon", source));
-    }
-    return pixels;
+    return bgraSquare(*d, size, L"(picture in memory)");
 }
 
 Result<std::string> encodePngBgra(const std::string& pixels, int size) {

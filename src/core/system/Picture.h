@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace wl::core {
 
@@ -27,6 +28,8 @@ struct PictureSize {
 // D-068: the picture fitted into a size × size square (aspect kept, transparent margins), as
 // straight-alpha BGRA pixels, top row first (size * size * 4 bytes).
 [[nodiscard]] Result<std::string> pictureBgraSquare(const std::filesystem::path& source, int size);
+// D-105: the same for a picture held in memory (one image of an icon, wrapped as a .ico).
+[[nodiscard]] Result<std::string> pictureBytesBgraSquare(std::string_view bytes, int size);
 // size × size BGRA pixels (top row first) as a PNG file.
 [[nodiscard]] Result<std::string> encodePngBgra(const std::string& pixels, int size);
 

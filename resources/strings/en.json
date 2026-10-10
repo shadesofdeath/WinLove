@@ -1710,7 +1710,9 @@
     "exportNothing": "No icon changes to export",
     "savedIco": "Icon saved as .ico",
     "saveFailed": "The icon could not be saved",
-    "packPatchLoaded": "{n} system icons taken from the pack"
+    "packPatchLoaded": "{n} system icons taken from the pack",
+    "smallSource": "Small icon",
+    "smallSourceBody": "Its largest size is {px} px. The missing sizes are made from it; large views may look blurry."
   },
   "startmenu": {
     "title": "Start menu",

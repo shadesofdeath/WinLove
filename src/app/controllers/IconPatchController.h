@@ -89,6 +89,9 @@ public:
     // Pure (unit-tested).
     [[nodiscard]] static core::ops::Operation operationFor(const std::wstring& relative, const core::IconPatchRequest& request);
     [[nodiscard]] static bool isIconSource(const std::filesystem::path& file);
+    // D-105: the largest size `file` gives when it is under 256 px — the large views are then made
+    // by enlarging it (blurred); nullopt when it is large enough or cannot be read.
+    [[nodiscard]] static std::optional<int> smallSource(const std::filesystem::path& file);
     // "imageres.dll" / "imageres" / "imageres.dll.mun" (any case) → the file of `files` it names.
     [[nodiscard]] static const File* fileNamed(const std::vector<File>& files, std::wstring_view name);
     // "3", "#3", "3.ico" stem … → key; anything not a number is a name.

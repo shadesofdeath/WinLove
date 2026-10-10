@@ -1710,7 +1710,9 @@
     "exportNothing": "Dışa aktarılacak simge değişikliği yok",
     "savedIco": "Simge .ico olarak kaydedildi",
     "saveFailed": "Simge kaydedilemedi",
-    "packPatchLoaded": "{n} sistem simgesi paketten alındı"
+    "packPatchLoaded": "{n} sistem simgesi paketten alındı",
+    "smallSource": "Simge küçük",
+    "smallSourceBody": "En büyük boyutu {px} px. Eksik boyutlar bundan üretilir; büyük görünümde bulanık olabilir."
   },
   "startmenu": {
     "title": "Başlat menüsü",

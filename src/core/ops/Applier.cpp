@@ -14,6 +14,7 @@
 #include "core/image/Branding.h"
 #include "core/image/HostsFile.h"
 #include "core/image/icons/IconPatch.h"
+#include "core/image/icons/IconSource.h"
 #include "core/image/LanguageInstall.h"
 #include "core/image/ScheduledTasks.h"
 #include "core/image/dism/DefaultApps.h"
@@ -31,6 +32,20 @@
 namespace wl::core::ops {
 
 namespace {
+
+// D-105: a .ico copied into the image is an icon the shell shows (the redirect mode of the
+// Simgeler page): it gets every size Windows asks for. One our parser refuses is copied as it is,
+// as before.
+Result<void> copyFileIntoImage(const std::filesystem::path& mountDir, const std::wstring& target, const std::wstring& source) {
+    if (target.size() > 4 && _wcsicmp(target.c_str() + target.size() - 4, L".ico") == 0) {
+        auto copied = copyIconIntoImage(mountDir, target, source);
+        if (copied) {
+            return copied;
+        }
+        log::warn("apply", L"icon copied as it is (its sizes could not be completed): " + copied.error().message);
+    }
+    return copyImageFile(mountDir, target, source);
+}
 
 // RemoveAppx names a package by its full name, version included. A preset made on another build
 // names another version of the same app: DISM answers "not found" and the app stayed while the
@@ -198,7 +213,7 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
         return removeComponent(session, *recipe, task);
     }
     case OpKind::WriteFile: return writeImageFile(session.mountPath(), op.target, imageFileBytes(op.value));
-    case OpKind::CopyFile: return copyImageFile(session.mountPath(), op.target, op.value);
+    case OpKind::CopyFile: return copyFileIntoImage(session.mountPath(), op.target, op.value);
     case OpKind::SetEdition: {
         registry.reset(); // dism.exe loads the image's hives
         auto changed = setEdition(session, op.value, task);

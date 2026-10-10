@@ -330,3 +330,8 @@ Uygulama davranışı:
   tırnaklar cmd'nin kuralıyla sorunsuz). winget Notepad++ için nullsoft yerine wix'i seçti; Git'in indirileni
   `User_X64_inno` olsa da yükseltilmiş kurulumda `C:\Program Files\Git`'e gitti. Kontrol için WLDIAG bölümü
   `Add-PartitionAccessPath` ile bir klasöre bağlanır (harfi yok), betiği SYSTEM bir oturum-açılışı görevi çalıştırır.
+- [2026-10-10] [D-105] imageres.dll.mun (26200): 369 simge grubunun 294'ü tam olarak 256p 64 48 40 32 24 20 16 taşır;
+  19'u 60'lı, 10'u 96'lı, bir kısmı 4/8 bit kopyalarla (48 32 16 üç derinlikte) ve 11'i yalnız 16 px. Tek boyutlu
+  simge Windows'u dondurmaz: kabuk en yakın boyutu seçip ölçekler (bulanık/pikselli). WIC'in ICO çözücüsü tek görüntülü
+  bir .ico'dan her türü (PNG, 32 bit, paletli + AND maskesi) 32bppBGRA verir; düz alfayla ölçeklemek saydam piksellerin
+  rengini kenara sızdırır, 32bppPBGRA'da ölçeklenmeli.

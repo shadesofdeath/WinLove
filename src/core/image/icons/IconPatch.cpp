@@ -358,6 +358,22 @@ Result<std::string> patchIconBytes(const std::string& original, const std::vecto
     return std::move(*bytes);
 }
 
+Result<std::vector<IconReplacement>> fitIconReplacements(const PeImage& pe, std::vector<IconReplacement> replacements) {
+    const auto groups = listIconGroups(pe.resources());
+    for (auto& r : replacements) {
+        const auto group = std::ranges::find(groups, r.group, &IconGroupInfo::key);
+        if (group == groups.end() || r.images.empty()) {
+            continue;
+        }
+        auto fitted = completeIconSizes(std::move(r.images), iconSizesOf(group->images));
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        r.images = std::move(*fitted);
+    }
+    return replacements;
+}
+
 Result<IconLoadCheck> verifyIconFileWithWindows(const std::filesystem::path& file) {
     HMODULE module = LoadLibraryExW(file.c_str(), nullptr, LOAD_LIBRARY_AS_IMAGE_RESOURCE | LOAD_LIBRARY_AS_DATAFILE);
     if (!module) {
@@ -493,7 +509,11 @@ Result<std::wstring> patchImageIcons(const std::filesystem::path& mountDir, std:
     if (auto ok = checkIconPatchTarget(relative, *pe); !ok) {
         return std::unexpected(ok.error());
     }
-    auto patched = patchIconBytes(*base, replacements);
+    auto fitted = fitIconReplacements(*pe, replacements);
+    if (!fitted) {
+        return std::unexpected(fitted.error());
+    }
+    auto patched = patchIconBytes(*base, *fitted);
     if (!patched) {
         return std::unexpected(patched.error());
     }

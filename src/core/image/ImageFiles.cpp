@@ -289,6 +289,24 @@ Result<void> copyImageFile(const std::filesystem::path& mountDir, std::wstring_v
     return {};
 }
 
+Result<void> writeImageCopy(const std::filesystem::path& mountDir, std::wstring_view relative, std::string_view bytes) {
+    if (auto ok = validateImageFile(relative, 0); !ok) {
+        return ok;
+    }
+    if (bytes.size() > kImageCopyLimit) {
+        return fail(ErrorCode::InvalidArgument, L"file is too large to copy into the image", std::wstring(relative));
+    }
+    const auto target = prepareTarget(mountDir, relative);
+    if (!target) {
+        return std::unexpected(target.error());
+    }
+    if (auto written = replaceImageFile(mountDir, relative, bytes); !written) {
+        return written;
+    }
+    log::info("file", std::format(L"wrote {} ({} bytes)", target->wstring(), bytes.size()));
+    return {};
+}
+
 // ---- D-051 ----------------------------------------------------------------------------------
 
 namespace {

@@ -241,6 +241,34 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-105 — Simgeler: imaja giren her simge, değiştirdiği grubun boyutlarına tamamlanır (2026-10-10)
+Bağlam: Forumda bir kullanıcı uyardı: tek boyutlu bir simge eklenirse Windows diğer boyutları kendisi büyütüp küçültür.
+Kodda durum: resimden (PNG/JPG…) gelen simge zaten Microsoft'un setine çevriliyordu (256 PNG + 64/48/40/32/24/20/16,
+32 bit) ama **.ico olduğu gibi** giriyordu (tek boyutluysa grupta tek boyut), yönlendirme modu .ico'yu olduğu gibi
+kopyalıyordu ve grubun kendine özgü boyutlarına (imageres'te 75 grup: 96, 60, 36 px…) hiç bakılmıyordu. Ölçüm: bu PC'nin
+imageres.dll.mun'unda 369 grubun 294'ü tam olarak `kIconSizes` setini taşıyor.
+Karar:
+- `completeIconSizes(images, sizes)` (core/image/icons/IconSource): istenen her boyut, kaynakta yoksa en iyi görüntüden
+  üretilir — en derin renkli görüntüler arasından o boyuta eşit/büyük olanların en küçüğü (küçültmek detayı korur), yoksa
+  en büyüğü. Windows'un saklayışıyla: 256 ve üstü PNG, altı 32 bit DIB. Kaynakta olan görüntüler bayt bayt aynen kalır.
+  Çözme: tek görüntü `.ico` olarak sarılıp WIC'in ICO çözücüsüne verilir (PNG, 32 bit, paletli + maske hepsini okur).
+- **Yama modu:** `fitIconReplacements(pe, …)` her değişikliği DEĞİŞTİRDİĞİ GRUBUN boyutlarına tamamlar (orijinal grup
+  96 px taşıyorsa yenisi de taşır); `patchImageIcons`, `wlcli icon-patch` ve `icon-pack` bunu kullanır.
+  `patchIconBytes` görüntüleri verildiği gibi yazan alt katman olarak kaldı (testler tam kontrol ister).
+- **Yönlendirme modu:** Applier'da hedefi `.ico` olan `CopyFile` → `copyIconIntoImage` (kaynak `kIconSizes`'a
+  tamamlanır, `writeImageCopy` ile copyImageFile'ın kuralları ve sınırıyla yazılır). Parser'ın reddettiği bir .ico eskisi
+  gibi olduğu gibi kopyalanır (uyarı log'u).
+- Ölçekleme artık **premultiplied** (32bppPBGRA) yapılır: düz alfa ile saydam piksellerin rengi kenara sızıyordu (koyu
+  saçak). Resimden simge yolu da bundan yararlanır.
+- Arayüz: seçilen kaynağın en büyük boyutu 256 px'ten küçükse uyarı toast'ı ("Simge küçük … büyük görünümde bulanık
+  olabilir"); iki sekmede de. Kaynak yine kabul edilir.
+Doğrulama: birim testler (tamamlama, sıra, bayt bayt koruma, premultiplied kenar, 96 px'li grup, paletli kaynak,
+yönlendirme kopyası) + `wlcli icon-patch` gerçek imageres kopyasında (yalnız 256 / yalnız 32 px kaynak → 8 boyut; 96'lı
+grup #8305 → kendi seti) + **gerçek imajda (mount) `wlcli apply`**: yönlendirme .ico'su 8 boyut, #3/#4 8 boyut, Windows
+369 grubu 0 hatayla yüklüyor. Görsel karşılaştırma: 256'dan üretilen küçük boyutlar Microsoft'unkine çok yakın;
+32'den büyütülen 256 bulanık (uyarının gerekçesi).
+Kapsam dışı: yönlendirme sekmesi hâlâ yalnız .ico seçtiriyor (motor resmi de kabul ediyor; kart önizlemesi .ico okuyor).
+
 ## D-104 — Çevrimdışı program kurulumu (motor) (2026-10-10)
 Bağlam: Programlar sayfasının winget programları ilk oturumda INTERNETTEN kuruluyordu (programs.ps1 → winget install).
 Kullanıcı: hedef PC internetsiz de kurabilsin diye kurulumları build anında indirip imaja gömelim. Karar (kullanıcı:

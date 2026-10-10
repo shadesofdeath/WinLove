@@ -536,8 +536,11 @@ void IconFilesView::pick() {
     }
     const auto key = group->key;
     if (const auto source = m_intents.pickSource()) {
-        if (auto ok = m_controller.replace(m_file, key, *source); !ok && m_intents.toast) {
+        auto ok = m_controller.replace(m_file, key, *source);
+        if (!ok && m_intents.toast) {
             m_intents.toast(Str::IconsNotSource, source->filename().wstring(), true);
+        } else if (const auto px = IconPatchController::smallSource(*source); ok && px && m_intents.toast) {
+            m_intents.toast(Str::IconsSmallSource, m_strings.format(Str::IconsSmallSourceBody, {{L"px", std::to_wstring(*px)}}), true);
         }
     }
 }

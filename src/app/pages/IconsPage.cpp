@@ -232,8 +232,12 @@ IconsPage::IconsPage(AppState& state, IconController& controller, IconPatchContr
             return;
         }
         if (const auto file = m_intents.pickIcon()) {
-            if (auto ok = m_controller.assign(slot, *file); !ok && m_intents.refused) {
+            auto ok = m_controller.assign(slot, *file);
+            if (!ok && m_intents.refused) {
                 m_intents.refused(file->filename().wstring());
+            } else if (const auto px = IconPatchController::smallSource(*file); ok && px && m_intents.files.toast) {
+                m_intents.files.toast(Str::IconsSmallSource, m_strings.format(Str::IconsSmallSourceBody, {{L"px", std::to_wstring(*px)}}),
+                                      true);
             }
         }
     };

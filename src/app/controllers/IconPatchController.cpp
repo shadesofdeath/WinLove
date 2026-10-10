@@ -264,6 +264,13 @@ bool IconPatchController::isIconSource(const std::filesystem::path& file) {
     return size && size->width >= 16 && size->height >= 16;
 }
 
+std::optional<int> IconPatchController::smallSource(const std::filesystem::path& file) {
+    if (const auto largest = core::iconSourceLargest(file); largest && *largest > 0 && *largest < 256) {
+        return *largest;
+    }
+    return std::nullopt;
+}
+
 Result<void> IconPatchController::replace(const std::wstring& relative, const core::ResourceKey& key, const std::filesystem::path& source) {
     if (!isIconSource(source)) {
         return fail(ErrorCode::InvalidArgument, L"not an icon or a picture", source.wstring());

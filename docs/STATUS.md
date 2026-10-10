@@ -10,6 +10,12 @@
 - **YAYINLANDI: v1.2.0-beta (2026-10-10)** — https://github.com/shadesofdeath/WinLove/releases/tag/v1.2.0-beta
   (ön sürüm, `WinLove.exe` 10.051.584 bayt, SHA-256 `D0A93F9ED2051083D8FDC61F2597C8D76C039E799972DDD68EC85A526470100D`).
   `main` push edildi (a849531). Bilinen sınır (D-104): winget'siz imajda karışık çevrimdışı liste durur — sıradaki aday.
+- **Yayın sonrası (2026-10-10, D-105, henüz yayımlanmadı):** simgeler artık değiştirdikleri grubun boyutlarına
+  tamamlanıyor (forumdaki "tek boyutlu simge" uyarısı). Tek boyutlu .ico'nun eksik boyutları en iyi görüntüden üretilir,
+  yönlendirme modunun .ico'su da 8 boyuta tamamlanır, ölçekleme premultiplied; kaynak < 256 px ise uyarı toast'ı.
+  Doğrulandı: birim testler, `wlcli icon-patch` gerçek imageres kopyasında, gerçek imajda (mount) `wlcli apply`
+  (Windows 369 grubu 0 hatayla yüklüyor; imaj discard ile ayrıldı, bağlı imaj yok). Uyarı toast'ı dosya seçimi
+  gerektirdiği için render'la görülmedi.
 - **Yeni özellik turu (2026-10-09, kullanıcı seçimi): 4 özellik — (1) çok dilli sihirbaz, (2) çevrimdışı program
   kurulumu, (3) imaj sağlık denetimi + onarım, (4) özel zamanlanmış görev.** Not: "bu PC sürücüleri", OEM bilgileri ve
   disk bölümleme zaten vardı (önerilenler kodda kontrol edildi). **Tamamlanan: (3) imaj sağlık denetimi + onarım (D-101)** —
