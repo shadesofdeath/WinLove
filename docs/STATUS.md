@@ -10,6 +10,12 @@
 - **YAYINLANDI: v1.2.0-beta (2026-10-10)** — https://github.com/shadesofdeath/WinLove/releases/tag/v1.2.0-beta
   (ön sürüm, `WinLove.exe` 10.051.584 bayt, SHA-256 `D0A93F9ED2051083D8FDC61F2597C8D76C039E799972DDD68EC85A526470100D`).
   `main` push edildi (a849531). Bilinen sınır (D-104): winget'siz imajda karışık çevrimdışı liste durur — sıradaki aday.
+- **YAYINLANDI: v1.2.2-beta (2026-10-10)** — https://github.com/shadesofdeath/WinLove/releases/tag/v1.2.2-beta
+  (ön sürüm, `WinLove.exe` 10.112.000 bayt, SHA-256 `75195BB06C2D6DCDAAA8EC9E7A7EC52ED85E07008DDC0A929E33D944B37D2BA7`,
+  GitHub özeti aynı). `main` f98b9bb. İçerik: aygıt kaybı kurtarması, Windows indir ISO düzeltmeleri, D-106 (aşağıda).
+  Kullanıcı ISO seçimlerini bana bıraktı ("kafana göre takıl"): ESU'da LCU'suz ISO + uyarı, 26H1 uçtan uca test, yayın.
+  **Açık:** ARM64 derlemede ISO adımı `etfsboot.com` ister (ARM64 ISO çıkmaz); çökmeden kalan `uup\work\mount` açılışta
+  aranmıyor; ESU geri dönüşünde ilerleme çubuğu bir kez geri gidiyor; D-106'nın uygulama içi canlı tıklaması denenmedi.
 - **YAYINLANDI: v1.2.1-beta (2026-10-10)** — https://github.com/shadesofdeath/WinLove/releases/tag/v1.2.1-beta
   (ön sürüm, `WinLove.exe` 10.079.232 bayt, SHA-256 `A2B544B84DC647F456CE451E110F7F17FC590F36DF3D4AB903CD811C46DCA1A8`).
   Üç düzeltme: simge boyutları (D-105), Windows indir Mağaza uygulamaları "Seç…" (Windows 10), Programlar "Çevrimdışı
