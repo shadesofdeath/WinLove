@@ -6,6 +6,32 @@
 
 ## Türkçe
 
+### 1.2.2 Beta — 2026-10-10
+
+1.2.1 Beta'dan bu yana gelenler:
+
+#### Yeni
+
+- **Uygula: kaydetmeden önce dur.** Uygula özetinde "Kaydetmeden önce ☐ Dur: bağlı klasörü elle düzenleyeceğim".
+  Değişiklikler uygulandıktan sonra iş, imajı kaydetmeden durur; imaj bağlı kalır. Klasörde dosya ekleyip silersin
+  ("Klasörü aç"), sonra "Kaydet ve devam et". "Diğer sürümlere de uygula" ile her sürüm kendi kaydından önce durur.
+  "Durdur" kaydetmeden bırakır.
+
+#### Düzeltmeler
+
+- **Uzun indirme ya da dönüştürme sırasında uygulama kapanıyordu** ("RenderFailure: creating swap chain …
+  0x80070005"). Ekran kartı sıfırlanınca (sürücü güncellemesi, uykudan dönüş, GPU takılması) çizim yüzeyi yeniden
+  kurulamıyordu. Artık kuruluyor ve süren iş devam ediyor.
+- **Windows indir: ISO oluşmuyordu.**
+  - Windows 10 + güncellemeler: servis yığını (SSU) hiç kurulmuyordu, toplu güncelleştirme reddediliyordu
+    (0x800F0823). Artık önce o kuruluyor. Windows 10'un ESU dönemi toplu güncelleştirmeleri çevrimdışı imaja
+    eklenemez (Microsoft kuralı); ISO o zaman onsuz oluşur ve sayfa bunu söyler.
+  - Önceki başarısız bir denemenin (başka bir derlemenin) dosyaları bu derlemeninki sanılıyordu; artık sanılmıyor.
+  - Hata 4 saniyelik bildirimle kaybolmuyor: nedeni Loglar'a yönlendirmeyle birlikte sayfada kalıyor. Biten bir
+    ISO'nun uyarıları da orada kalıyor.
+  - Çalışma sürücüsünde gereken yer yoksa ("Yer yetmiyor") ya da yönetici izni yoksa iş başlamıyor (dönüştürme
+    yönetici ister; önceden bütün indirmeden sonra düşüyordu).
+
 ### 1.2.1 Beta — 2026-10-10
 
 1.2.0 Beta'dan bu yana gelenler:
@@ -172,6 +198,32 @@ WinLove alfadan çıkıp **beta** oldu. 1.0.2 Alpha'dan bu yana gelenler:
 ---
 
 ## English
+
+### 1.2.2 Beta — 2026-10-10
+
+What changed since 1.2.1 Beta:
+
+#### New
+
+- **Apply: pause before saving.** On the Apply summary: "Before saving ☐ Pause: I will edit the mounted folder by
+  hand". After the changes go in, the run stops before saving; the image stays mounted. Add or delete files in the
+  folder ("Open folder"), then press "Save and continue". With "Also apply to other editions" every edition stops
+  before its own save. "Stop" leaves it unsaved.
+
+#### Fixes
+
+- **The app closed during a long download or conversion** ("RenderFailure: creating swap chain … 0x80070005"). When
+  the graphics card was reset (driver update, waking from sleep, a GPU hang) the drawing surface could not be made
+  again. Now it is, and the running job goes on.
+- **Download Windows: the ISO was not made.**
+  - Windows 10 with updates: the servicing stack (SSU) was never installed, so the cumulative update was refused
+    (0x800F0823). It now goes in first. Windows 10's ESU-era cumulative updates cannot go into an offline image
+    (Microsoft's rule); the ISO is then made without it and the page says so.
+  - Files left by an earlier, failed run (of another build) were taken for this one's; no more.
+  - The reason no longer disappears with a 4-second notice: it stays on the page with a pointer to the Logs. The
+    warnings of a finished ISO stay there too.
+  - It does not start when the working drive lacks the room it needs ("Not enough space"), nor without
+    administrator rights (the conversion needs them; before, it failed after the whole download).
 
 ### 1.2.1 Beta — 2026-10-10
 
