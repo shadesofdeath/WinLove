@@ -328,7 +328,10 @@ enum class Str : std::uint16_t {
     DownloadAppsCodecs,
     DownloadAppsEssential,
     DownloadAppsEssentialOnly,
+    DownloadAppsFailed,
+    DownloadAppsInImage,
     DownloadAppsMedia,
+    DownloadAppsNone,
     DownloadAppsOther,
     DownloadAppsPick,
     DownloadAppsRecommended,
@@ -1863,7 +1866,7 @@ enum class Str : std::uint16_t {
     Count
 };
 
-inline constexpr std::size_t kStrCount = 1853;
+inline constexpr std::size_t kStrCount = 1856;
 inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "about.developer",
     "about.dism",
@@ -2186,7 +2189,10 @@ inline constexpr std::array<const char*, kStrCount> kStrKeys = {
     "download.appsCodecs",
     "download.appsEssential",
     "download.appsEssentialOnly",
+    "download.appsFailed",
+    "download.appsInImage",
     "download.appsMedia",
+    "download.appsNone",
     "download.appsOther",
     "download.appsPick",
     "download.appsRecommended",

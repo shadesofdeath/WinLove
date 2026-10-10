@@ -247,7 +247,10 @@
     "appsRecommended": "Hepsi",
     "appsEssentialOnly": "Yalnız temel",
     "netFx3": ".NET Framework 3.5",
-    "resetBase": "Bileşen deposunu küçült (ResetBase)"
+    "resetBase": "Bileşen deposunu küçült (ResetBase)",
+    "appsInImage": "imajın içinde",
+    "appsNone": "bu derlemede yok",
+    "appsFailed": "alınamadı"
   },
   "images": {
     "title": "Sürümler",

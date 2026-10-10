@@ -55,6 +55,8 @@ private:
     void loadBuilds();     // the product's list (Windows 11 / 10 / all)
     void savePrefs();      // the panel's choices into settings.json
     void openAppPicker();  // which Store apps go in
+    void requestApps();    // the picker's list for the selection
+    void updateAppList();  // the panel's Store apps state from what arrived
     void updatePanel();
     [[nodiscard]] const core::uup::Build* selectedBuild() const;
     void paintCell(ui::Canvas& canvas, int row, int column, ui::RectF rect);
@@ -69,6 +71,8 @@ private:
     std::vector<core::uup::Build> m_all;   // the API's list
     std::vector<core::uup::Build> m_shown; // after search and filters
     std::vector<core::uup::AppFeature> m_apps; // the selection's Store apps (the picker's list)
+    std::optional<bool> m_appSet;              // the selection's files say it has an app set (appxPresent)
+    bool m_appsArrived = false;                // the picker's list came back (empty when it failed)
     bool m_loading = true;
     std::optional<Error> m_listError;
 

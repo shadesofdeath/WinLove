@@ -247,7 +247,10 @@
     "appsRecommended": "All",
     "appsEssentialOnly": "Essentials only",
     "netFx3": ".NET Framework 3.5",
-    "resetBase": "Shrink the component store (ResetBase)"
+    "resetBase": "Shrink the component store (ResetBase)",
+    "appsInImage": "in the image",
+    "appsNone": "not in this build",
+    "appsFailed": "not loaded"
   },
   "images": {
     "title": "Editions",
