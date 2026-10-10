@@ -31,6 +31,8 @@ public:
         std::filesystem::path output;       // the .iso
     };
 
+    enum class Failed : std::uint8_t { List, Download, Convert }; // what did not work out
+
     struct Events {
         std::function<void(std::function<void()>)> postToUi;
         std::function<void(std::vector<core::uup::Build>)> builds;
@@ -41,7 +43,7 @@ public:
         // The Store apps a selection gets (no frameworks): what the picker lists.
         std::function<void(std::wstring id, std::wstring language, std::vector<std::wstring> editions,
                            std::vector<core::uup::AppFeature>)> apps;
-        std::function<void(const Error&, bool job)> failed; // a list (false) or the job (true)
+        std::function<void(const Error&, Failed what)> failed; // a list, or the job's download / conversion
         std::function<void(const core::uup::ConvertResult&)> finished;
         std::function<void()> stopped; // cancelled by the user
     };

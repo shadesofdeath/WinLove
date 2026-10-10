@@ -37,6 +37,11 @@ struct ApplyJobOptions {
 struct ApplyJobCallbacks {
     ApplyCallbacks steps;
     std::function<void()> committing; // the steps are done; saving + unmounting starts
+    // D-106: the steps are done and the image is about to be saved (nothing failed, nothing held).
+    // Called on the engine thread with the DISM session closed: the mount folder is the user's to
+    // edit by hand. It returns when the user lets the job go on: true saves, false leaves the
+    // image mounted, not saved (ApplyJobResult::kept).
+    std::function<bool()> beforeCommit;
 };
 
 struct ApplyJobResult {
@@ -44,6 +49,7 @@ struct ApplyJobResult {
     bool committed = false;
     std::optional<Error> commitError; // steps ran but saving failed: the image is still mounted
     bool held = false;                // steps failed: not saved, still mounted (ApplyJobOptions::commitWithFailures)
+    bool kept = false;                // ApplyJobCallbacks::beforeCommit said no: not saved, still mounted
     bool optimized = false;           // the WIM was rewritten without the commit's leftovers
     bool editionRenamed = false;      // the WIM names the new edition (ApplyJobOptions::editionTexts)
     bool langIniWritten = false;      // <setupFolder>\sources\lang.ini generated from the image

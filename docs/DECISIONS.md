@@ -241,6 +241,23 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-106 — Uygula: kaydetmeden önce dur (elle düzenleme için) (2026-10-10)
+Bağlam: Forumda bir kullanıcı ("Diğer sürümlere de uygula"yı kullanan) istedi: her şey uygulandıktan sonra imaj
+kaydedilip çözülmeden dursun; bağlı klasörde elle temizlik/ekleme yapıp öyle çözsün (yoksa işi bitince yeniden bağlıyor).
+Kullanıcı: "bu özelliği ekleyelim".
+Karar:
+- Motor: `ApplyJobCallbacks::beforeCommit` — adımlar bitti, hiçbiri düşmedi (tutulan imaj yok), DISM oturumu kapalı;
+  motor iş parçacığında çağrılır ve kullanıcı bırakana kadar döner: true kaydeder, false imajı kaydetmeden bağlı bırakır
+  (`ApplyJobResult::kept`). Diğer sürümlerde (`applyToEdition`) her sürüm kendi kaydından önce durur; orada false o
+  sürümü atar (klasör sıradaki için boşalmalı). `wlcli apply … --pause` stdin'den bir satır bekler ("keep": bağlı bırak).
+- Uygulama: `AppSettings::pauseBeforeSave` (settings.json `pauseBeforeSave`), Uygula özetinde "Kaydetmeden önce ☐ Dur:
+  bağlı klasörü elle düzenleyeceğim". `ApplyRun::Stage::Paused` → `ApplyPage::Mode::Paused`: Running görünümü + üstte
+  klasör yolunu söyleyen InfoBar; başlıkta "Klasörü aç" (`exploreMount`), "Durdur" (`cancel`: kaydetmeden bırak, kalan
+  sürümleri atla), "Kaydet ve devam et" (`resume`). Bekleme `ApplyController::Gate` (mutex + condvar, her çalıştırmaya
+  yeni); denetleyici yok edilirken (pencere kapanışı) kapı "kaydetme" ile açılır, motor kilitlenmez, imaj bağlı kalır.
+- Explorer pencereleri kaydı engellemez (`unmountSafely` onları klasörden çıkarır); dosya tutan başka bir program
+  kaydı düşürürse mevcut "kaydedilemedi, imaj bağlı" yolu çalışır.
+
 ## D-105 — Simgeler: imaja giren her simge, değiştirdiği grubun boyutlarına tamamlanır (2026-10-10)
 Bağlam: Forumda bir kullanıcı uyardı: tek boyutlu bir simge eklenirse Windows diğer boyutları kendisi büyütüp küçültür.
 Kodda durum: resimden (PNG/JPG…) gelen simge zaten Microsoft'un setine çevriliyordu (256 PNG + 64/48/40/32/24/20/16,

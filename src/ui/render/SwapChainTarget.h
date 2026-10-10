@@ -10,6 +10,12 @@ class SwapChainTarget {
 public:
     [[nodiscard]] static Result<std::unique_ptr<SwapChainTarget>> create(const RenderDevice& device, HWND hwnd,
                                                                         UINT widthPx, UINT heightPx, float dpi);
+    SwapChainTarget() = default;
+    SwapChainTarget(const SwapChainTarget&) = delete;
+    SwapChainTarget& operator=(const SwapChainTarget&) = delete;
+    // A window holds one flip-model swap chain at a time and D3D destroys objects late: the chain
+    // is unbound and its device flushed, so the next one for the same window can be made.
+    ~SwapChainTarget();
 
     [[nodiscard]] Result<void> resize(UINT widthPx, UINT heightPx, float dpi);
 
@@ -22,6 +28,7 @@ public:
 private:
     [[nodiscard]] Result<void> bindBackBuffer();
 
+    ComPtr<ID3D11Device> m_d3d; // flushed when the chain goes (see ~SwapChainTarget)
     ComPtr<IDXGISwapChain1> m_swapChain;
     ComPtr<ID2D1DeviceContext2> m_context;
     float m_dpi = 96.0f;

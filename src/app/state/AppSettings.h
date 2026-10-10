@@ -61,6 +61,7 @@ struct AppSettings {
     // D-082: the compatibility guards that are on (compat.json ids). Never chosen: the catalog's defaults.
     std::optional<std::vector<std::wstring>> guards;
     WindowsDownloadPrefs windowsDownload;
+    bool pauseBeforeSave = false; // D-106: Uygula stops before each save for changes by hand in the mount folder
 
     [[nodiscard]] bool operator==(const AppSettings&) const = default;
     [[nodiscard]] std::filesystem::path mountDirectory() const {

@@ -5,8 +5,11 @@
 // re-read from the WIM ("Sonra" size) and the source is refreshed.
 #include "app/state/AppState.h"
 
+#include <condition_variable>
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <optional>
 
 namespace wl::app {
 
@@ -28,7 +31,13 @@ public:
     [[nodiscard]] bool canStart() const;   // mounted, idle, something queued
     [[nodiscard]] bool running() const;
     void start();
+    // Running: the rest is skipped. Paused (D-106): the edition is left unsaved — the mounted one
+    // stays mounted, a further one is discarded — and the editions after it are skipped.
     void cancel();
+    // D-106 (AppSettings::pauseBeforeSave): before each save the run waits, the image mounted, for
+    // changes by hand in the mount folder; resume() saves and goes on.
+    [[nodiscard]] bool paused() const;
+    void resume();
 
     // D-055: other editions of the mounted WIM the queue also goes to (their indexes).
     struct Edition {
@@ -40,9 +49,19 @@ public:
     void setExtraEdition(int index, bool on);
 
 private:
+    // Where the engine thread waits at a pause until the UI says save (true) or not (false).
+    struct Gate {
+        std::mutex mutex;
+        std::condition_variable cv;
+        std::optional<bool> decision;
+        void decide(bool save);
+        [[nodiscard]] bool wait();
+    };
+
     AppState& m_state;
     Events m_events;
     std::vector<int> m_extra;
+    std::shared_ptr<Gate> m_gate = std::make_shared<Gate>(); // a new one for each run
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
 

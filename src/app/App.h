@@ -19,7 +19,7 @@
 //      --mount=N              (windowed: after opening the source, mount edition N — UAC relaunch)
 //      --no-elevate           (windowed: skip the elevated relaunch at startup; main.cpp)
 //      --font=inter|geist|segoe   (the type family, as in the settings; D-092)
-//      --test-device-lost     (windowed: runs the device-loss recovery once after the window shows)
+//      --test-device-lost     (windowed: the first frame takes the device-loss path a GPU reset takes)
 //      --select=N[,M…]        (select edition N on the Images page; more: marked as well)
 //      --operation=mount|prepare|read|verify --progress=0.38   (render: show the operation strip)
 //      --verified=sound|damaged   (render: the result of "Doğrula" on the Images page)
@@ -75,7 +75,8 @@ struct LaunchOptions {
     bool demoTaskCreate = false; // render: the "Görev oluştur" dialog open on the Tasks page (D-102)
     std::optional<std::wstring> demoFiles; // render: fake mount + queued files ("where": the destination dialog) (D-051)
     int demoDownload = -1;     // render: D-093 Windows indir — 0 list, 1 a build picked, 2 downloading, 3 converting,
-                               // 4 the app picker, 5 a Windows 10 build (apps in the image)
+                               // 4 the app picker, 5 a Windows 10 build (apps in the image), 6 the last run
+                               // failed, 7 the ISO came with warnings
     bool demoHosts = false;    // render: fake mount, telemetry list in the image, ads queued, imported entries (D-049)
     bool demoBranding = false; // render: Kişiselleştirme with OEM text, pictures and fonts queued (D-056)
     std::wstring demoTool; // render, with a source: recompress | split | duplicate | capture | hash | append (D-058)
@@ -110,9 +111,9 @@ struct LaunchOptions {
     bool demoNoWinre = false;     // render (with a source): ISO page, edition 1 has no WinRE (D-074)
     bool demoAio = false;         // render (with a source): ISO page, edition 2 cannot be installed by the media (D-077)
     std::wstring demoCatalog;     // render (with --demo-updates): "dialog" | "download" — the update catalog (D-046)
-    std::wstring demoApply;    // render (with --demo-features): "running" | "done" | "skipped" | "held" — fake Uygula run; "confirm" — the risk dialog, 40 rows
+    std::wstring demoApply;    // render (with --demo-features): "running" | "paused" | "done" | "skipped" | "held" — fake Uygula run; "confirm" — the risk dialog, 40 rows
     bool maximized = false;
-    bool testDeviceLost = false; // windowed: App::recreateGraphics once, as after a GPU reset (audit A6)
+    bool testDeviceLost = false; // windowed: the first frame is treated as a lost device (audit A6)
     std::optional<ui::PointF> hoverAt;
     std::optional<ui::PointF> contextAt; // --context-at=x,y: right click (context menu)
     std::optional<ui::PointF> pressAt;
@@ -180,6 +181,7 @@ private:
     std::unique_ptr<ui::SwapChainTarget> m_target;
     std::unique_ptr<ui::Host> m_host;
     Shell* m_shell = nullptr;
+    bool m_simulateDeviceLoss = false; // --test-device-lost: the next frame takes the GPU-reset path
 };
 
 } // namespace wl::app

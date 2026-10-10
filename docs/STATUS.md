@@ -15,6 +15,46 @@
   Üç düzeltme: simge boyutları (D-105), Windows indir Mağaza uygulamaları "Seç…" (Windows 10), Programlar "Çevrimdışı
   kur" düğmesinin boş planda unutulması (`PostSetupController::m_nextOffline`, birim testli; düğme artık
   "Çevrimdışı: kapalı / açık" yazar).
+- **Uçtan uca doğrulama (2026-10-10, 1.2.2 öncesi):** `build\lab\uup\run-w10up.ps1` (Windows 10 19045.7727 Pro tr-tr,
+  güncellemeler açık): SSU + reload + enablement girdi, ESU LCU reddedildi → sürüm LCU'suz yeniden yapıldı → ISO 4,14 GB
+  (exit 0, 961 sn). `run-26h1.ps1` (ekran görüntüsündeki 26H1 28000.3086 Pro tr-tr, güncellemeler + 53 Mağaza uygulaması,
+  `wlcli uup download … --apps` ile 9,1 GB indirildi): ISO 8,38 GB, 10.0.28000.3086, uyarısız (exit 0, 1268 sn). İkisinde de
+  bağlı imaj / work klasörü kalmadı. ISO'lar `build\lab\uup\out\` altında (VM'de kurulmadı).
+- **D-106 Uygula: kaydetmeden önce dur (2026-10-10, forum isteği, kullanıcı: "ekleyelim" — yayınlanmadı):**
+  `ApplyJobCallbacks::beforeCommit` + `ApplyJobResult::kept`; `wlcli apply … --pause`; `AppSettings::pauseBeforeSave`;
+  `ApplyPage::Mode::Paused` (Klasörü aç / Durdur / Kaydet ve devam et). **Kanıt:** lab `build\lab\pause-d106\run.ps1`
+  (boot.wim kopyası): A — duraklatmada elle eklenen dosya + kuyruktaki dosya kayıttan sonra WIM'de; B — "keep" → kaydedilmedi,
+  bağlı kaldı, atıldı; ilk denemede adım düşünce duraklatma yerine "held" (doğru). Render `--demo-apply=paused` ve özet
+  satırı. Uygulama içi canlı tıklama (Gate) denenmedi.
+- **Hata düzeltmesi (2026-10-10, forum bildirdi — yayınlanmadı):** Windows indir sırasında "RenderFailure: creating
+  swap chain … [0x80070005]" ve uygulama kapanıyordu (iş de ölüyor, ISO çıkmıyor). Aygıt kaybı (GPU sıfırlama,
+  sürücü güncellemesi, uykudan dönüş) kurtarması `paint()` içinde, Canvas yaşarken çalışıyordu: fırçası eski aygıtı,
+  o da eski flip-model swap chain'i pencerede tutuyordu → yeni `CreateSwapChainForHwnd` E_ACCESSDENIED. Düzeltme:
+  Canvas kurtarmadan önce kapsam dışı; `~SwapChainTarget` hedefi çözer, zinciri bırakır, eski aygıtta
+  `ClearState` + `Flush`; boyutlama sırasında aygıt kaybı diyalog açmaz. `--test-device-lost` artık gerçek yolu
+  (paint içinden) dener: düzeltmeden önce aynı 0x80070005 üretildi, sonra "new device, same shell" + pencere doğru
+  çiziliyor (capture_window).
+- **"ISO oluşmadı" (2026-10-10, forum bildirdi — yayınlanmadı):** (1) **Windows 10 + güncellemeler hiç ISO
+  vermiyordu:** `scanUupFolder` `SSU-19041.xxxx-x64.cab`'ı güncelleme saymıyor (özellik cab'ı diye referans
+  yapıyordu), LCU ve enablement `0x800F0823` (önce yeni servis yığını) → kurulum düşüyordu. Lab
+  `build\lab\uup\run-w10up.ps1`: önce exit 2 (`w10up-before.log`), `core::uup::isUpdatePackage` ile SSU güncelleme
+  sayılıyor, ama DISM oturumu açıldığı servis yığınıyla kalıyordu (`w10up-ssu-noreload.log`: "requires Servicing
+  Stack v10.0.19041.3266 but current is v10.0.19041.1") → SSU'dan sonra `DismSession::reload()` (ve
+  `reloadRequired()` olan her paketten sonra). Sonra enablement girdi, LCU 13 dk işledi ama **ESU** yüzünden düştü:
+  `ExtendedSecurityUpdatesAI` 1625 → `0x80073713` (`w10up-esu.log`). Windows 10'un ESU dönemi LCU'ları çevrimdışı
+  imaja eklenemez (Microsoft kısıtı; atlatmak lisans denetimini aşmak olur, yapılmaz). **Karar (kullanıcı "kafana
+  göre"):** ESU reddinde (`esuRefusal`: build < 22000 + 0x80073713) sürüm atılır, LCU'suz yeniden yapılır, kalanlar
+  doğrudan LCU'suz; `ConvertResult::esuSkipped` → panelde uyarı notu. Not: logdaki "Geli<%_mi<%_" DISM'in değil,
+  lab betiğinin wlcli'nin UTF-8 çıktısını cp857 ile okumasının bozulması (uygulama metni doğru alır). (2) **Eski artıklar:** `work\refs` set fark etmeksizin dosya adıyla yeniden kullanılıyordu (cab
+  adlarında yapı numarası yok; yarım yakalanmış referans da); artık `refs\set.txt` damgası (set klasörü + yapı)
+  tutmazsa silinir, yakalama `.part.wim` → rename (lab: "references of another set removed" doğrulandı). (3) **Hata
+  4 sn'lik toast'la kayboluyordu:** `AppState::WindowsDownloadFailure` — panelde başlık ("Windows indirilemedi" /
+  "ISO oluşturulamadı") + neden + "Ayrıntılar Loglar sayfasında", bir sonraki başlatmaya kadar
+  (`--demo-download=failed`, render TR/EN doğrulandı). (4) **Yer denetimi:** "İndir ve ISO oluştur" çalışma
+  sürücüsünde "gereken boş alan"dan (eski çalışmanın inmiş dosyaları düşülür) az yer varsa başlamaz, "Yer yetmiyor"
+  der. Açık kalan (rapor, düzeltilmedi): yönetici değilken indirme yapılır, dönüştürme sonra düşer; ARM64 derlemede
+  ISO adımı `etfsboot.com` ister (BIOS önyükleme), ARM64 ISO çıkmaz; work\mount'ta çökme sonrası kalan bağlama
+  açılışta aranmıyor.
 - **1.2.1'e giren (2026-10-10, D-105):** simgeler artık değiştirdikleri grubun boyutlarına
   tamamlanıyor (forumdaki "tek boyutlu simge" uyarısı). Tek boyutlu .ico'nun eksik boyutları en iyi görüntüden üretilir,
   yönlendirme modunun .ico'su da 8 boyuta tamamlanır, ölçekleme premultiplied; kaynak < 256 px ise uyarı toast'ı.

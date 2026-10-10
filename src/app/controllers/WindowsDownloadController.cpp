@@ -49,7 +49,7 @@ void WindowsDownloadController::listBuilds(std::wstring search) {
             onUi(post, alive, [this, r = std::move(r)]() mutable {
                 if (!r) {
                     if (m_events.failed) {
-                        m_events.failed(r.error(), false);
+                        m_events.failed(r.error(), Failed::List);
                     }
                     return;
                 }
@@ -69,7 +69,7 @@ void WindowsDownloadController::listLanguages(std::wstring id) {
             onUi(post, alive, [this, id, r = std::move(r)]() mutable {
                 if (!r) {
                     if (m_events.failed) {
-                        m_events.failed(r.error(), false);
+                        m_events.failed(r.error(), Failed::List);
                     }
                     return;
                 }
@@ -89,7 +89,7 @@ void WindowsDownloadController::listEditions(std::wstring id, std::wstring langu
             onUi(post, alive, [this, id, language, r = std::move(r)]() mutable {
                 if (!r) {
                     if (m_events.failed) {
-                        m_events.failed(r.error(), false);
+                        m_events.failed(r.error(), Failed::List);
                     }
                     return;
                 }
@@ -111,7 +111,7 @@ void WindowsDownloadController::listFiles(std::wstring id, std::wstring language
             onUi(post, alive, [this, id, language, editions, r = std::move(r)]() mutable {
                 if (!r) {
                     if (m_events.failed) {
-                        m_events.failed(r.error(), false);
+                        m_events.failed(r.error(), Failed::List);
                     }
                     return;
                 }
@@ -158,8 +158,7 @@ std::filesystem::path WindowsDownloadController::setFolder(const Request& reques
 std::vector<core::uup::File> WindowsDownloadController::filesFor(const core::uup::FileSet& set, bool updates) {
     std::vector<core::uup::File> files;
     for (const auto& f : set.files) {
-        const std::wstring lower = text::lower(f.name);
-        const bool update = lower.starts_with(L"windows1") && lower.find(L"-kb") != std::wstring::npos;
+        const bool update = core::uup::isUpdatePackage(f.name);
         if (f.kind == core::uup::FileKind::App || (!updates && (update || f.kind == core::uup::FileKind::Edge))) {
             continue;
         }
@@ -200,6 +199,7 @@ void WindowsDownloadController::start(Request request) {
     job.output = request.output;
     job.startedMs = ui::nowMs();
     const core::CancelToken cancel = job.cancel;
+    m_state.setWindowsDownloadNotice(std::nullopt);
     m_state.setWindowsDownload(std::move(job));
     const std::filesystem::path folder = setFolder(request);
     log::info("uup", std::format(L"Windows download: {} {} {} -> {}", request.build.title, request.language,
@@ -297,7 +297,7 @@ void WindowsDownloadController::start(Request request) {
                     }
                     log::error("uup", describe(r.error()));
                     if (m_events.failed) {
-                        m_events.failed(r.error(), true);
+                        m_events.failed(r.error(), Failed::Download);
                     }
                     return;
                 }
@@ -366,7 +366,7 @@ void WindowsDownloadController::convert(Request request, std::filesystem::path f
                     }
                     log::error("uup", describe(r.error()));
                     if (m_events.failed) {
-                        m_events.failed(r.error(), true);
+                        m_events.failed(r.error(), Failed::Convert);
                     }
                     return;
                 }

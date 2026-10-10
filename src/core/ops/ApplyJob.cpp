@@ -106,6 +106,18 @@ Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& moun
         task.report(1.0, L"held");
         return result;
     }
+    if (options.commitAndUnmount && callbacks.beforeCommit) {
+        log::info("apply", L"paused before saving: " + mountDir.wstring() + L" is open for changes by hand");
+        task.report(stepsWeight / total, L"paused");
+        if (!callbacks.beforeCommit()) {
+            log::info("apply", L"not saved: the image stays mounted");
+            result.kept = true;
+            result.elapsed = since(started);
+            task.report(1.0, L"kept");
+            return result;
+        }
+        log::info("apply", L"saving after the pause");
+    }
     if (options.commitAndUnmount) {
         if (callbacks.committing) {
             callbacks.committing();

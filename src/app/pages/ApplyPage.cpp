@@ -76,12 +76,12 @@ Category categoryOf(OpKind kind) {
 ApplyPage::Mode ApplyPage::modeFor(const AppState& state) {
     const auto& run = state.applyRun();
     if (run && run->stage != Run::Stage::Done) {
-        return Mode::Running;
+        return run->stage == Run::Stage::Paused ? Mode::Paused : Mode::Running;
     }
-    // Held (a step failed, nothing saved) or stopped: the image is still mounted with what failed
-    // still queued. The report with the reasons comes first, until the queue is touched (A7).
+    // Held (a step failed, nothing saved), stopped, or left unsaved at a pause: the image is still
+    // mounted. The report with the reasons comes first, until the queue is touched (A7).
     if (run && run->result && state.mounted() && state.changes().version() == run->queueVersionAtEnd &&
-        (run->result->held || !run->result->report.completed)) {
+        (run->result->held || run->result->kept || !run->result->report.completed)) {
         return Mode::Done;
     }
     if (state.mounted() && !state.changes().empty()) {
@@ -130,13 +130,14 @@ ApplyPage::ApplyPage(AppState& state, ApplyController& controller, const ImageSe
     setAccessible(ui::AccessRole::Group, strings.get(Str::ApplyTitle));
     switch (m_mode) {
     case Mode::Summary: buildSummary(); break;
-    case Mode::Running: buildRunning(); break;
+    case Mode::Running:
+    case Mode::Paused: buildRunning(); break;
     case Mode::Done: buildDone(); break;
     default: buildEmpty(); break;
     }
     // Live repaint while running; mode switches are handled by the Shell (it rebuilds the page).
     m_subscription = m_state.subscribe([this](AppState::Change change) {
-        if (change == AppState::Change::Apply && m_mode == Mode::Running) {
+        if (change == AppState::Change::Apply && live()) {
             invalidate();
         }
     });
@@ -224,6 +225,7 @@ std::pair<std::wstring, std::wstring> ApplyPage::header() const {
                                                          {L"pct", std::to_wstring(static_cast<int>(f * 100))},
                                                          {L"eta", eta}})};
     }
+    case Mode::Paused: return {m_strings.get(Str::ApplyPausedTitle), m_strings.get(Str::ApplyPausedDesc)};
     case Mode::Done: {
         if (run->error) {
             return {m_strings.get(Str::ApplyFailedTitle), run->error->message};
@@ -242,6 +244,9 @@ std::pair<std::wstring, std::wstring> ApplyPage::header() const {
         if (r.held) {
             return {m_strings.format(Str::ApplyHeldTitle, {{L"n", std::to_wstring(r.report.failures())}}),
                     m_strings.get(Str::ApplyHeldDesc)};
+        }
+        if (r.kept) {
+            return {m_strings.get(Str::ApplyKeptTitle), m_strings.get(Str::ApplyKeptDesc)};
         }
         return {m_strings.get(Str::ApplyDoneTitle),
                 m_strings.format(Str::ApplyDoneDesc,
@@ -346,6 +351,13 @@ void ApplyPage::buildSummary() {
         };
         m_editions.push_back(&check);
     }
+    // D-106: stop before each save, the image mounted, for changes by hand (kept in the settings).
+    m_pause = &add<ui::CheckField>(m_strings.get(Str::ApplyPauseOption), m_state.settings().pauseBeforeSave);
+    m_pause->onChange = [this](bool checked) {
+        AppSettings settings = m_state.settings();
+        settings.pauseBeforeSave = checked;
+        m_state.setSettings(std::move(settings));
+    };
 
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {m_strings.get(Str::ApplyOrder), 48},
@@ -363,6 +375,21 @@ void ApplyPage::buildRunning() {
     const auto& run = m_state.applyRun();
     m_groups = run->groups;
     m_logVersion = run->logVersion;
+    if (m_mode == Mode::Paused) {
+        // D-106: where the image is and what the buttons do; the header has them.
+        const std::wstring folder = m_state.mounted() ? m_state.mounted()->mountDir.wstring() : std::wstring();
+        const std::wstring body =
+            run->extraCurrent >= 0
+                ? m_strings.format(Str::ApplyPausedEditionBody,
+                                   {{L"name", run->extras[static_cast<std::size_t>(run->extraCurrent)].name}, {L"folder", folder}})
+                : m_strings.format(Str::ApplyPausedBody, {{L"folder", folder}});
+        m_infoBar = &add<ui::InfoBar>(ui::InfoKind::Info, m_strings.get(Str::ApplyPausedTitle), body,
+                                      m_strings.get(Str::CommonClose));
+        m_infoBar->onClose = [this] {
+            m_infoBar->setVisible(false);
+            layout();
+        };
+    }
     m_log = &add<ui::LogConsole>();
     m_log->newLinesText = [this](std::size_t n) { return m_strings.format(Str::LogsNewLines, {{L"n", std::to_wstring(n)}}); };
     poll();
@@ -387,6 +414,13 @@ void ApplyPage::buildDone() {
             m_infoBar = &add<ui::InfoBar>(ui::InfoKind::Warning,
                                           m_strings.format(Str::ApplyHeldTitle, {{L"n", std::to_wstring(failures)}}),
                                           m_strings.get(Str::ApplyHeldBody), m_strings.get(Str::CommonClose));
+            if (m_intents.unmount && m_state.mounted()) {
+                m_infoBar->setAction(m_strings.get(Str::ApplyHeldUnmount), m_intents.unmount);
+            }
+        } else if (r.kept) {
+            // D-106: stopped at the pause: applied but not saved, still mounted.
+            m_infoBar = &add<ui::InfoBar>(ui::InfoKind::Warning, m_strings.get(Str::ApplyKeptTitle),
+                                          m_strings.get(Str::ApplyKeptBody), m_strings.get(Str::CommonClose));
             if (m_intents.unmount && m_state.mounted()) {
                 m_infoBar->setAction(m_strings.get(Str::ApplyHeldUnmount), m_intents.unmount);
             }
@@ -654,8 +688,11 @@ void ApplyPage::layout() {
         return;
     }
     float y = b.y + kTop;
-    if (m_mode == Mode::Running) {
-        const float top = y + kProgress + 16;
+    if (live()) {
+        if (m_infoBar && m_infoBar->visible()) { // paused: on top
+            m_infoBar->setBounds({b.x, y, b.width, kInfoBar});
+        }
+        const float top = liveTop() + kProgress + 16;
         const float logX = b.x + kStepsWidth + 16;
         m_log->setBounds({logX, top + 20, std::max(b.right() - logX, 0.0f), std::max(b.bottom() - top - 20, 0.0f)});
         return;
@@ -689,27 +726,45 @@ void ApplyPage::layout() {
             }
             y = rowY + kEditionsRow + kGap;
         }
+        if (m_pause) {
+            const ui::SizeF size = m_pause->measure({});
+            m_pause->setBounds({b.x + kEditionsLabel, y + (kEditionsRow - size.height) / 2, size.width, size.height});
+            y += kEditionsRow + kGap;
+        }
     }
     if (m_table) {
         m_table->setBounds({b.x, y + 4, b.width, std::max(b.bottom() - y - 4, 0.0f)});
     }
 }
 
+float ApplyPage::liveTop() const {
+    const float top = bounds().y + kTop;
+    return m_infoBar && m_infoBar->visible() ? top + kInfoBar + kGap : top;
+}
+
 void ApplyPage::paint(ui::Canvas& canvas) {
-    if (m_mode == Mode::Summary && !m_editions.empty()) {
-        const RectF first = m_editions.front()->bounds();
+    if (m_mode == Mode::Summary) {
         const RectF b = bounds();
-        canvas.drawText(m_strings.get(Str::ApplyOtherEditions), {b.x, first.y - (kEditionsRow - first.height) / 2, kEditionsLabel - 8,
-                                                               kEditionsRow},
-                        TypeStyle::Body, Color::TextSecondary);
+        if (!m_editions.empty()) {
+            const RectF first = m_editions.front()->bounds();
+            canvas.drawText(m_strings.get(Str::ApplyOtherEditions),
+                            {b.x, first.y - (kEditionsRow - first.height) / 2, kEditionsLabel - 8, kEditionsRow},
+                            TypeStyle::Body, Color::TextSecondary);
+        }
+        if (m_pause) {
+            const RectF box = m_pause->bounds();
+            canvas.drawText(m_strings.get(Str::ApplyBeforeSave),
+                            {b.x, box.y - (kEditionsRow - box.height) / 2, kEditionsLabel - 8, kEditionsRow},
+                            TypeStyle::Body, Color::TextSecondary);
+        }
         return;
     }
-    if (m_mode != Mode::Running) {
+    if (!live()) {
         return;
     }
     const RectF b = bounds();
     const auto& run = *m_state.applyRun();
-    const float y = b.y + kTop;
+    const float y = liveTop();
     canvas.progressBar({b.x, y, b.width, kProgress}, static_cast<float>(std::clamp(run.fraction, 0.0, 1.0)));
     if (!run.extras.empty()) {
         // "Sürüm 2 / 3 · Windows 11 Home" while the queue goes to the other editions.

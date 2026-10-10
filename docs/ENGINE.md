@@ -335,3 +335,18 @@ Uygulama davranışı:
   simge Windows'u dondurmaz: kabuk en yakın boyutu seçip ölçekler (bulanık/pikselli). WIC'in ICO çözücüsü tek görüntülü
   bir .ico'dan her türü (PNG, 32 bit, paletli + AND maskesi) 32bppBGRA verir; düz alfayla ölçeklemek saydam piksellerin
   rengini kenara sızdırır, 32bppPBGRA'da ölçeklenmeli.
+- [2026-10-10] [UUP, Windows 10] 19045 setinde servis yığını ayrı gelir: `SSU-19041.7714-x64.cab`. Önce o kurulmazsa
+  LCU (`Windows10.0-KB5129236-x64.cab`) ve enablement (`kb5015684`) DISM'den `0x800F0823` (CBS_E_NEW_SERVICING_STACK_REQUIRED)
+  alır. 26100+ setlerinde ayrı SSU yok (MSU içinde). UUP cab adlarında yapı numarası yok: bir setin `work\refs` dosyası
+  başka bir yapının referansı sanılabilir (set damgasıyla ayrılır).
+- [2026-10-10] [UI, D3D] Flip-model swap chain: bir pencerede aynı anda tek zincir olur ve D3D yok etmeyi erteler. Eski
+  zincir (veya onu tutan aygıt: bir D2D fırçası bile) yaşarken aynı HWND'ye `CreateSwapChainForHwnd` `0x80070005`
+  (E_ACCESSDENIED) döner. Aygıt kaybı kurtarması Canvas kapsamı dışında yapılır; hedef bırakılırken `SetTarget(nullptr)`,
+  sonra eski aygıtın bağlamında `ClearState` + `Flush`.
+- [2026-10-10] [UUP, Windows 10] SSU kurulduktan sonra aynı DISM API oturumu eski servis yığınıyla (19041.1) devam eder;
+  sonraki paketler yine `0x800F0823` alır. SSU'dan sonra oturum kapatılıp açılır (`DismSession::reload`). Windows 10'un
+  ESU dönemi LCU'su (19045.7727, KB5129236) bununla 13 dk işler, sonra `ExtendedSecurityUpdatesAI` gelişmiş yükleyicisi
+  1625 (ilke engeli) → `0x80073713` ile geri alınır: ESU güncellemesi çevrimdışı imaja eklenemez (yalnız WinPE muaf).
+- [2026-10-10] [lab] Yükseltilmiş lab betiği wlcli'nin çıktısını `*>> log` ile alınca PowerShell UTF-8'i konsolun OEM
+  kod sayfasıyla (cp857) çözer: "ş" → "┼ş", log dosyasında "<%_" görünür. DISM'in mesajı bozuk değildir (uygulama metni
+  doğrudan wide string alır); lab loglarındaki Türkçe karakterlere güvenme.

@@ -19,7 +19,8 @@ namespace wl::app {
 
 class ApplyPage : public ui::Widget {
 public:
-    enum class Mode : std::uint8_t { Empty, NoMount, Summary, Running, Done };
+    // Paused (D-106): Running's view, stopped before a save, with what to do now on top.
+    enum class Mode : std::uint8_t { Empty, NoMount, Summary, Running, Paused, Done };
     [[nodiscard]] static Mode modeFor(const AppState& state);
 
     struct Intents {
@@ -59,6 +60,8 @@ private:
     [[nodiscard]] std::wstring groupName(const Row& row) const;
     [[nodiscard]] static ui::icons::Icon groupIcon(const Row& row);
     void paintSteps(ui::Canvas& canvas, ui::RectF area);
+    [[nodiscard]] bool live() const noexcept { return m_mode == Mode::Running || m_mode == Mode::Paused; }
+    [[nodiscard]] float liveTop() const; // Running / Paused: where the progress bar starts
     void paintSummaryCell(ui::Canvas& canvas, int row, int column, ui::RectF rect);
     void paintDoneCell(ui::Canvas& canvas, int row, int column, ui::RectF rect);
 
@@ -79,6 +82,7 @@ private:
     ui::InfoBar* m_infoBar = nullptr;
     ui::TableView* m_table = nullptr;
     std::vector<ui::CheckField*> m_editions; // Summary: "Diğer sürümlere de uygula" (D-055)
+    ui::CheckField* m_pause = nullptr;       // Summary: "Kaydetmeden önce dur" (D-106)
     ui::LogConsole* m_log = nullptr;
     ui::EmptyState* m_empty = nullptr;
 };

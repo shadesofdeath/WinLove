@@ -260,7 +260,8 @@ public:
 
     // P05: the running / last "Uygula" run (ApplyController). Lives until the next run.
     struct ApplyRun {
-        enum class Stage : std::uint8_t { Running, Committing, Done };
+        // Paused (D-106): the steps of the edition are done; it waits, mounted, for "Kaydet ve devam et".
+        enum class Stage : std::uint8_t { Running, Paused, Committing, Done };
         Stage stage = Stage::Running;
         core::ops::ChangeSet changes;          // what was applied (for "Presete kaydet")
         core::ops::ApplyPlan plan;
@@ -344,6 +345,20 @@ public:
     [[nodiscard]] std::optional<WindowsDownload>& windowsDownloadMutable() noexcept { return m_windowsDownload; }
     void setWindowsDownload(std::optional<WindowsDownload> job);
     void notifyWindowsDownload() { notify(Change::WindowsDownload); }
+    // How the last start ended, kept on the page until the next start: why there is no ISO, or
+    // what the ISO is without. A toast is gone in seconds and a conversion runs for an hour ("the
+    // ISO never came", no word why).
+    struct WindowsDownloadNotice {
+        enum class Kind : std::uint8_t { Failed, Warning };
+        Kind kind = Kind::Failed;
+        std::wstring title;
+        std::wstring text;
+        bool job = false; // failed: the job ran (its files stay, the log has the rest); false: it never started
+    };
+    [[nodiscard]] const std::optional<WindowsDownloadNotice>& windowsDownloadNotice() const noexcept {
+        return m_windowsDownloadNotice;
+    }
+    void setWindowsDownloadNotice(std::optional<WindowsDownloadNotice> notice); // Change::WindowsDownload
     // D-078: the Programs page's data (index loaded, a package's details or icon arrived).
     void notifyPrograms() { notify(Change::Programs); }
 
@@ -444,6 +459,7 @@ private:
     std::optional<IsoRun> m_iso;
     std::optional<UpdateFetch> m_updateFetch;
     std::optional<WindowsDownload> m_windowsDownload;
+    std::optional<WindowsDownloadNotice> m_windowsDownloadNotice;
     std::optional<LanguageFetch> m_languageFetch;
     std::optional<SystemMounts> m_systemMounts;
     std::optional<core::HostDismReport> m_hostDism;

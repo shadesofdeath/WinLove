@@ -33,6 +33,7 @@ TEST_CASE("settings: every field survives save / load") {
     settings.workRoot = L"D:\\WinLove \u00e7al\u0131\u015fma";
     settings.mountFolder = L"E:\\mnt";
     settings.isoFolder = L"D:\\ISO";
+    settings.pauseBeforeSave = true; // D-106
     const auto file = scratch(L"roundtrip.json");
     settings.save(file);
     CHECK(AppSettings::load(file) == settings);

@@ -15,6 +15,7 @@ Result<std::unique_ptr<SwapChainTarget>> SwapChainTarget::create(const RenderDev
                                                                 UINT widthPx, UINT heightPx, float dpi) {
     auto target = std::make_unique<SwapChainTarget>();
     target->m_dpi = dpi;
+    target->m_d3d = device.d3d();
 
     DXGI_SWAP_CHAIN_DESC1 desc{};
     desc.Width = std::max(widthPx, 1u);
@@ -41,6 +42,24 @@ Result<std::unique_ptr<SwapChainTarget>> SwapChainTarget::create(const RenderDev
         return std::unexpected(bound.error());
     }
     return target;
+}
+
+SwapChainTarget::~SwapChainTarget() {
+    // Otherwise the next CreateSwapChainForHwnd on this window — after a GPU reset — fails with
+    // E_ACCESSDENIED (0x80070005): the old chain still lives in the device's pending destruction.
+    if (m_context) {
+        m_context->SetTarget(nullptr);
+    }
+    m_context.Reset();
+    m_swapChain.Reset();
+    if (m_d3d) {
+        ComPtr<ID3D11DeviceContext> immediate;
+        m_d3d->GetImmediateContext(&immediate);
+        if (immediate) {
+            immediate->ClearState();
+            immediate->Flush();
+        }
+    }
 }
 
 Result<void> SwapChainTarget::bindBackBuffer() {
