@@ -5,6 +5,8 @@
 #include "base/Text.h"
 #include "base/Utf8.h"
 #include "core/image/wim/WimGapi.h"
+#include "core/image/wim/WimVerify.h"
+#include "core/io/ByteSource.h"
 
 #include <windows.h>
 
@@ -441,6 +443,86 @@ Result<std::filesystem::path> expandUpdatePackage(const std::filesystem::path& c
         return fail(ErrorCode::NotFound, L"the expanded update has no update.mum", folder.wstring());
     }
     return mum;
+}
+
+std::vector<std::wstring> msuNames(const std::filesystem::path& msu) {
+    auto file = DiskFile::open(nativePath(msu));
+    if (!file) {
+        return {};
+    }
+    auto names = wimFolderNames(**file, 1, L"");
+    return names ? std::move(*names) : std::vector<std::wstring>{};
+}
+
+bool hotpatchInside(const std::vector<std::wstring>& names) {
+    return std::ranges::any_of(names, [](const std::wstring& n) { return text::lower(n).find(L"-hotpatch-") != std::wstring::npos; });
+}
+
+std::vector<std::filesystem::path> checkpointsBeside(const std::filesystem::path& msu) {
+    std::vector<std::filesystem::path> found;
+    std::error_code ec;
+    const std::wstring self = text::lower(msu.filename().wstring());
+    for (const auto kb : kCheckpointKbs) {
+        for (const auto& item : std::filesystem::directory_iterator(msu.parent_path(), ec)) {
+            const std::wstring name = text::lower(item.path().filename().wstring());
+            if (name != self && name.ends_with(L".msu") && name.find(kb) != std::wstring::npos) {
+                found.push_back(item.path());
+            }
+        }
+    }
+    return found;
+}
+
+Result<ExpandedMsu> expandMsu(const std::filesystem::path& msu, const std::filesystem::path& work, const TaskContext& task,
+                              const std::filesystem::path& fallbackDlls) {
+    const std::wstring stem = msu.stem().wstring();
+    const auto unpacked = work / stem;
+    ExpandedMsu result{work / (stem + L".x"), {}};
+    const auto done = work / (stem + L".done"); // beside: CBS reads the package folder
+    std::error_code ec;
+    auto findSsu = [&] {
+        const std::filesystem::directory_iterator first(work / L"ssu" / stem, ec);
+        return ec || first == std::filesystem::directory_iterator() ? std::filesystem::path() : first->path();
+    };
+    if (std::filesystem::is_regular_file(done, ec)) {
+        result.ssu = findSsu();
+        return result;
+    }
+    auto part = [&task](double from, double to) {
+        return TaskContext{task.cancel, [&task, from, to](double f, std::wstring_view stage) {
+                               task.report(from + (to - from) * std::clamp(f, 0.0, 1.0), stage);
+                           }};
+    };
+    std::filesystem::remove_all(unpacked, ec);
+    std::filesystem::remove_all(result.package, ec);
+    if (auto r = applyImage(msu, 1, unpacked, part(0.0, 0.1)); !r) {
+        return std::unexpected(r.error());
+    }
+    std::filesystem::path container;
+    for (const auto& item : std::filesystem::directory_iterator(unpacked, ec)) {
+        const std::wstring name = text::lower(item.path().filename().wstring());
+        auto psf = item.path();
+        psf.replace_extension(L".psf");
+        if (name.starts_with(L"windows1") && name.ends_with(L".wim") && name.find(L"-hotpatch-") == std::wstring::npos &&
+            std::filesystem::is_regular_file(psf, ec)) {
+            container = item.path();
+        } else if (name.starts_with(L"ssu-") && name.ends_with(L".cab")) {
+            std::filesystem::create_directories(work / L"ssu" / stem, ec);
+            std::filesystem::rename(item.path(), work / L"ssu" / stem / item.path().filename(), ec);
+        }
+    }
+    if (container.empty()) {
+        return fail(ErrorCode::NotFound, L"no cumulative update (.wim + .psf) in the .msu", msu.wstring());
+    }
+    log::info("uup", std::format(L"{}: expanded from {} (without Windows Update's agent)", msu.filename().wstring(),
+                                 container.filename().wstring()));
+    if (auto mum = expandUpdatePackage(container, result.package, part(0.1, 1.0), fallbackDlls); !mum) {
+        return std::unexpected(mum.error());
+    }
+    std::filesystem::remove_all(unpacked, ec);
+    std::ofstream(done).put('1');
+    result.ssu = findSsu();
+    return result;
 }
 
 } // namespace wl::core::uup

@@ -43,8 +43,20 @@ struct DismExeRun {
 
 // D-063: a package through the DISM API; a UUP-based .msu (24H2+ cumulative update) the API refuses
 // on a host whose servicing stack moved on ("Active offline session not registered", 0x800401E3)
-// goes in through dism.exe /Add-Package, which installs the same file into the same image.
+// goes in through dism.exe /Add-Package, which installs the same file into the same image. One
+// Windows Update's agent refuses offline (a hotpatch-capable LCU: 0x800F8012; an ARM64 image from
+// x64: E_INVALIDARG — nothing changed in the image) goes in expanded (addMsuExpanded), its
+// checkpoints from its folder, under %TEMP%\WinLove\msu (removed afterwards).
 [[nodiscard]] Result<void> addPackageOrDismExe(DismSession& session, const std::filesystem::path& package,
                                                const TaskContext& task);
+
+// A 24H2+ .msu without Windows Update's agent (uup/PsfPackage.h): `checkpoints` (oldest first) and
+// `msu` expanded under `work` (once: a second edition reuses them), the servicing stack it carries
+// added first unless `ssu` is false, then each expanded package by its folder; a checkpoint the image
+// already has (CBS_E_NOT_APPLICABLE) is passed over. A hotpatch is left out: the image gets the
+// cumulative update it builds on. PA30/PA31 with this PC's UpdateCompression.dll, else the image's.
+[[nodiscard]] Result<void> addMsuExpanded(DismSession& session, const std::filesystem::path& msu,
+                                          const std::vector<std::filesystem::path>& checkpoints,
+                                          const std::filesystem::path& work, bool ssu, const TaskContext& task);
 
 } // namespace wl::core

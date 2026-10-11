@@ -64,6 +64,30 @@ TEST_CASE("PSF index: the files, where their bytes are and how they are stored")
     CHECK(psfKind("PA19", "") == PsfEntry::Kind::Pa19);
 }
 
+TEST_CASE("MSU: a hotpatch inside; the checkpoints beside it, oldest first") {
+    CHECK(hotpatchInside({L"SSU-26100.9441-x64.cab", L"Windows11.0-KB5124008-x64.wim", L"Windows11.0-KB5129241-Hotpatch-x64.cab"}));
+    CHECK_FALSE(hotpatchInside({L"SSU-26100.1738-x64.cab", L"Windows11.0-KB5043080-x64.wim", L"Windows11.0-KB5043080-x64.psf"}));
+    CHECK_FALSE(hotpatchInside({}));
+
+    const auto dir = std::filesystem::temp_directory_path() / L"wl-msu-beside";
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    std::filesystem::create_directories(dir);
+    for (const wchar_t* name : {L"Windows11.0-KB5122055-x64.msu", L"Windows11.0-KB5043080-x64.msu", L"Windows11.0-KB5129241-x64.msu",
+                                L"Windows11.0-KB5068181-x64.msu", L"Windows11.0-KB5043080-x64.cab", L"notes.txt"}) {
+        std::ofstream(dir / name).put('x');
+    }
+    const auto found = checkpointsBeside(dir / L"Windows11.0-KB5129241-x64.msu");
+    REQUIRE(found.size() == 3);
+    CHECK(found[0].filename() == L"Windows11.0-KB5043080-x64.msu");
+    CHECK(found[1].filename() == L"Windows11.0-KB5068181-x64.msu");
+    CHECK(found[2].filename() == L"Windows11.0-KB5122055-x64.msu");
+    // A checkpoint given itself is not its own prerequisite.
+    CHECK(checkpointsBeside(dir / L"Windows11.0-KB5043080-x64.msu").size() == 2);
+    CHECK(msuNames(dir / L"Windows11.0-KB5129241-x64.msu").empty()); // not a WIM: an older, cabinet .msu
+    std::filesystem::remove_all(dir, ec);
+}
+
 TEST_CASE("PSF expand: RAW bytes copied, a PA30 delta against nothing applied, the time kept") {
     const auto dir = std::filesystem::temp_directory_path() / L"wl-psf-test";
     std::error_code ec;

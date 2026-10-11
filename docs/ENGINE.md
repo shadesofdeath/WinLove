@@ -383,6 +383,9 @@ Uygulama davranışı:
   CumulativeUpdate_KB5043080 (checkpoint), CumulativeUpdate_KB5124008 (temel), ServicingStackUpdate_KB5124007, sonra
   HotPatchUpdate_KB5129241 → red. abbodi1406'nın convert-UUP.cmd'sinde (v126) aynı durum için yorum satırına alınmış bir
   "Not Supported: [HotPatchUpdate]" kontrolü var; araçları LCU'yu `.psf`'den açıp `update.mum` ile kurar (LCUmsuExpand).
+- [2026-10-11] [UUP, uygulamalar] ARM64 26200.9448'in uygulama setinde PC Manager paketi yok (veritabanı listeler,
+  UUP dump'ın `app` dosya listesi vermez); indirme "left out" yazar, klasöründe yalnız `License.xml` olur. Dönüştürme
+  bunu uyarı değil bilgi sayar (hiç paket dosyası yoksa).
 - [2026-10-10] [DISM] `dism /Add-Package` `.wim` paket yolunu kabul etmez (0x80070057); `.cab` adı verilen WIM kabını CBS
   açamaz (0xca00a005). ARM64 imajda x64 hosttan checkpoint `.msu`'su tek başına da ajanda düşer ("Failed to initialize
   offline session: E_INVALIDARG").
