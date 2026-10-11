@@ -2725,6 +2725,9 @@ int cmdUup(std::vector<std::wstring> args) {
         for (const auto& w : r->warnings) {
             print(L"  warning " + w + L"\n");
         }
+        if (!r->hotpatchSkipped.empty()) {
+            print(L"  hotpatch left out (its baseline went in): " + r->hotpatchSkipped.filename().wstring() + L"\n");
+        }
         return 0;
     }
     if (sub == L"apps" && (words.size() == 5 || words.size() == 6)) {

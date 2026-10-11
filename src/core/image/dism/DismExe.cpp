@@ -4,9 +4,11 @@
 #include "core/image/dism/Dism.h"
 #include "core/image/dism/HostDism.h"
 #include "core/system/Process.h"
+#include "core/uup/PsfPackage.h"
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cctype>
 #include <charconv>
 #include <format>
@@ -129,7 +131,21 @@ Error dismExeFailure(const DismExeRun& run, std::wstring message) {
                  static_cast<std::int32_t>(run.exitCode)};
 }
 
-Result<void> addPackageOrDismExe(DismSession& session, const std::filesystem::path& package, const TaskContext& task) {
+namespace {
+
+// Windows Update's agent refused the .msu offline without touching the image.
+bool agentRefusal(std::int32_t hresult) noexcept {
+    const auto hr = static_cast<std::uint32_t>(hresult);
+    return hr == 0x800F8012u || hr == 0x80070057u;
+}
+
+TaskContext share(const TaskContext& task, double from, double to) {
+    return TaskContext{task.cancel, [&task, from, to](double f, std::wstring_view stage) {
+                           task.report(from + (to - from) * std::clamp(f, 0.0, 1.0), stage);
+                       }};
+}
+
+Result<void> addPlainOrDismExe(DismSession& session, const std::filesystem::path& package, const TaskContext& task) {
     auto added = session.addPackage(package, task);
     constexpr std::int32_t kSessionNotRegistered = static_cast<std::int32_t>(0x800401E3);
     const std::wstring name = package.wstring();
@@ -145,6 +161,68 @@ Result<void> addPackageOrDismExe(DismSession& session, const std::filesystem::pa
     }
     if (run->exitCode != 0 && run->exitCode != 3010) { // 3010: done, restart pending (an offline image has none to do)
         return std::unexpected(dismExeFailure(*run, L"add package " + name));
+    }
+    return {};
+}
+
+} // namespace
+
+Result<void> addPackageOrDismExe(DismSession& session, const std::filesystem::path& package, const TaskContext& task) {
+    auto added = addPlainOrDismExe(session, package, task);
+    if (added || !agentRefusal(added.error().hresult) || task.cancel.cancelled() || uup::msuNames(package).empty()) {
+        return added;
+    }
+    log::warn("dism", std::format(L"Windows Update's agent refused {} offline ({}): it goes in expanded",
+                                  package.filename().wstring(), describe(added.error())));
+    const auto work = std::filesystem::temp_directory_path() / L"WinLove" / L"msu";
+    std::error_code ec;
+    std::filesystem::remove_all(work, ec);
+    auto expanded = addMsuExpanded(session, package, uup::checkpointsBeside(package), work, /*ssu=*/true, task);
+    std::filesystem::remove_all(work, ec);
+    return expanded;
+}
+
+Result<void> addMsuExpanded(DismSession& session, const std::filesystem::path& msu,
+                            const std::vector<std::filesystem::path>& checkpoints, const std::filesystem::path& work, bool ssu,
+                            const TaskContext& task) {
+    std::vector<std::filesystem::path> msus = checkpoints;
+    msus.push_back(msu);
+    const auto dlls = session.mountPath() / L"Windows" / L"System32"; // when this PC has no UpdateCompression.dll
+    std::vector<uup::ExpandedMsu> expanded;
+    for (std::size_t k = 0; k < msus.size(); ++k) {
+        const double n = static_cast<double>(msus.size());
+        auto one = uup::expandMsu(msus[k], work, share(task, 0.4 * static_cast<double>(k) / n, 0.4 * static_cast<double>(k + 1) / n),
+                                  dlls);
+        if (!one) {
+            return std::unexpected(one.error());
+        }
+        expanded.push_back(std::move(*one));
+    }
+    constexpr auto kNotApplicable = static_cast<std::int32_t>(0x800F081E);
+    if (ssu && !expanded.back().ssu.empty()) {
+        if (auto r = session.addPackage(expanded.back().ssu, share(task, 0.4, 0.45)); !r && r.error().hresult != kNotApplicable) {
+            return r;
+        }
+        // A session keeps the servicing stack it was opened with.
+        if (auto r = session.reload(); !r) {
+            return r;
+        }
+    }
+    for (std::size_t k = 0; k < expanded.size(); ++k) {
+        if (session.reloadRequired()) {
+            if (auto r = session.reload(); !r) {
+                return r;
+            }
+        }
+        const double from = 0.45 + 0.55 * static_cast<double>(k) / static_cast<double>(expanded.size());
+        auto r = session.addPackage(expanded[k].package, share(task, from, from + 0.55 / static_cast<double>(expanded.size())));
+        if (!r && k + 1 < expanded.size() && r.error().hresult == kNotApplicable) {
+            log::info("dism", L"checkpoint not needed (the image is past it): " + msus[k].filename().wstring());
+            continue;
+        }
+        if (!r) {
+            return r;
+        }
     }
     return {};
 }

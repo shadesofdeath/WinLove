@@ -9,6 +9,7 @@
 #include "base/Result.h"
 #include "core/tasks/Task.h"
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -16,6 +17,27 @@
 #include <vector>
 
 namespace wl::core::uup {
+
+// The checkpoint cumulative updates a later LCU builds on (24H2+), oldest first. DISM takes them
+// from the LCU's folder on its own; only the newest LCU is given to it.
+inline constexpr std::array<std::wstring_view, 3> kCheckpointKbs{L"kb5043080", L"kb5068181", L"kb5122055"};
+
+// The names in a 24H2+ .msu — a WIM, not compressed; empty for an older, cabinet one.
+[[nodiscard]] std::vector<std::wstring> msuNames(const std::filesystem::path& msu);
+// A hotpatch package among them ("Windows11.0-KB…-Hotpatch-x64.cab").
+[[nodiscard]] bool hotpatchInside(const std::vector<std::wstring>& names);
+// The checkpoint .msu files in the folder of `msu` (where DISM looks for them), oldest first.
+[[nodiscard]] std::vector<std::filesystem::path> checkpointsBeside(const std::filesystem::path& msu);
+
+struct ExpandedMsu {
+    std::filesystem::path package; // the folder CBS installs (its update.mum)
+    std::filesystem::path ssu;     // the servicing stack cab it carried (empty: none)
+};
+// A 24H2+ .msu taken apart under `work`: unpacked (wimgapi, admin), its cumulative update
+// (Windows1x.0-KB…-<arch>.wim + .psf, not the hotpatch's) expanded into <work>\<name>.x, its SSU cab
+// kept in <work>\ssu\ and the rest removed (the .psf: gigabytes). Done once: <work>\<name>.done.
+[[nodiscard]] Result<ExpandedMsu> expandMsu(const std::filesystem::path& msu, const std::filesystem::path& work,
+                                            const TaskContext& task, const std::filesystem::path& fallbackDlls = {});
 
 struct PsfEntry {
     enum class Kind : std::uint8_t { Raw, Pa19, Pa30, Pa31 };

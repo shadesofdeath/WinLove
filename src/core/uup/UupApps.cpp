@@ -484,6 +484,16 @@ std::vector<std::wstring> provisionApps(DismSession& session, const std::vector<
         const AppPackage* chosen = main != app.packages.end() ? &*main : app.packages.empty() ? nullptr : &app.packages.front();
         const auto file = chosen ? folder / chosen->fileName : std::filesystem::path();
         if (!chosen || chosen->fileName.empty() || !std::filesystem::is_regular_file(file, ec)) {
+            const bool none = std::ranges::none_of(app.packages, [&](const AppPackage& p) {
+                return !p.fileName.empty() && std::filesystem::is_regular_file(folder / p.fileName, ec);
+            });
+            if (none) {
+                // Microsoft publishes no package of it for this set (PC Manager on ARM64): the
+                // download left it out already (only its licence is there); Microsoft's own media
+                // have none either.
+                log::info("uup", app.id + L": no package in the set, left out");
+                continue;
+            }
             warnings.push_back(app.id + L": not in the set");
             continue;
         }
