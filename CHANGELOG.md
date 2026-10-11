@@ -6,6 +6,33 @@
 
 ## Türkçe
 
+### 1.2.3 Beta — 2026-10-11
+
+1.2.2 Beta'dan bu yana gelenler:
+
+#### Düzeltmeler
+
+- **Windows indir: en güncel Windows 11 (25H2, 26200.9448) güncellemelerle ISO vermiyordu — x64'te de, ARM64'te
+  de.** Bu derlemenin toplu güncelleştirmesi (KB5129241) bir hotpatch paketi; Microsoft'un güncelleme aracı onu
+  çevrimdışı imaja almıyor ("Hotpatching is not supported", 0x800F8012). WinLove artık paketi kendisi açıyor (her
+  dosya SHA-256 ile doğrulanır) ve servis yığınını, checkpoint'i, toplu güncelleştirmeyi doğrudan imaja ekliyor.
+  Hotpatch'in kendisi çevrimdışı imaja girmez: ISO onun dayandığı toplu güncelleştirmeyle (26200.9445) çıkar, sayfa
+  bunu yazar; kalan küçük fark kurulumdan sonra Windows Update'ten gelir.
+- **Güncellemeler, WinRE ve boot.wim güncellemesi:** aynı paket oralarda da aynı yolla ekleniyor (checkpoint, MSU'nun
+  yanındaki klasörden alınır).
+- **ARM64 ISO:** ARM64 kurulum medyası Microsoft'unki gibi yalnız UEFI ile açılan bir ISO olur. ISO Oluştur, BIOS
+  önyükleme dosyası olmayan bir klasörden de ISO yapar (yalnız UEFI).
+- **Uygula: "1 adım başarısız, imaj kaydedilmedi" (0x800F0806).** Bir özellik açma / kapama ilk açılışa iş
+  bıraktığında Windows bileşen deposu temizliğini yapmaz; imaj bundan etkilenmez. WinLove bunu hata sayıp bütün
+  değişiklikleri kaydetmeden bağlı bırakıyordu. Artık imaj kaydediliyor, sonuç "1 işlem atlandı" diyor.
+- **Windows indir: yarım kalan bağlama.** Uygulama dönüştürme sırasında kapanır ya da çökerse kalan bağlı imaj, bir
+  sonraki açılışta ve yeni dönüştürmenin başında atılıyor (yeniden kullanılmıyor).
+- **Windows indir: indirme kesintileri.** Microsoft'un sunucusu bazı dosyalarda bağlantıyı kesiyordu; dosya baştan
+  iniyor, üç denemede iş düşüyordu. Artık kaldığı yerden devam ediyor.
+- **Windows indir: ilerleme çubuğu** bir sürüm yeniden yapıldığında (Windows 10 ESU) geri gitmiyor.
+- **Windows indir: gereksiz uyarı.** Microsoft'un o sette paketini yayınlamadığı bir uygulama (ARM64'te PC Manager)
+  ISO'yu "uyarılarla" göstermiyor; Microsoft'un kendi medyasında da yok.
+
 ### 1.2.2 Beta — 2026-10-10
 
 1.2.1 Beta'dan bu yana gelenler:
@@ -198,6 +225,34 @@ WinLove alfadan çıkıp **beta** oldu. 1.0.2 Alpha'dan bu yana gelenler:
 ---
 
 ## English
+
+### 1.2.3 Beta — 2026-10-11
+
+What changed since 1.2.2 Beta:
+
+#### Fixes
+
+- **Download Windows: the latest Windows 11 (25H2, 26200.9448) gave no ISO with updates — on x64 and ARM64
+  alike.** This build's cumulative update (KB5129241) is a hotpatch package; Microsoft's update agent does not take
+  it into an offline image ("Hotpatching is not supported", 0x800F8012). WinLove now opens the package itself (every
+  file checked by SHA-256) and adds the servicing stack, the checkpoint and the cumulative update straight into the
+  image. The hotpatch itself cannot go into an offline image: the ISO has the cumulative update it builds on
+  (26200.9445), the page says so, and the small rest comes from Windows Update after setup.
+- **Updates, WinRE and boot.wim updates:** the same package goes in the same way there (the checkpoint comes from the
+  MSU's folder).
+- **ARM64 ISO:** ARM64 setup media become an ISO that boots by UEFI only, like Microsoft's. Create ISO makes an ISO
+  from a folder without the BIOS boot file too (UEFI only).
+- **Apply: "1 step failed, the image is not saved" (0x800F0806).** When enabling or disabling a feature leaves work
+  for the first boot, Windows does not clean up the component store; the image is not affected. WinLove counted it
+  as an error and left all the changes unsaved and mounted. Now the image is saved and the result says "1 operation
+  skipped".
+- **Download Windows: a half-done mount.** When the app closes or crashes during a conversion, the image left
+  mounted is discarded at the next start and when a new conversion begins (never reused).
+- **Download Windows: dropped downloads.** Microsoft's server cut the connection on some files; the file started
+  over and the job failed after three tries. It now continues where it stopped.
+- **Download Windows: the progress bar** no longer goes back when an edition is made again (Windows 10 ESU).
+- **Download Windows: a needless warning.** An app Microsoft publishes no package of for the set (PC Manager on
+  ARM64) no longer shows the ISO "with warnings"; Microsoft's own media do not have it either.
 
 ### 1.2.2 Beta — 2026-10-10
 

@@ -7,7 +7,21 @@
   P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler, P16 Uygulama Ayarları, P17 Hakkında, P18 Komut Paleti:
   🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v2 (AppX + sistem bileşenleri + depo
   temizliği, D-031), test bekliyor.
-- **1.2.2 sonrası düzeltmeler (2026-10-10/11, yayınlanmadı, commit yok):**
+- **YAYINLANDI: v1.2.3-beta (2026-10-11)** — https://github.com/shadesofdeath/WinLove/releases/tag/v1.2.3-beta
+  (ön sürüm, `WinLove.exe` 10.179.072 bayt, SHA-256 `62A942F9358456094642025D3ADEC951581C33FCFB2BE2C3505A760BB5A6DBB8`).
+  Kullanıcı: "sabaha projeyi bitir … commit at pushla release paylaş soru sorma".
+  Gece doğrulananlar (hepsi `build\lab\`, hepsi wlcli üzerinden, yönetici; UAC bu PC'de sormadan yükseltir):
+  - ARM64 26200.9448 uçtan uca son ikiliyle (`uup\run-arm64.ps1`, wlcli22): exit 0 (2.280 sn), 10.0.26200.9445,
+    El Torito yalnız UEFI (`platform 0xEF`, BIOS yok), PC Manager bilgi satırı (uyarı yok), kalan bağlama atıldı.
+  - x64 26200.9448 Pro tr-tr uçtan uca (`uup\run-x64-9448.ps1`, wlcli20): exit 0 (1.789 sn), ISO 7,4 GB,
+    10.0.26200.9445, LCU genişletilmiş yoldan; El Torito BIOS + UEFI (Microsoft'un ISO'su gibi).
+  - Güncellemeler sayfası yolu (`hotpatch-apply\run.ps1`: `addPackage` + `lcu`, x64 26100.1): ajan 0x800F8012 →
+    `addPackageOrDismExe` genişletilmiş yola geçti, checkpoint MSU'nun yanından alındı → 26100.9445 (784 sn).
+  - Uygulama açılışında kalan bağlama (`startup\run.ps1`, `WinLove.exe --profile=` ile lab workRoot): açılıştan ~1 sn
+    sonra "a mount an earlier conversion left … discarded".
+  - VM kurulumu (`uup\run-vm-9448.ps1`, VMware, EFI, ağsız, katılımsız): x64 ISO ~11 dk'da kuruldu, masaüstü,
+    ilk oturumda `BUILD=26200` / UBR `9445` (VNC karesi `out\vm-9448\shot-016.png`), kendini kapattı.
+- **1.2.2 sonrası düzeltmeler (2026-10-10/11):**
   - **Uygula `0x800F0806`'da kaydetmiyordu (forum):** özellik adımları (LegacyComponents / Search; bu hostta NetFx3)
     ilk açılışa bekleyen işlem bırakınca `/ResetBase` temizliği reddedilir, imaj değişmez; WinLove bunu "başarısız"
     sayıp 190 değişikliği kaydetmeden bağlı bırakıyordu. `unchangedByFailure` + `ApplyReport::holdingFailures()`:
@@ -17,11 +31,11 @@
     reddi. Dönüştürme ARM64 ISO'yu Microsoft / uup-converter gibi yalnız UEFI yapar; ISO sayfası dosya hiç yoksa
     `bootModeFor` ile yalnız UEFI'ye düşer (birim testli). **Uçtan uca lab `build\lab\uup\run-arm64.ps1` (wlcli17,
     26200.9448 ARM64 Pro tr-tr, güncellemeler + 53 uygulama + kalan bağlama):** exit 0 (2.620 sn), ISO 8,2 GB,
-    10.0.26200.9445, `CPRA_A64FRE_TR-TR_DV9`, hotpatch uyarısı; bağlı imaj kalmadı. Bu ISO "yalnız UEFI" değişikliğinden
-    önce yapıldı (UEFI+BIOS); o tek satırlık değişiklik uçtan uca yeniden denenmedi. ARM64 ISO bir cihazda kurulmadı.
+    10.0.26200.9445, `CPRA_A64FRE_TR-TR_DV9`, hotpatch uyarısı; bağlı imaj kalmadı (yalnız UEFI'li son tur yukarıda).
+    ARM64 ISO bir cihazda kurulmadı (x64 hostta ARM64 VM yok).
   - **Çökme sonrası kalan bağlama:** `releaseWorkMount` dönüştürme başında ve uygulama açılışında (`WindowsDownloadController::
     releaseLeftovers`, yöneticiyse) `uup\work\mount`'taki bağlamayı atar, yeniden kullanmaz. Lab: önceden bağlanmış
-    boot.wim "a mount an earlier conversion left … discarded". Uygulama açılışındaki yol canlı denenmedi.
+    boot.wim "a mount an earlier conversion left … discarded"; uygulama açılışındaki yol da (yukarıda).
   - **İndirme kesintileri:** Microsoft CDN'i bağlantıyı MiB sınırlarında kesiyordu, 3 denemede iş düşüyordu; artık
     `.part`'tan devam eder (ilerlemesiz 3 deneme üst üste olursa hata).
   - **Hotpatch LCU (asıl ARM64 nedeni, x64'ü de vuruyor):** 26200.9448'in LCU'su KB5129241 "hotpatch capable";
@@ -30,10 +44,15 @@
     `UupConvert::addLcuExpanded`: hotpatch'li ya da ARM64 imajda `.msu` açılır, SSU → checkpoint → temel LCU klasörden
     eklenir; hotpatch atlanır, panelde `download.hotpatchSkipped` notu (render `--demo-download=hotpatch`). Elle lab:
     ARM64 ve x64'te 26100.1 → 26100.1742 → 26100.9445. `wlcli` yenileri: `wim-ls`, `wim-apply`, `psf-expand`,
-    `uup download --only=`. **Doğrulanmayan:** x64 26200.9448'in uçtan uca dönüştürmesi (tam x64 set indirilmedi; yol
-    aynı, x64'te elle lab geçti); Windows 10 hostta (UpdateCompression.dll yoksa) PA30/PA31; uygulama içinden canlı
-    dönüştürme. Lab artıkları: `build\lab\uup\x64-hotpatch\` (2,6 GB MSU), `out\arm64.iso`.
-  - **Sıradaki somut adım:** kullanıcı onayıyla commit; isterse x64 26200.9448 uçtan uca (≈4 GB indirme) ve sürüm.
+    `uup download --only=`. Aynı yol `addPackageOrDismExe`'de de (`addMsuExpanded`): Güncellemeler sayfası, WinRE,
+    boot.wim — ajan 0x800F8012 / E_INVALIDARG ile reddederse MSU açılıp eklenir (%TEMP%\WinLove\msu, sonra silinir).
+  - **İlerleme çubuğu** ESU geri dönüşünde geri gitmiyor (`convertUup` ilerlemeyi tekdüze yapar).
+  - **PC Manager uyarısı:** sette paketi hiç olmayan uygulama (ARM64'te PC Manager) uyarı değil bilgi (`provisionApps`).
+  - **Sıradaki somut adım:** kullanıcı 1.2.3'ü dener; açıkta D-104 (winget'siz imajda karışık çevrimdışı liste) ve
+    aşağıdaki "Doğrulanmayan"lar.
+  - **Doğrulanmayan:** Windows 10 hostta (UpdateCompression.dll yoksa: x64'te imajınkini kullanır, ARM64'te hata
+    mesajı) PA30/PA31; WinRE / boot.wim'e hotpatch MSU'su (aynı fonksiyon); D-106'nın uygulama içi canlı tıklaması;
+    ARM64 ISO bir cihazda. Lab artıkları: `build\lab\uup\` altında setler ve `out\*.iso`.
 - **YAYINLANDI: v1.2.0-beta (2026-10-10)** — https://github.com/shadesofdeath/WinLove/releases/tag/v1.2.0-beta
   (ön sürüm, `WinLove.exe` 10.051.584 bayt, SHA-256 `D0A93F9ED2051083D8FDC61F2597C8D76C039E799972DDD68EC85A526470100D`).
   `main` push edildi (a849531). Bilinen sınır (D-104): winget'siz imajda karışık çevrimdışı liste durur — sıradaki aday.
