@@ -8,8 +8,8 @@
   🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v2 (AppX + sistem bileşenleri + depo
   temizliği, D-031), test bekliyor.
 - **YAYINLANDI: v1.2.3-beta (2026-10-11)** — https://github.com/shadesofdeath/WinLove/releases/tag/v1.2.3-beta
-  (ön sürüm, `WinLove.exe` 10.179.072 bayt, SHA-256 `62A942F9358456094642025D3ADEC951581C33FCFB2BE2C3505A760BB5A6DBB8`).
-  Kullanıcı: "sabaha projeyi bitir … commit at pushla release paylaş soru sorma".
+  (ön sürüm, `WinLove.exe` 10.179.072 bayt, SHA-256 `62A942F9358456094642025D3ADEC951581C33FCFB2BE2C3505A760BB5A6DBB8`,
+  GitHub özeti aynı). `main` c295599 push edildi (29c825a dahil). Kullanıcı: "sabaha projeyi bitir … commit at pushla release paylaş soru sorma".
   Gece doğrulananlar (hepsi `build\lab\`, hepsi wlcli üzerinden, yönetici; UAC bu PC'de sormadan yükseltir):
   - ARM64 26200.9448 uçtan uca son ikiliyle (`uup\run-arm64.ps1`, wlcli22): exit 0 (2.280 sn), 10.0.26200.9445,
     El Torito yalnız UEFI (`platform 0xEF`, BIOS yok), PC Manager bilgi satırı (uyarı yok), kalan bağlama atıldı.
