@@ -3,6 +3,9 @@
 > Her oturumun sonunda güncellenir. En üstte güncel durum; geçmiş en altta kısa satırlar.
 
 ## Güncel
+- **YAYINLANDI: v1.3.0-beta (2026-11-09)** — https://github.com/shadesofdeath/WinLove/releases/tag/v1.3.0-beta
+  (ek: `WinLove.exe`). Açık: güncelleme korumasının VM'de gerçek bir toplu güncelleştirmeden sonraki davranışı;
+  kaldırmaları önceki bir oturumda yapılmış imaja sonradan güncelleme eklemek (referans araçta da düşer).
 - **1.3.0 Beta (2026-11-09) — D-107 … D-125 tek sürümde; kullanıcı "her şey bitince yeni sürümle commitle,
   releases'te kısa net changelog ile paylaş" dedi.** Son oturumda:
   - **D-124 etki raporu:** Uygula özetinde kapalı korumaların tutacağı adımlar özellik özellik, "Korumayı aç" ile.
