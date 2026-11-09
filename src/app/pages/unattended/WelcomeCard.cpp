@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cwchar>
 #include <string>
+#include <vector>
 
 namespace wl::app {
 
@@ -42,11 +43,62 @@ Rgba withAlpha(Rgba c, float a) {
     return c;
 }
 
-// Mixed towards black (dark) or white (light): the wizard's backdrop in its accent.
-Rgba shade(Rgba c, bool dark) {
-    const float k = dark ? 0.22f : 0.12f;
-    return dark ? Rgba{c.r * k, c.g * k, c.b * k + 0.04f, 1.0f}
-                : Rgba{1.0f - (1.0f - c.r) * k, 1.0f - (1.0f - c.g) * k, 1.0f - (1.0f - c.b) * k, 1.0f};
+// Towards white (1) or black (0) by `k`, as the setup screens mix (oobe.ps1 Get-Mix).
+Rgba mix(Rgba c, float toward, float k) {
+    return {c.r + (toward - c.r) * k, c.g + (toward - c.g) * k, c.b + (toward - c.b) * k, c.a};
+}
+
+float luminance(Rgba c) {
+    const auto lin = [](float v) { return v <= 0.03928f ? v / 12.92f : std::pow((v + 0.055f) / 1.055f, 2.4f); };
+    return 0.2126f * lin(c.r) + 0.7152f * lin(c.g) + 0.0722f * lin(c.b);
+}
+
+float contrast(Rgba a, Rgba b) {
+    const float x = luminance(a);
+    const float y = luminance(b);
+    return (std::max(x, y) + 0.05f) / (std::min(x, y) + 0.05f);
+}
+
+float hueOf(Rgba c) {
+    const float hi = std::max({c.r, c.g, c.b});
+    const float lo = std::min({c.r, c.g, c.b});
+    const float d = hi - lo;
+    if (d <= 0) {
+        return 0;
+    }
+    float h = hi == c.r ? std::fmod((c.g - c.b) / d, 6.0f) : hi == c.g ? (c.b - c.r) / d + 2 : (c.r - c.g) / d + 4;
+    h *= 60;
+    return h < 0 ? h + 360 : h;
+}
+
+// The same colour with its hue turned (oobe.ps1 Get-Shift).
+Rgba hueTurn(Rgba c, float degrees) {
+    const float hi = std::max({c.r, c.g, c.b});
+    const float lo = std::min({c.r, c.g, c.b});
+    const float l = (hi + lo) / 2;
+    const float s = hi == lo ? 0 : (hi - lo) / (1 - std::abs(2 * l - 1));
+    float h = std::fmod(hueOf(c) + degrees, 360.0f);
+    if (h < 0) {
+        h += 360;
+    }
+    const float chroma = (1 - std::abs(2 * l - 1)) * s;
+    const float x = chroma * (1 - std::abs(std::fmod(h / 60, 2.0f) - 1));
+    const float m = l - chroma / 2;
+    float r = 0, g = 0, b = 0;
+    switch (static_cast<int>(h / 60)) {
+    case 0: r = chroma, g = x; break;
+    case 1: r = x, g = chroma; break;
+    case 2: g = chroma, b = x; break;
+    case 3: g = x, b = chroma; break;
+    case 4: r = x, b = chroma; break;
+    default: r = chroma, b = x; break;
+    }
+    return {std::clamp(r + m, 0.0f, 1.0f), std::clamp(g + m, 0.0f, 1.0f), std::clamp(b + m, 0.0f, 1.0f), c.a};
+}
+
+Rgba hexColor(unsigned value, float alpha = 1.0f) {
+    return {static_cast<float>((value >> 16) & 0xFF) / 255.0f, static_cast<float>((value >> 8) & 0xFF) / 255.0f,
+            static_cast<float>(value & 0xFF) / 255.0f, alpha};
 }
 
 ui::icons::Icon stageIcon(Stage stage) {
@@ -66,27 +118,82 @@ ui::icons::Icon stageIcon(Stage stage) {
     return Icon::SuccessCircle;
 }
 
-// A text line in the drawing, as a soft bar (the wizard's words are its own; the shape is what counts).
-void skeleton(ui::Canvas& canvas, float x, float y, float width, float height = 6.0f) {
-    canvas.fillRoundRect({x, y, std::max(width, 4.0f), height}, height / 2, ui::Ink(Color::TextTertiary, Color::TextTertiary, 0, 0.35f));
+} // namespace
+
+// D-126: the setup screens' own colours (oobe.ps1 $palettes and Set-Colors), in the plan's theme — not the
+// app's: a dark wizard is drawn dark in the light app too.
+struct WelcomeCard::Look {
+    bool dark = true;
+    Rgba bg, text1, text2, text3, line, glass, glassHi, glassLine, field;
+    Rgba g1, g2, on, accT;
+};
+
+namespace {
+
+using Look = WelcomeCard::Look;
+
+Look makeLook(bool dark, Rgba accent) {
+    Look l;
+    l.dark = dark;
+    if (dark) {
+        l.bg = hexColor(0x090B11), l.text1 = hexColor(0xF4F5F8), l.text2 = hexColor(0xB9BDC7), l.text3 = hexColor(0x8C919E);
+        l.line = hexColor(0xFFFFFF, 0.13f), l.glass = hexColor(0xFFFFFF, 0.055f), l.glassHi = hexColor(0xFFFFFF, 0.09f);
+        l.glassLine = hexColor(0xFFFFFF, 0.10f), l.field = hexColor(0xFFFFFF, 0.05f);
+    } else {
+        l.bg = hexColor(0xF1F1EE), l.text1 = hexColor(0x14161C), l.text2 = hexColor(0x4D525E), l.text3 = hexColor(0x646975);
+        l.line = hexColor(0x000000, 0.11f), l.glass = hexColor(0xFFFFFF, 0.6f), l.glassHi = hexColor(0xFFFFFF, 0.86f);
+        l.glassLine = hexColor(0x000000, 0.07f), l.field = hexColor(0xFFFFFF, 0.65f);
+    }
+    // Warm accents lean to rose, the others to violet; the gradient is the accent and its turned hue.
+    const float hue = hueOf(accent);
+    const float turn = hue < 50 || hue > 330 ? -40.0f : 40.0f;
+    if (dark) {
+        l.g1 = mix(accent, 1, 0.4f);
+        l.g2 = mix(hueTurn(accent, turn), 1, 0.45f);
+    } else {
+        l.g1 = mix(accent, 0, 0.1f);
+        l.g2 = hueTurn(l.g1, turn);
+    }
+    // Accent text: mixed until it reads on the ground (5:1); the pill's text black or white, whichever reads on both ends.
+    for (float k = dark ? 0.3f : 0.15f; k <= 1.0f; k += 0.02f) {
+        l.accT = mix(accent, dark ? 1.0f : 0.0f, k);
+        if (contrast(l.accT, l.bg) >= 5) {
+            break;
+        }
+    }
+    const Rgba black{0, 0, 0, 1};
+    const Rgba white{1, 1, 1, 1};
+    l.on = std::min(contrast(l.g1, black), contrast(l.g2, black)) > std::min(contrast(l.g1, white), contrast(l.g2, white)) ? black : white;
+    return l;
 }
 
-void miniToggle(ui::Canvas& canvas, float x, float cy, bool on, Rgba accent) {
+// A text line in the drawing, as a soft bar (the wizard's words are its own; the shape is what counts).
+void skeleton(ui::Canvas& canvas, float x, float y, float width, Rgba color, float height = 5.0f) {
+    canvas.fillRoundRect({x, y, std::max(width, 4.0f), height}, height / 2, color);
+}
+
+void miniToggle(ui::Canvas& canvas, float x, float cy, bool on, const Look& l) {
     const RectF track{x, cy - 6, 22, 12};
     if (on) {
-        canvas.fillRoundRect(track, 6, accent);
-        canvas.fillEllipse({track.right() - 6, cy}, 4, Rgba{1, 1, 1, 1});
+        canvas.fillGradient(track, 6, l.g1, l.g2);
+        canvas.fillEllipse({track.right() - 6, cy}, 4, l.on);
     } else {
-        canvas.strokeRoundRect(track, 6, Color::LineStrong);
-        canvas.fillEllipse({track.x + 6, cy}, 3.5f, Color::TextTertiary);
+        canvas.fillRoundRect(track, 6, l.glass);
+        canvas.strokeRoundRect(track, 6, l.line, 1.0f);
+        canvas.fillEllipse({track.x + 6, cy}, 3.5f, l.text3);
     }
 }
 
-void miniInput(ui::Canvas& canvas, RectF r, const std::wstring& text, Rgba accent) {
-    canvas.fillRoundRect(r, 4, Color::BgInput);
-    canvas.strokeRoundRect(r, 4, Color::LineSubtle);
-    canvas.fillRoundRect({r.x + 1, r.bottom() - 2, r.width - 2, 2}, 1, accent);
-    canvas.drawText(text, {r.x + 8, r.y, r.width - 12, r.height}, TypeStyle::Small, Color::TextPrimary);
+// A field of the wizard: glass, a small label bar on top, the value under it; the focused one ringed in the accent.
+void miniField(ui::Canvas& canvas, RectF r, const std::wstring& value, bool focused, const Look& l) {
+    canvas.fillRoundRect(r, 8, focused ? l.glassHi : l.field);
+    canvas.strokeRoundRect(r, 8, focused ? l.g1 : l.glassLine, focused ? 1.5f * canvas.scale() : 1.0f);
+    skeleton(canvas, r.x + 10, r.y + 6, 44, withAlpha(l.text3, 0.55f), 4.0f);
+    if (value.empty()) {
+        skeleton(canvas, r.x + 10, r.y + 16, 70, withAlpha(l.text1, 0.55f));
+    } else {
+        canvas.drawText(value, {r.x + 10, r.y + 12, r.width - 20, 16}, TypeStyle::Caption, l.text1);
+    }
 }
 
 } // namespace
@@ -279,36 +386,30 @@ void WelcomeCard::paint(ui::Canvas& canvas) {
 }
 
 void WelcomeCard::paintPreview(ui::Canvas& canvas, RectF s) const {
-    if (s.width < 120 || s.height < 120) {
+    if (s.width < 160 || s.height < 120) {
         return;
     }
-    const bool darkPlan = m_plan.theme != L"light";
     const Rgba accent = parseAccent(m_plan.accent);
+    const Look l = makeLook(m_plan.theme != L"light", accent);
     if (!m_on) {
         canvas.pushOpacity(0.45f);
     }
-    // The wizard's screen: its accent darkened (or lightened) behind a centred card; the glow
-    // circles stay inside the screen.
-    canvas.fillRoundRect(s, 10.0f, shade(accent, darkPlan));
-    canvas.pushClip({s.x + 4, s.y + 4, s.width - 8, s.height - 8});
-    canvas.fillEllipse({s.x + s.width * 0.85f, s.y + s.height * 0.15f}, s.height * 0.45f, withAlpha(accent, darkPlan ? 0.18f : 0.10f));
-    canvas.fillEllipse({s.x + s.width * 0.1f, s.bottom() - s.height * 0.05f}, s.height * 0.35f, withAlpha(accent, darkPlan ? 0.12f : 0.08f));
+    // The screen (D-126): the theme's ground and the aurora over it, the accent and its turned hue.
+    canvas.fillRoundRect(s, 10.0f, l.bg);
+    canvas.pushClip({s.x + 3, s.y + 3, s.width - 6, s.height - 6});
+    const Rgba turned = hueTurn(accent, hueOf(accent) < 50 || hueOf(accent) > 330 ? -40.0f : 40.0f);
+    if (l.dark) {
+        canvas.fillGlow({s.x + s.width * 0.19f, s.y + s.height * 0.22f}, s.width * 0.42f, s.height * 0.62f, withAlpha(mix(accent, 0, 0.05f), 0.55f));
+        canvas.fillGlow({s.x + s.width * 0.9f, s.y + s.height * 0.92f}, s.width * 0.42f, s.height * 0.6f, withAlpha(turned, 0.42f));
+        canvas.fillGlow({s.x + s.width * 0.62f, s.y + s.height * 0.08f}, s.width * 0.3f, s.height * 0.4f, withAlpha(mix(accent, 0, 0.45f), 0.6f));
+    } else {
+        canvas.fillGlow({s.x + s.width * 0.19f, s.y + s.height * 0.22f}, s.width * 0.42f, s.height * 0.62f, withAlpha(mix(accent, 1, 0.2f), 0.45f));
+        canvas.fillGlow({s.x + s.width * 0.9f, s.y + s.height * 0.92f}, s.width * 0.42f, s.height * 0.6f, withAlpha(mix(turned, 1, 0.3f), 0.42f));
+        canvas.fillGlow({s.x + s.width * 0.62f, s.y + s.height * 0.08f}, s.width * 0.3f, s.height * 0.4f, withAlpha(mix(accent, 1, 0.55f), 0.55f));
+    }
     canvas.popClip();
-    const RectF card{s.x + s.width * 0.06f, s.y + s.height * 0.08f, s.width * 0.88f, s.height * 0.84f};
-    canvas.fillRoundRect(card, 8.0f, Color::BgPanel);
-    canvas.strokeRoundRect(card, 8.0f, Color::LineSubtle);
 
     const Stage stage = static_cast<Stage>(std::clamp(m_selected, 0, static_cast<int>(kStageCount) - 1));
-    // Left: the stage's picture in a ring of the accent.
-    const float picW = card.width * 0.36f;
-    const PointF centre{card.x + picW / 2, card.y + card.height * 0.48f};
-    const float ring = std::min(picW, card.height) * 0.32f;
-    canvas.fillEllipse(centre, ring, withAlpha(accent, 0.12f));
-    canvas.fillEllipse(centre, ring * 0.66f, withAlpha(accent, 0.22f));
-    canvas.drawIcon(stageIcon(stage), {centre.x - 14, centre.y - 14}, Color::AccentBase, ui::IconVariant::Regular24, 28.0f);
-
-    // Right: the step bar ("3 / 8"), the title and what it asks.
-    const RectF right{card.x + picW, card.y + 16, card.width - picW - 20, card.height - 32};
     std::vector<Stage> shown;
     for (std::size_t i = 0; i + 1 < kStageCount; ++i) {
         if (asked(static_cast<Stage>(i))) {
@@ -316,44 +417,111 @@ void WelcomeCard::paintPreview(ui::Canvas& canvas, RectF s) const {
         }
     }
     const auto at = std::ranges::find(shown, stage);
-    if (stage != Stage::Finish && at != shown.end()) {
-        const int index = static_cast<int>(at - shown.begin());
-        const float segW = 16.0f;
-        float x = right.right() - static_cast<float>(shown.size()) * (segW + 3) - 34;
-        for (std::size_t i = 0; i < shown.size(); ++i) {
-            canvas.fillRoundRect({x, right.y + 5, segW, 3}, 1.5f,
-                                 static_cast<int>(i) <= index ? accent : withAlpha(Rgba{0.5f, 0.5f, 0.5f, 1}, 0.35f));
-            x += segW + 3;
+    const int index = at != shown.end() ? static_cast<int>(at - shown.begin()) : -1;
+
+    // A lit orb: its glow, the two-colour ball, a shine, the stage's picture on it.
+    const auto orb = [&](PointF c, float r, bool ring) {
+        if (ring) {
+            canvas.strokeRoundRect({c.x - r * 1.55f, c.y - r * 1.55f, r * 3.1f, r * 3.1f}, r * 1.55f, l.line, 1.0f);
         }
-        canvas.drawText(m_strings.format(Str::UnattendedCardOf, {{L"i", std::to_wstring(index + 1)}, {L"n", std::to_wstring(shown.size())}}),
-                        {x + 4, right.y - 2, 40, 16}, TypeStyle::Small, Color::TextTertiary);
-    }
-    const float titleY = right.y + 18;
-    canvas.drawText(m_strings.get(stageName(stage)), {right.x, titleY, right.width, 26}, TypeStyle::Panel, Color::TextPrimary);
-    canvas.drawText(m_strings.get(stageSub(stage)), {right.x, titleY + 26, right.width, 18}, TypeStyle::Small, Color::TextSecondary);
-    const RectF area{right.x, titleY + 54, right.width, right.bottom() - titleY - 54 - 34};
-    paintStageBody(canvas, area, stage, accent);
+        canvas.fillGlow({c.x, c.y + r * 0.35f}, r * 1.9f, r * 1.9f, withAlpha(l.g1, l.dark ? 0.45f : 0.38f));
+        canvas.fillGradient({c.x - r, c.y - r, 2 * r, 2 * r}, r, l.g1, l.g2);
+        canvas.fillGlow({c.x - r * 0.35f, c.y - r * 0.42f}, r * 0.55f, r * 0.42f, Rgba{1, 1, 1, 0.42f});
+    };
 
-    // "Next" (the theme's accent button: its text color is made for it in every theme).
-    if (stage != Stage::Finish) {
+    if (stage == Stage::Finish) {
+        // The preparing screen: the orb with its share, the heading, the steps on a glass card.
+        const float r = std::min(s.height * 0.12f, s.width * 0.08f);
+        const PointF c{s.x + s.width / 2, s.y + s.height * 0.08f + r * 1.6f};
+        orb(c, r, true);
+        canvas.drawText(L"34%", {c.x - r, c.y - 10, 2 * r, 20}, TypeStyle::Display, l.on, ui::TextAlign::Center);
+        const float headY = c.y + r * 1.6f + 8;
+        canvas.drawText(m_strings.get(stageName(stage)), {s.x + 20, headY, s.width - 40, 22}, TypeStyle::Display, l.text1, ui::TextAlign::Center);
+        const float w = std::min(s.width * 0.56f, 320.0f);
+        const RectF box{s.x + (s.width - w) / 2, headY + 30, w, std::max(s.bottom() - headY - 30 - s.height * 0.07f, 0.0f)};
+        canvas.fillRoundRect(box, 14, l.glass);
+        canvas.strokeRoundRect(box, 14, l.glassLine, 1.0f);
+        paintStageBody(canvas, box.inset(14, 12), stage, l);
+    } else {
+        // Left: the numbered rail, a line through the steps; the steps behind ticked, this one lit.
+        const float railX = s.x + s.width * 0.05f;
+        const float rowH = std::min(s.height * 0.085f, 24.0f);
+        const float dot = rowH * 0.36f;
+        const float top = s.y + (s.height - rowH * static_cast<float>(std::max<std::size_t>(shown.size(), 1) - 1)) / 2;
+        const float cx = railX + dot;
+        if (shown.size() > 1) {
+            const float last = top + rowH * static_cast<float>(shown.size() - 1);
+            canvas.fillRoundRect({cx - 0.75f, top, 1.5f, last - top}, 0.75f, l.line);
+            if (index > 0) {
+                canvas.fillRoundRect({cx - 0.75f, top, 1.5f, rowH * static_cast<float>(index)}, 0.75f, l.g1);
+            }
+        }
+        const float railW = s.width * 0.2f;
+        for (std::size_t i = 0; i < shown.size(); ++i) {
+            const float cy = top + rowH * static_cast<float>(i);
+            const bool now = static_cast<int>(i) == index;
+            const bool done = static_cast<int>(i) < index;
+            if (now) {
+                canvas.fillGlow({cx, cy}, dot * 2.4f, dot * 2.4f, withAlpha(l.g1, 0.4f));
+                canvas.fillGradient({cx - dot, cy - dot, 2 * dot, 2 * dot}, dot, l.g1, l.g2);
+            } else if (done) {
+                canvas.fillEllipse({cx, cy}, dot, l.bg);
+                canvas.fillEllipse({cx, cy}, dot, withAlpha(l.g1, l.dark ? 0.2f : 0.16f));
+                canvas.drawIcon(ui::icons::Icon::Check, {cx - dot * 0.7f, cy - dot * 0.7f}, l.accT, ui::IconVariant::Regular16, dot * 1.4f);
+            } else {
+                canvas.fillEllipse({cx, cy}, dot, l.bg);
+                canvas.strokeRoundRect({cx - dot, cy - dot, 2 * dot, 2 * dot}, dot, l.line, 1.0f);
+            }
+            canvas.drawText(m_strings.get(stageName(shown[i])), {cx + dot + 8, cy - 8, railW - dot * 2 - 8, 16},
+                            now ? TypeStyle::SmallSemi : TypeStyle::Small, now ? l.text1 : (done ? l.text2 : l.text3));
+        }
+
+        // Middle: the step's number, the big title, what it asks, the controls, then Back and the gradient Next.
+        const float colX = s.x + s.width * 0.29f;
+        const float colW = s.width * 0.38f;
+        const float kickY = s.y + s.height * 0.1f;
+        if (index >= 0) {
+            canvas.fillRoundRect({colX, kickY + 7, 14, 2}, 1, l.g1);
+            canvas.drawText(m_strings.format(Str::UnattendedCardOf, {{L"i", std::to_wstring(index + 1)}, {L"n", std::to_wstring(shown.size())}}),
+                            {colX + 20, kickY, 60, 16}, TypeStyle::SmallSemi, l.accT);
+        }
+        canvas.drawText(m_strings.get(stageName(stage)), {colX, kickY + 20, colW, 24}, TypeStyle::Display, l.text1);
+        canvas.drawText(m_strings.get(stageSub(stage)), {colX, kickY + 46, colW, 16}, TypeStyle::Small, l.text2);
+        const float footY = s.bottom() - s.height * 0.1f - 26;
+        const RectF area{colX, kickY + 74, colW, std::max(footY - kickY - 74 - 12, 0.0f)};
+        paintStageBody(canvas, area, stage, l);
+        float x = colX;
+        if (index > 0) {
+            const RectF back{x, footY, 34, 26};
+            canvas.strokeRoundRect(back, 13, l.line, 1.0f);
+            canvas.drawIcon(ui::icons::Icon::ArrowLeft, {back.x + 10, back.y + 6}, l.text1, ui::IconVariant::Regular16, 14.0f);
+            x += 42;
+        }
         const std::wstring next = m_strings.get(Str::UnattendedCardNext);
-        const float w = std::ceil(canvas.text().measure(next, TypeStyle::SmallSemi)) + 28;
-        const RectF button{right.right() - w, right.bottom() - 24, w, 24};
-        canvas.fillRoundRect(button, 4.0f, Color::AccentBase);
-        canvas.drawText(next, button, TypeStyle::SmallSemi, Color::TextOnAccent, ui::TextAlign::Center);
-    }
-    // A theme tag on the screen's corner: what the wizard opens in.
-    const std::wstring tag = m_strings.get(darkPlan ? Str::UnattendedCardThemeDark : Str::UnattendedCardThemeLight);
-    const float tagW = std::ceil(canvas.text().measure(tag, TypeStyle::Small)) + 16;
-    const RectF tagRect{s.right() - tagW - 10, s.bottom() - 26, tagW, 18};
-    canvas.fillRoundRect(tagRect, 9.0f, ui::Ink(Color::BgPanel, Color::BgPanel, 0, 0.9f));
-    canvas.drawText(tag, tagRect, TypeStyle::Small, Color::TextSecondary, ui::TextAlign::Center);
+        const float nextW = std::ceil(canvas.text().measure(next, TypeStyle::SmallSemi)) + 44;
+        const RectF pill{x, footY, nextW, 26};
+        canvas.fillGlow({pill.x + pill.width / 2, pill.bottom()}, pill.width * 0.6f, 16, withAlpha(l.g1, 0.35f));
+        canvas.fillGradient(pill, 13, l.g1, l.g2);
+        canvas.drawText(next, {pill.x + 14, pill.y, pill.width - 34, pill.height}, TypeStyle::SmallSemi, l.on);
+        canvas.drawIcon(ui::icons::Icon::ArrowRight, {pill.right() - 24, pill.y + 6}, l.on, ui::IconVariant::Regular16, 14.0f);
 
-    // A stage the plan leaves out: said over the card.
+        // Right: the stage's scene, an orb in a ring, the theme the screens open in as a chip under it.
+        const float r = std::min(s.width * 0.085f, s.height * 0.16f);
+        const PointF c{s.x + s.width * 0.83f, s.y + s.height * 0.44f};
+        orb(c, r, true);
+        canvas.drawIcon(stageIcon(stage), {c.x - r * 0.5f, c.y - r * 0.5f}, l.on, ui::IconVariant::Regular24, r);
+        const std::wstring tag = m_strings.get(l.dark ? Str::UnattendedCardThemeDark : Str::UnattendedCardThemeLight);
+        const float tagW = std::ceil(canvas.text().measure(tag, TypeStyle::Small)) + 20;
+        const RectF chip{c.x - tagW / 2, c.y + r * 1.55f + 10, tagW, 22};
+        canvas.fillRoundRect(chip, 11, l.glassHi);
+        canvas.strokeRoundRect(chip, 11, l.glassLine, 1.0f);
+        canvas.drawText(tag, chip, TypeStyle::Small, l.text2, ui::TextAlign::Center);
+    }
+
+    // A stage the plan leaves out: said over the screen.
     if (m_on && !asked(stage)) {
-        canvas.fillRoundRect(card, 8.0f, ui::Ink(Color::BgPanel, Color::BgPanel, 0, 0.85f));
-        canvas.drawText(m_strings.get(Str::UnattendedCardSkipped), card, TypeStyle::BodyStrong, Color::TextSecondary,
-                        ui::TextAlign::Center);
+        canvas.fillRoundRect(s, 10.0f, withAlpha(l.bg, 0.82f));
+        canvas.drawText(m_strings.get(Str::UnattendedCardSkipped), s, TypeStyle::BodyStrong, l.text2, ui::TextAlign::Center);
     }
     if (!m_on) {
         canvas.popOpacity();
@@ -365,57 +533,56 @@ void WelcomeCard::paintPreview(ui::Canvas& canvas, RectF s) const {
     }
 }
 
-void WelcomeCard::paintStageBody(ui::Canvas& canvas, RectF a, Stage stage, Rgba accent) const {
+void WelcomeCard::paintStageBody(ui::Canvas& canvas, RectF a, Stage stage, const Look& l) const {
     if (a.height < 20) {
         return;
     }
-    const float w = std::min(a.width, 300.0f);
+    const float w = std::min(a.width, 280.0f);
+    const Rgba bar = withAlpha(l.text1, 0.5f);
+    const Rgba barSoft = withAlpha(l.text3, 0.45f);
     switch (stage) {
     case Stage::Account: {
-        skeleton(canvas, a.x, a.y + 2, 70);
-        miniInput(canvas, {a.x, a.y + 12, w, 24}, L"", accent);
-        skeleton(canvas, a.x, a.y + 46, 50);
-        miniInput(canvas, {a.x, a.y + 56, w, 24}, L"••••••", accent);
+        miniField(canvas, {a.x, a.y, w, 30}, L"", true, l);
+        miniField(canvas, {a.x, a.y + 38, w, 30}, L"••••••", false, l);
         break;
     }
     case Stage::Network: {
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < 3 && i * 30.0f + 26 <= a.height; ++i) {
             const RectF row{a.x, a.y + i * 30.0f, w, 26};
-            if (i == 0) {
-                canvas.fillRoundRect(row, 4, withAlpha(accent, 0.15f));
-            }
-            canvas.drawIcon(ui::icons::Icon::Network, {row.x + 6, row.y + 5}, Color::TextSecondary);
-            skeleton(canvas, row.x + 30, row.y + 10, 90.0f - i * 18.0f);
+            canvas.fillRoundRect(row, 8, i == 0 ? l.glassHi : l.glass);
+            canvas.strokeRoundRect(row, 8, i == 0 ? l.g1 : l.glassLine, 1.0f);
+            canvas.drawIcon(ui::icons::Icon::Network, {row.x + 8, row.y + 5}, i == 0 ? l.accT : l.text2, ui::IconVariant::Regular16, 16.0f);
+            skeleton(canvas, row.x + 32, row.y + 8, 90.0f - i * 18.0f, bar);
+            skeleton(canvas, row.x + 32, row.y + 16, 40, barSoft, 4.0f);
         }
         break;
     }
     case Stage::Computer: {
-        skeleton(canvas, a.x, a.y + 2, 80);
-        miniInput(canvas, {a.x, a.y + 12, w, 24}, m_plan.computerName.empty() ? std::wstring(core::kWelcomeComputerName) : m_plan.computerName,
-                  accent);
-        skeleton(canvas, a.x, a.y + 46, 60);
-        miniInput(canvas, {a.x, a.y + 56, w, 24}, m_plan.timeZone.empty() ? L"(UTC+03:00) İstanbul" : m_plan.timeZone, accent);
+        miniField(canvas, {a.x, a.y, w, 30}, m_plan.computerName.empty() ? std::wstring(core::kWelcomeComputerName) : m_plan.computerName, true, l);
+        const RectF zone{a.x, a.y + 38, w, 30};
+        miniField(canvas, zone, m_plan.timeZone.empty() ? L"(UTC+03:00) İstanbul" : m_plan.timeZone, false, l);
+        canvas.drawIcon(ui::icons::Icon::ChevronDown, {zone.right() - 22, zone.y + 8}, l.text2, ui::IconVariant::Regular16, 14.0f);
         break;
     }
     case Stage::Look: {
-        // The two themes (the plan's pre-selected one ringed), then the accents.
-        const bool dark = m_plan.theme != L"light";
+        // The two themes (the plan's pre-selected one ringed in the accent), then the accents.
         for (int i = 0; i < 2; ++i) {
-            const RectF t{a.x + i * 70.0f, a.y, 60, 38};
-            canvas.fillRoundRect(t, 5, i == 0 ? Rgba{0.12f, 0.12f, 0.14f, 1} : Rgba{0.96f, 0.96f, 0.97f, 1});
-            canvas.fillRoundRect({t.x + 8, t.y + 8, 30, 5}, 2, i == 0 ? Rgba{0.35f, 0.35f, 0.4f, 1} : Rgba{0.8f, 0.8f, 0.84f, 1});
-            canvas.fillRoundRect({t.x + 8, t.bottom() - 12, 18, 5}, 2, accent);
-            if ((i == 0) == dark) {
-                canvas.strokeRoundRect({t.x - 2, t.y - 2, t.width + 4, t.height + 4}, 6, Color::AccentBase, 2.0f * canvas.scale());
+            const RectF t{a.x + i * 74.0f, a.y, 66, 40};
+            canvas.fillRoundRect(t, 8, i == 0 ? hexColor(0x101219) : hexColor(0xF4F4F1));
+            canvas.fillRoundRect({t.x + 14, t.y + 8, 38, 18}, 4, i == 0 ? hexColor(0x1D2029) : hexColor(0xFFFFFF));
+            canvas.fillGradient({t.x + 18, t.y + 19, 16, 4}, 2, l.g1, l.g2);
+            if ((i == 0) == l.dark) {
+                canvas.strokeRoundRect({t.x - 3, t.y - 3, t.width + 6, t.height + 6}, 10, l.g1, 1.5f * canvas.scale());
+            } else {
+                canvas.strokeRoundRect(t, 8, l.glassLine, 1.0f);
             }
         }
-        float x = a.x;
+        float x = a.x + 7;
         for (const auto& [key, hex] : core::kWelcomeAccents) {
-            const Rgba c = parseAccent(hex);
-            const PointF centre{x + 8, a.y + 58};
-            canvas.fillEllipse(centre, 7, c);
+            const PointF centre{x, a.y + 62};
+            canvas.fillEllipse(centre, 7, parseAccent(hex));
             if (m_plan.accent == hex) {
-                canvas.fillEllipse(centre, 2.5f, Rgba{1, 1, 1, 1});
+                canvas.strokeRoundRect({centre.x - 10, centre.y - 10, 20, 20}, 10, l.text1, 1.5f * canvas.scale());
             }
             x += 20;
         }
@@ -423,56 +590,56 @@ void WelcomeCard::paintStageBody(ui::Canvas& canvas, RectF a, Stage stage, Rgba 
     }
     case Stage::Wallpaper: {
         for (int i = 0; i < 6; ++i) {
-            const RectF t{a.x + (i % 3) * 52.0f, a.y + (i / 3) * 34.0f, 46, 28};
-            const float k = 0.25f + 0.12f * static_cast<float>(i);
-            canvas.fillRoundRect(t, 4, Rgba{accent.r * k + 0.1f, accent.g * k + 0.1f, accent.b * (k + 0.2f) + 0.15f, 1});
-            if (i == 0) {
-                canvas.strokeRoundRect({t.x - 2, t.y - 2, t.width + 4, t.height + 4}, 5, Color::AccentBase, 2.0f * canvas.scale());
+            const RectF t{a.x + (i % 3) * 54.0f, a.y + (i / 3) * 36.0f, 48, 30};
+            const Rgba base = hueTurn(parseAccent(m_plan.accent), static_cast<float>(i) * 32.0f);
+            canvas.fillGradient(t, 7, mix(base, 1, 0.35f), mix(base, 0, 0.35f));
+            if (i == 1) {
+                canvas.strokeRoundRect({t.x - 3, t.y - 3, t.width + 6, t.height + 6}, 9, l.g1, 1.5f * canvas.scale());
             }
         }
         break;
     }
     case Stage::Bundles:
     case Stage::Prefs: {
-        const int rows = stage == Stage::Bundles ? 4 : 5;
-        for (int i = 0; i < rows && i * 20.0f + 14 < a.height; ++i) {
-            const float cy = a.y + 7 + i * 20.0f;
-            skeleton(canvas, a.x, cy - 3, 110.0f - static_cast<float>((i * 23) % 50));
-            miniToggle(canvas, a.x + w - 24, cy, stage == Stage::Prefs ? i % 3 != 1 : i == 0, accent);
+        const int rows = stage == Stage::Bundles ? 3 : 4;
+        for (int i = 0; i < rows && i * 24.0f + 20 <= a.height; ++i) {
+            const RectF row{a.x, a.y + i * 24.0f, w, 20};
+            canvas.fillRoundRect(row, 6, l.glass);
+            skeleton(canvas, row.x + 10, row.y + 8, 100.0f - static_cast<float>((i * 23) % 50), bar);
+            miniToggle(canvas, row.right() - 30, row.y + 10, stage == Stage::Prefs ? i % 3 != 1 : i == 0, l);
         }
         break;
     }
     case Stage::Privacy: {
         const bool strict = m_plan.privacy != L"windows";
         for (int i = 0; i < 2; ++i) {
-            const RectF card{a.x, a.y + i * 40.0f, w, 34};
+            const RectF card{a.x, a.y + i * 42.0f, w, 36};
             const bool chosen = (i == 0) == strict;
-            canvas.fillRoundRect(card, 5, chosen ? withAlpha(accent, 0.12f) : Rgba{0.5f, 0.5f, 0.5f, 0.06f});
+            canvas.fillRoundRect(card, 10, chosen ? l.glassHi : l.glass);
+            canvas.strokeRoundRect(card, 10, chosen ? l.g1 : l.glassLine, chosen ? 1.5f * canvas.scale() : 1.0f);
             if (chosen) {
-                canvas.strokeRoundRect(card, 5, Color::AccentBase);
+                canvas.fillGradient({card.x + 9, card.y + 12, 12, 12}, 6, l.g1, l.g2);
+            } else {
+                canvas.strokeRoundRect({card.x + 9, card.y + 12, 12, 12}, 6, l.line, 1.0f);
             }
-            canvas.fillEllipse({card.x + 14, card.y + 17}, 5, chosen ? accent : Rgba{0.5f, 0.5f, 0.5f, 0.5f});
-            skeleton(canvas, card.x + 28, card.y + 10, 70);
-            skeleton(canvas, card.x + 28, card.y + 21, 130, 5);
+            skeleton(canvas, card.x + 30, card.y + 11, 70, bar);
+            skeleton(canvas, card.x + 30, card.y + 21, 130, barSoft, 4.0f);
         }
         break;
     }
     case Stage::Finish:
     case Stage::Count: {
-        // The last screen: what is being done, ticked one by one.
-        for (int i = 0; i < 4 && i * 20.0f + 14 < a.height; ++i) {
-            const float cy = a.y + 7 + i * 20.0f;
+        // What is being done, ticked one by one; the one at work ringed.
+        for (int i = 0; i < 4 && i * 22.0f + 16 <= a.height; ++i) {
+            const float cy = a.y + 8 + i * 22.0f;
             if (i < 2) {
-                canvas.fillEllipse({a.x + 6, cy}, 6, Color::AccentBase);
-                canvas.line({a.x + 3, cy}, {a.x + 5.5f, cy + 2.5f}, Color::TextOnAccent, 1.5f * canvas.scale());
-                canvas.line({a.x + 5.5f, cy + 2.5f}, {a.x + 9.5f, cy - 2.5f}, Color::TextOnAccent, 1.5f * canvas.scale());
+                canvas.fillGradient({a.x, cy - 7, 14, 14}, 7, l.g1, l.g2);
+                canvas.drawIcon(ui::icons::Icon::Check, {a.x + 2, cy - 5}, l.on, ui::IconVariant::Regular16, 10.0f);
             } else {
-                canvas.strokeRoundRect({a.x, cy - 6, 12, 12}, 6, Color::LineStrong);
+                canvas.strokeRoundRect({a.x, cy - 7, 14, 14}, 7, i == 2 ? l.g1 : l.line, i == 2 ? 1.5f * canvas.scale() : 1.0f);
             }
-            skeleton(canvas, a.x + 20, cy - 3, 130.0f - static_cast<float>(i * 17));
+            skeleton(canvas, a.x + 24, cy - 3, 140.0f - static_cast<float>(i * 19), i == 2 ? withAlpha(l.text1, 0.75f) : bar);
         }
-        canvas.fillRoundRect({a.x, a.bottom() - 4, w, 3}, 1.5f, Rgba{0.5f, 0.5f, 0.5f, 0.2f});
-        canvas.fillRoundRect({a.x, a.bottom() - 4, w * 0.55f, 3}, 1.5f, accent);
         break;
     }
     }

@@ -36,6 +36,8 @@ public:
 
     enum class Stage : std::uint8_t { Account, Network, Computer, Look, Wallpaper, Bundles, Prefs, Privacy, Finish, Count };
 
+    struct Look; // the setup screens' colours in the plan's theme (D-126, WelcomeCard.cpp)
+
 private:
     [[nodiscard]] bool asked(Stage stage) const;
     [[nodiscard]] Str stageName(Stage stage) const;
@@ -46,7 +48,7 @@ private:
     // The chips wrapped from (x, top) in `width`, in setup's order.
     [[nodiscard]] std::vector<ui::RectF> chipRects(float x, float top, float width) const;
     void paintPreview(ui::Canvas& canvas, ui::RectF screen) const;
-    void paintStageBody(ui::Canvas& canvas, ui::RectF area, Stage stage, ui::Rgba accent) const;
+    void paintStageBody(ui::Canvas& canvas, ui::RectF area, Stage stage, const Look& look) const;
 
     const Localization& m_strings;
     ui::Toggle* m_toggle = nullptr;

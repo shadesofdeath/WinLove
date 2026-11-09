@@ -51,6 +51,14 @@ public:
     // Colors that are not tokens of the theme (a national flag): a circle and a closed polygon.
     void fillEllipse(PointF center, float radius, Rgba color);
     void fillPolygon(std::span<const PointF> points, Rgba color);
+    // A drawing in another theme than the app's (a preview of a screen): colours, not tokens.
+    void strokeRoundRect(RectF rect, float radius, Rgba color, float widthPx);
+    void drawText(std::wstring_view text, RectF rect, tokens::TypeStyle style, Rgba color, TextAlign align = TextAlign::Leading);
+    void drawIcon(icons::Icon icon, PointF topLeft, Rgba color, IconVariant variant, float size);
+    // Two colours from the top-left corner to the bottom-right one (a radius of half the side: a circle).
+    void fillGradient(RectF rect, float radius, Rgba from, Rgba to);
+    // A soft light: the colour at the centre, fading to nothing at the ellipse's edge.
+    void fillGlow(PointF center, float radiusX, float radiusY, Rgba color);
     // Elevation shadow (tokens::elevation::menu/dialog/toast) under a rounded rect.
     void dropShadow(RectF rect, float radius, std::span<const tokens::Shadow> layers);
     // A floating surface (dialog, menu, toast, tooltip, chip): shadow, overlay fill, strong line.

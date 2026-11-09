@@ -210,6 +210,66 @@ void Canvas::fillEllipse(PointF center, float radius, Rgba color) {
     m_context->FillEllipse(D2D1::Ellipse({center.x, center.y}, radius, radius), m_brush.Get());
 }
 
+void Canvas::strokeRoundRect(RectF rect, float radius, Rgba color, float widthPx) {
+    const float w = widthPx * px();
+    const RectF inner = rect.inset(w / 2, w / 2);
+    const float r = std::max(radius - w / 2, 0.0f);
+    m_brush->SetColor(D2D1::ColorF(color.r, color.g, color.b, color.a));
+    m_context->DrawRoundedRectangle(D2D1::RoundedRect(toD2D(inner), r, r), m_brush.Get(), w);
+}
+
+void Canvas::drawText(std::wstring_view text, RectF rect, tokens::TypeStyle style, Rgba color, TextAlign align) {
+    auto layout = m_text.layout(text, style, rect.width, rect.height, align);
+    if (!layout) {
+        return;
+    }
+    m_brush->SetColor(D2D1::ColorF(color.r, color.g, color.b, color.a));
+    m_context->DrawTextLayout({rect.x, rect.y}, layout->Get(), m_brush.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+}
+
+void Canvas::drawIcon(icons::Icon icon, PointF topLeft, Rgba color, IconVariant variant, float size) {
+    const auto entry = m_icons.get(icon, variant);
+    if (!entry.geometry) {
+        return;
+    }
+    const float k = (size > 0 ? size : entry.gridSize) / entry.gridSize;
+    D2D1_MATRIX_3X2_F previous;
+    m_context->GetTransform(&previous);
+    m_context->SetTransform(D2D1::Matrix3x2F::Scale(k, k) *
+                            D2D1::Matrix3x2F::Translation(snap(topLeft.x, m_scale), snap(topLeft.y, m_scale)) * previous);
+    m_brush->SetColor(D2D1::ColorF(color.r, color.g, color.b, color.a));
+    if (entry.filled) {
+        m_context->FillGeometry(entry.geometry, m_brush.Get());
+    }
+    m_context->DrawGeometry(entry.geometry, m_brush.Get(), entry.strokeWidth, m_icons.strokeStyle());
+    m_context->SetTransform(previous);
+}
+
+void Canvas::fillGradient(RectF rect, float radius, Rgba from, Rgba to) {
+    const D2D1_GRADIENT_STOP stops[] = {{0.0f, D2D1::ColorF(from.r, from.g, from.b, from.a)},
+                                        {1.0f, D2D1::ColorF(to.r, to.g, to.b, to.a)}};
+    ComPtr<ID2D1GradientStopCollection> collection;
+    ComPtr<ID2D1LinearGradientBrush> gradient;
+    if (FAILED(m_context->CreateGradientStopCollection(stops, 2, &collection)) ||
+        FAILED(m_context->CreateLinearGradientBrush({{rect.x, rect.y}, {rect.right(), rect.bottom()}}, collection.Get(), &gradient))) {
+        return;
+    }
+    m_context->FillRoundedRectangle(D2D1::RoundedRect(toD2D(rect), radius, radius), gradient.Get());
+}
+
+void Canvas::fillGlow(PointF center, float radiusX, float radiusY, Rgba color) {
+    const D2D1_GRADIENT_STOP stops[] = {{0.0f, D2D1::ColorF(color.r, color.g, color.b, color.a)},
+                                        {0.5f, D2D1::ColorF(color.r, color.g, color.b, color.a * 0.4f)},
+                                        {1.0f, D2D1::ColorF(color.r, color.g, color.b, 0.0f)}};
+    ComPtr<ID2D1GradientStopCollection> collection;
+    ComPtr<ID2D1RadialGradientBrush> glow;
+    if (FAILED(m_context->CreateGradientStopCollection(stops, 3, &collection)) ||
+        FAILED(m_context->CreateRadialGradientBrush({{center.x, center.y}, {0, 0}, radiusX, radiusY}, collection.Get(), &glow))) {
+        return;
+    }
+    m_context->FillEllipse(D2D1::Ellipse({center.x, center.y}, radiusX, radiusY), glow.Get());
+}
+
 void Canvas::fillPolygon(std::span<const PointF> points, Rgba color) {
     if (points.size() < 3) {
         return;

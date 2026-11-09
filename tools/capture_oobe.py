@@ -1,6 +1,12 @@
 """Render the welcome wizard (resources/scripts/oobe.ps1) without a VM, into a PNG.
 
-Usage: python tools/capture_oobe.py <out.png> [--page=N] [--theme=dark|light] [--lang=tr|en]
+Usage: python tools/capture_oobe.py <out.png> [--page=N] [--theme=dark|light] [--lang=tr|en] [--accent=#RRGGBB]
+       [--size=WxH] [--busy] [--settle=SECONDS]
+       [--fps [--software] [--strip=fx,cache,grain,aurora]]
+
+--fps walks every page and writes each one's switch time, longest frame gap and frame rate into
+oobe.log (give --settle=40 so the window stays open); --software draws without the graphics card
+(as in a VM); --strip takes parts away while measuring, to see which costs the frames (D-126).
 
 It builds a preview oobe.json with wlcli (the real welcomeJson), adds the preview-only fields
 (made-up networks, a filled-in account, which page to show), runs oobe.ps1 in preview mode (nothing
@@ -77,6 +83,10 @@ def main():
     # --ui-lang=<code>: show the wizard in that language via the real welcome-langs.json (D-103),
     # the same path the installed image uses (textsByLang + the installed-culture pick).
     ui_lang = next((a.split("=", 1)[1] for a in args if a.startswith("--ui-lang=")), None)
+    # --size=WxH: the preview window's size (D-126: 1440x900 shows the full layout, below 1280x800 the compact one).
+    size = next((a.split("=", 1)[1] for a in args if a.startswith("--size=")), None)
+    accent = next((a.split("=", 1)[1] for a in args if a.startswith("--accent=")), None)
+    settle = float(next((a.split("=", 1)[1] for a in args if a.startswith("--settle=")), "2.2"))
 
     folder = Path(tempfile.gettempdir()) / "WinLove-oobe-capture"
     folder.mkdir(exist_ok=True)
@@ -90,13 +100,27 @@ def main():
     data["defaults"]["theme"] = theme
     data["previewPage"] = page
     data["previewNetworks"] = [
-        {"ssid": "Ev Agi 5GHz", "signal": 4, "secure": True, "auth": 0, "connected": False},
-        {"ssid": "WinLove-Guest", "signal": 3, "secure": True, "auth": 0, "connected": False},
-        {"ssid": "Kafe Ucretsiz", "signal": 2, "secure": False, "auth": 0, "connected": False},
-        {"ssid": "TP-LINK_A24F", "signal": 2, "secure": True, "auth": 0, "connected": False},
-        {"ssid": "Komsu", "signal": 1, "secure": True, "auth": 0, "connected": False},
+        # auth: Native Wifi's DOT11_AUTH_ALGORITHM (7 WPA2-PSK, 1 open; 0 reads as enterprise)
+        {"ssid": "Ev Agi 5GHz", "signal": 4, "secure": True, "auth": 7, "connected": False},
+        {"ssid": "WinLove-Guest", "signal": 3, "secure": True, "auth": 7, "connected": False},
+        {"ssid": "Kafe Ucretsiz", "signal": 2, "secure": False, "auth": 1, "connected": False},
+        {"ssid": "TP-LINK_A24F", "signal": 2, "secure": True, "auth": 7, "connected": False},
+        {"ssid": "Komsu", "signal": 1, "secure": True, "auth": 7, "connected": False},
     ]
     data["previewFill"] = {"name": "Berkay", "password": "", "computer": "BERKAY-PC"}
+    if size:
+        data["previewSize"] = size
+    if accent:
+        data["defaults"]["accent"] = accent
+    if "--busy" in args:
+        data["previewBusy"] = True
+    if "--fps" in args:  # the wizard walks every page and writes switch time + frame rate into oobe.log
+        data["previewFps"] = True
+    strip = next((a.split("=", 1)[1] for a in args if a.startswith("--strip=")), "")
+    if strip:  # fx,cache,grain,aurora: parts taken away while measuring (--fps)
+        data["previewStrip"] = strip
+    if "--software" in args:  # drawn without the graphics card (as in a VM)
+        data["previewSoftware"] = True
     if ui_lang:
         langs_file = ROOT / "resources" / "strings" / "welcome-langs.json"
         data["textsByLang"] = json.loads(langs_file.read_text(encoding="utf-8"))
@@ -117,7 +141,7 @@ def main():
         process.kill()
         print("window not found", file=sys.stderr)
         return 1
-    time.sleep(1.4)  # the entrance animation
+    time.sleep(settle)  # the entrance animations
     img = capture(hwnd)
     img.save(out)
     print(f"size={img.size[0]}x{img.size[1]} -> {out}")
