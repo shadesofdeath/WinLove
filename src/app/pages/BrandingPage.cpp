@@ -13,7 +13,7 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kTop = 8.0f;
+constexpr float kTop = 0.0f;
 constexpr float kLabelWidth = 180.0f;
 constexpr float kFieldWidth = 360.0f;
 constexpr float kFormHeight = ui::FormView::kSection * 2 + ui::FormView::kRow * 9 + 8;
@@ -119,8 +119,8 @@ BrandingPage::BrandingPage(AppState& state, BrandingController& controller, cons
 
     m_fonts = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {s(Str::BrandingFont), 0},
-        {s(Str::BrandingFontFile), 240},
-        {s(Str::CommonSize), 96, ui::TextAlign::Trailing},
+        {s(Str::BrandingFontFile), 276},
+        {s(Str::CommonSize), 110, ui::TextAlign::Trailing},
         {L"", 32},
     });
     m_fonts->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
@@ -181,7 +181,7 @@ void BrandingPage::paintFont(ui::Canvas& canvas, int row, int column, RectF rect
     const auto& f = m_fontRows[static_cast<std::size_t>(row)];
     switch (column) {
     case kFontName:
-        canvas.drawIcon(ui::icons::Icon::File, {rect.x, rect.y + 4}, Color::TextSecondary);
+        canvas.drawIcon(ui::icons::Icon::File, {rect.x, rect.y + (rect.height - 16) / 2}, Color::TextSecondary);
         canvas.drawText(f.name, {rect.x + ui::tokens::size::icon + 6, rect.y, rect.width - ui::tokens::size::icon - 6, rect.height},
                         cell.selected ? TypeStyle::BodyStrong : TypeStyle::Body, Color::TextPrimary);
         break;
@@ -190,7 +190,7 @@ void BrandingPage::paintFont(ui::Canvas& canvas, int row, int column, RectF rect
         canvas.drawText(formatBytes(f.size, m_language), rect, TypeStyle::Mono, Color::TextPrimary, ui::TextAlign::Trailing);
         break;
     case kFontRemove:
-        canvas.drawIcon(ui::icons::Icon::Close, {rect.x, rect.y + 4}, cell.hoveredCell ? Color::TextPrimary : Color::TextTertiary);
+        canvas.drawIcon(ui::icons::Icon::Close, {rect.x, rect.y + (rect.height - 16) / 2}, cell.hoveredCell ? Color::TextPrimary : Color::TextTertiary);
         break;
     default: break;
     }
@@ -199,7 +199,10 @@ void BrandingPage::paintFont(ui::Canvas& canvas, int row, int column, RectF rect
 void BrandingPage::layout() {
     const RectF b = bounds();
     m_empty->setBounds(b);
-    const float formHeight = std::min(kFormHeight, std::max(b.height * 0.62f, 0.0f));
+    // D-108: the font list gets the rows it has (2 to 6), the form the rest — it scrolls when short.
+    const float fontRows = std::clamp(static_cast<float>(m_fontRows.size()), 2.0f, 6.0f);
+    const float fontsHeight = ui::TableView::kHeader + ui::TableView::kRow * fontRows + 1;
+    const float formHeight = std::clamp(b.height - kTop - kFontsTitle - fontsHeight, 160.0f, kFormHeight);
     m_form->setBounds({b.x, b.y + kTop, b.width, formHeight});
     const float top = b.y + kTop + formHeight + kFontsTitle;
     m_fonts->setBounds({b.x, top, b.width, std::max(b.bottom() - top, 0.0f)});
@@ -211,7 +214,7 @@ void BrandingPage::paint(ui::Canvas& canvas) {
     }
     const RectF t = m_fonts->bounds();
     const RectF title{t.x, t.y - kFontsTitle, t.width, kFontsTitle - 6};
-    canvas.drawText(m_strings.get(Str::BrandingFonts), title, TypeStyle::Caption, Color::TextSecondary);
+    canvas.drawText(m_strings.get(Str::BrandingFonts), title, TypeStyle::Section, Color::TextTertiary);
     const std::wstring summary = m_fontRows.empty() ? m_strings.get(Str::BrandingFontsEmpty)
                                                     : m_strings.format(Str::BrandingFontsN, {{L"n", std::to_wstring(m_fontRows.size())}});
     canvas.drawText(summary, title, TypeStyle::Caption, Color::TextTertiary, ui::TextAlign::Trailing);

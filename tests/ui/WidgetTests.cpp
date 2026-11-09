@@ -7,6 +7,7 @@
 #include "ui/widgets/Dropdown.h"
 #include "ui/widgets/LogConsole.h"
 #include "ui/widgets/SearchBox.h"
+#include "ui/widgets/TabBar.h"
 #include "ui/widgets/Toggle.h"
 
 #include <doctest.h>
@@ -33,6 +34,16 @@ public:
 
 private:
     SizeF m_size;
+};
+
+// The Features page's way of placing its tabs: at the width the bar measures without a limit.
+class TabsRoot : public Widget {
+public:
+    TabsRoot() {
+        tabs = &add<TabBar>(std::vector<std::wstring>{L"Talep Üzerine Özellikler 9/10", L"İsteğe Bağlı Özellikler 5/9"}, 0);
+    }
+    void layout() override { tabs->setBounds({0, 0, std::min(tabs->measure({}).width, bounds().width), 30}); }
+    TabBar* tabs = nullptr;
 };
 
 struct Harness {
@@ -96,6 +107,20 @@ TEST_CASE("click fires only when released over the pressed widget") {
     h.up(150, 10);
     CHECK(a.clicks == 1);
     CHECK(b.clicks == 0);
+}
+
+TEST_CASE("TabBar measured without a limit is as wide as its tabs: the second tab takes a click (2026-11-09)") {
+    auto root = std::make_unique<TabsRoot>();
+    TabBar* tabs = root->tabs;
+    int changed = -1;
+    tabs->onChange = [&](int index) { changed = index; };
+    Harness h(std::move(root), {700, 100});
+    CHECK(tabs->bounds().width > 200); // was 0: no tab could be clicked (Özellikler › İsteğe Bağlı Özellikler)
+    const float x = tabs->bounds().right() - 20;
+    h.move(x, 15);
+    h.down(x, 15);
+    h.up(x, 15);
+    CHECK(changed == 1);
 }
 
 TEST_CASE("disabled widgets get no hover, press or click") {

@@ -6,13 +6,15 @@
 
 namespace wl::ui {
 
-enum class ThemeKind : std::uint8_t { Dark, Light, HighContrast };
+enum class ThemeKind : std::uint8_t { Dark, Light, HighContrast, Black };
 
-// Accent colors of the app settings (screen 19: swatches Bakır · Deniz · Nar · Gök · Zeytin).
-// Copper is the token set of the handoff; the others replace the accent tokens (base, hover,
-// pressed, subtle, focus, text on accent) in the dark and light themes — high contrast keeps its
-// own. Each set meets the same contrast rules as the tokens (tests/ui/TokensTests.cpp).
-enum class Accent : std::uint8_t { Copper, Sea, Pomegranate, Sky, Olive };
+// Accent colors of the app settings. D-107: Blue is the token set of the design package
+// (design/tokens.json, #2563EB); the others replace the accent tokens (base, hover, pressed, subtle,
+// focus, accent text, text on accent) in the dark and light themes — high contrast keeps its own.
+// As in the package, the fill is the same in both themes and carries white text; accent text and
+// the subtle fill differ per theme. Each set meets the contrast rules of the tokens
+// (tests/ui/TokensTests.cpp).
+enum class Accent : std::uint8_t { Blue, Copper, Sea, Pomegranate, Olive };
 inline constexpr int kAccentCount = 5;
 void setAccent(Accent accent) noexcept; // process-wide, UI thread; repaint afterwards
 [[nodiscard]] Accent accent() noexcept;

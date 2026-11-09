@@ -34,6 +34,9 @@ TEST_CASE("settings: every field survives save / load") {
     settings.mountFolder = L"E:\\mnt";
     settings.isoFolder = L"D:\\ISO";
     settings.pauseBeforeSave = true; // D-106
+    settings.dismEngine = DismEngineChoice::Adk; // D-123
+    settings.esdThreads = 6;
+    settings.presetInIso = false;
     const auto file = scratch(L"roundtrip.json");
     settings.save(file);
     CHECK(AppSettings::load(file) == settings);
@@ -61,7 +64,7 @@ TEST_CASE("settings: a file from an older build, or a damaged one, falls back fi
     CHECK(AppSettings::load(file) == defaults);
     CHECK(AppSettings::load(scratch(L"missing.json")) == defaults);
 
-    for (const auto& [name, theme] : {std::pair{"light", ThemeChoice::Light}, std::pair{"hc", ThemeChoice::HighContrast},
+    for (const auto& [name, theme] : {std::pair{"light", ThemeChoice::Light}, std::pair{"black", ThemeChoice::Black}, std::pair{"hc", ThemeChoice::Black},
                                       std::pair{"system", ThemeChoice::System}, std::pair{"dark", ThemeChoice::Dark}}) {
         write(file, (std::string(R"({"theme":")") + name + "\"}").c_str());
         CHECK(AppSettings::load(file).theme == theme);

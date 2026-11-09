@@ -15,7 +15,7 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kTop = 12.0f;
+constexpr float kTop = 0.0f;
 constexpr float kDrop = 56.0f;
 enum Column : int { kHandle, kOrder, kPackage, kKind, kKb, kSize, kState };
 } // namespace
@@ -113,10 +113,10 @@ UpdatesPage::UpdatesPage(AppState& state, const Localization& strings, Language 
         {L"", 24},
         {strings.get(Str::UpdatesOrder), 48},
         {strings.get(Str::UpdatesPackage), 0},
-        {strings.get(Str::UpdatesType), 80},
-        {strings.get(Str::UpdatesKb), 110},
-        {strings.get(Str::CommonSize), 90, ui::TextAlign::Trailing},
-        {strings.get(Str::CommonStatus), 190},
+        {strings.get(Str::UpdatesType), 170},
+        {strings.get(Str::UpdatesKb), 104},
+        {strings.get(Str::CommonSize), 84, ui::TextAlign::Trailing},
+        {strings.get(Str::CommonStatus), 220},
     });
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState) {
         paintCell(c, row, column, rect);
@@ -233,11 +233,11 @@ void UpdatesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect)
     const auto& op = m_rows[static_cast<std::size_t>(row)];
     const auto& info = infoFor(op.target);
     switch (column) {
-    case kHandle: canvas.drawIcon(ui::icons::Icon::DragHandle, {rect.x - 4, rect.y + 4}, Color::TextTertiary); break;
+    case kHandle: canvas.drawIcon(ui::icons::Icon::DragHandle, {rect.x - 4, rect.y + (rect.height - 16) / 2}, Color::TextTertiary); break;
     case kOrder: canvas.drawText(std::to_wstring(row + 1), rect, TypeStyle::Body, Color::TextPrimary); break;
     case kPackage: {
         canvas.drawIcon(info.path.extension() == L".cab" ? ui::icons::Icon::CabFile : ui::icons::Icon::MsuFile,
-                        {rect.x, rect.y + 4}, Color::TextSecondary);
+                        {rect.x, rect.y + (rect.height - 16) / 2}, Color::TextSecondary);
         const float x = rect.x + ui::tokens::size::icon + 6;
         canvas.drawText(info.path.filename().wstring(), {x, rect.y, rect.right() - x, rect.height}, TypeStyle::Body,
                         Color::TextPrimary);
@@ -277,7 +277,7 @@ void UpdatesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect)
             ink = Color::TextTertiary;
             text = m_strings.get(Str::UpdatesUnknown);
         }
-        canvas.drawIcon(icon, {rect.x, rect.y + 4}, ink);
+        canvas.drawIcon(icon, {rect.x, rect.y + (rect.height - 16) / 2}, ink);
         canvas.drawText(text, {rect.x + 22, rect.y, rect.width - 22, rect.height}, TypeStyle::Caption,
                         compat == Compat::Ok ? Color::TextSecondary : ink);
         break;

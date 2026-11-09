@@ -10,16 +10,16 @@ namespace wl::app {
 using ui::RectF;
 
 namespace {
-constexpr float kTabsTop = 11.0f;
-constexpr float kTabsHeight = ui::tokens::size::control + 1;
+constexpr float kTabsTop = 0.0f;
+constexpr float kTabsHeight = ui::tokens::size::control;
 constexpr float kFormGap = 11.0f;     // tab line → first section
 constexpr float kLabelWidth = 240.0f; // screens.md: "240px etiket sütunu"
-constexpr float kDropdownWidth = 280.0f;
+constexpr float kDropdownWidth = 180.0f; // D-109: the reference tool value cells
 constexpr float kBrowseWidth = 28.0f;
 constexpr float kBrowseGap = 4.0f;
 constexpr float kFilterHeight = ui::tokens::size::control;
 constexpr float kFilterGap = 10.0f;   // tabs → filter row → form
-constexpr float kSearchWidth = 240.0f;
+constexpr float kSearchWidth = 260.0f;
 } // namespace
 
 PictureField::PictureField(std::wstring browseTooltip) {

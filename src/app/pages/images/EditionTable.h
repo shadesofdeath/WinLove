@@ -9,6 +9,7 @@
 #include "app/pages/images/EditionSelection.h"
 #include "core/image/ImageInfo.h"
 #include "ui/widget/Widget.h"
+#include "ui/widgets/ScrollBar.h"
 
 #include <functional>
 #include <optional>
@@ -44,11 +45,16 @@ public:
     void onDoubleClick() override;
     bool onKeyDown(const ui::KeyEvent& key) override;
     bool onContextMenu(ui::PointF p) override;
+    bool onWheel(ui::PointF p, float lines) override;
+    void layout() override;
     [[nodiscard]] ui::RectF focusRect() const override;
 
 private:
     [[nodiscard]] int rowAt(ui::PointF p) const;
     [[nodiscard]] ui::RectF rowRect(int row) const;
+    [[nodiscard]] ui::RectF body() const; // the rows' viewport (under the header)
+    void setOffset(float offset);
+    void reveal(int row);
     [[nodiscard]] int rowOfIndex(std::optional<int> index) const;
     void publish(); // tells onSelect what is marked now
 
@@ -60,6 +66,8 @@ private:
     RowState m_state = RowState::Normal;
     bool m_dimOthers = false;
     int m_hoverRow = -1;
+    float m_offset = 0;                    // D-107: 52px rows scroll inside the card
+    ui::ScrollBar* m_scrollBar = nullptr;
 };
 
 } // namespace wl::app

@@ -201,8 +201,145 @@ std::uint64_t ComponentStoreIndex::exclusiveBytes(const std::vector<std::wstring
     return total;
 }
 
+// ---- D-113: the store split between definitions --------------------------------------------------
+
+ComponentStoreIndex::StoreIdentity ComponentStoreIndex::storeIdentity(std::string_view identity) {
+    StoreIdentity out;
+    std::wstring token;
+    std::wstring version;
+    std::wstring arch;
+    bool first = true;
+    std::size_t start = 0;
+    while (start <= identity.size()) {
+        std::size_t end = identity.find(',', start);
+        if (end == std::string_view::npos) {
+            end = identity.size();
+        }
+        std::string_view part = identity.substr(start, end - start);
+        while (!part.empty() && part.front() == ' ') {
+            part.remove_prefix(1);
+        }
+        while (!part.empty() && part.back() == ' ') {
+            part.remove_suffix(1);
+        }
+        const std::wstring text = lower(utf8::toWide(part));
+        if (first) {
+            out.name = text;
+            first = false;
+        } else if (const auto eq = text.find(L'='); eq != std::wstring::npos) {
+            const std::wstring_view key = std::wstring_view(text).substr(0, eq);
+            std::wstring value = text.substr(eq + 1);
+            if (key == L"publickeytoken") {
+                token = std::move(value);
+            } else if (key == L"version") {
+                version = std::move(value);
+            } else if (key == L"processorarchitecture") {
+                arch = std::move(value);
+            }
+        }
+        start = end + 1;
+    }
+    constexpr std::wstring_view kResources = L".resources";
+    if (out.name.ends_with(kResources)) {
+        out.name.resize(out.name.size() - kResources.size());
+    }
+    out.match = out.name + L"|" + token + L"|" + version;
+    out.bits32 = arch == L"x86" || arch == L"wow64";
+    return out;
+}
+
+namespace {
+// '*' is the only wildcard; both sides lower case.
+bool glob(std::wstring_view pattern, std::wstring_view text) {
+    std::size_t p = 0;
+    std::size_t t = 0;
+    std::size_t star = std::wstring_view::npos;
+    std::size_t mark = 0;
+    while (t < text.size()) {
+        if (p < pattern.size() && pattern[p] == L'*') {
+            star = p++;
+            mark = t;
+        } else if (p < pattern.size() && pattern[p] == text[t]) {
+            ++p;
+            ++t;
+        } else if (star != std::wstring_view::npos) {
+            p = star + 1;
+            t = ++mark;
+        } else {
+            return false;
+        }
+    }
+    while (p < pattern.size() && pattern[p] == L'*') {
+        ++p;
+    }
+    return p == pattern.size();
+}
+} // namespace
+
+bool ComponentStoreIndex::storePatternMatches(std::wstring_view pattern, std::wstring_view match) {
+    // As many '|' fields of the match as the pattern has: a bare name pattern sees the name only.
+    const auto fields = static_cast<std::size_t>(std::ranges::count(pattern, L'|'));
+    std::size_t cut = 0;
+    std::size_t seen = 0;
+    for (; cut < match.size(); ++cut) {
+        if (match[cut] == L'|' && seen++ == fields) {
+            break;
+        }
+    }
+    return glob(lower(pattern), match.substr(0, cut));
+}
+
+int ComponentStoreIndex::storePatternSpecificity(std::wstring_view pattern) {
+    const auto stars = static_cast<std::size_t>(std::ranges::count(pattern, L'*'));
+    return static_cast<int>(pattern.size() - stars) + (stars == 0 ? 10000 : 0);
+}
+
+void ComponentStoreIndex::addStoreComponent(std::string_view identity, std::uint64_t bytes) {
+    m_store.push_back({storeIdentity(identity), bytes});
+}
+
+std::vector<StoreShare> ComponentStoreIndex::shareStore(const std::vector<std::vector<std::wstring>>& patterns) const {
+    struct Rule {
+        int specificity = 0;
+        std::wstring pattern;
+        std::size_t owner = 0;
+    };
+    std::vector<Rule> rules;
+    for (std::size_t i = 0; i < patterns.size(); ++i) {
+        for (const auto& pattern : patterns[i]) {
+            if (!pattern.empty()) {
+                rules.push_back({storePatternSpecificity(pattern), lower(pattern), i});
+            }
+        }
+    }
+    std::ranges::stable_sort(rules, [](const Rule& a, const Rule& b) { return a.specificity > b.specificity; });
+    std::vector<StoreShare> shares(patterns.size());
+    std::vector<std::set<std::wstring>> names64(patterns.size());
+    std::vector<std::set<std::wstring>> names32(patterns.size());
+    for (const auto& component : m_store) {
+        const auto rule = std::ranges::find_if(rules, [&](const Rule& r) { return storePatternMatches(r.pattern, component.identity.match); });
+        if (rule == rules.end()) {
+            continue;
+        }
+        StoreShare& share = shares[rule->owner];
+        if (component.identity.bits32) {
+            share.bytes32 += component.bytes;
+            names32[rule->owner].insert(component.identity.name);
+        } else {
+            share.bytes64 += component.bytes;
+            names64[rule->owner].insert(component.identity.name);
+        }
+    }
+    for (std::size_t i = 0; i < shares.size(); ++i) {
+        shares[i].names64.assign(names64[i].begin(), names64[i].end());
+        shares[i].names32.assign(names32[i].begin(), names32[i].end());
+    }
+    return shares;
+}
+
 Result<ComponentStoreIndex> ComponentStoreIndex::build(const std::filesystem::path& mountDir, const TaskContext& task) {
     ComponentStoreIndex index;
+    std::unordered_map<std::wstring, std::size_t> storeIndex; // DerivedData key (lower) -> m_store
     const auto config = mountDir / L"Windows" / L"System32" / L"config";
 
     // 1. Installed packages (SOFTWARE).
@@ -270,7 +407,14 @@ Result<ComponentStoreIndex> ComponentStoreIndex::build(const std::filesystem::pa
         const auto all = components->open(L"DerivedData\\Components");
         for (const auto& key : all.subkeys()) {
             const std::wstring name = componentName(key);
-            for (const auto& value : all.open(key).values(/*withData=*/false)) {
+            const auto component = all.open(key);
+            // D-113: its identity, for the definitions' name patterns (the key name is shortened).
+            if (const auto identity = component.bytes(L"identity"); !identity.empty()) {
+                const std::string text(identity.begin(), std::find(identity.begin(), identity.end(), std::uint8_t{0}));
+                storeIndex.emplace(lower(key), index.m_store.size());
+                index.m_store.push_back({storeIdentity(text), 0});
+            }
+            for (const auto& value : component.values(/*withData=*/false)) {
                 if (!value.name.starts_with(L"c!")) {
                     continue;
                 }
@@ -293,8 +437,17 @@ Result<ComponentStoreIndex> ComponentStoreIndex::build(const std::filesystem::pa
     const auto sxs = mountDir / L"Windows" / L"WinSxS";
     for (const auto& folder : backupListFolders(sxs)) {
         const std::wstring name = componentName(folder);
-        if (index.m_owners.contains(name)) {
-            index.addBytes(name, backupFolderSize(sxs / folder));
+        const auto store = storeIndex.find(lower(folder));
+        const bool owned = index.m_owners.contains(name);
+        if (!owned && store == storeIndex.end()) {
+            continue;
+        }
+        const std::uint64_t bytes = backupFolderSize(sxs / folder);
+        if (owned) {
+            index.addBytes(name, bytes);
+        }
+        if (store != storeIndex.end()) {
+            index.m_store[store->second].bytes += bytes;
         }
     }
     task.report(0.95, L"WinSxS");
@@ -306,8 +459,8 @@ Result<ComponentStoreIndex> ComponentStoreIndex::build(const std::filesystem::pa
         log::warn("cbs", L"inbox drivers not read: " + describe(drivers.error()));
     }
     task.report(1.0, L"drivers");
-    log::info("cbs", std::format(L"component store index: {} installed families, {} owned components", index.m_installed.size(),
-                                 index.m_owners.size()));
+    log::info("cbs", std::format(L"component store index: {} installed families, {} owned components, {} store components",
+                                 index.m_installed.size(), index.m_owners.size(), index.m_store.size()));
     return index;
 }
 

@@ -6,6 +6,8 @@
 #include "app/Localization.h"
 #include "app/catalog/ImageSettingsCatalog.h"
 #include "app/controllers/ApplyController.h"
+#include "app/controllers/CompatController.h"
+#include "app/pages/apply/ImpactCard.h"
 #include "app/pages/apply/StatStrip.h"
 #include "ui/widgets/Checkbox.h"
 #include "ui/widgets/EmptyState.h"
@@ -22,12 +24,19 @@ public:
     // Paused (D-106): Running's view, stopped before a save, with what to do now on top.
     enum class Mode : std::uint8_t { Empty, NoMount, Summary, Running, Paused, Done };
     [[nodiscard]] static Mode modeFor(const AppState& state);
+    // A held or kept run is in the mounted image, unsaved, and the queue holds only what it left
+    // (its failed steps): Kaydet saves what ran instead of sending the user back to Apply.
+    [[nodiscard]] static bool awaitingSave(const AppState& state);
 
     struct Intents {
         std::function<void()> review;     // "İncele" on the risk InfoBar (opens the confirm dialog)
         std::function<void()> goImages;   // EmptyState action
         std::function<void()> goFeatures;
         std::function<void()> unmount;    // held run (audit A7): the unmount dialog — save or discard
+        // D-124: the impact report — what the queue breaks (guards that are off), switch one on, the dialog.
+        std::function<std::vector<CompatController::Impact>()> impact;
+        std::function<void(const std::wstring& guard)> keep;
+        std::function<void()> openCompat;
     };
 
     ApplyPage(AppState& state, ApplyController& controller, const ImageSettingsCatalog& settings,
@@ -78,11 +87,16 @@ private:
     std::uint64_t m_logVersion = 0;
 
     StatStrip* m_stats = nullptr;
+    ImpactCard* m_impact = nullptr; // Summary (D-124)
+    ui::InfoBar* m_waitBar = nullptr; // Summary (D-124): a download on its way into the queue
+    bool m_waitDismissed = false;
+    void syncWaitBar();
     ui::InfoBar* m_riskBar = nullptr;
     ui::InfoBar* m_infoBar = nullptr;
     ui::TableView* m_table = nullptr;
     std::vector<ui::CheckField*> m_editions; // Summary: "Diğer sürümlere de uygula" (D-055)
     ui::CheckField* m_pause = nullptr;       // Summary: "Kaydetmeden önce dur" (D-106)
+    ui::CheckField* m_guard = nullptr;       // Summary: "Güncellemelere karşı koru" (D-125)
     ui::LogConsole* m_log = nullptr;
     ui::EmptyState* m_empty = nullptr;
 };

@@ -1,4 +1,5 @@
 #include "app/shell/Shell.h"
+#include "core/system/PowerPlans.h"
 
 #include "app/pages/images/EditionDialog.h"
 #include "app/pages/images/RenameDialog.h"
@@ -20,6 +21,7 @@
 #include "app/pages/StartMenuPage.h"
 #include "app/pages/SettingsPage.h"
 #include "app/pages/components/CompatDialog.h"
+#include "app/pages/components/ModeDialog.h"
 #include "app/pages/components/ComponentInspector.h"
 #include "app/pages/FeaturesPage.h"
 #include "app/pages/apply/RiskConfirm.h"
@@ -65,6 +67,7 @@
 #include "ui/render/Canvas.h"
 #include "ui/widget/Host.h"
 #include "ui/widgets/Dialog.h"
+#include "ui/widgets/Dropdown.h"
 #include "ui/widgets/EmptyState.h"
 #include "ui/widgets/FormView.h"
 #include "ui/widgets/SearchBox.h"
@@ -108,6 +111,94 @@ bool isSourceCandidate(const std::filesystem::path& path) {
 
 constexpr float kToastMargin = 16.0f;
 
+// D-107: the title bar's workspaces. Görüntü holds every page that edits the image, in the
+// package's groups; Ön Ayar the preset library; Araçlar what is not about one image.
+constexpr int kImageWorkspace = 0;
+constexpr int kPresetWorkspace = 1;
+constexpr int kToolWorkspace = 2;
+// 2026-11-09 (the user): Katılımsız is a menu of its own, its page the whole width (no navigation).
+constexpr int kUnattendedWorkspace = 3;
+constexpr int kWorkspaces = 4;
+constexpr float kChangesMinWidth = 1180.0f; // narrower: the page keeps the room
+
+// D-108: the tabs of each workspace and the pages each holds — the first is the tab's own, the
+// others are picked in the page's header (the package shows ten tabs; 21 in a row were too many).
+struct TabDef {
+    PageId tab;
+    std::vector<PageId> pages;
+    std::optional<Str> label; // else the first page's nav label
+    bool counted = true;      // shows what its pages queue (when above 0)
+};
+struct GroupDef {
+    Str caption;
+    std::vector<TabDef> tabs;
+};
+
+const std::vector<GroupDef>& workspaceTabs(int workspace) {
+    // D-109: the reference tool's navigation, item for item (Başlat · Entegre et · Kaldır · Yapılandır · Bitir).
+    // WinLove's pages the reference tool has no item for are tabs of the item whose work they are: languages
+    // and app packages are packages to integrate (the reference tool's Güncellemeler takes both), hosts is
+    // registry-like, programs and files run or land after setup, services and the look are
+    // settings (the reference tool's Ayarlar has Hizmetler and Görseller tabs), the ISO is part of Uygula.
+    static const std::vector<GroupDef> image = {
+        {Str::TabsGroupStart, {{PageId::Images, {PageId::Images}, Str::TabsImage, false}}},
+        {Str::TabsGroupAdd,
+         {{PageId::Updates, {PageId::Updates, PageId::Languages, PageId::Apps}},
+          {PageId::Drivers, {PageId::Drivers}},
+          {PageId::Registry, {PageId::Registry, PageId::Hosts}},
+          {PageId::PostSetup, {PageId::PostSetup, PageId::Programs, PageId::Files}}}},
+        {Str::TabsGroupRemove, {{PageId::Components, {PageId::Components}}}},
+        {Str::TabsGroupConfigure,
+         {{PageId::Features, {PageId::Features}},
+          {PageId::Tweaks, {PageId::Tweaks, PageId::Services, PageId::StartMenu, PageId::Branding, PageId::Icons}, Str::TabsTweaks},
+          {PageId::Tasks, {PageId::Tasks}}}},
+        {Str::TabsGroupFinish, {{PageId::Apply, {PageId::Apply, PageId::Iso}, std::nullopt, false}}},
+    };
+    static const std::vector<GroupDef> presets = {{Str::TabsGroupPresets, {{PageId::Presets, {PageId::Presets}, std::nullopt, false}}}};
+    static const std::vector<GroupDef> unattended = {
+        {Str::TabsGroupConfigure, {{PageId::Unattended, {PageId::Unattended}, Str::TabsUnattended, false}}}};
+    static const std::vector<GroupDef> tools = {
+        {Str::TabsGroupTools,
+         {{PageId::Download, {PageId::Download}, std::nullopt, false}, {PageId::Logs, {PageId::Logs}, std::nullopt, false}}},
+        {Str::TabsGroupApp,
+         {{PageId::Settings, {PageId::Settings}, std::nullopt, false}, {PageId::About, {PageId::About}, std::nullopt, false}}},
+    };
+    return workspace == kPresetWorkspace       ? presets
+           : workspace == kToolWorkspace       ? tools
+           : workspace == kUnattendedWorkspace ? unattended
+                                               : image;
+}
+
+// The tab a page lives in (the Source page is the Görüntü tab's).
+const TabDef* tabDefOf(PageId page) {
+    if (page == PageId::Source) {
+        page = PageId::Images;
+    }
+    for (int w = 0; w < kWorkspaces; ++w) {
+        for (const auto& group : workspaceTabs(w)) {
+            for (const auto& tab : group.tabs) {
+                if (std::ranges::find(tab.pages, page) != tab.pages.end()) {
+                    return &tab;
+                }
+            }
+        }
+    }
+    return nullptr;
+}
+
+int workspaceOf(PageId page) {
+    switch (page) {
+    case PageId::Presets: return kPresetWorkspace;
+    case PageId::Download:
+    case PageId::Logs:
+    case PageId::Settings:
+    case PageId::About:
+    case PageId::Gallery: return kToolWorkspace;
+    case PageId::Unattended: return kUnattendedWorkspace;
+    default: return kImageWorkspace;
+    }
+}
+
 } // namespace
 
 Shell::Shell(const Localization& strings, Language language, AppState& state, Services services)
@@ -115,18 +206,30 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     LanguageController::setNameLanguage(language);
     auto s = [&](Str key) { return strings.get(key); };
     m_titleBar = &add<TitleBar>(TitleBar::Labels{s(Str::AppName), s(Str::TitleCmdk), s(Str::KbdCtrl), s(Str::TitleMinimize),
-                                                 s(Str::TitleClose), s(Str::TitleMaximize), s(Str::TitleRestore)});
-    m_nav = &add<NavRail>(NavRail::Labels{s(Str::NavCollapse), s(Str::NavExpand), s(Str::KbdCtrl),
-                                          s(Str::TooltipsCollapseNav)},
-                          [&](Str key) { return strings.get(key); });
-    m_status = &add<StatusBar>(StatusBar::Labels{
-        s(Str::StatusNoMount), s(Str::StatusMounted), s(Str::StatusImage), s(Str::StatusApply),
-        {s(Str::WorkflowSource), s(Str::WorkflowMount), s(Str::WorkflowEdit), s(Str::WorkflowApply), s(Str::WorkflowIso)}});
-    m_status->steps().onStep = [this](int step) {
-        static constexpr PageId kPages[] = {PageId::Source, PageId::Images, PageId::Components, PageId::Apply, PageId::Iso};
-        showPage(kPages[std::clamp(step, 0, 4)]);
+                                                 s(Str::TitleClose), s(Str::TitleMaximize), s(Str::TitleRestore),
+                                                 s(Str::MenuTheme), s(Str::TitleAppMenu),
+                                                 {s(Str::MenuImage), s(Str::MenuPresets), s(Str::MenuTools), s(Str::MenuUnattended)}});
+    m_header = &add<ImageHeader>();
+    m_header->onLink = [this] {
+        if (m_state.source()) {
+            showPage(PageId::Source);
+        } else {
+            pickSourceFile();
+        }
     };
-    m_status->cta().onInvoke = [this] {
+    m_tabs = &add<TabStrip>();
+    m_tabs->onSelect = [this](PageId tab) { openTab(tab); };
+    m_tabs->setVisible(false);
+    m_header->setVisible(false);
+    m_nav = &add<NavPanel>();
+    m_nav->onSelect = [this](PageId tab) { openTab(tab); };
+    m_status = &add<StatusBar>(StatusBar::Labels{s(Str::StatusNoMount), s(Str::StatusMounted)});
+    m_changes = &add<ChangesPanel>(ChangesPanel::Labels{s(Str::ChangesTitle), s(Str::ChangesEmpty), s(Str::ChangesEmptyHint),
+                                                        s(Str::ChangesMounted), s(Str::ChangesNoMount), s(Str::StatusApply),
+                                                        s(Str::ApplyStop)});
+    m_changes->setVisible(false);
+    m_changes->onPage = [this](PageId page) { showPage(page); };
+    m_changes->onApply = [this] {
         if (m_apply && m_apply->running()) {
             m_apply->cancel();
         } else if (m_page == PageId::Apply) {
@@ -135,26 +238,26 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
             showPage(PageId::Apply);
         }
     };
-
+    m_titleBar->onMenu = [this](int menu) {
+        PageId page = menu == kPresetWorkspace       ? PageId::Presets
+                      : menu == kToolWorkspace       ? m_lastToolPage
+                      : menu == kUnattendedWorkspace ? PageId::Unattended
+                                                     : m_lastImagePage;
+        if (page == PageId::Images && !m_state.source()) {
+            page = PageId::Source;
+        }
+        showPage(page);
+    };
+    m_titleBar->themeButton().onInvoke = [this] {
+        if (m_services.toggleTheme) {
+            m_services.toggleTheme();
+        }
+    };
     m_titleBar->palette().onInvoke = [this] { openPalette(); };
+    m_titleBar->menuButton().onInvoke = [this] { showAppMenu(); };
     m_titleBar->minimizeButton().onInvoke = [this] { m_services.minimize(); };
     m_titleBar->maximizeButton().onInvoke = [this] { m_services.toggleMaximize(); };
     m_titleBar->closeButton().onInvoke = [this] { m_services.close(); };
-    m_nav->onSelect = [this](PageId page) { showPage(page); };
-    m_nav->onToggleCollapse = [this] { toggleNav(); };
-    // D-091: folded groups are a setting (settings.json), so they stay folded next time.
-    m_nav->setClosedGroups(state.settings().closedNavGroups);
-    m_nav->onToggleGroup = [this](int group) {
-        AppSettings settings = m_state.settings();
-        auto& closed = settings.closedNavGroups;
-        if (const auto it = std::ranges::find(closed, group); it != closed.end()) {
-            closed.erase(it);
-        } else {
-            closed.push_back(group);
-        }
-        m_nav->setClosedGroups(closed);
-        m_state.setSettings(std::move(settings));
-    };
 
     m_features = std::make_unique<FeatureController>(m_state, m_services.postToUi);
     {
@@ -199,8 +302,11 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
             showToast(ui::InfoKind::Error, m_strings.get(Str::AppsStoreFailed), errorText(e));
         },
         [this](std::wstring title, std::filesystem::path app) {
-            if (!m_state.mounted()) {
-                showToast(ui::InfoKind::Warning, m_strings.get(Str::AppsStoreDownloadedNoMount), app.parent_path().wstring());
+            if (!canQueueNow()) { // D-124: kept for the next mount, not dropped
+                holdDownload([&](PendingDownloads& p) { p.apps.push_back(app); });
+                showToast(ui::InfoKind::Warning,
+                          m_strings.get(m_state.mounted() ? Str::AppsStoreDownloadedApplying : Str::AppsStoreDownloadedNoMount),
+                          app.parent_path().wstring());
                 return;
             }
             m_apps->addPackages({app}); // the frameworks are next to it
@@ -219,8 +325,17 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         [this](std::vector<std::filesystem::path> files) {
             const std::wstring n = std::to_wstring(files.size());
             const auto folder = files.empty() ? std::wstring() : files.front().parent_path().wstring();
-            if (!m_state.mounted()) {
-                showToast(ui::InfoKind::Warning, m_strings.format(Str::LanguagesDownloadedNoMount, {{L"n", n}}), folder);
+            if (!canQueueNow()) { // D-124: kept for the next mount, not dropped
+                holdDownload([&](PendingDownloads& p) {
+                    p.languages.insert(p.languages.end(), files.begin(), files.end());
+                    if (!m_pendingUiLanguage.empty()) {
+                        p.uiLanguage = std::exchange(m_pendingUiLanguage, {});
+                    }
+                });
+                showToast(ui::InfoKind::Warning,
+                          m_strings.format(m_state.mounted() ? Str::LanguagesDownloadedApplying : Str::LanguagesDownloadedNoMount,
+                                           {{L"n", n}}),
+                          folder);
                 return;
             }
             m_languages->queueFiles(files, std::exchange(m_pendingUiLanguage, {}));
@@ -294,6 +409,11 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         m_components->onBlocked = [this](const ComponentController::Item& item, const core::ops::CompatBlock& block) {
             showToast(ui::InfoKind::Warning, item.name, m_compat->explain(block));
         };
+        m_features->blockOf = blockOf; // D-120
+        m_features->onBlocked = [this](const core::OptionalFeature& item, const core::ops::CompatBlock& block) {
+            showToast(ui::InfoKind::Warning, item.displayName.empty() ? item.name : item.displayName,
+                      m_compat->explain(block) + L" " + m_strings.get(Str::CompatLockedHint));
+        };
         m_serviceCtl->blockOf = blockOf;
         m_serviceCtl->onBlocked = [this](const core::ServiceEntry& service, const core::ops::CompatBlock& block) {
             showToast(ui::InfoKind::Warning, service.displayName.empty() ? service.name : service.displayName,
@@ -365,9 +485,14 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
                 (d.kind == core::CatalogKind::SafeOs ? safeOs : packages).push_back(d.main); // a checkpoint stays next to it for DISM
             }
             m_state.setMediaUpdate(std::move(media));
-            const std::wstring n = std::to_wstring(downloaded.size());
-            if (!m_state.mounted()) {
-                showToast(ui::InfoKind::Warning, m_strings.format(Str::UpdatesDownloadedNoMount, {{L"n", n}}),
+            const std::wstring n = std::to_wstring(packages.size() + safeOs.size());
+            if (!canQueueNow()) { // D-124: kept for the next mount, not dropped
+                holdDownload([&](PendingDownloads& p) {
+                    p.updates.insert(p.updates.end(), packages.begin(), packages.end());
+                    p.safeOs.insert(p.safeOs.end(), safeOs.begin(), safeOs.end());
+                });
+                showToast(ui::InfoKind::Warning,
+                          m_strings.format(m_state.mounted() ? Str::UpdatesDownloadedApplying : Str::UpdatesDownloadedNoMount, {{L"n", n}}),
                           m_updateCatalog->folder().wstring());
                 return;
             }
@@ -505,8 +630,22 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         if (change == AppState::Change::Settings && m_services.settingsChanged) {
             m_services.settingsChanged(); // theme, motion, language: the App applies them
         }
+        if ((change == AppState::Change::Apply || change == AppState::Change::Mount) && m_pendingDownloads.count() > 0) {
+            // D-124: downloads that finished while nothing could be queued. Later on the UI
+            // thread: this runs inside the state change (an Apply finishing, a mount).
+            m_services.postToUi([this, alive = std::weak_ptr<bool>(m_alive)] {
+                if (const auto a = alive.lock(); a && *a) {
+                    flushPendingDownloads();
+                }
+            });
+        }
+        // D-124: Uygula waits for a download that will queue packages (only when that starts / ends,
+        // not on each progress step).
+        const bool downloading = m_apply->waitingForDownload();
+        const bool fetchFlipped = downloading != m_applyWaitsForDownload;
+        m_applyWaitsForDownload = downloading;
         if (change == AppState::Change::Apply || change == AppState::Change::Queue ||
-            change == AppState::Change::Mount) {
+            change == AppState::Change::Mount || fetchFlipped) {
             updateApplyChrome();
         }
         if (change == AppState::Change::Mount) {
@@ -531,6 +670,44 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     });
     showPage(PageId::Source);
     updateStatus();
+}
+
+bool Shell::canQueueNow() const {
+    return m_state.mounted() && !m_state.queueLocked();
+}
+
+void Shell::holdDownload(const std::function<void(PendingDownloads&)>& add) {
+    const auto& source = m_state.source();
+    const std::filesystem::path path = source ? source->path : std::filesystem::path();
+    if (m_pendingDownloads.source != path) {
+        m_pendingDownloads = {}; // another source's files: not this image's
+        m_pendingDownloads.source = path;
+    }
+    add(m_pendingDownloads);
+    log::info("app", std::format(L"downloads held until the queue takes them: {}", m_pendingDownloads.count()));
+}
+
+void Shell::flushPendingDownloads() {
+    if (m_pendingDownloads.count() == 0 || !canQueueNow()) {
+        return;
+    }
+    const auto& source = m_state.source();
+    if (!source || source->path != m_pendingDownloads.source) {
+        log::info("app", L"held downloads dropped: another source is open");
+        m_pendingDownloads = {};
+        return;
+    }
+    PendingDownloads held = std::exchange(m_pendingDownloads, {});
+    UpdatesPage::queuePackages(m_state, held.updates);
+    UpdatesPage::queuePackages(m_state, held.safeOs, core::UpdateKind::SafeOs);
+    if (!held.languages.empty()) {
+        m_languages->queueFiles(held.languages, held.uiLanguage);
+    }
+    if (!held.apps.empty()) {
+        m_apps->addPackages(held.apps);
+    }
+    log::info("app", std::format(L"held downloads queued: {}", held.count()));
+    showToast(ui::InfoKind::Success, m_strings.format(Str::ApplyHeldDownloadsQueued, {{L"n", std::to_wstring(held.count())}}), L"");
 }
 
 bool Shell::requireMount(Str title, Str body) {
@@ -743,6 +920,71 @@ void Shell::addPowerPlan() {
     showUndoToast(m_strings.format(Str::PostsetupPowerAdded, {{L"name", file->stem().wstring()}}), L"");
 }
 
+void Shell::addPresetPowerPlan(const wchar_t* scheme, Str name) {
+    if (!requireMount(Str::PostsetupNoMountTitle, Str::PostsetupNoMountBody)) {
+        return;
+    }
+    core::PostSetupStep step;
+    step.type = core::PostSetupStep::Type::Command;
+    step.name = m_strings.get(Str::RegistryPowerPlan) + L": " + m_strings.get(name);
+    step.source = core::powerPlanCommand(scheme);
+    step.wait = true;
+    m_postSetup->add(std::move(step));
+    showUndoToast(m_strings.format(Str::PostsetupPowerAdded, {{L"name", m_strings.get(name)}}), L"");
+}
+
+void Shell::addHostPowerPlan() {
+    if (!host() || !requireMount(Str::PostsetupNoMountTitle, Str::PostsetupNoMountBody)) {
+        return;
+    }
+    auto plans = std::make_shared<std::vector<core::PowerPlan>>(core::hostPowerPlans());
+    if (plans->empty()) {
+        showToast(ui::InfoKind::Warning, m_strings.get(Str::RegistryPowerNone), {});
+        return;
+    }
+    std::vector<std::wstring> names;
+    std::vector<std::optional<ui::icons::Icon>> icons;
+    for (const auto& plan : *plans) {
+        names.push_back(plan.active ? plan.name + L"  \u2713" : plan.name);
+        icons.emplace_back(ui::icons::Icon::Power);
+    }
+    const ui::RectF b = m_pageView->bounds();
+    auto popup = std::make_unique<ui::MenuPopup>(
+        ui::RectF{b.x + 240, b.y + ui::tokens::size::ribbon, 0, 0}, std::move(names), -1,
+        [this, plans](int picked) {
+            if (picked < 0 || picked >= static_cast<int>(plans->size())) {
+                return;
+            }
+            const auto& plan = (*plans)[static_cast<std::size_t>(picked)];
+            std::wstring file = plan.name;
+            for (auto& c : file) {
+                if (std::wcschr(L"\\/:*?\"<>|", c)) {
+                    c = L'_';
+                }
+            }
+            const auto target = m_state.settings().workRoot / L"powerplans" / (file + L".pow");
+            if (auto done = core::exportHostPowerPlan(plan.guid, target); !done) {
+                showToast(ui::InfoKind::Error, m_strings.get(Str::RegistryPowerExportFailed), describe(done.error()));
+                return;
+            }
+            GUID g{};
+            CoCreateGuid(&g);
+            core::PostSetupStep step;
+            step.type = core::PostSetupStep::Type::PowerPlan;
+            step.source = target.wstring();
+            step.name = plan.name;
+            step.destination = std::format(L"{{{:08x}-{:04x}-{:04x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}}}", g.Data1,
+                                           g.Data2, g.Data3, g.Data4[0], g.Data4[1], g.Data4[2], g.Data4[3], g.Data4[4],
+                                           g.Data4[5], g.Data4[6], g.Data4[7]);
+            m_postSetup->add(std::move(step));
+            showUndoToast(m_strings.format(Str::PostsetupPowerAdded, {{L"name", plan.name}}), L"");
+        },
+        [] {});
+    popup->setIcons(std::move(icons));
+    ui::Widget* widget = popup.get();
+    host()->pushModal(std::move(popup), widget, /*scrim=*/false);
+}
+
 void Shell::pickPostSetupCommands() {
     if (!host()) {
         return;
@@ -878,16 +1120,52 @@ void Shell::showCompat() {
     actions.save = [this](std::vector<std::wstring> on) {
         m_compat->setGuards(on);
         if (auto* page = componentsPage()) {
-            if (m_actionCompat) {
-                m_actionCompat->setText(m_strings.format(Str::CompatAction, {{L"n", std::to_wstring(m_compat->onCount())}}));
-                m_pageView->layout();
-            }
             page->refresh();
             updateComponentInspector();
         }
     };
     CompatDialog built = makeCompatDialog(m_strings, m_language, m_compat->catalog(), m_compat->onIds(), std::move(actions));
     showModal(slot, std::move(built.dialog), built.initialFocus);
+}
+
+void Shell::showMode() {
+    // D-110: the reference tool's Kaldırma modu. Maksimum lifts the "Önerilen" and Windows Update guards (the
+    // shrink needs the second off); the other levels put them back.
+    const ModalSlot slot = modalSlot();
+    ModeDialogActions actions;
+    actions.close = slot.close;
+    actions.save = [this](ComponentController::Level level) {
+        const bool max = level == ComponentController::Level::Maximum;
+        if (max) {
+            m_compat->setOn(L"recommended", false);
+            m_compat->setOn(L"windows-update", false);
+            m_components->setLevel(level);
+        } else {
+            m_components->setLevel(level);
+            m_compat->setOn(L"recommended", true);
+            m_compat->setOn(L"windows-update", true);
+        }
+        if (m_page == PageId::Components) {
+            showPage(PageId::Components); // the Mod button says the level
+        }
+    };
+    ModeDialog built = makeModeDialog(m_strings, m_components->level(), std::move(actions));
+    showModal(slot, std::move(built.dialog), built.initialFocus);
+}
+
+void Shell::applyComponentTemplate(Tier tier) {
+    if (!m_state.mounted()) {
+        return;
+    }
+    const Str name = tier == Tier::Privacy ? Str::ComponentsTierPrivacy : tier == Tier::General ? Str::ComponentsTierGeneral
+                                                                                                : Str::ComponentsTierLight;
+    const int n = m_components->applyTemplate(tier);
+    if (n > 0) {
+        showUndoToast(m_strings.format(Str::ComponentsTemplateApplied, {{L"n", std::to_wstring(n)}, {L"name", m_strings.get(name)}}),
+                      m_strings.get(Str::ComponentsTemplateHint));
+    } else {
+        showToast(ui::InfoKind::Info, m_strings.format(Str::ComponentsTemplateNone, {{L"name", m_strings.get(name)}}), L"");
+    }
 }
 
 void Shell::updateComponentInspector() {
@@ -1487,8 +1765,7 @@ void Shell::confirmUsbWrite(IsoController::Request request) {
 }
 
 void Shell::updateApplyChrome() {
-    const bool running = m_apply->running();
-    m_status->cta().setOverride(running ? m_strings.get(Str::ApplyStop) : std::wstring());
+    updateChanges(); // Uygula / Durdur
     if (m_page != PageId::Apply) {
         return;
     }
@@ -1508,6 +1785,13 @@ void Shell::updateApplyChrome() {
 }
 
 void Shell::requestApply() {
+    if (m_apply->waitingForDownload()) {
+        // D-124: said, not a silent no-op (the Apply page shows the same on top).
+        const int pct = static_cast<int>(downloadProgress().value_or(0.0f) * 100.0f);
+        showToast(ui::InfoKind::Warning, m_strings.format(Str::ApplyWaitDownloadTitle, {{L"pct", std::to_wstring(pct)}}),
+                  m_strings.get(Str::ApplyWaitDownloadBody));
+        return;
+    }
     if (!m_apply->canStart()) {
         return;
     }
@@ -1610,102 +1894,345 @@ bool Shell::inspectorVisible() const {
 }
 
 void Shell::updateBreadcrumb() {
-    // statusbar-titlebar.md: image › edition › state. Without a source: the page title.
-    if (const auto& source = m_state.source()) {
-        std::vector<std::wstring> parts{source->path.filename().empty() ? source->path.wstring()
-                                                                         : source->path.filename().wstring()};
-        if (const auto& mounted = m_state.mounted()) {
-            parts.push_back(mounted->edition);
-            parts.push_back(m_strings.get(Str::StatusMounted));
-        } else if (const auto& op = m_state.operation(); op && op->kind == EngineOperation::Kind::Mounting) {
-            parts.push_back(op->edition);
-            parts.push_back(m_strings.get(Str::StatusMounting));
-        } else if (const auto* image = m_state.selectedImage(); image && m_page == PageId::Images) {
-            parts.push_back(image->name);
-        }
-        m_titleBar->setBreadcrumb(std::move(parts));
-    } else if (m_page == PageId::Gallery) {
-        m_titleBar->setBreadcrumb({L"Widget gallery"});
-    } else {
-        m_titleBar->setBreadcrumb({m_strings.get(pageInfo(m_page).title)});
+    // D-107: the image header — what is open, its state, its facts, and what the queue does to its size.
+    auto s = [this](Str key) { return m_strings.get(key); };
+    ImageHeader::Model model;
+    const auto& source = m_state.source();
+    if (!source) {
+        model.title = s(Str::HeaderNoImage);
+        model.placeholder = true;
+        model.facts = {s(Str::HeaderNoImageHint)};
+        model.link = s(Str::HeaderOpen);
+        m_header->set(std::move(model));
+        return;
     }
+    const auto& mounted = m_state.mounted();
+    const core::ImageInfo* image = nullptr;
+    if (mounted) {
+        for (const auto& candidate : source->install.images) {
+            if (candidate.index == mounted->index) {
+                image = &candidate;
+            }
+        }
+    }
+    if (!image) {
+        image = m_state.selectedImage();
+    }
+    model.title = image ? image->name : source->path.filename().empty() ? source->path.wstring() : source->path.filename().wstring();
+    if (mounted && (!image || image->index == mounted->index)) {
+        model.badge = ImageHeader::Badge{s(Str::StatusMounted), ImageHeader::BadgeKind::Mounted};
+        if (!image) {
+            model.title = mounted->edition;
+        }
+    } else if (const auto& op = m_state.operation(); op && op->kind == EngineOperation::Kind::Mounting) {
+        const int pct = static_cast<int>(std::clamp(op->fraction, 0.0, 1.0) * 100);
+        model.badge = ImageHeader::Badge{m_strings.format(Str::HeaderMounting, {{L"pct", std::to_wstring(pct)}}),
+                                         ImageHeader::BadgeKind::Working};
+    }
+    if (image) {
+        model.facts.push_back(core::releaseLabel(image->build) + L" \u00b7 " + std::to_wstring(image->build) + L"." +
+                              std::to_wstring(image->spBuild));
+        model.facts.emplace_back(core::architectureName(image->architecture));
+        if (!image->defaultLanguage.empty()) {
+            model.facts.push_back(image->defaultLanguage);
+        } else if (!image->languages.empty()) {
+            model.facts.push_back(image->languages.front());
+        }
+    }
+    model.facts.push_back(source->path.wstring());
+    model.link = s(Str::HeaderChange);
+    if (image && image->totalBytes > 0) {
+        // The size before → after: the queue's estimates (removals save, additions cost).
+        std::int64_t delta = 0;
+        for (const auto& op : m_state.changes().operations()) {
+            delta += op.sizeDelta;
+        }
+        ImageHeader::Sizes sizes;
+        sizes.before = formatBytes(image->totalBytes, m_language);
+        if (delta != 0) {
+            const auto before = static_cast<std::int64_t>(image->totalBytes);
+            const auto after = std::max<std::int64_t>(before + delta, 0);
+            sizes.after = formatBytes(static_cast<std::uint64_t>(after), m_language);
+            sizes.delta = std::wstring(delta < 0 ? L"\u2212" : L"+") +
+                          formatBytes(static_cast<std::uint64_t>(delta < 0 ? -delta : delta), m_language);
+            sizes.ratio = static_cast<float>(static_cast<double>(after) / static_cast<double>(before));
+        }
+        model.sizes = std::move(sizes);
+    }
+    m_header->set(std::move(model));
+}
+
+std::vector<TabStrip::Group> Shell::tabGroups(int workspace) const {
+    std::vector<TabStrip::Group> groups;
+    for (const auto& group : workspaceTabs(workspace)) {
+        TabStrip::Group g{m_strings.get(group.caption), {}};
+        for (const auto& tab : group.tabs) {
+            g.tabs.push_back({tab.tab, m_strings.get(tab.label ? *tab.label : pageInfo(tab.tab).navLabel), tab.counted});
+        }
+        groups.push_back(std::move(g));
+    }
+    return groups;
+}
+
+std::vector<NavPanel::Group> Shell::navGroups(int workspace) const {
+    std::vector<NavPanel::Group> groups;
+    for (const auto& group : workspaceTabs(workspace)) {
+        NavPanel::Group g{m_strings.get(group.caption), {}};
+        for (const auto& tab : group.tabs) {
+            g.items.push_back({tab.tab, m_strings.get(tab.label ? *tab.label : pageInfo(tab.tab).navLabel), pageInfo(tab.tab).icon,
+                               tab.counted, tab.tab == PageId::Apply});
+        }
+        groups.push_back(std::move(g));
+    }
+    return groups;
+}
+
+void Shell::showAppMenu() {
+    // D-109: the reference tool's ≡ menu, with WinLove's own entries.
+    if (!host()) {
+        return;
+    }
+    struct Entry {
+        Str label;
+        ui::icons::Icon icon; // 2026-11-09: each entry with its page's icon, like the navigation
+        std::function<void()> run;
+    };
+    using ui::icons::Icon;
+    auto entries = std::make_shared<std::vector<Entry>>(std::vector<Entry>{
+        {Str::NavSettings, Icon::Settings, [this] { showPage(PageId::Settings); }},
+        {Str::NavDownload, Icon::WindowsDownload, [this] { showPage(PageId::Download); }},
+        {Str::NavPresets, Icon::PresetBookmark, [this] { showPage(PageId::Presets); }},
+        {Str::NavLogs, Icon::LogTerminal, [this] { showPage(PageId::Logs); }},
+        {Str::NavAbout, Icon::AboutInfo, [this] { showPage(PageId::About); }},
+        {Str::MenuExit, Icon::Power, [this] { m_services.close(); }},
+    });
+    std::vector<std::wstring> names;
+    std::vector<std::optional<Icon>> icons;
+    for (const auto& e : *entries) {
+        names.push_back(m_strings.get(e.label));
+        icons.emplace_back(e.icon);
+    }
+    const ui::RectF b = m_titleBar->menuButton().bounds();
+    auto popup = std::make_unique<ui::MenuPopup>(
+        ui::RectF{b.x + 4, b.bottom() + 2, 220, 0}, std::move(names), -1,
+        [this, entries](int picked) {
+            if (picked >= 0 && picked < static_cast<int>(entries->size())) {
+                // Later: the menu closes first, then the page is rebuilt.
+                m_services.postToUi([run = (*entries)[static_cast<std::size_t>(picked)].run, alive = std::weak_ptr<bool>(m_alive)] {
+                    if (const auto a = alive.lock(); a && *a) {
+                        run();
+                    }
+                });
+            }
+        },
+        [] {});
+    popup->setIcons(icons);
+    ui::Widget* widget = popup.get();
+    host()->pushModal(std::move(popup), widget, /*scrim=*/false);
+}
+
+void Shell::openTab(PageId tab) {
+    const int last = m_lastSub[static_cast<std::size_t>(tab)];
+    PageId page = last >= 0 ? static_cast<PageId>(last) : tab;
+    if (page == PageId::Images && !m_state.source()) {
+        page = PageId::Source; // "Görüntü" is the Source page until something is open
+    }
+    showPage(page);
+}
+
+void Shell::addMenuAction(ui::ButtonKind kind, std::wstring label, std::optional<ui::icons::Icon> icon,
+                          std::vector<MenuAction> items, std::vector<std::optional<ui::icons::Icon>> itemIcons) {
+    auto& button = m_pageView->addAction(kind, std::move(label), icon);
+    auto shared = std::make_shared<std::vector<MenuAction>>(std::move(items));
+    auto sharedIcons = std::make_shared<std::vector<std::optional<ui::icons::Icon>>>(std::move(itemIcons));
+    ui::Button* raw = &button;
+    button.onInvoke = [this, raw, shared, sharedIcons] {
+        if (!host()) {
+            return;
+        }
+        std::vector<std::wstring> names;
+        for (const auto& item : *shared) {
+            names.push_back(item.first);
+        }
+        const ui::RectF b = raw->bounds();
+        auto popup = std::make_unique<ui::MenuPopup>(
+            ui::RectF{b.x, b.bottom() + 4, b.width, 0}, std::move(names), -1,
+            [shared](int picked) {
+                if (picked >= 0 && picked < static_cast<int>(shared->size())) {
+                    if (auto run = (*shared)[static_cast<std::size_t>(picked)].second) {
+                        run();
+                    }
+                }
+            },
+            [] {});
+        if (!sharedIcons->empty()) {
+            popup->setIcons(*sharedIcons);
+        }
+        ui::Widget* widget = popup.get();
+        host()->pushModal(std::move(popup), widget, /*scrim=*/false);
+    };
+}
+
+void Shell::attachSubNav() {
+    const TabDef* def = tabDefOf(m_page);
+    if (!m_pageView || !def || def->pages.size() < 2) {
+        return;
+    }
+    std::vector<std::wstring> labels;
+    int selected = 0;
+    for (std::size_t i = 0; i < def->pages.size(); ++i) {
+        const PageId p = def->pages[i];
+        std::wstring label = m_strings.get(pageInfo(p).navLabel);
+        if (const int n = m_counts[static_cast<std::size_t>(p)]; n > 0) {
+            label += L" \u00b7 " + std::to_wstring(n);
+        }
+        labels.push_back(std::move(label));
+        if (p == m_page) {
+            selected = static_cast<int>(i);
+        }
+    }
+    const std::vector<PageId> pages = def->pages;
+    m_pageView->setSubNav(std::move(labels), selected, [this, pages](int index) {
+        // Later: the click runs inside the page that is about to be replaced.
+        const PageId target = pages[static_cast<std::size_t>(std::clamp(index, 0, static_cast<int>(pages.size()) - 1))];
+        m_services.postToUi([this, target, alive = std::weak_ptr<bool>(m_alive)] {
+            if (const auto a = alive.lock(); a && *a) {
+                showPage(target);
+            }
+        });
+    });
+}
+
+bool Shell::changesVisible() const {
+    // D-109: the reference tool has no side panel of changes — the nav counts and the Uygula page show them.
+    return false;
+}
+
+void Shell::updateChanges() {
+    if (!m_changes || !m_tabs) {
+        return;
+    }
+    std::vector<ChangesPanel::Entry> entries;
+    for (const auto& group : workspaceTabs(kImageWorkspace)) {
+        for (const auto& tab : group.tabs) {
+            for (const PageId page : tab.pages) {
+                if (const int n = m_counts[static_cast<std::size_t>(page)]; tab.counted && page != PageId::Apply && n > 0) {
+                    entries.push_back({page, m_strings.get(pageInfo(page).navLabel), n});
+                }
+            }
+        }
+    }
+    const std::size_t total = m_state.changes().size();
+    std::optional<ChangesPanel::Run> run;
+    if (m_apply && m_apply->running()) {
+        const auto& r = m_state.applyRun();
+        run = ChangesPanel::Run{m_strings.get(Str::StatusApplying), r ? static_cast<float>(r->fraction) : 0.0f};
+    }
+    std::optional<std::wstring> mount;
+    if (const auto& mounted = m_state.mounted()) {
+        mount = mounted->mountDir.wstring();
+    }
+    m_changes->set(std::move(entries),
+                   total > 0 ? m_strings.format(Str::ChangesOperations, {{L"n", std::to_wstring(total)}}) : std::wstring(),
+                   std::move(mount), std::move(run), m_page, total > 0);
 }
 
 void Shell::updateQueue() {
     const auto& changes = m_state.changes();
-    m_status->cta().setQueue(static_cast<int>(changes.size()));
-    updateWorkflow();
+    auto setCount = [this](PageId page, int n) { m_counts[static_cast<std::size_t>(page)] = n; };
     const auto featureOps = static_cast<int>(m_features->queuedCount());
-    m_nav->setBadge(PageId::Features, featureOps);
-    m_nav->setBadge(PageId::Apply, static_cast<int>(changes.size()));
-    m_nav->setBadge(PageId::Components, static_cast<int>(m_components->queuedCount()));
+    setCount(PageId::Features, featureOps);
+    setCount(PageId::Apply, static_cast<int>(changes.size()));
+    setCount(PageId::Components, static_cast<int>(m_components->queuedCount()));
     // Updates: packages that are not language packs (those count on Diller).
-    m_nav->setBadge(PageId::Updates, static_cast<int>(std::ranges::count_if(changes.operations(), [](const core::ops::Operation& op) {
+    setCount(PageId::Updates, static_cast<int>(std::ranges::count_if(changes.operations(), [](const core::ops::Operation& op) {
                         return op.kind == core::ops::OpKind::AddPackage && op.value != L"language";
                     })));
-    m_nav->setBadge(PageId::Drivers, static_cast<int>(changes.count(core::ops::OpKind::AddDriver) +
+    setCount(PageId::Drivers, static_cast<int>(changes.count(core::ops::OpKind::AddDriver) +
                                                       changes.count(core::ops::OpKind::RemoveDriver)));
-    m_nav->setBadge(PageId::Services, static_cast<int>(changes.count(core::ops::OpKind::SetServiceStart)));
-    m_nav->setBadge(PageId::Registry, m_registry->checkedCount());
-    m_nav->setBadge(PageId::Tweaks, m_imageSettings->changedCount());
-    m_nav->setBadge(PageId::StartMenu, m_startPins->changedCount() + m_taskbarPins->changedCount());
-    m_nav->setBadge(PageId::PostSetup, static_cast<int>(m_postSetup->stepCount()));
-    m_nav->setBadge(PageId::Programs, static_cast<int>(m_programs->pickCount()));
-    m_nav->setBadge(PageId::Tasks, m_tasks->changedCount());
-    m_nav->setBadge(PageId::Hosts, m_hosts->changedCount());
-    m_nav->setBadge(PageId::Branding, m_branding->changedCount());
-    m_nav->setBadge(PageId::Icons, m_icons->changedCount() + m_iconPatch->changedCount());
-    m_nav->setBadge(PageId::Files, m_files->count());
-    m_nav->setBadge(PageId::Languages, m_languages->changedCount());
-    m_nav->setBadge(PageId::Apps, m_apps->appCount() + static_cast<int>(changes.count(core::ops::OpKind::SetDefaultApps)));
+    setCount(PageId::Services, static_cast<int>(changes.count(core::ops::OpKind::SetServiceStart)));
+    setCount(PageId::Registry, m_registry->checkedCount());
+    setCount(PageId::Tweaks, m_imageSettings->changedCount());
+    setCount(PageId::StartMenu, m_startPins->changedCount() + m_taskbarPins->changedCount());
+    setCount(PageId::PostSetup, static_cast<int>(m_postSetup->stepCount()));
+    setCount(PageId::Programs, static_cast<int>(m_programs->pickCount()));
+    setCount(PageId::Tasks, m_tasks->changedCount());
+    setCount(PageId::Hosts, m_hosts->changedCount());
+    setCount(PageId::Branding, m_branding->changedCount());
+    setCount(PageId::Icons, m_icons->changedCount() + m_iconPatch->changedCount());
+    setCount(PageId::Files, m_files->count());
+    setCount(PageId::Languages, m_languages->changedCount());
+    setCount(PageId::Apps, m_apps->appCount() + static_cast<int>(changes.count(core::ops::OpKind::SetDefaultApps)));
     if (m_actionReset) {
         m_actionReset->setEnabled(featureOps > 0);
     }
-    // What the queue holds, by page, on the Apply button's tooltip ("Bileşenler 3 · Ayarlar 9").
-    std::wstring summary;
-    for (const auto& page : allPages()) {
-        if (page.navGroup < 0 || page.id == PageId::Apply) {
-            continue;
-        }
-        if (const int n = m_nav->badge(page.id); n > 0) {
-            summary += (summary.empty() ? L"" : L" \u00b7 ") + m_strings.get(page.navLabel) + L" " + std::to_wstring(n);
+    // D-108: a tab shows what its pages queue together.
+    for (int w = 0; w < kWorkspaces; ++w) {
+        for (const auto& group : workspaceTabs(w)) {
+            for (const auto& tab : group.tabs) {
+                int sum = 0;
+                for (const PageId page : tab.pages) {
+                    sum += m_counts[static_cast<std::size_t>(page)];
+                }
+                m_tabs->setCount(tab.tab, sum);
+                m_nav->setCount(tab.tab, sum);
+            }
         }
     }
-    m_status->cta().setTooltip(std::move(summary));
+    // What the queue holds, by page, and its size in the image header.
+    updateChanges();
+    updateBreadcrumb();
 }
 
 void Shell::updateWorkflow() {
-    using State = WorkflowSteps::State;
-    const auto& run = m_state.applyRun();
-    const bool applied = run && run->stage == AppState::ApplyRun::Stage::Done && run->result && run->result->committed;
-    const auto& iso = m_state.isoRun();
-    const bool built = iso && !iso->running && iso->result.has_value();
-    const bool source = m_state.source().has_value();
-    const bool mounted = m_state.mounted().has_value();
-    const int queued = static_cast<int>(m_state.changes().size());
-    std::array<bool, WorkflowSteps::kSteps> done{source || mounted || applied, mounted || applied, queued > 0 || applied, applied, built};
-    std::array<State, WorkflowSteps::kSteps> states{};
-    bool current = false;
-    for (std::size_t i = 0; i < done.size(); ++i) {
-        states[i] = done[i] ? State::Done : current ? State::Pending : State::Current;
-        current = current || !done[i];
-    }
-    m_status->steps().setStates(states, queued);
+    // D-107: the status bar no longer shows the workflow steps; the tabs and the Değişiklikler
+    // panel say where the work stands.
+    updateChanges();
 }
 
 void Shell::updateStatus() {
     if (const auto& mounted = m_state.mounted()) {
-        std::wstring imageSize;
-        if (const auto& source = m_state.source()) {
-            for (const auto& image : source->install.images) {
-                if (image.index == mounted->index) {
-                    imageSize = formatBytes(image.totalBytes, m_language);
-                }
-            }
-        }
-        m_status->setMount(mounted->mountDir.wstring(), imageSize);
+        m_status->setMount(mounted->edition, mounted->mountDir.wstring());
     } else {
         m_status->setMount(std::nullopt, L"");
+    }
+    {
+        // D-109 (the reference tool): right, the image's facts ("Windows 11 Pro 25H2 x64 - 10.0.26100.1742");
+        // with nothing open, this PC's DISM and the free space where WinLove works.
+        std::wstring info;
+        const core::ImageInfo* image = nullptr;
+        if (const auto& source = m_state.source()) {
+            if (const auto& mounted = m_state.mounted()) {
+                for (const auto& candidate : source->install.images) {
+                    if (candidate.index == mounted->index) {
+                        image = &candidate;
+                    }
+                }
+            }
+            if (!image) {
+                image = m_state.selectedImage();
+            }
+        }
+        if (image) {
+            info = image->name + L" " + core::releaseLabel(image->build) + L" " +
+                   std::wstring(core::architectureName(image->architecture)) + L" - 10.0." + std::to_wstring(image->build) + L"." +
+                   std::to_wstring(image->spBuild);
+        } else {
+            if (const auto& host = m_state.hostDism(); host && !host->dismVersion.empty()) {
+                info = m_strings.format(Str::StatusInfoDism, {{L"version", host->dismVersion}});
+            }
+            const std::filesystem::path root = m_state.settings().workRoot.root_path();
+            ULARGE_INTEGER free{};
+            if (!root.empty() && GetDiskFreeSpaceExW(root.c_str(), &free, nullptr, nullptr)) {
+                std::wstring drive = root.wstring();
+                while (!drive.empty() && (drive.back() == L'\\' || drive.back() == L'/')) {
+                    drive.pop_back();
+                }
+                info += (info.empty() ? L"" : L"     ") +
+                        m_strings.format(Str::StatusInfoFree, {{L"drive", drive}, {L"size", formatBytes(free.QuadPart, m_language)}});
+            }
+        }
+        m_status->setInfo(std::move(info));
     }
     const auto& run = m_state.applyRun();
     const auto& iso = m_state.isoRun();
@@ -1759,6 +2286,11 @@ void Shell::updateImagesChrome() {
         m_actionMount->setEnabled(!busy && (mounted || (image && m_images->canMount())));
         m_actionMount->setTooltip(m_images->isPackedSource() ? m_strings.get(Str::ImagesEsdNoMount) : std::wstring{});
     }
+    for (ui::Button* action : {m_actionSave, m_actionUnmount, m_actionExplore}) {
+        if (action) {
+            action->setEnabled(!busy && mounted); // D-114
+        }
+    }
     if (m_actionExport) {
         m_actionExport->setEnabled(!busy && image != nullptr);
     }
@@ -1773,6 +2305,7 @@ void Shell::updateImagesChrome() {
         m_actionTools->setTooltip(refusal && !busy ? m_strings.get(*refusal) : m_strings.get(Str::ImagesToolsHint));
     }
     if (m_actionEsd) {
+        m_actionEsd->setVisible(m_images->isPackedSource()); // D-108: only where it applies
         m_actionEsd->setEnabled(!busy && m_images->isPackedSource());
         m_actionEsd->setTooltip(m_images->isPackedSource() ? std::wstring{} : m_strings.get(Str::ImagesEsdOnly));
     }
@@ -1813,7 +2346,28 @@ void Shell::showPage(PageId page) {
     }
     m_page = page;
     const PageInfo& info = pageInfo(page);
-    m_nav->setActive(page);
+    // D-107: the menu of the page's workspace, its tabs, and where that menu comes back to.
+    if (const int workspace = workspaceOf(page); workspace != m_workspace) {
+        m_workspace = workspace;
+        m_tabs->setGroups(tabGroups(workspace));
+        m_nav->setGroups(navGroups(workspace));
+        m_titleBar->setActiveMenu(workspace);
+    }
+    if (m_workspace == kImageWorkspace) {
+        m_lastImagePage = page == PageId::Source ? PageId::Images : page;
+    } else if (m_workspace == kToolWorkspace && page != PageId::Gallery) {
+        m_lastToolPage = page;
+    }
+    if (const TabDef* def = tabDefOf(page)) {
+        m_tabs->setActive(def->tab);
+        m_nav->setActive(def->tab);
+        if (page != PageId::Source) {
+            m_lastSub[static_cast<std::size_t>(def->tab)] = static_cast<int>(page);
+        }
+    } else {
+        m_tabs->setActive(page);
+        m_nav->setActive(page);
+    }
 
     if (m_pageView) {
         removeChild(m_pageView);
@@ -1830,6 +2384,7 @@ void Shell::showPage(PageId page) {
     }
     m_actionExpand = nullptr;
     m_actionMount = m_actionExport = m_actionEsd = m_actionVerify = m_actionTools = nullptr;
+    m_actionSave = m_actionUnmount = m_actionExplore = nullptr;
     m_actionReset = nullptr;
     m_actionIso = nullptr;
 
@@ -1845,7 +2400,7 @@ void Shell::showPage(PageId page) {
                 .onInvoke = [this] { showPage(PageId::Download); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::SourceOpenFile), ui::icons::Icon::OpenFolder)
                 .onInvoke = [this] { pickSourceFile(); };
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::SourceOpenFolder)).onInvoke = [this] {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::SourceOpenFolder), ui::icons::Icon::Folder).onInvoke = [this] {
                 pickSourceFolder();
             };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::SourceCaptureAction), ui::icons::Icon::ImageWim)
@@ -1865,25 +2420,58 @@ void Shell::showPage(PageId page) {
                                     }});
             m_images->scanSystemMounts(); // D-064: what other tools mounted, read again each visit
         } else if (page == PageId::Images) {
+            // The reference tool's "Ekle ▾": another ISO / WIM / ESD / SWM, an unpacked image folder, a capture, a
+            // download — once an image is open the Source page is not in the tabs any more.
+            addMenuAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesAdd), ui::icons::Icon::Add,
+                          {{m_strings.get(Str::ImagesAddFile), [this] { pickSourceFile(); }},
+                           {m_strings.get(Str::ImagesAddFolder), [this] { pickSourceFolder(); }},
+                           {m_strings.get(Str::SourceCaptureAction), [this] { askCapture(); }},
+                           {m_strings.get(Str::ImagesAddDownload), [this] { showPage(PageId::Download); }},
+                           {m_strings.get(Str::ImagesAddRecent), [this] { showPage(PageId::Source); }}},
+                          {ui::icons::Icon::OpenFolder, ui::icons::Icon::Folder, ui::icons::Icon::ImageWim,
+                           ui::icons::Icon::WindowsDownload, ui::icons::Icon::Source});
+            m_pageView->addSeparator();
             if (m_state.source()) {
                 m_actionTools = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesTools),
                                                        ui::icons::Icon::MoreHorizontal);
                 m_actionTools->onInvoke = [this] { showImageTools(); };
-                m_actionEsd = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesEsdToWim));
+                m_actionEsd = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesEsdToWim),
+                                                     ui::icons::Icon::ImageWim);
                 m_actionEsd->onInvoke = [this] { convertEsd(); };
+                // D-114: what one does with the mounted image, at hand: save (apply the queue first when
+                // there is one), unmount (asks: save or discard), the ISO.
+                m_pageView->addSeparator();
+                m_actionSave = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::CommonSave),
+                                                      ui::icons::Icon::Save);
+                m_actionSave->onInvoke = [this] {
+                    if (!m_state.mounted()) {
+                        return;
+                    }
+                    if (ApplyPage::awaitingSave(m_state)) {
+                        askUnmount(); // a held run: save what ran (the dialog says what is left out)
+                    } else if (!m_state.changes().empty()) {
+                        showPage(PageId::Apply); // the queue goes in first, then the image is saved
+                    } else {
+                        m_images->unmount(/*commit=*/true);
+                    }
+                };
+                m_actionUnmount = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesUnmount),
+                                                         ui::icons::Icon::Unmount);
+                m_actionUnmount->onInvoke = [this] { askUnmount(); };
+                m_actionExplore = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesExploreMount),
+                                                         ui::icons::Icon::OpenFolder);
+                m_actionExplore->onInvoke = [this] { exploreMount(); };
+                m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::NavIso), ui::icons::Icon::IsoBuild).onInvoke =
+                    [this] { showPage(PageId::Iso); };
+                m_pageView->addSeparator();
                 m_actionVerify = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesVerify),
                                                         ui::icons::Icon::ShieldCheck);
                 m_actionVerify->onInvoke = [this] { m_images->verify(); };
-                m_actionExport = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesExport));
+                m_actionExport = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesExport),
+                                                        ui::icons::Icon::Export);
                 m_actionExport->onInvoke = [this] { exportSelected(); };
-                m_actionMount = &m_pageView->addAction(ui::ButtonKind::Primary, m_strings.get(Str::ImagesMount));
-                m_actionMount->onInvoke = [this] {
-                    if (m_state.mounted()) {
-                        askUnmount();
-                    } else if (const auto index = m_state.selectedIndex()) {
-                        m_images->mount(*index);
-                    }
-                };
+                // D-108: Bağla / Çıkar is the WIM panel's primary button (the package's place for it);
+                // the header no longer repeats it.
             }
             m_pageBody = &m_pageView->setBody<ImagesPage>(m_state, *m_images, m_strings, m_language,
                                                           [this] { showPage(PageId::Source); });
@@ -1911,36 +2499,51 @@ void Shell::showPage(PageId page) {
             m_inspector->onUpgrade = [this] { askUpgradeEdition(); };
             m_inspector->onExplore = [this] { exploreMount(); };
         } else if (page == PageId::Components) {
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsLoadPreset),
-                                  ui::icons::Icon::PresetBookmark)
-                .onInvoke = [this] { loadPreset(); };
-            m_actionCompat = &m_pageView->addAction(
-                ui::ButtonKind::Secondary,
-                m_strings.format(Str::CompatAction, {{L"n", std::to_wstring(m_compat->onCount())}}), ui::icons::Icon::ShieldCheck);
+            // D-110: the reference tool's Bileşenler ribbon (Mod · Uyumluluk · Şablon ▾ | Geri al · Yinele |
+            // Genişlet · Daralt | Sıfırla); what a row is shows in its tooltip, no side panel.
+            const auto level = m_components->level();
+            const Str levelName = level == ComponentController::Level::Maximum ? Str::ComponentsLevelMax
+                                  : level == ComponentController::Level::Deep  ? Str::ComponentsLevelDeep
+                                                                               : Str::ComponentsLevelDefault;
+            m_pageView
+                ->addAction(ui::ButtonKind::Secondary,
+                            m_strings.get(Str::ComponentsModeAction) + L" \u00b7 " + m_strings.get(levelName),
+                            ui::icons::Icon::TweaksSliders)
+                .onInvoke = [this] { showMode(); };
+            m_actionCompat = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsCompatAction),
+                                                    ui::icons::Icon::ShieldCheck);
             m_actionCompat->onInvoke = [this] { showCompat(); };
-            m_actionExpand = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsCollapseAll));
-            m_actionExpand->onInvoke = [this] {
+            addMenuAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsTemplateAction), ui::icons::Icon::PresetBookmark,
+                          {{m_strings.get(Str::ComponentsTierPrivacy), [this] { applyComponentTemplate(Tier::Privacy); }},
+                           {m_strings.get(Str::ComponentsTierGeneral), [this] { applyComponentTemplate(Tier::General); }},
+                           {m_strings.get(Str::ComponentsTierLight), [this] { applyComponentTemplate(Tier::Light); }}});
+            m_pageView->addSeparator();
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsUndo), ui::icons::Icon::Undo).onInvoke =
+                [this] { m_state.undoQueue(); };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsRedo), ui::icons::Icon::Redo).onInvoke =
+                [this] { m_state.redoQueue(); };
+            m_pageView->addSeparator();
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsExpandAll), ui::icons::Icon::Expand)
+                .onInvoke = [this] {
                 if (auto* p = componentsPage()) {
-                    p->setAllExpanded(!p->allExpanded());
-                    m_actionExpand->setText(
-                        m_strings.get(p->allExpanded() ? Str::ComponentsCollapseAll : Str::ComponentsExpandAll));
-                    m_pageView->layout();
+                    p->setAllExpanded(true);
                 }
             };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsCollapseAll), ui::icons::Icon::Collapse)
+                .onInvoke = [this] {
+                if (auto* p = componentsPage()) {
+                    p->setAllExpanded(false);
+                }
+            };
+            m_pageView->addSeparator();
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsResetAction), ui::icons::Icon::Refresh)
+                .onInvoke = [this] { m_components->resetChanges(); };
             auto& body = m_pageView->setBody<ComponentsPage>(m_state, *m_components, m_strings, m_language,
                                                              [this] { showPage(PageId::Images); });
             m_pageBody = &body;
-            auto& inspector = add<ComponentInspector>(m_strings, m_language);
-            m_sideInspector = &inspector;
-            inspector.setVisible(false);
-            inspector.onToggle = [this] {
-                if (auto* p = componentsPage()) {
-                    if (const auto item = p->selectedItem()) {
-                        m_components->toggle(*item);
-                    }
-                }
+            body.explainBlock = [this](const ComponentController::Item& item) {
+                return m_compat->explain(m_components->block(item));
             };
-            body.onSelectionChanged = [this] { updateComponentInspector(); };
         } else if (page == PageId::Programs) {
             // D-104: install the picks offline (installers embedded at Apply). Toggles, then redraws
             // so the action shows the new state.
@@ -1993,6 +2596,21 @@ void Shell::showPage(PageId page) {
                 .onInvoke = std::move(pick);
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::RegistryAddValue), ui::icons::Icon::Add)
                 .onInvoke = [this] { editRegistryValue(std::nullopt); };
+            // D-114 (the reference tool's Kayıt Defteri: "Ana bilgisayarı içe aktar — Güç planı"): Windows' own
+            // schemes, this PC's plans, a .pow or .reg file. The plan becomes active at first boot
+            // (a Post-Setup step: powercfg on the installed system).
+            m_pageView->addSeparator();
+            addMenuAction(ui::ButtonKind::Secondary, m_strings.get(Str::RegistryPowerPlan), ui::icons::Icon::Power,
+                          {{m_strings.get(Str::RegistryPowerUltimate), [this] { addPresetPowerPlan(core::kPlanUltimate, Str::RegistryPowerUltimate); }},
+                           {m_strings.get(Str::RegistryPowerHigh), [this] { addPresetPowerPlan(core::kPlanHighPerformance, Str::RegistryPowerHigh); }},
+                           {m_strings.get(Str::RegistryPowerBalanced), [this] { addPresetPowerPlan(core::kPlanBalanced, Str::RegistryPowerBalanced); }},
+                           {m_strings.get(Str::RegistryPowerSaver), [this] { addPresetPowerPlan(core::kPlanPowerSaver, Str::RegistryPowerSaver); }},
+                           {m_strings.get(Str::RegistryPowerFromHost), [this] { addHostPowerPlan(); }},
+                           {m_strings.get(Str::RegistryPowerFromPow), [this] { addPowerPlan(); }},
+                           {m_strings.get(Str::RegistryPowerFromReg), [this] {
+                                importRegFiles(ui::pickFiles(owner(), m_strings.get(Str::RegistryImportReg),
+                                                             {{m_strings.get(Str::RegistryFilter), L"*.reg"}}));
+                            }}});
             m_pageBody = &m_pageView->setBody<RegistryPage>(
                 m_state, *m_registry, m_strings, m_language,
                 RegistryPage::Intents{[this] { showPage(PageId::Images); },
@@ -2033,7 +2651,7 @@ void Shell::showPage(PageId page) {
                                                  m_windowsDownload->running();
                                       }});
             m_pageBody = &body;
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::CommonReset)).onInvoke = [this, &body] {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::CommonReset), ui::icons::Icon::Refresh).onInvoke = [this, &body] {
                 const bool locked = body.foldersLocked();
                 body.resetToDefaults();
                 showToast(ui::InfoKind::Success, m_strings.get(Str::SettingsResetDone),
@@ -2098,21 +2716,16 @@ void Shell::showPage(PageId page) {
                 });
         } else if (page == PageId::PostSetup) {
             using Type = core::PostSetupStep::Type;
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupAddCommand), ui::icons::Icon::LogTerminal)
-                .onInvoke = [this] { editPostSetupStep(Type::Command, std::nullopt); };
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupAddFile), ui::icons::Icon::File)
-                .onInvoke = [this] { editPostSetupStep(Type::Copy, std::nullopt); };
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupAddApp), ui::icons::Icon::AppxPackage)
-                .onInvoke = [this] { editPostSetupStep(Type::Winget, std::nullopt); };
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupAddWifi), ui::icons::Icon::Network)
-                .onInvoke = [this] { editPostSetupStep(Type::Wifi, std::nullopt); };
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupAddPower), ui::icons::Icon::Power)
-                .onInvoke = [this] { addPowerPlan(); };
-            // D-078: the programs have a page of their own, over winget's whole repository.
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupCatalog), ui::icons::Icon::Download)
-                .onInvoke = [this] { showPage(PageId::Programs); };
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PostsetupCommands), ui::icons::Icon::LogTerminal)
-                .onInvoke = [this] { pickPostSetupCommands(); };
+            // D-108: the seven "add" actions as one menu (a row of seven buttons was the clutter).
+            addMenuAction(ui::ButtonKind::Primary, m_strings.get(Str::PostsetupAddStep), ui::icons::Icon::Add,
+                          {{m_strings.get(Str::PostsetupAddCommand), [this] { editPostSetupStep(Type::Command, std::nullopt); }},
+                           {m_strings.get(Str::PostsetupAddFile), [this] { editPostSetupStep(Type::Copy, std::nullopt); }},
+                           {m_strings.get(Str::PostsetupAddApp), [this] { editPostSetupStep(Type::Winget, std::nullopt); }},
+                           {m_strings.get(Str::PostsetupAddWifi), [this] { editPostSetupStep(Type::Wifi, std::nullopt); }},
+                           {m_strings.get(Str::PostsetupAddPower), [this] { addPowerPlan(); }},
+                           {m_strings.get(Str::PostsetupCommands), [this] { pickPostSetupCommands(); }},
+                           // D-078: the programs have a page of their own, over winget's whole repository.
+                           {m_strings.get(Str::PostsetupCatalog), [this] { showPage(PageId::Programs); }}});
             m_pageBody = &m_pageView->setBody<PostSetupPage>(
                 m_state, *m_postSetup, m_strings, m_language,
                 PostSetupPage::Intents{[this](std::size_t index) {
@@ -2149,7 +2762,7 @@ void Shell::showPage(PageId page) {
                         showToast(ui::InfoKind::Info, m_strings.get(Str::TweaksFromThisPcNone), L"");
                     }
                 };
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TweaksApplyRecommended)).onInvoke = [this] {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TweaksApplyRecommended), ui::icons::Icon::ShieldCheck).onInvoke = [this] {
                 if (!requireMount(Str::TweaksNoMountTitle, Str::TweaksNoMountBody)) {
                     return;
                 }
@@ -2171,7 +2784,7 @@ void Shell::showPage(PageId page) {
                 .onInvoke = [this] { createTaskDialog(); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TasksAdd), ui::icons::Icon::Add).onInvoke =
                 [this] { addTaskDialog(); };
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TasksApplyRecommended)).onInvoke = [this] {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TasksApplyRecommended), ui::icons::Icon::ShieldCheck).onInvoke = [this] {
                 if (!requireMount(Str::TasksNoMountTitle, Str::TasksNoMountBody)) {
                     return;
                 }
@@ -2255,7 +2868,7 @@ void Shell::showPage(PageId page) {
         } else if (page == PageId::Hosts) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::HostsImport), ui::icons::Icon::Import).onInvoke =
                 [this] { importHostsFile(); };
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::HostsApplyRecommended)).onInvoke = [this] {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::HostsApplyRecommended), ui::icons::Icon::ShieldCheck).onInvoke = [this] {
                 if (m_state.mounted()) {
                     m_hosts->applyRecommended();
                 }
@@ -2295,7 +2908,7 @@ void Shell::showPage(PageId page) {
             };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::IconsExportPack), ui::icons::Icon::Save).onInvoke =
                 [this] { exportIconPack(); };
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::IconsResetAll)).onInvoke = [this] {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::IconsResetAll), ui::icons::Icon::Refresh).onInvoke = [this] {
                 m_icons->resetAll();
                 m_iconPatch->resetAll();
             };
@@ -2319,7 +2932,7 @@ void Shell::showPage(PageId page) {
             m_pageBody =
                 &m_pageView->setBody<IconsPage>(m_state, *m_icons, *m_iconPatch, m_strings, m_language, std::move(intents));
         } else if (page == PageId::Services) {
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ServicesReset)).onInvoke = [this] {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ServicesReset), ui::icons::Icon::Refresh).onInvoke = [this] {
                 m_serviceCtl->resetChanges();
             };
             m_pageBody = &m_pageView->setBody<ServicesPage>(
@@ -2379,7 +2992,22 @@ void Shell::showPage(PageId page) {
                                                            UpdatesPage::Intents{pick, [this] { showPage(PageId::Images); },
                                                                                 [this] { m_updateCatalog->cancel(); }});
         } else if (page == PageId::Features) {
-            m_actionReset = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::FeaturesResetChanges));
+            // D-111: the reference tool's Özellikler ribbon — Genişlet · Daralt | Sıfırla.
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsExpandAll), ui::icons::Icon::Expand)
+                .onInvoke = [this] {
+                if (auto* p = featuresPage()) {
+                    p->setAllExpanded(true);
+                }
+            };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsCollapseAll), ui::icons::Icon::Collapse)
+                .onInvoke = [this] {
+                if (auto* p = featuresPage()) {
+                    p->setAllExpanded(false);
+                }
+            };
+            m_pageView->addSeparator();
+            m_actionReset = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsResetAction),
+                                                   ui::icons::Icon::Refresh);
             m_actionReset->onInvoke = [this] { m_features->resetChanges(); };
             m_pageBody = &m_pageView->setBody<FeaturesPage>(m_state, *m_features, m_strings, m_language,
                                                             [this] { showPage(PageId::Images); });
@@ -2420,10 +3048,22 @@ void Shell::showPage(PageId page) {
                 m_pageView->addAction(ui::ButtonKind::Primary, m_strings.get(Str::NavIso), ui::icons::Icon::IsoBuild)
                     .onInvoke = [this] { showPage(PageId::Iso); };
             }
-            auto& body = m_pageView->setBody<ApplyPage>(
-                m_state, *m_apply, m_imageSettings->catalog(), m_strings, m_language,
-                ApplyPage::Intents{[this] { showApplyConfirm(); }, [this] { showPage(PageId::Images); },
-                                   [this] { showPage(PageId::Features); }, [this] { askUnmount(); }});
+            ApplyPage::Intents applyIntents{[this] { showApplyConfirm(); }, [this] { showPage(PageId::Images); },
+                                            [this] { showPage(PageId::Features); }, [this] { askUnmount(); }};
+            // D-124: the impact report. A guard switched on drops its steps; the page is built again
+            // afterwards (not inside the button's own call).
+            applyIntents.impact = [this] { return m_compat->impact(); };
+            applyIntents.keep = [this](const std::wstring& guard) {
+                m_compat->setOn(guard, true);
+                m_services.postToUi([this, alive = std::weak_ptr<bool>(m_alive)] {
+                    if (const auto a = alive.lock(); a && *a && m_page == PageId::Apply) {
+                        showPage(PageId::Apply);
+                    }
+                });
+            };
+            applyIntents.openCompat = [this] { showCompat(); };
+            auto& body = m_pageView->setBody<ApplyPage>(m_state, *m_apply, m_imageSettings->catalog(), m_strings, m_language,
+                                                        std::move(applyIntents));
             m_pageBody = &body;
             const auto [applyTitle, applyDescription] = body.header();
             m_pageView->setHeader(applyTitle, applyDescription);
@@ -2458,7 +3098,7 @@ void Shell::showPage(PageId page) {
                                      }
                                  }});
         } else if (page == PageId::Logs) {
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::LogsClear)).onInvoke = [this] {
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::LogsClear), ui::icons::Icon::Delete).onInvoke = [this] {
                 if (auto* logs = logsPage()) {
                     logs->clear();
                 }
@@ -2476,6 +3116,7 @@ void Shell::showPage(PageId page) {
                                                               m_strings.format(Str::ShellPendingBody, {{L"id", step}}));
         }
     }
+    attachSubNav();
     // The toast stays on top of whatever page is shown.
     if (!m_toast) {
         m_toast = &add<ui::Toast>();
@@ -2664,9 +3305,11 @@ void Shell::restoreMount(const std::filesystem::path& source, MountedImage mount
         m_state.select(mounted.index);
         mounted.edition = m_state.selectedImage() ? m_state.selectedImage()->name : std::format(L"#{}", mounted.index);
         const std::wstring edition = mounted.edition;
+        // Before setMounted: the mount's listeners queue the welcome's files and save over queue.json.
+        auto saved = m_state.savedQueue(mounted);
         m_state.setMounted(std::move(mounted));
         showToast(ui::InfoKind::Info, m_strings.format(Str::ImagesMountRestored, {{L"edition", edition}}),
-                  restoredQueueText(m_state.restoreQueue(), L""));
+                  restoredQueueText(m_state.restoreQueue(std::move(saved)), L""));
         startPreload();
         return;
     }
@@ -2681,9 +3324,10 @@ void Shell::restoreMount(const std::filesystem::path& source, MountedImage mount
         }
         m_state.select(mounted.index);
         const std::wstring edition = mounted.edition;
+        auto saved = m_state.savedQueue(mounted); // before setMounted (see above)
         m_state.setMounted(std::move(mounted));
         showToast(ui::InfoKind::Info, m_strings.format(Str::ImagesMountRestored, {{L"edition", edition}}),
-                  restoredQueueText(m_state.restoreQueue(), m_state.mounted()->imagePath.wstring()));
+                  restoredQueueText(m_state.restoreQueue(std::move(saved)), m_state.mounted()->imagePath.wstring()));
         startPreload();
     });
 }
@@ -2961,9 +3605,14 @@ void Shell::askUnmount() {
     // Queued changes are not in the image yet: unmounting drops them (audit A2), so say so and
     // offer the Apply page first.
     const std::size_t queued = m_state.changes().size();
+    // After a held run the queue holds only its failed steps: saving what ran is the way on, not
+    // Apply (which would only try those steps again).
+    const bool held = queued > 0 && ApplyPage::awaitingSave(m_state);
+    const bool saveFirst = queued == 0 || held;
     auto dialog = std::make_unique<ui::Dialog>(
         m_strings.get(Str::ImagesUnmountTitle),
         queued == 0 ? m_strings.get(Str::ImagesUnmountBody)
+        : held      ? m_strings.format(Str::ImagesUnmountHeld, {{L"count", std::to_wstring(queued)}})
                     : m_strings.format(Str::ImagesUnmountQueued, {{L"count", std::to_wstring(queued)}}),
         ui::icons::Icon::Unmount, queued == 0 ? ui::tokens::Color::TextSecondary : ui::tokens::Color::StatusWarning);
     ui::Dialog* raw = dialog.get();
@@ -2972,13 +3621,13 @@ void Shell::askUnmount() {
         host()->popModal(raw);
         m_images->unmount(/*commit=*/false);
     });
-    raw->addButton(queued == 0 ? ui::ButtonKind::Primary : ui::ButtonKind::Secondary, m_strings.get(Str::ImagesUnmountCommit),
+    raw->addButton(saveFirst ? ui::ButtonKind::Primary : ui::ButtonKind::Secondary, m_strings.get(Str::ImagesUnmountCommit),
                    [this, raw] {
                        host()->popModal(raw);
                        m_images->unmount(/*commit=*/true);
                    },
-                   /*primary=*/queued == 0);
-    if (queued > 0) {
+                   /*primary=*/saveFirst);
+    if (queued > 0 && !held) {
         raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::ImagesUnmountApplyFirst), [this, raw] {
             host()->popModal(raw);
             showPage(PageId::Apply);
@@ -3684,34 +4333,17 @@ void Shell::convertEsd() {
 
 // ---- layout, shortcuts -----------------------------------------------------------------------
 
-void Shell::setNavCollapsed(bool collapsed, bool animated) {
-    if (!animated) {
-        m_userCollapsed = collapsed;
-    }
-    m_navTarget = collapsed ? 0.0f : 1.0f;
-    if (animated && m_navExpansion.animateTo(m_navTarget, ui::tokens::motion::slowMs)) {
-        animate();
-    } else {
-        m_navExpansion.snapTo(m_navTarget);
-        m_nav->setExpansion(m_navTarget);
-        layout();
-    }
-    invalidate();
-}
-
-bool Shell::tick(double now) {
-    const bool running = m_navExpansion.tick(now);
-    m_nav->setExpansion(m_navExpansion.value());
+void Shell::setNavCollapsed(bool collapsed, bool /*animated*/) {
+    m_compactHeader = collapsed;
+    m_nav->setCompact(collapsed); // D-109: Ctrl+B folds the nav card to its icons
     layout();
     invalidate();
-    return running;
 }
 
 // ---- command palette (P18) -------------------------------------------------------------------
 
 void Shell::toggleNav() {
-    m_userCollapsed = !navCollapsed();
-    setNavCollapsed(m_userCollapsed, /*animated=*/true);
+    setNavCollapsed(!m_compactHeader, /*animated=*/true);
 }
 
 void Shell::openLogFolder() {
@@ -3734,6 +4366,14 @@ void Shell::openPalette(std::wstring query) {
     host()->pushModal(std::move(palette), &raw->input());
     if (!query.empty()) {
         raw->setQuery(std::move(query));
+    }
+}
+
+void Shell::revealComponent(const std::wstring& packageName) {
+    showPage(PageId::Components);
+    if (auto* page = componentsPage()) {
+        page->refresh(); // the list as the state has it now
+        page->reveal(packageName);
     }
 }
 
@@ -3894,12 +4534,14 @@ bool Shell::handleShortcut(const ui::KeyEvent& key) {
         return true;
     }
     if (key.ctrl && !key.shift && !key.alt && key.virtualKey >= '1' && key.virtualKey <= '9') {
-        // Ctrl+1…9: nav items in display order.
+        // Ctrl+1…9: the tabs of the workspace, in their order.
         int index = static_cast<int>(key.virtualKey - '1');
-        for (const auto& page : allPages()) {
-            if (page.navGroup >= 0 && index-- == 0) {
-                showPage(page.id);
-                return true;
+        for (const auto& group : workspaceTabs(m_workspace < 0 ? kImageWorkspace : m_workspace)) {
+            for (const auto& tab : group.tabs) {
+                if (index-- == 0) {
+                    openTab(tab.tab);
+                    return true;
+                }
             }
         }
     }
@@ -3907,40 +4549,60 @@ bool Shell::handleShortcut(const ui::KeyEvent& key) {
 }
 
 void Shell::layout() {
+    // D-109 (the reference tool): title bar · [ribbon · hint · nav card | page card | side card] · status bar.
     const ui::RectF b = bounds();
-    // layout-system.md: below 1200 the rail collapses to 44; the user can still open it (Ctrl B),
-    // and widening the window restores their own preference.
-    constexpr float kNarrowWidth = 1200.0f;
-    const bool narrow = b.width > 0 && b.width < kNarrowWidth;
-    if (narrow != m_narrow) {
-        m_narrow = narrow;
-        const float target = (narrow || m_userCollapsed) ? 0.0f : 1.0f;
-        m_navTarget = target;
-        m_navExpansion.snapTo(target);
-        m_nav->setExpansion(target);
-    }
-    const float navWidth =
-        std::round(size::navCollapsed + (size::navExpanded - size::navCollapsed) * m_navExpansion.value());
     m_titleBar->setBounds({b.x, b.y, b.width, size::titleBar});
+    const float y = b.y + size::titleBar;
+    m_header->setVisible(false);
+    m_tabs->setVisible(false);
+    m_changes->setVisible(false);
+    m_bodyTop = y;
     m_status->setBounds({b.x, b.bottom() - size::statusBar, b.width, size::statusBar});
-    const float top = b.y + size::titleBar;
-    const float middle = std::max(b.bottom() - size::statusBar - top, 0.0f);
-    m_nav->setBounds({b.x, top, navWidth, middle});
-    const float inspectorWidth = inspectorVisible() ? size::inspector : 0.0f;
+    const float middle = std::max(b.bottom() - size::statusBar - y, 0.0f);
+    const float pad = size::contentPad;
+
+    // 2026-11-09: Katılımsız has the whole width — no navigation card (its menu is its only page).
+    const bool noNav = m_workspace == kUnattendedWorkspace;
+    m_nav->setVisible(!noNav);
+    const float navWidth = noNav ? 0.0f : m_nav->preferredWidth();
+    const float left = noNav ? pad : pad + navWidth + pad;
+    const bool inspector = inspectorVisible();
+    // D-114: the Görüntü panel gives way on narrower windows (the edition names need the room).
+    const float wide = std::clamp(b.width * 0.27f, size::inspector, size::inspectorWide);
+    const float panel = inspector ? (m_inspector && m_page == PageId::Images ? wide : size::inspector) : 0.0f;
     if (m_pageView) {
-        m_pageView->setBounds({b.x + navWidth, top, std::max(b.width - navWidth - inspectorWidth, 0.0f), middle});
+        m_pageView->setBounds({b.x, y, b.width, middle});
+        m_pageView->setColumns(left, panel);
     }
+    const float top = m_pageView ? m_pageView->contentTop() : y + size::ribbon + size::hint;
+    const float bottom = b.bottom() - size::statusBar - pad;
+    m_nav->setBounds({b.x + pad, top, navWidth, std::max(std::min(m_nav->preferredHeight(), bottom - top), 0.0f)});
+    const ui::RectF side{b.right() - pad - panel, top, panel, std::max(bottom - top, 0.0f)};
     if (m_inspector) {
-        m_inspector->setBounds({b.right() - size::inspector, top, size::inspector, middle});
+        m_inspector->setBounds(side);
     }
     if (m_sideInspector) {
-        m_sideInspector->setBounds({b.right() - size::inspector, top, size::inspector, middle});
+        m_sideInspector->setBounds(side);
+    }
+    m_changes->setBounds({b.right(), y, size::inspector, middle});
+    // The page frame paints the whole middle: the nav card (and the toast) go over it.
+    bringToFront(m_nav);
+    if (m_inspector) {
+        bringToFront(m_inspector);
+    }
+    if (m_sideInspector) {
+        bringToFront(m_sideInspector);
     }
     if (m_toast) {
-        m_toast->setBounds({b.right() - kToastMargin - ui::Toast::kWidth,
-                            b.bottom() - size::statusBar - kToastMargin - ui::Toast::kHeight, ui::Toast::kWidth,
-                            ui::Toast::kHeight});
+        bringToFront(m_toast);
+        const float toastH = m_toast->preferredHeight(ui::Toast::kWidth); // its text wraps (2026-11-09)
+        m_toast->setBounds({b.right() - kToastMargin - ui::Toast::kWidth, b.bottom() - size::statusBar - kToastMargin - toastH,
+                            ui::Toast::kWidth, toastH});
     }
+}
+
+void Shell::paint(ui::Canvas& canvas) {
+    canvas.fillRect(bounds(), ui::tokens::Color::BgBase);
 }
 
 } // namespace wl::app

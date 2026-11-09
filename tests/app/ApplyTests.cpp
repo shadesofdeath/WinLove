@@ -35,12 +35,13 @@ TEST_CASE("plan groups follow the phase order and sum their estimates") {
     const auto plan = core::ops::plan(set);
     const auto groups = core::ops::groups(plan);
     REQUIRE(groups.size() == 3);
-    CHECK(groups[0].phase == Phase::Remove);
-    CHECK(groups[1].phase == Phase::Features);
-    CHECK(groups[1].count == 2);
-    CHECK(groups[1].first == 1);
-    CHECK(groups[1].estimateSeconds ==
+    CHECK(groups[0].phase == Phase::Features); // D-124: features, drivers and updates before removals
+    CHECK(groups[0].count == 2);
+    CHECK(groups[0].first == 0);
+    CHECK(groups[0].estimateSeconds ==
           doctest::Approx(core::ops::estimateSeconds(OpKind::EnableFeature) + core::ops::estimateSeconds(OpKind::DisableFeature)));
+    CHECK(groups[1].phase == Phase::Remove);
+    CHECK(groups[1].first == 2);
     CHECK(groups[2].phase == Phase::Settings);
 }
 
@@ -86,6 +87,38 @@ TEST_CASE("ApplyController: high-risk list and canStart") {
     CHECK(controller.canStart());
     REQUIRE(controller.highRisk().size() == 1);
     CHECK(controller.highRisk()[0].target == L"OpenSSH.Client");
+}
+
+TEST_CASE("ApplyController: Uygula waits for a download that will queue packages (D-124)") {
+    // Started during a 5 GB cumulative update's download, a run left the update out and the ISO had
+    // none; queued while the run held the queue, the download was dropped (AppState::queue).
+    AppState state{scratch(L"recent3.json"), scratch(L"settings3.json")};
+    ApplyController controller(state, {[](std::function<void()> fn) { fn(); }, {}, {}, {}});
+    state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});
+    state.queue(Operation{OpKind::EnableFeature, L"WSL"});
+    CHECK(controller.canStart());
+    AppState::UpdateFetch fetch;
+    fetch.stage = AppState::UpdateFetch::Stage::Downloading;
+    fetch.totalBytes = 100;
+    state.setUpdateFetch(fetch);
+    CHECK(controller.waitingForDownload());
+    CHECK_FALSE(controller.canStart());
+    state.setUpdateFetch(std::nullopt);
+    state.setLanguageFetch(AppState::LanguageFetch{});
+    CHECK_FALSE(controller.canStart());
+    state.setLanguageFetch(std::nullopt);
+    state.setStoreFetch(AppState::StoreFetch{});
+    CHECK_FALSE(controller.canStart());
+    state.setStoreFetch(std::nullopt);
+    CHECK(controller.canStart());
+
+    // The queue is locked while a run goes: what comes in then is not queued (the Shell holds it).
+    AppState::ApplyRun run;
+    run.stage = AppState::ApplyRun::Stage::Running;
+    state.setApplyRun(run);
+    CHECK(state.queueLocked());
+    state.queue(Operation{OpKind::AddPackage, L"C:\\u\\kb.msu", L"lcu"});
+    CHECK_FALSE(state.changes().find(OpKind::AddPackage, L"C:\\u\\kb.msu"));
 }
 
 TEST_CASE("risk confirm rows: removals with their size, a high-risk setting once by its name") {
@@ -213,4 +246,78 @@ TEST_CASE("a component store cleanup refused for pending operations is skipped, 
                                         fail(ErrorCode::IoError, L"component store cleanup failed", L"", 0x2)});
     CHECK(report.failures() == 3);
     CHECK(report.holdingFailures() == 2);
+}
+
+TEST_CASE("a permanent capability DISM refuses is skipped, not a reason to hold the save (report 2026-11-07)") {
+    using core::ops::StepResult;
+    const auto permanent = static_cast<std::int32_t>(0x800F0825);
+    core::ops::ApplyReport report;
+    report.completed = true;
+    report.results.push_back(StepResult{{Phase::Remove, Operation{OpKind::RemoveAppx, L"Microsoft.BingNews"}}, {}});
+    report.results.push_back(StepResult{{Phase::Features, Operation{OpKind::RemoveCapability, L"Microsoft.Windows.Sense.Client~~~~"}},
+                                        fail(ErrorCode::DismFailure, L"remove capability", L"", permanent)});
+    report.results.push_back(StepResult{{Phase::Features, Operation{OpKind::RemoveCapability, L"Windows.WorkFolders.Client~~~~"}},
+                                        fail(ErrorCode::DismFailure, L"remove capability", L"", permanent)});
+    CHECK(report.failures() == 2);
+    CHECK(report.holdingFailures() == 0); // 857 changes were held for these two
+    // A component removal edits the image before DISM answers: the same code from it still holds.
+    report.results.push_back(StepResult{{Phase::Remove, Operation{OpKind::RemoveComponent, L"x"}},
+                                        fail(ErrorCode::DismFailure, L"remove package", L"", permanent)});
+    CHECK(report.holdingFailures() == 1);
+}
+
+TEST_CASE("a closed image (shrunk WinSxS) skips its servicing steps without holding the save (report 2026-11-07)") {
+    using core::ops::StepResult;
+    using core::ops::usesServicing;
+    CHECK(usesServicing(Operation{OpKind::RemoveCapability, L"App.StepsRecorder~~~~0.0.1.0"}));
+    CHECK(usesServicing(Operation{OpKind::EnableFeature, L"NetFx3"}));
+    CHECK(usesServicing(Operation{OpKind::DisableFeature, L"Recall"}));
+    CHECK(usesServicing(Operation{OpKind::RemovePackage, L"Package_for_X"}));
+    CHECK(usesServicing(Operation{OpKind::CleanupImage, L"component-store"}));
+    CHECK(usesServicing(Operation{OpKind::SetEdition, L"edition", L"Professional"}));
+    CHECK(usesServicing(Operation{OpKind::AddPackage, LR"(C:\u\lcu.msu)", L"lcu"}));
+    CHECK_FALSE(usesServicing(Operation{OpKind::AddPackage, LR"(C:\u\safeos.cab)", L"safeos"})); // WinRE's own image
+    CHECK_FALSE(usesServicing(Operation{OpKind::RemoveComponent, L"edge"}));  // its files still go
+    CHECK_FALSE(usesServicing(Operation{OpKind::RemoveAppx, L"Microsoft.BingNews"}));
+    CHECK_FALSE(usesServicing(Operation{OpKind::AddDriver, LR"(C:\d\x.inf)"}));
+    CHECK_FALSE(usesServicing(Operation{OpKind::ShrinkStore, L"component-store-shrink"}));
+
+    const auto closed = core::ops::kServicingClosedCode;
+    core::ops::ApplyReport report;
+    report.completed = true;
+    report.results.push_back(StepResult{{Phase::Features, Operation{OpKind::RemoveCapability, L"Windows.DirectoryServices.ADAM.Client.Content~~~~"}},
+                                        fail(ErrorCode::Unsupported, L"skipped", L"", closed)});
+    report.results.push_back(StepResult{{Phase::Features, Operation{OpKind::DisableFeature, L"Recall"}},
+                                        fail(ErrorCode::DismFailure, L"DISM refused", L"", closed)});
+    report.results.push_back(StepResult{{Phase::Cleanup, Operation{OpKind::CleanupImage, L"component-store"}},
+                                        fail(ErrorCode::Unsupported, L"skipped", L"", closed)});
+    report.results.push_back(StepResult{{Phase::Remove, Operation{OpKind::RemoveComponent, L"bio-enrollment"}},
+                                        fail(ErrorCode::Unsupported, L"skipped: packages only", L"", closed)});
+    CHECK(report.failures() == 4);
+    CHECK(report.holdingFailures() == 0);
+    // The step that damaged the image (a package removal that stopped half way) still holds it,
+    // and so does DISM's refusal inside a component (its files may have gone before).
+    report.results.push_back(StepResult{{Phase::Remove, Operation{OpKind::RemoveComponent, L"bio-enrollment"}},
+                                        fail(ErrorCode::DismFailure, L"module not found", L"", static_cast<std::int32_t>(0x8007007E))});
+    report.results.push_back(StepResult{{Phase::Remove, Operation{OpKind::RemoveComponent, L"defender"}},
+                                        fail(ErrorCode::DismFailure, L"unserviceable", L"", closed)});
+    CHECK(report.holdingFailures() == 2);
+}
+
+TEST_CASE("Kaydet after a held run saves what ran: only the failed steps are left in the queue") {
+    AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
+    state.setMounted(MountedImage{LR"(C:\m)", LR"(C:\w\install.wim)", 1, L"Pro"});
+    state.queue(Operation{OpKind::RemoveCapability, L"OpenSSH.Client"});
+    CHECK_FALSE(ApplyPage::awaitingSave(state)); // no run yet: the queue goes in first
+    AppState::ApplyRun run;
+    run.stage = AppState::ApplyRun::Stage::Done;
+    core::ops::ApplyJobResult result;
+    result.report.completed = true;
+    result.held = true;
+    run.result = result;
+    run.queueVersionAtEnd = state.changes().version();
+    state.setApplyRun(run);
+    CHECK(ApplyPage::awaitingSave(state));
+    state.queue(Operation{OpKind::EnableFeature, L"WSL"});
+    CHECK_FALSE(ApplyPage::awaitingSave(state)); // a new change: Apply first again
 }

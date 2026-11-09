@@ -15,7 +15,7 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kTop = 12.0f;
+constexpr float kTop = 0.0f;
 constexpr float kSectionH = 20.0f;
 constexpr float kSectionGap = 4.0f;
 
@@ -28,9 +28,9 @@ RegistryPage::RegistryPage(AppState& state, RegistryController& controller, cons
       m_intents(std::move(intents)) {
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::RegistryEntry), 0},
-        {strings.get(Str::RegistryKey), 340},
-        {strings.get(Str::RegistryValue), 220},
-        {strings.get(Str::RegistryScope), 250},
+        {strings.get(Str::RegistryKey), 390},
+        {strings.get(Str::RegistryValue), 252},
+        {strings.get(Str::RegistryScope), 288},
     });
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
         paintCell(c, row, column, rect, cell);
@@ -209,7 +209,7 @@ void RegistryPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
             canvas.fillRoundRect(tag, ui::tokens::radius::r2, Color::AccentSubtle);
             canvas.drawText(later, {tag.x + 6, tag.y, tag.width - 12, tag.height}, TypeStyle::Caption, Color::AccentBase);
         }
-        canvas.drawIcon(ui::icons::Icon::Close, {rect.right() - ui::tokens::size::icon, rect.y + 4},
+        canvas.drawIcon(ui::icons::Icon::Close, {rect.right() - ui::tokens::size::icon, rect.y + (rect.height - 16) / 2},
                         cell.hoveredCell ? Color::TextPrimary : Color::TextTertiary);
         break;
     }

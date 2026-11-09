@@ -64,6 +64,7 @@ std::wstring applySkipReason(const Localization& strings, const Error& error) {
     case 0x80073CFA: return strings.get(Str::ApplyReasonAppxProtected);
     case 0x800F0825: return strings.get(Str::ApplyReasonPermanentPackage);
     case 0x800F0806: return strings.get(Str::ApplyReasonPending);
+    case 0x800F0830: return strings.get(Str::ApplyReasonServicingClosed);
     default: break;
     }
     if (error.code == ErrorCode::Cancelled) {

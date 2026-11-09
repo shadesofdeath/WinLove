@@ -3,6 +3,7 @@
 // Lookup is by package identity prefix (longest match wins): "Microsoft.VCLibs" matches
 // "Microsoft.VCLibs.140.00.UWPDesktop". Unknown apps land in the "other" group, medium risk.
 #include "app/Localization.h"
+#include "app/catalog/Tier.h"
 #include "base/Result.h"
 #include "core/ops/ChangeSet.h"
 
@@ -29,6 +30,8 @@ struct AppxCatalogEntry {
     core::ops::Risk risk = core::ops::Risk::Medium;
     std::wstring notesTr;
     std::wstring notesEn;
+    std::string category = "uncategorized"; // D-110: one of components.json's "categories"
+    Tier tier = Tier::None;
     [[nodiscard]] const std::wstring& name(Language language) const {
         return language == Language::Turkish ? nameTr : nameEn;
     }

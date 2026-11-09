@@ -162,8 +162,9 @@ TEST_CASE("editions: right click → \"Yalnız bu sürümü tut…\" → confirm
     host.layout({1440, 900});
 
     auto key = [&](UINT vk) { host.onKeyDown(ui::KeyEvent{vk, false, false, false}); };
-    // Row 4 of the table (header 148, rows of 24 from 160): the right click selects it.
-    REQUIRE(host.onContextMenu({400, 244}));
+    // Row 4 of the table (D-109: title 34 + ribbon 50 + hint 34, the card's tab 26 and 6 in, toolbar +
+    // caption + header, rows of 23.5 centered from 250): the right click selects it.
+    REQUIRE(host.onContextMenu({400, 320}));
     host.layout({1440, 900});
     CHECK(state.selectedIndex() == 4);
     // Bağla · Dışa aktar · Yeniden adlandır… · Çoğalt… · Yukarı taşı · Aşağı taşı · Sürümü sil… · Yalnız bu sürümü tut…
@@ -338,10 +339,28 @@ TEST_CASE("edition upgrade: the dialog puts the chosen edition into the queue, a
     text << file.rdbuf();
     const Localization strings = Localization::fromJson(text.str()).value();
 
+    // Engine thread → "UI thread" (the test): what the controllers post runs here, after the job.
+    // (Run on the engine thread, it raced the layout below: a crash in about one run of eight.)
+    std::mutex mutex;
+    std::vector<std::function<void()>> posted;
     AppState state{scratch(L"recent-upgrade.json"), scratch(L"settings-upgrade.json")};
     Shell::Services services;
     services.minimize = services.toggleMaximize = services.close = services.toggleTheme = [] {};
-    services.postToUi = [](std::function<void()> fn) { fn(); };
+    services.postToUi = [&](std::function<void()> fn) {
+        std::scoped_lock lock(mutex);
+        posted.push_back(std::move(fn));
+    };
+    auto settle = [&] {
+        state.engine().drain();
+        std::vector<std::function<void()>> run;
+        {
+            std::scoped_lock lock(mutex);
+            run.swap(posted);
+        }
+        for (auto& fn : run) {
+            fn();
+        }
+    };
     ui::Host host(ui::HostServices{[] {}, nullptr, nullptr, test::graphics().text.get()});
     auto shell = std::make_unique<Shell>(strings, Language::Turkish, state, services);
     Shell* raw = shell.get();
@@ -355,6 +374,7 @@ TEST_CASE("edition upgrade: the dialog puts the chosen edition into the queue, a
     CHECK_FALSE(host.hasModal());
 
     state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Edition 1"});
+    settle();
     raw->images().rememberEditions(core::ImageEditions{L"Core", {L"CoreSingleLanguage", L"Professional", L"Education"}});
     raw->askUpgradeEdition();
     host.layout({1440, 900});
@@ -370,8 +390,10 @@ TEST_CASE("edition upgrade: the dialog puts the chosen edition into the queue, a
 
     // An image that is already at the top has nowhere to go.
     state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 2, L"Edition 2"});
+    settle();
     raw->images().rememberEditions(core::ImageEditions{L"ProfessionalWorkstation", {}});
     raw->askUpgradeEdition();
     host.layout({1440, 900});
     CHECK_FALSE(host.hasModal());
+    settle();
 }

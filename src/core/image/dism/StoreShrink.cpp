@@ -3,6 +3,7 @@
 #include "base/Log.h"
 #include "base/Text.h"
 #include "base/Utf8.h"
+#include "core/image/OffReg.h"
 #include "core/system/FileLocks.h"
 #include "core/system/Files.h"
 #include "core/system/Handle.h"
@@ -61,8 +62,11 @@ bool keptPolicy(std::wstring_view rest) {
 }
 
 bool servicingStack(std::wstring_view rest) {
+    // "s..-installers-onecore" is the stack's advanced installers (appxreg.dll …): CSI loads them from
+    // WinSxS for every package that registers an app, a service, an event … Without them a later
+    // package operation stops half way and CBS marks the image unserviceable (report 2026-11-07).
     return rest.starts_with(L"microsoft-windows-servicing") || rest.starts_with(L"microsoft-windows-s..ngstack") ||
-           rest.starts_with(L"microsoft-windows-s..stack-");
+           rest.starts_with(L"microsoft-windows-s..stack-") || rest.starts_with(L"microsoft-windows-s..-installers");
 }
 
 struct Bytes {
@@ -236,6 +240,31 @@ bool keptInShrunkStore(std::wstring_view entry) {
     }
     const std::wstring_view rest = std::wstring_view(name).substr(underscore + 1);
     return keptAssembly(rest) || keptPolicy(rest) || servicingStack(rest);
+}
+
+ServicingClosed servicingClosed(const std::filesystem::path& mountDir) {
+    const auto store = mountDir / L"Windows" / L"WinSxS";
+    std::error_code ec;
+    if (std::filesystem::is_directory(store, ec)) {
+        (void)enablePrivilege(SE_BACKUP_NAME);
+        const auto names = topFolders(store);
+        const auto wouldGo = static_cast<std::size_t>(std::ranges::count_if(names, [](const std::wstring& n) { return !keptInShrunkStore(n); }));
+        // A full store has ~15 000 folders the shrink takes (25H2), a shrunk one none — or the few a
+        // later run put back. An empty listing (no access) says nothing.
+        if (!names.empty() && wouldGo < kShrunkStoreBelow) {
+            log::info("store", std::format(L"WinSxS of {} is shrunk ({} folders, {} the shrink would take): no package servicing",
+                                           mountDir.wstring(), names.size(), wouldGo));
+            return ServicingClosed::StoreShrunk;
+        }
+    }
+    if (auto hive = OffRegKey::openHive(mountDir / L"Windows" / L"System32" / L"config" / L"SOFTWARE")) {
+        if (const auto cbs = hive->open(L"Microsoft\\Windows\\CurrentVersion\\Component Based Servicing");
+            cbs && cbs.dword(L"Unserviceable").value_or(0) != 0) {
+            log::warn("store", L"CBS marked " + mountDir.wstring() + L" unserviceable (an offline servicing failure): no package servicing");
+            return ServicingClosed::Unserviceable;
+        }
+    }
+    return ServicingClosed::No;
 }
 
 Result<StoreShrinkPlan> planStoreShrink(const std::filesystem::path& mountDir, bool measure, const TaskContext& task) {

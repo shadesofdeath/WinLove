@@ -12,6 +12,9 @@
 
 namespace wl::ui {
 
+// Glyphs of the WinLoveUI package that the handoff icon set does not have (Painter::DrawIcon, 24 grid).
+enum class Glyph : std::uint8_t { Sun, Moon, Reset };
+
 // A token color, optionally mixed toward a second token (hover/press transitions animate `t`).
 struct Ink {
     tokens::Color from;
@@ -60,6 +63,8 @@ public:
                          TextAlign align = TextAlign::Leading);
     void drawIcon(icons::Icon icon, PointF topLeft, Ink ink, IconVariant variant = IconVariant::Regular16,
                   float size = 0 /* 0 = the variant's grid size */, float rotationDegrees = 0);
+    // A package glyph scaled into `box` (square), stroke in DIPs, round caps (D-107).
+    void drawGlyph(Glyph glyph, RectF box, Ink ink, float strokeDip = 1.8f);
     // 2px progress track (line.strong) with a fill (progress-skeleton-empty.md "ProgressBar").
     void progressBar(RectF track, float fraction, Ink fill = tokens::Color::AccentBase);
     // An icon out of a file (.ico, .dll, .exe; `index` as PrivateExtractIcons takes it: >= 0 the

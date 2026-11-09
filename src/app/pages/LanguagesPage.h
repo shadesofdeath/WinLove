@@ -11,6 +11,7 @@
 // Header actions (Shell): "Klasörden ekle…", "Dil ekle…".
 #include "app/Localization.h"
 #include "app/controllers/LanguageController.h"
+#include "app/shell/PageView.h"
 #include "ui/widgets/Dropdown.h"
 #include "ui/widgets/EmptyState.h"
 #include "ui/widgets/InfoBar.h"
@@ -20,7 +21,7 @@
 
 namespace wl::app {
 
-class LanguagesPage : public ui::Widget {
+class LanguagesPage : public ui::Widget, public ScrollableBody {
 public:
     struct Intents {
         std::function<void()> goImages;
@@ -35,6 +36,9 @@ public:
 
     void layout() override;
     void paint(ui::Canvas& canvas) override;
+
+    // D-107: the list and the region form at the package's row heights can be taller than the page.
+    [[nodiscard]] float contentHeight() const override { return m_contentHeight; }
 
 private:
     class FetchStrip;
@@ -57,6 +61,7 @@ private:
     ui::Dropdown* m_fields[5] = {}; // UI language, system locale, user locale, keyboard, time zone
     std::vector<std::wstring> m_values[5]; // the choice values behind each dropdown (index 0 = unchanged)
     ui::EmptyState* m_empty = nullptr;
+    float m_contentHeight = 0;
 };
 
 } // namespace wl::app

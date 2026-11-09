@@ -1,131 +1,688 @@
 {
   "format": "winlove.catalog.compat",
   "version": 1,
-  "comment": "D-082 compatibility guards. A guard that is on keeps its apps (identity-name prefixes), system components (components.json ids) and services (never set to disabled) out of the queue. Only dependencies that are certain: a guard that holds too much is switched off by the user, one that holds too little breaks the image. 'default': on for a new user.",
+  "comment": "D-082 compatibility guards. A guard that is on keeps its apps (identity-name prefixes), system components (components.json ids) and services (never set to disabled) out of the queue. Only dependencies that are certain: a guard that holds too much is switched off by the user, one that holds too little breaks the image. 'default': on for a new user. D-120: setup, modern-apps, shell-search and night-light follow the reference tool's OOBE / Windows Setup, Modern App support, Shell Search and Night light protections; 'capabilities' are RemoveCapability names. D-121: the reference tool's other protections the same way (activation, TPM / Secure Boot, SFC, upgrade, the apps section); a component whose recipe takes a service or an app a guard keeps is kept with it; 'always' guards (core) cannot be switched off and only keep their services from being disabled; 'section': where the dialog lists it (windows | apps). A component id may name one row (\"vss:32\", \"font:Gadugi\").",
   "guards": [
+    {
+      "id": "core",
+      "tr": "Windows'un temeli (her zaman açık)",
+      "en": "Windows core (always on)",
+      "default": true,
+      "always": true,
+      "section": "windows",
+      "description_tr": "Açılış, oturum açma, uygulama altyapısı, birim filtreleri ve sürücü çatısı: bu servisler hiçbir zaman devre dışı bırakılmaz.",
+      "description_en": "Startup, sign-in, the app platform, the volume filters and the driver framework: these services are never disabled.",
+      "services": [
+        "RpcSs",
+        "RpcEptMapper",
+        "DcomLaunch",
+        "LSM",
+        "Power",
+        "PlugPlay",
+        "BrokerInfrastructure",
+        "SamSs",
+        "ProfSvc",
+        "UserManager",
+        "CoreMessagingRegistrar",
+        "StateRepository",
+        "SystemEventsBroker",
+        "nsi",
+        "DeviceAssociationService",
+        "AppReadiness",
+        "wlidsvc",
+        "TokenBroker",
+        "WindowsTrustedRT",
+        "fvevol",
+        "rdyboost",
+        "DXGKrnl",
+        "Wdf01000"
+      ]
+    },
     {
       "id": "windows-update",
       "tr": "Windows Update",
       "en": "Windows Update",
       "default": true,
-      "description_tr": "Güncellemeler kurulabilsin: WinSxS'i en aza indirme, derin kaldırma, güncelleme servisleri.",
-      "description_en": "Updates can be installed: WinSxS at its smallest, deep removal, the update services.",
-      "components": ["component-store-shrink", "deep-modem", "deep-tape", "deep-floppy", "deep-firewire", "deep-pcmcia", "deep-pos"],
-      "services": ["wuauserv", "UsoSvc", "TrustedInstaller", "CryptSvc"]
+      "section": "windows",
+      "description_tr": "Güncellemeler indirilip kurulabilsin: güncelleme, BITS ve teslim iyileştirme servisleri, görev zamanlayıcı, ağ konumu, güvenlik duvarı ve Microsoft hesabı yardımcısı; WinSxS'i en aza indirme ve derin kaldırma yapılmaz.",
+      "description_en": "Updates can be downloaded and installed: the update, BITS and delivery optimization services, the Task Scheduler, network location, the firewall and the Microsoft account helper; no WinSxS at its smallest, no deep removal.",
+      "components": [
+        "component-store-shrink",
+        "deep-modem",
+        "deep-tape",
+        "deep-floppy",
+        "deep-firewire",
+        "deep-pcmcia",
+        "deep-pos",
+        "tasksched",
+        "deliveryopt"
+      ],
+      "services": [
+        "wuauserv",
+        "UsoSvc",
+        "TrustedInstaller",
+        "CryptSvc",
+        "BITS",
+        "DoSvc",
+        "Schedule",
+        "wlidsvc",
+        "mpssvc",
+        "NlaSvc",
+        "netprofm"
+      ]
     },
     {
       "id": "store",
       "tr": "Microsoft Store ve uygulama kurulumu",
       "en": "Microsoft Store and app installs",
       "default": true,
-      "description_tr": "Store, App Installer (winget), uygulamaların çalışma zamanları ve lisans / dağıtım servisleri.",
-      "description_en": "The Store, App Installer (winget), the apps' runtimes and the licence / deployment services.",
-      "appx": ["Microsoft.WindowsStore", "Microsoft.StorePurchaseApp", "Microsoft.DesktopAppInstaller", "Microsoft.VCLibs",
-               "Microsoft.UI.Xaml", "Microsoft.NET.Native", "Microsoft.WindowsAppRuntime"],
-      "services": ["AppXSvc", "ClipSVC", "InstallService"]
+      "section": "windows",
+      "description_tr": "Store, App Installer (winget) ve uygulamaların çalışma zamanları; Store altyapısı, lisans / dağıtım / indirme servisleri, Microsoft ve iş hesabı oturumu, kimlik bilgileri, depolama hizmeti, gölge kopya, eski HTML motoru, eşitleme ana bilgisayarı ve uygulama kimliği hizmeti.",
+      "description_en": "The Store, App Installer (winget) and the apps' runtimes; the Store platform, the licence / deployment / download services, Microsoft and work account sign-in, credentials, the storage service, shadow copy, the legacy HTML engine, the sync host and the application identity service.",
+      "appx": [
+        "Microsoft.WindowsStore",
+        "Microsoft.StorePurchaseApp",
+        "Microsoft.DesktopAppInstaller",
+        "Microsoft.VCLibs",
+        "Microsoft.UI.Xaml",
+        "Microsoft.NET.Native",
+        "Microsoft.WindowsAppRuntime"
+      ],
+      "components": [
+        "mailsync",
+        "applocker",
+        "store-infra",
+        "deliveryopt",
+        "vss",
+        "ie-mshtml",
+        "aad",
+        "ieframe"
+      ],
+      "services": [
+        "AppXSvc",
+        "ClipSVC",
+        "InstallService",
+        "wuauserv",
+        "BITS",
+        "DoSvc",
+        "StorSvc",
+        "wlidsvc",
+        "TokenBroker",
+        "mpssvc",
+        "VaultSvc"
+      ]
     },
     {
       "id": "printing",
-      "tr": "Yazdırma",
-      "en": "Printing",
+      "tr": "Yazdırma ve tarama",
+      "en": "Printing and scanning",
       "default": true,
-      "description_tr": "Yazıcıya ve PDF'e yazdırma: yazdırma biriktiricisi.",
-      "description_en": "Printing to a printer or to PDF: the print spooler.",
-      "services": ["Spooler"]
+      "section": "windows",
+      "description_tr": "Yazıcıya ve PDF'e yazdırma, tarayıcılar: yazdırma biriktiricisi ve iş akışı servisleri, aygıtlarda web hizmetleri, ağdaki yazıcıları bulma, Windows Görüntü Alma.",
+      "description_en": "Printing to a printer or to PDF, scanners: the print spooler and workflow services, web services on devices, finding printers on the network, Windows Image Acquisition.",
+      "components": [
+        "printing",
+        "wsdapi",
+        "fdphost",
+        "wia"
+      ],
+      "services": [
+        "Spooler",
+        "PrintWorkflowUserSvc",
+        "PrintDeviceConfigurationService",
+        "PrintScanBrokerService",
+        "McpManagementService",
+        "ShellHWDetection",
+        "fdPHost",
+        "stisvc"
+      ]
     },
     {
       "id": "wireless",
       "tr": "Wi-Fi ve Bluetooth",
       "en": "Wi-Fi and Bluetooth",
       "default": true,
-      "description_tr": "Kablosuz ağ, Bluetooth aygıtları ve mobil etkin nokta servisleri.",
-      "description_en": "Wireless networks, Bluetooth devices and the mobile hotspot services.",
-      "services": ["WlanSvc", "bthserv", "BthAvctpSvc", "icssvc"]
+      "section": "windows",
+      "description_tr": "Kablosuz ağ, Bluetooth aygıtları ve mobil etkin nokta: servisleri ve ağ konumu.",
+      "description_en": "Wireless networks, Bluetooth devices and the mobile hotspot: their services and network location.",
+      "services": [
+        "WlanSvc",
+        "bthserv",
+        "BthAvctpSvc",
+        "icssvc",
+        "NlaSvc",
+        "netprofm"
+      ]
     },
     {
       "id": "audio",
       "tr": "Ses",
       "en": "Audio",
       "default": true,
+      "section": "windows",
       "description_tr": "Ses çıkışı ve girişi: Windows ses servisleri.",
       "description_en": "Sound out and in: the Windows audio services.",
-      "services": ["Audiosrv", "AudioEndpointBuilder"]
+      "services": [
+        "Audiosrv",
+        "AudioEndpointBuilder"
+      ]
     },
     {
       "id": "webview-apps",
       "tr": "Edge tabanlı uygulamalar (WebView2)",
       "en": "Edge-based apps (WebView2)",
       "default": true,
+      "section": "windows",
       "description_tr": "Widget'lar, yeni Outlook, Teams, Copilot, Clipchamp, Microsoft 365 ve birçok program WebView2 ister.",
       "description_en": "Widgets, the new Outlook, Teams, Copilot, Clipchamp, Microsoft 365 and many programs need WebView2.",
-      "components": ["edge-webview", "edge-update"]
+      "components": [
+        "edge-webview",
+        "edge-update"
+      ],
+      "capabilities": [
+        "Edge.Webview2.Platform"
+      ]
     },
     {
       "id": "recovery",
       "tr": "Kurtarma ve sıfırlama",
       "en": "Recovery and reset",
       "default": true,
-      "description_tr": "\"Bu bilgisayarı sıfırla\" ve Gelişmiş başlangıç: Windows Kurtarma Ortamı.",
-      "description_en": "\"Reset this PC\" and Advanced startup: the Windows Recovery Environment.",
-      "components": ["winre"]
+      "section": "windows",
+      "description_tr": "\"Bu bilgisayarı sıfırla\" ve Gelişmiş başlangıç: Windows Kurtarma Ortamı ve dosyaları koruyan geçiş altyapısı.",
+      "description_en": "\"Reset this PC\" and Advanced startup: the Windows Recovery Environment and the migration engine that keeps the files.",
+      "components": [
+        "winre",
+        "migration"
+      ]
     },
     {
       "id": "security",
       "tr": "Windows Güvenliği",
       "en": "Windows Security",
-      "default": false,
-      "description_tr": "Defender, tanımları, Güvenlik uygulaması ve güvenlik duvarı servisleri.",
-      "description_en": "Defender, its definitions, the Security app and the firewall services.",
-      "appx": ["Microsoft.SecHealthUI"],
-      "components": ["defender-definitions", "defender-full"],
-      "services": ["WinDefend", "SecurityHealthService", "WdNisSvc", "mpssvc"]
+      "default": true,
+      "section": "windows",
+      "description_tr": "Defender (sürücüleri ve tanımlarıyla), Güvenlik uygulaması, Güvenlik Merkezi ve güvenlik duvarı.",
+      "description_en": "Defender (with its drivers and definitions), the Security app, the Security Center and the firewall.",
+      "appx": [
+        "Microsoft.SecHealthUI"
+      ],
+      "components": [
+        "defender-definitions",
+        "defender-full",
+        "seccenter"
+      ],
+      "services": [
+        "WinDefend",
+        "SecurityHealthService",
+        "WdNisSvc",
+        "mpssvc",
+        "wscsvc",
+        "WdFilter",
+        "WdBoot",
+        "WdNisDrv",
+        "MDCoreSvc"
+      ]
     },
     {
       "id": "xbox",
       "tr": "Xbox ve PC oyunları",
       "en": "Xbox and PC games",
       "default": false,
+      "section": "windows",
       "description_tr": "Game Pass ve Xbox oturumu isteyen oyunlar, Game Bar, oyun kumandaları.",
       "description_en": "Game Pass and games that sign in to Xbox, the Game Bar, game controllers.",
-      "appx": ["Microsoft.GamingApp", "Microsoft.XboxIdentityProvider", "Microsoft.Xbox.TCUI", "Microsoft.XboxGamingOverlay"],
-      "services": ["XblAuthManager", "XblGameSave", "XboxNetApiSvc", "XboxGipSvc"]
+      "appx": [
+        "Microsoft.GamingApp",
+        "Microsoft.XboxIdentityProvider",
+        "Microsoft.Xbox.TCUI",
+        "Microsoft.XboxGamingOverlay"
+      ],
+      "services": [
+        "XblAuthManager",
+        "XblGameSave",
+        "XboxNetApiSvc",
+        "XboxGipSvc"
+      ]
     },
     {
       "id": "sharing",
       "tr": "Ağ paylaşımı",
       "en": "Network sharing",
-      "default": false,
-      "description_tr": "Paylaşılan klasörler ve yazıcılar, ağda görünme ve ağdaki aygıtları bulma.",
-      "description_en": "Shared folders and printers, being seen on the network and finding devices on it.",
-      "services": ["LanmanServer", "LanmanWorkstation", "FDResPub", "fdPHost", "SSDPSRV"]
+      "default": true,
+      "section": "windows",
+      "description_tr": "Paylaşılan klasörler ve yazıcılar (SMB istemcisi ve sunucusu), ağda görünme ve ağdaki aygıtları bulma.",
+      "description_en": "Shared folders and printers (the SMB client and server), being seen on the network and finding devices on it.",
+      "services": [
+        "LanmanServer",
+        "LanmanWorkstation",
+        "FDResPub",
+        "fdPHost",
+        "SSDPSRV",
+        "rdbss",
+        "mrxsmb20",
+        "srv2",
+        "bowser"
+      ]
     },
     {
       "id": "remote-desktop",
       "tr": "Uzak Masaüstü (bu bilgisayara bağlanma)",
       "en": "Remote Desktop (connecting to this PC)",
       "default": false,
+      "section": "windows",
       "description_tr": "Bu bilgisayara Uzak Masaüstü ile bağlanılabilsin: Terminal Hizmetleri.",
       "description_en": "This PC can be reached with Remote Desktop: the Terminal Services.",
-      "services": ["TermService", "SessionEnv", "UmRdpService"]
+      "services": [
+        "TermService",
+        "SessionEnv",
+        "UmRdpService"
+      ]
     },
     {
       "id": "camera",
       "tr": "Kamera",
       "en": "Camera",
-      "default": false,
-      "description_tr": "Kamera uygulaması ve kamerayı uygulamalara açan Kamera Çerçeve Sunucusu.",
-      "description_en": "The Camera app and the Camera Frame Server that hands the camera to apps.",
-      "appx": ["Microsoft.WindowsCamera"],
-      "services": ["FrameServer"]
+      "default": true,
+      "section": "windows",
+      "description_tr": "Kamera uygulaması, Media Foundation ve kamerayı uygulamalara açan Kamera Çerçeve Sunucusu.",
+      "description_en": "The Camera app, Media Foundation and the Camera Frame Server that hands the camera to apps.",
+      "appx": [
+        "Microsoft.WindowsCamera"
+      ],
+      "components": [
+        "mediafoundation",
+        "frameserver"
+      ],
+      "services": [
+        "FrameServer",
+        "FrameServerMonitor"
+      ]
     },
     {
       "id": "east-asian",
       "tr": "Japonca, Çince ve Korece metin",
       "en": "Japanese, Chinese and Korean text",
       "default": false,
+      "section": "windows",
       "description_tr": "Bu dillerdeki metinlerin görünmesi için gereken yazı tipleri.",
       "description_en": "The fonts that text in these languages needs to show.",
-      "components": ["fonts-jpan", "fonts-hans", "fonts-hant", "fonts-kore"]
+      "components": [
+        "fonts-jpan",
+        "fonts-hans",
+        "fonts-hant",
+        "fonts-kore"
+      ]
+    },
+    {
+      "id": "setup",
+      "tr": "Windows Kurulumu ve kurulum ekranları (OOBE)",
+      "en": "Windows Setup and its setup screens (OOBE)",
+      "default": true,
+      "section": "windows",
+      "description_tr": "Kurulumun bitip hesabın açılabilmesi: kurulum ekranlarını çizen uygulama altyapısı, Autopilot ve cihaz yönetimi kaydı, Microsoft / iş hesabı aracısı, görev zamanlayıcı, sensörler, bağlı cihazlar (görev çubuğunun açılır menüleri), WMI, güvenlik duvarı, kurtarma ortamı.",
+      "description_en": "Setup can finish and the account can sign in: the app platform that draws the setup screens, Autopilot and device management enrollment, the Microsoft / work account broker, the Task Scheduler, sensors, connected devices (the taskbar's flyouts), WMI, the firewall, the recovery environment.",
+      "components": [
+        "winrt-core",
+        "ie-core",
+        "mdm",
+        "aad",
+        "tasksched",
+        "sensors",
+        "print3d",
+        "vss",
+        "cdp",
+        "wmi",
+        "firewall",
+        "winre",
+        "sysprep"
+      ],
+      "services": [
+        "AppXSvc",
+        "DmEnrollmentSvc",
+        "TokenBroker",
+        "Schedule",
+        "Winmgmt",
+        "mpssvc",
+        "camsvc",
+        "wlidsvc",
+        "CDPUserSvc",
+        "UdkUserSvc",
+        "SensorService",
+        "AppReadiness",
+        "EFS",
+        "bindflt"
+      ]
+    },
+    {
+      "id": "modern-apps",
+      "tr": "Modern uygulama desteği",
+      "en": "Modern app support",
+      "default": true,
+      "section": "windows",
+      "description_tr": "Başlat, görev çubuğu, Ayarlar ve Store uygulamaları: uygulama altyapısı ve çalışma zamanları (VCLibs, .NET Native, UI.Xaml), App Installer, metin girişi, yetenek erişimi, şifreleme dosya sistemi hizmeti, bağlama filtresi, .NET.",
+      "description_en": "Start, the taskbar, Settings and Store apps: the app platform and runtimes (VCLibs, .NET Native, UI.Xaml), App Installer, text input, capability access, the encrypting file system service, the bind filter, .NET.",
+      "appx": [
+        "Microsoft.VCLibs",
+        "Microsoft.NET.Native",
+        "Microsoft.UI.Xaml",
+        "Microsoft.DesktopAppInstaller"
+      ],
+      "components": [
+        "winrt-core",
+        "dotnet",
+        "dotnet-wcf"
+      ],
+      "services": [
+        "AppXSvc",
+        "TextInputManagementService",
+        "camsvc",
+        "EFS",
+        "FileCrypt",
+        "bindflt"
+      ]
+    },
+    {
+      "id": "shell-search",
+      "tr": "Başlat ve görev çubuğunda arama",
+      "en": "Search in Start and the taskbar",
+      "default": true,
+      "section": "windows",
+      "description_tr": "Arama kutusu: metin girişi hizmeti, olay günlüğü ve kabuk araması.",
+      "description_en": "The search box: the text input service, the event log and shell search.",
+      "components": [
+        "search"
+      ],
+      "services": [
+        "TextInputManagementService",
+        "EventLog"
+      ]
+    },
+    {
+      "id": "night-light",
+      "tr": "Gece ışığı ve bağlı cihazlar",
+      "en": "Night light and connected devices",
+      "default": true,
+      "section": "windows",
+      "description_tr": "Gece ışığı, görev çubuğunun açılır menüleri ve hesap eşitlemesi: Bağlı Cihazlar Platformu ve Web Hesap Yöneticisi.",
+      "description_en": "Night light, the taskbar's flyouts and account sync: the Connected Devices Platform and the Web Account Manager.",
+      "components": [
+        "cdp",
+        "aad"
+      ],
+      "services": [
+        "CDPSvc",
+        "TokenBroker",
+        "DisplayEnhancementService"
+      ]
+    },
+    {
+      "id": "activation",
+      "tr": "Windows etkinleştirme",
+      "en": "Windows activation",
+      "default": true,
+      "section": "windows",
+      "description_tr": "Lisans etkinleşip doğrulanabilsin: yazılım koruma ve istemci lisans hizmetleri, Microsoft hesabı yardımcısı, WMI ve DNS istemcisi.",
+      "description_en": "The licence can be activated and checked: the software protection and client licence services, the Microsoft account helper, WMI and the DNS client.",
+      "services": [
+        "sppsvc",
+        "ClipSVC",
+        "wlidsvc",
+        "Winmgmt",
+        "wmiApSrv",
+        "Dnscache"
+      ]
+    },
+    {
+      "id": "anticheat",
+      "tr": "TPM ve Güvenli Önyükleme (hile önleyiciler)",
+      "en": "TPM and Secure Boot (anti-cheat)",
+      "default": true,
+      "section": "windows",
+      "description_tr": "Vanguard, FACEIT gibi hile önleyicilerin ve BitLocker'ın istediği TPM sürücüsü.",
+      "description_en": "The TPM driver that anti-cheats such as Vanguard or FACEIT and BitLocker ask for.",
+      "services": [
+        "TPM"
+      ]
+    },
+    {
+      "id": "sfc",
+      "tr": "Sistem dosyası denetimi (SFC)",
+      "en": "System File Checker (SFC)",
+      "default": true,
+      "section": "windows",
+      "description_tr": "sfc /scannow ve DISM onarımı bozuk dosyayı WinSxS'ten geri getirebilsin: WinSxS en aza indirilmez, Windows Modül Yükleyicisi kalır.",
+      "description_en": "sfc /scannow and DISM repair can bring a broken file back from WinSxS: WinSxS is not shrunk to its smallest, the Windows Modules Installer stays.",
+      "components": [
+        "component-store-shrink"
+      ],
+      "services": [
+        "TrustedInstaller"
+      ]
+    },
+    {
+      "id": "upgrade",
+      "tr": "Yükseltme ve yerinde onarım",
+      "en": "Upgrade and in-place repair",
+      "default": true,
+      "section": "windows",
+      "description_tr": "Windows'u bir üst sürüme ya da dosyalar kalarak kendi üzerine kurabilme: geçiş altyapısı ve sürüm yükseltme.",
+      "description_en": "Windows can be upgraded, or installed over itself keeping the files: the migration engine and edition upgrade.",
+      "components": [
+        "migration",
+        "edition-upgrade"
+      ]
+    },
+    {
+      "id": "recommended",
+      "tr": "Önerilen",
+      "en": "Recommended",
+      "default": true,
+      "section": "windows",
+      "description_tr": "Kaldırılması önerilmeyen (kırmızı) bileşenleri ve uygulamaları kilitler. Maksimum kaldırma düzeyinde etkisizdir.",
+      "description_en": "Locks the components and apps whose removal is not recommended (red). Has no effect at the Maximum removal level.",
+      "appx": [
+        "Microsoft.WindowsStore",
+        "Microsoft.StorePurchaseApp",
+        "Microsoft.DesktopAppInstaller",
+        "Microsoft.SecHealthUI",
+        "Microsoft.VCLibs",
+        "Microsoft.UI.Xaml",
+        "Microsoft.NET.Native",
+        "Microsoft.WindowsAppRuntime"
+      ],
+      "components": [
+        "edge-webview",
+        "edge-update",
+        "winre",
+        "defender-full",
+        "dotnet",
+        "dotnet-forms",
+        "powershell",
+        "complus",
+        "complus-events",
+        "sens",
+        "jscript-legacy",
+        "d3dcompiler",
+        "tasksched",
+        "mediafoundation",
+        "mfc",
+        "ie-mshtml",
+        "deliveryopt",
+        "defrag",
+        "vss",
+        "tabletpc",
+        "smartscreen",
+        "seccenter",
+        "hyperv",
+        "softkeyboard",
+        "sysprep",
+        "mmc",
+        "warp10",
+        "vulkan",
+        "msxml",
+        "mdac",
+        "directshow",
+        "storage-mgmt",
+        "aad",
+        "webauthn",
+        "store-infra",
+        "webview-store",
+        "cdp",
+        "ieframe",
+        "vcm-codecs"
+      ],
+      "capabilities": [
+        "Edge.Webview2.Platform",
+        "VBSCRIPT"
+      ]
+    },
+    {
+      "id": "app-battlenet",
+      "tr": "Battle.net",
+      "en": "Battle.net",
+      "default": true,
+      "section": "apps",
+      "description_tr": "Battle.net istemcisi ve oyunları: curl ve İkincil Oturum Açma hizmeti.",
+      "description_en": "The Battle.net client and its games: curl and the Secondary Logon service.",
+      "components": [
+        "curl"
+      ],
+      "services": [
+        "seclogon"
+      ]
+    },
+    {
+      "id": "app-discord",
+      "tr": "Discord",
+      "en": "Discord",
+      "default": true,
+      "section": "apps",
+      "description_tr": "WPF, ses ve görüntü kalitesi hizmeti (qWave) ve kısayol tuşları için İnsan Arabirim Aygıtı hizmeti.",
+      "description_en": "WPF, the quality audio video service (qWave) and the Human Interface Device service for its hotkeys.",
+      "components": [
+        "dotnet-wpf"
+      ],
+      "services": [
+        "QWAVE",
+        "hidserv"
+      ]
+    },
+    {
+      "id": "app-ea-anticheat",
+      "tr": "EA Javelin hile önleyici",
+      "en": "EA Javelin anti-cheat",
+      "default": true,
+      "section": "apps",
+      "description_tr": "EA oyunlarının hile önleyicisi kullanıcı veri deposunu ister.",
+      "description_en": "The anti-cheat of EA games needs the user data storage.",
+      "components": [
+        "userdata"
+      ],
+      "services": [
+        "UnistoreSvc"
+      ]
+    },
+    {
+      "id": "app-legacy-games",
+      "tr": "Eski oyunlar",
+      "en": "Legacy games",
+      "default": true,
+      "section": "apps",
+      "description_tr": "DirectPlay kullanan eski oyunlar ve General MIDI müziği.",
+      "description_en": "Older games that use DirectPlay, and General MIDI music.",
+      "components": [
+        "directplay",
+        "gm-dls"
+      ]
+    },
+    {
+      "id": "app-office",
+      "tr": "Microsoft Office",
+      "en": "Microsoft Office",
+      "default": true,
+      "section": "apps",
+      "description_tr": "Görev zamanlayıcı (güncellemeler), veri erişim bileşenleri (MDAC), eski HTML motoru, Exchange eşitlemesi, yönetici izni (Uygulama Bilgileri) ve arayüzünün kullandığı yazı tipleri.",
+      "description_en": "The Task Scheduler (updates), the data access components (MDAC), the legacy HTML engine, Exchange sync, elevation (Application Information) and the fonts its interface uses.",
+      "components": [
+        "tasksched",
+        "mdac",
+        "ie-mshtml",
+        "mailsync",
+        "fonts-hans",
+        "fonts-hant",
+        "font:Gadugi",
+        "font:Leelawadee UI",
+        "font:Nirmala UI",
+        "font:Microsoft YaHei",
+        "font:Microsoft JhengHei",
+        "ieframe"
+      ],
+      "services": [
+        "Schedule",
+        "Appinfo"
+      ]
+    },
+    {
+      "id": "app-netflix",
+      "tr": "Netflix ve korumalı video",
+      "en": "Netflix and protected video",
+      "default": true,
+      "section": "apps",
+      "description_tr": "DRM'li video: Media Foundation, PlayReady ve korumalı ortam yetkilendirmesi.",
+      "description_en": "DRM video: Media Foundation, PlayReady and protected environment authorization.",
+      "components": [
+        "mediafoundation",
+        "playready",
+        "vcm-codecs"
+      ],
+      "services": [
+        "PEAUTH"
+      ]
+    },
+    {
+      "id": "app-nvidia",
+      "tr": "NVIDIA uygulaması / GeForce Experience",
+      "en": "NVIDIA app / GeForce Experience",
+      "default": true,
+      "section": "apps",
+      "description_tr": "Görev zamanlayıcı, eski HTML motoru, ekran ilkesi hizmeti, qWave ve bağlama filtresi.",
+      "description_en": "The Task Scheduler, the legacy HTML engine, the display policy service, qWave and the bind filter.",
+      "components": [
+        "tasksched",
+        "ie-mshtml"
+      ],
+      "services": [
+        "Schedule",
+        "DispBrokerDesktopSvc",
+        "QWAVE",
+        "bindflt"
+      ]
+    },
+    {
+      "id": "app-visual-studio",
+      "tr": "Visual Studio",
+      "en": "Visual Studio",
+      "default": true,
+      "section": "apps",
+      "description_tr": ".NET Framework (ASP.NET, WCF ve WPF ile), COM+, WebView2, eski HTML motoru, aygıtlarda web hizmetleri, 32 bit PowerShell ve gölge kopya.",
+      "description_en": ".NET Framework (with ASP.NET, WCF and WPF), COM+, WebView2, the legacy HTML engine, web services on devices, 32-bit PowerShell and shadow copy.",
+      "components": [
+        "dotnet",
+        "dotnet-aspnet",
+        "dotnet-wcf",
+        "dotnet-wpf",
+        "complus",
+        "edge-webview",
+        "ie-mshtml",
+        "wsdapi",
+        "powershell:32",
+        "vss:32",
+        "ieframe"
+      ],
+      "services": [
+        "NetTcpPortSharing"
+      ]
     }
   ]
 }

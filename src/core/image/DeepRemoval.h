@@ -47,6 +47,11 @@ struct InboxDriver {
 [[nodiscard]] Result<std::vector<InboxDriver>> findInboxDrivers(const std::filesystem::path& mountDir,
                                                                 const std::vector<std::wstring>& classGuids);
 
+// D-112: these driver packages (DriverPackages key names), with their INF and class; packages the
+// image does not have are left out.
+[[nodiscard]] Result<std::vector<InboxDriver>> findDriverPackages(const std::filesystem::path& mountDir,
+                                                                  const std::vector<std::wstring>& packages);
+
 struct DeepRemovalResult {
     std::size_t drivers = 0;
     std::size_t files = 0;      // files and folders removed
@@ -57,5 +62,24 @@ struct DeepRemovalResult {
 // DISM session). Elevated process.
 [[nodiscard]] Result<DeepRemovalResult> deepRemoveDrivers(const std::filesystem::path& mountDir,
                                                           const std::vector<InboxDriver>& drivers, const TaskContext& task);
+
+// D-113: the installed copies of store components (identity names, lower case; bits 0 all, 32 only
+// x86 / wow64, 64 only native): every hard link of their WinSxS payload outside WinSxS, and these
+// services' keys (every control set). The store and its registration stay — the reference tool's custom removal
+// with update support kept: a later cumulative update or sfc /scannow can put the files back.
+// What Windows loads at boot, the device filters (with their service keys) and every module these
+// and the kernel import stay (D-116 / D-117, BootDrivers.h), and so does every module one that stays
+// imports or delay-loads (D-118). Elevated; nothing else may hold the SYSTEM hive (the caller closes
+// the DISM session).
+struct StoreRemovalResult {
+    std::size_t components = 0;  // store components found
+    std::size_t files = 0;       // installed copies removed
+    std::size_t services = 0;    // service keys removed
+    std::size_t keptDrivers = 0; // boot files kept: drivers, filters, the loader's and their imports (D-116 / D-117)
+    std::size_t keptImports = 0; // modules kept because one that stays imports or delay-loads them (D-118)
+};
+[[nodiscard]] Result<StoreRemovalResult> removeStoreCopies(const std::filesystem::path& mountDir,
+                                                           const std::vector<std::wstring>& names, std::uint8_t bits,
+                                                           const std::vector<std::wstring>& services, const TaskContext& task);
 
 } // namespace wl::core

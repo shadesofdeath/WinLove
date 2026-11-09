@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <format>
+#include <map>
 
 namespace wl::app {
 
@@ -21,6 +22,12 @@ std::wstring joined(const std::vector<std::wstring>& names, std::size_t limit = 
     }
     return out;
 }
+
+// D-120: the guards before `guardsSeen` was saved (D-082 and "Önerilen"). Settings without the
+// list chose among these; a later guard takes its default.
+constexpr std::wstring_view kGuardsBeforeSeen[] = {L"windows-update", L"store",    L"printing", L"wireless",       L"audio",
+                                                   L"webview-apps",   L"recovery", L"security", L"xbox",           L"sharing",
+                                                   L"remote-desktop", L"camera",   L"east-asian", L"recommended"};
 
 } // namespace
 
@@ -42,31 +49,48 @@ CompatController::~CompatController() {
 }
 
 bool CompatController::isOn(std::wstring_view id) const {
-    const auto& chosen = m_state.settings().guards;
-    if (!chosen) {
+    if (const auto* guard = m_catalog.find(id); guard && guard->rule.always) {
+        return true; // D-121: "core"
+    }
+    const auto& settings = m_state.settings();
+    const auto& chosen = settings.guards;
+    const bool seen = chosen && (settings.guardsSeen ? std::ranges::find(*settings.guardsSeen, id) != settings.guardsSeen->end()
+                                                     : std::ranges::find(kGuardsBeforeSeen, id) != std::end(kGuardsBeforeSeen));
+    if (!seen) {
         const auto* guard = m_catalog.find(id);
         return guard && guard->defaultOn;
     }
     return std::ranges::find(*chosen, id) != chosen->end();
 }
 
+std::vector<std::wstring> CompatController::catalogIds() const {
+    std::vector<std::wstring> out;
+    for (const auto& guard : m_catalog.guards()) {
+        out.push_back(guard.rule.id);
+    }
+    return out;
+}
+
 std::size_t CompatController::onCount() const {
-    return static_cast<std::size_t>(
-        std::ranges::count_if(m_catalog.guards(), [&](const CompatCatalogEntry& g) { return isOn(g.rule.id); }));
+    // The user's choice: the guards that are always on are not counted.
+    return static_cast<std::size_t>(std::ranges::count_if(
+        m_catalog.guards(), [&](const CompatCatalogEntry& g) { return !g.rule.always && isOn(g.rule.id); }));
 }
 
 void CompatController::setOn(std::wstring_view id, bool on) {
-    if (!m_catalog.find(id) || isOn(id) == on) {
+    const auto* chosen = m_catalog.find(id);
+    if (!chosen || chosen->rule.always || isOn(id) == on) {
         return;
     }
     std::vector<std::wstring> next;
     for (const auto& guard : m_catalog.guards()) {
-        if (guard.rule.id == id ? on : isOn(guard.rule.id)) {
+        if (!guard.rule.always && (guard.rule.id == id ? on : isOn(guard.rule.id))) {
             next.push_back(guard.rule.id);
         }
     }
     AppSettings settings = m_state.settings();
     settings.guards = std::move(next);
+    settings.guardsSeen = catalogIds();
     m_state.setSettings(std::move(settings));
     log::info("app", std::format(L"compatibility guard {} {}", id, on ? L"on" : L"off"));
     if (on) {
@@ -77,24 +101,25 @@ void CompatController::setOn(std::wstring_view id, bool on) {
 void CompatController::setGuards(const std::vector<std::wstring>& on) {
     std::vector<std::wstring> next;
     for (const auto& guard : m_catalog.guards()) {
-        if (std::ranges::find(on, guard.rule.id) != on.end()) {
+        if (!guard.rule.always && std::ranges::find(on, guard.rule.id) != on.end()) {
             next.push_back(guard.rule.id);
         }
     }
-    if (next == onIds() && m_state.settings().guards) {
+    if (next == onIds() && m_state.settings().guards && m_state.settings().guardsSeen) {
         return;
     }
     AppSettings settings = m_state.settings();
     settings.guards = next;
+    settings.guardsSeen = catalogIds();
     m_state.setSettings(std::move(settings));
     log::info("app", std::format(L"compatibility guards: {} of {} on", next.size(), m_catalog.guards().size()));
     enforce();
 }
 
 std::vector<std::wstring> CompatController::onIds() const {
-    std::vector<std::wstring> out;
+    std::vector<std::wstring> out; // the user's choice: not the guards that are always on
     for (const auto& guard : m_catalog.guards()) {
-        if (isOn(guard.rule.id)) {
+        if (!guard.rule.always && isOn(guard.rule.id)) {
             out.push_back(guard.rule.id);
         }
     }
@@ -159,6 +184,40 @@ std::wstring CompatController::explain(const core::ops::CompatBlock& block) cons
             names.push_back(appName(identity));
         }
         out += (out.empty() ? L"" : L" · ") + m_strings.format(Str::CompatNeededBy, {{L"apps", joined(names)}});
+    }
+    return out;
+}
+
+std::vector<CompatController::Impact> CompatController::impact() const {
+    // One pass over the queue with every guard that is off: a block lists each guard that would
+    // hold the step (a recipe is parsed once per step, not once per guard).
+    std::vector<core::ops::CompatGuard> off;
+    for (const auto& guard : m_catalog.guards()) {
+        if (!guard.rule.always && !isOn(guard.rule.id)) {
+            off.push_back(guard.rule);
+        }
+    }
+    std::map<std::wstring, std::vector<std::wstring>> items; // guard id → the steps it would keep
+    for (const auto& conflict : core::ops::compatConflicts(m_state.changes(), off, needs())) {
+        if (conflict.block.guards.empty()) {
+            continue; // only an app that stays needs it: no guard of the report
+        }
+        const std::wstring name = describe ? describe(conflict.op) : conflict.op.target;
+        for (const auto& id : conflict.block.guards) {
+            auto& list = items[id];
+            if (std::ranges::find(list, name) == list.end()) { // a 32-bit row has its component's name
+                list.push_back(name);
+            }
+        }
+    }
+    std::vector<Impact> out;
+    for (const bool apps : {false, true}) { // Windows' features first, then the apps
+        for (const auto& guard : m_catalog.guards()) {
+            const auto it = items.find(guard.rule.id);
+            if (it != items.end() && (guard.section == CompatSection::Apps) == apps) {
+                out.push_back({guard.rule.id, guard.name(m_language), guard.description(m_language), apps, std::move(it->second)});
+            }
+        }
     }
     return out;
 }

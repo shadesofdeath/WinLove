@@ -5,6 +5,7 @@
 //   capability installed → RemoveCapability      (adding FoD needs source media: not offered)
 // Toggling again removes the queued operation (back to the image's state).
 #include "app/state/AppState.h"
+#include "core/ops/Compat.h"
 
 #include <functional>
 #include <memory>
@@ -36,6 +37,12 @@ public:
 
     // Pure mapping, unit-tested.
     [[nodiscard]] static core::ops::Operation operationFor(const core::OptionalFeature& item);
+
+    // D-120: what keeps a capability in the image (compatibility guards, the Shell's CompatController).
+    // Unset (tools, tests): nothing does. A held capability is not queued; onBlocked says why.
+    std::function<core::ops::CompatBlock(const core::ops::Operation&)> blockOf;
+    std::function<void(const core::OptionalFeature&, const core::ops::CompatBlock&)> onBlocked;
+    [[nodiscard]] bool guarded(const core::OptionalFeature& item) const; // a lock on its row
 
 private:
     AppState& m_state;

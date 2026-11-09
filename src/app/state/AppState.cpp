@@ -93,6 +93,7 @@ void AppState::setMounted(std::optional<MountedImage> mounted) {
         m_features.reset();
         m_appx.reset();
         m_system.reset();
+        m_inventory.reset();
         m_services.reset();
         m_imageValues.reset();
         m_imageDrivers.reset();
@@ -229,6 +230,11 @@ void AppState::setAppxList(std::optional<AppxList> list) {
 
 void AppState::setSystemComponents(std::optional<SystemComponents> components) {
     m_system = std::move(components);
+    notify(Change::Components);
+}
+
+void AppState::setImageInventory(std::optional<ImageInventory> inventory) {
+    m_inventory = std::move(inventory);
     notify(Change::Components);
 }
 
@@ -468,33 +474,57 @@ void AppState::saveQueue() const {
     }
 }
 
-std::size_t AppState::restoreQueue() {
-    if (m_queueFile.empty() || !m_mounted || !m_changes.empty() || queueLocked()) {
-        return 0;
+std::optional<core::ops::ChangeSet> AppState::savedQueue(const MountedImage& mounted) const {
+    if (m_queueFile.empty()) {
+        return std::nullopt;
     }
     const auto bytes = readFileBytes(m_queueFile);
     if (!bytes) {
-        return 0;
+        return std::nullopt;
     }
     using Json = nlohmann::json;
     const Json doc = Json::parse(*bytes, nullptr, /*allow_exceptions=*/false);
     if (!doc.is_object() || !doc.contains("changes") || !doc.value("image", Json()).is_string() ||
         !doc.value("index", Json()).is_number_integer()) {
         log::warn("app", L"queue.json is damaged; not restored");
-        return 0;
+        return std::nullopt;
     }
-    if (!sameImagePath(utf8::toWide(doc["image"].get<std::string>()), m_mounted->imagePath) ||
-        doc["index"].get<int>() != m_mounted->index) {
-        return 0; // the queue of another image: stays until this one's queue is saved over it
+    if (!sameImagePath(utf8::toWide(doc["image"].get<std::string>()), mounted.imagePath) ||
+        doc["index"].get<int>() != mounted.index) {
+        return std::nullopt; // the queue of another image: stays until this one's queue is saved over it
     }
     auto changes = core::ops::ChangeSet::fromJson(doc["changes"].dump());
     if (!changes || changes->empty()) {
+        return std::nullopt;
+    }
+    return std::move(*changes);
+}
+
+std::size_t AppState::restoreQueue() {
+    if (!m_mounted || !m_changes.empty()) {
         return 0;
     }
-    m_changes = std::move(*changes);
-    log::info("app", std::format(L"queue of the last run restored: {} changes", m_changes.size()));
+    return restoreQueue(savedQueue(*m_mounted));
+}
+
+std::size_t AppState::restoreQueue(std::optional<core::ops::ChangeSet> saved) {
+    if (!m_mounted || queueLocked() || !saved || saved->empty()) {
+        return 0;
+    }
+    std::vector<core::ops::Operation> back;
+    for (const auto& op : saved->operations()) {
+        if (!m_changes.find(op.kind, op.target)) {
+            back.push_back(op);
+        }
+    }
+    if (back.empty()) {
+        return 0;
+    }
+    const std::size_t restored = back.size();
+    m_changes.addAll(std::move(back));
+    log::info("app", std::format(L"queue of the last run restored: {} changes", restored));
     notify(Change::Queue);
-    return m_changes.size();
+    return restored;
 }
 
 void AppState::notify(Change change) {

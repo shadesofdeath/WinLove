@@ -145,6 +145,33 @@ TEST_CASE("queue: closing the app or a crash keeps it; it comes back with the sa
     CHECK(plain.restoreQueue() == 0);
 }
 
+TEST_CASE("queue: what the mount itself queues (the welcome's files) does not cost the saved queue (report 2026-11-07)") {
+    using core::ops::OpKind;
+    using core::ops::Operation;
+    const auto answers = scratch(L"queue2-answers.dat");
+    const auto queueFile = answers.parent_path() / L"queue.json";
+    std::filesystem::remove(queueFile);
+    const MountedImage mounted{LR"(C:\WinLove\mount)", LR"(D:\work\sources\install.wim)", 2, L"Windows 11 Pro"};
+    const Operation welcome{OpKind::WriteFile, LR"(ProgramData\WinLove\Oobe\oobe.json)", L"{\"new\":1}"};
+    {
+        AppState state{scratch(L"recent.json"), scratch(L"settings.json"), answers};
+        state.setMounted(mounted);
+        state.queue(Operation{OpKind::RemoveCapability, L"Microsoft.Windows.Sense.Client~~~~"});
+        state.queue(Operation{OpKind::RemoveCapability, L"Windows.WorkFolders.Client~~~~"});
+        state.queue(Operation{OpKind::WriteFile, welcome.target, L"{\"old\":1}"});
+    }
+    AppState state{scratch(L"recent.json"), scratch(L"settings.json"), answers};
+    auto saved = state.savedQueue(mounted); // before the mount, as Shell::restoreMount does
+    REQUIRE(saved);
+    state.setMounted(mounted);
+    state.queue(welcome); // a Change::Mount listener (D-084) — saved over queue.json at once
+    CHECK(state.restoreQueue(std::move(saved)) == 2);
+    CHECK(state.changes().size() == 3);
+    CHECK(state.changes().find(OpKind::RemoveCapability, L"Windows.WorkFolders.Client~~~~"));
+    CHECK(state.changes().find(OpKind::WriteFile, welcome.target)->value == welcome.value); // the fresh one keeps its slot
+    state.setMounted(std::nullopt);
+}
+
 TEST_CASE("answers: with the welcome on, the account typed before stays for when it is off again (audit B4)") {
     StoredAnswers answers = sample(); // account, password, time zone …
     answers.options.welcome = true;

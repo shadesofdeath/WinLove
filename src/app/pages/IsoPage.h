@@ -8,6 +8,7 @@
 // new Setup cannot install it), read from install.wim's file lists on the reader thread.
 #include "app/Localization.h"
 #include "app/controllers/IsoController.h"
+#include "app/shell/PageView.h"
 #include "core/image/SetupMedia.h"
 #include "ui/widgets/Button.h"
 #include "ui/widgets/Checkbox.h"
@@ -21,7 +22,7 @@
 
 namespace wl::app {
 
-class IsoPage : public ui::Widget {
+class IsoPage : public ui::Widget, public ScrollableBody {
 public:
     struct Intents {
         std::function<std::optional<std::filesystem::path>()> pickFolder;
@@ -78,6 +79,12 @@ private:
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 
     ui::TabBar* m_tabs = nullptr;
+    float m_contentHeight = 0; // D-107: the form at 48px rows can be taller than the page
+
+public:
+    [[nodiscard]] float contentHeight() const override { return m_contentHeight; }
+
+private:
     ui::InfoBar* m_bar = nullptr;
     ui::SearchBox* m_fileName = nullptr;
     ui::SearchBox* m_folder = nullptr;

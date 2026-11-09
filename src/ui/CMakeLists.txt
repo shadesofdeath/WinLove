@@ -7,6 +7,7 @@ add_library(wl_ui STATIC
     platform/FileDialog.cpp
     platform/Window.cpp
     render/Canvas.cpp
+    render/IconTone.cpp
     render/Graphics.cpp
     render/OffscreenTarget.cpp
     render/RenderDevice.cpp
@@ -28,6 +29,7 @@ add_library(wl_ui STATIC
     widgets/InfoBar.cpp
     widgets/Kbd.cpp
     widgets/Label.cpp
+    widgets/PillGroup.cpp
     widgets/LogConsole.cpp
     widgets/ScrollBar.cpp
     widgets/SearchBox.cpp

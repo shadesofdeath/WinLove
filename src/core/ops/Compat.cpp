@@ -1,8 +1,12 @@
 #include "core/ops/Compat.h"
 
+#include "base/Utf8.h"
+#include "core/image/SystemComponents.h"
+
 #include <windows.h>
 
 #include <algorithm>
+#include <optional>
 
 namespace wl::core::ops {
 
@@ -32,6 +36,24 @@ std::vector<std::wstring> removedApps(const ChangeSet& queue) {
     return out;
 }
 
+// The longest catalog prefixes are names in their own right: "Microsoft.VCLibs" covers
+// "Microsoft.VCLibs.140.00" and its ".UWPDesktop" sibling, not "Microsoft.VCLibsX".
+bool keepsApp(const CompatGuard& guard, std::wstring_view identity) {
+    return std::ranges::any_of(guard.appx, [&](const std::wstring& prefix) {
+        return startsWith(identity, prefix) &&
+               (identity.size() == prefix.size() || identity[prefix.size()] == L'.' || identity[prefix.size()] == L'_');
+    });
+}
+
+// D-121: what a component's recipe takes along that a guard keeps — one of its services (the keys
+// go with the files) or one of its apps. The reference tool locks the component a locked service belongs to;
+// before, "Printing" kept the spooler from being disabled but not the Printing component (and the
+// spooler with it) from being removed.
+bool takesWhatItKeeps(const CompatGuard& guard, const ComponentRecipe& recipe) {
+    return std::ranges::any_of(recipe.services, [&](const std::wstring& service) { return contains(guard.services, service); }) ||
+           std::ranges::any_of(recipe.appx, [&](const std::wstring& app) { return keepsApp(guard, appxIdentity(app)); });
+}
+
 CompatBlock blockWith(const Operation& op, std::span<const CompatGuard> active, const AppxNeeds& needs,
                       const std::vector<std::wstring>& removed) {
     CompatBlock block;
@@ -39,13 +61,7 @@ CompatBlock blockWith(const Operation& op, std::span<const CompatGuard> active, 
     case OpKind::RemoveAppx: {
         const std::wstring identity = appxIdentity(op.target);
         for (const auto& guard : active) {
-            // The longest catalog prefixes are names in their own right: "Microsoft.VCLibs" covers
-            // "Microsoft.VCLibs.140.00" and its ".UWPDesktop" sibling, not "Microsoft.VCLibsX".
-            const bool guarded = std::ranges::any_of(guard.appx, [&](const std::wstring& prefix) {
-                return startsWith(identity, prefix) &&
-                       (identity.size() == prefix.size() || identity[prefix.size()] == L'.' || identity[prefix.size()] == L'_');
-            });
-            if (guarded) {
+            if (keepsApp(guard, identity)) {
                 block.guards.push_back(guard.id);
             }
         }
@@ -58,13 +74,41 @@ CompatBlock blockWith(const Operation& op, std::span<const CompatGuard> active, 
     }
     case OpKind::RemoveComponent:
     case OpKind::CleanupImage:
-    case OpKind::ShrinkStore:
+    case OpKind::ShrinkStore: {
+        // A component's 32-bit row ("tabletpc:32", D-113) is held with the component.
+        std::wstring id = op.target;
+        if (id.size() > 3 && id.ends_with(L":32")) {
+            id.resize(id.size() - 3);
+        }
+        std::optional<ComponentRecipe> recipe; // read once, when a guard needs it
         for (const auto& guard : active) {
-            if (contains(guard.components, op.target)) {
+            if (contains(guard.components, op.target) || contains(guard.components, id)) {
+                block.guards.push_back(guard.id);
+                continue;
+            }
+            if (op.kind != OpKind::RemoveComponent || guard.always || (guard.services.empty() && guard.appx.empty())) {
+                continue;
+            }
+            if (!recipe) {
+                auto parsed = componentRecipeFromJson(utf8::fromWide(op.value));
+                recipe = parsed ? std::move(*parsed) : ComponentRecipe{};
+            }
+            if (takesWhatItKeeps(guard, *recipe)) {
                 block.guards.push_back(guard.id);
             }
         }
         break;
+    }
+    case OpKind::RemoveCapability: {
+        // "Edge.Webview2.Platform~~~~" / "VBSCRIPT~~~~0.0.1.0": the name before the first '~'.
+        const std::wstring name = op.target.substr(0, op.target.find(L'~'));
+        for (const auto& guard : active) {
+            if (contains(guard.capabilities, name)) {
+                block.guards.push_back(guard.id);
+            }
+        }
+        break;
+    }
     case OpKind::SetServiceStart:
         if (op.value == L"disabled") {
             for (const auto& guard : active) {

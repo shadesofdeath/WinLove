@@ -22,13 +22,13 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kTop = 12.0f;
+constexpr float kTop = 0.0f;
 constexpr float kLabelWidth = 220.0f;
-constexpr float kRow = 32.0f;
-constexpr float kSection = 36.0f;
+constexpr float kRow = 26.0f; // D-109: the reference tool density (a 24 control in it)
+constexpr float kSection = 40.0f;
 constexpr float kSummaryWidth = 320.0f;
-constexpr float kSummaryRow = 24.0f;
-constexpr float kInfoBar = 32.0f;
+constexpr float kSummaryRow = 26.0f;
+constexpr float kInfoBar = 38.0f;
 
 std::filesystem::path desktop() {
     PWSTR path = nullptr;
@@ -525,6 +525,7 @@ void IsoPage::refresh() {
 
 void IsoPage::layout() {
     const RectF b = bounds();
+    const float before = m_contentHeight;
     float y = b.y + kTop;
     m_tabs->setBounds({b.x, y, b.width, ui::tokens::size::control + 2});
     y += ui::tokens::size::control + 2 + 12;
@@ -561,6 +562,8 @@ void IsoPage::layout() {
         place(m_secureBoot, 0);
         y += kRow + kSection; // BİTİNCE
         place(m_open, 0);
+        m_contentHeight = y + kRow + 12 - b.y;
+        contentChanged(*this, before);
         return;
     }
     y += kSection; // ÇIKTI
@@ -588,6 +591,8 @@ void IsoPage::layout() {
     place(m_sha, 0);
     y += kRow;
     place(m_open, 0);
+    m_contentHeight = y + kRow + 12 - b.y;
+    contentChanged(*this, before);
 }
 
 void IsoPage::paint(ui::Canvas& canvas) {
@@ -650,7 +655,7 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
     const auto& unattend = m_state.unattend();
     const bool answersUnused = !unattend.includeInIso && !(unattend.options == core::UnattendOptions{});
     const RectF box{b.right() - kSummaryWidth, b.y + kTop + ui::tokens::size::control + 2 + 12, kSummaryWidth,
-                    136 + 5 * kSummaryRow};
+                    52 + 9 * kSummaryRow};
     canvas.fillRoundRect(box, ui::tokens::radius::r3, Color::BgPanel);
     canvas.strokeRoundRect(box, ui::tokens::radius::r3, Color::LineSubtle);
     float sy = box.y + 12;
@@ -840,7 +845,7 @@ void IsoPage::paintUsbForm(ui::Canvas& canvas, float y, float formRight) {
     const auto& unattend = m_state.unattend();
     const bool answersUnused = !unattend.includeInIso && !(unattend.options == core::UnattendOptions{});
     const RectF box{b.right() - kSummaryWidth, b.y + kTop + ui::tokens::size::control + 2 + 12, kSummaryWidth,
-                    136 + 5 * kSummaryRow};
+                    52 + 9 * kSummaryRow};
     canvas.fillRoundRect(box, ui::tokens::radius::r3, Color::BgPanel);
     canvas.strokeRoundRect(box, ui::tokens::radius::r3, Color::LineSubtle);
     float sy = box.y + 12;

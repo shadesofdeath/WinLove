@@ -4,7 +4,7 @@
 //    right away (file associations, "Open with", drag onto the exe)
 //  - offscreen: WinLove.exe --render=<file.png> [options] draws one frame without a window,
 //    for visual checks against WinLove-UI-Handoff/04_screens. Options:
-//      --theme=dark|light|hc  --accent=copper|sea|pomegranate|sky|olive  --lang=tr|en  --scale=1.5  --size=1440x900
+//      --theme=dark|light|hc  --accent=blue|copper|sea|pomegranate|olive  --lang=tr|en  --scale=1.5  --size=1440x900
 //      --page=<key>           (source, images, …, settings, about, gallery)
 //      --nav-collapsed        --maximized (restore glyph)
 //      --hover-at=x,y         --press-at=x,y   --tooltip-at=x,y   (DIPs; simulate the pointer)
@@ -62,12 +62,18 @@ struct LaunchOptions {
     std::optional<std::filesystem::path> renderTo;
     float scale = 1.0f;
     ui::SizeF size{1440, 900};
+    bool sizeGiven = false; // --size=: the window opens at that size, not filling the screen
     std::optional<PageId> page;
     bool navCollapsed = false;
     bool demoLogs = false;     // render: fill the log with the design's sample lines (screen 18)
     bool demoFeatures = false; // render: fake mount + screen 05 sample features
     bool demoComponents = false; // render: fake mount + sample provisioned apps (screen 04)
+    std::wstring demoInventory;  // D-112, with --demo-components: a `wlcli inventory --json` file's rows
+    std::wstring demoReveal;     // D-113, with --demo-components: a component to open the tree at (its catalog id)
+    std::wstring demoStoreShare; // D-113, with --demo-components: a `wlcli store-share` file (a real image's split)
     bool demoCompat = false;     // with --demo-components: the Uyumluluk dialog open (D-082)
+    std::wstring demoToast;      // --demo-toast=title|message: a toast over the page (wrapping, 2026-11-09)
+    bool demoAppMenu = false;    // --demo-app-menu: the ≡ menu open (its icons, 2026-11-09)
     bool demoRegistry = false;   // render: fake mount + typed values and an imported .reg (D-067)
     bool demoRegistryDialog = false; // --demo-registry=dialog: the first value open in "Değeri düzenle"
     bool demoServices = false;   // render: fake mount + sample services (09)
@@ -168,6 +174,7 @@ private:
     void drainPosted();
 
     LaunchOptions m_options;
+    std::optional<core::ImageInventory> m_demoInventory; // --demo-inventory, until the demo mount takes it
     std::unique_ptr<ui::Graphics> m_graphics;
     std::optional<Localization> m_strings;
     ui::Window m_window;

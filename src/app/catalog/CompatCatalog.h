@@ -6,19 +6,24 @@
 #include "base/Result.h"
 #include "core/ops/Compat.h"
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace wl::app {
 
+// D-121: where the Uyumluluk dialog lists a guard — Windows' own features, or an app's needs.
+enum class CompatSection : std::uint8_t { Windows, Apps };
+
 struct CompatCatalogEntry {
-    core::ops::CompatGuard rule;
+    core::ops::CompatGuard rule; // rule.always: "core", on for good and not in the user's choice
     std::wstring nameTr;
     std::wstring nameEn;
     std::wstring descriptionTr;
     std::wstring descriptionEn;
     bool defaultOn = false;
+    CompatSection section = CompatSection::Windows;
 
     [[nodiscard]] const std::wstring& name(Language language) const {
         return language == Language::Turkish ? nameTr : nameEn;

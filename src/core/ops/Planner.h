@@ -1,13 +1,16 @@
 #pragma once
 // ChangeSet → ordered ApplyPlan (ARCHITECTURE §2.3). Order: the edition change before anything
 // else (DISM changes the edition of an image with nothing pending, and what follows then works on
-// the edition that will be installed), then removals (packages,
-// capabilities, AppX, system components), then features, drivers, updates, and registry/services
-// last (they may target files the earlier steps add or remove). Within a phase the user's order
-// is kept. The component store cleanup has a phase of its own right after the updates: that is
-// when there is something to clean (what the updates superseded; on untouched Microsoft media it
-// finds nothing), as in Microsoft's media refresh procedure. DISM refuses it (0x800F0806) when an
-// earlier step left a pending operation — enabling a feature such as .NET 3.5 does.
+// the edition that will be installed), then features, drivers and updates, then removals
+// (packages, capabilities, AppX, system components), and registry/services last (they may target
+// files the earlier steps add or remove). Within a phase the user's order is kept.
+// D-124: updates before removals, as the reference tool integrates before it removes. The other way round a
+// cumulative update failed on the removed components' store entries (0x80073712, "component
+// metadata corrupt", lab 2026-11-09: the D-120 preset on 25H2) and the ISO had no update.
+// The component store cleanup has a phase of its own after the updates: that is when there is
+// something to clean (what the updates superseded; on untouched Microsoft media it finds nothing),
+// as in Microsoft's media refresh procedure. DISM refuses it (0x800F0806) when an earlier step left
+// a pending operation — enabling a feature such as .NET 3.5 does.
 #include "core/ops/ChangeSet.h"
 
 #include <vector>
@@ -19,7 +22,7 @@ namespace wl::core::ops {
 // inbox drivers are already gone fails (0x80070002, measured), the other way round works.
 // Shrink: WinSxS at its smallest (D-079) — the very last step: afterwards DISM cannot service the
 // image any more (dism.exe steps of Settings — languages, default apps — included).
-enum class Phase : std::uint8_t { Edition, Remove, Features, Drivers, Updates, Apps, DeepRemove, Cleanup, Settings, Shrink };
+enum class Phase : std::uint8_t { Edition, Features, Drivers, Updates, Remove, Apps, DeepRemove, Cleanup, Settings, Shrink };
 
 struct PlanStep {
     Phase phase;

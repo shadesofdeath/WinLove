@@ -1,6 +1,8 @@
 #include "app/pages/SettingsPage.h"
 
 #include "app/SystemInfo.h"
+#include "core/image/dism/HostDism.h"
+#include "core/image/wim/WimGapi.h"
 #include "ui/widgets/Button.h"
 #include "ui/widgets/Label.h"
 #include "ui/widgets/SearchBox.h"
@@ -75,9 +77,9 @@ private:
 // 1px text.primary 2px out; its name after them. Click or ←/→ picks one.
 class AccentSwatches : public ui::Widget {
 public:
-    static constexpr float kW = 20.0f;
-    static constexpr float kH = 12.0f;
-    static constexpr float kGap = 12.0f;
+    static constexpr float kW = 20.0f; // D-107: round swatches
+    static constexpr float kH = 20.0f;
+    static constexpr float kGap = 10.0f;
 
     explicit AccentSwatches(std::vector<std::wstring> names) : m_names(std::move(names)) {
         setFocusable(true);
@@ -97,11 +99,11 @@ public:
         const float y = b.y + (b.height - kH) / 2;
         for (int i = 0; i < ui::kAccentCount; ++i) {
             const ui::RectF swatch{b.x + 2 + i * (kW + kGap), y, kW, kH};
-            canvas.fillRoundRect(swatch, ui::tokens::radius::r2, ui::accentSwatch(static_cast<ui::Accent>(i)));
+            canvas.fillRoundRect(swatch, kH / 2, ui::accentSwatch(static_cast<ui::Accent>(i)));
             if (static_cast<int>(m_selected) == i) {
-                canvas.strokeRoundRect(swatch.inset(-2, -2), ui::tokens::radius::r2 + 2, ui::tokens::Color::TextPrimary);
+                canvas.strokeRoundRect(swatch.inset(-3, -3), kH / 2 + 3, ui::tokens::Color::TextPrimary, 2.0f * canvas.scale());
             } else if (m_hover == i) {
-                canvas.strokeRoundRect(swatch.inset(-2, -2), ui::tokens::radius::r2 + 2, ui::tokens::Color::LineStrong);
+                canvas.strokeRoundRect(swatch.inset(-3, -3), kH / 2 + 3, ui::tokens::Color::LineStrong, 2.0f * canvas.scale());
             }
         }
         const float x = b.x + 2 + ui::kAccentCount * (kW + kGap);
@@ -156,7 +158,7 @@ private:
     }
 
     std::vector<std::wstring> m_names;
-    ui::Accent m_selected = ui::Accent::Copper;
+    ui::Accent m_selected = ui::Accent::Blue;
     int m_hover = -1;
     int m_down = -1;
 };
@@ -169,7 +171,7 @@ SettingsPage::SettingsPage(AppState& state, const Localization& strings, Intents
     m_form->addSection(s(Str::SettingsAppearance));
     m_theme = &m_form->addRow<ui::RadioGroup>(
         s(Str::SettingsTheme), std::wstring(), 0.0f,
-        std::vector<std::wstring>{s(Str::SettingsThemeDark), s(Str::SettingsThemeLight), s(Str::SettingsThemeHc),
+        std::vector<std::wstring>{s(Str::SettingsThemeDark), s(Str::SettingsThemeLight), s(Str::SettingsThemeBlack),
                                   s(Str::SettingsThemeSystem)},
         0);
     m_theme->setAccessible(ui::AccessRole::Group, s(Str::SettingsTheme));
@@ -178,8 +180,8 @@ SettingsPage::SettingsPage(AppState& state, const Localization& strings, Intents
     };
     m_accent = &m_form->addRow<AccentSwatches>(
         s(Str::SettingsAccent), std::wstring(), 0.0f,
-        std::vector<std::wstring>{s(Str::SettingsAccentCopper), s(Str::SettingsAccentSea), s(Str::SettingsAccentPomegranate),
-                                  s(Str::SettingsAccentSky), s(Str::SettingsAccentOlive)});
+        std::vector<std::wstring>{s(Str::SettingsAccentBlue), s(Str::SettingsAccentCopper), s(Str::SettingsAccentSea),
+                                  s(Str::SettingsAccentPomegranate), s(Str::SettingsAccentOlive)});
     m_accent->setAccessible(ui::AccessRole::Group, s(Str::SettingsAccent));
     m_accent->onChange = [this](ui::Accent accent) { edit([accent](AppSettings& a) { a.accent = accent; }); };
     m_motion = &m_form->addRow<ui::Toggle>(s(Str::SettingsReduceMotion), std::wstring(), ui::tokens::size::toggleW,
@@ -237,6 +239,47 @@ SettingsPage::SettingsPage(AppState& state, const Localization& strings, Intents
                                   (dismFromAdk() ? L" \u00b7 " + s(Str::SettingsDismAdk) : std::wstring()),
                               ui::tokens::TypeStyle::Mono,
                               Color::TextSecondary);
+
+    // D-123: the reference tool's Tool settings › DISM / Performance / Presets, the way WinLove can do them.
+    m_form->addSection(s(Str::SettingsEngine));
+    std::vector<std::wstring> engines{s(Str::SettingsAutomatic)};
+    m_dismChoices = {DismEngineChoice::Auto};
+    if (const std::wstring host = core::hostDismVersion(); !host.empty()) {
+        engines.push_back(m_strings.format(Str::SettingsDismHost, {{L"v", L"v" + host}}));
+        m_dismChoices.push_back(DismEngineChoice::Host);
+    }
+    if (const std::wstring adk = core::adkDismVersion(); !adk.empty()) {
+        engines.push_back(m_strings.format(Str::SettingsDismAdkItem, {{L"v", L"v" + adk}}));
+        m_dismChoices.push_back(DismEngineChoice::Adk);
+    }
+    m_dismEngine = &m_form->addRow<ui::Dropdown>(s(Str::SettingsDismEngine), std::wstring(), kLanguageWidth + 60, std::wstring(),
+                                                 std::move(engines), 0);
+    m_dismEngine->setAccessible(ui::AccessRole::Group, s(Str::SettingsDismEngine));
+    m_dismEngine->onChange = [this](int index) {
+        if (index >= 0 && index < static_cast<int>(m_dismChoices.size())) {
+            const DismEngineChoice choice = m_dismChoices[static_cast<std::size_t>(index)];
+            edit([choice](AppSettings& a) { a.dismEngine = choice; });
+        }
+    };
+    std::vector<std::wstring> threads{s(Str::SettingsAutomatic)};
+    m_processors = std::clamp(static_cast<int>(GetActiveProcessorCount(ALL_PROCESSOR_GROUPS)), 1, 64);
+    for (int n = 1; n <= m_processors; ++n) {
+        threads.push_back(std::to_wstring(n));
+    }
+    m_esdThreads = &m_form->addRow<ui::Dropdown>(s(Str::SettingsEsdThreads), std::wstring(), kLanguageWidth, std::wstring(),
+                                                 std::move(threads), 0);
+    m_esdThreads->setAccessible(ui::AccessRole::Group, s(Str::SettingsEsdThreads));
+    m_esdThreads->onChange = [this](int index) {
+        const int n = std::max(index, 0);
+        core::setCompressionThreads(n); // the next export already uses it
+        edit([n](AppSettings& a) { a.esdThreads = n; });
+    };
+
+    m_form->addSection(s(Str::SettingsPresets));
+    m_presetInIso = &m_form->addRow<ui::Toggle>(s(Str::SettingsPresetInIso), std::wstring(), ui::tokens::size::toggleW,
+                                                std::wstring(), true);
+    m_presetInIso->setAccessible(ui::AccessRole::CheckBox, s(Str::SettingsPresetInIso));
+    m_presetInIso->onChange = [this](bool on) { edit([on](AppSettings& a) { a.presetInIso = on; }); };
     setAccessible(ui::AccessRole::Group, s(Str::SettingsTitle));
 
     m_subscription = m_state.subscribe([this](AppState::Change change) {
@@ -299,7 +342,11 @@ void SettingsPage::resetToDefaults() {
             a.workRoot = defaults.workRoot;
             a.mountFolder = defaults.mountFolder;
         }
+        a.dismEngine = defaults.dismEngine; // D-123 (the engine itself follows on the next start)
+        a.esdThreads = defaults.esdThreads;
+        a.presetInIso = defaults.presetInIso;
     });
+    core::setCompressionThreads(0);
 }
 
 void SettingsPage::sync() {
@@ -344,6 +391,21 @@ void SettingsPage::sync() {
     };
     path(*m_work, settings.workRoot, /*allowEmpty=*/false);
     path(*m_mount, settings.mountFolder, /*allowEmpty=*/true);
+
+    // D-123
+    const auto choice = std::ranges::find(m_dismChoices, settings.dismEngine);
+    m_dismEngine->setSelected(choice == m_dismChoices.end() ? 0 : static_cast<int>(choice - m_dismChoices.begin()));
+    const bool usingAdk = core::dismLocation().adk;
+    const bool asStarted = settings.dismEngine == DismEngineChoice::Auto ||
+                           (settings.dismEngine == DismEngineChoice::Adk) == usingAdk;
+    m_form->setHint(*m_dismEngine, asStarted ? (settings.dismEngine == DismEngineChoice::Auto ? s(Str::SettingsDismAutoHint) : std::wstring())
+                                             : s(Str::SettingsDismRestartHint));
+    m_esdThreads->setSelected(std::clamp(settings.esdThreads, 0, m_processors));
+    m_form->setHint(*m_esdThreads, s(Str::SettingsEsdThreadsHint));
+    if (m_presetInIso->isOn() != settings.presetInIso) {
+        m_presetInIso->setOn(settings.presetInIso);
+    }
+    m_form->setHint(*m_presetInIso, s(Str::SettingsPresetInIsoHint));
     invalidate();
 }
 

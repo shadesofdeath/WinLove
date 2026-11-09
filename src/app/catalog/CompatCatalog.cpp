@@ -45,13 +45,17 @@ Result<CompatCatalog> CompatCatalog::parse(std::string_view json) {
         guard.rule.appx = listOf(entry, "appx");
         guard.rule.components = listOf(entry, "components");
         guard.rule.services = listOf(entry, "services");
+        guard.rule.capabilities = listOf(entry, "capabilities");
         guard.nameTr = textOf(entry, "tr");
         guard.nameEn = textOf(entry, "en");
         guard.descriptionTr = textOf(entry, "description_tr");
         guard.descriptionEn = textOf(entry, "description_en");
-        guard.defaultOn = entry.value("default", false);
+        guard.rule.always = entry.value("always", false);
+        guard.defaultOn = entry.value("default", false) || guard.rule.always;
+        guard.section = textOf(entry, "section") == L"apps" ? CompatSection::Apps : CompatSection::Windows;
         if (guard.rule.id.empty() || guard.nameTr.empty() || guard.nameEn.empty() ||
-            (guard.rule.appx.empty() && guard.rule.components.empty() && guard.rule.services.empty()) ||
+            (guard.rule.appx.empty() && guard.rule.components.empty() && guard.rule.services.empty() &&
+             guard.rule.capabilities.empty()) ||
             catalog.find(guard.rule.id)) {
             log::warn("app", L"compat.json: a guard without an id, a name or anything to keep was skipped: " + guard.rule.id);
             continue;

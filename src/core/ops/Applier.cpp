@@ -1,4 +1,5 @@
 #include "core/ops/Applier.h"
+#include "core/ops/UpdateGuard.h"
 
 #include "base/Log.h"
 #include "base/Utf8.h"
@@ -100,6 +101,21 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
         }
         return *registry;
     };
+    if (options.servicingClosed != ServicingClosed::No) {
+        // CBS on a shrunk store stops half way and leaves the image unserviceable for good (report
+        // 2026-11-07): never ask DISM; the step is skipped, the save goes on.
+        if (usesServicing(op)) {
+            return fail(ErrorCode::Unsupported,
+                        options.servicingClosed == ServicingClosed::StoreShrunk
+                            ? L"skipped: the image's WinSxS is shrunk, Windows can no longer service its packages"
+                            : L"skipped: CBS marked this image unserviceable after an offline servicing failure",
+                        op.target, kServicingClosedCode);
+        }
+        if (op.kind == OpKind::ShrinkStore && options.servicingClosed == ServicingClosed::StoreShrunk) {
+            log::info("apply", L"WinSxS is already shrunk: nothing left to remove");
+            return {};
+        }
+    }
     switch (op.kind) {
     case OpKind::DisableFeature: {
         auto disabled = session.disableFeature(op.target, task);
@@ -210,7 +226,7 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
             return std::unexpected(recipe.error());
         }
         registry.reset(); // the recipe loads the hives itself, with the DISM session closed
-        return removeComponent(session, *recipe, task);
+        return removeComponent(session, *recipe, task, /*packages=*/options.servicingClosed == ServicingClosed::No);
     }
     case OpKind::WriteFile: return writeImageFile(session.mountPath(), op.target, imageFileBytes(op.value));
     case OpKind::CopyFile: return copyFileIntoImage(session.mountPath(), op.target, op.value);
@@ -343,8 +359,41 @@ std::size_t ApplyReport::holdingFailures() const {
 }
 
 bool unchangedByFailure(const StepResult& result) noexcept {
-    return !result.outcome && result.step.operation.kind == OpKind::CleanupImage &&
-           static_cast<std::uint32_t>(result.outcome.error().hresult) == 0x800F0806;
+    if (result.outcome) {
+        return false;
+    }
+    const auto& error = result.outcome.error();
+    const auto code = static_cast<std::uint32_t>(error.hresult);
+    // CBS_E_IMAGE_UNSERVICEABLE: refused at the session's start, before anything — by DISM, or by
+    // WinLove on a closed image. The step that damaged the image answers something else and holds.
+    const bool closed = code == static_cast<std::uint32_t>(kServicingClosedCode);
+    switch (result.step.operation.kind) {
+    case OpKind::CleanupImage: return code == 0x800F0806 || closed;
+    // A capability whose package is permanent (Defender for Endpoint, Work Folders …): CBS answers
+    // CBS_E_CANNOT_UNINSTALL before it stages anything. A preset from another image can queue one.
+    case OpKind::RemoveCapability: return code == 0x800F0825 || closed;
+    case OpKind::EnableFeature:
+    case OpKind::DisableFeature:
+    case OpKind::RemovePackage:
+    case OpKind::AddPackage:
+    case OpKind::SetEdition: return closed;
+    // Only WinLove's own refusal (nothing touched): DISM's would come after the recipe's files.
+    case OpKind::RemoveComponent: return closed && error.code == ErrorCode::Unsupported;
+    default: return false;
+    }
+}
+
+bool usesServicing(const Operation& op) noexcept {
+    switch (op.kind) {
+    case OpKind::EnableFeature:
+    case OpKind::DisableFeature:
+    case OpKind::RemovePackage:
+    case OpKind::RemoveCapability:
+    case OpKind::SetEdition:
+    case OpKind::CleanupImage: return true;
+    case OpKind::AddPackage: return op.value != L"safeos"; // the Safe OS update goes into WinRE, its own image
+    default: return false;
+    }
 }
 
 ApplyReport apply(const ApplyPlan& plan, DismSession& session, const TaskContext& task, ErrorPolicy policy,
@@ -405,6 +454,18 @@ ApplyReport apply(const ApplyPlan& plan, DismSession& session, const TaskContext
     if (!report.completed) {
         log::warn("apply", L"cancelled during the last step");
         return report;
+    }
+    if (options.updateGuard) {
+        // D-125: only what ran is kept; a failed step asked for nothing the image has.
+        std::vector<Operation> ran;
+        for (const auto& r : report.results) {
+            if (r.outcome) {
+                ran.push_back(r.step.operation);
+            }
+        }
+        if (auto written = writeUpdateGuard(session.mountPath(), updateGuardPlan(ran)); !written) {
+            log::warn("apply", L"update guard not written: " + describe(written.error()));
+        }
     }
     task.report(1.0, L"done");
     return report;

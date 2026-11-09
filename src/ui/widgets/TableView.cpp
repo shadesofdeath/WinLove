@@ -79,7 +79,7 @@ TableView::TableView(std::vector<TableColumn> columns) : m_columns(std::move(col
 
 RectF TableView::body() const {
     const RectF b = bounds();
-    return {b.x, b.y + kHeader, b.width, std::max(b.height - kHeader, 0.0f)};
+    return {b.x, b.y + m_header, b.width, std::max(b.height - m_header, 0.0f)};
 }
 
 std::vector<float> TableView::columnXs() const {
@@ -102,7 +102,7 @@ std::vector<float> TableView::columnXs() const {
 void TableView::layout() {
     const RectF v = body();
     m_scrollBar->setBounds({v.right() - ScrollBar::kWidth, v.y, ScrollBar::kWidth, v.height});
-    m_scrollBar->setRange(static_cast<float>(m_count) * kRow, v.height);
+    m_scrollBar->setRange(static_cast<float>(m_count) * m_row, v.height);
     m_offset = std::clamp(m_offset, 0.0f, m_scrollBar->maxOffset());
     m_scrollBar->setOffset(m_offset);
 }
@@ -148,17 +148,17 @@ RectF TableView::cellRect(int row, int column) const {
     row = toVisual(row);
     const auto xs = columnXs();
     const RectF v = body();
-    const float y = std::round(v.y + static_cast<float>(row) * kRow - m_offset);
+    const float y = std::round(v.y + static_cast<float>(row) * m_row - m_offset);
     return {xs[static_cast<std::size_t>(column)], y, xs[static_cast<std::size_t>(column) + 1] - xs[static_cast<std::size_t>(column)],
-            kRow};
+            m_row};
 }
 
 RectF TableView::focusRect() const {
     if (m_selected >= 0) {
         const RectF v = body();
-        const float y = v.y + static_cast<float>(m_selected) * kRow - m_offset;
-        if (y >= v.y - 1 && y + kRow <= v.bottom() + 1) {
-            return {v.x, y, v.width, kRow};
+        const float y = v.y + static_cast<float>(m_selected) * m_row - m_offset;
+        if (y >= v.y - 1 && y + m_row <= v.bottom() + 1) {
+            return {v.x, y, v.width, m_row};
         }
     }
     return bounds();
@@ -172,11 +172,11 @@ void TableView::setOffset(float offset) {
 
 void TableView::reveal(int row) {
     const RectF v = body();
-    const float top = static_cast<float>(row) * kRow;
+    const float top = static_cast<float>(row) * m_row;
     if (top < m_offset) {
         setOffset(top);
-    } else if (top + kRow > m_offset + v.height) {
-        setOffset(top + kRow - v.height);
+    } else if (top + m_row > m_offset + v.height) {
+        setOffset(top + m_row - v.height);
     }
 }
 
@@ -184,7 +184,7 @@ bool TableView::onWheel(PointF p, float lines) {
     if (!m_scrollBar->needed()) {
         return false;
     }
-    setOffset(m_offset - lines * kRow);
+    setOffset(m_offset - lines * m_row);
     onPointerMove(p); // no mouse-move follows a wheel: the row under the pointer changed
     return true;
 }
@@ -194,7 +194,7 @@ int TableView::rowAt(PointF p) const {
     if (!v.contains(p)) {
         return -1;
     }
-    const int row = static_cast<int>(std::floor((p.y - v.y + m_offset) / kRow));
+    const int row = static_cast<int>(std::floor((p.y - v.y + m_offset) / m_row));
     return row >= 0 && row < m_count ? row : -1;
 }
 
@@ -212,9 +212,12 @@ void TableView::onPointerMove(PointF p) {
     const int row = rowAt(p);
     const int column = row >= 0 ? columnAt(p.x) : -1;
     const RectF b = bounds();
-    int header = p.y >= b.y && p.y < b.y + kHeader ? columnAt(p.x) : -1;
+    int header = p.y >= b.y && p.y < b.y + m_header ? columnAt(p.x) : -1;
     if (header >= 0 && !m_columns[static_cast<std::size_t>(header)].sortable) {
         header = -1;
+    }
+    if (row != m_hoverRow && tooltipFor) {
+        setTooltip(row >= 0 ? tooltipFor(toData(row)) : std::wstring{}); // D-110: a row says what it is
     }
     if (row != m_hoverRow || column != m_hoverColumn || header != m_hoverHeader) {
         m_hoverRow = row;
@@ -233,7 +236,7 @@ void TableView::onHoverChanged(bool hovered) {
 
 void TableView::onPointerDown(PointF p) {
     const RectF b = bounds();
-    if (p.y >= b.y && p.y < b.y + kHeader && sortKey) {
+    if (p.y >= b.y && p.y < b.y + m_header && sortKey) {
         // A sortable header: ascending, descending, then the owner's order again.
         const int column = columnAt(p.x);
         if (column >= 0 && m_columns[static_cast<std::size_t>(column)].sortable) {
@@ -287,7 +290,7 @@ bool TableView::onKeyDown(const KeyEvent& key) {
     if (m_count == 0) {
         return false;
     }
-    const int page = std::max(static_cast<int>(body().height / kRow) - 1, 1);
+    const int page = std::max(static_cast<int>(body().height / m_row) - 1, 1);
     switch (key.virtualKey) {
     case VK_DOWN: select(m_selected < 0 ? 0 : m_selected + 1, true); return true;
     case VK_UP: select(m_selected < 0 ? 0 : m_selected - 1, true); return true;
@@ -312,7 +315,7 @@ void TableView::paint(Canvas& canvas) {
     // Header.
     for (std::size_t i = 0; i < m_columns.size(); ++i) {
         const auto& c = m_columns[i];
-        const RectF cell{xs[i] + kCellPad, b.y, xs[i + 1] - xs[i] - 2 * kCellPad, kHeader};
+        const RectF cell{xs[i] + kCellPad, b.y, xs[i + 1] - xs[i] - 2 * kCellPad, m_header};
         const bool sorted = static_cast<int>(i) == m_sortColumn;
         const Color ink = sorted || static_cast<int>(i) == m_hoverHeader ? Color::TextSecondary : Color::TextTertiary;
         if (sorted) {
@@ -320,30 +323,34 @@ void TableView::paint(Canvas& canvas) {
             const float w = std::min(std::ceil(textWidth(c.title, TypeStyle::Caption, 40.0f)), cell.width - kSortArrow - 4);
             const float ax = c.align == TextAlign::Trailing ? cell.right() - w - 4 - kSortArrow : cell.x + w + 4;
             canvas.drawIcon(m_sortAscending ? icons::Icon::ArrowUp : icons::Icon::ArrowDown,
-                            {ax, cell.y + (kHeader - kSortArrow) / 2}, Color::AccentBase, IconVariant::Regular16, kSortArrow);
+                            {ax, cell.y + (m_header - kSortArrow) / 2}, Color::AccentBase, IconVariant::Regular16, kSortArrow);
         }
         canvas.drawText(c.title, cell, TypeStyle::Caption, ink, c.align);
     }
-    canvas.hairlineH(b.x, b.y + kHeader - (1.0f / canvas.scale()), b.width, Color::LineSubtle);
+    if (m_header > 0) {
+        canvas.hairlineH(b.x, b.y + m_header - (1.0f / canvas.scale()), b.width, Color::LineSubtle);
+    }
 
     const RectF v = body();
     canvas.pushClip(v);
-    const int first = std::max(static_cast<int>(m_offset / kRow), 0);
-    const int last = std::min(static_cast<int>((m_offset + v.height) / kRow) + 1, m_count - 1);
+    const int first = std::max(static_cast<int>(m_offset / m_row), 0);
+    const int last = std::min(static_cast<int>((m_offset + v.height) / m_row) + 1, m_count - 1);
     for (int row = first; row <= last; ++row) {
-        const float y = std::round(v.y + static_cast<float>(row) * kRow - m_offset);
-        const RectF line{v.x, y, v.width, kRow};
+        const float y = std::round(v.y + static_cast<float>(row) * m_row - m_offset);
+        const RectF line{v.x, y, v.width, m_row};
         const bool selected = row == m_selected;
         const bool hovered = row == m_hoverRow;
-        if (selected) {
+        if (selected) { // Painter::RowBackground: acSoft + a 2px accent bar inset 10 (less on short rows)
             canvas.fillRect(line, Color::AccentSubtle);
+            const float inset = std::min(10.0f, m_row / 4);
+            canvas.fillRoundRect({line.x, y + inset, 2.0f, m_row - 2 * inset}, 1.0f, Color::AccentBase);
         } else if (hovered) {
-            canvas.fillRect(line, Color::BgRaised);
+            canvas.fillRect(line, Color::BgHover);
         }
-        canvas.hairlineH(line.x, line.bottom() - (1.0f / canvas.scale()), line.width, Color::LineSubtle);
+        // D-109: the reference tool's grids have no lines between rows.
         if (paintCell) {
             for (std::size_t i = 0; i < m_columns.size(); ++i) {
-                const RectF cell{xs[i] + kCellPad, y, xs[i + 1] - xs[i] - 2 * kCellPad, kRow};
+                const RectF cell{xs[i] + kCellPad, y, xs[i + 1] - xs[i] - 2 * kCellPad, m_row};
                 paintCell(canvas, toData(row), static_cast<int>(i), cell,
                           CellState{hovered, selected, hovered && static_cast<int>(i) == m_hoverColumn});
             }

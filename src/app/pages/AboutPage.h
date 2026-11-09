@@ -5,6 +5,7 @@
 // fonts, third party) and two actions: the licenses of what is bundled, and the log folder.
 // Nothing here can be queued or applied.
 #include "app/Localization.h"
+#include "app/shell/PageView.h"
 #include "app/state/AppState.h"
 #include "ui/widgets/Button.h"
 
@@ -15,7 +16,7 @@
 
 namespace wl::app {
 
-class AboutPage : public ui::Widget {
+class AboutPage : public ui::Widget, public ScrollableBody {
 public:
     struct Intents {
         std::function<void()> showLicenses;
@@ -27,6 +28,8 @@ public:
 
     void layout() override;
     void paint(ui::Canvas& canvas) override;
+    // 2026-11-09: a short window scrolls the page (the Sistem card was cut off).
+    [[nodiscard]] float contentHeight() const override;
 
     // Where the links go (README and the release use the same).
     static constexpr const wchar_t* kDeveloperUrl = L"https://github.com/shadesofdeath";
@@ -35,12 +38,21 @@ public:
     static constexpr const wchar_t* kLicenseUrl = L"https://github.com/shadesofdeath/WinLove/blob/main/LICENSE";
 
 private:
+    struct Cards {
+        ui::RectF hero, love, links, system;
+    };
+    [[nodiscard]] Cards cards() const; // D-114
+    ui::Button* m_heroProject = nullptr;
+    ui::Button* m_heroIssue = nullptr;
     struct Link {
         Str label;
         ui::Button* button;
     };
     void refresh();
     [[nodiscard]] float freeBodyHeight(float width) const;
+    // A Sistem row as tall as its value needs at `cardWidth` (long paths wrap, never "…").
+    [[nodiscard]] float systemRowHeight(std::size_t row, float cardWidth) const;
+    [[nodiscard]] float systemRowsHeight(float cardWidth) const;
 
     AppState& m_state;
     const Localization& m_strings;

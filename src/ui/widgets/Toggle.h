@@ -24,6 +24,7 @@ public:
     [[nodiscard]] SizeF measure(SizeF available) override;
     void paint(Canvas& canvas) override;
     [[nodiscard]] RectF focusRect() const override;
+    [[nodiscard]] float focusRadius() const override { return tokens::size::toggleH / 2; }
     [[nodiscard]] Cursor cursor() const override { return Cursor::Hand; }
     void onClick() override;
     bool onKeyDown(const KeyEvent& key) override;

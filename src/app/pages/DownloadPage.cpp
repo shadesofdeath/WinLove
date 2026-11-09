@@ -29,12 +29,12 @@ using core::uup::BuildKind;
 
 namespace {
 
-constexpr float kTop = 12.0f;
-constexpr float kGap = 12.0f;
+constexpr float kTop = 0.0f;
+constexpr float kGap = 10.0f;
 constexpr float kPanel = 320.0f;
-constexpr float kPad = 16.0f;
-constexpr float kLine = 16.0f;
-constexpr float kControl = 24.0f;
+constexpr float kPad = 20.0f; // D-107 / D-108: the panel padding
+constexpr float kLine = 18.0f;
+constexpr float kControl = ui::tokens::size::control;
 enum Column : int { kVersion, kBuildCol, kArchCol, kDateCol };
 
 std::uint64_t unixToFiletime(std::int64_t seconds) {
@@ -383,8 +383,9 @@ public:
 
     void paint(ui::Canvas& canvas) override {
         const RectF b = bounds();
-        canvas.fillRect(b, Color::BgPanel);
-        canvas.line({b.x, b.y}, {b.x, b.bottom()}, Color::LineSubtle);
+        // D-107: a card on the page (panel color, radius 12, line border).
+        canvas.fillRoundRect(b, ui::tokens::radius::r3, Color::BgPanel);
+        canvas.strokeRoundRect(b, ui::tokens::radius::r3, Color::LineSubtle);
         const float x = b.x + kPad;
         const float w = b.width - 2 * kPad;
         if (!m_build) {
@@ -394,8 +395,14 @@ public:
                 paintJob(canvas, *job, {x, b.y + kPad + kLine + kGap, w, 80});
             } else if (const float notice = noticeHeight(w); notice > 0) {
                 paintNotice(canvas, *m_state.windowsDownloadNotice(), {x, b.y + kPad, w, notice});
+            } else {
+                // D-108: not an empty card — what goes here.
+                canvas.drawText(m_strings.get(Str::DownloadPickTitle), {x, b.y + kPad, w, kLine}, TypeStyle::BodyStrong,
+                                Color::TextSecondary);
+                canvas.drawTextWrapped(m_strings.get(Str::DownloadPickHint), {x, b.y + kPad + kLine + 6, w, 80}, TypeStyle::Small,
+                                       Color::TextTertiary);
             }
-            return; // otherwise the page says what to do
+            return;
         }
         float y = b.y + kPad;
         canvas.drawText(m_build->title, {x, y, w, kLine}, TypeStyle::BodyStrong, Color::TextPrimary);
@@ -545,7 +552,7 @@ private:
             title = m_strings.format(Str::DownloadConverting, {{L"step", stepName(job.step)}});
         }
         const float angle = static_cast<float>(static_cast<int>(m_now / 100.0) % 8) * 45.0f;
-        canvas.drawIcon(ui::icons::Icon::Spinner, {r.x, r.y + 4}, Color::AccentBase, ui::IconVariant::Regular16, 0,
+        canvas.drawIcon(ui::icons::Icon::Spinner, {r.x, r.y + (r.height - 16) / 2}, Color::AccentBase, ui::IconVariant::Regular16, 0,
                         ui::reducedMotion() ? 0.0f : angle);
         canvas.drawText(title, {r.x + 24, r.y + 4, r.width - 24, kLine}, TypeStyle::BodyStrong, Color::TextPrimary);
         const float fraction = static_cast<float>(std::clamp(job.fraction, 0.0, 1.0));
@@ -613,9 +620,9 @@ DownloadPage::DownloadPage(AppState& state, const Localization& strings, Languag
     m_refresh->onInvoke = [this] { loadBuilds(); };
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::DownloadColVersion), 0, ui::TextAlign::Leading, true},
-        {strings.get(Str::DownloadColBuild), 110, ui::TextAlign::Leading, true},
-        {strings.get(Str::DownloadColArch), 72, ui::TextAlign::Leading, true},
-        {strings.get(Str::DownloadColDate), 110, ui::TextAlign::Leading, true},
+        {strings.get(Str::DownloadColBuild), 126, ui::TextAlign::Leading, true},
+        {strings.get(Str::DownloadColArch), 82, ui::TextAlign::Leading, true},
+        {strings.get(Str::DownloadColDate), 126, ui::TextAlign::Leading, true},
     });
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState) {
         paintCell(c, row, column, rect);
@@ -1027,16 +1034,32 @@ void DownloadPage::layout() {
     const float listWidth = std::max(b.width - kPanel, 200.0f);
     float x = b.x;
     const float y = b.y + kTop;
+    // D-114: one row while it fits (the search box gives way first), the filters on a second row
+    // under it when the window is narrow — never one control drawn over another.
     const ui::SizeF refresh = m_refresh->measure({});
-    m_refresh->setBounds({b.x + listWidth - kGap - refresh.width, y, refresh.width, kControl});
-    m_search->setBounds({x, y, 240, kControl});
-    x += 240 + 8;
-    m_product->setBounds({x, y, 120, kControl});
-    x += 120 + 8;
-    m_kind->setBounds({x, y, 110, kControl});
-    x += 110 + 8;
-    m_arch->setBounds({x, y, 96, kControl});
-    const RectF list{b.x, y + kControl + kGap, listWidth - kGap, b.bottom() - (y + kControl + kGap)};
+    const float available = listWidth - kGap;
+    constexpr float kFilters = 120 + 8 + 110 + 8 + 96;
+    const float searchOneRow = available - (kFilters + 8 + refresh.width + 8);
+    const bool oneRow = searchOneRow >= 160;
+    m_refresh->setBounds({b.x + available - refresh.width, y, refresh.width, kControl});
+    const float searchWidth = oneRow ? std::min(searchOneRow, 320.0f) : std::max(available - refresh.width - 8, 120.0f);
+    m_search->setBounds({x, y, searchWidth, kControl});
+    float fy = y;
+    if (oneRow) {
+        x += searchWidth + 8;
+    } else {
+        fy = y + kControl + 8;
+    }
+    // The filters keep their proportions and shrink together when even their own row is narrow.
+    const float k = oneRow ? 1.0f : std::min(1.0f, available / kFilters);
+    const float productW = std::floor(120 * k), kindW = std::floor(110 * k), archW = std::floor(96 * k);
+    m_product->setBounds({x, fy, productW, kControl});
+    x += productW + 8;
+    m_kind->setBounds({x, fy, kindW, kControl});
+    x += kindW + 8;
+    m_arch->setBounds({x, fy, archW, kControl});
+    const float top = fy + kControl + kGap;
+    const RectF list{b.x, top, available, b.bottom() - top};
     m_table->setBounds(list);
     m_empty->setBounds(list);
     m_panel->setBounds({b.x + listWidth, b.y, kPanel, b.height});

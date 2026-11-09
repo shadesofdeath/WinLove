@@ -77,7 +77,7 @@ function Set-SetupHooks([bool] $on) {
         $key = "HKLM:\SYSTEM\Setup\FirstBoot\$phase"
         if ($on) {
             Confirm-Key $key
-            $line = 'cmd.exe /c powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -Stage {1}' -f (Join-Path $here 'oobe.ps1'), $phase.ToLower()
+            $line = 'cmd.exe /c powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -Stage {1}' -f (Join-Path $here 'oobe.ps1'), $phase.ToLowerInvariant()
             Set-ItemProperty -Path $key -Name $hookName -Value $line -Type String
         } else {
             Remove-ItemProperty -Path $key -Name $hookName -ErrorAction SilentlyContinue
@@ -394,7 +394,7 @@ function Get-WifiProfile($net, [string] $key, [bool] $autoConnect) {
     $name = [System.Security.SecurityElement]::Escape($net.Ssid)
     $shared = ''
     if ($auth -in 'WPAPSK', 'WPA2PSK', 'WPA3SAE') {
-        $type = if ($key -match '^[0-9A-Fa-f]{64}$') { 'networkKey' } else { 'passPhrase' }
+        $type = if ($key -cmatch '^[0-9A-Fa-f]{64}$') { 'networkKey' } else { 'passPhrase' }
         $shared = '<sharedKey><keyType>{0}</keyType><protected>false</protected><keyMaterial>{1}</keyMaterial></sharedKey>' -f $type, [System.Security.SecurityElement]::Escape($key)
     }
     return ('<?xml version="1.0"?><WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1"><name>{0}</name>' +
@@ -1501,7 +1501,7 @@ function Show-Choices {
         if ($on -and -not $was) { Start-Pop $badge }
     }
     foreach ($ring in $ui.Accents.Children) {
-        $on = ([string] $ring.Tag).ToLower() -eq $script:accent.ToLower()
+        $on = ([string] $ring.Tag).ToLowerInvariant() -eq $script:accent.ToLowerInvariant()
         if ($on) { Set-Res $ring ([System.Windows.Controls.Border]::BorderBrushProperty) 'Text1' } else { $ring.BorderBrush = [System.Windows.Media.Brushes]::Transparent }
         $tick = $ring.Child.Child
         $was = $tick.Visibility -eq 'Visible'
@@ -1551,7 +1551,7 @@ function Update-Art {
     $ui.ArtClock.Text = $there.ToString('HH:mm', $culture)
     $ui.ArtDate.Text = $there.ToString('dddd, d MMMM', $culture)
     $pc = $ui.PcName.Text.Trim()
-    $ui.ArtPcName.Text = $(if ($pc) { $pc.ToUpper() } else { 'PC' })
+    $ui.ArtPcName.Text = $(if ($pc) { $pc.ToUpperInvariant() } else { 'PC' })
     $ui.ArtZone.Text = $zone.DisplayName
     # look
     $ui.MiniWall.Background = $(if ($dark) { New-Slope '#22355F' '#16264C' '#08102A' } else { New-Slope '#E2EBF8' '#C9D9F3' '#A9C3EE' })
@@ -1965,10 +1965,10 @@ function Show-PageNow([int] $index) {
     Update-Next
 }
 
-$reserved = @('administrator', 'guest', 'defaultaccount', 'wdagutilityaccount', 'system', 'none', ([string] $data.setupAccount).ToLower())
+$reserved = @('administrator', 'guest', 'defaultaccount', 'wdagutilityaccount', 'system', 'none', ([string] $data.setupAccount).ToLowerInvariant())
 function Get-DefaultComputerName([string] $user) {
     if ($data.computerName) { return [string] $data.computerName } # what the answer file suggested
-    $clean = ($user.ToUpper() -replace '[^A-Z0-9]', '')
+    $clean = ($user.ToUpperInvariant() -creplace '[^A-Z0-9]', '')
     if ($clean.Length -gt 12) { $clean = $clean.Substring(0, 12) }
     if (-not $clean) { return 'PC' }
     return $clean + '-PC'
@@ -1979,13 +1979,13 @@ function Test-Page([int] $index) {
         $name = $ui.UserName.Text.Trim()
         if (-not $name) { return $t.errorName }
         if ($name -match '["/\\\[\]:;|=,+*?<>@%]' -or $name.Trim('.') -eq '') { return $t.errorNameChars }
-        if ($reserved -contains $name.ToLower()) { return $t.errorNameTaken }
+        if ($reserved -contains $name.ToLowerInvariant()) { return $t.errorNameTaken }
         if (Get-LocalUser -Name $name -ErrorAction SilentlyContinue) { return $t.errorNameTaken }
         if ($ui.Pass.Password -ne $ui.Pass2.Password) { return $t.errorPasswords }
         if (-not $ui.Pass.Password -and -not $data.allowEmptyPassword) { return $t.errorPasswordEmpty }
     } elseif ($id -eq 'computer') {
         $pc = $ui.PcName.Text.Trim()
-        if ($pc -notmatch '^[A-Za-z0-9-]{1,15}$' -or $pc -match '^[0-9]+$') { return $t.errorComputer }
+        if ($pc -cnotmatch '^[A-Za-z0-9-]{1,15}$' -or $pc -cmatch '^[0-9]+$') { return $t.errorComputer }
     }
     return ''
 }
@@ -2154,7 +2154,7 @@ $zoneId = if ((Test-Shown 'computer') -and $ui.Zone.SelectedItem) { [string] $ui
 # enough to be read: the work itself takes about two seconds in all.
 $dot = ' ' + [char] 0xB7 + ' '
 function Get-Named($list, [string] $key, [string] $value) {
-    $m = @($list) | Where-Object { $_ -and ([string] $_.$key).ToLower() -eq $value.ToLower() } | Select-Object -First 1
+    $m = @($list) | Where-Object { $_ -and ([string] $_.$key).ToLowerInvariant() -eq $value.ToLowerInvariant() } | Select-Object -First 1
     if ($m) { return (Tr $m.nameKey $m.name) }
     return ''
 }

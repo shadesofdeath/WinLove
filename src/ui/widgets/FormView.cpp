@@ -1,6 +1,7 @@
 #include "ui/widgets/FormView.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace wl::ui {
 
@@ -8,9 +9,9 @@ namespace {
 using tokens::Color;
 using tokens::TypeStyle;
 constexpr float kHintGap = 8.0f;
-constexpr float kRowPad = (FormView::kRow - tokens::size::control) / 2;
-constexpr float kLabelInset = 10.0f; // room for the changed-row bar left of the labels (D-091)
-constexpr float kMarkHeight = 14.0f;
+constexpr float kRowPad = (FormView::kRow - FormView::kControl) / 2;
+constexpr float kLabelInset = 16.0f; // D-114: inside the section card
+constexpr float kMark = 6.0f; // D-107: the changed-row dot after the label
 } // namespace
 
 FormView::FormView(float labelWidth) : m_labelWidth(labelWidth) {
@@ -94,7 +95,7 @@ float heightOf(bool control, bool hidden) {
 } // namespace
 
 float FormView::contentHeight() const {
-    float height = 0;
+    float height = sectionCount() > 0 ? 12.0f : 0.0f; // D-114: room under the last card
     for (const auto& row : m_rows) {
         height += heightOf(row.control != nullptr, row.hidden);
     }
@@ -166,7 +167,7 @@ void FormView::layout() {
             continue;
         }
         const float width = row.width > 0 ? row.width : row.control->measure({}).width;
-        row.control->setBounds({x, y + kRowPad, width, tokens::size::control});
+        row.control->setBounds({x, y + kRowPad, width, kControl});
         y += kRow;
     }
     if (m_scroll) {
@@ -186,16 +187,35 @@ void FormView::paint(Canvas& canvas) {
             continue;
         }
         if (!row.control) {
-            canvas.drawText(row.label, {b.x, y + 10, b.width, 20}, TypeStyle::Section, Color::TextSecondary);
-            canvas.hairlineH(b.x, y + kSection - 1, b.width, Color::LineSubtle);
+            canvas.drawText(row.label, {b.x + 4, y + kSection - 26, b.width, 20}, TypeStyle::BodySemi, Color::TextPrimary);
             y += kSection;
             continue;
         }
-        if (row.marked) {
-            canvas.fillRoundRect({b.x, y + (kRow - kMarkHeight) / 2, 2, kMarkHeight}, 1, Color::AccentBase);
+        // D-114: the card of this run of rows (drawn at its first row) and a hairline above every other.
+        const float cardWidth = b.width - (m_scroll && m_scroll->needed() ? ScrollBar::kWidth + 4 : 0.0f);
+        const std::size_t at = static_cast<std::size_t>(&row - m_rows.data());
+        std::size_t previous = at;
+        while (previous > 0 && m_rows[previous - 1].hidden) {
+            --previous;
         }
-        canvas.drawText(row.label, {b.x + kLabelInset, y, m_labelWidth - 8 - kLabelInset, kRow}, TypeStyle::Body,
-                        row.marked ? Color::TextPrimary : Color::TextSecondary);
+        const bool first = previous == 0 || !m_rows[previous - 1].control; // the first visible row of its run
+        if (first) {
+            float height = 0;
+            for (std::size_t i = at; i < m_rows.size() && m_rows[i].control; ++i) {
+                height += m_rows[i].hidden ? 0.0f : kRow;
+            }
+            canvas.fillRoundRect({b.x, y, cardWidth, height}, tokens::radius::r3, Color::BgRaised);
+        } else {
+            canvas.hairlineH(b.x + kLabelInset, y, cardWidth - 2 * kLabelInset, Color::LineSubtle);
+        }
+        const float labelRoom = m_labelWidth - 12 - kLabelInset - (row.marked ? kMark + 8 : 0.0f);
+        const float labelWidth = std::min(std::ceil(canvas.text().measure(row.label, TypeStyle::Body)) + 1, labelRoom);
+        canvas.drawText(row.label, {b.x + kLabelInset, y, labelWidth, kRow}, TypeStyle::Body, Color::TextPrimary);
+        if (row.marked) {
+            // The reference tool's "Değiştirilen satırlar: Kenar çubuğu" — on the card's left edge.
+            canvas.fillRoundRect({b.x + 4, y + 7, 3.0f, kRow - 14}, 1.5f, Color::AccentBase);
+            canvas.fillEllipse({b.x + kLabelInset + labelWidth + 8 + kMark / 2, y + kRow / 2}, kMark / 2, Color::AccentBase);
+        }
         if (!row.hint.empty()) {
             const float hx = row.control->bounds().right() + kHintGap;
             canvas.drawText(row.hint, {hx, y, std::max(b.right() - hx, 0.0f), kRow}, TypeStyle::Caption, row.hintColor);

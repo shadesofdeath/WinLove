@@ -15,9 +15,9 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kToolbarTop = 12.0f;
-constexpr float kToolbar = 24.0f;
-constexpr float kGap = 8.0f;
+constexpr float kToolbarTop = 0.0f;
+constexpr float kToolbar = ui::tokens::size::control;
+constexpr float kGap = 10.0f;
 enum Column : int { kTask, kCategory, kRisk, kState };
 } // namespace
 
@@ -41,9 +41,9 @@ TasksPage::TasksPage(AppState& state, TaskController& controller, const Localiza
     };
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::TasksTask), 0},
-        {strings.get(Str::CommonCategory), 200},
-        {strings.get(Str::CommonRisk), 90},
-        {strings.get(Str::CommonStatus), 170},
+        {strings.get(Str::CommonCategory), 230},
+        {strings.get(Str::CommonRisk), 104},
+        {strings.get(Str::CommonStatus), 196},
     });
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
         paintCell(c, row, column, rect, cell);

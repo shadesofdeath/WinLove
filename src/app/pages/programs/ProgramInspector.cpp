@@ -12,9 +12,9 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kPadding = 16.0f;
+constexpr float kPadding = 20.0f;
 constexpr float kKeyWidth = 80.0f;
-constexpr float kRow = 24.0f;
+constexpr float kRow = ui::tokens::size::row;
 constexpr float kIcon = 32.0f;
 constexpr int kDescriptionLines = 9;
 
@@ -80,8 +80,8 @@ void ProgramInspector::layout() {
 
 void ProgramInspector::paint(ui::Canvas& canvas) {
     const RectF b = bounds();
-    canvas.fillRect(b, Color::BgPanel);
-    canvas.hairlineV(b.x, b.y, b.height, Color::LineSubtle);
+    // D-114: a card like the others (rounded, no seam), not a strip glued to the window edge.
+    canvas.fillRoundRect(b, ui::tokens::radius::r3, Color::BgPanel);
     if (!m_package) {
         return;
     }

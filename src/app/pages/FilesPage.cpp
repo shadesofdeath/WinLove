@@ -13,7 +13,7 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kTop = 12.0f;
+constexpr float kTop = 0.0f;
 constexpr float kDrop = 56.0f;
 enum Column : int { kSource, kTarget, kSize, kRisk };
 } // namespace
@@ -27,9 +27,9 @@ FilesPage::FilesPage(AppState& state, FilesController& controller, const Localiz
     m_drop->onInvoke = std::move(addFiles);
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::FilesSource), 0},
-        {strings.get(Str::FilesTarget), 360},
-        {strings.get(Str::CommonSize), 96, ui::TextAlign::Trailing},
-        {strings.get(Str::CommonRisk), 90},
+        {strings.get(Str::FilesTarget), 414},
+        {strings.get(Str::CommonSize), 110, ui::TextAlign::Trailing},
+        {strings.get(Str::CommonRisk), 104},
     });
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState) {
         paintCell(c, row, column, rect);
@@ -83,7 +83,7 @@ void FilesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect) {
     case kSource: {
         std::error_code ec;
         const bool folder = std::filesystem::is_directory(op.value, ec);
-        canvas.drawIcon(folder ? ui::icons::Icon::Folder : ui::icons::Icon::File, {rect.x, rect.y + 4}, Color::TextSecondary);
+        canvas.drawIcon(folder ? ui::icons::Icon::Folder : ui::icons::Icon::File, {rect.x, rect.y + (rect.height - 16) / 2}, Color::TextSecondary);
         const float x = rect.x + ui::tokens::size::icon + 6;
         canvas.drawText(op.value, {x, rect.y, rect.right() - x, rect.height}, TypeStyle::Body, Color::TextPrimary);
         break;

@@ -9,43 +9,29 @@ namespace wl::ui {
 
 namespace {
 
-// base, hover, pressed, subtle, text on accent — dark theme, then light theme. Copper is the
-// handoff's own (never read from here). Derived from the screen 19 swatches: hover +12 % white,
-// pressed −9 % (dark) / −10, −20 % (light), subtle 16–18 % over the page, the light base darkened
-// until it reaches AA on the page and under white text.
+// base, hover, pressed, subtle, text on accent, accent text — dark theme, then light theme. Blue is
+// the tokens' own (never read from here; D-109: the reference tool's, which follow the Windows accent). D-107: one fill per accent in both themes (white text
+// at >= 4.6:1), hover +8 % white, pressed -10 %, subtle 16 % over the dark panel / 8 % over white,
+// accent text lightened (dark) or darkened (light) until it reads at >= 5:1.
 struct AccentSet {
-    std::uint32_t base, hover, pressed, subtle, onAccent;
+    std::uint32_t base, hover, pressed, subtle, onAccent, text;
 };
 constexpr AccentSet kAccentDark[kAccentCount] = {
-    {0xFFD4905Au, 0xFFDE9F6Cu, 0xFFC27F4Bu, 0xFF3A2D22u, 0xFF1A1210u}, // Bakır (tokens)
-    {0xFF46B8AEu, 0xFF5CC1B8u, 0xFF40A79Eu, 0xFF213230u, 0xFF071211u}, // Deniz
-    {0xFFE2607Fu, 0xFFE5738Eu, 0xFFCE5774u, 0xFF3A2428u, 0xFF170A0Du}, // Nar
-    {0xFF7FA7D9u, 0xFF8EB2DEu, 0xFF7498C5u, 0xFF2A3037u, 0xFF0D1116u}, // Gök
-    {0xFF9CB86Au, 0xFFA8C17Cu, 0xFF8EA760u, 0xFF2F3225u, 0xFF10120Bu}, // Zeytin
+    {0xFF4CC2FFu, 0xFF47B1E8u, 0xFF42A1D2u, 0xFF3E3E3Eu, 0xFF000000u, 0xFF4CC2FFu}, // Mavi (tokens, D-109)
+    {0xFFAF5F29u, 0xFFB56C3Au, 0xFF9E5625u, 0xFF30231Du, 0xFFFFFFFFu, 0xFFC3875Fu}, // Bakır
+    {0xFF147971u, 0xFF26847Du, 0xFF126D66u, 0xFF172728u, 0xFFFFFFFFu, 0xFF59A09Bu}, // Deniz
+    {0xFFC13C5Cu, 0xFFC64B69u, 0xFFAE3653u, 0xFF331C24u, 0xFFFFFFFFu, 0xFFD4798Fu}, // Nar
+    {0xFF5F7A2Eu, 0xFF6C853Fu, 0xFF566E29u, 0xFF23281Eu, 0xFFFFFFFFu, 0xFF879B63u}, // Zeytin
 };
 constexpr AccentSet kAccentLight[kAccentCount] = {
-    {0xFFA85C24u, 0xFF96511Fu, 0xFF84461Au, 0xFFF1DCC9u, 0xFFFFFFFFu},
-    {0xFF2D7871u, 0xFF286C66u, 0xFF24605Au, 0xFFD6E8E2u, 0xFFFFFFFFu},
-    {0xFFB04B63u, 0xFF9E4459u, 0xFF8D3C4Fu, 0xFFF2D8DAu, 0xFFFFFFFFu},
-    {0xFF546E8Fu, 0xFF4C6381u, 0xFF435872u, 0xFFE0E5EAu, 0xFFFFFFFFu},
-    {0xFF617242u, 0xFF57673Bu, 0xFF4E5B35u, 0xFFE5E8D6u, 0xFFFFFFFFu},
+    {0xFF0067C0u, 0xFF1975C5u, 0xFF3183CAu, 0xFFE3E3E3u, 0xFFFFFFFFu, 0xFF0058CDu},
+    {0xFFAF5F29u, 0xFFB56C3Au, 0xFF9E5625u, 0xFFF9F2EEu, 0xFFFFFFFFu, 0xFFA15726u},
+    {0xFF0F766Eu, 0xFF22817Au, 0xFF0E6A63u, 0xFFECF4F3u, 0xFFFFFFFFu, 0xFF0F766Eu},
+    {0xFFBE3455u, 0xFFC34463u, 0xFFAB2F4Cu, 0xFFFAEFF1u, 0xFFFFFFFFu, 0xFFBE3455u},
+    {0xFF5F7A2Eu, 0xFF6C853Fu, 0xFF566E29u, 0xFFF2F4EEu, 0xFFFFFFFFu, 0xFF59732Bu},
 };
 
-Accent g_accent = Accent::Copper;
-
-// D-091: the dark theme's surfaces near black (user: "siyah tonlamasına yakın"), the layers further
-// apart than the handoff's (#1A1918 base / #201E1C panel): page, panel, row hover and lines each a
-// clear step. Text, accents and states keep the tokens' values (their contrast only grows).
-struct Surface {
-    tokens::Color color;
-    std::uint32_t argb;
-};
-constexpr Surface kDarkSurfaces[] = {
-    {tokens::Color::BgBase, 0xFF111010u},     {tokens::Color::BgPanel, 0xFF181716u},
-    {tokens::Color::BgRaised, 0xFF242220u},   {tokens::Color::BgPressed, 0xFF2D2A27u},
-    {tokens::Color::BgOverlay, 0xFF1C1B19u},  {tokens::Color::BgInput, 0xFF0B0A0Au},
-    {tokens::Color::LineSubtle, 0xFF282624u}, {tokens::Color::LineStrong, 0xFF3C3834u},
-};
+Accent g_accent = Accent::Blue;
 
 // Windows' high contrast colors, when it is on (refreshSystemContrast).
 bool g_systemContrast = false;
@@ -60,7 +46,7 @@ std::uint32_t sysColor(int index) noexcept {
 } // namespace
 
 void setAccent(Accent value) noexcept {
-    g_accent = static_cast<int>(value) < kAccentCount ? value : Accent::Copper;
+    g_accent = static_cast<int>(value) < kAccentCount ? value : Accent::Blue;
 }
 
 Accent accent() noexcept {
@@ -77,7 +63,7 @@ std::uint32_t colorArgb(ThemeKind theme, tokens::Color color) noexcept {
     if (index >= tokens::kColorCount) {
         return 0xFFFF00FFu; // loud magenta: an invalid token must be visible, not silent
     }
-    if (g_accent != Accent::Copper && theme != ThemeKind::HighContrast) {
+    if (g_accent != Accent::Blue && theme != ThemeKind::HighContrast) {
         const AccentSet& set = (theme == ThemeKind::Light ? kAccentLight : kAccentDark)[static_cast<int>(g_accent)];
         switch (color) {
         case tokens::Color::AccentBase:
@@ -86,23 +72,18 @@ std::uint32_t colorArgb(ThemeKind theme, tokens::Color color) noexcept {
         case tokens::Color::AccentPressed: return set.pressed;
         case tokens::Color::AccentSubtle: return set.subtle;
         case tokens::Color::TextOnAccent: return set.onAccent;
+        case tokens::Color::AccentText: return set.text;
         default: break;
         }
     }
     if (theme == ThemeKind::HighContrast && g_systemContrast) {
         return g_contrast[index];
     }
-    if (theme == ThemeKind::Dark) {
-        for (const auto& surface : kDarkSurfaces) {
-            if (surface.color == color) {
-                return surface.argb;
-            }
-        }
-    }
     switch (theme) {
     case ThemeKind::Dark: return tokens::kDark[index];
     case ThemeKind::Light: return tokens::kLight[index];
     case ThemeKind::HighContrast: return tokens::kHighContrast[index];
+    case ThemeKind::Black: return tokens::kBlack[index];
     }
     return tokens::kDark[index];
 }
@@ -122,7 +103,7 @@ bool refreshSystemContrast() noexcept {
     const std::uint32_t onHighlight = sysColor(COLOR_HIGHLIGHTTEXT);
     const std::uint32_t gray = sysColor(COLOR_GRAYTEXT);
     const std::uint32_t hot = sysColor(COLOR_HOTLIGHT);
-    for (const C c : {C::BgBase, C::BgPanel, C::BgRaised, C::BgOverlay, C::BgInput, C::AccentSubtle, C::StatusSuccessSubtle,
+    for (const C c : {C::BgBase, C::BgPanel, C::BgRaised, C::BgOverlay, C::BgInput, C::BgHover, C::AccentSubtle, C::StatusSuccessSubtle,
                       C::StatusWarningSubtle, C::StatusErrorSubtle, C::StatusInfoSubtle}) {
         g_contrast[static_cast<std::size_t>(c)] = window;
     }
@@ -133,6 +114,7 @@ bool refreshSystemContrast() noexcept {
         g_contrast[static_cast<std::size_t>(c)] = highlight;
     }
     g_contrast[static_cast<std::size_t>(C::AccentFocus)] = hot;
+    g_contrast[static_cast<std::size_t>(C::AccentText)] = hot;
     g_contrast[static_cast<std::size_t>(C::TextOnAccent)] = onHighlight;
     g_contrast[static_cast<std::size_t>(C::TextDisabled)] = gray;
     return true;

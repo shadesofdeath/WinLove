@@ -1,4 +1,4 @@
-"""tokens.json (design handoff) -> src/ui/generated/Tokens.g.h
+"""design/tokens.json (D-107: the WinLoveUI package) -> src/ui/generated/Tokens.g.h
 
 The header has no Windows/D2D dependency: colors are 0xAARRGGBB, sizes are DIP floats.
 wl::ui::Theme converts them to D2D types at runtime.
@@ -8,9 +8,9 @@ from pathlib import Path
 
 from genutil import ROOT, HEADER, cpp_float, pascal, write_if_changed
 
-SRC = ROOT / "WinLove-UI-Handoff" / "01_tokens" / "tokens.json"
+SRC = ROOT / "design" / "tokens.json"
 DST = ROOT / "src" / "ui" / "generated" / "Tokens.g.h"
-THEMES = [("dark", "kDark"), ("light", "kLight"), ("hc", "kHighContrast")]
+THEMES = [("dark", "kDark"), ("light", "kLight"), ("hc", "kHighContrast"), ("black", "kBlack")]
 
 
 def argb(hex_color: str) -> str:
@@ -32,7 +32,7 @@ def generate() -> str:
             raise SystemExit(f"tokens.json: color keys of '{theme}' differ from 'dark'")
     enum_of = {n: pascal(n) for n in names}
 
-    out = [HEADER.format(src="WinLove-UI-Handoff/01_tokens/tokens.json", tool="gen_tokens.py"),
+    out = [HEADER.format(src="design/tokens.json", tool="gen_tokens.py"),
            "#pragma once", "#include <array>", "#include <cstdint>", "",
            "namespace wl::ui::tokens {", "",
            f'inline constexpr const char* kVersion = "{t["meta"]["version"]}";', "",

@@ -14,8 +14,12 @@ namespace wl::ui {
 
 class Toast : public Widget {
 public:
-    static constexpr float kWidth = 360.0f;
-    static constexpr float kHeight = 48.0f;
+    static constexpr float kWidth = 420.0f; // D-107 / D-108; 2026-11-09: wider, and the text wraps
+    static constexpr float kHeight = 54.0f; // the least: one line of title, one of message
+    static constexpr float kMaxHeight = 220.0f;
+
+    // The height its title and message need at `width` (they wrap; the toast grows upwards).
+    [[nodiscard]] float preferredHeight(float width) const;
     static constexpr unsigned kDurationMs = 4000;
 
     Toast();

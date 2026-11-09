@@ -1,6 +1,7 @@
 #pragma once
-// Scrolling label / control form (screens 10, 11): section titles in caps with a rule under
-// them, then 32px rows — the label column, the control, an optional caption hint right of it.
+// Scrolling label / control form as the reference tool's property lists (D-109): section rows, then 23.5 rows
+// without lines — the label column (Body), the control, an optional caption hint right of it; a
+// changed row carries a 2px accent bar at its left edge and a dot after its label.
 // Controls are children created through addRow(); titles, labels and hints are painted.
 // Taller than the view: wheel, overlay scroll bar, and the focused control is scrolled in.
 #include "ui/widgets/ScrollBar.h"
@@ -14,8 +15,11 @@ namespace wl::ui {
 
 class FormView : public Widget {
 public:
-    static constexpr float kSection = 32.0f;
-    static constexpr float kRow = 32.0f;
+    // D-114 (user: "biraz fazla sıkışık, daha modern"): each section's rows on a rounded card with
+    // hairlines between them, 34 rows with a 26 control, the section title above its card.
+    static constexpr float kSection = 42.0f;
+    static constexpr float kRow = 34.0f;
+    static constexpr float kControl = 26.0f;
 
     explicit FormView(float labelWidth);
 

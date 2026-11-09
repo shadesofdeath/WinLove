@@ -36,7 +36,8 @@ TEST_CASE("both language files load with every key") {
 TEST_CASE("Turkish text survives UTF-8 decoding") {
     const auto tr = Localization::fromJson(readFile(stringsDir() / L"tr.json"));
     REQUIRE(tr.has_value());
-    CHECK(tr->get(Str::NavImages) == L"İmajlar");
+    CHECK(tr->get(Str::NavImages) == L"Görüntü");
+    CHECK(tr->get(Str::NavComponents) == L"Bileşenler");
 }
 
 TEST_CASE("format replaces placeholders") {

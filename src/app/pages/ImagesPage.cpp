@@ -15,11 +15,12 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kToolbarTop = 12.0f;
-constexpr float kToolbar = 24.0f;
-constexpr float kGap = 12.0f;
-constexpr float kInfoBar = 32.0f;
-constexpr float kSearchWidth = 240.0f;
+constexpr float kToolbarTop = 0.0f;
+constexpr float kToolbar = ui::tokens::size::control;
+constexpr float kGap = 10.0f;
+constexpr float kInfoBar = 38.0f;
+constexpr float kSearchWidth = 260.0f;
+constexpr float kSectionCaption = 24.0f; // section caption 14 + 10
 } // namespace
 
 ImagesPage::ImagesPage(AppState& state, ImageController& controller, const Localization& strings, Language language,
@@ -217,9 +218,35 @@ bool ImagesPage::showRowMenu(ui::PointF at) {
     // one may rebuild the page.
     std::vector<std::wstring> labels;
     std::vector<std::function<void()>> actions;
+    std::vector<std::optional<ui::icons::Icon>> icons; // D-114: every item with its icon
+    auto iconFor = [](Str label) -> std::optional<ui::icons::Icon> {
+        using I = ui::icons::Icon;
+        switch (label) {
+        case Str::ImagesMount: return I::Mount;
+        case Str::ImagesExport:
+        case Str::ImagesExportMany: return I::Export;
+        case Str::ImagesUpgrade: return I::Upload;
+        case Str::ImagesRename: return I::Edit;
+        case Str::ImagesDuplicate: return I::Duplicate;
+        case Str::ImagesMoveUp: return I::ArrowUp;
+        case Str::ImagesMoveDown: return I::ArrowDown;
+        case Str::ImagesDeleteIndex:
+        case Str::ImagesDeleteMany: return I::Delete;
+        case Str::ImagesKeepOnly:
+        case Str::ImagesKeepSelected: return I::Check;
+        case Str::ImagesHealthCheck: return I::ShieldCheck;
+        case Str::ImagesHealthScan: return I::Search;
+        case Str::ImagesExploreMount: return I::OpenFolder;
+        case Str::ImagesTerminalHere: return I::LogTerminal;
+        case Str::ImagesRevealFile: return I::Folder;
+        case Str::ImagesCopyInfo: return I::Copy;
+        default: return std::nullopt;
+        }
+    };
     auto item = [&](Str label, std::function<void()> action) {
         labels.push_back(m_strings.get(label));
         actions.push_back(std::move(action));
+        icons.push_back(iconFor(label));
     };
     const std::size_t marked = m_state.selection().size();
     const std::size_t editions = m_state.source()->install.images.size();
@@ -227,6 +254,7 @@ bool ImagesPage::showRowMenu(ui::PointF at) {
     auto counted = [&](Str label, std::function<void()> action) {
         labels.push_back(m_strings.format(label, {{L"n", count}}));
         actions.push_back(std::move(action));
+        icons.push_back(iconFor(label));
     };
     if (marked > 1) {
         // Several editions: what takes them all.
@@ -279,6 +307,7 @@ bool ImagesPage::showRowMenu(ui::PointF at) {
             }
         },
         [] {});
+    popup->setIcons(std::move(icons));
     ui::Widget* raw = popup.get();
     host()->pushModal(std::move(popup), raw, /*scrim=*/false);
     return true;
@@ -369,7 +398,7 @@ void ImagesPage::layout() {
         const float archWidth = std::min(m_arch->measure({}).width, 200.0f);
         m_arch->setBounds({x, b.y + kToolbarTop, archWidth, kToolbar});
     }
-    float y = b.y + kToolbarTop + kToolbar + kGap;
+    float y = b.y + kToolbarTop + kToolbar + 16;
     if (m_error->visible()) {
         m_error->setBounds({b.x, y, b.width, kInfoBar});
         y += kInfoBar + kGap;
@@ -382,7 +411,10 @@ void ImagesPage::layout() {
         m_strip->setBounds({b.x, y, b.width, OperationStrip::kHeight});
         y += OperationStrip::kHeight + kGap;
     }
-    m_table->setBounds({b.x, y, b.width, m_table->contentHeight()});
+    // D-107: "INSTALL.WIM · SÜRÜMLER" over the table card; the card takes what is left and scrolls.
+    y += kSectionCaption;
+    m_table->setBounds({b.x, y, b.width, std::max(std::min(m_table->contentHeight(), b.bottom() - y), 0.0f)});
+    m_captionTop = y - kSectionCaption;
 }
 
 void ImagesPage::paint(ui::Canvas& canvas) {
@@ -390,14 +422,21 @@ void ImagesPage::paint(ui::Canvas& canvas) {
     if (!source) {
         return;
     }
-    // Toolbar row: summary on the right ("install.wim · 6 index · 6,72 GB").
+    // The table's caption ("INSTALL.WIM · SÜRÜMLER") with the summary on the right
+    // ("install.wim · 6 index · 6,72 GB").
+    if (!m_table->visible()) {
+        return;
+    }
     const RectF b = bounds();
+    const std::wstring file = std::filesystem::path(source->installImage).filename().wstring();
+    const RectF caption{b.x, m_captionTop, b.width, 14};
+    canvas.drawText(file + L" · " + m_strings.get(Str::ImagesEditionsSection), caption, TypeStyle::Section,
+                    Color::TextTertiary);
     const std::wstring summary = m_strings.format(
-        Str::ImagesSummary, {{L"file", std::filesystem::path(source->installImage).filename().wstring()},
+        Str::ImagesSummary, {{L"file", file},
                              {L"n", std::to_wstring(source->install.images.size())},
                              {L"size", formatBytes(source->installImageSize, m_language)}});
-    canvas.drawText(summary, {b.x, b.y + kToolbarTop, b.width, kToolbar}, TypeStyle::Caption, Color::TextSecondary,
-                    ui::TextAlign::Trailing);
+    canvas.drawText(summary, caption, TypeStyle::Caption, Color::TextTertiary, ui::TextAlign::Trailing);
 }
 
 } // namespace wl::app

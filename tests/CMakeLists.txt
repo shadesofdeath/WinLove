@@ -11,7 +11,10 @@ add_executable(wl_tests
     core/CoreHelpersTests.cpp
     core/ComponentStoreTests.cpp
     core/DriverTests.cpp
+    core/InventoryTests.cpp
     core/StoreShrinkTests.cpp
+    core/UpdateGuardTests.cpp
+    core/BootDriverTests.cpp
     core/MediaRefreshTests.cpp
     core/EngineTests.cpp
     core/RegistryTests.cpp

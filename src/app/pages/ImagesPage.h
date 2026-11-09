@@ -68,6 +68,7 @@ private:
     ui::InfoBar* m_folder = nullptr;
     OperationStrip* m_strip = nullptr;
     EditionTable* m_table = nullptr;
+    float m_captionTop = 0; // D-107: the table's section caption
     ui::SearchBox* m_search = nullptr;
     ui::Dropdown* m_arch = nullptr;
     std::wstring m_needle;

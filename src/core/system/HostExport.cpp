@@ -1,5 +1,14 @@
 #include "core/system/HostExport.h"
 
+#include <windows.h>
+
+#include <setupapi.h>
+
+#include <algorithm>
+#include <cwctype>
+#include <set>
+#include <vector>
+
 #include "base/Log.h"
 #include "core/system/Privileges.h"
 #include "core/system/Process.h"
@@ -7,6 +16,40 @@
 #include <format>
 
 namespace wl::core {
+
+namespace {
+// D-114: the third-party packages the PC's present devices run on ("oem12.inf"): their driver key's
+// InfPath. Stale packages (an older graphics driver …) stay behind: they are what made the export slow.
+std::vector<std::wstring> presentDeviceOemInfs() {
+    std::set<std::wstring> infs;
+    HDEVINFO set = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
+    if (set == INVALID_HANDLE_VALUE) {
+        return {};
+    }
+    SP_DEVINFO_DATA device{sizeof(SP_DEVINFO_DATA)};
+    for (DWORD i = 0; SetupDiEnumDeviceInfo(set, i, &device); ++i) {
+        HKEY key = SetupDiOpenDevRegKey(set, &device, DICS_FLAG_GLOBAL, 0, DIREG_DRV, KEY_READ);
+        if (key == INVALID_HANDLE_VALUE) {
+            continue;
+        }
+        wchar_t inf[MAX_PATH] = {};
+        DWORD size = sizeof(inf);
+        DWORD type = 0;
+        if (RegQueryValueExW(key, L"InfPath", nullptr, &type, reinterpret_cast<BYTE*>(inf), &size) == ERROR_SUCCESS && type == REG_SZ) {
+            std::wstring name(inf);
+            for (auto& c : name) {
+                c = static_cast<wchar_t>(std::towlower(c));
+            }
+            if (name.starts_with(L"oem") && name.ends_with(L".inf")) {
+                infs.insert(std::move(name));
+            }
+        }
+        RegCloseKey(key);
+    }
+    SetupDiDestroyDeviceInfoList(set);
+    return {infs.begin(), infs.end()};
+}
+} // namespace
 
 Result<int> exportHostDrivers(const std::filesystem::path& folder, const TaskContext& task) {
     if (!isElevated()) {
@@ -23,13 +66,35 @@ Result<int> exportHostDrivers(const std::filesystem::path& folder, const TaskCon
     }
     task.report(-1.0, L"export");
     std::string output;
-    auto exit = runProcess(std::format(L"\"{}\" /export-driver * \"{}\"", *pnputil, folder.wstring()),
-                           [&](std::string_view chunk) {
-                               output.append(chunk);
-                               if (output.size() > 65536) {
-                                   output.erase(0, output.size() - 32768);
-                               }
-                           });
+    auto keep = [&](std::string_view chunk) {
+        output.append(chunk);
+        if (output.size() > 65536) {
+            output.erase(0, output.size() - 32768);
+        }
+    };
+    Result<std::uint32_t> exit = 0u;
+    const auto inUse = presentDeviceOemInfs();
+    if (!inUse.empty()) {
+        // Only what the devices of this PC use, each package into its own folder.
+        std::uint32_t worst = 0;
+        for (std::size_t i = 0; i < inUse.size(); ++i) {
+            if (auto go = task.cancel.check(); !go) {
+                return std::unexpected(go.error());
+            }
+            const std::filesystem::path target = folder / std::filesystem::path(inUse[i]).stem();
+            std::filesystem::create_directories(target, ec);
+            auto one = runProcess(std::format(L"\"{}\" /export-driver {} \"{}\"", *pnputil, inUse[i], target.wstring()), keep);
+            if (!one) {
+                return std::unexpected(one.error());
+            }
+            worst = std::max(worst, *one);
+            task.report(static_cast<double>(i + 1) / static_cast<double>(inUse.size()), inUse[i]);
+        }
+        exit = worst;
+        log::info("drivers", std::format(L"{} driver package(s) in use by this PC's devices", inUse.size()));
+    } else {
+        exit = runProcess(std::format(L"\"{}\" /export-driver * \"{}\"", *pnputil, folder.wstring()), keep);
+    }
     if (!exit) {
         return std::unexpected(exit.error());
     }

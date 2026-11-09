@@ -58,6 +58,8 @@ public:
     // Every value; `withData` false leaves data empty (names only: much faster on big keys).
     [[nodiscard]] std::vector<Value> values(bool withData = true) const;
     [[nodiscard]] std::optional<DWORD> dword(const wchar_t* name) const;
+    // One value's bytes, whatever its type (empty when it does not exist).
+    [[nodiscard]] std::vector<std::uint8_t> bytes(const wchar_t* name) const;
 
 private:
     OffRegKey(ORHKEY key, bool hive) : m_key(key), m_hive(hive) {}

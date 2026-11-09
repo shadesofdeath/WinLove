@@ -16,46 +16,58 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kRow = 24.0f;
-constexpr float kCheck = 28.0f;
-constexpr float kIconGap = 6.0f;
-constexpr float kEditionId = 150.0f;
+// D-107: the package's edition table (LAYOUT.md "INSTALL.WIM · SÜRÜMLER"): a card (panel color,
+// radius 12, line border); header 34 in caption text.tertiary; rows 52 with a line on top, 14 at the
+// sides and 12 between the columns. Dizin 44 (mono), Ad (name + edition id under it), Mimari 60,
+// Derleme 130 (mono), Dil, Boyut 96 (right), Durum 130 ("● Bağlı"). A check box before the index
+// marks more than one edition. The marked rows: accent.subtle with a 2px accent bar.
+constexpr float kHead = ui::tokens::size::tableHead;
+constexpr float kRow = ui::tokens::size::tableRow;
+constexpr float kPadX = 12.0f;
+constexpr float kColGap = 10.0f;
+constexpr float kCheck = ui::tokens::size::checkbox;
+constexpr float kIndex = 36.0f;
 constexpr float kModified = 104.0f;
-constexpr float kMinName = 260.0f; // optional columns drop out below this name width
-constexpr float kArch = 80.0f;
-constexpr float kBuild = 120.0f;
-constexpr float kLang = 72.0f;
-constexpr float kSize = 96.0f;
-constexpr float kStatus = 120.0f;
-constexpr float kCellPad = 8.0f;
+constexpr float kMinName = 220.0f; // optional columns drop out below this name width
+constexpr float kArch = 52.0f;
+constexpr float kBuild = 92.0f;
+constexpr float kLang = 52.0f;
+constexpr float kSize = 76.0f;
+constexpr float kStatus = 76.0f;
 
-// Right-aligned fixed columns; "Sürüm ID" and "Değiştirilme" are shown only while the name
-// column keeps at least kMinName (narrow windows / open inspector drop them, modified first).
+// Fixed columns from the right; "Değiştirilme" only while the name keeps at least kMinName.
 struct Columns {
-    float name, nameEnd, editionId, arch, build, lang, modified, size, status;
-    bool showEditionId, showModified;
+    float check, index, name, nameEnd, arch, build, lang, modified, size, status;
+    bool showModified;
+    bool showArch = true; // D-114: on a narrow table the edition name keeps its room;
+    bool showLang = true; // the inspector shows both anyway
 };
 
 Columns columnsFor(RectF b) {
     Columns c{};
-    c.name = b.x + kCheck;
-    const float fixed = kArch + kBuild + kLang + kSize + kStatus;
-    const float room = b.right() - c.name - fixed;
-    c.showModified = room - kModified - kEditionId >= kMinName;
-    c.showEditionId = room - kEditionId >= kMinName;
-    c.status = b.right() - kStatus;
-    c.size = c.status - kSize;
-    c.modified = c.size - (c.showModified ? kModified : 0.0f);
-    c.lang = c.modified - kLang;
-    c.build = c.lang - kBuild;
-    c.arch = c.build - kArch;
-    c.editionId = c.arch - (c.showEditionId ? kEditionId : 0.0f);
-    c.nameEnd = c.editionId;
+    c.check = b.x + kPadX;
+    c.index = c.check + kCheck + kColGap;
+    c.name = c.index + kIndex + kColGap;
+    const float right = b.right() - kPadX;
+    const float fixed = kArch + kBuild + kLang + kSize + kStatus + 5 * kColGap;
+    c.showModified = right - c.name - fixed - kModified - kColGap >= kMinName;
+    c.status = right - kStatus;
+    c.size = c.status - kColGap - kSize;
+    c.modified = c.size - (c.showModified ? kColGap + kModified : 0.0f);
+    const float nameAll = c.modified - c.name - (kLang + kBuild + kArch + 3 * kColGap) - kColGap;
+    c.showArch = nameAll >= 170;
+    c.showLang = nameAll + (c.showArch ? 0.0f : kArch + kColGap) >= 170;
+    c.lang = c.showLang ? c.modified - kColGap - kLang : c.modified;
+    c.build = c.lang - kColGap - kBuild;
+    c.arch = c.showArch ? c.build - kColGap - kArch : c.build;
+    c.nameEnd = c.arch - kColGap;
     return c;
 }
 } // namespace
 
 EditionTable::EditionTable(const Localization& strings, Language language) : m_strings(strings), m_language(language) {
+    m_scrollBar = &add<ui::ScrollBar>();
+    m_scrollBar->onScroll = [this](float offset) { setOffset(offset); };
     setFocusable(true);
     setAccessible(ui::AccessRole::List, strings.get(Str::ImagesTitle));
 }
@@ -89,18 +101,62 @@ void EditionTable::setRowState(std::optional<int> index, RowState state, bool di
 }
 
 float EditionTable::contentHeight() const noexcept {
-    return kRow * static_cast<float>(m_images.size() + 1);
+    return kHead + kRow * static_cast<float>(m_images.size()) + 1;
+}
+
+RectF EditionTable::body() const {
+    const RectF b = bounds();
+    return {b.x, b.y + kHead, b.width, std::max(b.height - kHead - 1, 0.0f)};
 }
 
 RectF EditionTable::rowRect(int row) const {
-    const RectF b = bounds();
-    return {b.x, b.y + kRow * static_cast<float>(row + 1), b.width, kRow};
+    const RectF v = body();
+    return {v.x, v.y + kRow * static_cast<float>(row) - m_offset, v.width, kRow};
 }
 
 int EditionTable::rowAt(ui::PointF p) const {
-    const RectF b = bounds();
-    const int row = static_cast<int>(std::floor((p.y - b.y) / kRow)) - 1;
-    return b.contains(p) && row >= 0 && row < static_cast<int>(m_images.size()) ? row : -1;
+    const RectF v = body();
+    if (!v.contains(p) || p.x >= v.right() - ui::ScrollBar::kWidth * (m_scrollBar->needed() ? 1.0f : 0.0f)) {
+        return -1;
+    }
+    const int row = static_cast<int>(std::floor((p.y - v.y + m_offset) / kRow));
+    return row >= 0 && row < static_cast<int>(m_images.size()) ? row : -1;
+}
+
+void EditionTable::layout() {
+    const RectF v = body();
+    m_scrollBar->setBounds({v.right() - ui::ScrollBar::kWidth - 2, v.y, ui::ScrollBar::kWidth, v.height});
+    m_scrollBar->setRange(kRow * static_cast<float>(m_images.size()), v.height);
+    m_offset = std::clamp(m_offset, 0.0f, m_scrollBar->maxOffset());
+    m_scrollBar->setOffset(m_offset);
+    m_scrollBar->setVisible(m_scrollBar->needed());
+}
+
+void EditionTable::setOffset(float offset) {
+    m_offset = std::clamp(offset, 0.0f, m_scrollBar->maxOffset());
+    m_scrollBar->setOffset(m_offset);
+    invalidate();
+}
+
+void EditionTable::reveal(int row) {
+    if (row < 0) {
+        return;
+    }
+    const RectF v = body();
+    const float top = kRow * static_cast<float>(row);
+    if (top < m_offset) {
+        setOffset(top);
+    } else if (top + kRow > m_offset + v.height) {
+        setOffset(top + kRow - v.height);
+    }
+}
+
+bool EditionTable::onWheel(ui::PointF /*p*/, float lines) {
+    if (!m_scrollBar->needed()) {
+        return false;
+    }
+    setOffset(m_offset - lines * kRow);
+    return true;
 }
 
 int EditionTable::rowOfIndex(std::optional<int> index) const {
@@ -152,7 +208,7 @@ void EditionTable::onPointerDown(ui::PointF p) {
     // Pointer events carry no modifiers: the keyboard state at the click is what counts.
     if (GetKeyState(VK_SHIFT) < 0) {
         m_selection.extendTo(row);
-    } else if (GetKeyState(VK_CONTROL) < 0 || p.x < bounds().x + kCheck) {
+    } else if (GetKeyState(VK_CONTROL) < 0 || p.x < bounds().x + kPadX + kCheck + kColGap / 2) {
         m_selection.toggle(row);
     } else {
         m_selection.only(row);
@@ -178,6 +234,7 @@ bool EditionTable::onKeyDown(const ui::KeyEvent& key) {
         } else {
             m_selection.only(row);
         }
+        reveal(row);
         publish();
         return true;
     };
@@ -241,79 +298,102 @@ void EditionTable::paint(ui::Canvas& canvas) {
     const RectF b = bounds();
     const Columns c = columnsFor(b);
     const float px = 1.0f / canvas.scale();
+    const float radius = ui::tokens::radius::r3;
+    canvas.fillRoundRect(b, radius, Color::BgPanel);
 
     auto head = [&](std::wstring_view text, float x, float w, ui::TextAlign align = ui::TextAlign::Leading) {
-        canvas.drawText(text, {x, b.y, w, kRow}, TypeStyle::Caption, Color::TextTertiary, align);
+        canvas.drawText(text, {x, b.y, w, kHead}, TypeStyle::Caption, Color::TextTertiary, align);
     };
-    head(m_strings.get(Str::ImagesIndex) + L" · " + m_strings.get(Str::CommonName), c.name, c.nameEnd - c.name);
-    if (c.showEditionId) {
-        head(m_strings.get(Str::ImagesEditionId), c.editionId, kEditionId);
+    head(m_strings.get(Str::ImagesIndex), c.index, kIndex);
+    head(m_strings.get(Str::CommonName), c.name, c.nameEnd - c.name);
+    if (c.showArch) {
+        head(m_strings.get(Str::ImagesArch), c.arch, kArch);
     }
-    head(m_strings.get(Str::ImagesArch), c.arch, kArch);
     head(m_strings.get(Str::ImagesBuild), c.build, kBuild);
-    head(m_strings.get(Str::ImagesLang), c.lang, kLang);
+    if (c.showLang) {
+        head(m_strings.get(Str::ImagesLang), c.lang, kLang);
+    }
     if (c.showModified) {
         head(m_strings.get(Str::ImagesModified), c.modified, kModified);
     }
-    head(m_strings.get(Str::CommonSize), c.size, kSize - kCellPad, ui::TextAlign::Trailing);
+    head(m_strings.get(Str::CommonSize), c.size, kSize, ui::TextAlign::Trailing);
     head(m_strings.get(Str::CommonStatus), c.status, kStatus);
-    canvas.hairlineH(b.x, b.y + kRow - px, b.width, Color::LineSubtle);
 
+    const RectF v = body();
+    canvas.pushClip(v);
     for (int i = 0; i < static_cast<int>(m_images.size()); ++i) {
-        const auto& image = m_images[static_cast<std::size_t>(i)];
         const RectF row = rowRect(i);
+        if (row.bottom() < v.y || row.y > v.bottom()) {
+            continue;
+        }
+        const auto& image = m_images[static_cast<std::size_t>(i)];
         const bool selected = m_selection.contains(i);
         const bool primary = i == m_selection.primary;
         const bool stateRow = m_stateIndex && *m_stateIndex == image.index;
         if (selected) {
-            canvas.fillRoundRect(row, ui::tokens::radius::r2, Color::AccentSubtle);
+            canvas.fillRect(row, Color::AccentSubtle);
+            if (primary) {
+                canvas.fillRoundRect({row.x, row.y + 8, 2.0f, kRow - 16}, 1.0f, Color::AccentBase);
+            }
         } else if (i == m_hoverRow) {
-            canvas.fillRoundRect(row, ui::tokens::radius::r2, Color::BgRaised);
+            canvas.fillRect(row, Color::BgHover);
         }
-        canvas.hairlineH(row.x, row.bottom() - px, row.width, Color::LineSubtle);
-
-        ui::Checkbox::paintBox(canvas, {row.x + 2, row.y + 6}, selected ? ui::CheckState::On : ui::CheckState::Off,
+        ui::Checkbox::paintBox(canvas, {c.check, row.y + (kRow - kCheck) / 2}, selected ? ui::CheckState::On : ui::CheckState::Off,
                                i == m_hoverRow);
+        canvas.drawText(std::to_wstring(image.index), {c.index, row.y, kIndex, kRow}, TypeStyle::Body, Color::TextTertiary);
         const Color nameInk = m_dimOthers && !stateRow ? Color::TextSecondary : Color::TextPrimary;
-        canvas.drawIcon(ui::icons::Icon::LayersEditions, {c.name, row.y + 4}, Color::TextSecondary);
-        const float nameX = c.name + ui::tokens::size::icon + kIconGap;
-        canvas.drawText(std::format(L"{} · {}", image.index, image.name), {nameX, row.y, c.nameEnd - nameX - kCellPad, kRow},
-                        primary ? TypeStyle::BodyStrong : TypeStyle::Body, nameInk);
-        if (c.showEditionId) {
-            canvas.drawText(image.editionId.empty() ? L"—" : image.editionId,
-                            {c.editionId, row.y, kEditionId - kCellPad, kRow}, TypeStyle::Body, Color::TextSecondary);
+        // D-109 (the reference tool: "2 \u2022 Pro   Professional"): the name, then the edition id on the same line.
+        const float nameRoom = c.nameEnd - c.name;
+        const float nameW = std::min(std::ceil(canvas.text().measure(image.name, TypeStyle::Body)) + 1, nameRoom);
+        canvas.drawText(image.name, {c.name, row.y, nameW, kRow}, TypeStyle::Body, nameInk);
+        if (!image.editionId.empty() && nameRoom - nameW > 40) {
+            canvas.drawText(image.editionId, {c.name + nameW + 12, row.y, nameRoom - nameW - 12, kRow}, TypeStyle::Body,
+                            Color::TextTertiary);
         }
-        canvas.drawText(core::architectureName(image.architecture), {c.arch, row.y, kArch, kRow}, TypeStyle::Body,
-                        Color::TextPrimary);
+        if (c.showArch) {
+            canvas.drawText(core::architectureName(image.architecture), {c.arch, row.y, kArch, kRow}, TypeStyle::Body,
+                            Color::TextSecondary);
+        }
         canvas.drawText(std::format(L"{}.{}", image.build, image.spBuild), {c.build, row.y, kBuild, kRow}, TypeStyle::Mono,
-                        Color::TextPrimary);
-        canvas.drawText(image.defaultLanguage, {c.lang, row.y, kLang, kRow}, TypeStyle::Body, Color::TextPrimary);
+                        Color::TextSecondary);
+        if (c.showLang) {
+            canvas.drawText(image.defaultLanguage, {c.lang, row.y, kLang, kRow}, TypeStyle::Body, Color::TextSecondary);
+        }
         if (c.showModified) {
             // Last change to the image (servicing/commit); creation date is in the inspector.
             canvas.drawText(formatDate(image.modifiedTime ? image.modifiedTime : image.creationTime, m_language),
-                            {c.modified, row.y, kModified - kCellPad, kRow}, TypeStyle::Mono, Color::TextSecondary);
+                            {c.modified, row.y, kModified, kRow}, TypeStyle::Body, Color::TextSecondary);
         }
-        canvas.drawText(formatBytes(image.totalBytes, m_language), {c.size, row.y, kSize - kCellPad, kRow}, TypeStyle::Mono,
+        canvas.drawText(formatBytes(image.totalBytes, m_language), {c.size, row.y, kSize, kRow}, TypeStyle::Body,
                         Color::TextPrimary, ui::TextAlign::Trailing);
 
-        // Status: the operation/mount/failure of this row wins over "Seçili".
-        std::wstring status;
-        Color statusInk = Color::TextSecondary;
+        // Durum: "● Bağlı" (accent), "● Bağlanıyor" (warning), "● Bağlanamaz" (risk), else "—".
+        std::wstring status = L"\u2014";
+        Color statusInk = Color::TextTertiary;
+        bool dot = false;
         if (stateRow && m_state == RowState::Mounted) {
             status = m_strings.get(Str::ImagesMountedState);
-            statusInk = Color::StatusSuccess;
+            statusInk = Color::AccentText;
+            dot = true;
         } else if (stateRow && m_state == RowState::Working) {
             status = m_strings.get(Str::ImagesMountingState);
+            statusInk = Color::StatusWarning;
+            dot = true;
         } else if (stateRow && m_state == RowState::Failed) {
             status = m_strings.get(Str::ImagesCannotMount);
             statusInk = Color::StatusError;
-        } else if (selected) {
-            status = m_strings.get(Str::ImagesSelectedState);
+            dot = true;
         }
-        if (!status.empty()) {
-            canvas.drawText(status, {c.status + kCellPad, row.y, kStatus - kCellPad, kRow}, TypeStyle::Caption, statusInk);
+        float sx = c.status;
+        if (dot) {
+            canvas.fillEllipse({sx + 3, row.y + kRow / 2}, 3.0f, statusInk == Color::AccentText ? Color::AccentBase : statusInk);
+            sx += 13;
         }
+        canvas.drawText(status, {sx, row.y, c.status + kStatus - sx, kRow}, TypeStyle::Small, statusInk);
     }
+    canvas.popClip();
+    canvas.strokeRoundRect(b, radius, Color::LineSubtle);
+    canvas.hairlineH(b.x, b.y + kHead - px, b.width, Color::LineSubtle);
 }
 
 } // namespace wl::app

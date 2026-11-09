@@ -56,6 +56,12 @@ private:
     ui::Dropdown* m_density = nullptr; // D-092
     PathField* m_work = nullptr;
     PathField* m_mount = nullptr;
+    // D-123 (the reference tool's Tool settings): the DISM engine, ESD threads, the preset in the ISO.
+    ui::Dropdown* m_dismEngine = nullptr;
+    std::vector<DismEngineChoice> m_dismChoices; // the dropdown's items (the ADK's only when installed)
+    ui::Dropdown* m_esdThreads = nullptr;        // item 0: automatic, item n: n threads
+    int m_processors = 1;                        // this PC's logical processors (the last item)
+    ui::Toggle* m_presetInIso = nullptr;
 };
 
 } // namespace wl::app

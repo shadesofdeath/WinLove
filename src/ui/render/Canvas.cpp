@@ -1,4 +1,5 @@
 #include "ui/render/Canvas.h"
+#include "ui/render/IconTone.h"
 
 #include <wincodec.h>
 
@@ -147,6 +148,59 @@ void Canvas::line(PointF from, PointF to, Ink ink, float widthPx) {
     m_context->DrawLine({from.x, from.y}, {to.x, to.y}, brush(ink), widthPx * px(), m_icons.strokeStyle());
 }
 
+void Canvas::drawGlyph(Glyph glyph, RectF box, Ink ink, float strokeDip) {
+    // Painter::DrawIcon of the package, on its 24 grid.
+    const float k = box.width / 24.0f;
+    auto P = [&](float x, float y) { return D2D1::Point2F(box.x + x * k, box.y + y * k); };
+    ID2D1Brush* b = brush(ink);
+    ID2D1StrokeStyle* round = m_icons.strokeStyle();
+    ComPtr<ID2D1Factory> factory;
+    m_context->GetFactory(&factory);
+    auto path = [&](auto&& build) {
+        ComPtr<ID2D1PathGeometry> g;
+        ComPtr<ID2D1GeometrySink> sink;
+        if (FAILED(factory->CreatePathGeometry(&g)) || FAILED(g->Open(&sink))) {
+            return;
+        }
+        build(sink.Get());
+        sink->Close();
+        m_context->DrawGeometry(g.Get(), b, strokeDip, round);
+    };
+    switch (glyph) {
+    case Glyph::Sun:
+        m_context->DrawEllipse(D2D1::Ellipse(P(12, 12), 4 * k, 4 * k), b, strokeDip);
+        for (int i = 0; i < 8; ++i) {
+            const float a = static_cast<float>(i) * 3.14159265f / 4.0f;
+            const float c = std::cos(a);
+            const float s = std::sin(a);
+            m_context->DrawLine(P(12 + c * 7.5f, 12 + s * 7.5f), P(12 + c * 9.5f, 12 + s * 9.5f), b, strokeDip, round);
+        }
+        break;
+    case Glyph::Moon:
+        path([&](ID2D1GeometrySink* s) {
+            s->BeginFigure(P(20, 14.5f), D2D1_FIGURE_BEGIN_HOLLOW);
+            s->AddArc(D2D1::ArcSegment(P(9.5f, 4), {8 * k, 8 * k}, 0, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+            s->AddArc(D2D1::ArcSegment(P(20, 14.5f), {8 * k, 8 * k}, 0, D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE,
+                                       D2D1_ARC_SIZE_LARGE));
+            s->EndFigure(D2D1_FIGURE_END_CLOSED);
+        });
+        break;
+    case Glyph::Reset:
+        path([&](ID2D1GeometrySink* s) {
+            s->BeginFigure(P(4.5f, 9.3f), D2D1_FIGURE_BEGIN_HOLLOW);
+            s->AddArc(D2D1::ArcSegment(P(4.5f, 14.7f), {8 * k, 8 * k}, 0, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_LARGE));
+            s->EndFigure(D2D1_FIGURE_END_OPEN);
+        });
+        path([&](ID2D1GeometrySink* s) {
+            s->BeginFigure(P(4, 4), D2D1_FIGURE_BEGIN_HOLLOW);
+            s->AddLine(P(4, 9.5f));
+            s->AddLine(P(9.5f, 9.5f));
+            s->EndFigure(D2D1_FIGURE_END_OPEN);
+        });
+        break;
+    }
+}
+
 void Canvas::fillEllipse(PointF center, float radius, Ink ink) {
     m_context->FillEllipse(D2D1::Ellipse({center.x, center.y}, radius, radius), brush(ink));
 }
@@ -235,10 +289,12 @@ void Canvas::drawTextWrapped(std::wstring_view text, RectF rect, tokens::TypeSty
 }
 
 void Canvas::progressBar(RectF track, float fraction, Ink fill) {
-    fillRect(track, tokens::Color::LineStrong);
+    // D-107 (Painter::Progress): a rounded line-colored track, the accent fill rounded too.
+    const float radius = track.height / 2;
+    fillRoundRect(track, radius, tokens::Color::LineSubtle);
     const float f = std::clamp(fraction, 0.0f, 1.0f);
     if (f > 0) {
-        fillRect({track.x, track.y, std::round(track.width * f), track.height}, fill);
+        fillRoundRect({track.x, track.y, std::max(std::round(track.width * f), track.height), track.height}, radius, fill);
     }
 }
 
@@ -257,6 +313,22 @@ void Canvas::drawIcon(icons::Icon icon, PointF topLeft, Ink ink, IconVariant var
     m_context->SetTransform(rotation * D2D1::Matrix3x2F::Scale(k, k) *
                             D2D1::Matrix3x2F::Translation(snap(topLeft.x, m_scale), snap(topLeft.y, m_scale)) *
                             previous);
+    // D-114: an icon in the accent ink takes its own colour (two tones: a soft fill under the stroke).
+    const bool toned = ink.from == tokens::Color::AccentBase && ink.to == tokens::Color::AccentBase && ink.opacity >= 1.0f &&
+                       m_theme != ThemeKind::HighContrast && !systemHighContrast();
+    if (toned) {
+        const IconTone tone = iconTone(icon);
+        if (tone.fill && !entry.filled) {
+            m_context->FillGeometry(entry.geometry, brush(Ink(tone.color, tone.color, 0.0f, kIconFillOpacity)));
+        }
+        auto* b = brush(tone.color);
+        if (entry.filled) {
+            m_context->FillGeometry(entry.geometry, b);
+        }
+        m_context->DrawGeometry(entry.geometry, b, entry.strokeWidth, m_icons.strokeStyle());
+        m_context->SetTransform(previous);
+        return;
+    }
     auto* b = brush(ink);
     if (entry.filled) {
         m_context->FillGeometry(entry.geometry, b);

@@ -3,8 +3,11 @@
 #include "base/Log.h"
 #include "base/Text.h"
 #include "base/Utf8.h"
+#include "core/image/BootDrivers.h"
 #include "core/image/ComponentStore.h"
 #include "core/image/DeepRemoval.h"
+#include "core/image/ImageInventory.h"
+#include "core/image/RegistryEdit.h"
 #include "core/image/dism/Appx.h"
 #include "core/system/BackupFiles.h"
 #include "core/system/FileLocks.h"
@@ -17,6 +20,7 @@
 #include <array>
 #include <cwctype>
 #include <format>
+#include <map>
 
 namespace wl::core {
 
@@ -118,8 +122,20 @@ std::string componentRecipeToJson(const ComponentRecipe& recipe) {
     if (!recipe.driverClasses.empty()) {
         doc["driverClasses"] = list(recipe.driverClasses);
     }
+    if (!recipe.driverPackages.empty()) {
+        doc["driverPackages"] = list(recipe.driverPackages);
+    }
     if (!recipe.appx.empty()) {
         doc["appx"] = list(recipe.appx);
+    }
+    if (!recipe.storeNames.empty()) {
+        doc["storeNames"] = list(recipe.storeNames);
+        if (recipe.storeBits != 0) {
+            doc["storeBits"] = recipe.storeBits;
+        }
+    }
+    if (!recipe.services.empty()) {
+        doc["services"] = list(recipe.services);
     }
     if (recipe.afterUpdates) {
         doc["afterUpdates"] = true;
@@ -152,8 +168,18 @@ Result<ComponentRecipe> componentRecipeFromJson(std::string_view json) {
         for (const auto& item : doc.value("driverClasses", Json::array())) {
             recipe.driverClasses.push_back(utf8::toWide(item.get<std::string>()));
         }
+        for (const auto& item : doc.value("driverPackages", Json::array())) {
+            recipe.driverPackages.push_back(utf8::toWide(item.get<std::string>()));
+        }
         for (const auto& item : doc.value("appx", Json::array())) {
             recipe.appx.push_back(utf8::toWide(item.get<std::string>()));
+        }
+        for (const auto& item : doc.value("storeNames", Json::array())) {
+            recipe.storeNames.push_back(utf8::toWide(item.get<std::string>()));
+        }
+        recipe.storeBits = static_cast<std::uint8_t>(doc.value("storeBits", 0));
+        for (const auto& item : doc.value("services", Json::array())) {
+            recipe.services.push_back(utf8::toWide(item.get<std::string>()));
         }
         recipe.afterUpdates = doc.value("afterUpdates", false);
         for (const auto& item : doc.value("registry", Json::array())) {
@@ -190,9 +216,85 @@ std::wstring componentTitle(std::wstring_view operationValue) {
     return title != doc.end() && title->is_string() ? utf8::toWide(title->get<std::string>()) : std::wstring();
 }
 
+namespace {
+// D-113: what a preset can never take, whatever it says (prefixes of store identity names).
+constexpr std::wstring_view kProtectedStore[] = {
+    L"microsoft-windows-kernel", L"microsoft-windows-os-kernel", L"microsoft-windows-ntdll",
+    L"microsoft-windows-kernelbase", L"microsoft-windows-kernel32", L"microsoft-windows-win32k",
+    L"microsoft-windows-user32", L"microsoft-windows-gdi32", L"microsoft-windows-advapi32",
+    L"microsoft-windows-combase", L"microsoft-windows-com-base", L"microsoft-windows-rpc",
+    L"microsoft-windows-csrss", L"microsoft-windows-smss", L"microsoft-windows-winlogon",
+    L"microsoft-windows-lsa", L"microsoft-windows-security-lsa", L"microsoft-windows-authui",
+    L"microsoft-windows-logonui", L"microsoft-windows-shell32", L"microsoft-windows-explorer",
+    L"microsoft-windows-shellexperiencehost", L"microsoft-windows-bootenvironment",
+    L"microsoft-windows-servicingstack", L"microsoft-windows-servicing", L"microsoft-windows-cbs",
+    L"microsoft-windows-trustedinstaller", L"microsoft-windows-services-svchost",
+    L"microsoft-windows-services-servicecontrollermanager", L"microsoft-windows-registry",
+    L"microsoft-windows-ntfs", L"microsoft-windows-pnp", L"microsoft-onecore-pnp",
+    L"microsoft-windows-crypt32", L"microsoft-windows-cryptbase", L"microsoft-windows-bcrypt",
+    L"microsoft-windows-terminalservices-localsessionmanager", L"microsoft-windows-ie-clientnetworkprotocolimplementation",
+    L"microsoft-windows-ie-runtimeutilities", L"microsoft-windows-ie-pluggablehandlersandsecurityzones",
+    L"microsoft-windows-wmi-core", L"microsoft-windows-application-experience-apphelp",
+    L"microsoft-windows-application-experience-mitigations", L"microsoft-windows-coreui",
+    // D-120: what the reference tool keeps out of the components it removes (its definitions, read from the
+    // binary: the "Modern App support" core it never removes, the text input service it locks for
+    // apps / search / Wi-Fi, the Start menu's own packages, the feature configuration it excludes
+    // from Windows Insider, the packages it keeps for the servicing stack). Ours, by rule: a
+    // removal whose patterns reach one of these leaves it in place.
+    L"microsoft-onecore-accessibility-experience", L"microsoft-windows-ui-xaml-controls",
+    L"microsoft-onecore-applicationmodel-datatransfer", L"microsoft-windows-windowui", L"microsoft-windows-windowsui",
+    L"microsoft-windows-xaml", L"microsoft-windows-creddialogcontroller", L"microsoft-windows-appx-deployment",
+    L"microsoft-windows-onecoreuapcommonproxystub", L"microsoft-windows-appmodel-staterepository",
+    L"microsoft-windows-applicationmodel-processmodel", L"microsoft-windows-securitymitigationsbroker",
+    L"microsoft-windows-directui", L"microsoft-windows-tabletpc-platform-input-core",
+    L"microsoft-windows-tabletpc-platform-input-service-client", L"microsoft-windows-tabletpc-platform-comruntime",
+    L"microsoft-windows-tabletpc-journal", L"microsoft-windows-flighting-featureconfiguration",
+    L"microsoft-windows-flighting-onesettingsclient", L"microsoft-windows-flighting-settings",
+    L"microsoft-windows-cortana-brokeredapi", L"microsoft-windows-errorreportingfaults",
+    L"microsoft-windows-securestartup-filterdriver", L"microsoft-windows-update-orchestratorcore-oobeexpedite",
+};
+constexpr std::wstring_view kProtectedServices[] = {
+    L"rpcss", L"rpceptmapper", L"dcomlaunch", L"lsm", L"power", L"plugplay", L"brokerinfrastructure",
+    L"samss", L"eventlog", L"profsvc", L"usermanager", L"coremessagingregistrar", L"staterepository",
+    L"trustedinstaller", L"cryptsvc", L"dhcp", L"dnscache", L"nsi", L"mpssvc", L"bfe", L"gpsvc",
+    L"winmgmt", L"systemeventsbroker", L"timebrokersvc", L"keyiso", L"appxsvc",
+    L"textinputmanagementservice", // D-120: Start, Settings, search and Wi-Fi sign-in type through it
+    // D-121: the rest of what the reference tool's Services page locks for "basic functionality" (TokenBroker
+    // goes only with its own files, `aad`, which four guards hold). fvevol and rdyboost are volume
+    // filters: a filter the volume class names without its key does not boot.
+    L"deviceassociationservice", L"appreadiness", L"wlidsvc", L"windowstrustedrt", L"fvevol", L"rdyboost",
+    L"dxgkrnl", L"wdf01000",
+};
+} // namespace
+
+// D-120: whole names (a prefix would take ASP.NET's own system.web.mobile / .entity along). Windows
+// PowerShell's ConvertFrom-Json stands on System.Web.Extensions → System.Web: without them WinLove's
+// setup screens come up empty (D-117 fixed the catalog; an older preset still names them).
+constexpr std::wstring_view kProtectedStoreExact[] = {
+    L"system.web", L"system.web.extensions", L"system.web.services", L"system.web.regularexpressions",
+    L"system.web.applicationservices",
+};
+
+bool isProtectedStoreName(std::wstring_view name) {
+    std::wstring n(name);
+    for (auto& c : n) {
+        c = static_cast<wchar_t>(std::towlower(c));
+    }
+    return std::ranges::any_of(kProtectedStore, [&](std::wstring_view prefix) { return n.starts_with(prefix); }) ||
+           std::ranges::find(kProtectedStoreExact, std::wstring_view(n)) != std::end(kProtectedStoreExact);
+}
+
+bool isProtectedService(std::wstring_view name) {
+    std::wstring n(name);
+    for (auto& c : n) {
+        c = static_cast<wchar_t>(std::towlower(c));
+    }
+    return std::ranges::find(kProtectedServices, std::wstring_view(n)) != std::end(kProtectedServices);
+}
+
 Result<void> validateComponentRecipe(const ComponentRecipe& recipe) {
     if (recipe.packages.empty() && recipe.paths.empty() && recipe.registry.empty() && recipe.driverClasses.empty() &&
-        recipe.appx.empty()) {
+        recipe.driverPackages.empty() && recipe.appx.empty() && recipe.storeNames.empty() && recipe.services.empty()) {
         return fail(ErrorCode::InvalidArgument, L"component recipe does nothing", recipe.title);
     }
     for (const auto& path : recipe.paths) {
@@ -223,6 +325,43 @@ Result<void> validateComponentRecipe(const ComponentRecipe& recipe) {
         });
         if (!plain) {
             return fail(ErrorCode::InvalidArgument, L"not an app name", name);
+        }
+    }
+    for (const auto& package : recipe.driverPackages) {
+        const bool plain = !package.empty() && package.size() <= 128 && std::ranges::all_of(package, [](wchar_t c) {
+            return c < 128 && (std::iswalnum(c) != 0 || c == L'.' || c == L'_' || c == L'-');
+        });
+        if (!plain) {
+            return fail(ErrorCode::InvalidArgument, L"not a driver package name", package);
+        }
+    }
+    for (const auto& name : recipe.storeNames) {
+        // Identity names as the store has them, lower case: letters, digits, ". _ -", and "( )" or an inner
+        // space ("microsoft-windows-microsoft-data-access-components-(mdac)-ado15-dll", "…-base technologies-…").
+        const bool plain = !name.empty() && name.size() <= 160 && name.find(L"..") == std::wstring::npos &&
+                           name.front() != L' ' && name.back() != L' ' && std::ranges::all_of(name, [](wchar_t c) {
+                               return c < 128 && (std::iswlower(c) != 0 || std::iswdigit(c) != 0 || c == L'.' ||
+                                                  c == L'_' || c == L'-' || c == L'(' || c == L')' || c == L' ');
+                           });
+        if (!plain) {
+            return fail(ErrorCode::InvalidArgument, L"not a store component name", name);
+        }
+        if (isProtectedStoreName(name)) {
+            return fail(ErrorCode::InvalidArgument, L"a component Windows cannot start without (D-113)", name);
+        }
+    }
+    if (recipe.storeBits != 0 && recipe.storeBits != 32 && recipe.storeBits != 64) {
+        return fail(ErrorCode::InvalidArgument, L"storeBits is 0, 32 or 64", recipe.title);
+    }
+    for (const auto& name : recipe.services) {
+        const bool plain = !name.empty() && name.size() <= 80 && std::ranges::all_of(name, [](wchar_t c) {
+            return c < 128 && (std::iswalnum(c) != 0 || c == L'_' || c == L'-' || c == L'.');
+        });
+        if (!plain) {
+            return fail(ErrorCode::InvalidArgument, L"not a service name", name);
+        }
+        if (isProtectedService(name)) {
+            return fail(ErrorCode::InvalidArgument, L"a service Windows cannot start without (D-113)", name);
         }
     }
     // Deep removal never reaches beyond the legacy device classes, whatever a preset asks for.
@@ -454,9 +593,75 @@ std::optional<bool> stillInstalled(DismSession& session, const std::wstring& ide
 
 } // namespace
 
-Result<void> removeComponent(DismSession& session, const ComponentRecipe& recipe, const TaskContext& task) {
-    if (auto valid = validateComponentRecipe(recipe); !valid) {
+Result<void> removeComponent(DismSession& session, const ComponentRecipe& requested, const TaskContext& task, bool packagesAllowed) {
+    // D-120: a preset written before a name was kept still names it; that name stays and the rest
+    // of the recipe goes (it used to fail the whole step).
+    ComponentRecipe given = requested;
+    {
+        std::vector<std::wstring> kept;
+        for (const auto& name : given.storeNames) {
+            if (isProtectedStoreName(name)) {
+                kept.push_back(name);
+            }
+        }
+        for (const auto& name : given.services) {
+            if (isProtectedService(name)) {
+                kept.push_back(name);
+            }
+        }
+        if (!kept.empty()) {
+            std::erase_if(given.storeNames, [](const std::wstring& name) { return isProtectedStoreName(name); });
+            std::erase_if(given.services, [](const std::wstring& name) { return isProtectedService(name); });
+            std::wstring list;
+            for (const auto& name : kept) {
+                list += (list.empty() ? L"" : L", ") + name;
+            }
+            log::warn("cbs", given.title + L": kept, Windows needs them (D-120): " + list);
+            if (given.packages.empty() && given.paths.empty() && given.registry.empty() && given.driverClasses.empty() &&
+                given.driverPackages.empty() && given.appx.empty() && given.storeNames.empty() && given.services.empty()) {
+                return {};
+            }
+        }
+    }
+    if (auto valid = validateComponentRecipe(given); !valid) {
         return valid;
+    }
+    // A closed image (shrunk WinSxS, report 2026-11-07): the packages stay — not unlocked, not
+    // removed; the files, registry, services and apps of the recipe still go.
+    std::optional<ComponentRecipe> trimmed;
+    if (!packagesAllowed && !given.packages.empty()) {
+        trimmed = given;
+        trimmed->packages.clear();
+        const auto& t = *trimmed;
+        if (t.paths.empty() && t.registry.empty() && t.storeNames.empty() && t.services.empty() && t.driverClasses.empty() &&
+            t.driverPackages.empty() && t.appx.empty()) {
+            return fail(ErrorCode::Unsupported,
+                        L"skipped: the component is CBS packages only and this image takes no more package servicing",
+                        given.title, static_cast<std::int32_t>(0x800F0830));
+        }
+        log::warn("cbs", given.title + L": its packages stay (the image takes no more package servicing); the rest goes");
+    }
+    ComponentRecipe recipe = trimmed ? *trimmed : given;
+    // D-119: a font Windows' own interface and its web engines fall back to never goes (Arial, Times
+    // New Roman, Tahoma …: without them Setup's screens stopped and OOBE looped, VM 2026-11-08). A
+    // font recipe names its family through the Fonts values it deletes; its files go with them.
+    {
+        const std::wstring fontsKey = normalizeRegistryKey(L"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts");
+        const auto coreFontValue = [&](const RegistryWrite& write) {
+            return write.kind == RegistryWrite::Kind::DeleteValue && _wcsicmp(write.key.c_str(), fontsKey.c_str()) == 0 &&
+                   isCoreFontFamily(fontFamily(write.name));
+        };
+        if (std::ranges::any_of(recipe.registry, coreFontValue)) {
+            std::erase_if(recipe.registry, coreFontValue);
+            std::erase_if(recipe.paths, [](const std::wstring& path) {
+                return text::lower(path).starts_with(L"windows\\fonts\\");
+            });
+            log::warn("cbs", recipe.title + L": the font stays, Windows' interface and its web engines fall back to it (D-119)");
+            if (recipe.paths.empty() && recipe.registry.empty() && recipe.packages.empty() && recipe.storeNames.empty() &&
+                recipe.services.empty() && recipe.driverClasses.empty() && recipe.driverPackages.empty() && recipe.appx.empty()) {
+                return {};
+            }
+        }
     }
     const std::filesystem::path mountDir = session.mountPath();
     // Every path is resolved before anything is touched: one refused path stops the whole recipe.
@@ -467,6 +672,54 @@ Result<void> removeComponent(DismSession& session, const ComponentRecipe& recipe
             return std::unexpected(path.error());
         }
         paths.push_back(std::move(*path));
+    }
+    // D-116 / D-117: a path that is (or holds) a file Windows needs before it starts stays: a boot
+    // driver, a device filter, the loader's own files and every module these import.
+    if (std::ranges::any_of(paths, [](const std::filesystem::path& path) { return !bootFilesUnder(path).empty(); })) {
+        session.suspend(); // offreg reads SYSTEM: DISM must let go of it
+        auto boot = findBootDrivers(mountDir);
+        if (auto reopened = session.reload(); !reopened) {
+            return reopened;
+        }
+        auto kept = boot ? keptBootFiles(mountDir, *boot, recipe.services) : std::unexpected(boot.error());
+        std::erase_if(paths, [&](const std::filesystem::path& path) {
+            for (const auto& file : bootFilesUnder(path)) {
+                if (!kept) {
+                    log::warn("cbs", std::format(L"{}: {} stays, boot files not readable: {}", recipe.title, path.wstring(),
+                                                 describe(kept.error())));
+                    return true;
+                }
+                if (const auto found = kept->find(imageRelativePath(file, mountDir)); found != kept->end()) {
+                    log::warn("cbs", std::format(L"{}: {} stays, Windows needs {} before it starts ({}, D-116/D-117)", recipe.title,
+                                                 path.wstring(), file.filename().wstring(), found->second));
+                    return true;
+                }
+            }
+            return false;
+        });
+        // D-118: nor one a module that stays imports or delay-loads (files outside these paths).
+        std::vector<std::wstring> going;
+        for (const auto& path : paths) {
+            for (const auto& file : bootFilesUnder(path)) {
+                going.push_back(imageRelativePath(file, mountDir));
+            }
+        }
+        auto imported = keptImportedFiles(mountDir, going);
+        std::erase_if(paths, [&](const std::filesystem::path& path) {
+            for (const auto& file : bootFilesUnder(path)) {
+                if (!imported) {
+                    log::warn("cbs", std::format(L"{}: {} stays, imports not readable: {}", recipe.title, path.wstring(),
+                                                 describe(imported.error())));
+                    return true;
+                }
+                if (const auto found = imported->find(imageRelativePath(file, mountDir)); found != imported->end()) {
+                    log::warn("cbs", std::format(L"{}: {} stays, a module that stays needs {} ({}, D-118)", recipe.title,
+                                                 path.wstring(), file.filename().wstring(), found->second));
+                    return true;
+                }
+            }
+            return false;
+        });
     }
 
     std::vector<CbsPackage> packages;
@@ -481,11 +734,24 @@ Result<void> removeComponent(DismSession& session, const ComponentRecipe& recipe
         }
         packages = std::move(*edited);
     }
-    if (!recipe.driverClasses.empty()) {
+    if (!recipe.storeNames.empty() || !recipe.services.empty()) {
+        // D-113: the installed copies and the services' keys (SYSTEM): DISM must let go of the hives.
+        session.suspend();
+        auto copies = removeStoreCopies(mountDir, recipe.storeNames, recipe.storeBits, recipe.services, task);
+        if (auto reopened = session.reload(); !reopened) {
+            return reopened;
+        }
+        if (!copies) {
+            return std::unexpected(copies.error());
+        }
+    }
+    if (!recipe.driverClasses.empty() || !recipe.driverPackages.empty()) {
         // Deep removal edits COMPONENTS / DRIVERS / SYSTEM and the store's files: DISM must let go.
         session.suspend();
         const auto deep = [&]() -> Result<void> {
-            auto drivers = findInboxDrivers(mountDir, recipe.driverClasses);
+            // D-112: named packages (one INF) or whole classes; the class limit is deepRemoveDrivers'.
+            auto drivers = recipe.driverPackages.empty() ? findInboxDrivers(mountDir, recipe.driverClasses)
+                                                         : findDriverPackages(mountDir, recipe.driverPackages);
             if (!drivers) {
                 return std::unexpected(drivers.error());
             }

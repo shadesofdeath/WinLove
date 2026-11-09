@@ -4,7 +4,9 @@
 //  - an app's own dependencies (AppxManifest.xml <PackageDependency>, read with the app list): a
 //    runtime a kept app needs is not removed. Always on; removing the apps too frees it.
 //  - guards the user keeps on (resources/catalog/compat.json: "Windows Update", "Printing" …):
-//    each names the apps, system components, services and steps it needs.
+//    each names the apps, system components, services, capabilities and steps it needs. A component
+//    whose recipe takes along a service or an app a guard keeps is kept too (D-121: the reference tool locks the
+//    component a service belongs to).
 #include "core/ops/ChangeSet.h"
 
 #include <map>
@@ -20,6 +22,10 @@ struct CompatGuard {
     std::vector<std::wstring> appx;       // identity-name prefixes ("Microsoft.WindowsStore")
     std::vector<std::wstring> components; // RemoveComponent / CleanupImage / ShrinkStore targets (catalog ids)
     std::vector<std::wstring> services;   // services that must not be disabled
+    std::vector<std::wstring> capabilities; // RemoveCapability targets by name ("Edge.Webview2.Platform"), any version
+    // D-121: on for good ("core"): it keeps only its services from being disabled. A component that
+    // takes one of them along is not held by it (the engine keeps those service keys, D-120).
+    bool always = false;
 };
 
 // A provisioned app (identity name) → the identity names it needs. Apps not in the image are absent.

@@ -87,7 +87,7 @@ function Set-SetupHooks([bool] $on) {
         $key = "HKLM:\SYSTEM\Setup\FirstBoot\$phase"
         if ($on) {
             Confirm-Key $key
-            $line = 'cmd.exe /c powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -Stage {1}' -f (Join-Path $here 'oobe.ps1'), $phase.ToLower()
+            $line = 'cmd.exe /c powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -Stage {1}' -f (Join-Path $here 'oobe.ps1'), $phase.ToLowerInvariant()
             Set-ItemProperty -Path $key -Name $hookName -Value $line -Type String
         } else {
             Remove-ItemProperty -Path $key -Name $hookName -ErrorAction SilentlyContinue
@@ -202,8 +202,8 @@ function Start-NameWatcher([string] $computer) {
         '$names = ''HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName''',
         '$tcp = ''HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters''',
         '$until = (Get-Date).AddMinutes(15)',
-        'while )wlps"
-    R"wlps(((Get-Date) -lt $until) {',
+      )wlps"
+    R"wlps(  'while ((Get-Date) -lt $until) {',
         '    try {',
         '        $now = (Get-ItemProperty -Path $names).ComputerName',
         '        if ($now -ne $want) {',
@@ -383,8 +383,8 @@ public static class Wifi {
                 return WlanConnect(handle, ref g, ref parameters, IntPtr.Zero);
             }
             return 2;
-        } finally { WlanCloseHandle(handle, IntPt)wlps"
-    R"wlps(r.Zero); }
+        } finally { WlanCloseHandle(hand)wlps"
+    R"wlps(le, IntPtr.Zero); }
     }
 }
 }
@@ -406,7 +406,7 @@ function Get-WifiProfile($net, [string] $key, [bool] $autoConnect) {
     $name = [System.Security.SecurityElement]::Escape($net.Ssid)
     $shared = ''
     if ($auth -in 'WPAPSK', 'WPA2PSK', 'WPA3SAE') {
-        $type = if ($key -match '^[0-9A-Fa-f]{64}$') { 'networkKey' } else { 'passPhrase' }
+        $type = if ($key -cmatch '^[0-9A-Fa-f]{64}$') { 'networkKey' } else { 'passPhrase' }
         $shared = '<sharedKey><keyType>{0}</keyType><protected>false</protected><keyMaterial>{1}</keyMaterial></sharedKey>' -f $type, [System.Security.SecurityElement]::Escape($key)
     }
     return ('<?xml version="1.0"?><WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1"><name>{0}</name>' +
@@ -574,9 +574,9 @@ $xaml = @'
         </Border>
         <ScrollViewer x:Name="PART_ContentHost" Margin="11,0,36,0" VerticalAlignment="Center"/>
       </Grid>
-      <ControlTemplate.Triggers>
-        )wlps"
-    R"wlps(<Trigger Property="IsMouseOver" Value="True">
+      <ControlTemplate.Triggers)wlps"
+    R"wlps(>
+        <Trigger Property="IsMouseOver" Value="True">
           <Trigger.EnterActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="H" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.12"/></Storyboard></BeginStoryboard></Trigger.EnterActions>
           <Trigger.ExitActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="H" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.2"/></Storyboard></BeginStoryboard></Trigger.ExitActions>
         </Trigger>
@@ -721,8 +721,8 @@ $xaml = @'
                       <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="{DynamicResource Row}"/></Trigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
-                </ToggleButton.Template>)wlps"
-    R"wlps(
+                </ToggleButton)wlps"
+    R"wlps(.Template>
               </ToggleButton>
               <ContentPresenter Margin="11,0,32,0" VerticalAlignment="Center" IsHitTestVisible="False"
                                 Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"/>
@@ -880,8 +880,8 @@ $xaml = @'
                   <Border x:Name="MiniWall" CornerRadius="8"/>
                   <Ellipse Width="300" Height="190" Margin="-90,0,0,-110" HorizontalAlignment="Left" VerticalAlignment="Bottom" Fill="{DynamicResource MiniBlobA}"/>
                   <Ellipse Width="230" Height="170" Margin="0,-70,-80,0" HorizontalAlignment="Right" VerticalAlignment="Top" Fill="{DynamicResource MiniBlobB}"/>
-                  <Border x:Name="MiniA)wlps"
-    R"wlps(pp" Width="196" Height="118" CornerRadius="6" Margin="58,30,0,0" HorizontalAlignment="Left" VerticalAlignment="Top">
+                  <Border x:N)wlps"
+    R"wlps(ame="MiniApp" Width="196" Height="118" CornerRadius="6" Margin="58,30,0,0" HorizontalAlignment="Left" VerticalAlignment="Top">
                     <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.3"/></Border.Effect>
                     <StackPanel>
                       <Border x:Name="MiniTitle" Height="18" CornerRadius="6,6,0,0">
@@ -1025,8 +1025,8 @@ $xaml = @'
                 </StackPanel>
 
                 <StackPanel x:Name="PageLook" Visibility="Collapsed">
-                  <TextBlock x:Name="Them)wlps"
-    R"wlps(eLabel" Style="{StaticResource Label}"/>
+                  <TextBlock x:)wlps"
+    R"wlps(Name="ThemeLabel" Style="{StaticResource Label}"/>
                   <StackPanel x:Name="Themes" Orientation="Horizontal" Margin="0,0,0,16"/>
                   <TextBlock x:Name="AccentLabel" Style="{StaticResource Label}"/>
                   <WrapPanel x:Name="Accents" MaxWidth="470" HorizontalAlignment="Left" Margin="0,0,0,14"/>
@@ -1189,8 +1189,8 @@ $palettes = @{
     dark  = @{ Bg = '#0B1222'; Blob1 = '#1E4FB8'; Blob2 = '#12306E'; Blob3 = '#4A2A6E'; Card = '#202020'; CardLine = '#14FFFFFF'
                Text1 = '#FFFFFF'; Text2 = '#C8C8C8'; Text3 = '#9D9D9D'; Fill = '#2D2D2D'; FillFocus = '#1F1F1F'; Stroke = '#3A3A3A'
                Bottom = '#9A9A9A'; Row = '#2B2B2B'; RowLine = '#363636'; Err = '#FF99A4'; Panel = '#80202020'
-               Wash = '#0DFFFFFF'; RowHover = '#32323)wlps"
-    R"wlps(2' }
+               Wash = '#0DFFFFFF'; RowHover)wlps"
+    R"wlps( = '#323232' }
 }
 function Get-Mix([string] $hex, [int] $toward, [double] $amount) { # toward 255 (lighter) or 0 (darker): "#RRGGBB"
     $out = foreach ($i in 1, 3, 5) {
@@ -1395,8 +1395,8 @@ foreach ($pref in @($data.prefs)) {
     $icon.Margin = '0,0,14,0'; $icon.VerticalAlignment = 'Center'
     [void] $grid.Children.Add($icon)
     $words = New-Object System.Windows.Controls.StackPanel
-    $words.VerticalAlignment = 'Cent)wlps"
-    R"wlps(er'
+    $words.VerticalAlignme)wlps"
+    R"wlps(nt = 'Center'
     [System.Windows.Controls.Grid]::SetColumn($words, 1)
     $nameText = if (-not $win11 -and $pref.name10) { (Tr $pref.name10Key $pref.name10) } else { (Tr $pref.nameKey $pref.name) }
     [void] $words.Children.Add((New-Text $nameText))
@@ -1519,7 +1519,7 @@ function Show-Choices {
         if ($on -and -not $was) { Start-Pop $badge }
     }
     foreach ($ring in $ui.Accents.Children) {
-        $on = ([string] $ring.Tag).ToLower() -eq $script:accent.ToLower()
+        $on = ([string] $ring.Tag).ToLowerInvariant() -eq $script:accent.ToLowerInvariant()
         if ($on) { Set-Res $ring ([System.Windows.Controls.Border]::BorderBrushProperty) 'Text1' } else { $ring.BorderBrush = [System.Windows.Media.Brushes]::Transparent }
         $tick = $ring.Child.Child
         $was = $tick.Visibility -eq 'Visible'
@@ -1569,7 +1569,7 @@ function Update-Art {
     $ui.ArtClock.Text = $there.ToString('HH:mm', $culture)
     $ui.ArtDate.Text = $there.ToString('dddd, d MMMM', $culture)
     $pc = $ui.PcName.Text.Trim()
-    $ui.ArtPcName.Text = $(if ($pc) { $pc.ToUpper() } else { 'PC' })
+    $ui.ArtPcName.Text = $(if ($pc) { $pc.ToUpperInvariant() } else { 'PC' })
     $ui.ArtZone.Text = $zone.DisplayName
     # look
     $ui.MiniWall.Background = $(if ($dark) { New-Slope '#22355F' '#16264C' '#08102A' } else { New-Slope '#E2EBF8' '#C9D9F3' '#A9C3EE' })
@@ -1581,9 +1581,9 @@ function Update-Art {
     foreach ($n in 'MiniIcon1', 'MiniIcon2', 'MiniIcon3') { $ui[$n].Background = $brush.ConvertFromString($(if ($dark) { '#6B6B6B' } else { '#9A9A9A' })) }
     $ui.MiniIcons.HorizontalAlignment = $(if ($win11 -and $script:align -eq 'center') { 'Center' } else { 'Left' })
     # habits: a small Explorer and taskbar that follow the switches
-    $ext = $script:prefs['ext']; $hidden = $script:prefs['hidden']
-    $ui.ExPlace.Text = $(if ($sc)wlps"
-    R"wlps(ript:prefs['thispc']) { $t.prefPlaceThisPc } else { $t.prefPlaceDocs })
+    $ext = $script:prefs['ext']; $hidden = $script:prefs['hidd)wlps"
+    R"wlps(en']
+    $ui.ExPlace.Text = $(if ($script:prefs['thispc']) { $t.prefPlaceThisPc } else { $t.prefPlaceDocs })
     $ui.ExFiles.Children.Clear()
     $files = @(@('.config', '', '#8A8A8A', $true), @($t.prefFileReport, '.docx', '#2F6FD0', $false), @($t.prefFileBudget, '.xlsx', '#2E9D5B', $false),
                @($t.prefFileHoliday, '.jpg', '#E8A23B', $false), @('setup', '.exe', '#C04A3A', $false))
@@ -1787,9 +1787,9 @@ function Show-Networks([bool] $scan) {
     foreach ($net in ($nets | Select-Object -First 12)) {
         $row = New-Object System.Windows.Controls.Border
         $row.Style = $window.FindResource('RowBox'); $row.Margin = '0,0,0,4'; $row.Tag = $net
-        $stack = New-Object System.Windows.Controls.StackPanel
-      )wlps"
-    R"wlps(  $head = New-Object System.Windows.Controls.Grid
+        $stack = New-Object Syst)wlps"
+    R"wlps(em.Windows.Controls.StackPanel
+        $head = New-Object System.Windows.Controls.Grid
         $head.Height = 46; $head.Background = [System.Windows.Media.Brushes]::Transparent; $head.Cursor = 'Hand'
         foreach ($w in 'Auto', '*', 'Auto') { $col = New-Object System.Windows.Controls.ColumnDefinition; $col.Width = $w; $head.ColumnDefinitions.Add($col) }
         # the signal: three arcs, the ones above the strength faint
@@ -1985,10 +1985,10 @@ function Show-PageNow([int] $index) {
     Update-Next
 }
 
-$reserved = @('administrator', 'guest', 'defaultaccount', 'wdagutilityaccount', 'system', 'none', ([string] $data.setupAccount).ToLower())
+$reserved = @('administrator', 'guest', 'defaultaccount', 'wdagutilityaccount', 'system', 'none', ([string] $data.setupAccount).ToLowerInvariant())
 function Get-DefaultComputerName([string] $user) {
     if ($data.computerName) { return [string] $data.computerName } # what the answer file suggested
-    $clean = ($user.ToUpper() -replace '[^A-Z0-9]', '')
+    $clean = ($user.ToUpperInvariant() -creplace '[^A-Z0-9]', '')
     if ($clean.Length -gt 12) { $clean = $clean.Substring(0, 12) }
     if (-not $clean) { return 'PC' }
     return $clean + '-PC'
@@ -1999,14 +1999,14 @@ function Test-Page([int] $index) {
         $name = $ui.UserName.Text.Trim()
         if (-not $name) { return $t.errorName }
         if ($name -match '["/\\\[\]:;|=,+*?<>@%]' -or $name.Trim('.') -eq '') { return $t.errorNameChars }
-        if ($reserved -contains $name.ToLower()) { return $t.errorNameTaken }
+        if ($reserved -contains $name.ToLowerInvariant()) { return $t.errorNameTaken }
         if (Get-LocalUser -Name $name -ErrorAction SilentlyContinue) { return $t.errorNameTaken }
-        if ($ui.Pass.Password -ne $ui.Pass2.Password) { return $t.errorPasswords }
-        if (-not $ui.Pass.Password -and -)wlps"
-    R"wlps(not $data.allowEmptyPassword) { return $t.errorPasswordEmpty }
+        if ($ui.Pass.Password -ne $ui.Pass2.Password) { ret)wlps"
+    R"wlps(urn $t.errorPasswords }
+        if (-not $ui.Pass.Password -and -not $data.allowEmptyPassword) { return $t.errorPasswordEmpty }
     } elseif ($id -eq 'computer') {
         $pc = $ui.PcName.Text.Trim()
-        if ($pc -notmatch '^[A-Za-z0-9-]{1,15}$' -or $pc -match '^[0-9]+$') { return $t.errorComputer }
+        if ($pc -cnotmatch '^[A-Za-z0-9-]{1,15}$' -or $pc -cmatch '^[0-9]+$') { return $t.errorComputer }
     }
     return ''
 }
@@ -2175,7 +2175,7 @@ $zoneId = if ((Test-Shown 'computer') -and $ui.Zone.SelectedItem) { [string] $ui
 # enough to be read: the work itself takes about two seconds in all.
 $dot = ' ' + [char] 0xB7 + ' '
 function Get-Named($list, [string] $key, [string] $value) {
-    $m = @($list) | Where-Object { $_ -and ([string] $_.$key).ToLower() -eq $value.ToLower() } | Select-Object -First 1
+    $m = @($list) | Where-Object { $_ -and ([string] $_.$key).ToLowerInvariant() -eq $value.ToLowerInvariant() } | Select-Object -First 1
     if ($m) { return (Tr $m.nameKey $m.name) }
     return ''
 }
@@ -2200,10 +2200,10 @@ $ui.ReadySub.Text = $(if ($system) { $t.readySub } else { $t.stepRestart })
 
 $script:stepRows = @()
 foreach ($step in $steps) {
-    $line = New-Object System.Windows.Controls.Grid
+    $line = New-Object System.Win)wlps"
+    R"wlps(dows.Controls.Grid
     $line.Margin = '14,5'; $line.Opacity = 0
-    foreach ($w in 'A)wlps"
-    R"wlps(uto', '*') { $col = New-Object System.Windows.Controls.ColumnDefinition; $col.Width = $w; $line.ColumnDefinitions.Add($col) }
+    foreach ($w in 'Auto', '*') { $col = New-Object System.Windows.Controls.ColumnDefinition; $col.Width = $w; $line.ColumnDefinitions.Add($col) }
     $mark = New-Object System.Windows.Controls.Grid
     $mark.Width = 20; $mark.Height = 20; $mark.VerticalAlignment = 'Top'; $mark.Margin = '0,1,14,0'
     $wait = New-Object System.Windows.Shapes.Ellipse # not yet: a faint ring
@@ -2407,8 +2407,8 @@ try {
         # theme goes in only through the .reg.
         $script:userReg.AddRange([string[]] @(
             '[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize]',
-            ('"AppsUseLightTheme"=dword:{0:x8}' -f $light), ('"SystemUsesLightTheme"=dword:{0:x8}' -)wlps"
-    R"wlps(f $light),
+            ('")wlps"
+    R"wlps(AppsUseLightTheme"=dword:{0:x8}' -f $light), ('"SystemUsesLightTheme"=dword:{0:x8}' -f $light),
             ('"EnableTransparency"=dword:{0:x8}' -f [int] [bool] $ui.Glass.IsChecked), '',
             '[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Accent]',
             ('"AccentPalette"=hex:' + $palette), ('"AccentColorMenu"=dword:{0:x8}' -f (Get-Bgr $base)),
@@ -3130,6 +3130,378 @@ $ui.Done.IsEnabled = $true
 if (-not $dryRun) { Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue }
 Remove-Item $doneFile -ErrorAction SilentlyContinue
 while (-not $script:closed) { Wait-Seconds 0.25 }
+exit 0
+)wlps";
+
+// resources/scripts/updateguard.ps1
+inline constexpr std::string_view kUpdateguard =
+    R"wlps(# WinLove update guard (D-125): keeps what WinLove's Apply did when a Windows update puts it back.
+#
+# WinLove writes it into the image with guard.json next to it: the user's choices that ran -
+# services' start types, machine-wide registry values, removed apps, scheduled tasks switched off,
+# removed components' files. SetupComplete.cmd runs it once with -Register: the task
+# "\WinLove\Update guard" (SYSTEM) is created and the first check runs. The task then runs it at
+# startup, after Windows Update installed something (System log, WindowsUpdateClient event 19) and
+# once a day.
+#
+# The rule, item by item:
+#   as wanted                                  -> nothing
+#   different at the first check               -> repaired (Setup's own changes)
+#   changed since the last check, an update
+#   was installed in between                   -> repaired (the update did it)
+#   changed since the last check, no update    -> the user's choice: left alone, no longer guarded
+# An app provisioned again is always repaired: only servicing provisions apps.
+# Removed components whose files came back are only reported: deleting system files on a running
+# Windows is not safe. "mode": "report" in guard.json repairs nothing and reports everything.
+#
+# Log: guard.log next to this file. To take it away: run this file with -Remove (task + folder).
+#
+# Keep this file ASCII: Windows PowerShell reads a script without a byte order mark as ANSI.
+param([switch] $Register, [switch] $Remove)
+
+$ErrorActionPreference = 'Continue'
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+$taskPath = '\WinLove\'
+$taskName = 'Update guard'
+$logFile = Join-Path $here 'guard.log'
+$stateFile = Join-Path $here 'state.json'
+$utf8 = New-Object System.Text.UTF8Encoding($false)
+
+function Write-Log([string] $text) {
+    try {
+        if ((Test-Path -LiteralPath $logFile) -and (Get-Item -LiteralPath $logFile).Length -gt 512KB) {
+            Move-Item -Force -LiteralPath $logFile -Destination ($logFile + '.old')
+        }
+        $line = '[{0:yyyy-MM-dd HH:mm:ss}] {1}' -f (Get-Date), $text
+        [System.IO.File]::AppendAllText($logFile, $line + "`r`n", $utf8)
+    } catch { }
+}
+
+if ($Remove) {
+    Unregister-ScheduledTask -TaskPath $taskPath -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force -LiteralPath $here -ErrorAction SilentlyContinue
+    exit 0
+}
+
+if ($Register) {
+    $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $self = Join-Path $here 'updateguard.ps1'
+    $xml = @"
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Author>WinLove</Author>
+    <Description>WinLove: keeps this Windows' choices when an update puts them back. Log: $logFile</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <BootTrigger>
+      <Enabled>true</Enabled>
+      <Delay>PT3M</Delay>
+    </BootTrigger>
+    <EventTrigger>
+      <Enabled>true</Enabled>
+      <Delay>PT2M</Delay>
+      <Subscription>&lt;QueryList&gt;&lt;Query Id="0" Path="System"&gt;&lt;Select Path="System"&gt;*[System[Provider[@Name='Microsoft-Windows-WindowsUpdateClient'] and EventID=19]]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription>
+    </EventTrigger>
+    <CalendarTrigger>
+      <Enabled>true</Enabled>
+      <StartBoundary>2020-01-01T12:00:00</StartBoundary>
+      <ScheduleByDay>
+        <DaysInterval>1</DaysInterval>
+      </ScheduleByDay>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>S-1-5-18</UserId>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <ExecutionTimeLimit>PT30M</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>$ps</Command>
+      <Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "$self"</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+"@
+    try {
+        Register-ScheduledTask -Xml $xml -TaskPath $taskPath -TaskName $taskName -Force -ErrorAction Stop | Out-Null
+        Write-Log 'task registered'
+    } catch {
+        Write-Log ('task not registered: ' + $_.Exception.Message)
+    }
+}
+
+# ---- what to keep, and the last check ---------------------------------------------------------
+
+try {
+    $plan = [System.IO.File]::ReadAllText((Join-Path $here 'guard.json'), $utf8) | ConvertFrom-Json
+} catch {
+    Write-Log ('guard.json unreadable: ' + $_.Exception.Message)
+    exit 1
+}
+$reportOnly = ([string] $plan.mode -eq 'report')
+$seen = @{}
+$adopted = @{}
+$lastRun = $null
+if (Test-Path -LiteralPath $stateFile) {
+    try {
+        $state = [System.IO.File]::ReadAllText($stateFile, $utf8) | ConvertFrom-Json
+        $lastRun = [string] $state.lastRun
+        if ($state.seen) {
+            foreach ($p in $state.seen.PSObject.Properties) { $seen[$p.Name] = [string] $p.Value }
+        }
+        foreach ($a in @($state.adopted)) {
+            if ($a) { $adopted[[string] $a] = $true }
+        }
+    } catch {
+        Write-Log ('state.json unreadable, starting again: ' + $_.Exception.Message)
+    }
+}
+$firstRun = [string]::IsNullOrEmpty($lastRun)
+$now = Get-Date
+
+# Was something installed since the last check: Windows Update's "installed" event, or a package
+# CBS put in place (Setup log, event 2)?
+function Test-UpdateSince([string] $since) {
+    if ([string]::IsNullOrEmpty($since)) { return $true }
+    try {
+        $start = [datetime]::Parse($since, [System.Globalization.CultureInfo]::InvariantCulture,
+                                   [System.Globalization.DateTimeStyles]::RoundtripKind)
+    } catch {
+        return $true
+    }
+    $wu = Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-WindowsUpdateClient'; Id = 19; StartTime = $start } -MaxEvents 1 -ErrorAction SilentlyContinue
+    if ($wu) { return $true }
+    $cbs = Get-WinEvent -FilterHashtable @{ LogName = 'Setup'; Id = 2; StartTime = $start } -MaxEvents 1 -ErrorAction SilentlyContinue
+    return [bool] $cbs
+}
+$updated = Test-UpdateSince $lastRun
+
+$script:repaired = 0
+$script:reported = 0
+$script:released = 0
+
+# One item: what it should be, what it is, how to put it back (see the rule at the top).
+function Resolve-Item([string] $id, [string] $wanted, [string] $current, [string] $label, [scriptblock] $repair) {
+    if ($current -eq $wanted) {
+        $seen[$id] = $current
+        return
+    }
+    if ($adopted.ContainsKey($id)) { return }
+    $last = $seen[$id]
+    if (-not $firstRun -and $null -ne $last) {
+        if ($last -eq $current) { return }          # nothing new since the last check
+        if (-not $updated) {
+            $adopted[$id] = $true
+            $seen[$id] = $current
+            $script:released++
+            Write-Log ('changed without an update, left to the user (no longer guarded): {0} = {1}' -f $label, $current)
+            return
+        }
+    }
+    if ($reportOnly) {
+        $seen[$id] = $current
+        $script:reported++
+        Write-Log ('not as wanted (report only): {0} = {1}, wanted {2}' -f $label, $current, $wanted)
+        return
+    }
+    try {
+        & $repair
+        $seen[$id] = $wanted
+        $script:repaired++
+        Write-Log ('repaired: {0} = {1} -> {2}' -f $label, $current, $wanted)
+    } catch {
+        $seen[$id] = $current
+        Write-Log ('could not repair {0}: {1}' -f $label, $_.Exception.Message)
+    }
+}
+
+# ---- services ---------------------------------------------------------------------------------
+
+foreach ($s in @($plan.services)) {
+    if (-not $s) { continue }
+    $name = [string] $s.name
+    $path = 'SYSTEM\CurrentControlSet\Services\' + $name
+    $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($path)
+    if (-not $key) { continue }                       # not on this Windows (or removed with its component)
+    $start = $key.GetValue('Start', $null)
+    $delayed = [int] $key.GetValue('DelayedAutostart', 0)
+    $key.Close()
+    if ($null -eq $start) { continue }
+    $wantStart = [int] $s.start
+    $wantDelayed = [int] [bool] $s.delayed
+    $wanted = [string] $wantStart
+    $current = [string] $start
+    if ($wantStart -eq 2) {
+        $wanted += '/' + $wantDelayed
+        $current += '/' + $delayed
+    }
+    $fix = {
+        $w = [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey($path)
+        $w.SetValue('Start', $wantStart, [Microsoft.Win32.RegistryValueKind]::DWord)
+        if ($wantStart -eq 2) { $w.SetValue('DelayedAutostart', $wantDelayed, [Microsoft.Win32.RegistryValueKind]::DWord) }
+        $w.Close()
+    }.GetNewClosure()
+    Resolve-Item ('service:' + $name) $wanted $current ('service ' + $name) $fix
+}
+
+# ---- machine-wide registry values -------------------------------------------------------------
+
+function Get-ValueText($key, [string] $name) {
+    if (-not $key -or -not ($key.GetValueNames() -contains $name)) { return 'absent' }
+    $kind = $key.GetValueKind($name)
+    $raw = $key.GetValue($name, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    switch ($kind) {
+        'DWord' { return 'dword:' + [BitConverter]::ToUInt32([BitConverter]::GetBytes([int] $raw), 0) }
+        'QWord' { return 'qword:' + [BitConverter]::ToUInt64([BitConverter]::GetBytes([long] $raw), 0) }
+        'String' { return 'sz:' + [string] $raw }
+        'ExpandString' { return 'expandsz:' + [string] $raw }
+        'MultiString' { return 'multisz:' + (@($raw) -join "`n") }
+        'Binary' { return 'binary:' + ((@($raw) | ForEach-Object { $_.ToString('x2') }) -join '') }
+        default { return 'other' }
+    }
+}
+
+foreach ($v in @($plan.values)) {
+    if (-not $v) { continue }
+    $sub = ([string] $v.key) -replace '^HKLM\\', ''
+    $name = [string] $v.name
+    $type = [string] $v.type
+    $data = [string] $v.data
+    $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($sub)
+    $current = Get-ValueText $key $name
+    if ($key) { $key.Close() }
+    $wanted = if ($type -eq 'delete') { 'absent' } else { $type + ':' + $data }
+    $fix = {
+        if ($type -eq 'delete') {
+            $w = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($sub, $true)
+            if ($w) {
+                $w.DeleteValue($name, $false)
+                $w.Close()
+            }
+            return
+        }
+        $w = [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey($sub)
+        switch ($type) {
+            'dword' { $w.SetValue($name, [BitConverter]::ToInt32([BitConverter]::GetBytes([uint32] $data), 0), [Microsoft.Win32.RegistryValueKind]::DWord) }
+            'qword' { $w.SetValue($name, [BitConverter]::ToInt64([BitConverter]::GetBytes([uint64] $data), 0), [Microsoft.Win32.RegistryValueKind]::QWord) }
+            'sz' { $w.SetValue($name, $data, [Microsoft.Win32.RegistryValueKind]::String) }
+            'expandsz' { $w.SetValue($name, $data, [Microsoft.Win32.RegistryValueKind]::ExpandString) }
+            'multisz' { $w.SetValue($name, [string[]] ($data -split "`n"), [Microsoft.Win32.RegistryValueKind]::MultiString) }
+            'binary' {
+                $bytes = New-Object byte[] ($data.Length / 2)
+                for ($i = 0; $i -lt $bytes.Length; $i++) { $bytes[$i] = [Convert]::ToByte($data.Substring(2 * $i, 2), 16) }
+                $w.SetValue($name, $bytes, [Microsoft.Win32.RegistryValueKind]::Binary)
+            }
+        }
+        $w.Close()
+    }.GetNewClosure()
+    $label = 'HKLM\{0}\{1}' -f $sub, $(if ($name) { $name } else { '(default)' })
+    Resolve-Item ('value:' + $sub + '::' + $name) $wanted $current $label $fix
+}
+
+# ---- scheduled tasks switched off -------------------------------------------------------------
+
+foreach ($t in @($plan.tasks)) {
+    if (-no)wlps"
+    R"wlps(t $t) { continue }
+    $full = [string] $t
+    if (-not $full.StartsWith('\')) { $full = '\' + $full }
+    $cut = $full.LastIndexOf('\')
+    $tp = $full.Substring(0, $cut + 1)
+    $tn = $full.Substring($cut + 1)
+    $task = Get-ScheduledTask -TaskPath $tp -TaskName $tn -ErrorAction SilentlyContinue
+    if (-not $task) { continue }
+    $current = if ([string] $task.State -eq 'Disabled') { 'disabled' } else { 'enabled' }
+    $fix = { Disable-ScheduledTask -TaskPath $tp -TaskName $tn -ErrorAction Stop | Out-Null }.GetNewClosure()
+    Resolve-Item ('task:' + $full) 'disabled' $current ('task ' + $full) $fix
+}
+
+# ---- removed apps -----------------------------------------------------------------------------
+
+$apps = @($plan.apps | Where-Object { $_ })
+if ($apps.Count -gt 0) {
+    $provisioned = @(Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue)
+    foreach ($a in $apps) {
+        $name = [string] $a.name
+        $family = [string] $a.family
+        $prov = @($provisioned | Where-Object { $_.DisplayName -eq $name })
+        $inst = @(Get-AppxPackage -AllUsers -Name $name -ErrorAction SilentlyContinue)
+        # A closure runs in a module of its own: no script functions inside.
+        $fix = {
+            foreach ($p in $prov) {
+                Remove-AppxProvisionedPackage -Online -PackageName $p.PackageName -ErrorAction Stop | Out-Null
+                $parts = ([string] $p.PackageName).Split('_')
+                if (-not $family -and $parts.Length -ge 2) { $family = $parts[0] + '_' + $parts[$parts.Length - 1] }
+            }
+            foreach ($p in @(Get-AppxPackage -AllUsers -Name $name -ErrorAction SilentlyContinue)) {
+                if (-not $family) { $family = $p.PackageFamilyName }
+                Remove-AppxPackage -Package $p.PackageFullName -AllUsers -ErrorAction Stop
+            }
+            if ($family) {
+                $d = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\' + $family
+                [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey($d).Close()
+            }
+        }.GetNewClosure()
+        $label = 'app ' + $name
+        if ($prov.Count -gt 0) {
+            # Provisioned again: only servicing does that, never the user.
+            $seen['app:' + $name] = 'provisioned'
+            $adopted.Remove('app:' + $name)
+            if ($reportOnly) {
+                $script:reported++
+                Write-Log ('provisioned again (report only): ' + $name)
+                continue
+            }
+            try {
+                & $fix
+                $seen['app:' + $name] = 'absent'
+                $script:repaired++
+                Write-Log ('repaired: {0} was provisioned again -> removed' -f $label)
+            } catch {
+                Write-Log ('could not remove {0}: {1}' -f $label, $_.Exception.Message)
+            }
+            continue
+        }
+        $current = if ($inst.Count -gt 0) { 'present' } else { 'absent' }
+        Resolve-Item ('app:' + $name) 'absent' $current $label $fix
+    }
+}
+
+# ---- removed components: reported only --------------------------------------------------------
+
+foreach ($c in @($plan.components)) {
+    if (-not $c) { continue }
+    $back = @(@($c.paths) | Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $env:SystemDrive ([string] $_))) })
+    $id = 'files:' + [string] $c.title
+    $current = if ($back.Count -gt 0) { 'back' } else { 'gone' }
+    if ($current -eq 'back' -and $seen[$id] -ne 'back') {
+        $script:reported++
+        Write-Log ('came back (only reported, not deleted): {0} - {1}' -f $c.title, $back[0])
+    }
+    $seen[$id] = $current
+}
+
+# ---- the state for the next check -------------------------------------------------------------
+
+try {
+    $out = [ordered]@{ lastRun = $now.ToString('o'); seen = $seen; adopted = @($adopted.Keys) }
+    [System.IO.File]::WriteAllText($stateFile, ($out | ConvertTo-Json -Depth 4), $utf8)
+} catch {
+    Write-Log ('state.json not written: ' + $_.Exception.Message)
+}
+$note = if ($firstRun) { ' (first check)' } elseif ($updated) { ' (an update was installed since the last check)' } else { '' }
+Write-Log ('check done{0}: {1} repaired, {2} reported, {3} left to the user' -f $note, $script:repaired, $script:reported, $script:released)
 exit 0
 )wlps";
 

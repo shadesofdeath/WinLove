@@ -27,7 +27,7 @@ struct LogLine {
 
 class LogConsole : public Widget {
 public:
-    static constexpr float kRow = 20.0f;
+    static constexpr float kRow = 20.0f; // D-108: 12px mono
 
     LogConsole();
 

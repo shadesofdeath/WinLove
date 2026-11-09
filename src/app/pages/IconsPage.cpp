@@ -15,13 +15,13 @@ using ui::tokens::TypeStyle;
 
 namespace {
 int g_lastTab = 0; // the tab shown when the page opens again
-constexpr float kTop = 12.0f;
-constexpr float kTabs = 24.0f;
+constexpr float kTop = 0.0f;
+constexpr float kTabs = ui::tokens::size::control;
 constexpr float kNote = 20.0f;
-constexpr float kSection = 36.0f;
+constexpr float kSection = 40.0f;
 constexpr float kCardW = 172.0f;
 constexpr float kCardH = 88.0f;
-constexpr float kGap = 8.0f;
+constexpr float kGap = 10.0f;
 constexpr float kIcon = 32.0f;
 } // namespace
 

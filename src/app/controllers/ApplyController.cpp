@@ -60,7 +60,13 @@ bool ApplyController::running() const {
 }
 
 bool ApplyController::canStart() const {
-    return m_state.mounted() && !m_state.changes().empty() && !running() && !m_state.operation();
+    return m_state.mounted() && !m_state.changes().empty() && !running() && !m_state.operation() && !waitingForDownload();
+}
+
+bool ApplyController::waitingForDownload() const {
+    // A search queues nothing by itself, but its offers are a click away from a download: waiting
+    // for it too keeps the rule simple (searches take seconds).
+    return m_state.updateFetch().has_value() || m_state.languageFetch().has_value() || m_state.storeFetch().has_value();
 }
 
 std::vector<ApplyController::Edition> ApplyController::otherEditions() const {
@@ -140,6 +146,7 @@ void ApplyController::start() {
     if (std::filesystem::is_directory(sxs, ec)) {
         options.apply.featureSources.push_back(sxs);
     }
+    options.apply.updateGuard = m_state.settings().updateGuard; // D-125
     const core::CancelToken cancel = run.cancel;
     const core::ops::ApplyPlan plan = run.plan;
     m_state.setApplyRun(std::move(run));

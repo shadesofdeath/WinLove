@@ -24,7 +24,7 @@ public:
         std::wstring size; // preformatted, may be empty; for a setting: the option it gets
         bool removal = true;
     };
-    static constexpr float kRow = 24.0f;
+    static constexpr float kRow = ui::tokens::size::row;
 
     // The rows for these operations: a removal by its name with the size it frees; the operations
     // of one Ayarlar / Tweaks setting once, by the setting's name; anything else by its target.

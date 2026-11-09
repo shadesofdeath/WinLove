@@ -7,6 +7,8 @@
 
 #include "core/image/DriverInf.h"
 #include "core/image/RegistryInput.h"
+#include "core/image/dism/HostDism.h"
+#include "core/image/wim/WimGapi.h"
 
 #include "app/pages/DownloadPage.h"
 #include "app/pages/AppsPage.h"
@@ -27,7 +29,11 @@
 #include "ui/render/Canvas.h"
 #include "ui/render/OffscreenTarget.h"
 
+#include <json.hpp>
+
 #include <cwchar>
+#include <fstream>
+#include <iterator>
 #include <string_view>
 
 namespace wl::app {
@@ -62,7 +68,7 @@ ui::ThemeKind resolveTheme(ThemeChoice choice) {
     switch (choice) {
     case ThemeChoice::Dark: return ui::ThemeKind::Dark;
     case ThemeChoice::Light: return ui::ThemeKind::Light;
-    case ThemeChoice::HighContrast: return ui::ThemeKind::HighContrast;
+    case ThemeChoice::Black: return ui::ThemeKind::Black;
     case ThemeChoice::System: break;
     }
     HIGHCONTRASTW contrast{sizeof(HIGHCONTRASTW), 0, nullptr};
@@ -90,6 +96,21 @@ float windowsTextScale() {
 
 float zoomFor(const AppSettings& settings) {
     return densityScale(settings.density) * windowsTextScale();
+}
+
+// D-123: Ayarlar › DISM motoru and ESD sıkıştırma iş parçacıkları, given to the engine at start.
+void applyEngineSettings(const AppSettings& settings) {
+    switch (settings.dismEngine) {
+    case DismEngineChoice::Host: core::setDismEngine(core::DismEngine::Host); break;
+    case DismEngineChoice::Adk:
+        core::setDismEngine(core::DismEngine::Adk);
+        if (const auto adk = core::adkDismFolder()) {
+            core::forceWimgapi(*adk / L"wimgapi.dll"); // the WIM library of the same kit
+        }
+        break;
+    case DismEngineChoice::Auto: core::setDismEngine(core::DismEngine::Auto); break;
+    }
+    core::setCompressionThreads(settings.esdThreads);
 }
 
 COLORREF colorRef(ui::ThemeKind theme, Color token) {
@@ -159,18 +180,19 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             if (v == L"dark") options.theme = ui::ThemeKind::Dark;
             else if (v == L"light") options.theme = ui::ThemeKind::Light;
             else if (v == L"hc") options.theme = ui::ThemeKind::HighContrast;
+            else if (v == L"black") options.theme = ui::ThemeKind::Black;
             else return fail(ErrorCode::InvalidArgument, L"--theme must be dark|light|hc", arg);
             options.themeGiven = true;
         } else if (startsWith(a, L"--accent=")) {
             const auto v = value(L"--accent=");
-            static constexpr const wchar_t* kNames[] = {L"copper", L"sea", L"pomegranate", L"sky", L"olive"};
+            static constexpr const wchar_t* kNames[] = {L"blue", L"copper", L"sea", L"pomegranate", L"olive"};
             for (int i = 0; i < ui::kAccentCount; ++i) {
                 if (v == kNames[i]) {
                     options.accent = static_cast<ui::Accent>(i);
                 }
             }
             if (!options.accent) {
-                return fail(ErrorCode::InvalidArgument, L"--accent must be copper|sea|pomegranate|sky|olive", arg);
+                return fail(ErrorCode::InvalidArgument, L"--accent must be blue|copper|sea|pomegranate|olive", arg);
             }
             ui::setAccent(*options.accent);
         } else if (startsWith(a, L"--lang=")) {
@@ -191,6 +213,7 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
                 return fail(ErrorCode::InvalidArgument, L"--size must look like 1440x900", arg);
             }
             options.size = {w, h};
+            options.sizeGiven = true;
         } else if (startsWith(a, L"--page=")) {
             const auto v = value(L"--page=");
             std::string key;
@@ -223,8 +246,10 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoApps = a == L"--demo-apps" ? std::wstring() : std::wstring(value(L"--demo-apps="));
         } else if (a == L"--demo-languages" || startsWith(a, L"--demo-languages=")) {
             options.demoLanguages = a == L"--demo-languages" ? std::wstring() : std::wstring(value(L"--demo-languages="));
-        } else if (startsWith(a, L"--demo-store=")) {
-            options.demoStore = std::wstring(value(L"--demo-store="));
+        } else if (startsWith(a, L"--demo-reveal=")) {
+            options.demoReveal = std::wstring(value(L"--demo-reveal="));
+        } else if (startsWith(a, L"--demo-store-share=")) {
+            options.demoStoreShare = std::wstring(value(L"--demo-store-share="));
         } else if (a == L"--demo-startmenu" || a == L"--demo-startmenu=settings" || a == L"--demo-startmenu=taskbar") {
             options.demoStartMenu = true;
             options.demoStartMenuSettings = a.ends_with(L"=settings");
@@ -284,10 +309,20 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoUsb = a == L"--demo-usb" ? std::wstring() : std::wstring(value(L"--demo-usb="));
         } else if (startsWith(a, L"--demo-catalog=")) {
             options.demoCatalog = std::wstring(value(L"--demo-catalog="));
+        } else if (startsWith(a, L"--demo-inventory=")) {
+            options.demoInventory = std::wstring(value(L"--demo-inventory="));
+        } else if (startsWith(a, L"--demo-reveal=")) {
+            options.demoReveal = std::wstring(value(L"--demo-reveal="));
+        } else if (startsWith(a, L"--demo-store-share=")) {
+            options.demoStoreShare = std::wstring(value(L"--demo-store-share="));
         } else if (a == L"--demo-components") {
             options.demoComponents = true;
         } else if (a == L"--demo-compat") {
             options.demoCompat = true;
+        } else if (startsWith(a, L"--demo-toast=")) {
+            options.demoToast = std::wstring(value(L"--demo-toast="));
+        } else if (a == L"--demo-app-menu") {
+            options.demoAppMenu = true;
         } else if (a == L"--demo-features") {
             options.demoFeatures = true;
         } else if (a == L"--demo-logs") {
@@ -322,7 +357,7 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.maximized = true;
         } else if (startsWith(a, L"--font=")) {
             const std::wstring_view font = value(L"--font=");
-            options.font = font == L"geist" ? UiFont::Geist : font == L"segoe" ? UiFont::SegoeVariable : UiFont::Inter;
+            options.font = font == L"geist" ? UiFont::Geist : font == L"inter" ? UiFont::Inter : UiFont::SegoeVariable;
         } else if (a == L"--test-device-lost") {
             options.testDeviceLost = true;
         } else if (startsWith(a, L"--hover-at=")) {
@@ -471,9 +506,11 @@ Result<void> App::initialize() {
         if (!m_options.font) {
             m_options.font = settings.font;
         }
+        // D-123: the DISM WinLove loads (decided once, before the first DISM call) and the ESD threads.
+        applyEngineSettings(settings);
     }
     // D-092: the type family; built before any widget measures with it.
-    if (m_options.font && *m_options.font != UiFont::Inter) {
+    if (m_options.font && *m_options.font != UiFont::SegoeVariable) { // D-107: Segoe UI Variable is the default
         if (auto set = m_graphics->setFamilies(fontFamilies(*m_options.font)); !set) {
             log::warn("app", L"type family not applied: " + describe(set.error()));
         }
@@ -577,6 +614,54 @@ int App::renderOffscreen() {
         log::debug("dism", L"dism.exe exit=0 (1188 ms)");
     }
     buildUi({});
+    if (m_options.demoComponents && !m_options.demoInventory.empty()) {
+        // D-112: a real image's rows (wlcli inventory --json), read before the demo mount below.
+        std::ifstream in(std::filesystem::path(m_options.demoInventory), std::ios::binary);
+        std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        if (text.size() >= 3 && static_cast<unsigned char>(text[0]) == 0xEF) {
+            text.erase(0, 3);
+        }
+        const auto doc = nlohmann::json::parse(text, nullptr, false);
+        if (doc.is_object()) {
+            auto w = [](const nlohmann::json& j, const char* key) { return utf8::toWide(j.value(key, std::string{})); };
+            core::ImageInventory inv;
+            for (const auto& d : doc.value("drivers", nlohmann::json::array())) {
+                core::InventoryDriver driver{w(d, "package"), w(d, "inf"), w(d, "classGuid"), w(d, "class"), w(d, "provider"),
+                                             w(d, "version"), w(d, "date"), {}, d.value("size", std::uint64_t{0}), d.value("classInf", false)};
+                for (const auto& name : d.value("devices", nlohmann::json::array())) {
+                    driver.devices.push_back(utf8::toWide(name.get<std::string>()));
+                }
+                inv.drivers.push_back(std::move(driver));
+            }
+            for (const auto& l : doc.value("languages", nlohmann::json::array())) {
+                core::InventoryLanguage language{w(l, "tag"), w(l, "name"), {}, l.value("size", std::uint64_t{0})};
+                if (l.contains("paths") && l["paths"].is_array()) {
+                    for (const auto& p : l["paths"]) {
+                        language.paths.push_back(utf8::toWide(p.get<std::string>()));
+                    }
+                }
+                inv.languages.push_back(std::move(language));
+            }
+            for (const auto& k : doc.value("keyboards", nlohmann::json::array())) {
+                inv.keyboards.push_back({w(k, "klid"), w(k, "name"), w(k, "file"), k.value("shared", false)});
+            }
+            for (const auto& f : doc.value("fonts", nlohmann::json::array())) {
+                core::InventoryFont font{w(f, "family"), {}, {}, f.value("size", std::uint64_t{0})};
+                for (const auto& v : f.value("values", nlohmann::json::array())) {
+                    font.values.push_back(utf8::toWide(v.get<std::string>()));
+                }
+                for (const auto& v : f.value("files", nlohmann::json::array())) {
+                    font.files.push_back(utf8::toWide(v.get<std::string>()));
+                }
+                inv.fonts.push_back(std::move(font));
+            }
+            for (const auto& a : doc.value("systemApps", nlohmann::json::array())) {
+                inv.systemApps.push_back({w(a, "fullName"), w(a, "family"), w(a, "name"), w(a, "displayName"), w(a, "folder"),
+                                          a.value("size", std::uint64_t{0})});
+            }
+            m_demoInventory = std::move(inv);
+        }
+    }
     if (m_options.demoComponents) {
         const std::filesystem::path mountDir = L"C:\\WinLove\\mount";
         m_state->setMounted(MountedImage{mountDir, L"C:\\WinLove\\work\\sources\\install.wim", 4, L"Windows 11 Pro"});
@@ -609,6 +694,10 @@ int App::renderOffscreen() {
         }
         // Sizes as measured in Windows 11 25H2 (26200.8037) Pro.
         constexpr std::uint64_t mb = 1024 * 1024;
+        if (m_demoInventory) {
+            m_state->setImageInventory(AppState::ImageInventory{mountDir, std::move(*m_demoInventory)});
+            m_demoInventory.reset();
+        }
         m_state->setSystemComponents(AppState::SystemComponents{
             mountDir,
             {{"edge", {true, 803 * mb}}, {"edge-webview", {true, 796 * mb}}, {"edge-update", {true, 806 * mb}},
@@ -629,6 +718,31 @@ int App::renderOffscreen() {
              {"deep-firewire", {true, 1 * mb}}, {"deep-pcmcia", {true, 1 * mb}}, {"deep-pos", {true, 1 * mb}},
              // D-079: what shrinking WinSxS frees in the same image (wlcli store-shrink --dry-run).
              {"component-store-shrink", {true, 3041 * mb}}}});
+        if (!m_options.demoStoreShare.empty()) {
+            // D-113: a real image's store split (wlcli store-share <mount> components.json).
+            auto known = *m_state->systemComponents();
+            std::ifstream in(std::filesystem::path(m_options.demoStoreShare), std::ios::binary);
+            std::string line;
+            while (std::getline(in, line)) {
+                const auto o = nlohmann::json::parse(line, nullptr, /*allow_exceptions=*/false);
+                if (o.is_discarded() || !o.contains("id")) {
+                    continue;
+                }
+                core::StoreShare share;
+                share.bytes64 = o.value("bytes64", std::uint64_t{0});
+                share.bytes32 = o.value("bytes32", std::uint64_t{0});
+                for (const auto& n : o.value("names64", nlohmann::json::array())) {
+                    share.names64.push_back(utf8::toWide(n.get<std::string>()));
+                }
+                for (const auto& n : o.value("names32", nlohmann::json::array())) {
+                    share.names32.push_back(utf8::toWide(n.get<std::string>()));
+                }
+                if (!share.empty()) {
+                    known.store[o["id"].get<std::string>()] = std::move(share);
+                }
+            }
+            m_state->setSystemComponents(std::move(known));
+        }
         m_state->setAppxList(AppState::AppxList{AppState::AppxList::Status::Ready, mountDir, std::move(items), {}});
         auto& controller = m_shell->components();
         for (const auto& g : controller.groups()) {
@@ -640,9 +754,20 @@ int App::renderOffscreen() {
             }
         }
         m_shell->showPage(m_options.page.value_or(PageId::Components));
+        if (!m_options.demoReveal.empty()) {
+            m_shell->revealComponent(m_options.demoReveal); // D-113: a component and the rows above it, open
+        }
         if (m_options.demoCompat) {
             m_shell->showCompat();
         }
+    }
+    if (!m_options.demoToast.empty()) {
+        const auto bar = m_options.demoToast.find(L'|');
+        m_shell->showToast(ui::InfoKind::Warning, m_options.demoToast.substr(0, bar),
+                           bar == std::wstring::npos ? std::wstring() : m_options.demoToast.substr(bar + 1));
+    }
+    if (m_options.demoAppMenu) {
+        m_shell->showAppMenu();
     }
     if (m_options.demoFeatures) {
         using core::OptionalFeature;
@@ -651,6 +776,11 @@ int App::renderOffscreen() {
         m_state->setMounted(MountedImage{mountDir, L"C:\\WinLove\\work\\sources\\install.wim", 4, L"Windows 11 Pro"});
         auto feature = [](std::wstring name, std::wstring display, S state) {
             return OptionalFeature{OptionalFeature::Kind::Feature, std::move(name), std::move(display), {}, state, 0, false};
+        };
+        auto child = [](std::wstring name, std::wstring display, S state, std::wstring parent) {
+            OptionalFeature f{OptionalFeature::Kind::Feature, std::move(name), std::move(display), {}, state, 0, false};
+            f.parent = std::move(parent);
+            return f;
         };
         auto capability = [](std::wstring name, std::wstring display, std::uint64_t mb) {
             return OptionalFeature{OptionalFeature::Kind::Capability, std::move(name), std::move(display), {},
@@ -665,6 +795,18 @@ int App::renderOffscreen() {
             capability(L"Media.WindowsMediaPlayer~~~~0.0.12.0", L"Windows Media Player (eski)", 31),
             capability(L"Microsoft.Windows.WordPad~~~~0.0.1.0", L"Wordpad", 9),
             feature(L"Microsoft-Windows-Subsystem-Linux", L"WSL", S::Staged),
+            // D-114: the feature tree and the language groups (the reference tool's Özellikler).
+            feature(L"NetFx4-AdvSrvs", L".NET Framework 4.8 Gelişmiş Hizmetler", S::Installed),
+            child(L"NetFx4Extended-ASPNET45", L"ASP.NET 4.8", S::Staged, L"NetFx4-AdvSrvs"),
+            child(L"WCF-Services45", L"WCF Hizmetleri", S::Installed, L"NetFx4-AdvSrvs"),
+            child(L"WCF-TCP-PortSharing45", L"TCP Bağlantı Noktası Paylaşımı", S::Installed, L"WCF-Services45"),
+            child(L"WCF-HTTP-Activation45", L"HTTP Etkinleştirmesi", S::Staged, L"WCF-Services45"),
+            capability(L"Language.Basic~~~tr-TR~0.0.1.0", L"Türkçe (Türkiye) yazma", 12),
+            capability(L"Language.Handwriting~~~tr-TR~0.0.1.0", L"Türkçe (Türkiye) el yazısı", 9),
+            capability(L"Language.OCR~~~tr-TR~0.0.1.0", L"Türkçe (Türkiye) OCR", 4),
+            capability(L"Language.Basic~~~en-US~0.0.1.0", L"English (United States) typing", 14),
+            capability(L"Language.TextToSpeech~~~en-US~0.0.1.0", L"English (United States) text-to-speech", 48),
+            capability(L"Language.Fonts.Jpan~~~und-JPAN~0.0.1.0", L"Japanese Supplemental Fonts", 92),
         };
         m_state->setOptionalFeatures(AppState::OptionalFeatures{AppState::OptionalFeatures::Status::Ready, mountDir,
                                                                 std::move(items), {}});
@@ -711,9 +853,13 @@ int App::renderOffscreen() {
                 }
                 const bool held = m_options.demoApply == L"held"; // a failed step: not saved, still mounted (A7)
                 if ((m_options.demoApply == L"skipped" || held) && !result.report.results.empty()) {
-                    // "--demo-apply=skipped": the first step refused as a permanent package.
-                    result.report.results.front().outcome = fail(ErrorCode::DismFailure, L"DISM error",
-                                                                 L"remove capability", static_cast<std::int32_t>(0x800F0825));
+                    // "--demo-apply=skipped": the first step refused as a permanent package (changes
+                    // nothing, saved all the same); "held": the first step failed half way.
+                    result.report.results.front().outcome =
+                        held ? fail(ErrorCode::DismFailure, L"The process cannot access the file", L"remove capability",
+                                    static_cast<std::int32_t>(0x80070020))
+                             : fail(ErrorCode::DismFailure, L"DISM error", L"remove capability",
+                                    static_cast<std::int32_t>(0x800F0825));
                     run.stepState.front() = 3;
                 }
                 result.committed = !held;
@@ -1356,7 +1502,7 @@ int App::renderOffscreen() {
                                               LR"(C:\Updates\windows11.0-kb5043080-x64_ssu_7e8f.msu)",
                                               LR"(C:\Updates\windows11.0-kb5044030-x64-ndp481_a1b2.msu)",
                                               LR"(C:\Updates\windows10.0-kb5041585-x64.msu)"});
-        m_shell->showPage(PageId::Updates);
+        m_shell->showPage(m_options.page.value_or(PageId::Updates)); // --page=apply: Uygula waiting for the download (D-124)
         if (m_options.demoCatalog == L"download") {
             AppState::UpdateFetch fetch;
             fetch.stage = AppState::UpdateFetch::Stage::Downloading;
@@ -1628,7 +1774,7 @@ int App::runWindowed() {
     };
 
     const ui::WindowAppearance appearance{appIcon(), m_options.theme != ui::ThemeKind::Light,
-                                          colorRef(m_options.theme, Color::LineStrong),
+                                          colorRef(m_options.theme, Color::AccentBase), // the border, as applyTheme()
                                           colorRef(m_options.theme, Color::BgBase)};
     const ui::SizeF minimum{ui::tokens::size::minWindowW, ui::tokens::size::minWindowH};
 
@@ -1663,7 +1809,8 @@ int App::runWindowed() {
     });
     m_window.setZoom(zoomFor(m_state->settings())); // D-092: density and Windows' text size
     m_simulateDeviceLoss = m_options.testDeviceLost;
-    m_window.show();
+    // The user's request (2026-11-09): WinLove opens filling the screen; --size (tests, captures) keeps its size.
+    m_window.show(!m_options.sizeGiven && !m_options.renderTo);
     if (m_options.openPath) {
         // A mount left from an earlier run must still be seen (Images page InfoBar: Onar /
         // Devam et); mountSafely itself reuses the same image or repairs leftovers.
@@ -1692,7 +1839,8 @@ int App::runWindowed() {
 }
 
 void App::applyTheme() {
-    m_window.setFrameColors(m_options.theme != ui::ThemeKind::Light, colorRef(m_options.theme, Color::LineStrong));
+    // 2026-11-09 (the user, like the reference tool): Windows 11's 1px window border in the chosen accent.
+    m_window.setFrameColors(m_options.theme != ui::ThemeKind::Light, colorRef(m_options.theme, Color::AccentBase));
     m_window.invalidate();
 }
 
@@ -1719,7 +1867,7 @@ void App::applySettings() {
         m_options.theme = theme;
         applyTheme();
     }
-    const bool fontChanged = settings.font != m_options.font.value_or(UiFont::Inter);
+    const bool fontChanged = settings.font != m_options.font.value_or(UiFont::SegoeVariable);
     if (settings.language != m_options.language || fontChanged) {
         m_options.language = settings.language;
         m_options.font = settings.font;
@@ -1736,7 +1884,7 @@ void App::rebuildUi(bool newFamilies) {
     releaseShell(); // the old shell reads the old strings: it goes first
     m_strings = std::move(*strings);
     if (newFamilies) { // nothing measures with the old text styles any more
-        if (auto set = m_graphics->setFamilies(fontFamilies(m_options.font.value_or(UiFont::Inter))); !set) {
+        if (auto set = m_graphics->setFamilies(fontFamilies(m_options.font.value_or(UiFont::SegoeVariable))); !set) {
             log::warn("app", L"type family not applied: " + describe(set.error()));
         }
         m_graphics->text->setLocale(localeName(m_options.language));

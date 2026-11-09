@@ -26,6 +26,12 @@ struct WimLibraryInfo {
 // wlcli --wimgapi=<dll>: that copy in place of System32's (to prove the fallback). Before the first call.
 void forceWimgapi(std::filesystem::path dll);
 
+// D-123 (Ayarlar › ESD sıkıştırma iş parçacıkları, the reference tool's "ESD compression threads"): an LZMS
+// export runs on at most this many logical processors (wimgapi has no thread count of its own: the
+// process affinity is narrowed for the export and put back after). 0: as Windows decides.
+void setCompressionThreads(int threads);
+[[nodiscard]] int compressionThreads();
+
 // Copies edition `index` of `source` (WIM or ESD) into `destination`: creates the file if missing,
 // otherwise appends as a new index. ESD → WIM = export with Lzx (or Xpress) compression.
 [[nodiscard]] Result<void> exportImage(const std::filesystem::path& source, int index,

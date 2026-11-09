@@ -47,6 +47,12 @@ void FeatureController::load(bool force) {
                 if (!mounted || mounted->mountDir != mountDir) {
                     return; // unmounted meanwhile
                 }
+                // D-114: only the read that is still awaited lands; a newer one (or a list set meanwhile)
+                // must not be overwritten by a late, failed one.
+                if (const auto& current = m_state.optionalFeatures();
+                    !current || current->mountDir != mountDir || current->status != AppState::OptionalFeatures::Status::Loading) {
+                    return;
+                }
                 if (!result) {
                     log::error("app", describe(result.error()));
                     m_state.setOptionalFeatures(AppState::OptionalFeatures{
@@ -111,14 +117,28 @@ FeatureController::Status FeatureController::status(const OptionalFeature& item)
     }
 }
 
+bool FeatureController::guarded(const OptionalFeature& item) const {
+    return blockOf && item.kind == OptionalFeature::Kind::Capability && item.isOn() && !queued(item) &&
+           !blockOf(operationFor(item)).empty();
+}
+
 void FeatureController::toggle(const OptionalFeature& item) {
     if (!canToggle(item)) {
         return;
     }
     const Operation op = operationFor(item);
-    if (!m_state.unqueue(op.kind, op.target)) {
-        m_state.queue(op);
+    if (m_state.unqueue(op.kind, op.target)) {
+        return;
     }
+    if (blockOf) {
+        if (const auto block = blockOf(op); !block.empty()) {
+            if (onBlocked) {
+                onBlocked(item, block);
+            }
+            return;
+        }
+    }
+    m_state.queue(op);
 }
 
 namespace {

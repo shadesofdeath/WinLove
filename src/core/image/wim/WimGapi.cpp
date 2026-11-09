@@ -17,6 +17,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cwctype>
 #include <format>
 #include <functional>
@@ -336,7 +337,69 @@ namespace {
 Result<void> exportImageOnce(const std::filesystem::path& sourceInput, int index, const std::filesystem::path& destinationInput,
                              WimCompression compression, const TaskContext& task, DWORD exportFlags = 0,
                              const std::vector<std::filesystem::path>& references = {});
+
+std::atomic<int> g_compressionThreads{0};
+
+// D-123: the process on its first `threads` logical processors while an LZMS export runs (every
+// thread wimgapi starts inherits it); the mask is put back by the outermost one.
+class CpuLimit {
+public:
+    explicit CpuLimit(int threads) {
+        if (threads <= 0) {
+            return;
+        }
+        std::scoped_lock lock(s_mutex);
+        if (s_depth++ > 0) {
+            return; // an outer export already narrowed it
+        }
+        DWORD_PTR process = 0;
+        DWORD_PTR system = 0;
+        if (!GetProcessAffinityMask(GetCurrentProcess(), &process, &system)) {
+            return;
+        }
+        DWORD_PTR mask = 0;
+        int n = 0;
+        for (int bit = 0; bit < static_cast<int>(sizeof(DWORD_PTR) * 8) && n < threads; ++bit) {
+            const DWORD_PTR one = static_cast<DWORD_PTR>(1) << bit;
+            if (process & one) {
+                mask |= one;
+                ++n;
+            }
+        }
+        if (mask != 0 && mask != process && SetProcessAffinityMask(GetCurrentProcess(), mask)) {
+            s_previous = process;
+            log::info("wim", std::format(L"ESD compression on {} logical processor(s)", n));
+        }
+        m_active = true;
+    }
+    ~CpuLimit() {
+        if (!m_active) {
+            return;
+        }
+        std::scoped_lock lock(s_mutex);
+        if (--s_depth == 0 && s_previous != 0) {
+            SetProcessAffinityMask(GetCurrentProcess(), s_previous);
+            s_previous = 0;
+        }
+    }
+    CpuLimit(const CpuLimit&) = delete;
+    CpuLimit& operator=(const CpuLimit&) = delete;
+
+private:
+    bool m_active = false;
+    static inline std::mutex s_mutex;
+    static inline int s_depth = 0;
+    static inline DWORD_PTR s_previous = 0;
+};
 } // namespace
+
+void setCompressionThreads(int threads) {
+    g_compressionThreads = std::max(threads, 0);
+}
+
+int compressionThreads() {
+    return g_compressionThreads;
+}
 
 Result<void> exportImage(const std::filesystem::path& source, int index, const std::filesystem::path& destination,
                          WimCompression compression, const TaskContext& task) {
@@ -369,6 +432,7 @@ Result<void> exportImageOnce(const std::filesystem::path& sourceInput, int index
                              const std::vector<std::filesystem::path>& references) {
     const std::filesystem::path source = nativePath(sourceInput);
     const std::filesystem::path destination = nativePath(destinationInput);
+    const CpuLimit cpuLimit{compression == WimCompression::Lzms ? g_compressionThreads.load() : 0}; // D-123
     auto a = api();
     if (!a) {
         return std::unexpected(a.error());

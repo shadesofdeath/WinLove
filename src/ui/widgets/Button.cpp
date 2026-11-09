@@ -11,9 +11,15 @@ namespace {
 
 using tokens::Color;
 
-constexpr float kPaddingX = 8.0f;  // button.md: padding 0 8
+constexpr float kPaddingX = 10.0f; // D-109
+constexpr float kRibbonHeight = 32.0f;
+constexpr float kRibbonPadX = 7.0f;
 constexpr float kIconGap = 6.0f;
-constexpr float kMinWidth = 56.0f;
+constexpr float kMinWidth = 60.0f;
+
+tokens::TypeStyle labelStyle(ButtonKind kind) {
+    return kind == ButtonKind::Primary || kind == ButtonKind::Danger ? tokens::TypeStyle::BodySemi : tokens::TypeStyle::BodyStrong;
+}
 constexpr float kPressReleaseMs = 140.0f; // motion.md: press 80 ms, release 140 ms
 
 } // namespace
@@ -39,19 +45,25 @@ void Button::setText(std::wstring text) {
 }
 
 SizeF Button::measure(SizeF /*available*/) {
+    const float height = m_height > 0 ? m_height : m_kind == ButtonKind::Ribbon ? kRibbonHeight : tokens::size::control;
     if (isIconOnly()) {
-        return {tokens::size::control, tokens::size::control};
+        return {height, height};
     }
-    const auto style = m_kind == ButtonKind::Primary || m_kind == ButtonKind::Danger ? tokens::TypeStyle::BodyStrong
-                                                                                      : tokens::TypeStyle::Body;
+    if (m_kind == ButtonKind::Ribbon) {
+        if (m_textWidth < 0 && host()) {
+            m_textWidth = textWidth(m_text, tokens::TypeStyle::Body);
+        }
+        return {std::ceil(2 * kRibbonPadX + std::max(m_textWidth, 0.0f) + (m_icon ? tokens::size::icon + kIconGap : 0.0f)), height};
+    }
+    const auto style = labelStyle(m_kind);
     if (m_textWidth < 0 && host()) {
         m_textWidth = textWidth(m_text, style);
     }
     float width = kPaddingX * 2 + std::max(m_textWidth, 0.0f);
     if (m_icon) {
-        width += tokens::size::icon + kIconGap;
+        width += tokens::size::icon + kIconGap - 4;
     }
-    return {std::max(width, kMinWidth), tokens::size::control};
+    return {std::max(width, kMinWidth), height};
 }
 
 void Button::onHoverChanged(bool hovered) {
@@ -92,40 +104,43 @@ bool Button::onKeyDown(const KeyEvent& key) {
 
 void Button::paint(Canvas& canvas) {
     const RectF b = bounds();
-    const float radius = tokens::radius::r2;
+    const float radius = isIconOnly() ? tokens::radius::r2 : tokens::radius::button;
     // Forced gallery states win over the (idle) tweens.
     const float h = hovered() ? std::max(m_hover.value(), m_hover.running() ? 0.0f : 1.0f) : m_hover.value();
     const float p = pressed() ? std::max(m_press.value(), m_press.running() ? 0.0f : 1.0f) : m_press.value();
 
     Color text = Color::TextPrimary;
-    auto fill = [&](Color rest, Color hover, Color press) {
-        canvas.fillRoundRect(b, radius, p > 0 ? Ink(hover, press, p) : Ink(rest, hover, h));
-    };
-    auto overlay = [&](Color hover, Color press) {
-        // Transparent at rest: fade the hover color in, then move toward the pressed color.
+    auto overlay = [&]() {
+        // Transparent at rest: the hover overlay fades in, pressing deepens it.
         if (h > 0 || p > 0) {
-            canvas.fillRoundRect(b, radius, p > 0 ? Ink(hover, press, p) : Ink(hover, hover, 0, h));
+            canvas.fillRoundRect(b, radius, Ink(Color::BgHover, Color::BgHover, 0, std::min(1.0f, h + p)));
+        }
+        if (p > 0) {
+            canvas.fillRoundRect(b, radius, Ink(Color::BgHover, Color::BgHover, 0, p));
         }
     };
 
     switch (m_kind) {
     case ButtonKind::Primary:
-        fill(Color::AccentBase, Color::AccentHover, Color::AccentPressed);
+        canvas.fillRoundRect(b, radius, p > 0 ? Ink(Color::AccentHover, Color::AccentPressed, p)
+                                              : Ink(Color::AccentBase, Color::AccentHover, h));
         text = Color::TextOnAccent;
         break;
     case ButtonKind::Secondary:
-        overlay(Color::BgRaised, Color::BgPressed);
+        // D-109: the reference tool's push button — the input fill, a strong line, pressed darker.
+        canvas.fillRoundRect(b, radius, p > 0 ? Ink(Color::BgRaised, Color::BgPressed, p) : Ink(Color::BgInput, Color::BgPressed, h));
         canvas.strokeRoundRect(b, radius, Color::LineStrong);
         break;
     case ButtonKind::Subtle:
-        overlay(Color::BgRaised, Color::BgPressed);
+    case ButtonKind::Ghost:
+    case ButtonKind::Ribbon:
+        overlay();
         break;
     case ButtonKind::Danger: {
-        canvas.fillRoundRect(b, radius, Color::StatusError);
-        text = bestContrast(canvas.theme(), Color::StatusError, Color::TextPrimary, Color::TextOnAccent);
-        // button.md: hover = 6% light mix, pressed = 10% darker, both opaque results.
+        canvas.fillRoundRect(b, radius, Color::CaptionClose);
+        text = Color::TextOnAccent;
         if (h > 0) {
-            canvas.fillRoundRect(b, radius, Ink(text, text, 0, tokens::opacity::hoverOverlay * h));
+            canvas.fillRoundRect(b, radius, Ink(Color::TextOnAccent, Color::TextOnAccent, 0, 0.08f * h));
         }
         if (p > 0) {
             canvas.fillRoundRect(b, radius, Ink(Color::ShadowKey, Color::ShadowKey, 0, 0.25f * p));
@@ -137,24 +152,41 @@ void Button::paint(Canvas& canvas) {
     Ink ink = text;
     if (m_kind == ButtonKind::Subtle) {
         ink = Ink(Color::TextSecondary, Color::TextPrimary, std::max(h, p));
+    } else if (m_kind == ButtonKind::Ghost) {
+        ink = Color::AccentText;
     }
 
+    if (m_kind == ButtonKind::Ribbon) {
+        float x = m_text.empty() ? b.x + std::round((b.width - tokens::size::icon) / 2) : b.x + kRibbonPadX;
+        if (m_icon) {
+            canvas.drawIcon(*m_icon, {x, b.y + std::round((b.height - tokens::size::icon) / 2)}, Color::AccentBase);
+            x += tokens::size::icon + kIconGap;
+        }
+        if (!m_text.empty()) {
+            canvas.drawText(m_text, {x, b.y, std::max(b.right() - x, 0.0f), b.height}, tokens::TypeStyle::Body, Color::TextPrimary);
+        }
+        return;
+    }
     if (isIconOnly()) {
         const float s = tokens::size::icon;
         canvas.drawIcon(*m_icon, {b.x + std::round((b.width - s) / 2), b.y + std::round((b.height - s) / 2)}, ink);
         return;
     }
-    const auto style = m_kind == ButtonKind::Primary || m_kind == ButtonKind::Danger ? tokens::TypeStyle::BodyStrong
-                                                                                      : tokens::TypeStyle::Body;
-    // Content (icon + gap + text) centered as a group.
+    const auto style = labelStyle(m_kind);
+    // Content (icon + gap + text) centered as a group. A button laid out at a fixed width was never
+    // measured: without its text width the text started at the centre (it looked right-aligned).
+    if (m_textWidth < 0 && host()) {
+        m_textWidth = textWidth(m_text, style);
+    }
     const float textWidth = std::max(m_textWidth, 0.0f);
     const float content = textWidth + (m_icon ? tokens::size::icon + kIconGap : 0.0f);
-    float x = b.x + std::max(kPaddingX, std::round((b.width - content) / 2));
+    const float padding = m_icon ? kPaddingX - 2 : kPaddingX;
+    float x = b.x + std::max(padding, std::round((b.width - content) / 2));
     if (m_icon) {
         canvas.drawIcon(*m_icon, {x, b.y + std::round((b.height - tokens::size::icon) / 2)}, ink);
         x += tokens::size::icon + kIconGap;
     }
-    canvas.drawText(m_text, {x, b.y, b.right() - kPaddingX - x + 1, b.height}, style, ink);
+    canvas.drawText(m_text, {x, b.y, b.right() - padding - x + 1, b.height}, style, ink);
 }
 
 } // namespace wl::ui

@@ -9,8 +9,8 @@ namespace {
 
 using tokens::Color;
 
-constexpr float kPaddingLeft = 16.0f;
-constexpr float kGap = 8.0f;
+constexpr float kPaddingLeft = 14.0f;
+constexpr float kGap = 10.0f;
 
 } // namespace
 
@@ -68,9 +68,8 @@ void InfoBar::layout() {
 void InfoBar::paint(Canvas& canvas) {
     const RectF b = bounds();
     const InfoStyle style = infoStyle(m_kind);
-    canvas.fillRect(b, style.background);
-    canvas.hairlineH(b.x, b.y, b.width, Color::LineSubtle);
-    canvas.hairlineH(b.x, b.bottom() - 1.0f / canvas.scale(), b.width, Color::LineSubtle);
+    // D-107: a tinted rounded card (radius 9), the status color only on the icon.
+    canvas.fillRoundRect(b, tokens::radius::r2, style.background);
     float x = b.x + kPaddingLeft;
     canvas.drawIcon(style.icon, {x, b.y + std::round((b.height - tokens::size::icon) / 2)}, style.ink);
     x += tokens::size::icon + kGap;

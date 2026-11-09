@@ -15,10 +15,13 @@
 
 namespace wl::app {
 
-enum class ThemeChoice : std::uint8_t { Dark, Light, HighContrast, System };
+// D-114: "Saf siyah" took the high contrast choice's place (Windows' own high contrast still wins).
+enum class ThemeChoice : std::uint8_t { Dark, Light, Black, System };
 // How large the interface is drawn, on top of the monitor's DPI (P16 "yoğunluk"): compact is the
 // design's 24px rows; the others scale everything, for big screens or tired eyes.
 enum class Density : std::uint8_t { Compact, Comfortable, Large };
+// D-123: Ayarlar › DISM motoru — Auto: this PC's, the Windows ADK's when a part of it is missing.
+enum class DismEngineChoice : std::uint8_t { Auto, Host, Adk };
 // D-092: the interface's type family (and its monospace companion).
 enum class UiFont : std::uint8_t { Inter, Geist, SegoeVariable };
 [[nodiscard]] constexpr ui::FontFamilies fontFamilies(UiFont font) noexcept {
@@ -49,10 +52,10 @@ struct WindowsDownloadPrefs {
 
 struct AppSettings {
     ThemeChoice theme = ThemeChoice::Dark;
-    ui::Accent accent = ui::Accent::Copper;
+    ui::Accent accent = ui::Accent::Blue;
     bool reduceMotion = false; // true: always; false: follow the Windows "show animations" setting
     Density density = Density::Compact;
-    UiFont font = UiFont::Inter;
+    UiFont font = UiFont::SegoeVariable; // D-107: the WinLoveUI package's family
     std::vector<int> closedNavGroups; // navigation groups folded away (PageInfo navGroup)
     Language language = Language::Turkish;
     std::filesystem::path workRoot = defaultWorkRoot();
@@ -60,8 +63,20 @@ struct AppSettings {
     std::filesystem::path isoFolder;   // last "ISO Oluştur" output folder (empty: Desktop)
     // D-082: the compatibility guards that are on (compat.json ids). Never chosen: the catalog's defaults.
     std::optional<std::vector<std::wstring>> guards;
+    // D-120: the guards the catalog had when `guards` was saved. A guard added later is not in it and
+    // takes its catalog default (absent with `guards`: the guards before D-120).
+    std::optional<std::vector<std::wstring>> guardsSeen;
     WindowsDownloadPrefs windowsDownload;
     bool pauseBeforeSave = false; // D-106: Uygula stops before each save for changes by hand in the mount folder
+    // 2026-11-09 (D-123, the reference tool's Tool settings): which DISM WinLove loads (read once, at start),
+    // how many logical processors an ESD / LZMS export may use (0: as Windows decides), and whether
+    // ISO Oluştur writes the last applied preset into the ISO's root.
+    DismEngineChoice dismEngine = DismEngineChoice::Auto;
+    int esdThreads = 0;
+    bool presetInIso = true;
+    // D-125: Apply ends with the update guard (core/ops/UpdateGuard.h). Off until chosen: it
+    // changes the installed Windows after updates, so the user switches it on knowingly.
+    bool updateGuard = false;
 
     [[nodiscard]] bool operator==(const AppSettings&) const = default;
     [[nodiscard]] std::filesystem::path mountDirectory() const {

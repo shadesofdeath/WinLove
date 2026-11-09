@@ -13,8 +13,8 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kTop = 12.0f;
-constexpr float kSummary = 24.0f;
+constexpr float kTop = 0.0f;
+constexpr float kSummary = 28.0f;
 enum Column : int { kList, kEntries, kRisk, kState };
 } // namespace
 
@@ -23,9 +23,9 @@ HostsPage::HostsPage(AppState& state, HostsController& controller, const Localiz
     : m_state(state), m_controller(controller), m_strings(strings), m_language(language), m_importFile(std::move(importFile)) {
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::HostsList), 0},
-        {strings.get(Str::HostsEntries), 110, ui::TextAlign::Trailing},
-        {strings.get(Str::CommonRisk), 90},
-        {strings.get(Str::CommonStatus), 170},
+        {strings.get(Str::HostsEntries), 126, ui::TextAlign::Trailing},
+        {strings.get(Str::CommonRisk), 104},
+        {strings.get(Str::CommonStatus), 196},
     });
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
         paintCell(c, row, column, rect, cell);

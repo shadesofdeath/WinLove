@@ -309,7 +309,7 @@ void ImageController::unmount(bool commit) {
     }
     auto recovered = std::make_shared<bool>(false);
     run(EngineOperation{EngineOperation::Kind::Unmounting, mounted->edition, mounted->mountDir, mounted->index},
-        [dir = mounted->mountDir, commit, recovered](const core::TaskContext& task) -> Result<void> {
+        [dir = mounted->mountDir, wim = mounted->imagePath, commit, recovered](const core::TaskContext& task) -> Result<void> {
             auto dism = core::Dism::instance();
             if (!dism) {
                 return std::unexpected(dism.error());
@@ -320,6 +320,14 @@ void ImageController::unmount(bool commit) {
                 return std::unexpected(outcome.error());
             }
             *recovered = outcome->recovered;
+            // A save keeps what the commit orphaned in the WIM (the removed files' streams): rewrite
+            // it without them, as Apply does after its own commit. Never fatal: the image is saved.
+            if (commit && !wim.empty()) {
+                if (auto rewritten = core::optimizeWim(wim, core::TaskContext{}); !rewritten) {
+                    log::warn("images", L"image saved, but not rewritten without the commit's leftovers: " +
+                                            describe(rewritten.error()));
+                }
+            }
             return {};
         },
         [this, recovered] {

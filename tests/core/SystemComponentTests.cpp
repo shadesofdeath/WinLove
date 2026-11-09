@@ -325,10 +325,10 @@ TEST_CASE("plan: component removals with the other removals, the store cleanup r
     set.add({OpKind::DisableFeature, L"F1"});
     auto plan = ops::plan(set);
     REQUIRE(plan.steps.size() == 5);
-    CHECK(plan.steps[0].operation.kind == OpKind::RemoveAppx);
-    CHECK(plan.steps[1].operation.kind == OpKind::RemoveComponent);
-    CHECK(plan.steps[1].phase == ops::Phase::Remove);
-    CHECK(plan.steps[2].operation.kind == OpKind::DisableFeature);
+    CHECK(plan.steps[0].operation.kind == OpKind::DisableFeature); // D-124: features / updates, then removals
+    CHECK(plan.steps[1].operation.kind == OpKind::RemoveAppx);
+    CHECK(plan.steps[2].operation.kind == OpKind::RemoveComponent);
+    CHECK(plan.steps[2].phase == ops::Phase::Remove);
     CHECK(plan.steps[3].operation.kind == OpKind::CleanupImage);
     CHECK(plan.steps[3].phase == ops::Phase::Cleanup);
     CHECK(plan.steps[4].phase == ops::Phase::Settings);
@@ -344,9 +344,9 @@ TEST_CASE("plan: component removals with the other removals, the store cleanup r
              L"language"});
     plan = ops::plan(set);
     REQUIRE(plan.steps.size() == 7);
-    CHECK(plan.steps[3].operation.value == L"language");
-    CHECK(ops::estimateSeconds(plan, 3) == doctest::Approx(20.0)); // the pack
-    CHECK(ops::estimateSeconds(plan, 4) == doctest::Approx(3.0));  // a feature
+    CHECK(plan.steps[1].operation.value == L"language");
+    CHECK(ops::estimateSeconds(plan, 1) == doctest::Approx(20.0)); // the pack
+    CHECK(ops::estimateSeconds(plan, 2) == doctest::Approx(3.0));  // a feature
     CHECK(plan.steps[5].operation.kind == OpKind::CleanupImage);
     CHECK(ops::estimateSeconds(plan, 5) < 60);
     set.remove(OpKind::AddPackage, L"C:\\lang\\Microsoft-Windows-Client-LanguagePack-Package-amd64-en-us.esd");
@@ -355,8 +355,8 @@ TEST_CASE("plan: component removals with the other removals, the store cleanup r
     set.add({OpKind::AddPackage, L"C:\\updates\\lcu.msu", L"lcu"});
     plan = ops::plan(set);
     REQUIRE(plan.steps.size() == 6);
-    CHECK(plan.steps[3].operation.kind == OpKind::AddPackage);
-    CHECK(plan.steps[4].operation.kind == OpKind::CleanupImage); // after the update, before the registry
+    CHECK(plan.steps[1].operation.kind == OpKind::AddPackage); // before the removals (D-124)
+    CHECK(plan.steps[4].operation.kind == OpKind::CleanupImage); // after the update and the removals, before the registry
     CHECK(plan.steps[5].phase == ops::Phase::Settings);
     CHECK(ops::estimateSeconds(plan, 4) >= 300);
     CHECK(ops::groups(plan)[3].estimateSeconds == doctest::Approx(ops::estimateSeconds(plan, 4)));

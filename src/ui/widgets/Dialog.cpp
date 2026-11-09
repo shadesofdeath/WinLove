@@ -8,12 +8,13 @@
 namespace wl::ui {
 
 namespace {
-constexpr float kPadding = 16.0f;
-constexpr float kTitleLine = 16.0f;
+// D-107: the package's panel language — 24 padding (SidePanelPad), Heading title, radius 12.
+constexpr float kPadding = 20.0f;
+constexpr float kTitleLine = 22.0f;
 constexpr float kTitleGap = 12.0f;
 constexpr float kButtonsGap = 24.0f;
-constexpr float kButtonGap = 4.0f;
-constexpr float kIconGap = 8.0f;
+constexpr float kButtonGap = 8.0f;
+constexpr float kIconGap = 10.0f;
 constexpr float kWindowMargin = 24.0f; // least space kept between the box and the window edge
 constexpr float kMinContent = 48.0f;
 } // namespace
@@ -82,10 +83,10 @@ void Dialog::paint(Canvas& canvas) {
     float x = m_box.x + kPadding;
     const float y = m_box.y + kPadding;
     if (m_icon) {
-        canvas.drawIcon(*m_icon, {x, y}, m_iconColor);
+        canvas.drawIcon(*m_icon, {x, y + (kTitleLine - tokens::size::icon) / 2}, m_iconColor);
         x += tokens::size::icon + kIconGap;
     }
-    canvas.drawText(m_title, {x, y, m_box.right() - kPadding - x, kTitleLine}, tokens::TypeStyle::BodyStrong,
+    canvas.drawText(m_title, {x, y, m_box.right() - kPadding - x, kTitleLine}, tokens::TypeStyle::Title,
                     tokens::Color::TextPrimary);
     const RectF body{m_box.x + kPadding, y + kTitleLine + kTitleGap, m_width - 2 * kPadding, m_bodyHeight};
     canvas.pushClip(body);
@@ -105,7 +106,7 @@ bool Dialog::onWheel(PointF /*p*/, float lines) {
     if (m_bodyFull <= m_bodyHeight) {
         return false;
     }
-    m_bodyOffset = std::clamp(m_bodyOffset - lines * 18.0f, 0.0f, m_bodyFull - m_bodyHeight);
+    m_bodyOffset = std::clamp(m_bodyOffset - lines * 20.0f, 0.0f, m_bodyFull - m_bodyHeight);
     invalidate();
     return true;
 }

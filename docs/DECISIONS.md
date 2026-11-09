@@ -241,6 +241,905 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-125 — Güncellemelere karşı koru: kurulu Windows'ta, güncellemenin geri açtığını düzelten görev (2026-11-09)
+Bağlam: Kullanıcı "Referans araçtan farkımız" listesinden 5. maddeyi seçti ("nasıl bir koruma ekleyebilirsin"). Bir imajın
+seçimleri Windows Update'ten sağ çıkmıyor: toplu güncelleştirme bir hizmeti yeniden açabiliyor, bir ilkeyi
+sıfırlayabiliyor, bir görevi yeniden etkinleştirebiliyor, bir uygulamayı yeniden hazırlayabiliyor (provision). D-113'ün
+depoyu koruyan kaldırması yüzünden, güncellenen bir bileşenin dosyaları da geri gelebiliyor. Referans aracın işi imajla
+bitiyor; kurulumdan sonra izleyen bir parçası yok.
+Karar:
+1. **Ayar, varsayılan kapalı:** Uygula özetinde "Kurulumdan sonra ☐ Güncellemelere karşı koru" (`AppSettings::
+   updateGuard`). Kurulu sistemi güncellemelerden sonra değiştirdiği için kullanıcı bilerek açar.
+2. **Ne korunur (`core/ops/UpdateGuard`):** yalnız Uygula'nın başarılı adımlarının istediği. Kuyruğa yeni bir öğe
+   girmez: Applier, adımlardan sonra `guard.json`'u başarılı işlemlerden üretir (sonraki yazım öncekini ezer).
+   - Hizmetlerin başlangıç türü (önyükleme / sistem sürücüleri hariç).
+   - HKLM değerleri. Kullanıcı değerleri, HKCR, RunOnce, `CurrentVersion\Setup`, `SYSTEM\Setup`, OOBE ve Winlogon
+     tutulmaz (bir kez çalışan ya da kurulumun / Windows'un kendi değerleri; AutoAdminLogon yeniden yazılmaz).
+   - Kaldırılan uygulamalar (tam addan aile adı) ve bileşen tariflerinin uygulamaları.
+   - Kapatılan zamanlanmış görevler (sonradan açılanlar çıkar).
+   - Kaldırılan bileşenlerin dosyaları (bileşen başına en çok 16 yol): yalnız raporlanır. Çalışan Windows'ta sistem
+     dosyası silmek güvenli değil.
+3. **İmajda:** `ProgramData\WinLove\Guard\{updateguard.ps1, guard.json}` ve SetupComplete'te
+   `updateguard.cmd` → `updateguard.ps1 -Register`. Görev `\WinLove\Update guard` (SYSTEM, en yüksek; açılışta 3 dk
+   sonra, WindowsUpdateClient olay 19'dan 2 dk sonra, günde bir; aynı anda tek kopya, 30 dk sınır). İlk kontrol
+   kurulumda çalışır.
+4. **Öğe başına kural (betiğin başında da yazılı):**
+   - İstendiği gibi → hiçbir şey.
+   - İlk kontrolde farklı → düzeltilir (kurulumun değişiklikleri).
+   - Son kontrolden beri değişti ve arada güncelleme kuruldu → düzeltilir. "Güncelleme" şu demek: System günlüğünde
+     WindowsUpdateClient 19 ya da Setup günlüğünde olay 2 (CBS paket kurdu).
+   - Son kontrolden beri değişti, arada güncelleme yok → kullanıcının seçimi; bırakılır ve bir daha korunmaz
+     (`state.json` → `adopted`). Böylece kullanıcıyla kavga etmez.
+   - Yeniden provision edilen uygulama her zaman kaldırılır (bunu yalnız servis yığını yapar). Kaldırma: provision +
+     tüm kullanıcılar + `AppxAllUserStore\Deprovisioned\<aile>` (sonraki özellik güncellemesi geri kurmasın).
+5. **Mod:** `guard.json` içinde `"mode": "report"` hiçbir şeyi düzeltmez, her şeyi günlüğe yazar. Günlük `guard.log`
+   (512 KB'ta `.old`'a döner). `updateguard.ps1 -Remove` görevi ve klasörü kaldırır.
+6. **wlcli:** `apply … --update-guard`.
+Sonuç:
+- `UpdateGuardTests` (2): plan (hizmet, değer türleri dword / qword / sz / binary / delete, dışlanan anahtarlar,
+  uygulama aile adı, görev aç-kapa, bileşen yolları), JSON gidiş-dönüş, imaja yazılan dosyalar ve SetupComplete satırı.
+- Betik bu bilgisayarda kendi test anahtarıyla (`HKLM\SOFTWARE\WinLoveGuardTest`, sonra silindi) denendi:
+  1. ilk kontrol 5/5 değeri düzeltti (delete, binary, 4294967295 dahil);
+  2. güncellemesiz değişiklik kullanıcıya bırakıldı ve sonraki değişiklikte de dokunulmadı;
+  3. son kontrol tarihi son WU olayının öncesine alınınca değişen değer düzeltildi, kullanıcınınki kaldı;
+  4. rapor kipinde gerçek hizmet / görev / uygulama / dosya yalnız raporlandı.
+  `-Register` görevi SYSTEM / en yüksek / üç tetikleyiciyle kaydetti; `-Remove` görevi ve klasörü sildi.
+- Doğrulanmayan: kurulu bir VM'de gerçek bir toplu güncelleştirmeden sonraki davranış (uzun tur; referans araçta karşılığı
+  yok).
+
+## D-124 — Uygula'da etki raporu; ISO'ya güncelleme girmemesi: güncellemeler kaldırmalardan önce, indirme beklenir (2026-11-09)
+Bağlam: Kullanıcı "Referans araçtan farkımız" listesinden 3. maddeyi seçti (uygulamadan önce etki raporu). Aynı gün bir
+kullanıcının günlüksüz raporu geldi: "ISO'ya güncelleme eklenmiyor."
+Karar:
+1. **Etki raporu (Uygula özeti, `ImpactCard`):** kapalı her uyumluluk koruması için (D-121 kataloğu) kuyruğun o
+   korumanın tutacağı adımları bulunur (`CompatController::impact`: kapalı korumaların hepsiyle tek geçiş; her adımın
+   bloğu onu tutan bütün korumaları sayar). Önce
+   Windows özellikleri, sonra uygulamalar ("uygulama" etiketi). Her satırda özellik adı, onu bozan adımlar ve
+   "Korumayı aç" düğmesi; açılınca o adımlar kuyruktan çıkar, sayfa yeniden kurulur. En çok 6 satır, gerisi
+   "+N özellik daha · Uyumluluk". Bozulan bilinen özellik yoksa yeşil tek satır.
+2. **Asıl neden: güncelleme, kaldırmalardan sonra kuruluyordu.** Planlayıcının sırası Sürüm → Kaldır → Özellikler →
+   Sürücüler → Güncellemeler idi. Lab (madde 4): aynı ön ayarda 247 kaldırma adımından sonra LCU dism.exe'de
+   0x80073712 ile düştü (`ERROR_SXS_COMPONENT_STORE_CORRUPT`, DISM 14098). dism.log'da kaldırılan bileşenlerin
+   44 depo bileşeni "Component metadata corrupt … CorruptManifest" olarak görünüyor: App-V, UE-V, Atanmış Erişim,
+   BranchCache, Çevrimdışı Dosyalar, Sınav Ol, Edge DevTools … Uygula bu adımı atlayıp imajı kaydediyordu; ISO
+   güncellemesizdi. Referans araç ise önce entegre ediyor, sonra kaldırıyor: Uygula ızgarasında "Entegre et ›
+   Güncellemeler" "Kaldır › Bileşenler"den önce. D-060'ın notu da aynı sınıfı söylüyordu: sürücüleri kaldırılmış
+   imaja LCU 0x80070002 verir. Bu yüzden derin kaldırma zaten güncellemelerden sonraydı.
+   Karar: yeni sıra Sürüm → Özellikler → Sürücüler → **Güncellemeler → Kaldır** → Uygulamalar → Derin kaldırma →
+   Temizlik → Ayarlar → Küçültme (`Phase` sırası). Güncelleme bütün imaja kurulur. Kaldırma, güncellenmiş
+   paketleri sürümleriyle birlikte alır (her sürüm ayrı kaldırılıyor, bkz. `cbs removed …`). LCU'nun yeniden
+   provision ettiği uygulamalar da kaldırmaya kalmış olur.
+   Değişmeyen: kaldırmaları **önceki bir oturumda** yapılmış bir imaja sonradan güncelleme eklemek yine
+   düşebilir. Referans araçta da öyle.
+3. **İkinci yol: indirme bitmeden Uygula.** Katalogdan indirilen güncellemeler indirme bitince kuyruğa girer. İki yol
+   güncellemeyi imajdan dışarıda bırakıyordu:
+   - 5 GB'lık LCU inerken Uygula başlatılabiliyordu. Güncelleme kuyrukta olmadığı için imaj onsuz kaydediliyordu.
+   - İndirme Uygula sırasında biterse `AppState::queue` kilitli kuyruğu sessizce yok sayıyordu. Bildirim yine
+     "indirildi ve kuyruğa eklendi" diyordu.
+   Ardından imaj çözülüyor ve ISO güncellemesiz oluşuyordu. Dil ve Mağaza indirmelerinde de aynısı vardı.
+   Düzeltme:
+   - `ApplyController::waitingForDownload()`: güncelleme / dil / Mağaza işi sürerken `canStart()` false. Uygula
+     özetinde "İndirme sürüyor · %N" çubuğu var. Başlıktaki Uygula bunu bildirimle söyler.
+   - Kuyruk alamazken (bağlı imaj yok ya da Uygula sürüyor) biten indirmeler Shell'de bekletilir
+     (`PendingDownloads`, kaynağa bağlı). Aynı kaynaktan bir sürüm bağlanınca ya da Uygula bitip kuyruk açılınca
+     kuyruğa girer. Bildirim ne olacağını doğru söyler.
+4. **Uçtan uca denetim:** `build\lab\upd124`. Microsoft medyasına benzer 25H2 imajı (26200.8037, Pro), kullanıcının
+   D-120 ön ayarı (374 bileşen, temizlik, WinSxS küçültme) + 2026-09 LCU (KB5129195, checkpoint yanında) + .NET,
+   uygulamanın yolu (`wlcli apply --commit --compat --update-guard`). Kayıttan sonra imaj yeniden açılıp derleme
+   ve depo sağlığı okundu.
+   - Eski sıra: LCU 0x80073712, derleme 26200.8037'de kaldı (koşu, sonuç belli olunca durduruldu).
+   - Yeni sıra:
+     - LCU ilk adımda 6 dk'da kuruldu.
+     - 807 adımın 805'i başarılı. Kalan 2'si bilinen kalıcı yetenekler (0x800F0825, atlanır).
+     - Kayıt tamam; toplam 55 dk.
+     - Yeniden açılan imaj 26200.9457: WIM üst verisi de, RollupFix 26100.9457 "Installed".
+     - DISM CheckHealth: "No component store corruption detected" (kaldırmalar ve küçültmeden sonra).
+     - Güncelleme korumasının dosyaları (`guard.json`, `updateguard.cmd`) imajda.
+Sonuç: ApplyTests (indirme beklenir, kilitli kuyruk eklemez, faz sırası), ChangeSetTests / ComponentStoreTests /
+SystemComponentTests (güncelleme kaldırmalardan önce), CompatTests (etki raporu: Xbox kapalı → Xbox satırı;
+"Korumayı aç" → rapor boş, adımlar çıktı, ilgisiz adım kaldı). 422 test. Render: `shots\ui_h_impact_*`,
+`ui_h_applywait`, `ui_h_applyguard`.
+
+## D-123 — Arayüz düzeltmeleri, DISM motoru / ESD iş parçacıkları / ön ayar ISO'da, Katılımsız üst menüde (2026-11-09)
+Bağlam: Kullanıcının 14 maddelik listesi. Hepsi render ile denetlendi (`scratchpad\ui_render.ps1`, `shots\ui_f_*`).
+Karar:
+1. **Sol menü kayar:** NavPanel yüksekliği sığmayınca tekerlek ve ince kaydırma çubuğuyla kayar, satırlarını kırpar,
+   seçili sayfayı görünür tutar. Önceden büyük yoğunlukta "Uygula" kartın dışına taşıyordu.
+2. **Tema seçici:** iz ve seçili parça kıl çizgiyle (LineSubtle), üzerine gelince soluk dolgu. Başlıktaki güneş / ay
+   simgesi 1,6 → 1,1 DIP.
+3. **≡ menüsü:** her öğe sayfasının simgesiyle (Ayarlar, Windows indir, Ön ayarlar, Loglar, Hakkında, Çıkış: Power).
+4. **Bileşen boyutu:** referans aracın çubuğu kalıyor: aynı log ölçeği, 20 px, sayı çubuğun üstünde. Değişen yalnız
+   şunlar: köşeler yuvarlak; dolgu gri yerine vurgu renginin soluk tonu, büyük satırda biraz koyu (4 GB'ta en koyu).
+   Ayrı bir ince ölçek ve sağa hizalı sayı denendi; kullanıcı beğenmedi, geri alındı.
+5. **Bildirim (toast):** 420 genişlik; başlık ve metin satır sarar, kutu yukarı doğru uzar (en çok 220). "…" yok.
+6. **Özellikler › İsteğe Bağlı Özellikler tıklanmıyordu:** `TabBar::measure({})` genişlik 0 döndürüyordu. Sayfa
+   sekmeleri `min(measure({}).width, …)` ile yerleştirince tıklama alanı 0 piksel oluyordu (çizim sınırın dışına
+   taştığı için görünüyordu). Sınırsız ölçüm artık sekmelerin genişliği. WidgetTests'e test eklendi.
+7. **Katılımsız üst menüde, tam genişlik:** "Görüntü · Ön Ayar · Araçlar · Katılımsız". Sayfa sol menüsüz açılır.
+   En üstte "WinLove kurulum ekranı" kartı:
+   - büyük anahtar ve AÇIK / KAPALI etiketi; açıkken kart vurgu çerçeveli;
+   - kurulumdaki sırayla 9 aşama çipi (Hesap … Hazırlık); planın sormadıkları soluk;
+   - seçili aşamanın uygulama içi çizimi: sihirbazın düzeni, adım çubuğu "i / n", aşamanın denetimleri, planın
+     vurgu rengi ve teması (Görünüm'de seçili döşeme, köşede etiket); çizime tıklamak sonraki aşamaya geçer;
+   - kapalıyken önizleme soluk ve üstünde "Windows'un kendi ekranları" notu;
+   - "Gerçek pencerede önizle" bugünkü `oobe.ps1` önizlemesini açar.
+   Form ve canlı XML önizlemesi kartın altında. Kartın yüksekliği içeriğine göre.
+8. **İlk açılış tam ekran:** pencere ekranı kaplayarak açılır (`--size` / render verilmediyse).
+9. **Ön ayar ISO'da:** referans aracın "ön ayarı düzenlenmiş görüntüye yedekle"si gibi. ISO Oluştur, son tamamlanan
+   Uygula'nın ön ayarını (kuyruk, cevap dosyası, boot.wim sürücüleri) ISO köküne `WinLove.wlpreset` olarak yazar.
+   Ayarlar › Ön ayarlar › "Ön ayarı ISO'ya kaydet" (varsayılan açık).
+10. **ESD sıkıştırma iş parçacıkları** (Ayarlar › Motor ve performans; Otomatik, 1…N mantıksal işlemci):
+    - Referans araç ESD'yi kendi WIM yazıcısıyla sıkıştırıyor (`EsdMaxThreads`; ikilide wimgapi fonksiyon adı yok, `$Solid`
+      var).
+    - WinLove Microsoft'un wimgapi'sini kullanıyor ve onun iş parçacığı parametresi yok. Bu yüzden LZMS dışa
+      aktarımı sürerken süreç ilk N mantıksal işlemciyle sınırlanıyor (işlemci benzeşimi) ve sonra geri alınıyor;
+      wimgapi'nin iş parçacıkları da bu sınıra uyuyor.
+    - Otomatik = bugünkü gibi sınırsız.
+11. **DISM motoru:** Otomatik / Bu bilgisayar · v{sürüm} / Windows ADK · v{sürüm}. ADK seçeneği yalnız kuruluysa
+    listede. Seçim açılışta verilir (DISM ilk kullanımda bir kez seçiliyor); ADK seçilince wimgapi de ADK'nınki.
+    Değişince "WinLove yeniden açılınca geçerli olur" notu çıkar.
+12. **Pencere kenarı:** Windows 11'in 1 px DWM kenarlığı vurgu renginde. Windows 10 bu özniteliği desteklemiyor.
+13. **Onay kutuları her yerde yuvarlak:** Bileşenler sayfasının halkalı tik stili (`Checkbox::paintBox`, 14 px
+    halka, dolgusuz).
+14. **Hakkında:**
+    - etiketler sürüm satırına binmiyor (başlık, sürüm, etiketler bir blok, kartta ortalı);
+    - Sistem kartındaki uzun değerler satır sarıyor;
+    - kısa pencerede sayfa kayıyor (`ScrollableBody`).
+Kanıt:
+- Testler geçiyor. Yeni testler: "TabBar measured without a limit …"; ayarlarda dismEngine / esdThreads /
+  presetInIso gidip geliyor.
+- Render'lar: sol menü 1100×560 @150 %, ≡ menüsü, Uyumluluk penceresi, uzun bildirim, Hakkında 1000 / 1180,
+  Ayarlar, Bileşenler gerçek depo boyutlarıyla (`--demo-store-share`), Katılımsız (açık / kapalı, açık / koyu tema,
+  1100×720).
+- Yeni render seçenekleri: `--demo-toast=başlık|metin`, `--demo-app-menu`.
+Görülmeyen:
+- Gerçek pencerede: tam ekran açılış, DWM kenarı, sürükleyerek kaydırma, ADK'ya geçiş.
+- ESD'nin sınırlı işlemciyle süresi.
+- ISO kökündeki ön ayar: kod yolu, VM'de ISO kurulmadı.
+
+## D-122 — referans aracın aynı özelliğe bağladığı paketler ve yeni bileşen tanımları (2026-11-09)
+Bağlam: Bu partinin işi "daha çok tanım" (referans araç ~1.300 satır, WinLove 268). Yöntem:
+- Kullanıcının bağlı 25H2 imajında (26200.9818, yalnız okundu) `wlcli store-share` çalıştırıldı. Katalog WinLove'un
+  desenlerine ek olarak sona bir "geri kalan" (`*`) deseni aldı. WinLove'un hiçbir desenle seçmediği 6.357 ad
+  (4,7 GB) çıktı ve her birinin boyutu ayrıca ölçüldü.
+- Bu adlar referans aracın ikilisindeki AddComponent desenlerine en özgül eşleşmeyle verildi. Kodda yan yana duran
+  desenler tek tanım sayıldı (`scratchpad\gap2.py`, `ntl_gap.txt`). Sonuç: referans araç bu payın 2,1 GB'ını tanımlıyor;
+  geri kalan 2,6 GB'ı ikisi de tutuyor.
+- Bu payın bir kısmı WinLove'da zaten CBS paketiyle kaldırılıyor (Defender, OneDrive, Fotoğraf Görüntüleyicisi, medya
+  akışı …); store-share yalnız desenleri sayar. Bunlar elle ayıklandı.
+- Kalanlar için referans aracın satırları (`components_catalog.json`) ve renkleri incelendi. Renklerin karşılığı: sarı
+  Hafif = light, mavi Genel = general, yeşil Gizlilik = privacy, kırmızı Önerilmez = notRecommended.
+Karar:
+- **Var olan tanımlar, referans aracın aynı özelliğe bağladığı adlarla tamamlandı:**
+  - Bluetooth (17,5 → 36,6 MB): Windows.Devices.Bluetooth, OneCoreUAP Bluetooth ses / kullanıcı hizmeti, BT PAN
+    arayüzü, DAF sağlayıcısı, işlev bulma.
+  - Uzak Masaüstü sunucusu: `rdpserverbase`.
+  - WIA: WIA otomasyonu, eSCL tarama. TWAIN bileşeni Windows'un yazımıyla (`windowsimageacqusition`) adlandırıldı.
+  - Biyometri: kimlik sağlayıcıları, VBS trustlet'i, bağdaştırıcılar, geri bildirim arayüzü.
+  - Akıllı kart: kimlik sağlayıcısı, WinRT API'si.
+  - Ebeveyn denetimleri: aile güvenliği. Yedekleme: Windows 7 Yedekleme denetim masası.
+  - Telemetri dosyaları: DeviceCensus, UTC. Uyumluluk değerlendirici: CompatTelRunner, GeneralTel.
+  - Oyun DVR: yayın / kayıt, Oyun Çubuğu bileşenleri.
+  - Kapsayıcılar: Container Manager (CmService).
+  - IE: ieinstal, F12 çerçevesi.
+  - WWAN: mobil geniş bant medya yöneticisi, MBB sınıf uzantısı, CellCore.
+  - Telefon: telefon yığını, VoIP çalışma zamanı. TAPI: hizmet sağlayıcıları.
+  - Sorun gidericiler: 16 sorun giderme paketi ve PowerShell modülleri.
+  - Windows Media Player'ın sorun gidericileri. Sistem Geri Yükleme görevleri.
+- **Yeni tanımlar (referans araçtaki düzeyleriyle):**
+  - IEFrame (kırmızı): Store, Office ve Visual Studio korumaları ile Önerilen tutar.
+  - Yardım dosyaları / CHM (gizlilik).
+  - VCM kodekleri / Indeo (kırmızı): Netflix koruması ile Önerilen tutar.
+  - Windows Şimdi Bağlan (genel, wcncsvc).
+  - Yakınlık ve Wi-Fi Direct (gizlilik).
+  - Ayar eşitleme (hafif).
+  - Pencere öğeleri platformu (genel).
+  - Metin tanıma / OCR (genel).
+  - Adım Kaydedici (genel).
+  - Toplam 277 bileşen.
+- **Alınmayanlar:**
+  - Taşınabilir aygıtlar (WPD/MTP): kullanıcının 2026-10-02 kuralı; telefon ve kamera bağlantısı hiçbir zaman
+    seçenek olmaz.
+  - `rdpbase` / `rdpnano`: istemciyle ortak olabilir.
+  - Mobil geniş bant API'si: referans araçta kırmızı.
+  - XPS dönüştürücüleri: yazdırma yolu.
+  - Grup İlkesi düzenleyicisi: referans araç yalnız istemciyi sunuyor, o da kırmızı.
+  - Sürücü paketleri (`*.inf` adları): WinLove sürücüleri derin kaldırmayla ele alır.
+  - Referans aracın kilitli çekirdek tanımları (uygulama modeli, aygıt ilişkilendirme, MSA …).
+- Referans aracın tabloları kopyalanmadı. Desenler Windows'un kendi bileşen adları; adlar, notlar ve gruplama WinLove'un.
+Kanıt:
+- `scratchpad\sharediff.py`: önce / sonra sahiplik. Başka bir WinLove tanımından tek ad geçmedi; bütün yeni adlar
+  sahipsiz paydan geldi (165 MB).
+- Testler: katalog ayrıştırma, her kırmızı satır Önerilen'de, hiçbir desen korunan bir adla başlamıyor. Release dist geçti.
+- Dosyalar imajda (psr.exe, wcncsvc.dll, ProximityService.dll).
+Görülmeyen: yeni tanımların VM'de kaldırılması. Yol, D-120'de onlarca bileşenle denenen D-113 kaldırması.
+
+## D-121 — referans aracın kalan uyumluluk korumaları, uygulama korumaları ve "Windows'un temeli" (2026-11-09)
+Bağlam: Kullanıcı: "Referans araçta olup bizde olmayan özellikleri ekle". İlk iş uyumluluk korumalarının eksiğiydi. Referans aracın
+uyumluluk penceresinde (`ui_compat_dialog.tsv`) varsayılan açık olup WinLove'da karşılığı olmayanlar vardı: Windows
+Etkinleştirme, TPM / Güvenli Önyükleme (hile önleme), SFC, Yükselt + Ana Bilgisayar Yenileme, Video oynatma, USB,
+Sistem yazı tipleri ve Uygulamalar grubu (BattleNet, Discord, EA Javelin, Eski oyunlar, Office, Netflix, NVIDIA,
+Spotify, TeamViewer, Visual Studio). Her korumanın kilitlediği satırlar referans aracın bileşen dökümünden
+(`components_catalog.json`, "Uyumluluk nedeniyle kilitli" notları) çıkarıldı. Servisler, Hizmetler sayfasındaki
+"Bileşen:" bağıyla eşlendi (`scratchpad\guardrows.py`, `svcguard.py`). Bulgular:
+1. Referans araç bir servisi, ait olduğu bileşenle birlikte kilitler. WinLove'da "Yazdırma" yalnız Spooler'ın devre dışı
+   bırakılmasını engelliyordu; `printing` bileşeni (Spooler'la birlikte) kaldırılabiliyordu. Bluetooth (Wi-Fi
+   koruması), Xbox servisleri, RDP sunucusu, SMB sunucusu, işlev bulma, SSDP ve mobil etkin nokta için de aynıydı.
+2. Referans aracın Hizmetler sayfası 13 servisi "Temel işlevsellik" için her zaman kilitler. Bunlardan DeviceAssociationService,
+   AppReadiness, wlidsvc, TokenBroker, WindowsTrustedRT, fvevol, rdyboost, DXGKrnl ve Wdf01000 WinLove'un korunan
+   servislerinde yoktu. fvevol ve rdyboost birim sınıfının filtreleri: anahtarı silinirse Windows açılmaz.
+3. Video oynatma (EVR), USB ve Bluetooth sürücüleri, FS filtre sınıfları WinLove'da kaldırılabilir değil
+   (`microsoft-windows-enhancedvideorenderer`'ı hiçbir tarif seçmiyor; derin kaldırma yalnız 6 eski sınıf). Bunlar için
+   koruma gerekmiyor. Sistem yazı tipleri D-119'la zaten her zaman tutuluyor. Spotify'ın tuttukları (OneCore proxy
+   saplaması, TWINUI) D-120'den beri hiç gitmiyor. TeamViewer bileşen kilitlemiyor.
+Karar:
+- **Motor (`core/ops/Compat`):** bir `RemoveComponent` adımı, tarifinin (`services`, `appx`) götürdüğü bir servisi ya da
+  uygulamayı tutan her açık korumada tutulur. Korumaların listelerine her bileşeni tek tek yazmak gerekmez. Bir
+  korumanın bileşen listesi tek satırı da adlandırabilir: `vss:32`, `font:Gadugi`.
+- **"Windows'un temeli" (`core`, `always: true`):** kapatılamaz, pencerede kilitli satır. Yalnız servislerinin devre dışı
+  bırakılmasını engeller: RpcSs, DcomLaunch, LSM, Power, PlugPlay, BrokerInfrastructure, SamSs, ProfSvc, UserManager,
+  CoreMessagingRegistrar, StateRepository, SystemEventsBroker, nsi ve referans aracın 13'ü. Bileşen kaldırmayı tutmaz: o
+  servislerin anahtarları zaten kalır. `kProtectedServices`'e 2.'deki adlar eklendi; TokenBroker hariç, o yalnız kendi
+  dosyalarıyla (`aad`) gider ve `aad`'yi dört koruma tutar.
+- **Yeni korumalar** (hepsi varsayılan açık, referans araç gibi):
+  - Windows etkinleştirme: sppsvc, ClipSVC, wlidsvc, Winmgmt, wmiApSrv, Dnscache.
+  - TPM: TPM sürücüsü.
+  - SFC: WinSxS'i en aza indirme, TrustedInstaller.
+  - Yükseltme ve yerinde onarım: migration, edition-upgrade.
+  - "Uygulamaların ihtiyaçları" bölümü:
+    - Battle.net: curl, seclogon.
+    - Discord: WPF, qWave, hidserv.
+    - EA Javelin: userdata, UnistoreSvc.
+    - Eski oyunlar: DirectPlay, General MIDI.
+    - Office: görev zamanlayıcı, MDAC, eski HTML motoru, Exchange eşitlemesi, Appinfo, Çince ve Gadugi / Leelawadee
+      UI / Nirmala UI yazı tipleri.
+    - Netflix: Media Foundation, PlayReady, PEAUTH.
+    - NVIDIA: görev zamanlayıcı, eski HTML motoru, DispBrokerDesktopSvc, qWave, bindflt.
+    - Visual Studio: .NET (ASP.NET, WCF, WPF), COM+, WebView2, eski HTML motoru, WSDAPI, 32 bit PowerShell ve VSS.
+- **Var olan korumalar referans aracın listeleriyle genişledi:**
+  - Windows Update: görev zamanlayıcı, teslim iyileştirme, BITS, DoSvc, NlaSvc, netprofm, mpssvc, wlidsvc.
+  - Store: Store altyapısı, teslim iyileştirme, VSS, eski HTML motoru, `aad`; wuauserv, BITS, DoSvc, StorSvc, wlidsvc,
+    TokenBroker, mpssvc, VaultSvc.
+  - "Yazdırma ve tarama": Yazdırma, WSDAPI, işlev bulma, WIA; yazdırma iş akışı servisleri, ShellHWDetection, stisvc.
+  - Wi-Fi: NlaSvc, netprofm.
+  - Windows Güvenliği: Güvenlik Merkezi; wscsvc ve Defender sürücüleri.
+  - Ağ paylaşımı: SMB sürücüleri.
+  - Kamera: Media Foundation, Kamera Çerçeve Sunucusu.
+  - Gece ışığı: DisplayEnhancementService.
+  - Modern uygulama: VCLibs, .NET Native, UI.Xaml, App Installer; EFS, FileCrypt, bindflt.
+  - Kurulum: Sysprep; wlidsvc, CDPUserSvc, UdkUserSvc, SensorService, AppReadiness, EFS, bindflt.
+  - Windows Güvenliği, Ağ paylaşımı ve Kamera yeni kullanıcıda açık (referans araçta açık). Bunları daha önce görmüş
+    kullanıcının seçimi değişmez (`guardsSeen`, D-120).
+- **Pencere:** "Windows" ve "Uygulamaların ihtiyaçları" bölüm başlıkları; `core` kilit simgesiyle, tıklanmaz. Başlıktaki
+  sayı ("Uyumluluk · N") yalnız kullanıcının seçtiklerini sayar. CLI `--compat` `always` korumaları da uygular.
+- Yalnız kesin bağımlılıklar (D-082) ilkesi sürüyor. Referans aracın tuttuğu ama Windows'un çalışması için gerekmeyenler
+  alınmadı: WaaSMedicSvc, Netlogon, luafv, LxpSvc, dmwappushservice ve Yükseltme'nin PcaSvc'si. PcaSvc,
+  WinLove'un telemetri bileşeni `appcompat`'ı tutardı.
+- Bütün servis adları 25H2 imajının SYSTEM hive'ında var (681 servis). İmajda olmayan TBS, MsSecCore, MsSecFlt ve
+  MsSecWfp çıkarıldı.
+Kanıt:
+- CompatTests: 31 koruma ve varsayılanlar.
+  - Bluetooth / mobil etkin nokta Wi-Fi korumasıyla, Xbox Xbox korumasıyla, RDP sunucusu Uzak Masaüstü korumasıyla, SMB
+    sunucusu / işlev bulma / SSDP Ağ paylaşımı korumasıyla tutuluyor; korumaların listesinde adları yok.
+  - Tarifteki uygulama da uygulamanın kendisi gibi tutuluyor.
+  - `core` kaldırmayı geçiriyor ama devre dışı RpcSs / fvevol / TokenBroker'ı geçirmiyor.
+  - `powershell:32` tutuluyor, `powershell` tutulmuyor; `font:Gadugi` tutuluyor, `font:Impact` tutulmuyor.
+  - Eski ayarda (`guards: []`) Windows Güvenliği kapalı kalıyor; etkinleştirme ve Office açık.
+  - `core` kapatılamıyor ve sayılmıyor.
+- ComponentStoreTests: fvevol, rdyboost, wlidsvc, AppReadiness, DeviceAssociationService ve Wdf01000 korunuyor;
+  TokenBroker korunmuyor.
+- Render: Uyumluluk penceresi (`--demo-components --demo-compat`).
+- Kullanıcının ön ayarı (`scratchpad\held121.py`), kullanıcının ayarlarıyla: 28 adım tutuluyor.
+  - Yeni: curl, userdata, DirectPlay, PlayReady, mailsync ve yazı tipleri, ASP.NET, migration, edition-upgrade, WinSxS
+    küçültme.
+  - D-120'den: winre, sysprep:32, cdp, search:32.
+- Yeni kullanıcıda (CLI `--compat`) 54 adım tutuluyor.
+Görülmeyen: VM'de uçtan uca kurulum. Değişiklik yalnız kuyruktan adım düşürüyor ve servis anahtarı bırakıyor;
+D-120'nin testi bu ön ayarla masaüstüne geldi.
+
+## D-120 — referans aracın kaldırmalarının dışında tuttukları WinLove'da da kalır; kurulum, uygulama, arama ve gece ışığı korumaları (2026-11-08)
+Bağlam: D-119'lu imajda OOBE bitti ama ilk oturumda explorer "Unknown Hard Error" ile çöktü, görev çubuğu gelmedi.
+Bileşenler tek tek geri konup denenmek yerine (kullanıcının isteği: "Referans araç tersine mühendislik ile ne koruyor bak, aynı
+korumaları ekle") referans aracın kendi tanımları okundu. `reference_unpacked.exe`'de dosya konumu = RVA. .text'teki
+`lea reg,[rip+…]` başvuruları çözüldü (31.050 dizgi başvurusu, 428.464 çağrı). Bileşen tanımlarında iki çağrı var:
+`0x2125d0` / `0x2122e0` = **ekle** (AddComponent, 2.830 desen), `0x2650d0` = **dışla** (929 desen). README'deki
+".NET Framework Core" tanımı doğruladı: `NetFx-Shared-*` ekle, `NetFx-Shared-WCF*` dışla. AddComponent'in yığın
+argümanı (`[rsp+0x40]`) bir koşul taşıyor; beş desende bu değer `ServicingStack`. Ön ayarın sildiği her paket adı bu
+desenlerle eşlendi (`scratchpad\presetmap.py`). Referans aracın WinLove'dan farklı davrandığı yerler:
+1. `microsoft-onecore-accessibility-experience`: referans araçta her zaman kilitli "Modern Uygulama desteği"nin parçası
+   (Xaml*, WindowsUI*, UI-*, DataTransfer*, CredDialogController, AppX-Deployment-* ile birlikte). WinLove'un
+   `accessibility` bileşeni `microsoft-onecore-accessibility*` ile bunu siliyordu.
+2. `tabletpc-platform-input-core` ve `tabletpc-platform-input-service-client` referans araçta ayrı "Metin Girişi Yönetim
+   Hizmeti"nin (TextInputManagementService) paketleri. Bu hizmet varsayılan açık Modern Uygulama, Shell Arama ve
+   WLAN korumalarıyla kilitli. WinLove'un `tabletpc`'si (`microsoft-windows-tabletpc-*`) ikisini de alıyordu.
+3. Windows Insider: `Microsoft-Windows-Flighting*` ekle, `flighting-featureconfiguration*` (Windows'un özellik
+   yapılandırması) ve `flighting-onesettingsclient*` dışla. `flighting-settings` ile `cortana-brokeredapi-*` Başlat
+   menüsünün tanımında. WinLove'un `insider`'ı dördünü de siliyordu.
+4. `ServicingStack` koşullu desenler: `errorreportingfaults` (werfault.exe), `tabletpc-platform-comruntime`,
+   `tabletpc-journal`, `securestartup-filterdriver`, `update-orchestratorcore-oobeexpedite`. WinLove'un `wer`,
+   `tabletpc` ve `bitlocker` bileşenleri bunlardan üçünü siliyordu.
+5. Bağlı Cihazlar Platformu (CDP, CDP-Api, Onecore-CDP-*): referans araçta kırmızı ve varsayılan açık Gece ışığı
+   korumasıyla kilitli. CDP Kullanıcı Hizmeti Windows Kurulumu korumasıyla kilitli. Açıklaması "görev çubuğu açılır
+   menüleri bunu ister". WinLove'da `cdp` "gizlilik" düzeyindeydi.
+6. Referans aracın varsayılan açık uyumluluk korumalarından (`ui_components_defaultplus.tsv`, 151 kilitli satır)
+   WinLove'da karşılığı olmayanlar: OOBE / Windows Kurulumu, Modern Uygulama desteği, Shell Arama, Gece ışığı. Ayrıca
+   WinLove'un "Önerilen" koruması 36 kırmızı bileşenden yalnız 4'ünü tutuyordu. Koruma sistemi Windows özelliklerini
+   (RemoveCapability) hiç görmüyordu: ön ayar `Edge.Webview2.Platform`'u (WebView2) kaldırıyordu. Referans aracın
+   "WebView2 Çalışma Zamanı (Çekirdek)" ve "VBScript" satırları Önerilen ile kilitli.
+7. Kullanıcının ayarlarında `"guards": []` vardı (08.10, "0 of 13 on"); korumaların hiçbiri açık değildi. CLI `apply`
+   ise korumaları hiç uygulamıyordu.
+Karar:
+- **Motor (`SystemComponents.cpp`, `kProtectedStore`):** 1–4'teki adlar (referans aracın "Modern Uygulama desteği"
+  çekirdeği dahil, 24 önek) hiçbir kaldırmayla gitmez. `TextInputManagementService` korunan servislere eklendi.
+  Eski bir ön ayar bu adları içeriyorsa adım artık başarısız olmaz: o adlar kalır, gerisi gider. Logda
+  "kept, Windows needs them (D-120)" yazar. Bileşenler sayfası tarifleri kurarken bu adları dışarıda bırakır; yalnız
+  bunlardan oluşan bir 32 bit satırı hiç gösterilmez. Tam adla korunanlar: `system.web`, `system.web.extensions`,
+  `system.web.services`, `system.web.regularexpressions`, `system.web.applicationservices`. Windows PowerShell'in
+  `ConvertFrom-Json`'u bunlara dayanır. İlk D-120 laboratuvar turunda ön ayarın eski ASP.NET tarifi (D-117'den önce
+  kaydedilmiş, test düzeneği yenilememişti) System.Web'i sildi. WinLove'un kurulum sihirbazı `oobe.json`'u
+  okuyamadı ve metinsiz, renksiz açıldı. Arayüz bu tarifi zaten yeniler; motor artık eski tarifte de tutar.
+- **Katalog:** `cdp` önerilmez oldu (notu nedenini söyler). Yeni korumalar `compat.json`'da, hepsi varsayılan açık:
+  - `setup` (Windows Kurulumu ve OOBE): winrt-core, ie-core, mdm, aad, tasksched, sensors, print3d, vss, cdp, wmi,
+    firewall, winre; ilgili servisler.
+  - `modern-apps`: winrt-core, dotnet, dotnet-wcf; AppXSvc, TextInputManagementService, camsvc.
+  - `shell-search`: search; TextInputManagementService, EventLog.
+  - `night-light`: cdp, aad; CDPSvc, TokenBroker.
+  Store korumasına mailsync (eşitleme ana bilgisayarı) ve applocker (AppIDSvc) eklendi, kurtarmaya migration.
+  "Önerilen" artık **her** kırmızı bileşeni tutuyor; testi katalogdaki her kırmızı satırı denetliyor.
+- **Windows özellikleri korunur:** `CompatGuard::capabilities` (adın `~`'den önceki kısmı, her sürüm). WebView2
+  korumasında `Edge.Webview2.Platform`, Önerilen'de o ve `VBSCRIPT`. Özellikler sayfasında korunan satır kilitli ve
+  soluk; tıklayınca neden korunduğunu söyler. Grup kutuları korunanları atlar. Ön ayardan gelirse kuyruktan düşer
+  (D-082).
+- **Bir bileşenin 32 bit satırı** (`tabletpc:32`) bileşeniyle birlikte korunur (önceden korumasız geçiyordu).
+- **Sonradan eklenen korumalar varsayılanla açılır:** `AppSettings::guardsSeen`, kaydedildiği andaki koruma
+  listesidir. Listede olmayan bir koruma katalog varsayılanını alır. Listesiz eski ayarlar D-082'nin 14 korumasını
+  görmüş sayılır. Böylece korumaları kapatmış bir kullanıcıda bile kurulum, uygulama, arama ve gece ışığı açılır.
+- **CLI:** `wlcli apply … --compat=<compat.json>` o dosyanın varsayılan korumalarının tuttuğu adımları uygulamaz ve
+  tek tek yazar. Arayüzle aynı kural kullanılır (`core::ops::compatConflicts`).
+- Referans aracın tabloları kopyalanmadı. Taşınan şey kural: hangi Windows paketinin neden kaldığı. Adlar Windows'un kendi
+  bileşen adları, gruplama ve notlar WinLove'un.
+Kanıt:
+- CompatTests: 18 koruma, varsayılanlar; her kırmızı bileşen Önerilen'de; `tabletpc:32`; `Edge.Webview2.Platform~~~~`
+  ve `VBSCRIPT~~~~` tutuluyor, Not Defteri tutulmuyor; eski ayar (`guards: []`, `guardsSeen` yok) → store ve
+  recommended kapalı, setup ve night-light açık; kullanıcı kapatınca kapalı kalıyor.
+- ComponentStoreTests: 1–4'teki adlar korunuyor; aynı bileşenlerin geri kalanı (accessibilitycpl,
+  legacyinkingcomponents, flighting-featuretuning, errorreportingconsole, securestartup-core, ui-xaml-maps) korunmuyor.
+- ComponentTests: hiçbir kaldırılabilir satırın deseni korunan bir adla başlamıyor.
+- RE: `scratchpad\leascan.py`, `ntlpat.py`, `presetmap.py`, `presetmap.txt`.
+- Uçtan uca (2026-11-09, `build\lab\d120`). Kullanıcının masaüstündeki ön ayarı (859 adım) arayüzün yaptığı gibi
+  yenilendi (tarifler ve `oobe.ps1`) ve `dist\wlcli apply --compat` ile özgün imaja baştan uygulandı. Sonuç: 836 adım,
+  korumaların dışarıda bıraktığı 23 adım, 2 kalıcı özellik (Sense, Work Folders; DISM 0x800F0825). ISO → VMware'de
+  boş diske temiz kurulum: Kurulum → WinLove sihirbazının 7 sayfası (WINLOVE-PC kabul) → ilk oturum → masaüstü.
+  Görev çubuğu ve Başlat duruyor, explorer çökmüyor; Dosya Gezgini, Ayarlar (Windows Update "Güncel") ve WinLove'un
+  program kurulum penceresi (winget: Chrome, Lightshot) çalışıyor.
+
+## D-119 — Windows'un ve web motorlarının geri düştüğü yazı tipleri ile WebView2'nin kaydı kalır (2026-11-08)
+Bağlam: D-118'li imajda OOBE "Bilgisayarım neden yeniden başladı?" döngüsüne girmeye devam etti. CloudExperienceHost
+(WWAHost / EdgeHTML) ilk sayfada 0xC0000602 ile durdu. Ön ayar 136 yazı tipi dosyası siliyordu. VM'de önce hepsi, sonra
+yalnız 34 çekirdek dosya (Arial, Times New Roman, Courier New, Tahoma, MS Sans Serif …) geri kondu; iki seferde de OOBE
+geçti. Aynı incelemede `edge-update` tarifi `HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate` anahtarını bütünüyle
+siliyordu; WebView2'nin kaydı (`Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}`) da gidiyordu.
+Karar:
+- `isCoreFontFamily` (`ImageInventory`): Segoe UI ailesi, Segoe Fluent Icons / MDL2 Assets, Marlett, Arial, Times New
+  Roman, Courier New, Courier, Tahoma, Microsoft Sans Serif, MS Sans Serif, MS Serif, Small Fonts, Consolas, Lucida
+  Console, Symbol, Wingdings, Webdings, Modern, Roman, Script. Bileşenler sayfası bunları kilitler. Motor, bu
+  ailelerden bir yazı tipini silen tarifin o kısmını uygulamaz (eski ön ayarlar için; "the font stays … D-119").
+- `edge-update` yalnız Edge Update'in kendi kaydını, kaldırma girdisini ve servislerini siler. WebView2 ve Edge'in
+  istemci kayıtları kalır.
+- Not: ön ayar disk belleği dosyasını kapatıyor (`PagingFiles` boş). Çökmeye neden olmadığı 8 GB bellekle denendi;
+  yine de az bellekli makinelerde risklidir.
+Kanıt: InventoryTests "the fonts Windows and its web engines fall back to are held (D-119)"; ComponentTests "Edge
+Update leaves WebView2's registration …"; VM: 34 çekirdek dosya geri konunca OOBE geçti; yalnız ince ayarlı imaj
+(bileşen kaldırması yok) masaüstüne geldi.
+
+## D-118 — Kalan bir modülün içe aktardığı ya da gecikmeli yüklediği dosya gitmez; EFS'nin çekirdeği kalır (2026-11-08)
+Bağlam: D-117'li kodla ön ayar özgün ISO'ya baştan uygulandı (857/859 adım), VM'e temiz kuruldu. WinLove'un kurulum
+sihirbazı yedi sayfasıyla çalıştı, hesap oluştu. Ardından Windows masaüstü yerine sürekli **"Bilgisayarım neden yeniden
+başladı?"** sayfasına döndü. Ayrıntı:
+1. UnattendGC\setupact.log: CloudExperienceHostBroker OOBE'yi bitirirken imaj durumunu `IMAGE_STATE_COMPLETE` →
+   `IMAGE_STATE_SPECIALIZE_RESEAL_TO_OOBE` yaptı; sonraki her açılışta msoobe kurtarma ("Recovery") sayfasını açtı.
+   Nedeni: kullanıcı OOBE'sini çizen CloudExperienceHost paketi `defaultuser0` için kaydedilemedi.
+2. Kurulum bayrakları elle kapatılıp (OOBEInProgress, SetupType, ImageState) yeni kullanıcılarla oturum açıldı:
+   masaüstü geldi ama görev çubuğu yoktu; explorer, StartMenuExperienceHost ve SearchHost birkaç saniyede bir
+   çöküyordu ("Unknown Hard Error", "yığın tabanlı arabellek taşması"). AppXDeploymentServer günlüğü:
+   `C:\Program Files\WindowsApps` altındaki **her** paket (VCLibs, UI.Xaml, WindowsAppRuntime, Store, App Installer …)
+   `windows.stateExtension` adımında 0x80004001 (E_NOTIMPL) ile düşüyor, olay 5210 "Creation of the application
+   data local root folder failed". Başlat ve görev çubuğu bu çerçevelere dayandığı için kabuk çöküyordu.
+3. Kaynağı bulmak için AppX'in kendi TraceLogging sağlayıcıları (GUID'ler sağlayıcı meta verisinden okundu:
+   `Microsoft.Windows.AppxDeploymentFallback` aa1b41d3-…, `AppXDeploymentServer` fe762fb1-…,
+   `AppXDeploymentExtensions` d9e5f8fb-…) `logman` ile yakalanıp `tracerpt` ile açıldı. İlk hata:
+   `onecore\admin\appmodel\osim\src\deh\appx\state\lib\state.cpp:1041 — CdplIsSupported → 0x80004001`, ardından
+   `IsDPLSupportedOnPlatform` ve `SetDataProtectionLevel`. `CdplIsSupported`, `ext-ms-win-security-efswrt` üzerinden
+   `efswrt.dll`'den gelir; efswrt → `feclient.dll` → `efscore.dll` ve EFS hizmeti (lsass içinde, `efssvc.dll`).
+   `efs` bileşeni (`microsoft-windows-efs*` + EFS hizmeti) bunların hepsini siliyordu.
+4. Doğrulama: aynı VM'e yalnız `efscore/efssvc/efslsaext.dll`, `efsui.exe` ve özgün EFS hizmet anahtarı geri kondu
+   (WinPE turu, çevrim dışı `reg import`). Sonuç: VCLibs kaydı "ok", son 8 dakikada 0 kayıt hatası, kullanıcının paket
+   sayısı 34 → 44, Store ve Başlat işlemleri çalışıyor.
+5. Aynı incelemede statik tarama (imajda kalan her modülün içe aktarma ve **gecikmeli yükleme** tabloları, şemayla
+   çözülerek) 33 silinmiş DLL buldu. D-117 yalnız statik içe aktarmaya bakıyordu; bunlar ya E_NOTIMPL döndürür ya da
+   süreci durdurur. Örnekler:
+   - `AppXDeploymentServer.dll` → `IsoSessionCore.dll` (yalıtım oturumu kaldırması);
+   - `shell32`, `userenv`, `twinui`, `AppXDeploymentExtensions.onecore` → `cldapi.dll` (Bulut Dosyaları);
+   - `feclient` → `efscore.dll`;
+   - `twinapi.appcore` / `twinui.appcore` → `ContactActivation.dll`;
+   - `edgehtml` → `edgeangle.dll`;
+   - `user32` / `ole32` → `wtdccm.dll`;
+   - `xamlinputviewhost` → `magnification.dll` (statik!).
+Karar:
+- **`keptImportedFiles` (`core/image/BootDrivers`):** Bir adımın sileceği dosyalardan, imajda kalan bir modülün içe
+  aktardığı **ya da gecikmeli yüklediği** her biri kalır, geçişli olarak. Kalan modül = bu adımda gitmeyen ya da
+  kendisi korunan modül. Taranan klasörler: Windows, System32, System32\drivers, SysWOW64 (doğrudan içerik) ve
+  SystemApps ile ImmersiveControlPanel'in tamamı. Çözümleme: API kümesi şeması → System32 (SysWOW64'teki 32 bitlik
+  bir modül için SysWOW64), System32\drivers, modülün kendi klasörü. İçe aktarma listeleri dosya boyu + yazma
+  zamanıyla süreç boyunca önbelleklenir. Her adımda yalnız klasör listesi tazelenir; 374 adımlık ön ayar yavaşlamaz.
+  `removeStoreCopies` ve `removeComponent` tarif yollarında uygulanır. Logda "kept X: a module that stays needs it
+  (Y delay-loads it, D-118)" yazar. Şema okunamazsa hiçbir modül gitmez.
+- **`efs` bileşeni artık yalnız EFS'nin arayüzünü alır** (`efs-ui`, `efs-rekeywiz`, `efsadu`); servis listesi boş.
+  Çekirdek kitaplık, LSA eklentisi, platform eklentisi, util kitaplığı ve EFS hizmeti kalır. Bunlar import kuralıyla
+  yakalanamaz, çünkü efswrt → EFS bağı bir hizmet çağrısıdır. Adı "Şifreleme Dosya Sistemi (EFS) arayüzü" oldu; notu
+  nedenini söyler. Arayüz ön ayarı açarken tarifi katalogdan yeniler (D-076), eski ön ayarlar da düzelir.
+Kanıt:
+- BootDriverTests "imports: a module that stays keeps …": bu PC'nin `feclient.dll`'i `efscore.dll`'i gecikmeli
+  yüklüyor (statik değil); sahte imajda `efscore.dll` "feclient.dll delay-loads it" nedeniyle kalıyor; feclient aynı
+  adımda giderse kalmıyor; şema yoksa hata.
+- ComponentTests "EFS leaves the core …".
+- VM: EFS geri konunca paket kaydı düzeldi (yukarıda).
+Sonuç (2026-11-08): D-118'li imajda paket kaydı düzeldi ama OOBE yazı tipleri yüzünden yine döndü (D-119); o da
+düzeltilince ilk oturumda explorer çöktü (D-120).
+
+## D-117 — Windows'un açılıp oturum açması ve Kurulum'u bitirmesi için gereken her dosya kalır (2026-11-08)
+Bağlam: D-116'dan sonra kullanıcı ISO'yu yeniden oluşturdu. VM testi (VMware, EFI, NVMe, ekran görüntüleriyle) aynı
+0xc000000f'i verdi; `fvevol.sys` bu sefer imajdaydı. Sorun katman katman çıktı. Her katman ayrı doğrulandı: dosya VM
+diskine kurulum ortamından (aynı yapı, boot.wim) elle kondu ve yeniden açıldı.
+1. **Önyükleyici, 0xc000000f.** `ntoskrnl.exe`, `werkernel.sys`'i API kümesi üzerinden içe aktarır
+   (`ext-ms-win-ntos-werkernel-l1-1-1`). `wer` bileşeninin deposu globu (`microsoft-windows-errorreportingkernel`) onu
+   sildi; çekirdek yüklenemedi. Hyper-V globu `winhv.sys` / `winhvr.sys` / `vmbkmcl.sys`'i sildi, ama onları içe aktaran
+   `vmbus.sys` (önyükleme sürücüsü) ve `Vid.sys` (sistem başlangıcı) kaldı ("Vid.sys cannot find winhvr.sys" açılır
+   penceresi).
+2. **Siyah ekran, dönen nokta donuk.** VM belleği Volatility ile okundu (suspend → `.vmem`). Oturum 1'in `smss`'i ve
+   `csrss`'i bir saniyede bitmişti; `winlogon.exe` hiç başlamamıştı. Kurulum ortamında olup imajda olmayan 183 dosya geri
+   konunca oturum açıldı. Ardından ikiye bölme yapıldı: her tur bir veri CD'sindeki betikle dosya sildi, sonra açılış
+   denendi; 8 turda tek dosyaya inildi: **`utcapi.dll`**. Telemetri kaldırması onu siliyor. `winlogon.exe`,
+   `wininit.exe` ve `lsm.dll` onu adıyla yüklüyor; içe aktarma tablosunda yok.
+3. **"Windows Kur, Windows'u bu bilgisayarın donanımı üzerinde çalışacak şekilde yapılandıramadı."** setuperr.log:
+   `Could not load DLL …\ProvSysprep.dll`. Provisioning kaldırması onu sildi, ama
+   `System32\Sysprep\ActionFiles\Specialize.xml` onu çağırıyor. O da geri konunca `ProvSysprep.dll`'in adıyla başlattığı
+   `provtool.exe` eksik çıktı (0x80070002).
+4. Oturum açıldıktan sonra statik kontrol daha fazlasını gösterdi:
+   - `explorer.exe` `AEPIC.dll`'i içe aktarıyor; appcompat kaldırması onu siliyordu.
+   - `iertutil.dll` `srvcli.dll`'i içe aktarıyor; SMB sunucusu kaldırması onu siliyordu.
+   - Kalan otomatik servislerin DLL'leri silinmişti; örneğin TextInputManagementService → `TabSvc.dll`.
+Karar (`core/image/BootDrivers`, `keptBootFiles`): Kaldırma, Windows'un açılması, oturum açması ve Kurulum'u bitirmesi
+için gereken dosyaları hangi bileşene ait olursa olsun bırakır. Korunanlar:
+- D-116'nın sürücüleri ve filtreleri.
+- **Yükleyicinin kendi dosyaları:** `ntoskrnl.exe`, `hal.dll`, `kdcom/kd/kdstub/kdnet.dll`, `ci.dll`, mikro kod
+  güncellemeleri, `apisetschema.dll`, `l_intl.nls`, `winload/winresume`, `securekernel.exe`, `skci.dll`. Bunlara
+  `Control\Nls\CodePage`'in ACP / OEMCP dosyaları da eklenir.
+- **Oturum ve kurulum programları:** smss, csrss + sunucu DLL'leri, wininit, winlogon, services, lsass, svchost, LogonUI,
+  dwm, userinit, explorer, sihost, fontdrvhost, ctfmon, taskhostw, RuntimeBroker, dllhost, conhost, cmd, rundll32, reg,
+  consent, setupcl, `oobe\windeploy / setup / msoobe / oobeldr`, PowerShell.
+- **Kendi kendine başlayan (Start 2) ve kalan her Win32 servisinin** ServiceDll'i ya da programı. Bu kural yalnız
+  `Windows\` altındaki ikili dosyalar için geçerlidir. Program Files'taki bir servis başlamazsa (Edge kaldırıldıktan
+  sonra güncelleyicisi) Windows yine açılır; ilk laboratuvar çalışması bu sınır yokken EdgeUpdate klasörünü tutmuştu.
+  Adım servisi de siliyorsa bu kural uygulanmaz.
+- **Kurulum'un sysprep modülleri:** `Sysprep\ActionFiles\*.xml` içindeki `moduleName`'ler, `$(runtime.system32)` /
+  `$(runtime.windows)` çözülerek.
+- **Yukarıdakilerin içe aktardığı her modül, geçişli olarak.** PE içe aktarma tablosu okunur. `api-` / `ext-` adları
+  imajın kendi API kümesi şemasıyla (sürüm 6) hostlarına çözülür. Modül System32'de, System32\drivers'da ve içe
+  aktaranın klasöründe aranır.
+- **Oturum programlarının ve sysprep modüllerinin adıyla yüklediği / başlattığı .dll / .exe'ler** (`namedModules`: tek
+  baytlık ya da UTF-16, NUL ile biten "ad.dll" / "ad.exe"). Oturum programlarından yalnız adı geçen DLL'ler kalır;
+  adı geçen programlar (notepad, taskmgr, werfault, sethc …) oturumu başlatmaz, gidebilir. Kurulum zincirinde ise
+  adı geçen programlar da kalır ve taranır (`ProvSysprep.dll` → `provtool.exe`). İlk laboratuvar çalışmasında
+  sınırsız zincir winlogon → … → taskmgr.exe → `Windows.WARP.JITService.exe`'ye kadar gidip WARP kaldırmasını boşa
+  çıkarmıştı. winlogon + wininit + diğerleri toplam yaklaşık 70 farklı DLL adı verir. `lsaiso.exe` (Credential
+  Guard) oturum listesindedir.
+- **API kümesi şemasının adını verdiği her host** (imajda olanlar). Bu ayrı bir kuraldır ve içe aktarma yürüyüşünden
+  sonra eklenir, böylece bir dosya içe aktarıldıysa kayıttaki nedeni o kalır. Gerekçe, VM'deki beşinci katman:
+  WinLove'un kendi kurulum sayfaları açıldı ama hiçbir yazı yoktu. Bellekte
+  `PropertySetterNotSupportedInConstrainedLanguage` bulundu: PowerShell kısıtlı dil kipindeydi. Nedeni şu: AppLocker
+  kaldırması `srpapi.dll`'i siliyordu; `KernelBase.dll` uygulama denetimi sorgusunu adıyla yüklediği bu dosya
+  üzerinden yapıyor (`ext-ms-win-security-srp`), dosya yoksa PowerShell güvenli tarafta kalıyor. Aynı yoldan
+  `winlogonext`, `wininitext`, `userinitext`, `winsrvext`, `dwminit` gibi oturum zincirinin "ext" hostları da yalnız
+  gecikmeli yüklenir ve içe aktarma tablosunda görünmez. Bu PC'de ölçüldü: oturum programlarının kapanışı 186 dosya /
+  161 MB; şema hostları ve onların içe aktarmalarıyla 464 dosya / 306 MB. KernelBase'in adlarını taramak ise 690 dosya
+  ederdi, o yüzden yapılmadı.
+- **Bir API kümesi hostunun adıyla yüklediği DLL'ler**, host en çok 10 mevcut DLL adı taşıyorsa korunur. Gerekçe:
+  `srpapi.dll` kalınca da kısıtlı dil kipi sürdü, çünkü srpapi `appidapi.dll`'i adıyla yüklüyor. Doğrulama: VM'de
+  sihirbaz yerine çalışan küçük bir C++ tanı programı (`WldpGetLockdownPolicy`, `SaferIdentifyLevel`, SYSTEM olarak,
+  specialize içinde) ve `$ExecutionContext.SessionState.LanguageMode`. appidapi eklenince sonuç `FullLanguage` oldu.
+  Çok sayıda ad taşıyan bir host bağımlılık listesi değil katalogdur: KernelBase 546, shell32 90 ad taşır.
+  Sınır 10'dayken korunan küme 45 dosya büyür; sınırsız olsaydı 934 dosya / 627 MB olurdu.
+- **ASP.NET kataloğu (`dotnet-aspnet`) artık `system.web*` almıyor.** Yerine yalnız ASP.NET'e özgü derlemeler
+  geliyor: mobile, entity, dynamicdata, datavisualization, `aspnet_*` araçları, netfx4-aspnet bileşenleri. Gerekçe,
+  VM'deki altıncı katman: dil kipi `FullLanguage` olduktan sonra da sihirbaz yazısızdı. Sihirbazın kendi
+  günlüğünde `ConvertFrom-Json : 'System.Web, Version=4.0.0.0' … yükleyemedi` yazıyordu. Windows PowerShell
+  5.1'in JSON komutları System.Web.Extensions → System.Web'e dayanır; Microsoft.PowerShell.Commands.Management de
+  System.Web.Services'e dayanır. Derleme başvuruları okunarak çıkarıldı: System.Web, System.Web.Services,
+  System.Web.RegularExpressions, System.Web.ApplicationServices, System.Web.Extensions. Artık bunlar yalnız bütün
+  .NET Framework (`dotnet`) kaldırılırken gider. Arayüz bir ön ayarı açarken tarifleri katalogdan yeniler (D-076);
+  `wlcli apply` ise ön ayarın kaydettiği tarifi kullanır. Bu yüzden laboratuvar ön ayarın düzeltilmiş bir kopyasıyla
+  koştu. Test: ComponentTests "ASP.NET leaves the System.Web assemblies …".
+- **Kurulum sihirbazındaki (`resources/scripts/oobe.ps1`) Türkçe "I" hatası.** Bu katmanlar geçilince sihirbaz Türkçe
+  Windows'ta "WINLOVE-PC"yi geçersiz bilgisayar adı saydı. Nedeni: PowerShell'in `-match`'i büyük-küçük harf
+  duyarsızdır ve tr-TR kurallarına uyar; "I"nın küçüğü "ı" olur ve `[a-z]`'ye girmez. Düzeltmeler:
+  - bilgisayar adı ve ağ anahtarı denetimi `-cnotmatch` / `-cmatch` oldu;
+  - varsayılan bilgisayar adı `ToUpperInvariant()` + `-creplace` ile üretiliyor;
+  - ayrılmış hesap adları (`administrator` …) ve diğer karşılaştırmalar `ToLowerInvariant()` kullanıyor. Önceden
+    "ADMINISTRATOR" Türkçede "admınıstrator" olup denetimden kaçıyordu.
+- Şema okunamazsa (Windows 10 öncesi) çağıran hiçbir modül ya da NLS dosyasını silmez.
+- İçe aktarma ve ad listeleri dosya boyu + yazma zamanına göre süreç boyunca önbelleklenir. Bu sayede 374 bileşenlik bir
+  ön ayar her adımda explorer.exe'yi yeniden okumaz.
+- `removeStoreCopies` ve `removeComponent` tarif yolları bu kümeyle süzülür. Logda "kept X: Windows needs it before it
+  starts (neden)" yazar.
+Kanıt:
+- BootDriverTests: bu PC'nin `ntoskrnl.exe`'si `ext-ms-win-ntos-werkernel` içe aktarıyor ve şema onu `werkernel.sys`'e
+  çözüyor; `winlogon.exe` adıyla `utcapi.dll` ve `userinit.exe` yüklüyor; Specialize.xml'den `ProvSysprep.dll`
+  bulunuyor; sahte imajda kapanış doğru dosyaları tutuyor; şema yoksa hata dönüyor.
+- Laboratuvar testi (`WL_TEST_IMAGE_ROOT`, özgün 26200.9818 Pro imajı salt okunur bağlı): 223 sürücü/filtre/servis
+  girdisi, 852 dosya korunuyor. EventLog → wevtsvc.dll, ACP kod sayfası, `utcapi.dll`, `srpapi.dll`,
+  `ProvSysprep.dll` var; `taskmgr.exe` ve WARP JIT servisi yok (26/26).
+- VM: yukarıdaki her katman eksik dosya elle konarak tek tek aşıldı.
+Uçtan uca (2026-11-08): ön ayar D-117'li kodla özgün ISO'ya baştan uygulandı ve temiz kuruldu. Açılış, specialize ve
+WinLove'un sihirbazı tamamlandı (hesap, ad, saat dilimi, gizlilik). Ardından OOBE "Bilgisayarım neden yeniden başladı?"
+döngüsüne girdi; nedeni ve düzeltmesi D-118.
+
+## D-116 — Önyükleme sürücüleri ve aygıt filtreleri hiçbir kaldırmayla gitmez (2026-11-07)
+Bağlam: Kullanıcı raporu. 859 adımlık ön ayar kaydedildi, ISO kuruldu (VMware, EFI, NVMe). İlk açılış önyükleyicide
+"Kurtarma — 0xc000000f" ile durdu. VM diski 7-Zip ile salt okunur açıldı:
+  - BCD normal.
+  - `System32\drivers\fvevol.sys` yok. Servisi duruyor: Start 0, ErrorControl 3 (kritik), grup "PnP Filter", Volume
+    sınıfının LowerFilters'ında.
+  - Silen, `bitlocker` bileşeninin D-113 deposu globu (`microsoft-windows-securestartup*`): BitLocker'ın filtre sürücüsü
+    de o bileşenlerden biri.
+  - Aynı yoldan `scfilter.sys` (akıllı kart okuyucu sınıfının UpperFilters'ı) da gitmişti; açılışı değil o aygıtı bozar.
+Karar (`core/image/BootDrivers`):
+- **Korunan sürücüler.** `findBootDrivers` imajın SYSTEM'ini offreg ile okur (tüm denetim kümeleri). Korunanlar:
+  - Start 0/1 olan çekirdek / dosya sistemi sürücüleri.
+  - Önyükleme yolu gruplarındakiler (Boot / System Bus Extender, SCSI miniport / port / class, Primary Disk,
+    Boot File System, Filter, PnP Filter). Ntfs Start 3'tür ama önyükleyici onu grubundan yükler. stornvme / storahci
+    imajda Start 3'tür, sistem diskini sürdükleri PC'de önyükleme sürücüsü olurlar.
+  - Bir aygıt sınıfının Upper/LowerFilters'ında adı geçen her sürücü.
+- **`removeStoreCopies` (D-113).** Kurulu kopyalar arasından bunları çıkarır ve logda "kept …" yazar.
+  - Start 0/1 bir sürücünün dosyası, yalnız aynı adım servisini de siliyorsa gider: o durumda onu yükleyen bir şey kalmaz.
+  - Filtre sürücüsü hiç gitmez. Tarifin `services` listesinde olsa bile anahtarı kalır, çünkü sınıf adı tutar ve
+    yüklenmeyen bir birim filtresi 0x7B demektir.
+  - SYSTEM okunamazsa hiçbir .sys silinmez.
+- **`removeComponent` tarif yolları.** Bir yol böyle bir sürücüyse ya da böyle bir sürücüyü içeriyorsa o yol atlanır
+  (uyarı yazılır).
+Kanıt: BootDriverTests. Bunlara VM'in gerçek hive'ı üzerinde laboratuvar testi de dahil (`WL_TEST_IMAGE_ROOT`): 158 sürücü
+bulundu; fvevol (erken + filtre), volsnap, Ntfs ve stornvme var, WSearch yok.
+Kullanıcının kaydedilmiş imajı yeniden uygulanmadan onarıldı. Özgün ISO'dan (aynı yapı 26100.9818) alınan `fvevol.sys`
+ve `scfilter.sys`, install.wim'e TrustedInstaller sahipliği ve kardeş dosyaların ACL'siyle kondu; sonra commit edildi.
+fvevol'un bağımlılıkları imajda var (ksecdd, CEA).
+Görülmeyen: onarılan ISO'nun VM'de açılışı. Kullanıcı ISO'yu yeniden oluşturup denemeli.
+
+## D-115 — Küçültülmüş ya da servis edilemez imajda CBS adımı çalışmaz; küçültme yükleyicileri tutar (2026-11-07)
+Bağlam: Kullanıcı raporu (`WinLove-apply.log`). Held kalan (kaydedilmemiş) bir çalışmadan sonra aynı ön ayar (1031 adım)
+bağlı imaja yeniden uygulandı. İlk çalışma WinSxS'i küçültmüştü (D-079). `bio-enrollment` paketlerini DISM'le kaldırırken
+CSI "AppX Registration Installer"ı yükleyemedi: `appxreg.dll`, D-079 listesinde olmayan
+`microsoft-windows-s..-installers-onecore` klasöründeydi ve silinmişti (0x8007007E). İşlem yarıda kaldı (pending.xml,
+PrimitivesCommitted). CBS imaja `Unserviceable=1` yazdı; sonraki her paket / yetenek adımı 0x800F0830 aldı ("Discard the
+modified image"). Sonuçta 4 adım bekletti, imaj kaydedilmedi.
+Karar:
+- **Küçültme:** servis yığınının yükleyicileri (`microsoft-windows-s..-installers*`, ~9 MB) de kalır (`servicingStack`).
+- **`servicingClosed(mountDir)`** (StoreShrink.h): WinSxS'te küçültmenin alacağı klasör 1000'den azsa `StoreShrunk`.
+  SOFTWARE `…\Component Based Servicing\Unserviceable` ≠ 0 ise `Unserviceable`. ApplyJob bunu oturum açılmadan okur ve
+  `ApplyOptions`'a koyar.
+- **Applier:** kapalı imajda `usesServicing` adımları (özellik aç / kapat, paket ekle / kaldır, yetenek, sürüm, depo
+  temizliği; Safe OS hariç, o WinRE'ye gider) DISM'e gitmeden `Unsupported` + 0x800F0830 ile "atlandı" olur.
+  `unchangedByFailure` bunları ve DISM'in kendi 0x800F0830'unu bekletmez saymaz. Bileşen kaldırmada paketlere dokunulmaz
+  (kilitleri de açılmaz); dosya, kayıt defteri, servis ve uygulama kısmı çalışır. Yalnız paketten oluşan bileşen atlanır.
+  Küçültülmüş depoda ShrinkStore "yapılacak bir şey yok" der.
+- Raporda nedeni yazılır (`apply.reason.servicingClosed`).
+Kanıt: testler (StoreShrinkTests, ApplyTests). Kullanıcının imajı da onarıldı:
+  - Eksik 5 WinSxS klasörü özgün WIM'den kondu.
+  - `DISM /Cleanup-Image /RevertPendingActions` başarılı ("rollback … pending online operations").
+  - `Unserviceable` SeBackup/SeRestore ile silindi.
+  - `/Get-Packages` çalışıyor, `/CheckHealth` "No component store corruption detected".
+Görülmeyen: onarılan imajın kurulup ilk açılışta geri almayı tamamlaması (VM'de denenmedi).
+
+## D-114 — Büyük güncelleme: renkli ikonlar, saf siyah tema, kart düzeni, referans araç mantığıyla Güncellemeler / Sürücüler / Güç planı / Özellikler (2026-11-07)
+Bağlam: Kullanıcının 17 maddelik listesi (UI kusurları, ikonlar, tema, Hakkında, Görüntü düğmeleri, sağ tık ikonları,
+güncelleme bulma, sürücü sınıfları, güç planları, Özellikler ve Ayarlar referans araç gibi) + bileşen tanımlarını artırma.
+Karar:
+- **Bileşenler:** D-113'e 74 tanım daha (219): kalan büyük paylar kilitli çekirdek düğümler olarak (kabuk 1,3 GB, çekirdek,
+  grafik, WinRT, servis yığını, önyükleme, OOBE, Windows Update, MSI, güvenlik duvarı, lisanslama, ses, ağ) ve yeni
+  kaldırılabilirler (MDAC/Jet, MSXML, Vulkan, WARP, DirectShow, MPEG-2/WMV kodekleri, TAPI, MAPI, CDOSYS, ReFS, depolama
+  yönetimi, sıfırlama, UserData/posta eşitleme, Store altyapısı, Entra aracısı, WebAuthn, TTD, WPR, WinSAT, yazım
+  denetimi …); referans aracın imajında tanımların payı 8,9 GB. Depo adlarında "( )" ve iç boşluk geçer
+  ("…-(mdac)-ado15-dll"): doğrulama buna göre.
+- **İkonlar (Fluent renkli):** vurgu mürekkebiyle çizilen ikon kendi anlam rengini (klasör/dosya amber, kaldırma kırmızı,
+  güvenlik/çalıştır yeşil, özellik/uygulama mor, donanım teal, imaj/bilgi mavi) ve kapalı şekillerde %20 dolgu alır
+  (`IconTone`); devre dışı / vurgulu zemin / yüksek kontrastta tek renk kalır. Belirteçler: `icon.*`.
+- **Tema:** "Yüksek kontrast" seçeneği kaldırıldı, yerine **Saf siyah** (`black` belirteç kümesi, #000000 zemin);
+  Windows'un kendi yüksek kontrastı erişilebilirlik olarak yine kazanır; eski "hc" ayarı siyaha döner.
+- **Düzen:** düğme metni ölçülmeden sabit genişlik alınca ortadan başlıyordu (sağa kayık) → çizimde ölçülür; şerit
+  düğmelerinin hepsine ikon; kart sekmesi kartın kendi rengiyle birleşir (köşe dolgu + iç bükey yay); yan paneller
+  yuvarlak kart; formlar bölüm kartları, 34 satır / 26 denetim, aralarında çizgi; metin sekmeleri hap biçiminde aralıklı;
+  pencerenin en küçük boyutu çalışma alanını aşmaz (durum çubuğu görev çubuğunun altında kalmaz); Windows indir araç
+  satırı dar pencerede ikinci satıra iner; Hakkında kartlı (kahraman kartı, vaat hapları, Bağlantılar / Sistem);
+  Görüntü şeridine Kaydet · Çöz · Bağlama klasörü · ISO Oluştur, tabloda dar genişlikte Mimari/Dil sütunları çekilir;
+  sürüm satırının sağ tık menüsünde ikonlar (`MenuPopup::setIcons`).
+- **Güncellemeler:** referans araç listeyi kendi lisans sunucusundan alır (kullanılamaz). WinLove kaynağın kendisine sorar: FE3
+  (`WuDiscovery`: GetCookie + SyncUpdates WU_OS / Setup360 DUScan / NETFX) imajın yapısına sunulan KB'leri verir, her KB
+  Katalog'da numarasıyla aranır (dosya ve SHA-256 yine Katalog'dan). 26200 için 3 → 8 güncelleme; türünün yalnızca en
+  yenisi önerili.
+- **Sürücüler:** sınıf adı Windows'un kendi açıklaması (SetupDiGetClassDescription, bu bilgisayarın dili), ikon sınıf
+  anahtarının IconPath / Icon'undan (Aygıt Yöneticisi'nin ikonları). "Bu bilgisayardan al" yalnızca takılı cihazların
+  kullandığı oemN.inf'leri dışa aktarır (sürücü anahtarının InfPath'i), eski sürümler artık kopyalanmaz.
+- **Güç planı (Kayıt Defteri ▾):** Nihai Performans / Yüksek performans / Dengeli / Güç tasarrufu (ilk açılışta powercfg),
+  bu bilgisayarın planları (PowerEnumerate, powercfg /export → .pow → Kurulum Sonrası PowerPlan adımı), .pow ve .reg.
+- **Özellikler:** Windows özellikleri referans araç gibi ağaç — üst bağlantı paket manifestlerinden (`detectUpdate` /
+  ServerComponent Parent, `readFeatureParents`); diller her dil için bir grup ("Türkçe (Türkiye) - … - tr-TR"); geç kalan
+  başarısız okuma yeni listeyi ezmez (render demosu bu yüzden bozuktu).
+- **Ayarlar (Tweaks) içeriği:** referans aracın 405 ince ayarı onun kendi seçkisi ve metinleri — kopyalanmadı (D-113 ile aynı
+  sınır). Bu turda yalnız tasarım (kartlar, sekmeler) değişti.
+- Test: EditionTests'teki yükseltme testi gönderilen işleri motor iş parçacığında çalıştırıyordu (yaklaşık 8'de 1 çöküş):
+  kuyruğa alınıp ana iş parçacığında çalıştırılıyor.
+Ölçüm: birim testleri (Debug ve Release) geçti; `wlcli catalog 26200.8037 --dynamic` 8 güncelleme (47 sn, FE3 Setup360
+yanıtı ~10 MB); render ile Görüntü, Hakkında, Uygulama ayarları (saf siyah), Ayarlar, Sürücüler, Özellikler doğrulandı.
+
+## D-113 — Bileşenler referans aracın tanım modeliyle: bileşen deposundan alt dallar, gerçek boyutlar, bağımlılık ağacı (2026-11-07)
+Bağlam: Kullanıcı: "Neden her kategori altına direk ekleniyor, neden alt kategoriler yok … boyutu kb değerine kadar
+birebir aynı … yapıda mantık da aynı olsun. rea gücünü kullan." REA ile `reference_unpacked.exe` (çalışan süreçten alınmış
+döküm) incelendi: referans aracın ~1.300 statik bileşeni programa gömülü `init` fonksiyonlarıdır — her biri bir boyut sabiti
+(`movabs rax, 0x4055fb851eb851ec` = 87.93 → `[this+0x140]`; ekrandaki 87.93 / 300.00 / 195.00 / 345.00 / 12.81'in
+hepsi kodda sabit, 200 bileşende doğrudan bulundu), CBS bileşen adı desenleri (".NET Framework Core":
+`Microsoft-Windows-NetFx-Shared-*`, `Microsoft-Windows-GacInstaller`, `netfx-System*` …) ve alt bileşenlerin desenlerini
+dışarıda bırakan istisnalar (`*-NetFx-Shared-WCF*`, `WPF-*`, `NetFx4-ASPNET*`). Adlar `Lang\<dil>.xml`'de (`S0703`
+".NET Framework Core"). Canlı olan yalnızca desenlerin imajdaki bileşenlerle eşleşmesi; boyutlar ölçülmez (Uygula'da
+ölçülen gerçek boyut farklı çıkar: Konum Hizmeti 0.9 → 3.2 MB). KB'si KB'sine aynı liste referans aracın kapalı verisini
+kopyalamak demek: yapılmaz (WinLove GPL ve açık; kullanıcıya söylendi, "evet et" ile bu yol seçildi).
+Karar (aynı yöntem, WinLove'un kendi tanımları, Windows'un kendi verisi):
+- **Tanım = bileşen deposu desenleri** (`components.json` `store`): kimlik adı glob'u ya da `ad|PublicKeyToken|sürüm`
+  glob'u (`*|b03f5f7f11d50a3a|*` = .NET derlemeleri). `ComponentStoreIndex` her `DerivedData\Components` anahtarının
+  `identity` değerini okur (`.Resources` adı kendi adına katılır); `shareStore` her bileşeni **en özgül desene** verir
+  (tam ad her glob'dan önce, sonra en uzun sabit metin) — referans aracın "üst, altlarının parçalarını dışarıda bırakır" kuralı
+  desen yazmadan kendiliğinden çıkar.
+- **Boyut ölçülür**: her bileşenin WinSxS klasörü (tüm sürümleri) bayt bayt; satırın boyutu kendi payı. 32 bit payı
+  (x86 / wow64) olan her tanımın altında kendi **"- 32 bit"** satırı (referans araçtaki gibi), ayrı kaldırılabilir.
+- **İç içelik = bağımlılık** (`parent`): alt satır üstüne dayanır. Üst kaldırılınca altındakiler de kuyruğa girer
+  (tutulan/kilitli olanlar kalır); kaldırılmış bir alt yeniden işaretlenince dayandığı üstler de geri gelir.
+  Bağımlılıklar Windows'un kendi ilişkilerinden: servis `DependOnService` (COM+ Olay Sistemi → SENS → COM+ Sistem
+  Uygulaması), özellik `Parent` (.NET → ASP.NET / WCF / WPF), WOW64. `container`: kendi parçası olmayan düğüm (Uzak
+  Masaüstü). `locked`: gösterilir, kaldırılamaz (WinINet/URLMon, Terminal Hizmetleri çekirdeği, WMI, Chakra) —
+  geniş bir ailenin çekirdeği altlarından ayrılır, üst kaldırılınca o kalır.
+- **145 tanım** (API 46, Ağ 19, Hizmetler 13, Donanım 12, Tanılama 11, Güvenlik 10, Depolama 7, Eğlence 7,
+  Kabuk 6, Kuruluşlar 5, Yerelleştirme 4, Üretkenlik 3, Kurulum 2): adları Windows'un kendi Türkçe servis/özellik
+  adları ya da WinLove'un; referans aracın adları, desenleri, sayıları kopyalanmadı. Servis → bileşen eşlemesi imajın
+  WinSxS dosyalarından (servisin DLL'i hangi bileşenin yükü). Mevcut girdiler ağaca bağlandı (OneDrive → Bulut
+  Dosyaları API'si, WMP ağ paylaşımı → Windows Media Player, biyometrik kayıt → Biyometrik Hizmet).
+- **Kaldırma = referans aracın Varsayılan+ özel kaldırması** (`ComponentRecipe::storeNames/storeBits/services`,
+  `removeStoreCopies`): bileşenin WinSxS yükündeki her dosyanın imaj içinde WinSxS dışındaki her sabit bağı silinir
+  (System32, SysWOW64, Program Files …), listelenen servis anahtarları (her ControlSet) silinir; depo ve kaydı
+  dokunulmaz → güncelleme desteği sürer, `/ScanHealth` temiz kalır; bir toplu güncelleştirme ya da `sfc /scannow`
+  dosyaları geri getirebilir (ipucu notunda yazar). Tarif imajın adlarını taşır (`afterUpdates`: aynı çalıştırmadaki
+  güncelleme önce); hazır ayar açılınca adlar bu imajınkilerle yenilenir (D-076).
+- **Koruma**: bir hazır ayar dosyası çekirdeğe uzanamaz — `isProtectedStoreName` (çekirdek, ntdll, win32k, user32,
+  combase, RPC, csrss/smss/winlogon/LSA, shell32/explorer, servis yığını/CBS/TrustedInstaller, NTFS, PnP, crypt,
+  Terminal Hizmetleri oturum yöneticisi, WinINet/URLMon/iertutil, WMI çekirdeği, apphelp/uyumluluk veritabanları) ve
+  `isProtectedService` (RpcSs, DcomLaunch, LSM, Power, PlugPlay, SamSs, EventLog, ProfSvc, CryptSvc, Dhcp, Dnscache,
+  BFE, mpssvc, gpsvc, Winmgmt, AppXSvc …) doğrulamada ve motorda reddedilir. Önerilmez (kırmızı) satırlar D-110'un
+  "Önerilen" koruması açıkken kilitlidir.
+- `wlcli store-share <mount> <components.json>` (tanım başına pay, JSON satırları), render
+  `--demo-store-share=<dosya>` ve `--demo-reveal=<id>`; `tools\lab_store_copies.ps1`.
+Ölçüm (referans aracın bağladığı 25H2 Pro, salt okuma): 36.636 depo bileşeni, indeks 11 sn (debug); 142 tanım imajda,
+108'inin 32 bit satırı var, en derin dal 4; tanımların payı 4.070 MB. C++ eşleştirmesi Python prototipiyle 143/143 bayt
+bayt aynı. Örnek: .NET Framework 4.8 352,53 MB (- 32 bit 208,80) → ASP.NET 21,94 · WCF 44,17 · Windows Forms 26,18 ·
+WIF 7,07 · WPF 61,65 (- 32 bit 26,66). `tools\lab_store_copies.ps1` (lab imajının kopyası): 23/23 PASS — Karakter Eşlemi
+(her mimari), WMIC yalnız 32 bit, WebClient + servis anahtarı kaldırıldı; WinSxS yükü yerinde; çekirdek bileşen
+(kernel32) ve çekirdek servis (RpcSs) reddedildi; DISM `/ScanHealth`: "No component store corruption detected".
+
+## D-112 — Bileşenler'e imajın kendi satırları: referans aracın yöntemiyle sürücüler, diller, klavyeler, yazı tipleri, sistem uygulamaları (2026-11-07)
+Bağlam: Kullanıcı iki uygulamayı yan yana koydu: "kategoriler hemen hemen aynı olsa da içerikler adları alt
+kategorilendirme boyut her şey farklı … aynı yöntem aynı mantık aynı liste buldurabilmeliyiz". Referans aracın listesi iki
+kaynaktan gelir (`research\README.md` §6.6): ~1.300 satır referans aracın programa gömülü kendi bileşen tanımları (adları,
+iç içeliği, şablonları, gömülü boyut tahminleri — referans aracın verisi; WinLove'a kopyalanmaz, kullanıcıya söylendi) ve
+~1.175 satır imajın kendisinden okunanlar. İkinci kısım aynı yerden aynı yöntemle okunur.
+Karar:
+- Motor `core/image/ImageInventory` (offreg ile, imaja hiçbir şey yüklemeden):
+  - **Sürücüler:** DRIVERS + SYSTEM `DriverDatabase\DriverPackages` (paket → INF, sınıf GUID'i), INF'ten sağlayıcı,
+    DriverVer ve imaj mimarisinin `[Models]` bölümlerindeki cihaz adları (`DriverInf::devicesFor`); sınıf adı imajın
+    `Control\Class\{GUID}\ClassDesc`'inden — MUI ise bu bilgisayarın dosyalarıyla çözülür, `@x.inf,%…%;Yedek` ise
+    referans araç gibi `;`'den sonraki metin ("Display adapters"). Satır adı referans aracınki: "Sağlayıcı  |  dosya.inf".
+  - **Diller:** `System32\<etiket>` klasörleri (+ SysWOW64, Common Files\microsoft shared\ink), referans aracın gruplamasıyla:
+    bir dil bir satır (sr-*, es-*, nb/nn, qps-* birleşir), İngilizce / Fransızca / Portekizce / Çince değişkenleri ayrı.
+  - **Klavye düzenleri:** SYSTEM `Keyboard Layouts\<KLID>` (Layout Display Name MUI / Layout Text, Layout File).
+  - **Yazı tipleri:** SOFTWARE `Windows NT\CurrentVersion\Fonts` değerleri, aileye göre (`fontFamily`).
+  - **Sistem uygulamaları:** SOFTWARE `AppxAllUserStore\InboxApplications` (SystemApps ve WindowsApps'tekiler).
+- Kaldırma referans aracın gözlenen yöntemleriyle (README §8), `RemoveComponent` tarifi olarak: dil → yerel ayar klasörleri;
+  klavye → KBD*.DLL (başka düzen kullanmıyorsa) + `Keyboard Layouts\<KLID>`; yazı tipi → `Fonts\<dosya>` + Fonts
+  değeri; sistem uygulaması → klasörü + `Deprovisioned\<aile>` + `InboxApplications\<tam ad>`; sürücü → yeni
+  `ComponentRecipe::driverPackages` ile tek paketin derin kaldırması (D-060'ın yolu: DriverStore, DRIVERS, WinSxS,
+  INF, sabit bağlar; sınıf sınırı aynen: yalnız eski sınıflar).
+- Kilitler (sabit, `lockReason`; ipucunda yazar): sınıf INF'leri ("doğrudan kaldırma desteklenmiyor"), eski olmayan
+  sürücü sınıfları ("Gerekli sürücü sınıfı" — kullanıcının kuralı: ağ, depolama, USB, HID, ekran … asla), imajın
+  varsayılan dili ve en-US, ABD ve varsayılan dilin klavyeleri, temel yazı tipleri (Marlett, Segoe UI ailesi, simge
+  yazı tipleri), izin listesi dışındaki sistem uygulamaları (kabuk, oturum açma, kurulum, kilit ekranı …).
+- Ağaç referans aracınki: Sürücüler → sınıf → "Sağlayıcı | inf" → cihazlar; sınıf INF'leri ve ağ hizmeti / protokolü /
+  istemcisi INF'leri Donanım desteği → Tek tek cihazlar [Gelişmiş] → sınıf; Yerelleştirme → Dil / Klavye düzenleri /
+  Yazı Tipleri. Sayfa genel ağaç oldu (kategori → düğüm → bileşen → alt satır), düğümün dairesi altındakileri topluca
+  işaretler (`ComponentController::setRemoved`, tek kuyruk düzenlemesi); düğüm durumları satırlar kurulurken önbelleğe alınır.
+- `wlcli inventory <mount> [--json]`, `wlcli inventory-recipe <mount> <tür:ad>`, `tools\lab_inventory.ps1`;
+  render `--demo-inventory=<json>` (gerçek bir imajın satırları).
+Ölçüm (referans aracın kendi bağladığı 25H2 Pro imajı, salt okuma; referans aracın döküm listesiyle karşılaştırma):
+klavye düzenleri 218 / 218 adlarıyla aynı; sürücü INF'leri 715 / 715 aynı sınıf altında aynı adla; sürücü sınıfları
+116 / 116 aynı; cihaz satırları 7.429 / 7.354 (47 INF'te küçük fark); diller 84 / 86 (gruplama aynı kural, adlar
+Windows'unki — referans aracın Türkçe dil adları kendi çevirisi; IME grubu yok); yazı tipleri 67 / 88 (referans aracın yazı tipi
+gruplaması kendi tanımlarından: ne kayıt adına ne dosyanın aile adına uyuyor); sistem uygulamaları 48 / 26 (referans aracın
+22'sini kendi statik bileşenlerinin içinde gösterir). "Tek tek cihazlar [Gelişmiş]"e referans aracın koyduğu 165 INF'in
+103 sınıf INF'i + ağ hizmet/protokol/istemci INF'leri kuralla bulunur; kalan 38'i referans aracın tanımlarıdır.
+Kanıt (`tools\lab_inventory.ps1`, lab imajının kopyası, 26200.8037 Pro, yönetici): okuma 715 sürücü / 7.425 cihaz, 84 dil,
+217 klavye, 67 yazı tipi, 48 sistem uygulaması; cy-GB, Gotik klavye (KBDGTHC + 000C0C00, 00000409 kaldı), Gabriola,
+PeopleExperienceHost (klasör, Deprovisioned, InboxApplications) ve mdm5674a.inf (FileRepository; diğer modemler kaldı)
+kaldırıldı, bir ağ sürücüsü reddedildi, DISM sonra paketleri listeledi — 27 / 27 PASS, imaj atılarak çıkarıldı.
+Doğrulanmayan: bu kaldırmalardan sonra kurulan Windows'un VM'de açılışı.
+
+## D-111 — Özellikler referans araç düzeninde; formlar referans araç yoğunluğunda (2026-11-07)
+Bağlam: D-109'un devamı (referans araç birebir). Referans aracın Özellikler sayfası (`research\README.md` §7.6): iki sekme
+"Talep Üzerine Özellikler 57/489" ve "İsteğe Bağlı Özellikler 13/134"; yetenekler kategori ağacında (Diller · Yazı
+Tipleri · Sürücüler · RSAT · Diğer, kimliğin önekinden); sütunlar Açıklama · Etkin (yeşil tik) · Yüklendi (kurulu
+değilse boyutu); işaret kalan / açık olanı gösterir. Ayarlar ve Katılımsız gibi formlar referans araçta 23,5'lik özellik
+listesidir (ad | değer | açıklama).
+Karar:
+- `FeaturesPage` yeniden yazıldı: `TabBar` iki sekme (sayaçlar `targetOn` ile, kuyruk değişince güncellenir,
+  `TabBar::setTabs`), "Tümü ▾" (Tümü · Açık · Kapalı · Değişenler) + arama, yetenekler `categoryOf()` ile
+  (`Language.Fonts.*` → Yazı Tipleri, `Language.*` → Diller, `Rsat.*` → RSAT, `Microsoft.Windows.*Wifi/Ethernet*`
+  → Sürücüler, gerisi Diğer), kategori satırının dairesi kategoriyi topluca açar/kapatır, öğeler ada göre, ayrıntı
+  ipucunda. Şerit: Tümünü genişlet · daralt | Sıfırla. Ağaç işareti ortak `paintTreeCheck` (PageBits.h; Bileşenler de).
+- `FormView` satırı 23,5 (denetim 21,5), bölüm satırı 30, satır çizgisi yok, değişen satırın solunda 2px vurgu
+  çubuğu ("Değiştirilen satırlar: Kenar çubuğu"); Ayarlar değer kutusu 180. Sayfa sabitleri de küçüldü: Hakkında,
+  Diller 24; ISO 26; Uygula adımları 24; Başlat menüsü, Simgeler 28; komut paleti 34 / 36 / 24.
+Doğrulanmayan: Özellikler sayfasının render'ı — `--demo-features` bu değişiklikten önce de "okunamadı" gösteriyordu
+(ön okuma demo verisinin üstüne yazıyor); sayfa birim testleri ve derleme ile denendi, gerçek imajda bakılmadı.
+
+## D-110 — Bileşenler referans araç mantığıyla: kategori ağacı, şablon renkleri, kaldırma düzeyi (2026-11-07)
+Bağlam: Kullanıcı sayfaların referans araçla "birebir aynı mantıkta" çalışmasını istedi (D-109). Referans aracın Bileşenler
+davranışı `research\README.md` §6'da ölçüldü: 14 sabit kategori, işaret = **tutulur** (işareti kaldırılan
+kaldırılır), satır başında şablon rengi (Gizlilik ⊂ Genel ⊂ Hafif, Önerilmez seçilemez), "Önerilen" uyumluluk
+koruması kırmızıları kilitler, Kaldırma modu (Varsayılan+ / Derin / Maksimum) listeyi değil korumaları ve depoyu
+değiştirir, boyut sütunu MB + çubuk, açıklama ipucunda, filtre "Tümü ▾".
+Karar:
+- Kataloglara (`appx.json`, `components.json`) her öğe için `category` (referans aracın 14 kategorisi + `uncategorized`)
+  ve `tier` (`privacy` / `general` / `light` / `notRecommended` / yok) eklendi; kategori listesi
+  `components.json` → `categories`. Atamalar WinLove'un kendi kararı (referans aracın bileşen tanımları kopyalanmadı):
+  risk düşük → Genel, orta → Hafif, yüksek → Önerilmez; telemetri, tüketici eklentileri (Haberler, Hava, Bing,
+  Copilot, Solitaire, Clipchamp…) ve nadir kurumsal özellikler (App-V, UE-V, BranchCache…) → Gizlilik; derin sürücü
+  kaldırma ve depo temizliği şablonsuz.
+- `ComponentController::groups()` artık kategori sırasıyla gruplar, öğeler ada göre; depo temizliği ve WinSxS
+  küçültme ağaçta değil, **Kaldırma modu**nda: Varsayılan+ = ikisi de yok, Derin = `CleanupImage` (ResetBase),
+  Maksimum = temizlik + `ShrinkStore` (+ otomatik güncelleme kapalı). `level()` kuyruktan okunur. Maksimum,
+  "Önerilen" ve "Windows Update" korumalarını kapatır; diğer düzeyler açar.
+- **Şablon ▾** (Gizlilik / Genel / Hafif): şablonun aldığı, kilitsiz, kuyrukta olmayan öğeleri tek kuyruk
+  düzenlemesiyle ekler (sıfırlamaz; "Geri al" toast'u). `templateTakes()`.
+- Uyumluluk'a **"Önerilen"** koruması (varsayılan açık): kırmızı öğeleri (`edge-webview`, `edge-update`, `winre`,
+  `defender-full`, Store, App Installer, Windows Güvenliği, çalışma zamanları) kilitler.
+- Sayfa: tek satır 23,5; kategori satırı (ok + daire işaret + ad), bileşen 17 içeride (daire işaretin solunda
+  şablon renginde hilal), Önerilmez adlar soluk, kilitli satırlar gri; boyut "87.93" log ölçekli çubuk
+  (~20 DIP / log10(1+10·MB)); işaret **tutulanı** gösterir (kuyruk tersi). Filtre: Tümü · Tutuluyor ·
+  Kaldırılıyor · Uygulamalar (Kullanıcı) · Bileşenler (Sistem) · Şablon (Gizlilik / Genel / Hafif). Açıklama,
+  boyut, şablon ve kilit nedeni satırın ipucunda (`TableView::tooltipFor`); sağ denetçi paneli kalktı.
+  Şerit: Mod · Varsayılan+ | Uyumluluk | Şablon ▾ | Geri al · Yinele | Tümünü genişlet · daralt | Sıfırla.
+Açık (referans araçta olup henüz yok): imajdan okunan sürücü / dil / klavye / yazı tipi satırları (motor + lab kanıtı
+gerekir, kural 6), bağımlılık iç içeliği, ilk girişte Kaldırma modu penceresi.
+
+## D-109 — Arayüz v3: referans aracın görünümü ve gezinmesi birebir (2026-11-07; D-107/D-108'in ölçü, renk ve iskeletini geçersiz kılar)
+Bağlam: D-108'den sonra kullanıcı: "Hala çok büyük UI … herşey çok iri butonlar … dark ve light temada çok daha
+net renk tonları … bak referans araç ne kadar güzel tasarımı var … her menüye bak aynı birebir bu tasarımda renklerde olsun".
+Ardından: "bütün sayfalarımızı menülerimizi referans araçla birebir aynı mantıkta çalışacak şekilde değiştir"
+(kanıtlar `C:\Users\shades\Desktop\research`: README v2 + `docs/` katalogları + `analysis/evidence`).
+Ölçüm: referans araç 2026.10'un penceresi `PrintWindow` ile (yalnız o pencere) %175'te her sayfada ve dört görsel stilin
+ikisinde (Koyu = Windows koyu temada "Otomatik", Açık) yakalandı; görüntüler `research\analysis\evidence\screens\design\`
+(repoya girmez). Renkler piksel örneklemeyle, ölçüler renk geçişleri ve büyük harf yüksekliğinden (15 px ⇒ 12 DIP font).
+Karar:
+- **Tasarımın kaynağı referans aracın ölçülen görünümü**; `design/tokens.json` 3.0.0 bu değerleri taşır. `design/WinLoveUI/`
+  artık ölçü/renk kaynağı değil (paket salt okunur kalır; ikonlar `WinLove-UI-Handoff/`'tan).
+- **Renkler** — koyu: sayfa `#202020`, şerit / gezinti kartı / kart sekmesi `#262626` (`bg.chrome`), kart ve durum
+  çubuğu `#2B2B2B`, seçili `#3A3A3A`/`#3E3E3E`, giriş `#333333`; yazı `#FFFFFF` / `#B8B8B8` / `#858585`; vurgu Windows'un
+  koyu vurgusu `#4CC2FF` (üstünde siyah yazı). Açık: sayfa `#EEEEEE`, başlık çubuğu `#E6E6E6`, şerit `#F5F5F5`, kart
+  `#FBFBFB`, seçili `#E3E3E3`; yazı `#1B1B1B` / `#525252` / `#858585`; vurgu `#0067C0`, bağlantı `#0058CD`.
+  Bileşen şablon renkleri (`tier.*`): Gizlilik yeşil `#39B54A`, Genel mavi `#3C7BA7` / `#0058CD`, Hafif sarı `#F4D534`,
+  Önerilmez kırmızı `#F54137`; boyut çubuğu `sizeBar` `#2E3C46` / `#C3D7F0`.
+  Referans aracın gri yazısı ~3:1 okunur: üçüncül yazının kontrast kuralı 4,5'ten **3,0'a** indi (birincil/ikincil 4,5 kalır).
+- **Yazı:** her yerde Segoe UI 12 (referans araç 9 pt); kalınlık yalnız başlıkta 600; büyük harf başlık yok.
+- **Ölçüler (DIP):** başlık çubuğu 34, şerit 50, ipucu satırı 34, durum çubuğu 22; tablo satırı 23,5, kontrol 24,
+  gezinti öğesi 28 (grup başlığı 25), gezinti kartı 200 geniş, kart sekmesi 26, onay kutusu 13, radius 2/4/6.
+- **İskelet (referans araç):** başlık çubuğu = ≡ uygulama menüsü (Uygulama ayarları · Windows indir · Presetler · Loglar ·
+  Hakkında · Çıkış) + Görüntü · Ön Ayar · Araçlar sekmeleri (altı çizili) + ortada pencere başlığı; altında **şerit**
+  (sayfanın eylemleri soldan sağa, simge vurgu renginde: `ButtonKind::Ribbon`), ortalı **ipucu satırı** (sayfa
+  açıklaması), solda **gezinti kartı** (`NavPanel`), sağda sekme başlıklı **sayfa kartı** (`PageView`/`CardTabs`),
+  gerekiyorsa sağda yan kart (denetçi), en altta durum çubuğu (solda iş/bağlama, sağda imajın "Windows 11 Pro 25H2 x64 -
+  10.0.26100.x" bilgisi). İmaj başlığı, sekme şeridi ve "Değişiklikler" paneli kalktı (referans araçta yok; sayılar
+  gezintide, değişiklikler Uygula sayfasında). Komut paleti kutusu kalktı, Ctrl K duruyor. Ctrl B gezintiyi simgelere katlar.
+- **Gezinti referans aracınki:** Başlat › Görüntü · Entegre et › Güncellemeler, Sürücüler, Kayıt Defteri, Kurulum Sonrası ·
+  Kaldır › Bileşenler · Yapılandır › Özellikler, Ayarlar, Zamanlanmış Görevler, Katılımsız · Bitir › Uygula.
+  WinLove'un referans araçta öğesi olmayan sayfaları işi olan öğenin sekmesidir: Güncellemeler = Güncellemeler · Diller ·
+  Uygulamalar (referans aracın paket listesi dil ve uygulama paketlerini de alır), Kayıt Defteri · Hosts, Kurulum Sonrası ·
+  Programlar · Dosyalar, Ayarlar · Servisler · Başlat menüsü · Kişiselleştirme · Simgeler (referans aracın Ayarlar'ında
+  Hizmetler ve Görseller sekmeleri var), Uygula · ISO Oluştur.
+- Tablolarda satır arası çizgi yok; sürüm satırı tek satır ("Windows 11 Pro   Professional").
+Sonuç: Kabuk ve ortak widget'lar referans araç görünümünde; 387 test geçiyor (tasarıma bağlı beklentiler D-109 değerleriyle).
+Sayfaların iç mantığının referans araca uydurulması (Bileşenler ağacı ve şablonları başta) ayrı adımlar: STATUS.md.
+
+## D-108 — Arayüz v2'nin sıkılaştırılması: daha küçük ölçek, tek satır sekme (2026-11-07)
+Bağlam: D-107'den sonra kullanıcı: "UI çok iri ve her sayfada düzen ve yerleşim baya kötü çok karmaşık bir arayüz var.
+her sayfayı ekranı tek tek incele düzelt". İrilik paketin ölçülerinden (14px gövde, 36–44 kontrol, 28px başlık);
+karmaşa iskeletten: 88px imaj başlığı, iki satır / 21 sekme (hepsinde "0"), açıklama + eylem satırı, sayfa araç
+çubuğu ve çoğu sayfada boş duran sağ panel üst üste biniyordu.
+Karar:
+- **Ölçek ~%85** (`design/tokens.json` 2.1.0): gövde 13, Small/Caption 12, Title 16, Display 20; kontrol 30 (34/36),
+  tablo satırı 34, sürüm 44, liste 46, form 44; başlık çubuğu 40, durum çubuğu 26; radius 4/6/7/8/10; içerik boşluğu 24.
+  Paketin renkleri, biçimleri ve yerleşim mantığı aynı.
+- **Sekmeler tek satır**: ilişkili sayfalar bir sekmede, sayfa başlık satırının solunda segmentli seçimle —
+  Güncellemeler · Diller, Uygulamalar · Programlar, Kayıt Defteri · Hosts, Kurulum Sonrası · Dosyalar, Servisler ·
+  Görevler, **Görünüm** = Başlat menüsü · Kişiselleştirme · Simgeler; Katılımsız Kurulum sekmede "Katılımsız".
+  21 sekme 14'e indi (1440'ta tek satır; 1100'de BİTİR alta kayar). Sayaç yalnız 0'dan büyükse görünür; sekmenin
+  sayacı içindeki sayfaların toplamı, Uygula'nınki kuyruğun tamamı.
+- **İmaj başlığı** 64px (ad 20) ve yalnız Görüntü menüsünde, bir kaynak açıkken; Ön Ayar menüsünde sekme şeridi yok.
+- **"Değişiklikler" paneli** yalnız paketin gösterdiği yerlerde: Bileşenler ve Ayarlar. Uygula'ya diğer sayfalardan
+  BİTİR › Uygula sekmesi (sayaçlı), Ctrl+Enter ve komut paleti.
+- Sayfa düzeltmeleri: Görüntü'de başlıktaki Bağla kaldırıldı (WIM panelinde var), ESD → WIM yalnız ESD/solid
+  kaynakta görünür; Kurulum Sonrası'nın yedi "ekle" düğmesi tek **Adım ekle ▾** menüsü (`Shell::addMenuAction`);
+  Kişiselleştirme formu yazı tipi listesine göre yükseklik alır; Başlat menüsünde düğmeler önizleme kartıyla hizalı;
+  Windows indir'in boş paneli yönlendirme metni gösterir; Güncellemeler tablosunun sütunları; mono yazı (Cascadia
+  Mono) değişken eksenle 350 ağırlıkta (400'de arayüz yazısından ağır duruyordu).
+Sonuç: 900 yükseklikte içerik 162. pikselden başlıyor (D-107'de 266); tüm sayfalar render ile tek tek denetlendi,
+387 test geçiyor.
+
+## D-107 — Arayüz v2: WinLoveUI tasarım paketi (2026-11-07)
+Bağlam: Kullanıcı hazır bir arayüz paketi verdi (`C:\Users\shades\Downloads\WinLoveUI`: `Theme.h`, `Painter.{h,cpp}`,
+`docs/LAYOUT.md`, demo) ve arayüzün tamamen bununla değişmesini, her şeyin aynı çalışmasını istedi: "Bütün özellikleri
+bu arayüz içermeyebilir ama tasarım stili mantığını öğreneceğin için sen gerekli eklemeleri yaparsın." Paket üç ekranı
+(Görüntü, Bileşenler, Ayarlar) ve ortak iskeleti tarif ediyor; WinLove'un 27 sayfası var.
+Karar:
+- **Tasarımın tek kaynağı artık `design/`** (kural 3 güncellendi): paketin kendisi `design/WinLoveUI/` altında olduğu gibi
+  (salt okunur), token'ları `design/tokens.json` (paketin renkleri ve ölçüleri; paketin adı olmayanlar — pressed,
+  overlay, disabled, durum zeminleri, yüksek karşıtlık — oradan türetildi, `meta.notes`). `tools/gen_tokens.py` bunu
+  okur. `WinLove-UI-Handoff/` ikonlar, marka ve karşılama betiğinin renkleri için duruyor; ekranları artık ölçüt değil.
+- **Görünüm** (kural 4 güncellendi): Zinc nötrleri (açık `#F7F7F8` / koyu `#111113`, panel beyaz / `#18181B`), tek vurgu
+  `#2563EB` (iki temada aynı dolgu, üstünde beyaz metin), vurgu *metni* ayrı token (`accent.text`: `#1D4ED8` / `#7AA7FF`),
+  `bg.hover` yarı saydam, `caption.close`. Yazı Segoe UI Variable (değişken fontun `wght`/`opsz` eksenleriyle — WWS
+  ailesi 500'ü 600'e yuvarlıyordu), Cascadia Mono; gövde 14, Display 28, Title 18, Panel 15, Small 13, Caption 12,5,
+  GroupCap 11 (+0,06em), Section 12 (+0,04em). Kontrol 36, büyük 40/44, satır 40 (tablo), 52 (sürüm), 56 (liste), form
+  56; radius 5 / 7 / 9 / 10 (düğme) / 12 (kart). Renkli ikon yok; renk yalnız durum için (vurgu seçim/bağlı, uyarı
+  dikkat, risk riskli, ok doğrulandı). Inter / Geist ve diğer vurgu renkleri (Bakır, Deniz, Nar, Zeytin; "Gök" maviye
+  karıştığı için çıktı) ayarlarda seçenek olarak kaldı; `settings.json`'a `"design": 2` yazılır, eskisi bir kez yeni
+  varsayılanlara (Mavi + Segoe UI Variable) geçer.
+- **İskelet** (paketin "Ortak iskelet"i): başlık çubuğu 44 (logo, **Görüntü · Ön Ayar · Araçlar** menüleri, ortada
+  Ctrl K kutusu, güneş/ay tema düğmesi, pencere düğmeleri) · **imaj başlığı** (sürüm adı 28 + "Bağlı"/"Bağlanıyor %"
+  rozeti; sürüm · derleme, mimari, dil, kaynak yolu, "Değiştir"; sağda boyut önce → sonra, kuyruğun `sizeDelta`
+  toplamı, 180×4 çubuk) · **gruplu sekmeler** · sayfa | sağ panel · durum çubuğu 30 (nokta + "Bağlı · sürüm · klasör",
+  çalışan iş, sağda DISM sürümü ve çalışma sürücüsünün boş alanı). NavRail kaldırıldı.
+- **27 sayfa, 10 sekmelik tasarım**: menüler çalışma alanıdır. *Görüntü* imajı düzenleyen her sayfayı paketin
+  gruplarında tutar — BAŞLAT: Görüntü (kaynak yoksa Kaynak sayfası, varsa İmajlar) · YÜKLE: Güncellemeler, Sürücüler,
+  Diller, Uygulamalar, Programlar, Kayıt Defteri, Dosyalar, Kurulum Sonrası · KALDIR: Bileşenler · YAPILANDIR:
+  Özellikler, Ayarlar, Servisler, Görevler, Başlat menüsü, Kişiselleştirme, Simgeler, Hosts, Katılımsız Kurulum ·
+  BİTİR: Uygula, ISO. *Ön Ayar*: Presetler. *Araçlar*: Windows indir, Loglar · Uygulama ayarları, Hakkında. Sekmeler
+  sığmayınca grup bütün olarak alt satıra akar (gizli sekme yok; 1440'ta iki satır). Ctrl+1…9 çalışma alanının sekmeleri.
+  Ctrl+B artık imaj başlığını gizler (yer açar).
+- **"Değişiklikler" paneli** (paketin sağ paneli, 320): düzenleme sekmelerinde, sayfanın kendi denetçisi yokken —
+  kuyruktaki işlem sayısı, sayfa başına sayaçlar (tıklayınca o sekme), bağlı klasör, tam genişlik **Uygula** (44);
+  uygularken aşama + % + çubuk + Durdur. Eski durum çubuğunun "Uygula · n" düğmesinin ve iş akışı adımlarının yerini
+  aldı. İkinci bölmesi olan sayfalarda (Katılımsız XML önizlemesi, Başlat ızgarası, Simgeler) ve 1180'den dar
+  pencerede gösterilmez.
+- **Sayfa çerçevesi**: büyük sayfa başlığı yok (sekme başlıktır); bir satırda açıklama (Small, üçüncül) + sağda eylem
+  düğmeleri; canlı başlık (Uygula) başlığı açıklamanın önüne koyar. Gövde, uzunsa kaydırılan bir görünüm alanında
+  (`ScrollableBody`; ilk kullanan ISO formu).
+- **Paketin ekranları birebir**: Görüntü (kart içinde 34/52 sürüm tablosu, dizin · ad + Edition ID · mimari · derleme ·
+  dil · boyut · "● Bağlı"; 340'lık WIM bilgisi paneli, altta tam genişlik Bağla), Bileşenler (arama + **Tümü /
+  Seçilenler / Dikkat gerektiren** hapları, başlıksız 56'lık liste, kategori başlıkları büyük harf + "3 seçili", risk:
+  güvenli öğede hiçbir şey, "● Dikkat" / "● Riskli"), Ayarlar (form satırı 56, üstte çizgi, değişende adın yanında 6px
+  vurgu noktası). Risk filtresi Düşük/Orta/Yüksek açılır listesi yerine "Dikkat gerektiren" hapı (orta + yüksek);
+  risk adları Güvenli / Dikkat / Riskli oldu.
+- Widget'lar paketin `Painter`'ına göre yeniden çizildi (Button + yeni Ghost, Checkbox 18, Switch 40×22, segmentli
+  seçim = `RadioGroup`, yeni `PillGroup`, SearchBox, Kbd tek kutu, TabBar metin sekmesi, TableView satır/başlık
+  yüksekliği örnek başına, Dropdown, Dialog, Toast, InfoBar kart, EmptyState, FormView, LogConsole kart, ScrollBar).
+Sonuç: Bütün işlevler aynı yerden (sekmeler, eylem düğmeleri, kısayollar, komut paleti) çalışır; 387 birim testi
+geçiyor (tasarıma bağlı 9 beklenti güncellendi: renkler, ölçüler, palet konumu, sürüm tablosu satırı). İmajla ilgili
+hiçbir motor kodu değişmedi. Bilinen: 900 yüksekliğinde sekmeler iki satır olduğu için içerik alanı eskisinden kısa;
+sayfa içi tablolar kaydırır, ISO formu sayfayla kayar. Eski ekran görüntüleri (`docs/screenshots`) eski tasarımı gösterir.
+
 ## D-106 — Uygula: kaydetmeden önce dur (elle düzenleme için) (2026-10-10)
 Bağlam: Forumda bir kullanıcı ("Diğer sürümlere de uygula"yı kullanan) istedi: her şey uygulandıktan sonra imaj
 kaydedilip çözülmeden dursun; bağlı klasörde elle temizlik/ekleme yapıp öyle çözsün (yoksa işi bitince yeniden bağlıyor).

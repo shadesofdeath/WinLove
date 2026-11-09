@@ -16,11 +16,11 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kTabsTop = 11.0f;
-constexpr float kTabsHeight = ui::tokens::size::control + 1;
+constexpr float kTabsTop = 0.0f;
+constexpr float kTabsHeight = ui::tokens::size::control;
 constexpr float kContentTop = kTabsTop + kTabsHeight + 11.0f;
 constexpr float kDrop = 56.0f;
-constexpr float kToolbar = 24.0f;
+constexpr float kToolbar = ui::tokens::size::control;
 enum AppColumn : int { kApp, kPublisher, kVersion, kArch, kDeps };
 enum AssocColumn : int { kKind, kApplication, kProgId };
 } // namespace
@@ -50,10 +50,10 @@ AppsPage::AppsPage(AppState& state, AppsController& controller, const Localizati
     m_drop->onInvoke = std::move(addPackages);
     m_appTable = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::AppsApp), 0},
-        {strings.get(Str::AppsPublisher), 220},
-        {strings.get(Str::DriversVersion), 130},
-        {strings.get(Str::ImagesArch), 130},
-        {strings.get(Str::AppsDeps), 150},
+        {strings.get(Str::AppsPublisher), 252},
+        {strings.get(Str::DriversVersion), 150},
+        {strings.get(Str::ImagesArch), 150},
+        {strings.get(Str::AppsDeps), 172},
     });
     m_appTable->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
         paintAppCell(c, row, column, rect, cell);
@@ -75,9 +75,9 @@ AppsPage::AppsPage(AppState& state, AppsController& controller, const Localizati
     m_browser = &add<ui::Dropdown>(strings.get(Str::AppsBrowser), std::move(browsers), 0);
     m_browser->onChange = [this](int index) { m_controller.setBrowser(index - 1); };
     m_assocTable = &add<ui::TableView>(std::vector<ui::TableColumn>{
-        {strings.get(Str::AppsKind), 160},
+        {strings.get(Str::AppsKind), 184},
         {strings.get(Str::AppsApplication), 0},
-        {strings.get(Str::AppsProgId), 320},
+        {strings.get(Str::AppsProgId), 368},
     });
     m_assocTable->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState) {
         paintAssocCell(c, row, column, rect);
@@ -148,7 +148,7 @@ void AppsPage::paintAppCell(ui::Canvas& canvas, int row, int column, RectF rect,
     const auto& app = m_apps[static_cast<std::size_t>(row)];
     switch (column) {
     case kApp: {
-        canvas.drawIcon(ui::icons::Icon::AppxPackage, {rect.x, rect.y + 4}, Color::TextSecondary);
+        canvas.drawIcon(ui::icons::Icon::AppxPackage, {rect.x, rect.y + (rect.height - 16) / 2}, Color::TextSecondary);
         const float x = rect.x + ui::tokens::size::icon + 6;
         const std::wstring name = app.displayName.empty() ? app.name : app.displayName;
         const auto style = cell.selected ? TypeStyle::BodyStrong : TypeStyle::Body;
@@ -174,7 +174,7 @@ void AppsPage::paintAppCell(ui::Canvas& canvas, int row, int column, RectF rect,
         const std::wstring text = missing ? m_strings.format(Str::AppsDepsMissing, {{L"n", std::to_wstring(app.missing.size())}})
                                           : app.dependencies.empty() ? m_strings.get(Str::AppsDepsNone)
                                                                      : m_strings.format(Str::AppsDepsFound, {{L"n", std::to_wstring(app.dependencies.size())}});
-        canvas.drawIcon(missing ? ui::icons::Icon::WarningTriangle : ui::icons::Icon::SuccessCircle, {rect.x, rect.y + 4},
+        canvas.drawIcon(missing ? ui::icons::Icon::WarningTriangle : ui::icons::Icon::SuccessCircle, {rect.x, rect.y + (rect.height - 16) / 2},
                         missing ? Color::StatusWarning : Color::StatusSuccess);
         canvas.drawText(text, {rect.x + 22, rect.y, rect.width - 22, rect.height}, TypeStyle::Caption,
                         missing ? Color::StatusWarning : Color::TextSecondary);

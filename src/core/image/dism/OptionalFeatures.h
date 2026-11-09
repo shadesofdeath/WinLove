@@ -5,6 +5,7 @@
 // source media, which WinLove does not handle yet.
 #include "core/image/dism/Dism.h"
 
+#include <map>
 #include <vector>
 
 namespace wl::core {
@@ -21,6 +22,9 @@ struct OptionalFeature {
     // Capability whose package is marked permanence="permanent" in its .mum: DISM refuses to
     // remove it (0x800F0825), e.g. the Defender for Endpoint client.
     bool permanent = false;
+    // D-114 (the reference tool's Özellikler tree): the feature this one hangs under ("NetFx4-AdvSrvs" for
+    // "NetFx4Extended-ASPNET45"), from the packages' manifests; empty for a root.
+    std::wstring parent;
 
     // Enabled / installed (or about to be): the "on" side of the toggle.
     [[nodiscard]] bool isOn() const noexcept;
@@ -32,6 +36,12 @@ struct OptionalFeature {
 // The permanent capabilities of a mounted image: the manifests of its visible, installed packages
 // (Windows\servicing\Packages). Needs the image's SOFTWARE hive (elevated); empty when unreadable.
 [[nodiscard]] std::vector<std::wstring> readPermanentCapabilities(const std::filesystem::path& mountDir);
+
+// D-114: feature → parent feature, as the image's package manifests declare it: an <update> that
+// is applicable only with another one (<applicable><detectUpdate><update name="P"/>), or a server
+// component's Parent="<UniqueName>" mapped back to the update that deploys it.
+[[nodiscard]] std::map<std::wstring, std::wstring> featureParentsIn(std::string_view mum);
+[[nodiscard]] std::map<std::wstring, std::wstring> readFeatureParents(const std::filesystem::path& mountDir);
 
 // Reads everything in one DISM session; reports progress per item (details are one call each).
 [[nodiscard]] Result<std::vector<OptionalFeature>> readOptionalFeatures(Dism& dism, const std::filesystem::path& mountDir,

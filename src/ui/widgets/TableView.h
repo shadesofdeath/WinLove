@@ -1,6 +1,6 @@
 #pragma once
-// DataGrid-lite per 03_components/datagrid.md: 24px header (11px text.tertiary, 1px line.subtle
-// below), 24px rows with 1px line.subtle separators, hover bg.raised, selected accent.subtle,
+// DataGrid-lite (D-107, the package's tables): 34px header (caption text.tertiary, 1px line below),
+// 40px rows with 1px line separators, hover overlay, selected accent.subtle + 2px accent bar,
 // virtual scrolling with the overlay ScrollBar, single selection with ↑↓ PgUp/PgDn Home/End.
 // The owner supplies the row count and paints cells (it knows its data); the table owns
 // geometry, scrolling, selection and input. D-091: sorting — a sortable column's header cycles
@@ -32,11 +32,24 @@ struct TableSortKey {
 
 class TableView : public Widget {
 public:
-    static constexpr float kHeader = 24.0f;
-    static constexpr float kRow = 24.0f;
-    static constexpr float kCellPad = 8.0f;
+    // D-107: the package's table (TableHeadH 34; one-line rows 40, the two-line edition rows are 52;
+    // 12 between columns, 14 at the sides).
+    static constexpr float kHeader = tokens::size::tableHead;
+    static constexpr float kRow = tokens::size::row;
+    static constexpr float kCellPad = 6.0f;
 
     explicit TableView(std::vector<TableColumn> columns);
+    // D-107: a list of the package's (two-line rows of 56, no header) is a table with other heights.
+    void setRowHeight(float height) { m_row = height; layout(); invalidate(); }
+    void setHeaderHeight(float height) { m_header = height; layout(); invalidate(); }
+    // D-110: a column's width after construction (the reference tool's grids keep the name column fixed).
+    void setColumnWidth(int column, float width) {
+        if (column >= 0 && column < static_cast<int>(m_columns.size())) {
+            m_columns[static_cast<std::size_t>(column)].width = width;
+            invalidate();
+        }
+    }
+    [[nodiscard]] float rowHeight() const noexcept { return m_row; }
 
     struct CellState {
         bool hovered;
@@ -50,6 +63,7 @@ public:
     std::function<void(int row)> onActivate;              // Enter / double click / Space
     std::function<bool(const KeyEvent&)> onKey;           // runs first (e.g. Delete removes a row)
     std::function<TableSortKey(int row, int column)> sortKey;
+    std::function<std::wstring(int row)> tooltipFor; // D-110: the hovered row's tooltip (owner's row)
 
     void setRowCount(int count); // keeps the selection when still in range
     [[nodiscard]] int rowCount() const noexcept { return m_count; }
@@ -86,6 +100,8 @@ private:
     void reveal(int row);
 
     std::vector<TableColumn> m_columns;
+    float m_row = kRow;
+    float m_header = kHeader;
     int m_count = 0;
     int m_selected = -1;
     int m_hoverRow = -1;

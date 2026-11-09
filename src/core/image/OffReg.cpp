@@ -123,4 +123,20 @@ std::optional<DWORD> OffRegKey::dword(const wchar_t* name) const {
     return value;
 }
 
+std::vector<std::uint8_t> OffRegKey::bytes(const wchar_t* name) const {
+    std::vector<std::uint8_t> data;
+    DWORD type = 0;
+    DWORD size = 0;
+    if (!m_key || offregApi().getValue(m_key, nullptr, name, &type, nullptr, &size) != ERROR_SUCCESS || size == 0) {
+        return data;
+    }
+    data.resize(size);
+    if (offregApi().getValue(m_key, nullptr, name, &type, data.data(), &size) != ERROR_SUCCESS) {
+        data.clear();
+        return data;
+    }
+    data.resize(size);
+    return data;
+}
+
 } // namespace wl::core

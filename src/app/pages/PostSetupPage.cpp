@@ -17,9 +17,9 @@ using ui::tokens::TypeStyle;
 
 namespace {
 
-constexpr float kTop = 11.0f;
+constexpr float kTop = 0.0f;
 constexpr float kToolbar = ui::tokens::size::control;
-constexpr float kGap = 12.0f;
+constexpr float kGap = 10.0f;
 constexpr float kWhenWidth = 267.0f;
 constexpr float kNote = 32.0f;
 constexpr float kHint = 24.0f; // key hint line under the table
@@ -74,9 +74,9 @@ PostSetupPage::PostSetupPage(AppState& state, PostSetupController& controller, c
         {L"", 20},
         {L"#", 32},
         {s(Str::PostsetupStep), 0},
-        {s(Str::CommonType), 100},
-        {s(Str::PostsetupSourceCol), 340},
-        {s(Str::PostsetupWait), 88},
+        {s(Str::CommonType), 114},
+        {s(Str::PostsetupSourceCol), 390},
+        {s(Str::PostsetupWait), 102},
     });
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
         paintCell(c, row, column, rect, cell);

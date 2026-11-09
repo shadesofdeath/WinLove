@@ -14,11 +14,12 @@ enum class TextAlign : std::uint8_t { Leading, Center, Trailing };
 
 // D-092: the type families, chosen in the app's settings (Inter, Geist, Segoe UI Variable). A family
 // that is not in the bundled collection comes from the system's, then the fallback.
+// D-107: the default is the WinLoveUI package's (design/tokens.json typography.family).
 struct FontFamilies {
-    const wchar_t* ui = L"Inter";
-    const wchar_t* uiFallback = L"Segoe UI";
-    const wchar_t* mono = L"JetBrains Mono";
-    const wchar_t* monoFallback = L"Cascadia Mono";
+    const wchar_t* ui = tokens::font::kUi;
+    const wchar_t* uiFallback = tokens::font::kUiFallback;
+    const wchar_t* mono = tokens::font::kMono;
+    const wchar_t* monoFallback = tokens::font::kMonoFallback;
 };
 
 class TextStyles {

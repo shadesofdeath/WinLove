@@ -1,4 +1,5 @@
 #include "app/pages/DriversPage.h"
+#include "core/system/DeviceClasses.h"
 
 #include "app/Format.h"
 #include "app/pages/PageBits.h"
@@ -18,11 +19,11 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kTabsTop = 11.0f;
-constexpr float kTabsHeight = ui::tokens::size::control + 1;
+constexpr float kTabsTop = 0.0f;
+constexpr float kTabsHeight = ui::tokens::size::control;
 constexpr float kToolbarTop = kTabsTop + kTabsHeight + 11.0f;
-constexpr float kToolbar = 24.0f;
-constexpr float kGap = 8.0f;
+constexpr float kToolbar = ui::tokens::size::control;
+constexpr float kGap = 10.0f;
 constexpr float kIndent = 16.0f;
 constexpr float kChevron = 16.0f;
 enum Column : int { kName, kProvider, kSize };
@@ -66,11 +67,15 @@ std::wstring DriversPage::className(const std::wstring& cls, const Localization&
     if (cls.empty()) {
         return strings.get(Str::DriversClsNone);
     }
+    // D-114: Windows' own name for the class, in this PC's language (Device Manager's, the reference tool's).
+    if (const auto& info = core::deviceClassInfo({}, cls); !info.description.empty()) {
+        return info.description;
+    }
     const auto it = kNames.find(wl::text::lower(cls));
     if (it == kNames.end()) {
         return cls;
     }
-    return strings.get(it->second) + L" (" + cls + L")";
+    return strings.get(it->second);
 }
 
 DriversPage::DriversPage(AppState& state, ImageDriverController& images, const Localization& strings, Language language,
@@ -88,10 +93,10 @@ DriversPage::DriversPage(AppState& state, ImageDriverController& images, const L
     };
     m_imageTable = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::DriversDriver), 0},
-        {strings.get(Str::DriversClass), 190},
-        {strings.get(Str::DriversProviderName), 200},
-        {strings.get(Str::DriversVersion), 130},
-        {strings.get(Str::DriversDate), 96},
+        {strings.get(Str::DriversClass), 218},
+        {strings.get(Str::DriversProviderName), 230},
+        {strings.get(Str::DriversVersion), 150},
+        {strings.get(Str::DriversDate), 110},
     });
     m_imageTable->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
         paintImageCell(c, row, column, rect, cell);
@@ -140,8 +145,8 @@ DriversPage::DriversPage(AppState& state, ImageDriverController& images, const L
     }
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::CommonName), 0},
-        {strings.get(Str::DriversProvider), 260},
-        {strings.get(Str::CommonSize), 96, ui::TextAlign::Trailing},
+        {strings.get(Str::DriversProvider), 300},
+        {strings.get(Str::CommonSize), 110, ui::TextAlign::Trailing},
     });
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
         paintCell(c, row, column, rect, cell);
@@ -373,7 +378,7 @@ void DriversPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect,
         float x = rect.x + (isGroup ? 0.0f : kIndent);
         if (isGroup) {
             const bool open = !m_needle.empty() || !m_collapsed.contains(group.cls);
-            canvas.drawIcon(open ? ui::icons::Icon::ChevronDown : ui::icons::Icon::ChevronRight, {x, rect.y + 4},
+            canvas.drawIcon(open ? ui::icons::Icon::ChevronDown : ui::icons::Icon::ChevronRight, {x, rect.y + (rect.height - 16) / 2},
                             Color::TextTertiary);
         }
         x += kChevron + 4;
@@ -388,7 +393,13 @@ void DriversPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect,
         }
         ui::Checkbox::paintBox(canvas, {x, rect.y + (rect.height - ui::Checkbox::kBox) / 2}, state, cell.hoveredCell);
         x += ui::Checkbox::kBox + 8;
-        canvas.drawIcon(isGroup ? classIcon(group.cls) : ui::icons::Icon::InfFile, {x, rect.y + 4}, Color::TextSecondary);
+        // D-114: a class row shows Windows' own class icon (setupapi.dll …), as Device Manager does.
+        const auto& classInfo = core::deviceClassInfo({}, isGroup ? group.cls : std::wstring());
+        if (!isGroup || classInfo.iconFile.empty() ||
+            !canvas.drawFileIcon(classInfo.iconFile, classInfo.iconIndex, RectF{x, rect.y + (rect.height - 16) / 2, 16, 16})) {
+            canvas.drawIcon(isGroup ? classIcon(group.cls) : ui::icons::Icon::InfFile, {x, rect.y + (rect.height - 16) / 2},
+                            isGroup ? Color::AccentBase : Color::TextSecondary);
+        }
         x += ui::tokens::size::icon + 6;
         canvas.drawText(isGroup ? className(group.cls, m_strings) : inf->path.filename().wstring(),
                         {x, rect.y, rect.right() - x, rect.height}, isGroup || cell.selected ? TypeStyle::BodyStrong : TypeStyle::Body,
@@ -451,7 +462,10 @@ void DriversPage::paintImageCell(ui::Canvas& canvas, int row, int column, RectF 
         ui::Checkbox::paintBox(canvas, {rect.x, rect.y + (rect.height - ui::Checkbox::kBox) / 2},
                                remove ? ui::CheckState::On : ui::CheckState::Off, cell.hoveredCell);
         float x = rect.x + ui::Checkbox::kBox + 8;
-        canvas.drawIcon(classIcon(d.className), {x, rect.y + 4}, Color::TextSecondary);
+        const auto& info = core::deviceClassInfo({}, d.className);
+        if (info.iconFile.empty() || !canvas.drawFileIcon(info.iconFile, info.iconIndex, RectF{x, rect.y + (rect.height - 16) / 2, 16, 16})) {
+            canvas.drawIcon(classIcon(d.className), {x, rect.y + (rect.height - 16) / 2}, Color::TextSecondary);
+        }
         x += ui::tokens::size::icon + 6;
         const std::wstring name = d.originalFileName.empty() ? d.publishedName : d.originalFileName;
         const auto style = cell.selected ? TypeStyle::BodyStrong : TypeStyle::Body;

@@ -12,10 +12,10 @@ namespace {
 
 // contextmenu.md "Tooltip": 400 ms delay, 20px tall, padding 2 6, caption text, 4px below target.
 constexpr UINT kTooltipDelayMs = 400;
-constexpr float kTooltipHeight = 20.0f;
-constexpr float kTooltipPaddingX = 6.0f;
-constexpr float kTooltipGap = 4.0f;
-constexpr float kTooltipMaxWidth = 280.0f;
+constexpr float kTooltipHeight = 24.0f; // D-107 / D-108
+constexpr float kTooltipPaddingX = 8.0f;
+constexpr float kTooltipGap = 6.0f;
+constexpr float kTooltipMaxWidth = 360.0f;
 
 bool isAncestor(const Widget* ancestor, const Widget* widget) {
     for (const Widget* w = widget; w; w = w->parent()) {
@@ -189,7 +189,7 @@ void Host::paint(Canvas& canvas) {
             canvas.pushClip((*it)->bounds());
         }
         canvas.strokeRoundRect({r.x - offset - 1, r.y - offset - 1, r.width + 2 * (offset + 1), r.height + 2 * (offset + 1)},
-                               m_focused->focusRadius() + offset + 1, tokens::Color::AccentFocus);
+                               m_focused->focusRadius() + offset + 1, tokens::Color::AccentFocus, 2.0f * canvas.scale());
         for (std::size_t i = 0; i < clips.size(); ++i) {
             canvas.popClip();
         }
@@ -470,7 +470,7 @@ void Host::paintTooltip(Canvas& canvas) {
         y = m_tooltipOwner->bounds().y - kTooltipGap - kTooltipHeight;
     }
     const RectF box{std::round(x), std::round(y), width, kTooltipHeight};
-    canvas.panel(box, tokens::radius::r2, tokens::elevation::menu);
+    canvas.panel(box, tokens::radius::menu, tokens::elevation::menu);
     canvas.drawText(text, box.inset(kTooltipPaddingX + 1, 0), tokens::TypeStyle::Caption, tokens::Color::TextPrimary);
 }
 

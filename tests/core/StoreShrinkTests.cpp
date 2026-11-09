@@ -34,6 +34,11 @@ TEST_CASE("store shrink: what a running Windows loads from WinSxS stays, the res
     CHECK(keptInShrunkStore(L"amd64_microsoft-windows-servicingstack_31bf3856ad364e35_10.0.26100.7015_none_3c5c1d0f5a0a1b2c"));
     CHECK(keptInShrunkStore(L"x86_microsoft-windows-s..ngstack-onecorebase_31bf3856ad364e35_10.0.26100.7015_none_1a2b"));
     CHECK(keptInShrunkStore(L"amd64_microsoft-windows-s..stack-msg.resources_31bf3856ad364e35_10.0.26100.1_tr-tr_1a2b"));
+    // Its advanced installers (appxreg.dll …): gone, a later package removal stopped half way and CBS
+    // marked the image unserviceable (report 2026-11-07).
+    CHECK(keptInShrunkStore(L"amd64_microsoft-windows-s..-installers-onecore_31bf3856ad364e35_10.0.26100.9815_none_8753adb6558d1a5f"));
+    CHECK(keptInShrunkStore(L"x86_microsoft-windows-s..-installers-onecore_31bf3856ad364e35_10.0.26100.1_none_8c917d70559593b3"));
+    CHECK_FALSE(keptInShrunkStore(L"amd64_microsoft-windows-nlasvc-installers_31bf3856ad364e35_10.0.26100.1_none_1a2b"));
     // Everything else: components (mostly hard links into System32), .NET, other Win32 assemblies.
     CHECK_FALSE(keptInShrunkStore(L"amd64_microsoft-edge-webview_31bf3856ad364e35_10.0.26100.7019_none_1a2b3c4d5e6f7081"));
     CHECK_FALSE(keptInShrunkStore(L"amd64_microsoft-windows-shell32_31bf3856ad364e35_10.0.26100.7019_none_1a2b3c4d5e6f7081"));
@@ -54,6 +59,27 @@ TEST_CASE("store shrink: only a mounted Windows image's own store is touched") {
     CHECK_FALSE(planStoreShrink(dir, false, {}).has_value()); // no registry hives: not an image
     CHECK_FALSE(shrinkComponentStore(dir, {}).has_value());
     CHECK_FALSE(planStoreShrink(dir / L"missing", false, {}).has_value());
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("store shrink: a shrunk store takes no more package servicing (report 2026-11-07)") {
+    const auto dir = std::filesystem::temp_directory_path() / L"wl-store-closed-test";
+    std::filesystem::remove_all(dir);
+    CHECK(servicingClosed(dir) == ServicingClosed::No); // no image: nothing to say
+    const auto store = dir / L"Windows" / L"WinSxS";
+    std::filesystem::create_directories(store);
+    CHECK(servicingClosed(dir) == ServicingClosed::No); // an empty listing says nothing either
+    // What the shrink leaves, plus the few folders a repair put back.
+    for (const wchar_t* name : {L"Manifests", L"Catalogs", L"amd64_microsoft-windows-servicingstack_31bf3856ad364e35_10.0.26100.9815_none_a4f6",
+                                L"amd64_microsoft-windows-bioenrollment.appxmain_31bf3856ad364e35_10.0.26100.9818_none_9bfd"}) {
+        std::filesystem::create_directories(store / name);
+    }
+    CHECK(servicingClosed(dir) == ServicingClosed::StoreShrunk);
+    // A full store: thousands of component folders.
+    for (std::size_t i = 0; i < kShrunkStoreBelow; ++i) {
+        std::filesystem::create_directories(store / (L"amd64_microsoft-windows-c" + std::to_wstring(i) + L"_31bf3856ad364e35_10.0.1_none_1"));
+    }
+    CHECK(servicingClosed(dir) == ServicingClosed::No);
     std::filesystem::remove_all(dir);
 }
 

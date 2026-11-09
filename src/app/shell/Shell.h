@@ -1,9 +1,10 @@
 #pragma once
-// Root widget of the main window (layout-system.md): TitleBar 32 on top, StatusBar 24 at the
-// bottom, NavRail 200/44 on the left, the current page, and the Inspector column (280) on the
-// right when the page has one. Owns page switching, nav collapse, app-level shortcuts
-// (interaction.md "Kısayollar"), the source-opening flow, P02 image operations (through
-// ImageController), dialogs and the toast.
+// Root widget of the main window (D-107, design/WinLoveUI LAYOUT.md "Ortak iskelet"): TitleBar 44
+// (workspace menus, palette box, theme and caption buttons), the image header, the grouped tabs of
+// the workspace, then the current page with its right panel (the page's own inspector, or
+// "Değişiklikler" on the editing tabs) and the StatusBar 30 at the bottom. Owns page switching,
+// the workspaces, app-level shortcuts (interaction.md "Kısayollar"), the source-opening flow, P02
+// image operations (through ImageController), dialogs and the toast.
 #include "app/Localization.h"
 #include "app/controllers/CompatController.h"
 #include "app/controllers/ApplyController.h"
@@ -35,10 +36,13 @@
 #include "app/controllers/WindowsDownloadController.h"
 #include "app/controllers/PresetController.h"
 #include "app/pages/PageInfo.h"
-#include "app/shell/NavRail.h"
+#include "app/shell/ChangesPanel.h"
+#include "app/shell/ImageHeader.h"
+#include "app/shell/NavPanel.h"
 #include "app/shell/PageView.h"
 #include "app/shell/PaletteIndex.h"
 #include "app/shell/StatusBar.h"
+#include "app/shell/TabStrip.h"
 #include "app/shell/TitleBar.h"
 #include "app/state/AppState.h"
 #include "ui/anim/Tween.h"
@@ -78,7 +82,12 @@ class AboutPage;
 
 class Shell : public ui::Widget {
 public:
+    // D-113 (render): the Components page, opened at this component (packageName / catalog id).
+    void revealComponent(const std::wstring& packageName);
     void showCompat(); // D-082: the Uyumluluk dialog (Bileşenler)
+    void showAppMenu(); // D-109: the ≡ button (public for --demo-app-menu)
+    void showMode();   // D-110: the Kaldırma modu dialog (Bileşenler)
+    void applyComponentTemplate(Tier tier); // D-110: Şablon ▾
     // Everything the shell needs from the window/app, as plain callbacks (keeps it testable and
     // usable from the headless --render path).
     struct Services {
@@ -151,8 +160,9 @@ public:
     void showPage(PageId page);
     // P18: Ctrl+K or the title bar box. `query` as if typed (render checks).
     void openPalette(std::wstring query = {});
+    // Ctrl+B: hides the image header for room (D-107; the nav rail it once folded is gone).
     void setNavCollapsed(bool collapsed, bool animated);
-    [[nodiscard]] bool navCollapsed() const noexcept { return m_navTarget < 0.5f; }
+    [[nodiscard]] bool navCollapsed() const noexcept { return m_compactHeader; }
     // Shortcuts not consumed by the focused widget. Returns true if handled.
     bool handleShortcut(const ui::KeyEvent& key);
     void onTimer(UINT id);
@@ -163,6 +173,8 @@ public:
     void takeProgramsFromThisPc();
     // D-096: Kurulum Sonrası › "Güç planı ekle" — a .pow of this PC, made the active scheme.
     void addPowerPlan();
+    void addPresetPowerPlan(const wchar_t* scheme, Str name); // D-114: Windows' own scheme, active at first boot
+    void addHostPowerPlan();                                   // D-114: one of this PC's plans (powercfg /export)
     // A toast with an action of its own ("Aç"), kept a little longer.
     void showActionToast(ui::InfoKind kind, std::wstring title, std::wstring message, std::wstring action,
                          std::function<void()> onAction);
@@ -235,10 +247,21 @@ public:
     void exportLog();
 
     void layout() override;
-    bool tick(double now) override;
+    void paint(ui::Canvas& canvas) override;
 
 private:
-    void updateBreadcrumb();
+    void updateBreadcrumb(); // the image header (D-107)
+    void updateChanges();    // the "Değişiklikler" panel
+    [[nodiscard]] std::vector<TabStrip::Group> tabGroups(int workspace) const;
+    [[nodiscard]] std::vector<NavPanel::Group> navGroups(int workspace) const;
+    [[nodiscard]] bool changesVisible() const;
+    void openTab(PageId tab); // a tab of the strip: the page of it shown last
+    // D-108: several "add …" actions as one header button with a menu under it.
+    using MenuAction = std::pair<std::wstring, std::function<void()>>;
+    // `itemIcons`: one per item (D-114: icons in menus), or empty.
+    void addMenuAction(ui::ButtonKind kind, std::wstring label, std::optional<ui::icons::Icon> icon, std::vector<MenuAction> items,
+                       std::vector<std::optional<ui::icons::Icon>> itemIcons = {});
+    void attachSubNav();      // the tab's other pages, as a segmented control in the page header
     void updateImagesChrome();
     void updateStatus();
     void onImageFailure(ImageController::Failure failure, const Error& error);
@@ -366,6 +389,23 @@ private:
     std::unique_ptr<LanguageController> m_languages; // D-053
     std::unique_ptr<LanguageFetchController> m_languageFetch; // D-061
     std::wstring m_pendingUiLanguage; // "Arayüz dili yap" of the running download
+    // D-124: downloads that came in when nothing could be queued (no mount, an Apply running). They
+    // were dropped before (AppState::queue ignores a locked queue) while the toast said "queued":
+    // now they are queued at the next mount of the same source.
+    struct PendingDownloads {
+        std::filesystem::path source;
+        std::vector<std::filesystem::path> updates;
+        std::vector<std::filesystem::path> safeOs;
+        std::vector<std::filesystem::path> languages;
+        std::wstring uiLanguage;
+        std::vector<std::filesystem::path> apps;
+        [[nodiscard]] std::size_t count() const { return updates.size() + safeOs.size() + languages.size() + apps.size(); }
+    };
+    PendingDownloads m_pendingDownloads;
+    bool m_applyWaitsForDownload = false; // ApplyController::waitingForDownload, last seen
+    [[nodiscard]] bool canQueueNow() const; // mounted, no Apply holding the queue
+    void holdDownload(const std::function<void(PendingDownloads&)>& add);
+    void flushPendingDownloads();
     std::unique_ptr<ComponentController> m_components;
     std::unique_ptr<ServiceController> m_serviceCtl;
     std::unique_ptr<RegistryController> m_registry;
@@ -390,7 +430,10 @@ private:
     // (it is rebuilt on device loss and destroyed at exit).
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     TitleBar* m_titleBar = nullptr;
-    NavRail* m_nav = nullptr;
+    ImageHeader* m_header = nullptr;
+    TabStrip* m_tabs = nullptr;   // D-109: kept for its counts; the NavPanel is shown
+    NavPanel* m_nav = nullptr;
+    ChangesPanel* m_changes = nullptr;
     StatusBar* m_status = nullptr;
     PageView* m_pageView = nullptr;
     ui::Widget* m_pageBody = nullptr;
@@ -399,6 +442,9 @@ private:
     // Images page header actions (kept to update enabled/text as state changes).
     ui::Button* m_actionMount = nullptr;
     ui::Button* m_actionExport = nullptr;
+    ui::Button* m_actionSave = nullptr;    // D-114: Görüntü — save the mounted image
+    ui::Button* m_actionUnmount = nullptr; // D-114: Görüntü — unmount (asks)
+    ui::Button* m_actionExplore = nullptr; // D-114: Görüntü — the mount folder in Explorer
     ui::Button* m_actionEsd = nullptr;
     ui::Button* m_actionTools = nullptr; // D-058 "Araçlar"
     ui::Button* m_actionVerify = nullptr;
@@ -406,10 +452,13 @@ private:
     std::uint64_t m_openSerial = 0; // latest openSource request; older results are dropped
     bool m_autoRestoreTried = false; // one automatic restore per session; then the page offers it
     int m_keepAwake = 0;             // 0 nothing, 1 a download, 2 image work (updateKeepAwake)
-    ui::Tween m_navExpansion{1.0f};
-    float m_navTarget = 1.0f;
-    bool m_userCollapsed = false; // the user's choice; narrow windows collapse on top of it
-    bool m_narrow = false;        // width < 1200 (layout-system.md breakpoint)
+    int m_workspace = -1;                  // the title bar menu shown (Görüntü · Ön Ayar · Araçlar)
+    PageId m_lastImagePage = PageId::Images; // where each menu goes back to
+    PageId m_lastToolPage = PageId::Download;
+    bool m_compactHeader = false;          // Ctrl+B: no image header
+    std::vector<int> m_counts = std::vector<int>(static_cast<std::size_t>(PageId::Count), 0); // what each page queues
+    std::vector<int> m_lastSub = std::vector<int>(static_cast<std::size_t>(PageId::Count), -1); // by tab: its page shown last
+    float m_bodyTop = 0;                   // the line under the tabs
 };
 
 } // namespace wl::app

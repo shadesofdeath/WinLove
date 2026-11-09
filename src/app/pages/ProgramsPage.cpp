@@ -14,10 +14,10 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kToolbarTop = 12.0f;
-constexpr float kToolbar = 24.0f;
-constexpr float kGap = 8.0f;
-constexpr float kInfoBar = 32.0f;
+constexpr float kToolbarTop = 0.0f;
+constexpr float kToolbar = ui::tokens::size::control;
+constexpr float kGap = 10.0f;
+constexpr float kInfoBar = 38.0f;
 constexpr float kIcon = 16.0f;
 constexpr std::size_t kSearchLimit = 200;
 
@@ -67,8 +67,8 @@ ProgramsPage::ProgramsPage(AppState& state, ProgramsController& controller, cons
     m_bar->setVisible(false);
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::ProgramsColProgram), 0},
-        {strings.get(Str::ProgramsColId), 240},
-        {strings.get(Str::ProgramsColVersion), 128, ui::TextAlign::Trailing},
+        {strings.get(Str::ProgramsColId), 276},
+        {strings.get(Str::ProgramsColVersion), 148, ui::TextAlign::Trailing},
     });
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
         paintCell(c, row, column, rect, cell);

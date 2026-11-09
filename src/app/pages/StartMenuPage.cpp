@@ -21,13 +21,13 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kTop = 12.0f;
-constexpr float kTabs = 24.0f;
-constexpr float kModeRow = 28.0f;
-constexpr float kNoteH = 34.0f;
+constexpr float kTop = 0.0f;
+constexpr float kTabs = ui::tokens::size::control;
+constexpr float kModeRow = ui::tokens::size::segment; // D-107: the segmented control
+constexpr float kNoteH = 34.0f;            // two lines of Caption (16)
 constexpr float kListW = 300.0f;
 constexpr float kGap = 16.0f;
-constexpr float kRow = 28.0f;
+constexpr float kRow = 28.0f; // D-109
 constexpr float kCellH = 88.0f;
 constexpr int kColumns = 6;
 
@@ -173,9 +173,9 @@ public:
             const auto& app = (*apps)[m_rows[static_cast<std::size_t>(row)]];
             const bool selected = row == m_selected;
             if (selected || row == m_hover) {
-                canvas.fillRect({r.x + 1, r.y, r.width - 2, r.height}, selected ? Color::BgRaised : Color::BgPanel);
+                canvas.fillRect({r.x + 1, r.y, r.width - 2, r.height}, selected ? Color::AccentSubtle : Color::BgHover);
             }
-            drawAppIcon(canvas, *m_pins, app, {r.x + 10, r.y + 6, 16, 16});
+            drawAppIcon(canvas, *m_pins, app, {r.x + 10, r.y + (r.height - 16) / 2, 16, 16});
             const bool isPinned = std::ranges::find(pinned, app) != pinned.end();
             const float right = r.right() - 10 - (m_scroll->visible() ? ui::ScrollBar::kWidth : 0.0f);
             float kw = ui::tokens::size::icon;
@@ -528,8 +528,9 @@ void StartMenuPage::layout() {
     m_add->setBounds({b.x + kListW - addW, content, addW, ui::tokens::size::control});
     m_apps->setBounds({b.x, content + ui::tokens::size::control + 8, kListW,
                        std::max(b.bottom() - content - ui::tokens::size::control - 8, 0.0f)});
-    // Right: buttons on top, then the preview.
-    float bx = b.right();
+    // Right: buttons on top, then the preview — the buttons end where the preview ends (D-108).
+    const float gridW = std::min(b.right() - gridX, 720.0f);
+    float bx = gridX + gridW;
     for (ui::Button* button : {m_clear, m_remove, m_right, m_left}) {
         const float w = button->measure({200, ui::tokens::size::control}).width;
         bx -= w;
@@ -538,7 +539,7 @@ void StartMenuPage::layout() {
     }
     const float gridTop = custom ? content + ui::tokens::size::control + 8 : content;
     const float gridH = std::min(b.bottom() - gridTop, 48.0f + 4 * kCellH + 12);
-    m_grid->setBounds({gridX, gridTop, std::min(b.right() - gridX, 720.0f), std::max(gridH, 0.0f)});
+    m_grid->setBounds({gridX, gridTop, gridW, std::max(gridH, 0.0f)});
 }
 
 void StartMenuPage::paint(ui::Canvas& canvas) {

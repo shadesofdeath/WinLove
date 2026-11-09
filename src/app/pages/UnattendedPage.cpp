@@ -1,5 +1,6 @@
 #include "app/pages/UnattendedPage.h"
 
+#include "app/pages/unattended/WelcomeCard.h"
 #include "base/Text.h"
 
 #include "ui/widget/Host.h"
@@ -62,8 +63,8 @@ void setSlot(std::vector<std::wstring>& list, std::size_t index, const std::wstr
     }
 }
 
-constexpr float kTop = 11.0f;          // page top → step bar / preview panel
-constexpr float kStepsHeight = 24.0f;
+constexpr float kTop = 0.0f;          // page top → step bar / preview panel
+constexpr float kStepsHeight = 28.0f;
 constexpr float kFormGap = 8.0f;       // step bar → first section
 constexpr float kLabelWidth = 220.0f;  // screen 11
 constexpr float kFieldWidth = 220.0f;
@@ -291,7 +292,7 @@ public:
 private:
     static constexpr float kPad = 12.0f;
     static constexpr float kHeader = 41.0f; // title row + gap: the first line box starts here
-    static constexpr float kLine = 16.0f;
+    static constexpr float kLine = 18.0f;
     static constexpr float kNumberGap = 11.0f;
     static constexpr float kBottom = 12.0f;
 
@@ -351,6 +352,13 @@ private:
 UnattendedPage::UnattendedPage(AppState& state, UnattendController& controller, const Localization& strings)
     : m_state(state), m_controller(controller), m_strings(strings) {
     auto s = [&](Str key) { return strings.get(key); };
+    m_card = &add<WelcomeCard>(strings);
+    m_card->onToggle = [this](bool on) { m_controller.setWelcome(on); };
+    m_card->onWindowPreview = [this] {
+        if (onPreviewWelcome) {
+            onPreviewWelcome();
+        }
+    };
     m_steps = &add<StepBar>(std::vector<std::wstring>{s(Str::UnattendedStepsLocale), s(Str::UnattendedStepsAccount),
                                                       s(Str::UnattendedStepsDisk), s(Str::UnattendedStepsOobe),
                                                       s(Str::UnattendedStepsKey), s(Str::UnattendedStepsRequirements),
@@ -693,6 +701,7 @@ void UnattendedPage::sync() {
 
     m_include->setChecked(m_controller.includeInIso());
     m_preview->setText(m_controller.xml());
+    m_card->setState(o.welcome, m_controller.welcomePlan());
     invalidate();
 }
 
@@ -707,7 +716,11 @@ void UnattendedPage::editWelcome(const std::function<void(core::WelcomePlan&)>& 
 }
 
 void UnattendedPage::layout() {
-    const RectF b = bounds();
+    const RectF whole = bounds();
+    // The setup screens' card across the top, as tall as its content; the form and the XML below it.
+    const float cardH = m_card->preferredHeight(whole.width);
+    m_card->setBounds({whole.x, whole.y, whole.width, cardH});
+    const RectF b{whole.x, whole.y + cardH + kPanelGap, whole.width, std::max(whole.height - cardH - kPanelGap, 0.0f)};
     const float previewWidth = std::round(std::max(b.width - kPanelGap, 0.0f) * kPreviewShare);
     const float formWidth = std::max(b.width - previewWidth - kPanelGap, 0.0f);
     m_steps->setBounds({b.x, b.y + kTop, formWidth, kStepsHeight});

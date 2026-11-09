@@ -15,9 +15,9 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kToolbarTop = 12.0f;
-constexpr float kToolbar = 24.0f;
-constexpr float kGap = 8.0f;
+constexpr float kToolbarTop = 0.0f;
+constexpr float kToolbar = ui::tokens::size::control;
+constexpr float kGap = 10.0f;
 constexpr float kTableGap = 12.0f;
 constexpr float kChoiceH = 20.0f;
 
@@ -75,10 +75,10 @@ ServicesPage::ServicesPage(AppState& state, ServiceController& controller, const
     };
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::ServicesService), 0, ui::TextAlign::Leading, true},
-        {strings.get(Str::CommonName), 180, ui::TextAlign::Leading, true},
-        {strings.get(Str::ServicesDefault), 150, ui::TextAlign::Leading, true},
-        {strings.get(Str::ServicesNewStart), 184},
-        {strings.get(Str::RiskColumn), 80},
+        {strings.get(Str::CommonName), 206, ui::TextAlign::Leading, true},
+        {strings.get(Str::ServicesDefault), 172, ui::TextAlign::Leading, true},
+        {strings.get(Str::ServicesNewStart), 212},
+        {strings.get(Str::RiskColumn), 92},
     });
     // D-091: sorting by a header click.
     m_table->sortKey = [this](int row, int column) -> ui::TableSortKey {
@@ -290,7 +290,7 @@ void ServicesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
     const bool changed = m_controller.changed(*item);
     switch (column) {
     case kService: {
-        canvas.drawIcon(ui::icons::Icon::ServicesGear, {rect.x, rect.y + 4}, Color::TextSecondary);
+        canvas.drawIcon(ui::icons::Icon::ServicesGear, {rect.x, rect.y + (rect.height - 16) / 2}, Color::TextSecondary);
         const float x = rect.x + ui::tokens::size::icon + 6;
         canvas.drawText(item->displayName, {x, rect.y, rect.right() - x, rect.height},
                         cell.selected || changed ? TypeStyle::BodyStrong : TypeStyle::Body, Color::TextPrimary);

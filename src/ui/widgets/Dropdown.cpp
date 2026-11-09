@@ -16,10 +16,12 @@ namespace {
 using tokens::Color;
 using tokens::TypeStyle;
 
-constexpr float kPadding = 8.0f;
+// D-107: a field like the package's inputs (36, radius 9, line border, panel fill); the menu's
+// rows 32 high in a 6px padded panel, radius 7 highlights.
+constexpr float kPadding = 10.0f;
 constexpr float kGap = 6.0f;
 constexpr float kMenuPadding = 4.0f;
-constexpr float kItem = 24.0f;
+constexpr float kItem = 28.0f;
 constexpr float kMenuMinWidth = 160.0f; // contextmenu.md says 220 for menus; dropdown lists follow the field
 constexpr float kMenuMaxWidth = 360.0f;
 constexpr float kMenuOffset = 2.0f;
@@ -79,7 +81,7 @@ SizeF Dropdown::measure(SizeF /*available*/) {
 
 void Dropdown::paint(Canvas& canvas) {
     const RectF b = bounds();
-    const Color border = m_open ? Color::AccentBase : hovered() ? Color::TextTertiary : Color::LineStrong;
+    const Color border = m_open ? Color::AccentBase : hovered() ? Color::LineStrong : Color::LineSubtle;
     canvas.fillRoundRect(b, tokens::radius::r2, Color::BgInput);
     canvas.strokeRoundRect(b, tokens::radius::r2, border);
     float x = b.x + kPadding;
@@ -169,7 +171,7 @@ void MenuPopup::layout() {
     float width = std::max(m_anchor.width, kMenuMinWidth);
     if (host()) {
         for (const auto& item : m_items) {
-            width = std::max(width, host()->text().measure(item, TypeStyle::Body) + 2 * kMenuPadding + 16 + 8 + 16);
+            width = std::max(width, host()->text().measure(item, TypeStyle::Body) + 2 * kMenuPadding + 8 + 16 + 8 + 16);
         }
     }
     width = std::ceil(std::min(width, kMenuMaxWidth));
@@ -323,12 +325,15 @@ void MenuPopup::paint(Canvas& canvas) {
         const RectF row{m_panel.x + kMenuPadding, m_panel.y + kMenuPadding + kItem * static_cast<float>(i - m_first),
                         m_panel.width - 2 * kMenuPadding - (scrolls ? 4.0f : 0.0f), kItem};
         if (i == m_hover) {
-            canvas.fillRoundRect(row, 3.0f, Color::BgRaised);
+            canvas.fillRoundRect(row, tokens::radius::menu, Color::BgRaised);
         }
         if (i == m_selected) {
-            canvas.drawIcon(icons::Icon::Check, {row.x + 4, row.y + 4}, Color::AccentBase);
+            canvas.drawIcon(icons::Icon::Check, {row.x + 8, row.y + (kItem - tokens::size::icon) / 2}, Color::AccentText);
+        } else if (static_cast<std::size_t>(i) < m_icons.size() && m_icons[static_cast<std::size_t>(i)]) {
+            canvas.drawIcon(*m_icons[static_cast<std::size_t>(i)], {row.x + 8, row.y + (kItem - tokens::size::icon) / 2},
+                            Color::AccentBase); // D-114: toned
         }
-        const float textX = row.x + 4 + tokens::size::icon + 8;
+        const float textX = row.x + 8 + tokens::size::icon + 8;
         canvas.drawText(m_items[static_cast<std::size_t>(i)], {textX, row.y, row.right() - textX - 4, kItem},
                         TypeStyle::Body, Color::TextPrimary);
     }

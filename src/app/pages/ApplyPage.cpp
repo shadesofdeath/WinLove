@@ -24,11 +24,11 @@ using Run = AppState::ApplyRun;
 
 namespace {
 
-constexpr float kTop = 12.0f;
-constexpr float kGap = 8.0f;
-constexpr float kInfoBar = 32.0f;
+constexpr float kTop = 0.0f;
+constexpr float kGap = 10.0f;
+constexpr float kInfoBar = 38.0f;
 constexpr float kStepsWidth = 420.0f;
-constexpr float kStepRow = 32.0f;
+constexpr float kStepRow = 24.0f; // D-109
 constexpr float kProgress = 2.0f;
 constexpr float kEditionsLabel = 220.0f; // "Diğer sürümlere de uygula" column (D-055)
 constexpr float kEditionsRow = 28.0f;
@@ -93,6 +93,12 @@ ApplyPage::Mode ApplyPage::modeFor(const AppState& state) {
     return state.mounted() ? Mode::Empty : Mode::NoMount;
 }
 
+bool ApplyPage::awaitingSave(const AppState& state) {
+    const auto& run = state.applyRun();
+    return run && run->stage == Run::Stage::Done && run->result && state.mounted() && run->result->report.completed &&
+           (run->result->held || run->result->kept) && state.changes().version() == run->queueVersionAtEnd;
+}
+
 std::wstring ApplyPage::displayName(const AppState& state, const core::ops::Operation& op) {
     if (op.kind == OpKind::RemoveComponent || op.kind == OpKind::CleanupImage || op.kind == OpKind::ShrinkStore) {
         // The operation carries the name it was queued under.
@@ -139,6 +145,10 @@ ApplyPage::ApplyPage(AppState& state, ApplyController& controller, const ImageSe
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Apply && live()) {
             invalidate();
+        }
+        if (m_waitBar && (change == AppState::Change::UpdateFetch || change == AppState::Change::LanguageFetch ||
+                          change == AppState::Change::StoreFetch)) {
+            syncWaitBar();
         }
     });
 }
@@ -340,6 +350,31 @@ void ApplyPage::buildSummary() {
         layout();
     };
 
+    // D-124: a download that will queue packages holds Uygula (it went without them before).
+    m_waitBar = &add<ui::InfoBar>(ui::InfoKind::Warning, L"", L"", m_strings.get(Str::CommonClose));
+    m_waitBar->setVisible(false);
+    m_waitBar->onClose = [this] {
+        m_waitDismissed = true; // until this download is over
+        m_waitBar->setVisible(false);
+        layout();
+    };
+    syncWaitBar();
+
+    // D-124: what the queue breaks, feature by feature, and the guard that would keep each.
+    if (m_intents.impact) {
+        std::vector<ImpactCard::Row> rows;
+        for (const auto& impact : m_intents.impact()) {
+            std::wstring items;
+            for (std::size_t i = 0; i < impact.items.size(); ++i) {
+                items += (i ? L", " : L"") + impact.items[i];
+            }
+            rows.push_back({impact.guard, impact.name, std::move(items), impact.app});
+        }
+        m_impact = &add<ImpactCard>(m_strings, std::move(rows));
+        m_impact->onKeep = m_intents.keep;
+        m_impact->onMore = m_intents.openCompat;
+    }
+
     // D-055: the same queue on other editions of the WIM.
     for (const auto& e : m_controller.otherEditions()) {
         const bool on = std::ranges::find(m_controller.extraEditions(), e.index) != m_controller.extraEditions().end();
@@ -358,12 +393,20 @@ void ApplyPage::buildSummary() {
         settings.pauseBeforeSave = checked;
         m_state.setSettings(std::move(settings));
     };
+    // D-125: after setup, a task keeps what ran when an update puts it back (kept in the settings).
+    m_guard = &add<ui::CheckField>(m_strings.get(Str::ApplyGuardOption), m_state.settings().updateGuard);
+    m_guard->setTooltip(m_strings.get(Str::ApplyGuardHint));
+    m_guard->onChange = [this](bool checked) {
+        AppSettings settings = m_state.settings();
+        settings.updateGuard = checked;
+        m_state.setSettings(std::move(settings));
+    };
 
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {m_strings.get(Str::ApplyOrder), 48},
         {m_strings.get(Str::ApplyOperation), 0},
-        {m_strings.get(Str::ApplySteps), 100, ui::TextAlign::Trailing},
-        {m_strings.get(Str::ApplyEta), 110, ui::TextAlign::Trailing},
+        {m_strings.get(Str::ApplySteps), 114, ui::TextAlign::Trailing},
+        {m_strings.get(Str::ApplyEta), 126, ui::TextAlign::Trailing},
     });
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState) {
         paintSummaryCell(c, row, column, rect);
@@ -487,8 +530,8 @@ void ApplyPage::buildDone() {
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {L"", 28},
         {m_strings.get(Str::ApplyOperation), 0},
-        {m_strings.get(Str::ApplyResult), 200},
-        {m_strings.get(Str::ApplyDuration), 110, ui::TextAlign::Trailing},
+        {m_strings.get(Str::ApplyResult), 230},
+        {m_strings.get(Str::ApplyDuration), 126, ui::TextAlign::Trailing},
     });
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState) {
         paintDoneCell(c, row, column, rect);
@@ -525,7 +568,7 @@ void ApplyPage::paintSummaryCell(ui::Canvas& canvas, int row, int column, RectF 
     switch (column) {
     case 0: canvas.drawText(std::to_wstring(row + 1), rect, TypeStyle::Body, Color::TextPrimary); break;
     case 1: {
-        canvas.drawIcon(groupIcon(r), {rect.x, rect.y + 4}, Color::TextSecondary);
+        canvas.drawIcon(groupIcon(r), {rect.x, rect.y + (rect.height - 16) / 2}, Color::TextSecondary);
         const float x = rect.x + ui::tokens::size::icon + 6;
         canvas.drawText(groupName(r), {x, rect.y, rect.right() - x, rect.height}, TypeStyle::Body, Color::TextPrimary);
         break;
@@ -552,7 +595,7 @@ void ApplyPage::paintDoneCell(ui::Canvas& canvas, int row, int column, RectF rec
         // A skipped step: its name, then why, in the wide column.
         const auto& step = run.result->report.results[static_cast<std::size_t>(r.failedStep)];
         switch (column) {
-        case 0: canvas.drawIcon(ui::icons::Icon::WarningTriangle, {rect.x, rect.y + 4}, Color::StatusWarning); break;
+        case 0: canvas.drawIcon(ui::icons::Icon::WarningTriangle, {rect.x, rect.y + (rect.height - 16) / 2}, Color::StatusWarning); break;
         case 1: {
             const std::wstring name = displayName(m_state, step.step.operation);
             const float width = std::min(std::ceil(canvas.text().measure(name, TypeStyle::Body)), rect.width);
@@ -604,9 +647,9 @@ void ApplyPage::paintDoneCell(ui::Canvas& canvas, int row, int column, RectF rec
                                           : ui::icons::Icon::QueueClock;
     const Color ink = complete ? Color::StatusSuccess : failed ? Color::StatusWarning : Color::TextTertiary;
     switch (column) {
-    case 0: canvas.drawIcon(icon, {rect.x, rect.y + 4}, ink); break;
+    case 0: canvas.drawIcon(icon, {rect.x, rect.y + (rect.height - 16) / 2}, ink); break;
     case 1: {
-        canvas.drawIcon(groupIcon(r), {rect.x, rect.y + 4}, Color::TextSecondary);
+        canvas.drawIcon(groupIcon(r), {rect.x, rect.y + (rect.height - 16) / 2}, Color::TextSecondary);
         const float x = rect.x + ui::tokens::size::icon + 6;
         canvas.drawText(groupName(r), {x, rect.y, rect.right() - x, rect.height}, TypeStyle::Body, Color::TextPrimary);
         break;
@@ -616,7 +659,7 @@ void ApplyPage::paintDoneCell(ui::Canvas& canvas, int row, int column, RectF rec
         if (failed) {
             text += L" · " + m_strings.format(Str::ApplySkipped, {{L"n", std::to_wstring(failed)}});
         }
-        canvas.drawIcon(icon, {rect.x, rect.y + 4}, ink);
+        canvas.drawIcon(icon, {rect.x, rect.y + (rect.height - 16) / 2}, ink);
         const float x = rect.x + ui::tokens::size::icon + 6;
         canvas.drawText(text, {x, rect.y, rect.right() - x, rect.height}, TypeStyle::Caption, Color::TextSecondary);
         break;
@@ -706,11 +749,16 @@ void ApplyPage::layout() {
         y += StatStrip::kHeight + kGap;
     }
     if (m_mode == Mode::Summary) {
-        for (ui::InfoBar* bar : {m_riskBar, m_infoBar}) {
+        for (ui::InfoBar* bar : {m_waitBar, m_riskBar, m_infoBar}) {
             if (bar && bar->visible()) {
                 bar->setBounds({b.x, y, b.width, kInfoBar});
                 y += kInfoBar + kGap;
             }
+        }
+        if (m_impact) {
+            const float h = m_impact->preferredHeight();
+            m_impact->setBounds({b.x, y, b.width, h});
+            y += h + kGap;
         }
         if (!m_editions.empty()) {
             float x = b.x + kEditionsLabel;
@@ -726,15 +774,47 @@ void ApplyPage::layout() {
             }
             y = rowY + kEditionsRow + kGap;
         }
-        if (m_pause) {
-            const ui::SizeF size = m_pause->measure({});
-            m_pause->setBounds({b.x + kEditionsLabel, y + (kEditionsRow - size.height) / 2, size.width, size.height});
-            y += kEditionsRow + kGap;
+        for (ui::CheckField* check : {m_pause, m_guard}) {
+            if (check) {
+                const ui::SizeF size = check->measure({});
+                check->setBounds({b.x + kEditionsLabel, y + (kEditionsRow - size.height) / 2, size.width, size.height});
+                y += kEditionsRow + kGap;
+            }
         }
     }
     if (m_table) {
         m_table->setBounds({b.x, y + 4, b.width, std::max(b.bottom() - y - 4, 0.0f)});
     }
+}
+
+void ApplyPage::syncWaitBar() {
+    std::uint64_t done = 0;
+    std::uint64_t total = 0;
+    if (const auto& f = m_state.updateFetch()) {
+        done += f->doneBytes;
+        total += f->totalBytes;
+    }
+    if (const auto& f = m_state.languageFetch()) {
+        done += f->doneBytes;
+        total += f->totalBytes;
+    }
+    if (const auto& f = m_state.storeFetch()) {
+        done += f->doneBytes;
+        total += f->totalBytes;
+    }
+    const bool waiting = m_controller.waitingForDownload();
+    if (!waiting) {
+        m_waitDismissed = false;
+    }
+    const bool show = waiting && !m_waitDismissed;
+    const int pct = total > 0 ? static_cast<int>(std::min<std::uint64_t>(done * 100 / total, 100)) : 0;
+    m_waitBar->set(ui::InfoKind::Warning, m_strings.format(Str::ApplyWaitDownloadTitle, {{L"pct", std::to_wstring(pct)}}),
+                   m_strings.get(Str::ApplyWaitDownloadBody));
+    if (show != m_waitBar->visible()) {
+        m_waitBar->setVisible(show);
+        layout();
+    }
+    invalidate();
 }
 
 float ApplyPage::liveTop() const {
@@ -756,6 +836,16 @@ void ApplyPage::paint(ui::Canvas& canvas) {
             canvas.drawText(m_strings.get(Str::ApplyBeforeSave),
                             {b.x, box.y - (kEditionsRow - box.height) / 2, kEditionsLabel - 8, kEditionsRow},
                             TypeStyle::Body, Color::TextSecondary);
+        }
+        if (m_guard) {
+            const RectF box = m_guard->bounds();
+            const float rowY = box.y - (kEditionsRow - box.height) / 2;
+            canvas.drawText(m_strings.get(Str::ApplyAfterSetup), {b.x, rowY, kEditionsLabel - 8, kEditionsRow}, TypeStyle::Body,
+                            Color::TextSecondary);
+            // What it does, after the box (the tooltip says it all).
+            const float hintX = box.right() + 16;
+            canvas.drawText(m_strings.get(Str::ApplyGuardShort), {hintX, rowY, std::max(b.right() - hintX, 0.0f), kEditionsRow},
+                            TypeStyle::Caption, Color::TextTertiary);
         }
         return;
     }

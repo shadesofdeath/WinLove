@@ -41,6 +41,17 @@ public:
     // One line for a tooltip: "Korunuyor: Windows Update" / "Kullanan: Hesap Makinesi, Microsoft Store".
     [[nodiscard]] std::wstring explain(const core::ops::CompatBlock& block) const;
 
+    // D-124 (Uygula's impact report): what the queue would break — every guard that is off and would
+    // keep something of it out, with those operations' names. Windows' features first, then apps.
+    struct Impact {
+        std::wstring guard; // compat.json id
+        std::wstring name;
+        std::wstring description;
+        bool app = false;   // the "Uygulamaların ihtiyaçları" section
+        std::vector<std::wstring> items;
+    };
+    [[nodiscard]] std::vector<Impact> impact() const;
+
     // A toast line when the queue lost operations to a guard.
     std::function<void(const std::wstring& title, const std::wstring& body)> onDropped;
     // The name of a queued operation for that line (the Shell knows the catalogs); the target if unset.
@@ -49,6 +60,7 @@ public:
     static constexpr const wchar_t* kProgramsGuard = L"programs";
 
 private:
+    [[nodiscard]] std::vector<std::wstring> catalogIds() const; // D-120: saved as guardsSeen
     [[nodiscard]] core::ops::AppxNeeds needs() const;
     [[nodiscard]] std::wstring appName(const std::wstring& identity) const;
     [[nodiscard]] std::wstring guardName(const std::wstring& id) const;

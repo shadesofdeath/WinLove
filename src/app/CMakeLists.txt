@@ -44,9 +44,11 @@ add_library(wl_app STATIC
     SystemInfo.cpp
     pages/AboutPage.cpp
     pages/GalleryPage.cpp
+    pages/apply/ImpactCard.cpp
     pages/apply/RiskConfirm.cpp
     pages/apply/StatStrip.cpp
     pages/components/CompatDialog.cpp
+    pages/components/ModeDialog.cpp
     pages/components/ComponentInspector.cpp
     pages/ApplyPage.cpp
     pages/ComponentsPage.cpp
@@ -84,6 +86,7 @@ add_library(wl_app STATIC
     pages/SourcePage.cpp
     pages/TweaksPage.cpp
     pages/UnattendedPage.cpp
+    pages/unattended/WelcomeCard.cpp
     pages/UpdatesPage.cpp
     pages/DownloadPage.cpp
     pages/TasksPage.cpp
@@ -94,11 +97,14 @@ add_library(wl_app STATIC
     pages/LanguagesPage.cpp
     pages/source/RecentList.cpp
     shell/CommandPalette.cpp
-    shell/NavRail.cpp
+    shell/ChangesPanel.cpp
+    shell/ImageHeader.cpp
+    shell/NavPanel.cpp
     shell/PageView.cpp
     shell/PaletteIndex.cpp
     shell/Shell.cpp
     shell/StatusBar.cpp
+    shell/TabStrip.cpp
     shell/TitleBar.cpp
     state/AnswerStore.cpp
     state/AppSettings.cpp

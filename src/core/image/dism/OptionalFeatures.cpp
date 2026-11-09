@@ -6,6 +6,8 @@
 #include "base/Utf8.h"
 #include "core/image/SystemComponents.h"
 
+#include <pugixml.hpp>
+
 #include <algorithm>
 #include <chrono>
 #include <format>
@@ -63,6 +65,67 @@ std::vector<std::wstring> readPermanentCapabilities(const std::filesystem::path&
         }
     }
     return names;
+}
+
+std::map<std::wstring, std::wstring> featureParentsIn(std::string_view mum) {
+    std::map<std::wstring, std::wstring> parents;
+    pugi::xml_document doc;
+    if (!doc.load_buffer(mum.data(), mum.size())) {
+        return parents;
+    }
+    std::map<std::wstring, std::wstring> deployerOf; // server component UniqueName -> update name
+    std::vector<std::pair<std::wstring, std::wstring>> byUnique; // update -> parent UniqueName
+    for (const auto& node : doc.select_nodes("//*[local-name()='update'][@name]")) {
+        const pugi::xml_node update = node.node();
+        const std::wstring name = utf8::toWide(update.attribute("name").value());
+        if (name.empty()) {
+            continue;
+        }
+        if (const auto detect = update.select_node(".//*[local-name()='applicable']//*[local-name()='detectUpdate']/*[local-name()='update'][@name]")) {
+            const std::wstring parent = utf8::toWide(detect.node().attribute("name").value());
+            if (!parent.empty() && !text::iequals(parent, name)) {
+                parents.emplace(name, parent);
+            }
+        }
+        if (const auto component = update.select_node(".//*[local-name()='ServerComponent']")) {
+            const auto c = component.node();
+            if (const char* unique = c.attribute("UniqueName").value(); *unique) {
+                deployerOf.emplace(utf8::toWide(unique), name);
+            }
+            if (const char* parent = c.attribute("Parent").value(); *parent) {
+                byUnique.emplace_back(name, utf8::toWide(parent));
+            }
+        }
+    }
+    for (const auto& [name, unique] : byUnique) {
+        if (const auto it = deployerOf.find(unique); it != deployerOf.end() && !parents.contains(name)) {
+            parents.emplace(name, it->second);
+        }
+    }
+    return parents;
+}
+
+std::map<std::wstring, std::wstring> readFeatureParents(const std::filesystem::path& mountDir) {
+    std::map<std::wstring, std::wstring> parents;
+    const auto folder = mountDir / L"Windows" / L"servicing" / L"Packages";
+    std::error_code ec;
+    for (auto it = std::filesystem::directory_iterator(folder, ec); !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+        const auto& path = it->path();
+        // Neutral manifests only ("…~amd64~~10.0…"): language packs repeat the same updates.
+        const std::wstring file = path.filename().wstring();
+        if (_wcsicmp(path.extension().c_str(), L".mum") != 0 || file.find(L"~~") == std::wstring::npos) {
+            continue;
+        }
+        std::ifstream in(path, std::ios::binary);
+        const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        if (text.find("detectUpdate") == std::string::npos && text.find("ServerComponent") == std::string::npos) {
+            continue;
+        }
+        for (auto& [name, parent] : featureParentsIn(text)) {
+            parents.emplace(std::move(name), std::move(parent));
+        }
+    }
+    return parents;
 }
 
 Result<std::vector<OptionalFeature>> readOptionalFeatures(Dism& dism, const std::filesystem::path& mountDir,
@@ -128,6 +191,17 @@ Result<std::vector<OptionalFeature>> readOptionalFeatures(Dism& dism, const std:
     std::ranges::sort(result, [](const OptionalFeature& a, const OptionalFeature& b) {
         return _wcsicmp(a.displayName.c_str(), b.displayName.c_str()) < 0;
     });
+    // D-114: the tree (a parent the image does not list as a feature leaves its child a root).
+    const auto parents = readFeatureParents(mountDir);
+    for (auto& item : result) {
+        if (item.kind != OptionalFeature::Kind::Feature) {
+            continue;
+        }
+        if (const auto it = parents.find(item.name); it != parents.end() &&
+            std::ranges::any_of(result, [&](const OptionalFeature& o) { return o.kind == OptionalFeature::Kind::Feature && o.name == it->second; })) {
+            item.parent = it->second;
+        }
+    }
     const auto ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
     log::info("dism", std::format(L"{} features + {} capabilities ({} permanent) read in {} ms", features->size(),

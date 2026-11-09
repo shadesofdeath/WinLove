@@ -28,7 +28,7 @@ constexpr std::array kDismCore{L"DismCore.dll", L"DismProv.dll", L"WimProvider.d
 constexpr std::array kDismMore{L"CbsProvider.dll", L"OSProvider.dll", L"AppxProvider.dll", L"IntlProvider.dll",
                                L"SmiProvider.dll", L"UnattendProvider.dll"};
 
-std::atomic<bool> g_forceAdk{false};
+std::atomic<DismEngine> g_engine{DismEngine::Auto};
 
 std::optional<std::wstring> kitsRoot() {
     for (const DWORD view : {RRF_SUBKEY_WOW6464KEY, RRF_SUBKEY_WOW6432KEY}) {
@@ -78,7 +78,22 @@ std::optional<std::filesystem::path> adkDismFolder() {
 }
 
 void forceAdkDism() {
-    g_forceAdk = true;
+    g_engine = DismEngine::Adk;
+}
+
+void setDismEngine(DismEngine engine) {
+    g_engine = engine;
+}
+
+std::wstring hostDismVersion() {
+    std::error_code ec;
+    const auto file = systemFolder() / L"dismapi.dll";
+    return std::filesystem::is_regular_file(file, ec) ? fileVersion(file) : std::wstring();
+}
+
+std::wstring adkDismVersion() {
+    const auto adk = adkDismFolder();
+    return adk ? fileVersion(*adk / L"dismapi.dll") : std::wstring();
 }
 
 const DismLocation& dismLocation() {
@@ -97,7 +112,14 @@ const DismLocation& dismLocation() {
                 missing = (system / L"Dism" / name).wstring();
             }
         }
-        if (!g_forceAdk && missing.empty()) {
+        const DismEngine engine = g_engine;
+        if (engine == DismEngine::Host) {
+            if (!missing.empty()) {
+                log::warn("dism", std::format(L"this PC's DISM is missing {}; kept, as Ayarlar › DISM motoru asks", missing));
+            }
+            return l;
+        }
+        if (engine == DismEngine::Auto && missing.empty()) {
             return l;
         }
         const auto adk = adkDismFolder();
@@ -110,7 +132,7 @@ const DismLocation& dismLocation() {
         l.dismapi = *adk / L"dismapi.dll";
         l.dismExe = *adk / L"dism.exe";
         l.adk = true;
-        l.reason = missing.empty() ? std::wstring(L"asked for (--dism=adk)") : std::format(L"{} is missing", missing);
+        l.reason = missing.empty() ? std::wstring(L"asked for (DISM motoru / --dism=adk)") : std::format(L"{} is missing", missing);
         log::warn("dism", std::format(L"using the Windows ADK's DISM ({}): {}", l.reason, adk->wstring()));
         return l;
     }();

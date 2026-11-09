@@ -24,7 +24,7 @@ namespace {
 
 constexpr float kWidth = 760.0f;
 constexpr int kVisibleRows = 10;
-constexpr float kGap = 8.0f;
+constexpr float kGap = 10.0f;
 enum Column : int { kName, kTag, kParts, kSize };
 
 // The dialog's body: search, list, parts.
@@ -43,9 +43,9 @@ public:
         m_search->onChange = [this](const std::wstring&) { filter(); };
         m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
             {strings.get(Str::LanguagesLanguage), 0},
-            {L"", 96},
-            {strings.get(Str::LanguagesColParts), 300},
-            {strings.get(Str::CommonSize), 84, ui::TextAlign::Trailing},
+            {L"", 110},
+            {strings.get(Str::LanguagesColParts), 344},
+            {strings.get(Str::CommonSize), 96, ui::TextAlign::Trailing},
         });
         m_table->setAccessible(ui::AccessRole::Group, strings.get(Str::LanguagesAddTitle));
         m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {

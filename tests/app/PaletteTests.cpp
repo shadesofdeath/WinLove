@@ -150,9 +150,9 @@ TEST_CASE("palette: an empty query lists the commands that can run now, and noth
     CHECK(hasCommand(idle, PaletteCommand::OpenLogFolder));
     CHECK(idle.commands.size() == 6);
 
-    // The rail command says what it will do.
+    // The Ctrl+B command (D-107: the image header) says what it will do.
     const auto nav = [&] {
-        const auto found = f.index.search(L"navigasyon");
+        const auto found = f.index.search(L"başlığını");
         REQUIRE(found.commands.size() == 1);
         return found.commands.front();
     };
@@ -312,9 +312,9 @@ TEST_CASE("palette widget: typing searches, arrows wrap, Enter closes and then r
     REQUIRE(h.host->focused() == &h.palette->input());
     CHECK(h.palette->found().results.empty());
     CHECK(h.palette->found().commands.size() == 1);
-    // 560 wide, centred, 120 from the top.
+    // D-108: 560 wide, centred, 80 from the top.
     CHECK(h.palette->panel().x == 220);
-    CHECK(h.palette->panel().y == 120);
+    CHECK(h.palette->panel().y == 80);
     CHECK(h.palette->panel().width == 560);
 
     h.type(L"def");
@@ -360,7 +360,7 @@ TEST_CASE("palette widget: → takes the greyed completion; Esc, Ctrl+K and a cl
     h.open();
     h.type(L"def");
     const ui::RectF panel = h.palette->panel();
-    h.click({panel.x + 100, panel.y + 40 + 8 + 24 + 32 + 16}); // second result row
+    h.click({panel.x + 100, panel.y + 34 + 8 + 26 + 36 + 18}); // second result row (D-109: 34 search, 26 header, 36 rows)
     CHECK(h.events.back() == L"run:WinDefend");
     CHECK_FALSE(h.host->hasModal());
 }

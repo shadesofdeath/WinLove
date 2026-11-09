@@ -8,8 +8,8 @@ namespace wl::ui {
 
 namespace {
 using tokens::Color;
-constexpr float kGap = 8.0f;
-constexpr float kKnob = 8.0f;
+constexpr float kGap = 10.0f;
+constexpr float kKnob = tokens::size::toggleThumb;
 } // namespace
 
 Toggle::Toggle(std::wstring label, bool on) : m_label(std::move(label)), m_on(on), m_knob(on ? 1.0f : 0.0f) {
@@ -40,15 +40,15 @@ RectF Toggle::focusRect() const {
 }
 
 void Toggle::paintSwitch(Canvas& canvas, RectF track, float t, bool hovered) {
-    // Track: outline (off) blends into accent fill (on).
-    canvas.fillRoundRect(track, tokens::radius::r1, Ink(Color::BgInput, Color::AccentBase, t));
-    if (t < 1.0f) {
-        canvas.strokeRoundRect(track, tokens::radius::r1,
-                               Ink(hovered ? Color::TextTertiary : Color::LineStrong, Color::AccentBase, t));
-    }
-    const float knobX = track.x + 2 + t * (tokens::size::toggleW - kKnob - 4);
-    canvas.fillRoundRect({std::round(knobX), track.y + 2, kKnob, kKnob}, 1.0f,
-                         Ink(Color::TextSecondary, Color::TextOnAccent, t));
+    // D-107 (Painter::Switch): a pill that blends line.strong (off) into the accent (on), a white
+    // knob with a soft shadow under it.
+    const float radius = track.height / 2;
+    canvas.fillRoundRect(track, radius, Ink(hovered ? Color::TextTertiary : Color::LineStrong, Color::AccentBase, t));
+    const float pad = (track.height - kKnob) / 2;
+    const float cx = track.x + pad + kKnob / 2 + t * (track.width - 2 * pad - kKnob);
+    const float cy = track.y + track.height / 2;
+    canvas.fillEllipse({cx, cy + 1}, kKnob / 2, Ink(Color::ShadowKey, Color::ShadowKey, 0, 0.6f));
+    canvas.fillEllipse({cx, cy}, kKnob / 2, Color::TextOnAccent);
 }
 
 void Toggle::paint(Canvas& canvas) {

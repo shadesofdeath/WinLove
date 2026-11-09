@@ -45,6 +45,7 @@ DriverInf parseInfText(const std::wstring& text, const std::filesystem::path& pa
     // section (lower-case) → key (lower-case) → raw value; plus [Manufacturer] values in order.
     std::map<std::wstring, std::map<std::wstring, std::wstring>> sections;
     std::vector<std::wstring> manufacturerValues;
+    std::vector<std::pair<std::wstring, std::wstring>> lineKeys; // (section, key as written), in order
     std::wstring section;
     std::wistringstream lines(text);
     std::wstring line;
@@ -74,6 +75,7 @@ DriverInf parseInfText(const std::wstring& text, const std::filesystem::path& pa
         const std::wstring key = text::lower(trim(std::wstring_view(t).substr(0, eq)));
         const std::wstring value = trim(std::wstring_view(t).substr(eq + 1));
         sections[section][key] = value;
+        lineKeys.emplace_back(section, trim(std::wstring_view(t).substr(0, eq)));
         if (section == L"manufacturer") {
             manufacturerValues.push_back(value);
         }
@@ -114,12 +116,57 @@ DriverInf parseInfText(const std::wstring& text, const std::filesystem::path& pa
             }
         }
     }
+    // D-112: the device names — the keys of the models sections (base name and every decorated one).
+    std::vector<std::pair<std::wstring, std::wstring>> models; // section → decoration
+    for (const auto& value : manufacturerValues) {
+        std::wstringstream parts(value);
+        std::wstring base;
+        std::getline(parts, base, L',');
+        base = text::lower(trim(base));
+        if (base.empty()) {
+            continue;
+        }
+        models.emplace_back(base, L"");
+        std::wstring part;
+        while (std::getline(parts, part, L',')) {
+            const std::wstring decoration = text::lower(trim(part));
+            models.emplace_back(base + L"." + decoration, decoration);
+        }
+    }
+    for (const auto& [name, key] : lineKeys) {
+        const auto model = std::ranges::find(models, name, &std::pair<std::wstring, std::wstring>::first);
+        if (model == models.end()) {
+            continue;
+        }
+        std::wstring device = resolve(key);
+        if (device.empty()) {
+            continue;
+        }
+        inf.models.emplace_back(model->second, device);
+        if (std::ranges::find(inf.devices, device) == inf.devices.end()) {
+            inf.devices.push_back(std::move(device));
+        }
+    }
     // Models sections without an NTamd64/NTarm64 decoration are only used on x86 Windows
     // (64-bit Windows requires the decoration).
     if (!manufacturerValues.empty() && inf.architectures.empty()) {
         inf.architectures.emplace_back(L"x86");
     }
     return inf;
+}
+
+std::vector<std::wstring> DriverInf::devicesFor(std::wstring_view arch) const {
+    // 64-bit Windows reads only the models sections decorated for it; x86 also the undecorated ones.
+    const std::wstring want = L"nt" + std::wstring(arch);
+    std::vector<std::wstring> out;
+    for (const auto& [decoration, name] : models) {
+        const bool fits = decoration.starts_with(want) || (arch == L"x86" && (decoration.empty() || decoration == L"nt" ||
+                                                                              decoration.starts_with(L"nt.")));
+        if (fits && std::ranges::find(out, name) == out.end()) {
+            out.push_back(name);
+        }
+    }
+    return out;
 }
 
 DriverInf parseInf(const std::filesystem::path& path) {

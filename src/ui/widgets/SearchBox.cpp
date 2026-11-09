@@ -15,7 +15,7 @@ namespace {
 using tokens::Color;
 using tokens::TypeStyle;
 
-constexpr float kPadding = 6.0f;
+constexpr float kPadding = 10.0f; // D-107 (Painter::SearchBox), D-108 scale
 constexpr float kIconGap = 6.0f;
 constexpr float kClearSize = 16.0f;
 // Bare (command palette) variant.
@@ -307,7 +307,11 @@ void SearchBox::paint(Canvas& canvas) {
             Kbd::paintKeys(canvas, m_hintKeys, b.right() - kBarePadding, b.y + b.height / 2);
         }
     } else {
-        const Color border = focused() ? Color::AccentBase : hovered() ? Color::TextTertiary : Color::LineStrong;
+        const Color border = focused() ? Color::AccentBase : hovered() ? Color::LineStrong : Color::LineSubtle;
+        if (focused()) { // the package's acSoft ring around a focused field
+            canvas.strokeRoundRect({b.x - 3, b.y - 3, b.width + 6, b.height + 6}, tokens::radius::r2 + 3, Color::AccentSubtle,
+                                   3.0f * canvas.scale());
+        }
         canvas.fillRoundRect(b, tokens::radius::r2, Color::BgInput);
         canvas.strokeRoundRect(b, tokens::radius::r2, border);
         if (!m_plain) {
@@ -327,8 +331,8 @@ void SearchBox::paint(Canvas& canvas) {
     }
 
     // The bare box is as tall as its row (40px): keep the selection and the caret text-sized.
-    const float band = m_bare ? kBareLine : b.height - 8;
-    const float caret = m_bare ? kBareCaret : b.height - 10;
+    const float band = m_bare ? kBareLine : std::min(b.height - 8, 20.0f);
+    const float caret = m_bare ? kBareCaret : std::min(b.height - 10, 16.0f);
     canvas.pushClip(area);
     if (focused() && hasSelection()) {
         const float x0 = area.x - m_scroll + offsetOf(std::min(m_anchor, m_caret));

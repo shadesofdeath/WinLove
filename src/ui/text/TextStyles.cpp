@@ -3,6 +3,7 @@
 #include "base/Hresult.h"
 
 #include <algorithm>
+#include <cwchar>
 #include <string>
 
 namespace wl::ui {
@@ -66,15 +67,54 @@ Result<std::unique_ptr<TextStyles>> TextStyles::create(IDWriteFactory6* factory,
         const auto weight = static_cast<DWRITE_FONT_WEIGHT>(spec.weight);
 
         ComPtr<IDWriteTextFormat> format;
-        WL_TRY_HR(factory->CreateTextFormat(family, collection, weight, DWRITE_FONT_STYLE_NORMAL,
-                                            DWRITE_FONT_STRETCH_NORMAL, spec.size, L"", &format),
-                  kCode, L"creating text format");
+        // D-107: Segoe UI Variable is one variable font. Its WWS families ("… Text") only name the
+        // weights 300/350/400/600/700, so the package's 500 would round to 600; through the
+        // typographic collection the weight axis takes any value, and the optical size follows the
+        // text size in points as Windows' own controls do.
+        if (!bundled && family == primary) {
+            std::wstring variable = family;
+            for (const wchar_t* suffix : {L" Text", L" Display", L" Small"}) {
+                if (variable.ends_with(suffix)) {
+                    variable.resize(variable.size() - std::wcslen(suffix));
+                }
+            }
+            ComPtr<IDWriteFontCollection2> typographic;
+            UINT32 index = 0;
+            BOOL exists = FALSE;
+            if ((variable != family || mono) &&
+                SUCCEEDED(factory->GetSystemFontCollection(FALSE, DWRITE_FONT_FAMILY_MODEL_TYPOGRAPHIC, &typographic)) &&
+                SUCCEEDED(typographic->FindFamilyName(variable.c_str(), &index, &exists)) && exists) {
+                const DWRITE_FONT_AXIS_VALUE axes[] = {
+                    // D-108: the monospace face reads heavier than the UI one at the same weight.
+                    {DWRITE_FONT_AXIS_TAG_WEIGHT, static_cast<float>(spec.weight) - (mono ? 50.0f : 0.0f)},
+                    {DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE, spec.size * 0.75f},
+                };
+                ComPtr<IDWriteTextFormat3> variableFormat;
+                if (SUCCEEDED(factory->CreateTextFormat(variable.c_str(), typographic.Get(), axes, 2, spec.size, L"",
+                                                        &variableFormat))) {
+                    format = variableFormat;
+                }
+            }
+        }
+        if (!format) {
+            WL_TRY_HR(factory->CreateTextFormat(family, collection, weight, DWRITE_FONT_STYLE_NORMAL,
+                                                DWRITE_FONT_STRETCH_NORMAL, spec.size, L"", &format),
+                      kCode, L"creating text format");
+        }
+        // Metrics from the collection the family comes from (the system's for Segoe UI Variable).
+        ComPtr<IDWriteFontCollection> system;
+        IDWriteFontCollection* metrics = collection;
+        if (!metrics && SUCCEEDED(factory->GetSystemFontCollection(&system))) {
+            metrics = system.Get();
+        }
         WL_TRY_HR(format->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, spec.lineHeight,
-                                         baselineFor(collection, family, weight, spec)),
+                                         baselineFor(metrics, family, weight, spec)),
                   kCode, L"setting line spacing");
         format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
         format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-        if (!ellipsis) {
+        // Each style its own "…": one made from the 28px display style would draw 28px dots everywhere.
+        ellipsis.Reset();
+        {
             WL_TRY_HR(factory->CreateEllipsisTrimmingSign(format.Get(), &ellipsis), kCode, L"creating ellipsis");
         }
         const DWRITE_TRIMMING trimming{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};

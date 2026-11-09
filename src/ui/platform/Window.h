@@ -72,7 +72,8 @@ public:
 
     [[nodiscard]] Result<void> create(const wchar_t* title, SizeF initialSize, SizeF minimumSize,
                                       WindowCallbacks callbacks, const WindowAppearance& appearance);
-    void show();
+    // maximized: the window opens filling the screen (its normal size stays the one it was created with).
+    void show(bool maximized = false);
     [[nodiscard]] static int runMessageLoop();
 
     void invalidate();

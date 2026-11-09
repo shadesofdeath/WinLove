@@ -61,10 +61,10 @@ SourcePage::SourcePage(AppState& state, const Localization& strings, Language la
         }
     };
     m_mounts = &add<ui::TableView>(std::vector<ui::TableColumn>{
-        {strings.get(Str::SourceMountedFolder), 300},
-        {strings.get(Str::SourceMountedImage), 240},
+        {strings.get(Str::SourceMountedFolder), 344},
+        {strings.get(Str::SourceMountedImage), 276},
         {strings.get(Str::SourceMountedFile), 0},
-        {strings.get(Str::SourceMountedState), 170},
+        {strings.get(Str::SourceMountedState), 196},
     });
     m_mounts->setAccessible(ui::AccessRole::Group, strings.get(Str::SourceMounted));
     m_mounts->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {

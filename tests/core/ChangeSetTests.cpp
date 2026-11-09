@@ -71,7 +71,7 @@ TEST_CASE("ChangeSet: JSON round trip (preset format) and validation") {
           ErrorCode::ParseError);
 }
 
-TEST_CASE("Planner: removals, features, drivers, updates, settings — user order kept inside a phase") {
+TEST_CASE("Planner: features, drivers, updates, removals, settings — user order kept inside a phase") {
     ChangeSet set;
     set.add({OpKind::SetServiceStart, L"DiagTrack", L"disabled"});
     set.add(disable(L"F1"));
@@ -79,14 +79,18 @@ TEST_CASE("Planner: removals, features, drivers, updates, settings — user orde
     set.add({OpKind::AddDriver, L"C:\\drivers\\x.inf"});
     set.add(disable(L"F2"));
     set.add({OpKind::RemoveCapability, L"C1"});
+    set.add({OpKind::AddPackage, L"C:\\u\\kb.msu", L"lcu"});
     const ApplyPlan p = plan(set);
-    REQUIRE(p.steps.size() == 6);
-    CHECK(p.steps[0].operation.target == L"P1");
-    CHECK(p.steps[1].operation.target == L"C1");
-    CHECK(p.steps[2].operation.target == L"F1");
-    CHECK(p.steps[3].operation.target == L"F2");
-    CHECK(p.steps[4].phase == Phase::Drivers);
-    CHECK(p.steps[5].phase == Phase::Settings);
+    REQUIRE(p.steps.size() == 7);
+    CHECK(p.steps[0].operation.target == L"F1");
+    CHECK(p.steps[1].operation.target == L"F2");
+    CHECK(p.steps[2].phase == Phase::Drivers);
+    // D-124: the update goes into the whole image, the removals after it (the reference tool's order; the other
+    // way round a cumulative update failed with 0x80073712 on the removed packages' components).
+    CHECK(p.steps[3].phase == Phase::Updates);
+    CHECK(p.steps[4].operation.target == L"P1");
+    CHECK(p.steps[5].operation.target == L"C1");
+    CHECK(p.steps[6].phase == Phase::Settings);
     CHECK(p.hasHighRisk());
     CHECK(p.warnings.size() == 1);
 }

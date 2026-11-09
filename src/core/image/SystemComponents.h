@@ -32,7 +32,18 @@ struct ComponentRecipe {
     std::vector<std::wstring> paths;
     std::vector<RegistryWrite> registry;
     std::vector<std::wstring> driverClasses;
+    // D-112: driver packages by name ("mdm3com.inf_amd64_60545ab840205b89"), deep-removed one by
+    // one (the reference tool's driver rows); the same class limit as driverClasses holds at Apply.
+    std::vector<std::wstring> driverPackages;
     std::vector<std::wstring> appx;
+    // D-113: store components by identity name ("microsoft-windows-charmap", lower case): their
+    // installed copies go — every hard link of their WinSxS payload outside WinSxS (the reference tool's custom
+    // removal with update support kept: the store keeps them, sfc /scannow can bring them back).
+    // storeBits: 0 every architecture, 32 only x86 / wow64, 64 only the native one.
+    std::vector<std::wstring> storeNames;
+    std::uint8_t storeBits = 0;
+    // D-113: services whose keys go (ControlSet001\Services\<name>), with the files above.
+    std::vector<std::wstring> services;
     // Runs after the image's updates (Planner: DeepRemove): what it deletes a later cumulative
     // update needs (0x800F0982), so in the same run the update goes first (D-063).
     bool afterUpdates = false;
@@ -48,7 +59,11 @@ struct ComponentRecipe {
 // A recipe is user input (it arrives in preset files): paths must be relative, at least two
 // levels deep, without "." / ".." / drive or stream syntax, and none of the folders Windows
 // cannot live without; package families are plain names; registry keys must map into the image.
+// D-113: store names and services are plain names, none of the core components and services
+// Windows cannot start or log on without (isProtectedStoreName / isProtectedService).
 [[nodiscard]] Result<void> validateComponentRecipe(const ComponentRecipe& recipe);
+[[nodiscard]] bool isProtectedStoreName(std::wstring_view name);
+[[nodiscard]] bool isProtectedService(std::wstring_view name);
 // <mountDir>\<relative>, refused when a folder on the way is a reparse point (an image's
 // "Documents and Settings" junction points at the HOST's C:\Users).
 [[nodiscard]] Result<std::filesystem::path> resolveImagePath(const std::filesystem::path& mountDir,
@@ -94,6 +109,10 @@ class ComponentStoreIndex;
 // (DISM keeps them to itself) and reopened for the package removal.
 // Packages are best effort when the recipe also has paths: a package DISM refuses is logged as a
 // warning and the files are removed anyway (the component is gone, its WinSxS copy stays).
-[[nodiscard]] Result<void> removeComponent(DismSession& session, const ComponentRecipe& recipe, const TaskContext& task);
+// `packages` false (the image takes no more servicing, StoreShrink.h): the packages are not even
+// unlocked; the rest of the recipe runs. A recipe that is packages only then fails with
+// 0x800F0830 (ErrorCode::Unsupported) before touching anything.
+[[nodiscard]] Result<void> removeComponent(DismSession& session, const ComponentRecipe& recipe, const TaskContext& task,
+                                           bool packages = true);
 
 } // namespace wl::core

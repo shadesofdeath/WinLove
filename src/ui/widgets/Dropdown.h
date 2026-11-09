@@ -4,10 +4,12 @@
 // The list is a Menu popup (contextmenu.md): bg.overlay, 1px line.strong, r3, elevation.menu,
 // padding 4, items 24px with a check on the selected one. Keys: Enter/Space/Alt+↓ open,
 // ↑↓ move, Enter picks, Esc closes.
+#include "ui/generated/Icons.g.h"
 #include "ui/widget/Widget.h"
 
 #include <functional>
 #include <string>
+#include <optional>
 #include <vector>
 
 namespace wl::ui {
@@ -37,6 +39,7 @@ private:
 
     std::wstring m_label;
     std::vector<std::wstring> m_items;
+    std::vector<std::optional<icons::Icon>> m_icons;
     int m_selected;
     bool m_open = false;
     class MenuPopup* m_popup = nullptr; // while open
@@ -63,6 +66,8 @@ public:
     bool onWheel(PointF p, float lines) override;
     bool onChar(wchar_t ch) override;
     void close(); // pops it (nothing picked); the closed callback runs
+    // D-114: an icon in front of each item (in its own colour); nullopt leaves the place empty.
+    void setIcons(std::vector<std::optional<icons::Icon>> icons) { m_icons = std::move(icons); }
     // Its owner is going away: no callback may reach it any more (it closes the popup next).
     void detach() noexcept {
         m_picked = nullptr;
@@ -77,6 +82,7 @@ private:
     RectF m_anchor;
     RectF m_panel{};
     std::vector<std::wstring> m_items;
+    std::vector<std::optional<icons::Icon>> m_icons;
     int m_selected;
     int m_hover;
     int m_first = 0;   // first visible item

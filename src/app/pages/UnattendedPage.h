@@ -21,6 +21,7 @@ namespace wl::app {
 
 class StepBar;
 class XmlPreview;
+class WelcomeCard;
 
 class UnattendedPage : public ui::Widget {
 public:
@@ -64,6 +65,7 @@ private:
     UnattendController& m_controller;
     const Localization& m_strings;
     std::size_t m_subscription = 0;
+    WelcomeCard* m_card = nullptr; // 2026-11-09: WinLove's setup screens, on / off and drawn, at the top
     StepBar* m_steps = nullptr;
     ui::FormView* m_form = nullptr;
     XmlPreview* m_preview = nullptr;

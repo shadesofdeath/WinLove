@@ -15,9 +15,9 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kToolbarTop = 12.0f;
-constexpr float kToolbar = 24.0f;
-constexpr float kGap = 8.0f;
+constexpr float kToolbarTop = 0.0f;
+constexpr float kToolbar = ui::tokens::size::control;
+constexpr float kGap = 10.0f;
 constexpr float kConsoleGap = 12.0f;
 
 std::wstring clockTime(std::chrono::system_clock::time_point t) {

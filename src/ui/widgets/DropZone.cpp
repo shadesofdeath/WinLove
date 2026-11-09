@@ -8,7 +8,7 @@ namespace {
 using tokens::Color;
 constexpr float kIcon = 24.0f;
 constexpr float kIconGap = 16.0f;
-constexpr float kLine = 16.0f;
+constexpr float kLine = 20.0f;
 constexpr float kLineGap = 2.0f;
 } // namespace
 
@@ -56,7 +56,7 @@ bool DropZone::onKeyDown(const KeyEvent& key) {
 
 void DropZone::paint(Canvas& canvas) {
     const RectF b = bounds();
-    const float radius = tokens::radius::r2;
+    const float radius = tokens::radius::r3; // D-107: a card
     const float h = hovered() && !m_hover.running() ? 1.0f : m_hover.value();
 
     Ink border = Ink(Color::LineStrong, Color::TextTertiary, h); // hover: like the palette trigger

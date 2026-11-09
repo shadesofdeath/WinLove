@@ -14,6 +14,7 @@
 #include "core/uup/UupConvert.h"
 #include "core/uup/UupDownload.h"
 #include "core/image/ComponentStore.h"
+#include "core/image/ImageInventory.h"
 #include "core/image/SystemComponents.h"
 #include "core/image/dism/StoreCleanup.h"
 #include "core/image/MediaRefresh.h"
@@ -54,6 +55,7 @@
 #include "core/image/dism/OptionalFeatures.h"
 #include "core/iso/IsoBuilder.h"
 #include "core/ops/ApplyJob.h"
+#include "core/ops/Compat.h"
 #include "core/image/wim/WimGapi.h"
 #include "core/image/wim/WimVerify.h"
 #include "core/ops/Applier.h"
@@ -452,6 +454,180 @@ int cmdOptionalFeatures(const std::wstring& dir, bool asJson) {
     return 0;
 }
 
+int cmdInventoryRecipe(const std::wstring& dir, const std::wstring& what) {
+    // D-112 lab: the recipe the Bileşenler page queues for one row, by kind and name —
+    // language:<tag> (any of the row's tags), keyboard:<KLID>, font:<family>, systemapp:<name>,
+    // driver:<inf>. Printed as JSON for `wlcli component <mount> <file> --remove`.
+    auto inventory = core::readImageInventory(dir);
+    if (!inventory) {
+        return reportError(inventory.error());
+    }
+    const auto colon = what.find(L':');
+    const std::wstring kind = what.substr(0, colon);
+    const std::wstring name = colon == std::wstring::npos ? std::wstring() : what.substr(colon + 1);
+    auto same = [](std::wstring_view a, std::wstring_view b) { return a.size() == b.size() && _wcsnicmp(a.data(), b.data(), a.size()) == 0; };
+    std::optional<core::ComponentRecipe> recipe;
+    if (kind == L"language") {
+        for (const auto& l : inventory->languages) {
+            std::wstring_view rest = l.tag;
+            while (!rest.empty() && !recipe) {
+                const auto comma = rest.find(L',');
+                if (same(rest.substr(0, comma), name)) {
+                    recipe = core::languageRecipe(l);
+                }
+                rest = comma == std::wstring_view::npos ? std::wstring_view() : rest.substr(comma + 1);
+            }
+        }
+    } else if (kind == L"keyboard") {
+        for (const auto& k : inventory->keyboards) {
+            if (same(k.klid, name)) {
+                recipe = core::keyboardRecipe(k);
+            }
+        }
+    } else if (kind == L"font") {
+        for (const auto& f : inventory->fonts) {
+            if (same(f.family, name)) {
+                recipe = core::fontRecipe(f);
+            }
+        }
+    } else if (kind == L"systemapp") {
+        for (const auto& a : inventory->systemApps) {
+            if (same(a.name, name)) {
+                recipe = core::systemAppRecipe(a);
+            }
+        }
+    } else if (kind == L"driver") {
+        for (const auto& d : inventory->drivers) {
+            if (same(d.inf, name) && !d.classInf) {
+                recipe = core::driverRecipe(d);
+            }
+        }
+    }
+    if (!recipe) {
+        return reportError(Error{ErrorCode::NotFound, L"no such inventory row", what});
+    }
+    print(utf8::toWide(core::componentRecipeToJson(*recipe)) + L"\n");
+    return 0;
+}
+
+// D-113: a component catalog's "store" patterns against a mounted image: what each entry owns of
+// the store (each component to its most specific pattern), one JSON object per line.
+int cmdStoreShare(const std::wstring& dir, const std::wstring& catalogFile) {
+    const auto bytes = readFileBytes(catalogFile);
+    if (!bytes) {
+        return reportError(Error{ErrorCode::NotFound, L"cannot open the catalog", catalogFile});
+    }
+    const auto doc = json::parse(*bytes, nullptr, /*allow_exceptions=*/false);
+    if (doc.is_discarded() || !doc.contains("components")) {
+        return reportError(Error{ErrorCode::ParseError, L"not a component catalog", catalogFile});
+    }
+    std::vector<std::string> ids;
+    std::vector<std::vector<std::wstring>> patterns;
+    for (const auto& c : doc["components"]) {
+        if (!c.contains("store")) {
+            continue;
+        }
+        ids.push_back(c.value("id", std::string{}));
+        auto& list = patterns.emplace_back();
+        for (const auto& p : c["store"]) {
+            list.push_back(utf8::toWide(p.get<std::string>()));
+        }
+    }
+    const auto started = std::chrono::steady_clock::now();
+    auto built = core::ComponentStoreIndex::build(dir, core::TaskContext{g_cancel, {}});
+    if (!built) {
+        return reportError(built.error());
+    }
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
+    const auto shares = built->shareStore(patterns);
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        json names64 = json::array();
+        json names32 = json::array();
+        for (const auto& n : shares[i].names64) {
+            names64.push_back(utf8::fromWide(n));
+        }
+        for (const auto& n : shares[i].names32) {
+            names32.push_back(utf8::fromWide(n));
+        }
+        json line{{"id", ids[i]}, {"bytes64", shares[i].bytes64}, {"bytes32", shares[i].bytes32}, {"names64", names64},
+                  {"names32", names32}};
+        print(utf8::toWide(line.dump()) + L"\n");
+    }
+    print(std::format(L"{{\"indexMs\": {}}}\n", ms));
+    return 0;
+}
+
+int cmdInventory(const std::wstring& dir, bool asJson) {
+    // D-112: the image's drivers, languages, keyboards, fonts and system apps (the reference tool's dynamic rows).
+    auto inventory = core::readImageInventory(dir);
+    if (!inventory) {
+        return reportError(inventory.error());
+    }
+    std::size_t devices = 0;
+    for (const auto& d : inventory->drivers) {
+        devices += d.devices.size();
+    }
+    if (asJson) {
+        json out;
+        json drivers = json::array();
+        for (const auto& d : inventory->drivers) {
+            json names = json::array();
+            for (const auto& name : d.devices) {
+                names.push_back(narrow(name));
+            }
+            drivers.push_back({{"package", narrow(d.package)}, {"inf", narrow(d.inf)}, {"class", narrow(d.className)},
+                               {"classGuid", narrow(d.classGuid)}, {"provider", narrow(d.provider)}, {"version", narrow(d.version)},
+                               {"date", narrow(d.date)}, {"size", d.size}, {"classInf", d.classInf}, {"devices", std::move(names)}});
+        }
+        out["drivers"] = std::move(drivers);
+        json languages = json::array();
+        for (const auto& l : inventory->languages) {
+            json paths = json::array();
+            for (const auto& path : l.paths) {
+                paths.push_back(narrow(path));
+            }
+            languages.push_back({{"tag", narrow(l.tag)}, {"name", narrow(l.name)}, {"size", l.size}, {"paths", std::move(paths)}});
+        }
+        out["languages"] = std::move(languages);
+        json keyboards = json::array();
+        for (const auto& k : inventory->keyboards) {
+            keyboards.push_back({{"klid", narrow(k.klid)}, {"name", narrow(k.name)}, {"file", narrow(k.file)}, {"shared", k.sharedFile}});
+        }
+        out["keyboards"] = std::move(keyboards);
+        json fonts = json::array();
+        for (const auto& f : inventory->fonts) {
+            json values = json::array();
+            for (const auto& v : f.values) {
+                values.push_back(narrow(v));
+            }
+            json files = json::array();
+            for (const auto& v : f.files) {
+                files.push_back(narrow(v));
+            }
+            fonts.push_back({{"family", narrow(f.family)}, {"values", std::move(values)}, {"files", std::move(files)}, {"size", f.size}});
+        }
+        out["fonts"] = std::move(fonts);
+        json raw = json::array();
+        for (const auto& [name, file] : inventory->fontValues) {
+            raw.push_back({{"value", narrow(name)}, {"file", narrow(file)}});
+        }
+        out["fontValues"] = std::move(raw);
+        json apps = json::array();
+        for (const auto& a : inventory->systemApps) {
+            apps.push_back({{"name", narrow(a.name)}, {"family", narrow(a.family)}, {"fullName", narrow(a.fullName)},
+                            {"displayName", narrow(a.displayName)},
+                            {"folder", narrow(a.folder)}, {"size", a.size}});
+        }
+        out["systemApps"] = std::move(apps);
+        printJson(out);
+        return 0;
+    }
+    print(std::format(L"drivers {} (devices {}), languages {}, keyboards {}, fonts {}, system apps {}\n",
+                      inventory->drivers.size(), devices, inventory->languages.size(), inventory->keyboards.size(),
+                      inventory->fonts.size(), inventory->systemApps.size()));
+    return 0;
+}
+
 int cmdServicing(const std::wstring& what, const std::wstring& dir, bool asJson) {
     auto session = openImageSession(dir);
     if (!session) {
@@ -526,9 +702,42 @@ int cmdPlan(const std::wstring& changeSetPath) {
     return 0;
 }
 
+// D-120: the guards of a compat.json that are on for a new user (its "default"), as the app holds
+// them. The kept apps' own runtimes need the app list, which the CLI does not read.
+Result<std::vector<core::ops::CompatGuard>> defaultGuards(const std::wstring& compatFile) {
+    const auto text = readFileBytes(compatFile);
+    if (!text) {
+        return std::unexpected(text.error());
+    }
+    const auto doc = json::parse(*text, nullptr, /*allow_exceptions=*/false);
+    if (doc.is_discarded() || !doc.is_object() || doc.value("format", "") != "winlove.catalog.compat") {
+        return fail(ErrorCode::InvalidArgument, L"not a compat.json", compatFile);
+    }
+    const auto list = [](const json& entry, const char* key) {
+        std::vector<std::wstring> out;
+        if (const auto it = entry.find(key); it != entry.end() && it->is_array()) {
+            for (const auto& v : *it) {
+                if (v.is_string()) {
+                    out.push_back(utf8::toWide(v.get<std::string>()));
+                }
+            }
+        }
+        return out;
+    };
+    std::vector<core::ops::CompatGuard> out;
+    for (const auto& entry : doc.value("guards", json::array())) {
+        const bool always = entry.is_object() && entry.value("always", false); // D-121: "core"
+        if (entry.is_object() && (always || entry.value("default", false))) {
+            out.push_back({utf8::toWide(entry.value("id", "")), list(entry, "appx"), list(entry, "components"),
+                           list(entry, "services"), list(entry, "capabilities"), always});
+        }
+    }
+    return out;
+}
+
 int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bool commit, bool commitWithFailures,
              const std::wstring& source, const std::wstring& also, const std::wstring& wim, const std::wstring& setupFolder,
-             bool pause) {
+             bool pause, const std::wstring& compatFile, bool updateGuard) {
     if (!also.empty() && (!commit || wim.empty())) {
         // Silently skipped before: the further editions are applied after a commit, from that WIM.
         return reportError(Error{ErrorCode::InvalidArgument, L"--also needs --commit and --wim=<file>", also});
@@ -536,6 +745,26 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
     auto set = loadChangeSet(changeSetPath);
     if (!set) {
         return reportError(set.error());
+    }
+    if (!compatFile.empty()) {
+        // D-120: what the app's guards keep out of the queue, the CLI leaves out too.
+        auto guards = defaultGuards(compatFile);
+        if (!guards) {
+            return reportError(guards.error());
+        }
+        const auto conflicts = core::ops::compatConflicts(*set, *guards, {});
+        std::vector<std::pair<core::ops::OpKind, std::wstring>> slots;
+        for (const auto& conflict : conflicts) {
+            std::wstring by;
+            for (const auto& id : conflict.block.guards) {
+                by += (by.empty() ? L"" : L", ") + id;
+            }
+            print(std::format(L"  kept by a guard ({}): {} {}\n", by, utf8::toWide(core::ops::opKindKey(conflict.op.kind)),
+                              conflict.op.target));
+            slots.emplace_back(conflict.op.kind, conflict.op.target);
+        }
+        set->removeAll(slots);
+        print(std::format(L"  compatibility guards: {} on, {} step(s) left out\n", guards->size(), slots.size()));
     }
     auto d = dism();
     if (!d) {
@@ -545,6 +774,7 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
     const auto p = core::ops::plan(*set);
     core::ops::ApplyJobOptions options;
     options.commitAndUnmount = commit;
+    options.apply.updateGuard = updateGuard; // D-125
     options.commitWithFailures = commitWithFailures; // else a failed step keeps the image mounted, unsaved
     options.setupFolder = setupFolder; // D-062: <folder>\sources\lang.ini follows the languages
     if (!source.empty()) {
@@ -719,8 +949,9 @@ int cmdComponent(const std::wstring& dir, const std::wstring& recipeFile, bool r
                                                                     std::chrono::steady_clock::now() - started).count()));
     }
     const auto presence = core::probeComponent(dir, *recipe, store ? &*store : nullptr);
-    print(std::format(L"{}: {}, {} bytes ({} path(s), {} package famil(ies))\n", recipe->title,
-                      presence.present ? L"present" : L"not found", presence.size, recipe->paths.size(), recipe->packages.size()));
+    print(std::format(L"{}: {}, {} bytes ({} path(s), {} package famil(ies), {} store name(s), {} service(s))\n", recipe->title,
+                      presence.present ? L"present" : L"not found", presence.size, recipe->paths.size(), recipe->packages.size(),
+                      recipe->storeNames.size(), recipe->services.size()));
     if (!recipe->packages.empty()) {
         auto all = core::readCbsPackages(std::filesystem::path(dir));
         if (!all) {
@@ -2942,6 +3173,7 @@ void printUsage() {
           L"  wlcli boot-patch <boot.wim> <mountdir> [--bypass=tpm,secureboot,ram,cpu,storage|all] [--driver=<inf>]...\n"
           L"                                      [--legacy-setup] [--lcu=<msu> --setup-files=<dir>]   (Setup's image: LabConfig, drivers, previous Setup, D-080 update; mounts, commits)\n"
           L"  wlcli optional-features <mountdir>   (features + capabilities with names, as on P04)\n"
+          L"  wlcli inventory <mountdir>           (D-112: drivers + devices, languages, keyboards, fonts, system apps)\n"
           L"  wlcli programs-download <dest folder> <winget-id> [<name>]   (D-104: winget download for offline install)\n"
           L"  wlcli health <mountdir> [check|scan|restore]   (component-store health; exit 2 if repairable/non-repairable)\n"
           L"                                      restore: [--source=<WIM:file:1|ESD:file:1|\\Windows path>] [--limit-access]\n"
@@ -2949,6 +3181,8 @@ void printUsage() {
           L"                                      (--commit holds the image mounted, unsaved, when a step failed)\n"
           L"                                      [--also=2,3 --wim=<file>] [--setup=<setup folder>]   (with --commit: then the same on further editions)\n"
           L"                                      [--pause]   (D-106: before each save, wait for a line on stdin; \"keep\" leaves it mounted)\n"
+          L"                                      [--compat=<compat.json>]   (D-120: leave out what its default guards keep, as the app does)\n"
+          L"                                      [--update-guard]   (D-125: a task keeps what ran when Windows Update puts it back)\n"
           L"\n  Change sets (no admin):\n"
           L"  wlcli plan <changeset.json>              Show the ordered apply plan\n"
           L"  wlcli extract-all <iso> <dir>             Copy the whole ISO into a folder (resumable)\n"
@@ -2980,6 +3214,7 @@ int wmain(int argc, wchar_t** argv) {
     int commit = -1;
     bool commitWithFailures = false;
     bool pause = false;
+    bool updateGuard = false; // D-125: apply --update-guard
     std::wstring compress;
     std::vector<std::filesystem::path> references;
     std::wstring source;
@@ -3040,6 +3275,7 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring partList;
     std::wstring packagesOf;
     std::wstring setupFolder;
+    std::wstring compatFile; // D-120: apply --compat=<compat.json>
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
@@ -3078,6 +3314,8 @@ int wmain(int argc, wchar_t** argv) {
             partList = std::wstring(a.substr(8));
         } else if (a.starts_with(L"--setup=")) {
             setupFolder = std::wstring(a.substr(8));
+        } else if (a.starts_with(L"--compat=")) {
+            compatFile = std::wstring(a.substr(9));
         } else if (a.starts_with(L"--packages-of=")) {
             packagesOf = std::wstring(a.substr(14));
         } else if (a.starts_with(L"--kb=")) {
@@ -3165,6 +3403,8 @@ int wmain(int argc, wchar_t** argv) {
             commitWithFailures = true;
         } else if (a == L"--pause") {
             pause = true;
+        } else if (a == L"--update-guard") {
+            updateGuard = true;
         } else if (a == L"--discard") {
             commit = 0;
         } else if (a.starts_with(L"--out=")) {
@@ -3195,6 +3435,15 @@ int wmain(int argc, wchar_t** argv) {
     if (command == L"version") {
         print(L"" WL_VERSION_STRING L"\n");
         return 0;
+    }
+    if (command == L"inventory-recipe" && args.size() == 3) {
+        return cmdInventoryRecipe(args[1], args[2]);
+    }
+    if (command == L"store-share" && args.size() == 3) {
+        return cmdStoreShare(args[1], args[2]);
+    }
+    if (command == L"inventory" && args.size() == 2) {
+        return cmdInventory(args[1], asJson);
     }
     if (command == L"info" && args.size() == 2) {
         return cmdInfo(args[1], asJson);
@@ -3257,7 +3506,8 @@ int wmain(int argc, wchar_t** argv) {
         return cmdPlan(args[1]);
     }
     if (command == L"apply" && args.size() == 3) {
-        return cmdApply(args[1], args[2], commit == 1, commitWithFailures, source, alsoEditions, wimPath, setupFolder, pause);
+        return cmdApply(args[1], args[2], commit == 1, commitWithFailures, source, alsoEditions, wimPath, setupFolder, pause,
+                        compatFile, updateGuard);
     }
     if (command == L"mounts") {
         return cmdMounts(asJson);

@@ -173,3 +173,20 @@ TEST_CASE("update catalog: download dialog files, SHA-256 and trusted hosts") {
 
     CHECK(urlEncode(R"([{"a":"b c"}])") == "%5B%7B%22a%22%3A%22b%20c%22%7D%5D");
 }
+
+// ---- D-114: what Windows Update itself offers (FE3) ------------------------------------------------
+#include "core/updates/WuDiscovery.h"
+
+TEST_CASE("windows update discovery: branch names and the package KBs of a sync answer") {
+    CHECK(core::wuBranch(26200) == L"ge_release");
+    CHECK(core::wuBranch(22631) == L"ni_release");
+    CHECK(core::wuBranch(19045) == L"vb_release");
+    CHECK(core::wuBranch(12345).empty());
+    // As FE3 lists them: escaped inside XML fragments, the same file more than once, other names around.
+    const std::string reply =
+        R"(<Xml>&lt;File FileName="Windows11.0-KB5127648-x64.msu" Size="4775021568"/&gt;&lt;File FileName="SSU-26100.9703-x64-express.cab"/&gt;)"
+        R"(&lt;File FileName="windows11.0-kb5043080-x64.msu"/&gt;&lt;File FileName="Windows11.0-KB5127690-x64-NDP481.cab"/&gt;)"
+        R"(&lt;File FileName="Windows11.0-KB5127648-x64.msu"/&gt; KB5000000 in a title (KB1234567) &lt;File FileName="DesktopDeployment.cab"/&gt;</Xml>)";
+    CHECK(core::wuPackageKbs(reply) == std::vector<std::wstring>{L"KB5127648", L"KB5043080", L"KB5127690"});
+    CHECK(core::wuPackageKbs("").empty());
+}

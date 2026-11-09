@@ -66,7 +66,8 @@ TEST_CASE("every generated icon parses") {
 
 TEST_CASE("bundled fonts resolve by typographic family") {
     const auto& fonts = *graphics().fonts;
-    const ui::FontFamilies families; // D-092: Inter + JetBrains Mono by default
+    // D-092: Inter + JetBrains Mono are bundled (D-107 made the system's Segoe UI Variable the default).
+    const ui::FontFamilies families{L"Inter", L"Segoe UI", L"JetBrains Mono", L"Cascadia Mono"};
     CHECK(fonts.hasFamily(families.ui));
     CHECK(fonts.hasFamily(families.mono));
     // Medium (500) must not fall back to a synthesized bold of Regular.
@@ -108,7 +109,7 @@ TEST_CASE("canvas: token colors and 1px hairlines are pixel exact at 150%") {
     const UINT w = t.widthPx();
     CHECK(w == 60);
     CHECK(pixel(*pixels, w, 5, 5) == colorArgb(ThemeKind::Dark, tokens::Color::BgPanel)); // y 0..15 px
-    CHECK(pixel(*pixels, w, 5, 15) == 0xFFD4905Au);  // hairline: exactly one physical row at y=15
+    CHECK(pixel(*pixels, w, 5, 15) == colorArgb(ThemeKind::Dark, tokens::Color::AccentBase)); // hairline: one physical row at y=15
     CHECK(pixel(*pixels, w, 5, 14) == colorArgb(ThemeKind::Dark, tokens::Color::BgPanel));
     CHECK(pixel(*pixels, w, 5, 16) == colorArgb(ThemeKind::Dark, tokens::Color::BgBase)); // below
 }

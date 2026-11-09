@@ -5,6 +5,7 @@
 // checked (present, signed by Microsoft), and when this PC's DISM is missing a part, the Windows
 // ADK's copy is used if it is installed — Microsoft's own way to service images from a host whose
 // DISM will not do. wimgapi picks its copy per file (WimGapi.h). D-081.
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -27,6 +28,13 @@ struct DismLocation {
 [[nodiscard]] const DismLocation& dismLocation();
 // wlcli --dism=adk: the ADK's DISM even on a sound PC (to prove it works). Before the first DISM call.
 void forceAdkDism();
+// D-123 (Ayarlar › DISM motoru, the reference tool's "DISM"): Auto as above; Host: this PC's even when a part is
+// missing; Adk: the ADK's whenever it is installed. Before the first DISM call (read once).
+enum class DismEngine : std::uint8_t { Auto, Host, Adk };
+void setDismEngine(DismEngine engine);
+// The file versions the choice shows ("10.0.26100.9549"); empty when not there.
+[[nodiscard]] std::wstring hostDismVersion();
+[[nodiscard]] std::wstring adkDismVersion();
 
 struct HostDismReport {
     struct Problem {

@@ -15,19 +15,20 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
+// D-107 / D-108: 13px names over 12px details, 42 per result, 32 per command.
 constexpr float kWidth = 560.0f;
-constexpr float kTop = 120.0f;
+constexpr float kTop = 80.0f;
 constexpr float kMargin = 8.0f;       // to the window edges when it is small
-constexpr float kSearchRow = 40.0f;
+constexpr float kSearchRow = 34.0f; // D-109
 constexpr float kGroupPad = 8.0f;     // above the group title and under the last row
-constexpr float kHeader = 24.0f;
-constexpr float kResultRow = 32.0f;
-constexpr float kCommandRow = 24.0f;
+constexpr float kHeader = 26.0f;
+constexpr float kResultRow = 36.0f; // D-109: the name over its detail (18 + 16)
+constexpr float kCommandRow = 24.0f; // D-109
 constexpr float kSide = 16.0f;
 constexpr float kTextX = 40.0f;       // icon 16 + gap 8 after the side padding
 constexpr float kRowInset = 4.0f;     // the selected row's background
-constexpr float kNameLine = 16.0f;
-constexpr float kDetailLine = 14.0f;
+constexpr float kNameLine = 18.0f;
+constexpr float kDetailLine = 16.0f;
 constexpr float kEmpty = 72.0f;
 constexpr float kKeysGap = 8.0f;
 } // namespace
@@ -152,10 +153,10 @@ int CommandPalette::rowAt(ui::PointF p) const {
 void CommandPalette::paintRow(ui::Canvas& canvas, const PaletteItem& item, RectF row, bool selected) const {
     const bool result = item.kind != PaletteItem::Kind::Command;
     if (selected) {
-        canvas.fillRoundRect({row.x + kRowInset, row.y, row.width - 2 * kRowInset, row.height}, ui::tokens::radius::r2,
+        canvas.fillRoundRect({row.x + kRowInset, row.y, row.width - 2 * kRowInset, row.height}, ui::tokens::radius::menu,
                              Color::BgRaised);
     }
-    canvas.drawIcon(item.icon, {row.x + kSide, row.y + (result ? 8.0f : 4.0f)}, Color::TextSecondary);
+    canvas.drawIcon(item.icon, {row.x + kSide, row.y + (row.height - ui::tokens::size::icon) / 2}, Color::TextSecondary);
 
     // The keycap: ↵ on the selected result, the shortcut on a command.
     float right = row.right() - kSide;
@@ -168,7 +169,7 @@ void CommandPalette::paintRow(ui::Canvas& canvas, const PaletteItem& item, RectF
     const float x = row.x + kTextX;
     const float width = std::max(right - x, 0.0f);
     const TypeStyle style = selected ? TypeStyle::BodyStrong : TypeStyle::Body;
-    const RectF name = result ? RectF{x, row.y + 3, width, kNameLine}
+    const RectF name = result ? RectF{x, row.y + 4, width, kNameLine}
                               : RectF{x, row.y + (row.height - kNameLine) / 2, width, kNameLine};
     if (item.markLength > 0 && item.markAt + item.markLength <= item.name.size()) {
         const std::wstring_view text = item.name;
@@ -180,7 +181,7 @@ void CommandPalette::paintRow(ui::Canvas& canvas, const PaletteItem& item, RectF
     }
     canvas.drawText(item.name, name, style, Color::TextPrimary);
     if (result) {
-        canvas.drawText(item.detail, {x, row.y + 17, width, kDetailLine}, TypeStyle::Caption, Color::TextTertiary);
+        canvas.drawText(item.detail, {x, row.y + 4 + kNameLine, width, kDetailLine}, TypeStyle::Caption, Color::TextTertiary);
     }
 }
 

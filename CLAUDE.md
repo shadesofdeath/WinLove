@@ -13,8 +13,17 @@ WinLove, referans araç seviyesinde bir **Windows imaj özelleştirme aracı**d�
 ## Altın kurallar (asla çiğneme)
 1. **Bir sayfa bitmeden diğerine geçilmez.** Sıra ve durum `docs/ROADMAP.md`'de. Bitmiş sayılması için `docs/WORKFLOW.md` → "Bitti Tanımı"nın tamamı karşılanmalı **ve kullanıcı onaylamalı**.
 2. **Katman sınırları:** `base` ← `core` / `ui` ← `app`. `core` UI bilmez; `ui` Windows imajı bilmez; `app` ikisini birleştirir. `tools/check_layers.py` her build'de denetler. (`docs/ARCHITECTURE.md`)
-3. **Tasarımın tek kaynağı `WinLove-UI-Handoff/`** (salt okunur). Renk/ölçü/font kodda sabit yazılmaz; `ui/generated/Tokens.g.h` üzerinden gelir. UI metni kodda sabit yazılmaz; `resources/strings/{tr,en}.json` (yaşayan kaynak, yeni anahtarlar buraya) → `Str::` enum. `src/*/generated/` elle düzenlenmez. Tasarımdan sapma gerekirse `docs/DECISIONS.md`'ye yazılır.
-4. **Tasarım dili:** Fluent/WinUI/Mica görünümü yok; minimalist, kompakt (24px kontrol/satır, 12px metin, 2–4px radius). Büyük öğe ekleme.
+3. **Tasarımın kaynağı referans aracın ölçülen görünümü** (D-109): değerler `design/tokens.json` 3.0.0'da (renk, yazı, ölçü);
+   referans ekran görüntüleri `C:\Users\shades\Desktop\research\analysis\evidence\screens\design\` (repoya girmez),
+   referans aracın davranış kanıtları `research\README.md` + `docs/`. `design/WinLoveUI/` ve `WinLove-UI-Handoff/` salt okunur
+   (yalnız ikonlar / marka). Renk/ölçü/font kodda sabit yazılmaz; `ui/generated/Tokens.g.h` üzerinden gelir. UI metni kodda
+   sabit yazılmaz; `resources/strings/{tr,en}.json` → `Str::` enum. `src/*/generated/` elle düzenlenmez. Sapma `docs/DECISIONS.md`'ye yazılır.
+4. **Tasarım dili (D-109, referans araç birebir):** her yerde Segoe UI 12; koyu `#202020` sayfa / `#262626` şerit ve gezinti /
+   `#2B2B2B` kart, açık `#EEEEEE` / `#F5F5F5` / `#FBFBFB`; vurgu Windows'unki (`#4CC2FF` koyu, `#0067C0` açık). Tablo satırı
+   23,5, kontrol 24, gezinti öğesi 28. İskelet: başlık çubuğu (≡ · Görüntü / Ön Ayar / Araçlar · başlık) → şerit (sayfa
+   eylemleri, `ButtonKind::Ribbon`) → ipucu satırı → solda gezinti kartı (Başlat · Entegre et · Kaldır · Yapılandır · Bitir)
+   | sekme başlıklı sayfa kartı | (yan kart) → durum çubuğu. Satır arası çizgi, iri öğe, büyük harf başlık yok.
+   Sayfaların davranışı da referans aracınki gibi olmalı (kullanıcı isteği, 2026-11-07).
 5. **İmaj güvenliği:** Test ISO'sunun orijinaline asla yazılmaz. Tüm işlemler repo içindeki `build\lab\` altında kopyalar üzerinde yapılır; kullanıcının diskinde (ör. `C:\` kökünde) klasör açılmaz, kullanıcının son kullanılanlar listesi test yollarıyla kirletilmez. Bir oturumda mount edilen her imaj oturum sonunda unmount edilir (`wlcli cleanup`). (`docs/TESTING.md`)
 6. **Önce motor, sonra UI:** Bir özelliğin motoru `wlcli` üzerinden gerçek imajda çalıştığı kanıtlanmadan UI'ı yazılmaz.
 7. **Oturum sonu protokolü:** `docs/STATUS.md` güncellenir (ne yapıldı, ne kaldı, bir sonraki somut adım, bilinen sorunlar). Öğrenilen DISM/WIM tuhaflıkları `docs/ENGINE.md` → "Saha notları"na eklenir.
@@ -27,7 +36,8 @@ WinLover/
 ├─ CLAUDE.md                 ← buradasın
 ├─ docs/                     ← plan, mimari, iş akışı, durum (Türkçe)
 │  └─ pages/                 ← her sayfanın spec + kabul kriterleri
-├─ WinLove-UI-Handoff/       ← tasarım paketi (SALT OKUNUR, tek kaynak)
+├─ design/                   ← tasarım kaynağı (D-107): WinLoveUI/ paketi (SALT OKUNUR) + tokens.json
+├─ WinLove-UI-Handoff/       ← eski tasarım paketi: yalnız ikonlar + marka (SALT OKUNUR)
 ├─ src/
 │  ├─ base/                  ← wl — Result/Error, UTF-8 (core ve ui'ın ortak tek bağımlılığı)
 │  ├─ core/                  ← wl::core — imaj motoru, işlemler, log, görevler (UI yok)
@@ -53,7 +63,7 @@ WinLover/
 python tools/build_brand.py    # handoff'tan logo/ico yeniden üret (nadiren)
 build/x64-debug/bin/WinLove.exe --render=shot.png --page=images --theme=light --scale=1.5 --lang=en   # pencere açmadan PNG
    #   durum simülasyonu: --hover-at=x,y --press-at=x,y --tooltip-at=x,y --tab=N --nav-collapsed --maximized  (tam liste: src/app/App.h)
-python tools/compare_design.py 01-welcome-source --theme=dark --crop=0,0,1440,40   # tasarım | WinLove | fark → build/visual/
+python tools/compare_design.py 01-welcome-source --theme=dark --crop=0,0,1440,40   # (eski handoff ekranlarıyla; D-107 sonrası ölçüt design/WinLoveUI/docs/LAYOUT.md)
 python tools/capture_window.py out.png [--maximized] [-- --theme=light]              # gerçek pencereyi aç, YALNIZCA onu yakala, kapat
 build/x64-debug/bin/wlcli.exe help                                                         # motor testi (komutlar Faz 2'de)
 ```

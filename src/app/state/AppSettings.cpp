@@ -59,15 +59,15 @@ AppSettings AppSettings::load(const std::filesystem::path& file) {
     }
     const std::string theme = text("theme");
     settings.theme = theme == "light"    ? ThemeChoice::Light
-                     : theme == "hc"     ? ThemeChoice::HighContrast
+                     : theme == "black" || theme == "hc" ? ThemeChoice::Black
                      : theme == "system" ? ThemeChoice::System
                                          : ThemeChoice::Dark;
     const std::string accent = text("accent");
     settings.accent = accent == "sea"           ? ui::Accent::Sea
                       : accent == "pomegranate" ? ui::Accent::Pomegranate
-                      : accent == "sky"         ? ui::Accent::Sky
+                      : accent == "copper"      ? ui::Accent::Copper
                       : accent == "olive"       ? ui::Accent::Olive
-                                                : ui::Accent::Copper;
+                                                : ui::Accent::Blue; // "blue"; "sky" of before D-107
     settings.language = text("language") == "en" ? Language::English : Language::Turkish;
     if (const auto it = doc.find("reduceMotion"); it != doc.end() && it->is_boolean()) {
         settings.reduceMotion = it->get<bool>();
@@ -75,8 +75,25 @@ AppSettings AppSettings::load(const std::filesystem::path& file) {
     if (const auto it = doc.find("pauseBeforeSave"); it != doc.end() && it->is_boolean()) {
         settings.pauseBeforeSave = it->get<bool>();
     }
+    const std::string dism = text("dismEngine");
+    settings.dismEngine = dism == "host" ? DismEngineChoice::Host : dism == "adk" ? DismEngineChoice::Adk : DismEngineChoice::Auto;
+    if (const auto it = doc.find("esdThreads"); it != doc.end() && it->is_number_integer()) {
+        settings.esdThreads = std::clamp(it->get<int>(), 0, 256);
+    }
+    if (const auto it = doc.find("presetInIso"); it != doc.end() && it->is_boolean()) {
+        settings.presetInIso = it->get<bool>();
+    }
+    if (const auto it = doc.find("updateGuard"); it != doc.end() && it->is_boolean()) {
+        settings.updateGuard = it->get<bool>();
+    }
     const std::string font = text("font");
-    settings.font = font == "geist" ? UiFont::Geist : font == "segoe" ? UiFont::SegoeVariable : UiFont::Inter;
+    settings.font = font == "geist" ? UiFont::Geist : font == "inter" ? UiFont::Inter : UiFont::SegoeVariable;
+    // D-107: settings written before the WinLoveUI design ("design" < 2) take its accent and type
+    // family once; what is chosen afterwards stays.
+    if (const auto it = doc.find("design"); it == doc.end() || !it->is_number_integer() || it->get<int>() < 2) {
+        settings.accent = ui::Accent::Blue;
+        settings.font = UiFont::SegoeVariable;
+    }
     const std::string density = text("density");
     settings.density = density == "large"         ? Density::Large
                        : density == "comfortable" ? Density::Comfortable
@@ -113,18 +130,28 @@ AppSettings AppSettings::load(const std::filesystem::path& file) {
         }
         settings.guards = std::move(guards);
     }
+    if (const auto it = doc.find("guardsSeen"); it != doc.end() && it->is_array()) {
+        std::vector<std::wstring> seen;
+        for (const auto& id : *it) {
+            if (id.is_string() && !id.get<std::string>().empty()) {
+                seen.push_back(utf8::toWide(id.get<std::string>()));
+            }
+        }
+        settings.guardsSeen = std::move(seen);
+    }
     return settings;
 }
 
 void AppSettings::save(const std::filesystem::path& file) const {
     std::error_code ec;
     std::filesystem::create_directories(file.parent_path(), ec);
-    static constexpr const char* kThemes[] = {"dark", "light", "hc", "system"};
-    static constexpr const char* kAccents[] = {"copper", "sea", "pomegranate", "sky", "olive"};
+    static constexpr const char* kThemes[] = {"dark", "light", "black", "system"};
+    static constexpr const char* kAccents[] = {"blue", "copper", "sea", "pomegranate", "olive"};
     static constexpr const char* kDensities[] = {"compact", "comfortable", "large"};
     static constexpr const char* kFonts[] = {"inter", "geist", "segoe"};
     // Through a temporary file: a crash mid-write must not reset every setting to its default.
     nlohmann::json doc{{"version", 1},
+                       {"design", 2}, // D-107
                        {"theme", kThemes[static_cast<std::size_t>(theme)]},
                        {"accent", kAccents[static_cast<std::size_t>(accent)]},
                        {"reduceMotion", reduceMotion},
@@ -135,7 +162,13 @@ void AppSettings::save(const std::filesystem::path& file) const {
                        {"workRoot", utf8::fromWide(workRoot.wstring())},
                        {"mountFolder", utf8::fromWide(mountFolder.wstring())},
                        {"isoFolder", utf8::fromWide(isoFolder.wstring())},
-                       {"pauseBeforeSave", pauseBeforeSave}};
+                       {"pauseBeforeSave", pauseBeforeSave},
+                       {"dismEngine", dismEngine == DismEngineChoice::Host  ? "host"
+                                      : dismEngine == DismEngineChoice::Adk ? "adk"
+                                                                            : "auto"},
+                       {"esdThreads", esdThreads},
+                       {"presetInIso", presetInIso},
+                       {"updateGuard", updateGuard}};
     {
         const auto& w = windowsDownload;
         auto& out = doc["windowsDownload"] = nlohmann::json{{"updates", w.updates}, {"edge", w.edge}, {"apps", w.apps},
@@ -148,6 +181,12 @@ void AppSettings::save(const std::filesystem::path& file) const {
     if (guards) {
         auto& list = doc["guards"] = nlohmann::json::array();
         for (const auto& id : *guards) {
+            list.push_back(utf8::fromWide(id));
+        }
+    }
+    if (guardsSeen) {
+        auto& list = doc["guardsSeen"] = nlohmann::json::array();
+        for (const auto& id : *guardsSeen) {
             list.push_back(utf8::fromWide(id));
         }
     }

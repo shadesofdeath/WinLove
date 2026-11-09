@@ -23,7 +23,7 @@ public:
         State state = State::None;
     };
     static constexpr float kCard = 44.0f;
-    static constexpr float kGap = 8.0f;
+    static constexpr float kGap = 10.0f;
     static constexpr float kMinWidth = 148.0f;
 
     BundleStrip();

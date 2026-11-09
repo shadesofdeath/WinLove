@@ -1,4 +1,5 @@
 #include "core/updates/UpdateCatalog.h"
+#include "core/updates/WuDiscovery.h"
 
 #include "base/Encoding.h"
 #include "base/Log.h"
@@ -361,7 +362,49 @@ Result<std::vector<CatalogOffer>> findCatalogUpdates(const CatalogTarget& target
         log::info("updates", std::format(L"catalog search \"{}\": {} entries", query, found.size()));
         entries.insert(entries.end(), std::make_move_iterator(found.begin()), std::make_move_iterator(found.end()));
     }
-    return pickCatalogOffers(entries, target);
+    auto offers = pickCatalogOffers(entries, target);
+
+    // D-114: what Windows Update itself offers this build (FE3): every KB it lists is looked up in
+    // the catalog by number — the preview and .NET updates, the Safe OS and Setup dynamic updates —
+    // and offered next to the newest ones above (files and SHA-256 still from the catalog).
+    WuQuery wu;
+    wu.build = target.build;
+    wu.architecture = target.architecture == L"arm64" ? L"arm64" : target.architecture == L"x86" ? L"x86" : L"amd64";
+    auto kbs = discoverWindowsUpdateKbs(wu, cancel);
+    if (!kbs) {
+        log::warn("updates", L"Windows Update not asked: " + describe(kbs.error()));
+        return offers;
+    }
+    for (const auto& kb : *kbs) {
+        if (std::ranges::any_of(offers, [&](const CatalogOffer& o) { return _wcsicmp(o.entry.kb.c_str(), kb.c_str()) == 0; })) {
+            continue;
+        }
+        if (auto go = cancel.check(); !go) {
+            return std::unexpected(go.error());
+        }
+        const std::wstring url = std::wstring(kSearchUrl) + utf8::toWide(urlEncode(utf8::fromWide(kb)));
+        auto page = httpGet(url, cancel);
+        if (!page || page->status != 200) {
+            continue;
+        }
+        for (auto& entry : parseCatalogSearch(page->body)) {
+            if (_wcsicmp(entry.kb.c_str(), kb.c_str()) != 0 || !matchesTarget(entry, target) ||
+                std::ranges::any_of(offers, [&](const CatalogOffer& o) { return o.entry.id == entry.id; })) {
+                continue;
+            }
+            CatalogOffer offer;
+            offer.olderThanImage = entry.build == target.build && entry.revision > 0 && entry.revision <= target.revision;
+            // Only the newest of a kind is recommended: an older one Windows Update still lists is offered, not ticked.
+            const bool newerOfKind = std::ranges::any_of(offers, [&](const CatalogOffer& o) {
+                return o.recommended && o.entry.kind == entry.kind && o.entry.dateKey() >= entry.dateKey();
+            });
+            offer.recommended = !entry.preview && !offer.olderThanImage && !newerOfKind;
+            offer.entry = std::move(entry);
+            log::info("updates", L"from Windows Update: " + offer.entry.title);
+            offers.push_back(std::move(offer));
+        }
+    }
+    return offers;
 }
 
 Result<std::vector<CatalogFile>> catalogFiles(std::wstring_view updateId, const CancelToken& cancel) {

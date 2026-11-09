@@ -20,6 +20,13 @@ struct DriverInf {
     std::wstring catalog;     // "netwtw10.cat"
     std::vector<std::wstring> architectures; // "amd64", "arm64", "x86" (empty: not decorated = any)
     std::uint64_t size = 0;   // share of its folder (folder size / INFs in it)
+    // D-112: the device names of its [Models] sections (every decoration), %strings% resolved,
+    // each once, in file order — the reference tool lists them under the INF.
+    std::vector<std::wstring> devices;
+    // The same per models section decoration ("ntamd64.10.0", "" undecorated): Windows uses the
+    // sections of its own architecture only.
+    std::vector<std::pair<std::wstring, std::wstring>> models;
+    [[nodiscard]] std::vector<std::wstring> devicesFor(std::wstring_view arch) const; // "amd64" / "arm64" / "x86"
     [[nodiscard]] bool supports(std::wstring_view arch) const; // "x64" / "arm64" / "x86"
 };
 

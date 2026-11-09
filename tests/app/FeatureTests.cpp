@@ -1,5 +1,7 @@
 // P04: toggle → ChangeSet mapping, statuses, reset, and the queue's lifetime (one mounted image).
 #include "app/controllers/FeatureController.h"
+#include "app/pages/FeaturesPage.h"
+#include "core/image/dism/OptionalFeatures.h"
 
 #include <doctest.h>
 
@@ -120,4 +122,37 @@ TEST_CASE("permanent capabilities are read from the package manifests") {
     CHECK(core::permanentCapabilitiesIn(R"(<package permanence="permanent"><capabilityIdentity version="1" /></package>)").empty());
     CHECK(core::permanentCapabilitiesIn(R"(<package permanence="permanent"><capabilityIdentity name="A"/><x/><capabilityIdentity name="B" /></package>)") ==
           std::vector<std::wstring>{L"A", L"B"});
+}
+
+// ---- D-114: the reference tool's Özellikler tree and language groups ------------------------------------------
+
+TEST_CASE("features: the tree the package manifests declare (NetFx4 advanced services)") {
+    // The shape of Microsoft-Windows-NetFx4-US-OC-Package's .mum (25H2).
+    const std::string mum = R"(<?xml version="1.0" encoding="utf-8"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v3"><package>
+  <update name="NetFx4"><mum2:customInformation xmlns:mum2="urn:schemas-microsoft-com:asm.v3">
+    <ServerComponent UniqueName="NET-Framework-45-Core"><Deploys><Update Name="NetFx4"/></Deploys></ServerComponent></mum2:customInformation></update>
+  <update name="NetFx4Extended"><mum2:customInformation xmlns:mum2="urn:schemas-microsoft-com:asm.v3">
+    <ServerComponent UniqueName="NET-Framework-45-Extended" Parent="NET-Framework-45-Core"/></mum2:customInformation></update>
+  <update name="NetFx4-AdvSrvs"><selectable disposition="staged"/></update>
+  <update name="NetFx4Extended-ASPNET45"><mum2:customInformation xmlns:mum2="urn:schemas-microsoft-com:asm.v3">
+    <ServerComponent UniqueName="NET-Framework-45-ASPNET" Parent="NET-Framework-45-Core"/></mum2:customInformation>
+    <applicable disposition="detect"><detectUpdate><update name="NetFx4-AdvSrvs"/></detectUpdate></applicable></update>
+</package></assembly>)";
+    const auto parents = core::featureParentsIn(mum);
+    // detectUpdate wins over the server component's parent; a server parent maps back to its update.
+    CHECK(parents.at(L"NetFx4Extended-ASPNET45") == L"NetFx4-AdvSrvs");
+    CHECK(parents.at(L"NetFx4Extended") == L"NetFx4");
+    CHECK_FALSE(parents.contains(L"NetFx4"));
+    CHECK_FALSE(parents.contains(L"NetFx4-AdvSrvs"));
+    CHECK(core::featureParentsIn("not xml").empty());
+}
+
+TEST_CASE("features: a language capability's language, for the reference tool's per-language groups") {
+    CHECK(FeaturesPage::languageOf(L"Language.Basic~~~tr-TR~0.0.1.0") == L"tr-TR");
+    CHECK(FeaturesPage::languageOf(L"Language.TextToSpeech~~~en-US~0.0.1.0") == L"en-US");
+    CHECK(FeaturesPage::languageOf(L"Language.Fonts.Jpan~~~und-JPAN~0.0.1.0").empty()); // a font, not a language
+    CHECK(FeaturesPage::languageOf(L"OpenSSH.Client~~~~0.0.1.0").empty());
+    CHECK(FeaturesPage::languageTitle(L"tr-TR").ends_with(L" - tr-TR"));
+    CHECK(FeaturesPage::languageTitle(L"xx-NOPE").ends_with(L"xx-NOPE")); // Windows may name an unknown tag itself
 }

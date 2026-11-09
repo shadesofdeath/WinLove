@@ -17,9 +17,9 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kTop = 12.0f;
-constexpr float kSection = 36.0f;
-constexpr float kRow = 32.0f;
+constexpr float kTop = 0.0f;
+constexpr float kSection = 40.0f;
+constexpr float kRow = 24.0f; // D-109: the reference tool density
 constexpr float kLabelWidth = 220.0f;
 constexpr float kFieldWidth = 420.0f;
 constexpr float kStrip = 52.0f;
@@ -122,10 +122,10 @@ LanguagesPage::LanguagesPage(AppState& state, LanguageController& controller, co
     };
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::LanguagesLanguage), 0},
-        {strings.get(Str::LanguagesColState), 210},
-        {strings.get(Str::LanguagesColParts), 300},
-        {strings.get(Str::LanguagesColComponents), 120, ui::TextAlign::Trailing},
-        {strings.get(Str::CommonSize), 96, ui::TextAlign::Trailing},
+        {strings.get(Str::LanguagesColState), 242},
+        {strings.get(Str::LanguagesColParts), 344},
+        {strings.get(Str::LanguagesColComponents), 138, ui::TextAlign::Trailing},
+        {strings.get(Str::CommonSize), 110, ui::TextAlign::Trailing},
     });
     m_table->setAccessible(ui::AccessRole::Group, strings.get(Str::LanguagesList));
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
@@ -362,6 +362,7 @@ void LanguagesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rec
 
 void LanguagesPage::layout() {
     const RectF b = bounds();
+    const float before = m_contentHeight;
     m_empty->setBounds(b);
     float y = b.y + kTop;
     if (m_fetch->visible()) {
@@ -382,6 +383,8 @@ void LanguagesPage::layout() {
         f->setBounds({b.x + kLabelWidth, y + (kRow - ui::tokens::size::control) / 2, kFieldWidth, ui::tokens::size::control});
         y += kRow;
     }
+    m_contentHeight = m_state.mounted() ? y + 12 - b.y : 0.0f;
+    contentChanged(*this, before);
 }
 
 void LanguagesPage::paint(ui::Canvas& canvas) {

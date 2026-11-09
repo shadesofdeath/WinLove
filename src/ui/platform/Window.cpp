@@ -89,6 +89,8 @@ Result<void> Window::create(const wchar_t* title, SizeF initialSize, SizeF minim
     const RECT work = monitor.rcWork;
     const int workW = work.right - work.left;
     const int workH = work.bottom - work.top;
+    // D-114: the whole window, frame and status bar included, stays inside the work area (above the
+    // taskbar) — on a small or zoomed screen 90 % of it, never the asked size beyond it.
     const int width = std::min(static_cast<int>(std::lround(initialSize.width * m_scale)), workW * 9 / 10);
     const int height = std::min(static_cast<int>(std::lround(initialSize.height * m_scale)), workH * 9 / 10);
     SetWindowPos(m_hwnd, nullptr, work.left + (workW - width) / 2, work.top + (workH - height) / 2, width, height,
@@ -114,8 +116,8 @@ void Window::setZoom(float zoom) {
     InvalidateRect(m_hwnd, nullptr, FALSE);
 }
 
-void Window::show() {
-    ShowWindow(m_hwnd, SW_SHOWNORMAL);
+void Window::show(bool maximized) {
+    ShowWindow(m_hwnd, maximized ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL);
     UpdateWindow(m_hwnd);
 }
 
@@ -332,6 +334,15 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         const int sideFrames = 2 * frameThicknessPx();
         info->ptMinTrackSize.x = static_cast<LONG>(std::lround(m_minimum.width * scale)) + sideFrames;
         info->ptMinTrackSize.y = static_cast<LONG>(std::lround(m_minimum.height * scale)) + sideFrames / 2;
+        // D-114: a minimum larger than the work area pushed the bottom (the status bar) under the
+        // taskbar on small or zoomed screens: never ask for more than the monitor's work area.
+        MONITORINFO monitor{sizeof(monitor)};
+        if (GetMonitorInfoW(MonitorFromWindow(m_hwnd, MONITOR_DEFAULTTONEAREST), &monitor)) {
+            const LONG workW = monitor.rcWork.right - monitor.rcWork.left;
+            const LONG workH = monitor.rcWork.bottom - monitor.rcWork.top;
+            info->ptMinTrackSize.x = std::min(info->ptMinTrackSize.x, workW);
+            info->ptMinTrackSize.y = std::min(info->ptMinTrackSize.y, workH);
+        }
         return 0;
     }
 

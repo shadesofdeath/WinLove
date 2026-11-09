@@ -15,10 +15,16 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kPadding = 16.0f;
-constexpr float kKeyWidth = 112.0f;
-constexpr float kRow = 24.0f;
-constexpr float kLine = 16.0f;
+// D-107 (LAYOUT.md "Sağ panel 340 — WIM bilgisi"): 24 padding; "Dizin 5 · install.wim" caption
+// over the name (Title); key / value rows in Small with a 118 key column; the mount block at the
+// foot under a line — the primary action full width (40), the second one under it.
+constexpr float kPadding = ui::tokens::size::panelPad;
+constexpr float kKeyWidth = 104.0f;
+constexpr float kRow = 23.0f;   // Small 16 + 7 apart (D-108)
+constexpr float kLine = 18.0f;
+constexpr float kIconButton = 28.0f;
+constexpr float kButton = ui::tokens::size::controlLarge; // 40
+constexpr float kFootGap = 14.0f;
 
 // SERVICINGDATA/IMAGESTATE → localized sysprep state; unknown values are shown as-is.
 std::wstring imageStateText(const std::wstring& state, const Localization& strings) {
@@ -61,7 +67,9 @@ ImageInspector::ImageInspector(const Localization& strings, Language language) :
             (m_mountedHere ? onUnmount : onMount)();
         }
     };
-    m_delete = &add<ui::Button>(ui::ButtonKind::Subtle, strings.get(Str::ImagesDeleteIndex));
+    m_primary->setHeight(kButton);
+    m_delete = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::ImagesDeleteIndex));
+    m_delete->setHeight(kButton);
     m_delete->onInvoke = [this] {
         // A mounted edition cannot be deleted; what it can be is upgraded.
         if (const auto& action = m_mountedHere ? onUpgrade : onDelete) {
@@ -121,20 +129,18 @@ void ImageInspector::set(State state) {
 void ImageInspector::layout() {
     const RectF b = bounds();
     // Disabled buttons still show their tooltip: the tooltip explains why (e.g. ESD).
-    const ui::SizeF primary = m_primary->measure({});
-    const ui::SizeF del = m_delete->measure({});
-    // D-091: the actions under the title, where the eye starts — not at the foot of a tall panel.
-    const float y = b.y + kPadding + 2 * kLine + 10;
-    m_primary->setBounds({b.x + kPadding, y, primary.width, primary.height});
-    m_delete->setBounds({b.x + kPadding + primary.width + 4, y, del.width, del.height});
-    m_rename->setBounds({b.right() - kPadding - kRow, b.y + kPadding - 4, kRow, kRow});
-    m_explore->setBounds({b.right() - kPadding - 2 * kRow - 2, b.y + kPadding - 4, kRow, kRow});
+    const float width = std::max(b.width - 2 * kPadding, 0.0f);
+    const float del = b.bottom() - kPadding - kButton;
+    m_delete->setBounds({b.x + kPadding, del, width, kButton});
+    m_primary->setBounds({b.x + kPadding, del - 8 - kButton, width, kButton});
+    m_rename->setBounds({b.right() - kPadding - kIconButton + 6, b.y + kPadding - 6, kIconButton, kIconButton});
+    m_explore->setBounds({b.right() - kPadding - 2 * kIconButton + 4, b.y + kPadding - 6, kIconButton, kIconButton});
 }
 
 void ImageInspector::paint(ui::Canvas& canvas) {
     const RectF b = bounds();
-    canvas.fillRect(b, Color::BgPanel);
-    canvas.hairlineV(b.x, b.y, b.height, Color::LineSubtle);
+    // D-114: a card like the others (rounded, no seam), not a strip glued to the window edge.
+    canvas.fillRoundRect(b, ui::tokens::radius::r3, Color::BgPanel);
     if (!m_image || !m_source) {
         return;
     }
@@ -142,38 +148,39 @@ void ImageInspector::paint(ui::Canvas& canvas) {
     const float x = b.x + kPadding;
     const float width = b.width - 2 * kPadding;
     float y = b.y + kPadding;
-
-    canvas.drawIcon(ui::icons::Icon::LayersEditions, {x, y + 4}, Color::TextSecondary);
-    // Room for the pencil, and for the folder while this edition is mounted.
-    const float buttons = (m_mountedHere ? 2 * kRow + 2 : kRow) + 4;
-    canvas.drawText(image.name, {x + 24, y, width - 24 - buttons, kLine}, TypeStyle::BodyStrong, Color::TextPrimary);
-    canvas.drawText(std::format(L"{} · {} {}", std::filesystem::path(m_source->installImage).filename().wstring(),
-                                m_strings.get(Str::ImagesIndex), image.index),
-                    {x + 24, y + kLine, width - 24, kLine}, TypeStyle::Caption, Color::TextTertiary);
-
-    // Under the actions (layout): a note when there is one, then the facts.
-    y = m_primary->bounds().bottom() + 8;
+    // "Dizin 1 · install.wim", then the name; room for the pencil (and the folder while mounted).
+    const float buttons = (m_mountedHere ? 2 * kIconButton : kIconButton) + 4;
+    canvas.drawText(std::format(L"{} {} \u00b7 {}", m_strings.get(Str::ImagesIndex), image.index,
+                                std::filesystem::path(m_source->installImage).filename().wstring()),
+                    {x, y, width - buttons, 16}, TypeStyle::Caption, Color::TextTertiary);
+    y += 18;
+    canvas.drawText(image.name, {x, y, width, 22}, TypeStyle::Title, Color::TextPrimary);
+    y += 30;
     const bool queued = m_mountedHere && !m_upgradeQueued.empty();
     if (queued || m_marked > 1) {
         canvas.drawText(queued ? m_upgradeQueued : m_strings.format(Str::ImagesSelectedHint, {{L"n", std::to_wstring(m_marked)}}),
-                        {x, y, width, kLine}, TypeStyle::Caption, queued ? Color::AccentBase : Color::TextTertiary);
-        y += kLine;
+                        {x, y, width, kLine}, TypeStyle::Small, queued ? Color::AccentText : Color::TextTertiary);
+        y += kLine + 4;
     }
-    y += 8;
-    canvas.hairlineH(b.x + 1, y, b.width - 1, Color::LineSubtle);
-    y += 8;
+    // The foot (mount block) keeps its room: the facts are clipped above it.
+    const float foot = m_primary->bounds().y - kFootGap;
+    canvas.hairlineH(x, foot, width, Color::LineSubtle);
+    canvas.pushClip({b.x, y, b.width, std::max(foot - 8 - y, 0.0f)});
     auto row = [&](Str key, const std::wstring& value, bool mono = false) {
-        canvas.drawText(m_strings.get(key), {x, y, kKeyWidth, kRow}, TypeStyle::Caption, Color::TextSecondary);
-        canvas.drawText(value, {x + kKeyWidth, y, width - kKeyWidth, kRow}, mono ? TypeStyle::Mono : TypeStyle::Caption,
+        canvas.drawText(m_strings.get(key), {x, y, kKeyWidth - 8, kRow}, TypeStyle::Small, Color::TextTertiary);
+        canvas.drawText(value, {x + kKeyWidth, y, width - kKeyWidth, kRow}, mono ? TypeStyle::Mono : TypeStyle::Small,
                         Color::TextPrimary);
         y += kRow;
     };
+    auto divider = [&] {
+        y += 9;
+        canvas.hairlineH(x, y, width, Color::LineSubtle);
+        y += 10;
+    };
     auto section = [&](Str title) {
-        y += 12;
-        canvas.hairlineH(b.x + 1, y, b.width - 1, Color::LineSubtle);
-        y += 8;
-        canvas.drawText(m_strings.get(title), {x, y, width, kRow}, TypeStyle::Section, Color::TextSecondary);
-        y += kRow;
+        divider();
+        canvas.drawText(m_strings.get(title), {x, y, width, 18}, TypeStyle::Section, Color::TextTertiary);
+        y += 24;
     };
     row(Str::ImagesEdition, orDash(image.editionId));
     row(Str::ImagesBuild, core::releaseSummary(image.build, image.spBuild, core::architectureName(image.architecture)));
@@ -192,6 +199,7 @@ void ImageInspector::paint(ui::Canvas& canvas) {
     }
     row(Str::ImagesInstallType, installType);
     row(Str::ImagesImageState, imageStateText(image.imageState, m_strings));
+    divider();
     row(Str::ImagesCreated, formatDate(image.creationTime, m_language));
     row(Str::ImagesModified, formatDate(image.modifiedTime, m_language));
     row(Str::CommonSize, formatBytes(image.totalBytes, m_language), true);
@@ -214,6 +222,7 @@ void ImageInspector::paint(ui::Canvas& canvas) {
     row(Str::ImagesSplit, header.totalParts > 1 ? std::format(L"{} / {}", header.partNumber, header.totalParts)
                                                 : m_strings.get(Str::CommonNo));
     row(Str::ImagesBootIndex, header.bootIndex ? std::to_wstring(header.bootIndex) : m_strings.get(Str::ImagesNone));
+    canvas.popClip();
 }
 
 } // namespace wl::app

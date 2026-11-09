@@ -51,7 +51,7 @@ void ScrollBar::paint(Canvas& canvas) {
     if (!needed()) {
         return;
     }
-    canvas.fillRoundRect(thumbRect(), tokens::radius::r1,
+    canvas.fillRoundRect(thumbRect(), thumbRect().width / 2,
                          Ink(Color::LineStrong, Color::TextTertiary, m_wide.value()));
 }
 

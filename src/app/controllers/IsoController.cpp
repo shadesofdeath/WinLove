@@ -6,6 +6,7 @@
 #include "core/iso/UnsupportedUpgrade.h"
 
 #include "app/controllers/UnattendController.h"
+#include "app/state/Preset.h"
 #include "base/Log.h"
 #include "core/image/MediaRefresh.h"
 #include "core/image/Source.h"
@@ -174,6 +175,17 @@ void IsoController::start(Request request) {
         }
     }
     const std::string answerFile = UnattendController::isoFile(m_state); // empty: not asked for
+    // D-123 (the reference tool: "back the preset up to the edited image"): what the last Uygula applied, as a
+    // whole preset (queue, answer file, boot.wim drivers), in the ISO's root.
+    std::string presetFile;
+    if (m_state.settings().presetInIso) {
+        if (const auto& run = m_state.applyRun();
+            run && run->stage == AppState::ApplyRun::Stage::Done && !run->changes.operations().empty()) {
+            Preset preset = presetFromState(m_state, L"WinLove");
+            preset.changes = run->changes;
+            presetFile = presetToJson(preset);
+        }
+    }
     core::BootPatch boot = request.bootBypass ? bootPatch(m_state) : core::BootPatch{};
     boot.legacySetup = request.legacySetup; // D-074
     const std::filesystem::path bootFolder = m_state.settings().workRoot / L"boot"; // the copy and its mount folder
@@ -249,7 +261,7 @@ void IsoController::start(Request request) {
 
     auto usbRoot = std::make_shared<std::wstring>(); // the stick's drive, set by the job
     m_state.engine().run<core::IsoResult>(
-        [source, workFolder, request, cancel, report, answerFile, boot, bootFolder, patcher, usbWriter, usbRoot,
+        [source, workFolder, request, cancel, report, answerFile, presetFile, boot, bootFolder, patcher, usbWriter, usbRoot,
          setupDu, extract, fresh](const core::TaskContext&) -> Result<core::IsoResult> {
             // Weights: extract 0.30 (ISO sources), repack 0.30 (if asked), boot image 0.15 (if
             // asked), build the rest.
@@ -280,6 +292,9 @@ void IsoController::start(Request request) {
             options.writeSha256 = request.sha256;
             if (!answerFile.empty()) {
                 options.rootFiles.push_back({L"autounattend.xml", answerFile});
+            }
+            if (!presetFile.empty()) {
+                options.rootFiles.push_back({L"WinLove.wlpreset", presetFile}); // D-123
             }
             // D-097: the requirement bypasses also cover an in-place upgrade — a script on the
             // media the user runs in place of setup.exe (boot.wim's LabConfig reaches only a clean

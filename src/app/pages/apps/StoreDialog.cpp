@@ -15,7 +15,7 @@ namespace {
 
 constexpr float kWidth = 680.0f;
 constexpr int kVisibleRows = 10;
-constexpr float kStatus = 20.0f;
+constexpr float kStatus = 24.0f;
 
 class Picker : public ui::Widget, public StoreDialogHandle {
 public:
@@ -28,8 +28,8 @@ public:
         };
         m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
             {strings.get(Str::AppsStoreColApp), 0},
-            {strings.get(Str::AppsStoreColPublisher), 220},
-            {strings.get(Str::AppsStoreColId), 130},
+            {strings.get(Str::AppsStoreColPublisher), 252},
+            {strings.get(Str::AppsStoreColId), 150},
         });
         m_table->setAccessible(ui::AccessRole::Group, strings.get(Str::AppsStoreTitle));
         m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {

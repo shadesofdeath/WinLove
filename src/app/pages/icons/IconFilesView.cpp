@@ -22,7 +22,7 @@ namespace {
 constexpr float kNoteH = 32.0f;
 constexpr float kListW = 272.0f;
 constexpr float kGap = 16.0f;
-constexpr float kRow = 28.0f;
+constexpr float kRow = 28.0f; // D-109
 constexpr float kHeaderH = 32.0f;
 constexpr float kCellW = 84.0f;
 constexpr float kCellH = 88.0f;

@@ -17,7 +17,7 @@ using ui::tokens::TypeStyle;
 namespace {
 constexpr float kCardHeight = 64.0f;
 constexpr float kCardMinWidth = 280.0f;
-constexpr float kGap = 8.0f;
+constexpr float kGap = 10.0f;
 constexpr float kPad = 12.0f;
 constexpr float kTile = 36.0f;       // the icon's tile
 constexpr float kRemoveInset = 8.0f; // the x button: 16px icon, this far from the card's corner

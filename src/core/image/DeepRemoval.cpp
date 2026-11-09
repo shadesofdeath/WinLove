@@ -1,6 +1,9 @@
 #include "core/image/DeepRemoval.h"
 
 #include "base/Log.h"
+#include "core/image/BootDrivers.h"
+#include "core/image/ComponentStore.h"
+#include "core/image/SystemComponents.h"
 #include "core/image/OffReg.h"
 #include "core/image/OfflineHive.h"
 #include "core/system/BackupFiles.h"
@@ -384,6 +387,39 @@ Result<std::vector<InboxDriver>> findInboxDrivers(const std::filesystem::path& m
     return drivers;
 }
 
+Result<std::vector<InboxDriver>> findDriverPackages(const std::filesystem::path& mountDir, const std::vector<std::wstring>& packages) {
+    std::set<std::wstring> wanted;
+    for (const auto& p : packages) {
+        wanted.insert(lower(p));
+    }
+    std::vector<InboxDriver> drivers;
+    const auto config = mountDir / L"Windows" / L"System32" / L"config";
+    for (const wchar_t* file : {L"DRIVERS", L"SYSTEM"}) {
+        auto hive = OffRegKey::openHive(config / file);
+        if (!hive) {
+            return std::unexpected(hive.error());
+        }
+        const auto keys = hive->open(L"DriverDatabase\\DriverPackages");
+        for (const auto& package : keys.subkeys()) {
+            if (!wanted.contains(lower(package))) {
+                continue;
+            }
+            InboxDriver driver{package, {}, {}};
+            for (const auto& value : keys.open(package).values()) {
+                if (value.name == L"Version") {
+                    driver.classGuid = driverPackageClass(value.data);
+                } else if (value.name.empty() && value.type == REG_SZ) {
+                    driver.inf = regString(value.data);
+                }
+            }
+            if (std::ranges::none_of(drivers, [&](const InboxDriver& d) { return lower(d.package) == lower(package); })) {
+                drivers.push_back(std::move(driver));
+            }
+        }
+    }
+    return drivers;
+}
+
 Result<DeepRemovalResult> deepRemoveDrivers(const std::filesystem::path& mountDir, const std::vector<InboxDriver>& drivers,
                                             const TaskContext& task) {
     DeepRemovalResult result;
@@ -491,6 +527,176 @@ Result<DeepRemovalResult> deepRemoveDrivers(const std::filesystem::path& mountDi
     result.bytes = plan.bytes;
     log::info("cbs", std::format(L"deep removal: {} driver(s), {} file(s)/folder(s), {} registry entr(ies), {} bytes of payload",
                                  result.drivers, result.files, result.registry, result.bytes));
+    return result;
+}
+
+Result<StoreRemovalResult> removeStoreCopies(const std::filesystem::path& mountDir, const std::vector<std::wstring>& names,
+                                             std::uint8_t bits, const std::vector<std::wstring>& services, const TaskContext& task) {
+    StoreRemovalResult result;
+    std::set<std::wstring> wanted;
+    for (const auto& name : names) {
+        if (isProtectedStoreName(name)) {
+            return fail(ErrorCode::InvalidArgument, L"a component Windows cannot start without (D-113)", name);
+        }
+        wanted.insert(lower(name));
+    }
+    for (const wchar_t* privilege : {SE_BACKUP_NAME, SE_RESTORE_NAME}) {
+        if (auto enabled = enablePrivilege(privilege); !enabled) {
+            return std::unexpected(enabled.error());
+        }
+    }
+    const auto windows = mountDir / L"Windows";
+    const auto config = windows / L"System32" / L"config";
+    const auto sxs = windows / L"WinSxS";
+
+    // 1. The components: COMPONENTS read through offreg (the hive is not loaded).
+    std::vector<std::filesystem::path> payloads;
+    if (!wanted.empty()) {
+        auto hive = OffRegKey::openHive(config / L"COMPONENTS");
+        if (!hive) {
+            return std::unexpected(hive.error());
+        }
+        const auto all = hive->open(L"DerivedData\\Components");
+        for (const auto& key : all.subkeys()) {
+            const auto identity = all.open(key).bytes(L"identity");
+            if (identity.empty()) {
+                continue;
+            }
+            const auto id = ComponentStoreIndex::storeIdentity(
+                std::string(identity.begin(), std::find(identity.begin(), identity.end(), std::uint8_t{0})));
+            if (!wanted.contains(id.name) || (bits == 32 && !id.bits32) || (bits == 64 && id.bits32)) {
+                continue;
+            }
+            ++result.components;
+            if (std::filesystem::path folder = sxs / key; !backupListFiles(folder).empty() || !backupListFolders(folder).empty()) {
+                payloads.push_back(std::move(folder));
+            }
+        }
+    }
+    task.report(0.2, L"WinSxS");
+    if (auto go = task.cancel.check(); !go) {
+        return std::unexpected(go.error());
+    }
+
+    // 2. Their installed copies: the other names of each payload file, inside the image, outside WinSxS.
+    std::vector<std::filesystem::path> copies;
+    std::set<std::wstring> seen;
+    for (const auto& payload : payloads) {
+        std::vector<std::filesystem::path> files;
+        filesUnder(payload, files);
+        for (const auto& file : files) {
+            for (auto& link : otherLinks(file)) {
+                if (!under(link, mountDir) || under(link, sxs) || !seen.insert(lower(link.wstring())).second) {
+                    continue;
+                }
+                copies.push_back(std::move(link));
+            }
+        }
+    }
+
+    // D-116 / D-117: what Windows needs before it starts stays, whatever component it belongs to: boot
+    // drivers and device filters (report 2026-11-07: BitLocker's glob took fvevol.sys), the loader's
+    // own files and every module these import (report 2026-11-08: the error reporting glob took
+    // werkernel.sys, which ntoskrnl.exe imports). Both times the installed system stopped in the
+    // loader with 0xc000000f. The hive is read before step 3 loads it.
+    std::set<std::wstring> keptServices;
+    const bool anyBootType = std::ranges::any_of(copies, [](const std::filesystem::path& copy) { return isBootFileType(copy); });
+    if (anyBootType || !services.empty()) {
+        auto boot = findBootDrivers(mountDir);
+        auto kept = boot ? keptBootFiles(mountDir, *boot, services) : std::unexpected(boot.error());
+        if (!kept) {
+            // Unreadable: no module or code page file goes at all.
+            log::warn("cbs", L"boot files not readable, every module stays: " + describe(kept.error()));
+            std::erase_if(copies, [](const std::filesystem::path& copy) { return isBootFileType(copy); });
+        } else {
+            std::erase_if(copies, [&](const std::filesystem::path& copy) {
+                const auto found = kept->find(imageRelativePath(copy, mountDir));
+                if (found == kept->end()) {
+                    return false;
+                }
+                log::info("cbs", std::format(L"kept {}: Windows needs it before it starts ({}, D-116/D-117)",
+                                             copy.filename().wstring(), found->second));
+                ++result.keptDrivers;
+                return true;
+            });
+        }
+        if (boot) {
+            for (auto& name : keptFilterServices(*boot, services)) {
+                log::info("cbs", L"service kept: " + name + L" is a device filter (D-116)");
+                keptServices.insert(std::move(name));
+            }
+        }
+    }
+    // D-118: a module one that stays imports or delay-loads stays as well (the VM test of the D-117
+    // image: the app deployment service delay-loads IsoSessionCore.dll, shell32 cldapi.dll; with them
+    // gone the calls returned E_NOTIMPL and no Store package registered for a new account).
+    if (std::ranges::any_of(copies, [](const std::filesystem::path& copy) { return isBootFileType(copy); })) {
+        std::vector<std::wstring> going;
+        for (const auto& copy : copies) {
+            going.push_back(imageRelativePath(copy, mountDir));
+        }
+        auto imported = keptImportedFiles(mountDir, going);
+        if (!imported) {
+            log::warn("cbs", L"imports not readable, every module stays: " + describe(imported.error()));
+            std::erase_if(copies, [](const std::filesystem::path& copy) { return isBootFileType(copy); });
+        } else {
+            std::erase_if(copies, [&](const std::filesystem::path& copy) {
+                const auto found = imported->find(imageRelativePath(copy, mountDir));
+                if (found == imported->end()) {
+                    return false;
+                }
+                log::info("cbs", std::format(L"kept {}: a module that stays needs it ({}, D-118)", copy.filename().wstring(),
+                                             found->second));
+                ++result.keptImports;
+                return true;
+            });
+        }
+    }
+
+    for (std::size_t i = 0; i < copies.size(); ++i) {
+        if (auto gone = forceRemoveEntry(copies[i]); !gone) {
+            log::warn("cbs", L"installed copy not removed: " + describe(gone.error()));
+            continue;
+        }
+        ++result.files;
+        task.report(0.2 + 0.6 * static_cast<double>(i + 1) / static_cast<double>(copies.size()), L"files");
+    }
+
+    // 3. Services (every control set).
+    if (!services.empty()) {
+        std::set<std::wstring> named;
+        for (const auto& service : services) {
+            if (isProtectedService(service)) {
+                return fail(ErrorCode::InvalidArgument, L"a service Windows cannot start without (D-113)", service);
+            }
+            if (!keptServices.contains(lower(service))) {
+                named.insert(lower(service));
+            }
+        }
+        auto hive = OfflineHive::load(config / L"SYSTEM");
+        if (!hive) {
+            return std::unexpected(hive.error());
+        }
+        for (const auto& set : subkeyNames(hive->root())) {
+            if (!lower(set).starts_with(L"controlset")) {
+                continue;
+            }
+            HKEY raw = nullptr;
+            if (openKeyForWrite(hive->root(), (set + L"\\Services").c_str(), KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE | DELETE, raw) !=
+                ERROR_SUCCESS) {
+                continue;
+            }
+            RegKey key(raw);
+            auto gone = deleteSubkeys(key.get(), [&](const std::wstring& name) { return named.contains(lower(name)); });
+            if (!gone) {
+                return std::unexpected(gone.error());
+            }
+            result.services += *gone;
+        }
+    }
+    task.report(1.0, L"services");
+    log::info("cbs", std::format(L"store copies removed: {} component(s), {} file(s), {} service key(s); {} boot file(s), {} imported module(s) kept",
+                                 result.components, result.files, result.services, result.keptDrivers, result.keptImports));
     return result;
 }
 

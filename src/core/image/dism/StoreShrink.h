@@ -25,6 +25,15 @@ namespace wl::core {
 // Does the shrunk store keep this top-level WinSxS entry? (A folder name, any case.)
 [[nodiscard]] bool keptInShrunkStore(std::wstring_view entry);
 
+// Can the image still take CBS servicing — packages, features, capabilities, an edition, the store
+// cleanup? Not once its WinSxS is shrunk: the payloads and advanced installers CBS needs are gone,
+// a package removal stops half way and CBS marks the image unserviceable (report 2026-11-07: a
+// preset applied a second time over a shrunk, unsaved image). Nor once CBS marked it so itself
+// (SOFTWARE …\Component Based Servicing\Unserviceable, after an offline servicing failure).
+enum class ServicingClosed : std::uint8_t { No, StoreShrunk, Unserviceable };
+inline constexpr std::size_t kShrunkStoreBelow = 1000; // folders the shrink would still take
+[[nodiscard]] ServicingClosed servicingClosed(const std::filesystem::path& mountDir);
+
 struct StoreShrinkPlan {
     std::vector<std::wstring> removed; // top-level folder names
     std::size_t kept = 0;

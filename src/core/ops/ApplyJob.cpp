@@ -61,6 +61,17 @@ Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& moun
     const double optimizeWeight = options.commitAndUnmount && !options.optimizeWim.empty() ? kOptimizeSeconds : 0.0;
     const double total = std::max(stepsWeight + commitWeight + optimizeWeight, 1.0);
 
+    // Read before DISM holds the hives: a shrunk or unserviceable image gets no CBS step (Applier).
+    ApplyOptions applyOptions = options.apply;
+    applyOptions.servicingClosed = servicingClosed(mountDir);
+    if (applyOptions.servicingClosed != ServicingClosed::No) {
+        const auto servicing = std::ranges::count_if(plan.steps, [](const PlanStep& s) { return usesServicing(s.operation); });
+        log::warn("apply", std::format(L"this image takes no more package servicing ({}): {} servicing step(s) are skipped, "
+                                       L"components keep their packages",
+                                       applyOptions.servicingClosed == ServicingClosed::StoreShrunk ? L"WinSxS shrunk" : L"marked unserviceable",
+                                       servicing));
+    }
+
     {
         auto session = dism.openSession(mountDir);
         if (!session) {
@@ -84,7 +95,7 @@ Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& moun
         const TaskContext stepsTask{task.cancel, [&](double fraction, std::wstring_view stage) {
                                         task.report(fraction * stepsWeight / total, stage);
                                     }};
-        result.report = apply(plan, **session, stepsTask, ErrorPolicy::Skip, steps, options.apply);
+        result.report = apply(plan, **session, stepsTask, ErrorPolicy::Skip, steps, applyOptions);
         const bool holding = options.commitAndUnmount && !options.commitWithFailures && result.report.holdingFailures() > 0;
         // Setup's language list follows a commit; a held image may still be discarded (audit A21).
         if (result.report.completed && !holding && !options.setupFolder.empty() && languagesChanged(result.report)) {
@@ -107,8 +118,9 @@ Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& moun
         return result;
     }
     if (options.commitAndUnmount && result.report.failures() > result.report.holdingFailures()) {
-        log::info("apply", L"saved all the same: the component store cleanup did not run (an operation of this run is "
-                           L"pending until first boot) and changed nothing");
+        log::info("apply", std::format(L"saved all the same: {} step(s) Windows refused changed nothing (a permanent "
+                                       L"package, or a store cleanup while an operation is pending until first boot)",
+                                       result.report.failures() - result.report.holdingFailures()));
     }
     if (options.commitAndUnmount && callbacks.beforeCommit) {
         log::info("apply", L"paused before saving: " + mountDir.wstring() + L" is open for changes by hand");

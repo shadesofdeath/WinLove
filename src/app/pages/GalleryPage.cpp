@@ -15,7 +15,7 @@ using namespace ui;
 namespace {
 
 constexpr float kLabelColumn = 120.0f;
-constexpr float kGap = 8.0f;
+constexpr float kGap = 10.0f;
 
 struct State {
     const wchar_t* name;

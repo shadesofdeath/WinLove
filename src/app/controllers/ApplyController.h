@@ -28,7 +28,10 @@ public:
     [[nodiscard]] core::ops::ApplyPlan currentPlan() const;
     // High-risk operations of the current queue (the confirm dialog lists them).
     [[nodiscard]] std::vector<core::ops::Operation> highRisk() const;
-    [[nodiscard]] bool canStart() const;   // mounted, idle, something queued
+    [[nodiscard]] bool canStart() const;   // mounted, idle, something queued, no download pending
+    // D-124: an update / language / Store download is on its way into the queue. Starting now left
+    // it out of the image (the ISO then had no updates); Uygula waits for it.
+    [[nodiscard]] bool waitingForDownload() const;
     [[nodiscard]] bool running() const;
     void start();
     // Running: the rest is skipped. Paused (D-106): the edition is left unsaved — the mounted one

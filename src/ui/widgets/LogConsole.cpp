@@ -15,8 +15,8 @@ namespace {
 using tokens::Color;
 using tokens::TypeStyle;
 
-constexpr float kPadX = 12.0f;
-constexpr float kPadY = 8.0f;
+constexpr float kPadX = 14.0f;
+constexpr float kPadY = 10.0f;
 constexpr float kChip = 20.0f;
 constexpr float kChipMargin = 12.0f;
 
@@ -271,8 +271,8 @@ bool LogConsole::onKeyDown(const KeyEvent& key) {
 
 void LogConsole::paint(Canvas& canvas) {
     const RectF b = bounds();
-    canvas.fillRect(b, Color::BgInput);
-    canvas.strokeRoundRect(b, 0.0f, Color::LineSubtle);
+    canvas.fillRoundRect(b, tokens::radius::r3, Color::BgPanel); // D-107: a card
+    canvas.strokeRoundRect(b, tokens::radius::r3, Color::LineSubtle);
     const RectF v = viewport();
     if (m_lines.empty()) {
         return;

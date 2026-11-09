@@ -31,6 +31,17 @@
 
 namespace wl::core {
 
+// D-113: what one component definition (the reference tool's model: store name patterns) owns of the store.
+// names: identity names (lower case, ".resources" dropped), 64 = native, 32 = x86 / wow64.
+struct StoreShare {
+    std::vector<std::wstring> names64;
+    std::vector<std::wstring> names32;
+    std::uint64_t bytes64 = 0;
+    std::uint64_t bytes32 = 0;
+    [[nodiscard]] bool empty() const noexcept { return names64.empty() && names32.empty(); }
+    [[nodiscard]] bool operator==(const StoreShare&) const = default;
+};
+
 class ComponentStoreIndex {
 public:
     // Elevated process (a mounted image's servicing folders are closed to other users).
@@ -44,7 +55,25 @@ public:
     [[nodiscard]] std::vector<InboxDriver> drivers(const std::vector<std::wstring>& classGuids) const;
     [[nodiscard]] std::uint64_t driverBytes(const std::vector<InboxDriver>& drivers) const;
 
+    // D-113: the store split between definitions. patterns[i] are definition i's globs over
+    // "<identity name>|<public key token>|<version>" ("microsoft-windows-taskscheduler-*",
+    // "*|b03f5f7f11d50a3a|*"; a pattern without '|' matches the name only). Every store component
+    // goes to the definition whose pattern names it most specifically (an exact name before any
+    // glob, then the longest literal text): a parent leaves its children's parts to them.
+    [[nodiscard]] std::vector<StoreShare> shareStore(const std::vector<std::vector<std::wstring>>& patterns) const;
+
     // ---- building blocks, public for tests ---------------------------------------------------
+    // "Microsoft-Windows-Foo.Resources, Culture=tr-TR, Version=10.0.1, PublicKeyToken=31bf…,
+    // ProcessorArchitecture=wow64" → name "microsoft-windows-foo", match "microsoft-windows-foo|31bf…|10.0.1", 32 bit.
+    struct StoreIdentity {
+        std::wstring name;
+        std::wstring match;
+        bool bits32 = false;
+    };
+    [[nodiscard]] static StoreIdentity storeIdentity(std::string_view identity);
+    [[nodiscard]] static bool storePatternMatches(std::wstring_view pattern, std::wstring_view match);
+    [[nodiscard]] static int storePatternSpecificity(std::wstring_view pattern);
+    void addStoreComponent(std::string_view identity, std::uint64_t bytes);
     // "amd64_microsoft-windows-foo_31bf3856ad364e35_10.0.26100.1_none_0123abcd" → "amd64_microsoft-windows-foo"
     [[nodiscard]] static std::wstring componentName(std::wstring_view folderOrKey);
     // The identity in an "i!CBS_…" deployment value; empty when the data is not one.
@@ -70,6 +99,11 @@ private:
     std::unordered_map<std::wstring, std::vector<std::wstring>> m_owned; // family -> components
     std::unordered_map<std::wstring, std::uint64_t> m_bytes;
     std::vector<InboxDriver> m_drivers;
+    struct StoreComponent {
+        StoreIdentity identity;
+        std::uint64_t bytes = 0; // its WinSxS folder (one version)
+    };
+    std::vector<StoreComponent> m_store; // every DerivedData component with an identity
 };
 
 } // namespace wl::core

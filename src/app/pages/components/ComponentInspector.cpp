@@ -13,10 +13,14 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-constexpr float kPadding = 16.0f;
-constexpr float kKeyWidth = 96.0f;
-constexpr float kRow = 24.0f;
-constexpr float kLine = 16.0f;
+// D-107: the package's side panel — 24 padding, the name in Title over the identity (mono),
+// key / value rows in Small (27 apart, 118 key column), sections in caps under a line, a note with a
+// 2px warning line on its left, the queue button full width (40) at the foot.
+constexpr float kPadding = ui::tokens::size::panelPad;
+constexpr float kKeyWidth = 104.0f;
+constexpr float kRow = 23.0f;
+constexpr float kLine = 18.0f;
+constexpr float kButton = ui::tokens::size::controlLarge;
 } // namespace
 
 ui::icons::Icon ComponentInspector::iconOf(ComponentController::Item::Kind kind) noexcept {
@@ -31,7 +35,8 @@ ui::icons::Icon ComponentInspector::iconOf(ComponentController::Item::Kind kind)
 
 ComponentInspector::ComponentInspector(const Localization& strings, Language language)
     : m_strings(strings), m_language(language) {
-    m_toggle = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::ComponentsAddToQueue));
+    m_toggle = &add<ui::Button>(ui::ButtonKind::Primary, strings.get(Str::ComponentsAddToQueue));
+    m_toggle->setHeight(kButton);
     m_toggle->onInvoke = [this] {
         if (onToggle) {
             onToggle();
@@ -54,14 +59,13 @@ void ComponentInspector::set(std::optional<ComponentController::Item> item, std:
 
 void ComponentInspector::layout() {
     const RectF b = bounds();
-    const ui::SizeF size = m_toggle->measure({});
-    m_toggle->setBounds({b.x + kPadding, b.bottom() - 12 - size.height, size.width, size.height});
+    m_toggle->setBounds({b.x + kPadding, b.bottom() - kPadding - kButton, std::max(b.width - 2 * kPadding, 0.0f), kButton});
 }
 
 void ComponentInspector::paint(ui::Canvas& canvas) {
     const RectF b = bounds();
-    canvas.fillRect(b, Color::BgPanel);
-    canvas.hairlineV(b.x, b.y, b.height, Color::LineSubtle);
+    // D-114: a card like the others (rounded, no seam), not a strip glued to the window edge.
+    canvas.fillRoundRect(b, ui::tokens::radius::r3, Color::BgPanel);
     if (!m_item) {
         return;
     }
@@ -69,32 +73,31 @@ void ComponentInspector::paint(ui::Canvas& canvas) {
     const float x = b.x + kPadding;
     const float width = b.width - 2 * kPadding;
     float y = b.y + kPadding;
-    canvas.drawIcon(iconOf(item.kind), {x, y + 4}, Color::TextSecondary);
-    canvas.drawText(item.name, {x + 24, y, width - 24, kLine}, TypeStyle::BodyStrong, Color::TextPrimary);
-    canvas.drawText(item.identity, {x + 24, y + kLine, width - 24, kLine}, TypeStyle::Mono, Color::TextTertiary);
+    canvas.drawText(item.name, {x, y, width, 22}, TypeStyle::Title, Color::TextPrimary);
+    canvas.drawText(item.identity, {x, y + 24, width, 16}, TypeStyle::Mono, Color::TextTertiary);
 
-    y = b.y + 69;
-    auto row = [&](Str key, const std::wstring& value, TypeStyle style = TypeStyle::Caption,
+    y += 52;
+    auto row = [&](Str key, const std::wstring& value, TypeStyle style = TypeStyle::Small,
                    std::optional<Color> dot = std::nullopt) {
-        canvas.drawText(m_strings.get(key), {x, y, kKeyWidth, kRow}, TypeStyle::Caption, Color::TextSecondary);
+        canvas.drawText(m_strings.get(key), {x, y, kKeyWidth - 8, kRow}, TypeStyle::Small, Color::TextTertiary);
         float vx = x + kKeyWidth;
         if (dot) {
-            canvas.fillRect({vx, y + 9, 6, 6}, *dot);
-            vx += 12;
+            canvas.fillEllipse({vx + 3, y + kRow / 2}, 3.0f, *dot);
+            vx += 13;
         }
         canvas.drawText(value, {vx, y, b.right() - kPadding - vx, kRow}, style, Color::TextPrimary);
         y += kRow;
     };
     auto section = [&](const std::wstring& title) {
+        y += 9;
+        canvas.hairlineH(x, y, width, Color::LineSubtle);
         y += 12;
-        canvas.hairlineH(b.x + 1, y, b.width - 1, Color::LineSubtle);
-        y += 8;
-        canvas.drawText(title, {x, y, width, kRow}, TypeStyle::Section, Color::TextSecondary);
-        y += kRow;
+        canvas.drawText(title, {x, y, width, 18}, TypeStyle::Section, Color::TextTertiary);
+        y += 26;
     };
     row(Str::ComponentsCategory, m_group);
     row(Str::CommonSize, item.size ? formatBytes(item.size, m_language) : std::wstring(L"—"), TypeStyle::Mono);
-    row(Str::RiskColumn, m_strings.get(riskText(item.risk)), TypeStyle::Caption, riskInk(item.risk));
+    row(Str::RiskColumn, m_strings.get(riskText(item.risk)), TypeStyle::Small, riskInk(item.risk));
     row(Str::CommonStatus, m_strings.get(m_queued ? Str::ComponentsQueued : Str::ComponentsStays));
     row(Str::ComponentsReversible, m_strings.get(Str::CommonNo));
 
@@ -103,16 +106,18 @@ void ComponentInspector::paint(ui::Canvas& canvas) {
         section(m_strings.get(Str::ComponentsCompat));
     }
     if (!m_held.empty()) {
-        const float h = std::ceil(canvas.text().measureWrapped(m_held, TypeStyle::Caption, width - 20));
-        canvas.drawIcon(ui::icons::Icon::Lock, {x, y}, Color::TextSecondary);
-        canvas.drawTextWrapped(m_held, {x + 20, y, width - 20, h}, TypeStyle::Caption, Color::TextPrimary);
-        y += h + 8;
+        const float h = std::ceil(canvas.text().measureWrapped(m_held, TypeStyle::Small, width - 22));
+        canvas.drawIcon(ui::icons::Icon::Lock, {x, y + 1}, Color::TextSecondary);
+        canvas.drawTextWrapped(m_held, {x + 22, y, width - 22, h}, TypeStyle::Small, Color::TextPrimary);
+        y += h + 10;
     }
     if (!notes.empty()) {
-        const float h = std::ceil(canvas.text().measureWrapped(notes, TypeStyle::Caption, width - 20));
-        canvas.drawIcon(ui::icons::Icon::WarningTriangle, {x, y}, riskInk(item.risk));
-        canvas.drawTextWrapped(notes, {x + 20, y, width - 20, h}, TypeStyle::Caption, Color::TextSecondary);
-        y += h + 4;
+        // The package's note: a 2px line on the left, the text in the risk's color.
+        const float h = std::ceil(canvas.text().measureWrapped(notes, TypeStyle::Small, width - 14));
+        const Color ink = item.risk == core::ops::Risk::Low ? Color::TextSecondary : riskInk(item.risk);
+        canvas.fillRoundRect({x, y, 2, h}, 1.0f, item.risk == core::ops::Risk::Low ? Color::LineStrong : riskInk(item.risk));
+        canvas.drawTextWrapped(notes, {x + 14, y, width - 14, h}, TypeStyle::Small, ink);
+        y += h + 6;
     }
     // What goes: the package full name; a system component lists its packages and paths.
     const std::wstring count = std::to_wstring(item.contents.size());
@@ -120,13 +125,13 @@ void ComponentInspector::paint(ui::Canvas& canvas) {
             m_strings.format(item.kind == ComponentController::Item::Kind::Appx ? Str::ComponentsPackages
                                                                                 : Str::ComponentsItemsN,
                              {{L"n", count}}));
-    const float bottom = m_toggle->bounds().y - 8;
+    const float bottom = m_toggle->bounds().y - 12;
     for (const auto& line : item.contents) {
-        if (y + kRow > bottom) {
+        if (y + 22 > bottom) {
             break;
         }
-        canvas.drawText(line, {x, y, width, kRow}, TypeStyle::Mono, Color::TextSecondary);
-        y += kRow;
+        canvas.drawText(line, {x, y, width, 22}, TypeStyle::Mono, Color::TextSecondary);
+        y += 22;
     }
 }
 

@@ -15,7 +15,7 @@ using Mark = PresetController::DiffRow::Mark;
 
 namespace {
 
-constexpr float kTop = 11.0f;
+constexpr float kTop = 0.0f;
 constexpr float kListWidth = 360.0f;
 constexpr float kPanelGap = 24.0f;
 constexpr float kControl = ui::tokens::size::control;
@@ -52,7 +52,7 @@ PresetsPage::PresetsPage(AppState& state, PresetController& controller, const Lo
     auto s = [&](Str key) { return strings.get(key); };
     m_list = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {s(Str::PresetsPreset), 0},
-        {s(Str::PresetsChanges), 96, ui::TextAlign::Trailing},
+        {s(Str::PresetsChanges), 110, ui::TextAlign::Trailing},
     });
     m_list->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
         paintListCell(c, row, column, rect, cell);
@@ -114,10 +114,10 @@ PresetsPage::PresetsPage(AppState& state, PresetController& controller, const Lo
 
     m_diff = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {L"", 20},
-        {s(Str::CommonCategory), 132},
+        {s(Str::CommonCategory), 152},
         {s(Str::PresetsItem), 0},
-        {L"A", 140},
-        {L"B", 148},
+        {L"A", 160},
+        {L"B", 170},
     });
     m_diff->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState) {
         paintDiffCell(c, row, column, rect);

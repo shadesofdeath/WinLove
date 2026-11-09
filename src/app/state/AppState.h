@@ -15,6 +15,8 @@
 #include "core/image/dism/MountHealth.h"
 #include "core/image/RegistryEdit.h"
 #include "core/image/Services.h"
+#include "core/image/ImageInventory.h"
+#include "core/image/ComponentStore.h"
 #include "core/image/SystemComponents.h"
 #include "core/image/dism/OptionalFeatures.h"
 #include "core/iso/IsoBuilder.h"
@@ -104,6 +106,11 @@ public:
     // The saved queue of the mounted image (same WIM and index), if there is one and the queue is
     // empty now. Returns how many changes came back.
     std::size_t restoreQueue();
+    // Taking a mount over (report 2026-11-07): read the saved queue BEFORE setMounted — the mount's
+    // listeners may queue (the welcome's files) and that queue is saved over the file at once —
+    // then merge it back: what is queued now keeps its slot, the rest comes back.
+    [[nodiscard]] std::optional<core::ops::ChangeSet> savedQueue(const MountedImage& mounted) const;
+    std::size_t restoreQueue(std::optional<core::ops::ChangeSet> saved);
     void queue(core::ops::Operation op);
     bool unqueue(core::ops::OpKind kind, std::wstring_view target);
     void unqueueIf(const std::function<bool(const core::ops::Operation&)>& which);
@@ -144,9 +151,19 @@ public:
     struct SystemComponents {
         std::filesystem::path mountDir;
         std::map<std::string, core::ComponentPresence> items; // by catalog id
+        std::map<std::string, core::StoreShare> store;         // D-113: the store split, by catalog id
     };
     [[nodiscard]] const std::optional<SystemComponents>& systemComponents() const noexcept { return m_system; }
     void setSystemComponents(std::optional<SystemComponents> components);
+
+    // D-112: what the image itself has for the component tree (drivers, languages, keyboards, fonts,
+    // system apps — the reference tool's dynamic rows), read once per mount. Change::Components.
+    struct ImageInventory {
+        std::filesystem::path mountDir;
+        core::ImageInventory data;
+    };
+    [[nodiscard]] const std::optional<ImageInventory>& imageInventory() const noexcept { return m_inventory; }
+    void setImageInventory(std::optional<ImageInventory> inventory);
 
     // P10 data: services of the mounted image's SYSTEM hive (ServiceController), read once per mount.
     struct ServiceList {
@@ -447,6 +464,7 @@ private:
     std::optional<ApplyRun> m_apply;
     std::optional<AppxList> m_appx;
     std::optional<SystemComponents> m_system;
+    std::optional<ImageInventory> m_inventory;
     std::optional<ServiceList> m_services;
     std::optional<ImageValues> m_imageValues;
     std::optional<ImageDrivers> m_imageDrivers;
