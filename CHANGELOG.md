@@ -12,10 +12,10 @@
 
 #### Yeni
 
-- **Yeni arayüz:** referans araç düzeninde gezinme (≡ · Görüntü / Ön Ayar / Araçlar / Katılımsız · sol menü). Renkli
+- **Yeni arayüz:** yeni gezinme düzeni (≡ · Görüntü / Ön Ayar / Araçlar / Katılımsız · sol menü). Renkli
   ikonlar, saf siyah tema, pencere kenarında vurgu rengi, yuvarlak onay kutuları. Uygulama ilk açılışta tam ekran
   başlar.
-- **Bileşenler referans aracın modeliyle:**
+- **Yeni bileşen modeli:**
   - kategori ağacı ve şablonlar (Hafif / Genel / Gizlilik / Önerilmez);
   - bileşen deposundan ölçülen gerçek boyutlar, 32 bit alt satırları, bağımlılık ağacı;
   - kaldırma modu: Varsayılan+ / Derin / Maksimum;
@@ -41,7 +41,7 @@
 
 - **Bileşen kaldırınca güncelleme ISO'ya girmiyordu.** Toplu güncelleştirme bileşen kaldırmalarından sonra
   kuruluyordu. Windows'un servis yığını kaldırılan bileşenlerin kayıtlarını bozuk sayıp güncellemeyi reddediyordu
-  (0x80073712). Uygula da o adımı atlayıp imajı güncellemesiz kaydediyordu. Artık referans araçtaki gibi önce
+  (0x80073712). Uygula da o adımı atlayıp imajı güncellemesiz kaydediyordu. Artık önce
   güncellemeler bütün imaja kuruluyor, kaldırmalar ondan sonra yapılıyor.
 - **İndirme bitmeden Uygula:** güncelleme inerken Uygula başlatılabiliyordu. İndirme Uygula sırasında biterse
   güncelleme sessizce düşüyor, bildirim yine "kuyruğa eklendi" diyordu. Artık:
@@ -284,9 +284,9 @@ What changed since 1.2.3 Beta:
 
 #### New
 
-- **New interface:** reference-style navigation (≡ · Image / Presets / Tools / Unattended · side menu). Coloured icons,
+- **New interface:** new navigation (≡ · Image / Presets / Tools / Unattended · side menu). Coloured icons,
   a pure black theme, the accent colour on the window border, round check boxes. The app starts maximized.
-- **Components on the reference tool's model:**
+- **New component model:**
   - category tree and templates (Light / General / Privacy / Not recommended);
   - real sizes measured from the component store, 32-bit sub-rows, a dependency tree;
   - removal mode: Default+ / Deep / Maximum;
@@ -312,7 +312,7 @@ What changed since 1.2.3 Beta:
 
 - **With components removed, the update did not get into the ISO.** The cumulative update was installed after
   the component removals. Windows' servicing stack took the removed components' entries for corrupt and refused
-  the update (0x80073712), and Apply skipped that step and saved the image without it. Now, as in the reference tool, the
+  the update (0x80073712), and Apply skipped that step and saved the image without it. Now the
   updates go into the whole image first and the removals follow.
 - **Apply before the download finished:** Apply could start while an update was still downloading. If the
   download finished during Apply, the update was silently dropped while the notice still said "queued". Now:

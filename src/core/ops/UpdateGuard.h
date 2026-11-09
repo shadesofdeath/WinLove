@@ -1,5 +1,5 @@
 #pragma once
-// D-125 "Güncellemelere karşı koru" (the user's choice: what referans araç lacks). An image's choices do
+// D-125 "Güncellemelere karşı koru" (the user's choice: what the reference tool lacks). An image's choices do
 // not all survive Windows Update: a cumulative update can turn a service back on, reset a policy,
 // enable a task again or provision an app again, and it puts back the files of a component whose
 // store copy was kept (D-113). When the setting is on, Apply ends by writing into the image what

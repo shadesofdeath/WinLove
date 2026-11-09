@@ -282,7 +282,7 @@ void FeaturesPage::refresh() {
 }
 
 void FeaturesPage::updateTabs() {
-    // Referans araç: "Talep Üzerine Özellikler 57/489" — what stays on of all there are.
+    // The reference tool: "Talep Üzerine Özellikler 57/489" — what stays on of all there are.
     int capOn = 0, capAll = 0, featOn = 0, featAll = 0;
     if (const auto& features = m_state.optionalFeatures(); features && features->status == AppState::OptionalFeatures::Status::Ready) {
         for (const auto& item : features->items) {
@@ -601,7 +601,7 @@ void FeaturesPage::paint(ui::Canvas& canvas) {
     if (!m_table->visible()) {
         return;
     }
-    // The column heads in the filter row (referans araç: "Açıklama · Etkin · Yüklendi").
+    // The column heads in the filter row (the reference tool: "Açıklama · Etkin · Yüklendi").
     const RectF row{m_table->bounds().x, m_filterBox->bounds().y, m_table->bounds().width, kFilterRow};
     const float right = row.right() - ui::TableView::kCellPad;
     canvas.drawText(m_strings.get(Str::FeaturesColInstalled), {right - kSizeColumn, row.y, kSizeColumn, row.height}, TypeStyle::Body,
