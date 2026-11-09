@@ -13,8 +13,11 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cwctype>
 #include <format>
+#include <mutex>
+#include <memory>
 #include <functional>
 #include <set>
 
@@ -103,6 +106,62 @@ void filesUnder(const std::filesystem::path& folder, std::vector<std::filesystem
 }
 
 // Every other name of a (hard-linked) file, as full paths.
+// Every component of COMPONENTS\DerivedData\Components: its key (the WinSxS folder's name), its name
+// and whether it is the 32-bit one. ~7 s through offreg on 26200, so kept while a scan scope is open
+// and the hive file is unchanged (D-128: DISM writes it when it lets go, after removing packages).
+struct StoreEntry {
+    std::wstring key;
+    std::wstring name;
+    bool bits32 = false;
+};
+using StoreEntries = std::shared_ptr<const std::vector<StoreEntry>>;
+
+Result<StoreEntries> readStoreIndex(const std::filesystem::path& hiveFile) {
+    auto hive = OffRegKey::openHive(hiveFile);
+    if (!hive) {
+        return std::unexpected(hive.error());
+    }
+    auto entries = std::make_shared<std::vector<StoreEntry>>();
+    const auto all = hive->open(L"DerivedData\\Components");
+    for (const auto& key : all.subkeys()) {
+        const auto identity = all.open(key).bytes(L"identity");
+        if (identity.empty()) {
+            continue;
+        }
+        auto id = ComponentStoreIndex::storeIdentity(std::string(identity.begin(), std::find(identity.begin(), identity.end(), std::uint8_t{0})));
+        entries->push_back({key, std::move(id.name), id.bits32});
+    }
+    return StoreEntries(std::move(entries));
+}
+
+Result<StoreEntries> storeIndex(const std::filesystem::path& hiveFile) {
+    const std::uint64_t scan = imageScanGeneration();
+    if (scan == 0) {
+        return readStoreIndex(hiveFile);
+    }
+    struct Kept {
+        std::uint64_t scan = 0;
+        std::wstring file;
+        FileStamp stamp;
+        StoreEntries entries;
+    };
+    static std::mutex lock;
+    static Kept kept;
+    const FileStamp stamp = fileStamp(hiveFile);
+    const std::wstring file = lower(hiveFile.wstring());
+    const std::scoped_lock guard(lock);
+    if (kept.entries && kept.scan == scan && kept.file == file && kept.stamp == stamp && stamp.size != 0) {
+        return kept.entries;
+    }
+    auto read = readStoreIndex(hiveFile);
+    if (!read) {
+        return read;
+    }
+    log::debug("perf", std::format(L"component index read: {} component(s)", (*read)->size()));
+    kept = Kept{scan, file, stamp, *read};
+    return kept.entries;
+}
+
 std::vector<std::filesystem::path> otherLinks(const std::filesystem::path& file) {
     std::vector<std::filesystem::path> links;
     wchar_t volume[MAX_PATH];
@@ -533,6 +592,14 @@ Result<DeepRemovalResult> deepRemoveDrivers(const std::filesystem::path& mountDi
 Result<StoreRemovalResult> removeStoreCopies(const std::filesystem::path& mountDir, const std::vector<std::wstring>& names,
                                              std::uint8_t bits, const std::vector<std::wstring>& services, const TaskContext& task) {
     StoreRemovalResult result;
+    // Where the step's time goes (DBG): each part of it, in milliseconds.
+    auto mark = std::chrono::steady_clock::now();
+    std::wstring timing;
+    const auto lap = [&](std::wstring_view part) {
+        const auto now = std::chrono::steady_clock::now();
+        timing += std::format(L" {} {}", part, std::chrono::duration_cast<std::chrono::milliseconds>(now - mark).count());
+        mark = now;
+    };
     std::set<std::wstring> wanted;
     for (const auto& name : names) {
         if (isProtectedStoreName(name)) {
@@ -552,27 +619,21 @@ Result<StoreRemovalResult> removeStoreCopies(const std::filesystem::path& mountD
     // 1. The components: COMPONENTS read through offreg (the hive is not loaded).
     std::vector<std::filesystem::path> payloads;
     if (!wanted.empty()) {
-        auto hive = OffRegKey::openHive(config / L"COMPONENTS");
-        if (!hive) {
-            return std::unexpected(hive.error());
+        auto index = storeIndex(config / L"COMPONENTS");
+        if (!index) {
+            return std::unexpected(index.error());
         }
-        const auto all = hive->open(L"DerivedData\\Components");
-        for (const auto& key : all.subkeys()) {
-            const auto identity = all.open(key).bytes(L"identity");
-            if (identity.empty()) {
-                continue;
-            }
-            const auto id = ComponentStoreIndex::storeIdentity(
-                std::string(identity.begin(), std::find(identity.begin(), identity.end(), std::uint8_t{0})));
-            if (!wanted.contains(id.name) || (bits == 32 && !id.bits32) || (bits == 64 && id.bits32)) {
+        for (const auto& entry : **index) {
+            if (!wanted.contains(entry.name) || (bits == 32 && !entry.bits32) || (bits == 64 && entry.bits32)) {
                 continue;
             }
             ++result.components;
-            if (std::filesystem::path folder = sxs / key; !backupListFiles(folder).empty() || !backupListFolders(folder).empty()) {
+            if (std::filesystem::path folder = sxs / entry.key; !backupListFiles(folder).empty() || !backupListFolders(folder).empty()) {
                 payloads.push_back(std::move(folder));
             }
         }
     }
+    lap(L"components");
     task.report(0.2, L"WinSxS");
     if (auto go = task.cancel.check(); !go) {
         return std::unexpected(go.error());
@@ -594,6 +655,7 @@ Result<StoreRemovalResult> removeStoreCopies(const std::filesystem::path& mountD
         }
     }
 
+    lap(L"links");
     // D-116 / D-117: what Windows needs before it starts stays, whatever component it belongs to: boot
     // drivers and device filters (report 2026-11-07: BitLocker's glob took fvevol.sys), the loader's
     // own files and every module these import (report 2026-11-08: the error reporting glob took
@@ -627,6 +689,7 @@ Result<StoreRemovalResult> removeStoreCopies(const std::filesystem::path& mountD
             }
         }
     }
+    lap(L"boot");
     // D-118: a module one that stays imports or delay-loads stays as well (the VM test of the D-117
     // image: the app deployment service delay-loads IsoSessionCore.dll, shell32 cldapi.dll; with them
     // gone the calls returned E_NOTIMPL and no Store package registered for a new account).
@@ -653,6 +716,7 @@ Result<StoreRemovalResult> removeStoreCopies(const std::filesystem::path& mountD
         }
     }
 
+    lap(L"imports");
     for (std::size_t i = 0; i < copies.size(); ++i) {
         if (auto gone = forceRemoveEntry(copies[i]); !gone) {
             log::warn("cbs", L"installed copy not removed: " + describe(gone.error()));
@@ -695,6 +759,8 @@ Result<StoreRemovalResult> removeStoreCopies(const std::filesystem::path& mountD
         }
     }
     task.report(1.0, L"services");
+    lap(L"files+services");
+    log::debug("perf", L"store copies (ms):" + timing);
     log::info("cbs", std::format(L"store copies removed: {} component(s), {} file(s), {} service key(s); {} boot file(s), {} imported module(s) kept",
                                  result.components, result.files, result.services, result.keptDrivers, result.keptImports));
     return result;

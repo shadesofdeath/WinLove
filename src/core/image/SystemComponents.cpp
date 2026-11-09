@@ -15,9 +15,11 @@
 #include "core/system/Privileges.h"
 
 #include <json.hpp>
+#include <windows.h>
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cwctype>
 #include <format>
 #include <map>
@@ -591,6 +593,43 @@ std::optional<bool> stillInstalled(DismSession& session, const std::wstring& ide
     });
 }
 
+// D-127 (report 2026-11-09, 26200.9818, servicing stack 10.0.26100.9815): a mounted WIM serves the
+// files it has not written out yet as reparse points of its own (IO_REPARSE_TAG_WIM). Removing a
+// package can make CBS copy the catalog of a sibling it already took out ("…-merged-Package…cat")
+// from Windows\Servicing\Packages into its session store; CBS takes such a file for a symlink
+// ("Symlink found, not copying file") and the removal fails with ERROR_FILE_INVALID — all 20 files
+// it refused in that run were such placeholders. Opened for writing, the WIM driver writes the file
+// out (the same bytes, a plain file from then on): then CBS copies it.
+constexpr std::int32_t kFileInvalid = static_cast<std::int32_t>(0x800703EE);
+
+std::size_t writeOutServicingPackages(const std::filesystem::path& mountDir) {
+    (void)enablePrivilege(SE_BACKUP_NAME);
+    (void)enablePrivilege(SE_RESTORE_NAME);
+    const auto folder = mountDir / L"Windows" / L"Servicing" / L"Packages";
+    WIN32_FIND_DATAW data{};
+    HANDLE find = FindFirstFileExW((folder / L"*").c_str(), FindExInfoBasic, &data, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH);
+    if (find == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+    std::size_t written = 0;
+    do {
+        // Only the WIM driver's own placeholders: never a real link, never a folder.
+        if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0 || (data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0 ||
+            data.dwReserved0 != IO_REPARSE_TAG_WIM) {
+            continue;
+        }
+        const auto path = folder / data.cFileName;
+        HANDLE file = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                                  OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+        if (file != INVALID_HANDLE_VALUE) {
+            CloseHandle(file);
+            ++written;
+        }
+    } while (FindNextFileW(find, &data));
+    FindClose(find);
+    return written;
+}
+
 } // namespace
 
 Result<void> removeComponent(DismSession& session, const ComponentRecipe& requested, const TaskContext& task, bool packagesAllowed) {
@@ -736,11 +775,17 @@ Result<void> removeComponent(DismSession& session, const ComponentRecipe& reques
     }
     if (!recipe.storeNames.empty() || !recipe.services.empty()) {
         // D-113: the installed copies and the services' keys (SYSTEM): DISM must let go of the hives.
+        const auto started = std::chrono::steady_clock::now();
         session.suspend();
+        const auto suspended = std::chrono::steady_clock::now();
         auto copies = removeStoreCopies(mountDir, recipe.storeNames, recipe.storeBits, recipe.services, task);
+        const auto done = std::chrono::steady_clock::now();
         if (auto reopened = session.reload(); !reopened) {
             return reopened;
         }
+        const auto ms = [](auto a, auto b) { return std::chrono::duration_cast<std::chrono::milliseconds>(b - a).count(); };
+        log::debug("perf", std::format(L"{}: DISM let go {} ms, store copies {} ms, DISM back {} ms", recipe.title, ms(started, suspended),
+                                       ms(suspended, done), ms(done, std::chrono::steady_clock::now())));
         if (!copies) {
             return std::unexpected(copies.error());
         }
@@ -808,6 +853,7 @@ Result<void> removeComponent(DismSession& session, const ComponentRecipe& reques
     // Packages: 5 % … 80 % of the step.
     std::size_t removed = 0;
     std::optional<Error> refused;
+    bool writtenOut = false;
     for (std::size_t i = 0; i < packages.size(); ++i) {
         // Stopped by the user: a cancelled removal must not read as "DISM refused, delete the files".
         if (auto go = task.cancel.check(recipe.title); !go) {
@@ -819,7 +865,21 @@ Result<void> removeComponent(DismSession& session, const ComponentRecipe& reques
                                                           static_cast<double>(packages.size()),
                                                stage);
                                }};
-        if (auto result = session.removePackage(package.identity, part); result) {
+        auto result = session.removePackage(package.identity, part);
+        if (!result && result.error().hresult == kFileInvalid && !writtenOut) {
+            // D-127: CBS refused a file the WIM had not written out yet; written out, once more.
+            writtenOut = true;
+            const std::size_t count = writeOutServicingPackages(mountDir);
+            log::info("cbs", std::format(L"0x800703EE: {} file(s) of Servicing\\Packages written out of the WIM; once more: {}", count,
+                                         package.identity));
+            if (session.reloadRequired()) {
+                if (auto reloaded = session.reload(); !reloaded) {
+                    return reloaded;
+                }
+            }
+            result = session.removePackage(package.identity, part);
+        }
+        if (result) {
             ++removed;
             log::info("cbs", L"removed " + package.identity);
         } else if (stillInstalled(session, package.identity) == false) {

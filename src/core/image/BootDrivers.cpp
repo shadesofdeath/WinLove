@@ -10,11 +10,49 @@
 #include <cstring>
 #include <cwctype>
 #include <format>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <set>
 
 namespace wl::core {
+
+namespace {
+
+std::mutex g_scanLock;
+std::uint64_t g_scanCount = 0; // scopes ever opened
+std::uint64_t g_scanOpen = 0;  // the open one's number
+int g_scanDepth = 0;
+
+} // namespace
+
+ImageScanScope::ImageScanScope() {
+    const std::scoped_lock guard(g_scanLock);
+    if (g_scanDepth++ == 0) {
+        g_scanOpen = ++g_scanCount;
+    }
+}
+
+ImageScanScope::~ImageScanScope() {
+    const std::scoped_lock guard(g_scanLock);
+    if (--g_scanDepth == 0) {
+        g_scanOpen = 0;
+    }
+}
+
+std::uint64_t imageScanGeneration() {
+    const std::scoped_lock guard(g_scanLock);
+    return g_scanOpen;
+}
+
+FileStamp fileStamp(const std::filesystem::path& file) {
+    WIN32_FILE_ATTRIBUTE_DATA data{};
+    if (!GetFileAttributesExW(file.c_str(), GetFileExInfoStandard, &data)) {
+        return {};
+    }
+    return {(static_cast<std::uint64_t>(data.nFileSizeHigh) << 32) | data.nFileSizeLow,
+            (static_cast<std::uint64_t>(data.ftLastWriteTime.dwHighDateTime) << 32) | data.ftLastWriteTime.dwLowDateTime};
+}
 
 namespace {
 
@@ -464,7 +502,7 @@ std::vector<std::wstring> multiStrings(const std::vector<std::uint8_t>& data) {
     return out;
 }
 
-Result<std::vector<BootDriver>> findBootDrivers(const std::filesystem::path& mountDir) {
+static Result<std::vector<BootDriver>> readBootDrivers(const std::filesystem::path& mountDir) {
     auto hive = OffRegKey::openHive(mountDir / L"Windows" / L"System32" / L"config" / L"SYSTEM");
     if (!hive) {
         return std::unexpected(hive.error());
@@ -774,10 +812,56 @@ std::vector<std::wstring> sysprepModules(const std::filesystem::path& mountDir) 
     return {out.begin(), out.end()};
 }
 
-Result<std::map<std::wstring, std::wstring>> keptBootFiles(const std::filesystem::path& mountDir,
-                                                           const std::vector<BootDriver>& drivers,
-                                                           const std::vector<std::wstring>& services) {
-    auto schema = readApiSetSchema(mountDir / L"Windows" / L"System32" / L"apisetschema.dll");
+// The image's API set schema, kept while a scan scope is open and the file is unchanged (D-128).
+static Result<ApiSetSchema> schemaOf(const std::filesystem::path& mountDir) {
+    const auto file = mountDir / L"Windows" / L"System32" / L"apisetschema.dll";
+    const std::uint64_t scan = imageScanGeneration();
+    if (scan == 0) {
+        return readApiSetSchema(file);
+    }
+    struct Kept {
+        std::uint64_t scan = 0;
+        std::wstring file;
+        FileStamp stamp;
+        std::optional<Result<ApiSetSchema>> schema;
+    };
+    static std::mutex lock;
+    static Kept kept;
+    const FileStamp stamp = fileStamp(file);
+    const std::wstring name = lower(file.wstring());
+    const std::scoped_lock guard(lock);
+    if (!kept.schema || kept.scan != scan || kept.file != name || kept.stamp != stamp || stamp.size == 0) {
+        kept = Kept{scan, name, stamp, readApiSetSchema(file)};
+    }
+    return *kept.schema;
+}
+
+Result<std::vector<BootDriver>> findBootDrivers(const std::filesystem::path& mountDir) {
+    const std::uint64_t scan = imageScanGeneration();
+    if (scan == 0) {
+        return readBootDrivers(mountDir);
+    }
+    struct Kept {
+        std::uint64_t scan = 0;
+        std::wstring root;
+        FileStamp stamp;
+        std::optional<Result<std::vector<BootDriver>>> drivers;
+    };
+    static std::mutex lock;
+    static Kept kept;
+    const FileStamp stamp = fileStamp(mountDir / L"Windows" / L"System32" / L"config" / L"SYSTEM");
+    const std::wstring root = lower(mountDir.wstring());
+    const std::scoped_lock guard(lock);
+    if (!kept.drivers || kept.scan != scan || kept.root != root || kept.stamp != stamp || stamp.size == 0) {
+        kept = Kept{scan, root, stamp, readBootDrivers(mountDir)};
+    }
+    return *kept.drivers;
+}
+
+static Result<std::map<std::wstring, std::wstring>> readKeptBootFiles(const std::filesystem::path& mountDir,
+                                                                      const std::vector<BootDriver>& drivers,
+                                                                      const std::vector<std::wstring>& services) {
+    auto schema = schemaOf(mountDir);
     if (!schema) {
         return std::unexpected(schema.error());
     }
@@ -940,6 +1024,49 @@ bool isModuleName(std::wstring_view name) {
     return std::ranges::any_of(kinds, [&](std::wstring_view kind) { return low.size() > kind.size() && low.ends_with(kind); });
 }
 
+} // namespace
+
+Result<std::map<std::wstring, std::wstring>> keptBootFiles(const std::filesystem::path& mountDir,
+                                                           const std::vector<BootDriver>& drivers,
+                                                           const std::vector<std::wstring>& services) {
+    const std::uint64_t scan = imageScanGeneration();
+    if (scan == 0) {
+        return readKeptBootFiles(mountDir, drivers, services);
+    }
+    // What stays depends on the drivers (the SYSTEM hive), the step's services and files that stay.
+    std::vector<std::wstring> names;
+    for (const auto& service : services) {
+        names.push_back(lower(service));
+    }
+    std::ranges::sort(names);
+    std::wstring key = std::to_wstring(drivers.size());
+    for (const auto& name : names) {
+        key += L"|" + name;
+    }
+    struct Kept {
+        std::uint64_t scan = 0;
+        std::wstring root;
+        FileStamp stamp;
+        std::map<std::wstring, Result<std::map<std::wstring, std::wstring>>> byServices;
+    };
+    static std::mutex lock;
+    static Kept kept;
+    const FileStamp stamp = fileStamp(mountDir / L"Windows" / L"System32" / L"config" / L"SYSTEM");
+    const std::wstring root = lower(mountDir.wstring());
+    const std::scoped_lock guard(lock);
+    if (kept.scan != scan || kept.root != root || kept.stamp != stamp || stamp.size == 0) {
+        kept = Kept{scan, root, stamp, {}};
+    }
+    if (const auto found = kept.byServices.find(key); found != kept.byServices.end()) {
+        return found->second;
+    }
+    auto files = readKeptBootFiles(mountDir, drivers, services);
+    kept.byServices.emplace(key, files);
+    return files;
+}
+
+namespace {
+
 // The modules in `folder` (and its subfolders when `deep`; links and junctions are not followed),
 // named `prefix` + their lower-case names.
 void listModules(const std::filesystem::path& folder, const std::wstring& prefix, bool deep, std::vector<ModuleFile>& out,
@@ -1019,7 +1146,7 @@ Result<std::map<std::wstring, std::wstring>> keptImportedFiles(const std::filesy
     if (goingSet.empty()) {
         return kept;
     }
-    auto schema = readApiSetSchema(mountDir / L"Windows" / L"System32" / L"apisetschema.dll");
+    auto schema = schemaOf(mountDir);
     if (!schema) {
         return std::unexpected(schema.error());
     }
@@ -1032,9 +1159,9 @@ Result<std::map<std::wstring, std::wstring>> keptImportedFiles(const std::filesy
     listModules(windows / L"SystemApps", L"windows\\systemapps\\", true, modules);
     listModules(windows / L"ImmersiveControlPanel", L"windows\\immersivecontrolpanel\\", true, modules);
 
-    // A file about to go → who imports it (and whether only on demand).
-    std::map<std::wstring, std::vector<std::pair<std::wstring, bool>>> importers;
-    for (const auto& module : modules) {
+    // Each module's imports resolved to the files they may mean (and whether only on demand).
+    const auto resolve = [&](const ModuleFile& module) {
+        auto targets = std::make_shared<std::vector<std::pair<std::wstring, bool>>>();
         const ModuleImports lists = cachedModuleImports(mountDir / module.path, module.size, module.written);
         const std::size_t slash = module.path.rfind(L'\\');
         const std::wstring folder = module.path.substr(0, slash + 1);
@@ -1049,12 +1176,55 @@ Result<std::map<std::wstring, std::wstring>> keptImportedFiles(const std::filesy
                         continue;
                     }
                     for (const auto& dir : where) {
-                        std::wstring candidate = dir + host;
-                        if (candidate != module.path && goingSet.contains(candidate)) {
-                            importers[std::move(candidate)].emplace_back(module.path, delayed);
+                        if (std::wstring candidate = dir + host; candidate != module.path) {
+                            targets->emplace_back(std::move(candidate), delayed);
                         }
                     }
                 }
+            }
+        }
+        return std::shared_ptr<const std::vector<std::pair<std::wstring, bool>>>(std::move(targets));
+    };
+    // D-128: kept per module while a scan scope is open (the module and the schema unchanged).
+    struct Resolved {
+        std::uint64_t size = 0;
+        std::uint64_t written = 0;
+        std::shared_ptr<const std::vector<std::pair<std::wstring, bool>>> targets;
+    };
+    struct Resolutions {
+        std::uint64_t scan = 0;
+        std::wstring root;
+        FileStamp schemaStamp;
+        std::map<std::wstring, Resolved> modules;
+    };
+    static std::mutex resolvedLock;
+    static Resolutions resolved;
+    const std::uint64_t scan = imageScanGeneration();
+    std::unique_lock resolvedGuard(resolvedLock, std::defer_lock);
+    if (scan != 0) {
+        resolvedGuard.lock();
+        const FileStamp schemaStamp = fileStamp(mountDir / L"Windows" / L"System32" / L"apisetschema.dll");
+        if (const std::wstring root = lower(mountDir.wstring());
+            resolved.scan != scan || resolved.root != root || resolved.schemaStamp != schemaStamp) {
+            resolved = Resolutions{scan, root, schemaStamp, {}};
+        }
+    }
+    // A file about to go → who imports it (and whether only on demand).
+    std::map<std::wstring, std::vector<std::pair<std::wstring, bool>>> importers;
+    for (const auto& module : modules) {
+        std::shared_ptr<const std::vector<std::pair<std::wstring, bool>>> targets;
+        if (scan != 0) {
+            auto& entry = resolved.modules[module.path];
+            if (!entry.targets || entry.size != module.size || entry.written != module.written) {
+                entry = Resolved{module.size, module.written, resolve(module)};
+            }
+            targets = entry.targets;
+        } else {
+            targets = resolve(module);
+        }
+        for (const auto& [candidate, delayed] : *targets) {
+            if (goingSet.contains(candidate)) {
+                importers[candidate].emplace_back(module.path, delayed);
             }
         }
     }

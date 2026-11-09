@@ -3,6 +3,7 @@
 
 #include "base/Log.h"
 #include "base/Utf8.h"
+#include "core/image/BootDrivers.h"
 #include "core/image/RegistryEdit.h"
 #include "core/image/Services.h"
 #include "core/image/ImageFiles.h"
@@ -409,6 +410,7 @@ ApplyReport apply(const ApplyPlan& plan, DismSession& session, const TaskContext
     }
     std::unique_ptr<OfflineRegistry> registry; // hives stay loaded for the run, unloaded on return
     std::unique_ptr<DeferredRegistry> deferred; // the post-setup .reg files, tidied on return
+    const ImageScanScope scan; // D-128: what the removals read of the image is kept between steps while unchanged
     const std::size_t total = plan.steps.size();
     for (std::size_t i = 0; i < total; ++i) {
         const PlanStep& step = plan.steps[i];

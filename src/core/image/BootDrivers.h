@@ -134,4 +134,27 @@ struct BootDriver {
 [[nodiscard]] Result<std::map<std::wstring, std::wstring>> keptImportedFiles(const std::filesystem::path& mountDir,
                                                                              const std::vector<std::wstring>& going);
 
+// D-128: one apply removes up to a few hundred components, and each step read the same things again
+// (26200, per step: the component index ~7 s, the boot analysis ~1.8 s, every module's imports
+// ~1.4 s). While a scope is open, these readers keep what they read between steps as long as the
+// files it came from are unchanged (size and last write: the hive DISM lets go of before a step, the
+// module itself). Apply opens one for its run; a single call and the tests read afresh.
+class ImageScanScope {
+public:
+    ImageScanScope();
+    ~ImageScanScope();
+    ImageScanScope(const ImageScanScope&) = delete;
+    ImageScanScope& operator=(const ImageScanScope&) = delete;
+};
+// The open scope's number (each scope its own), 0 when none is open: what was kept under another
+// number is read again.
+[[nodiscard]] std::uint64_t imageScanGeneration();
+// A file's size and last write time (zeros when it cannot be read: never taken as unchanged).
+struct FileStamp {
+    std::uint64_t size = 0;
+    std::uint64_t written = 0;
+    [[nodiscard]] bool operator==(const FileStamp&) const = default;
+};
+[[nodiscard]] FileStamp fileStamp(const std::filesystem::path& file);
+
 } // namespace wl::core
