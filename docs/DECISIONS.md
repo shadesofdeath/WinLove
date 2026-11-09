@@ -241,6 +241,65 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-128 — Derin kaldırma adımları imajdan okuduklarını paylaşır: adım başına ~12 sn → ~1,7 sn (2026-11-09)
+Bağlam: Kullanıcı: "bileşen silme kısımları çok yavaş, daha da hızlandırmanın yolu yok mu?" Kullanıcının ön ayarında
+183 derin kaldırma adımı (D-113 depo kopyaları) var. Lab ölçümü (26200.9818 kopyası, adım başına): COMPONENTS
+dizinini offreg ile baştan okumak ~7 sn, açılış analizi (D-116/117) ~1,8 sn, içe aktarım analizi (D-118) ~1,4 sn,
+DISM oturumunu yeniden açmak ~1,4 sn. Bu dördü her adımda baştan yapılıyordu, oysa iki adım arasında imajda
+değişen yalnız silinen dosyalardı.
+Karar: `ImageScanScope` (`core/image/BootDrivers.h`): Uygula koşusu boyunca açık bir kapsam. Kapsam açıkken
+şunlar adımlar arasında saklanır:
+- bileşen dizini (anahtar, ad, 32 bit), COMPONENTS dosyası değişmediği sürece;
+- açılış sürücüleri ve korunan açılış dosyaları, SYSTEM dosyası değişmediği sürece (hizmet silen adımdan sonra
+  yeniden okunur);
+- API set şeması ve her modülün çözülmüş içe aktarımları, dosyalar değişmediği sürece.
+"Değişmedi" demek dosyanın boyutu ve son yazma zamanının aynı kalmasıdır. DISM kovanları bırakırken (her adımdan
+önce) yazar, paket kaldırdıysa bu değişiklik görülür. Kapsamın dışında (tekil çağrılar, testler) her şey eskisi
+gibi baştan okunur.
+Ölçüm (`wlcli apply`, 10 derin adım tek süreçte): ilk adım ~38 sn (tek seferlik okuma), sonraki her adım ~1,7 sn
+(depo kopyaları 0,1–0,3 sn + DISM'in yeniden açılması ~1,4 sn); bileşen dizini bir kez okundu (36.636 bileşen),
+hizmet silen adımdan sonra açılış analizi doğru şekilde yeniden yapıldı.
+Kalan: DISM oturumunun her adımda bırakılıp yeniden açılması (~1,4 sn). Kovanlar gerekmediğinde atlanabilir, ama
+saklanan bilgi eskiyse DISM'in tuttuğu kovanı okumak gerekir; şimdilik dokunulmadı.
+
+## D-127 — Bileşen kaldırmada 0x800703EE: WIM yer tutucusu paket dosyaları diske indirilip bir kez daha denenir (2026-11-09)
+Bağlam: Kullanıcının raporunda (Uygula, 26200.9818, servis yığını 10.0.26100.9815) altı bileşen kaldırması
+`0x800703EE` (ERROR_FILE_INVALID) ile düştü; imaj kaydedilmeden tutuldu. CBS günlüğü: "Symlink found, not copying file".
+Reddedilen 20 dosyanın hepsi `Windows\Servicing\Packages` altında, WIM bağlamasının yer tutucusuydu (reparse etiketi
+`0x80000008`, IO_REPARSE_TAG_WIM: içerik hâlâ WIM'den okunuyor, diske yazılmamış). Yığın, paketin kataloğunu özel
+oturum deposuna kopyalarken yer tutucuyu sembolik bağ sayıp reddediyor.
+Karar: `removeComponent` bir paketin kaldırmasında bu kodu görürse, bir kereliğine `Servicing\Packages`'taki yer
+tutucuları diske indirir (yedekleme / geri yükleme yetkisiyle, yazma için açıp kapatmak dosyayı yazılmış kılar), DISM
+oturumunu yeniden yükler ve aynı paketi bir kez daha dener. İndirilen dosya sayısı günlüğe yazılır. Başka hata
+kodlarında hiçbir şey değişmez.
+Doğrulanan: indirme yöntemi lab kopyasında çalışıyor (yer tutucu sayısı 0'a iniyor). Doğrulanmayan: hata lab'da taze
+bağlamada tekrar üretilemedi (DLNA ve BranchCache sorunsuz kalktı); büyük olasılıkla önceki adımların bıraktığı durumla
+ortaya çıkıyor. Kesin kanıt, kullanıcının tutulan imajında Uygula'nın yeniden çalıştırılması.
+
+## D-126 — Kurulum ekranları "Aurora": WinLove'un kendi görünümü, akıcı çizim (2026-11-09)
+Bağlam: Kullanıcı kurulum ekranlarının (D-084) yeniden tasarlanmasını istedi; ilk (Windows benzeri) taslağa "Windows'un
+arayüz öğelerine benzemeyelim, özgün ve animasyonlu olsun" dedi (2026-10-08 kararını tersine çevirir). Tasarım
+tuvalde onaylandı ("çok hoş bunu entegre et"). Ardından: "çok donuyor".
+Karar:
+- `resources/scripts/oobe.ps1` (WPF) yeni görünümle yazıldı: koyu / açık zemin üstünde vurgu renginden ve onun döndürülmüş
+  tonundan oluşan aurora, numaralı adım çizgisi, iri başlık, cam alanlar, iki renkli hap düğme, her sayfaya bir sahne
+  (küre, kart yığını, saat, pencere, duvar kağıdı yelpazesi, paket balonları, gezgin, kalkan), hazırlık ekranında
+  yüzde halkası. Bütün işlevler (ağ, hesap, ad / saat dilimi, görünüm, duvar kağıdı, paketler, tercihler, gizlilik,
+  hatalar, hazırlık adımları) aynen kaldı.
+- **Çizim maliyeti:** ölçüldü (`tools/capture_oobe.py --fps`: her sayfanın geçiş süresi, en uzun kare aralığı, kare
+  hızı). Aurora sürekli hareket ettiği için WPF ekrandaki bütün gölge / parlama efektlerini her karede yeniden
+  çiziyordu: ekran kartıyla bile 4 sayfa 5–14 kare/sn. Çözüm `Optimize-Effects`: efektli her öğe bit eşlem önbelleği
+  olan bir sarmalayıcıya alınır (bir kez çizilir, sonra yalnız birleştirilir); onu hareket ettiren dönüşüm
+  sarmalayıcıya taşınır. Sonuç: bütün sayfalar 96–160 kare/sn. Aurora 15 kare/sn'de, yarım çözünürlüklü önbellekle
+  kayar; ilerleme halkası kare kare çizimi yalnız hazırlık ekranında başlatır.
+- **Ekran kartı yoksa** (Tier 0: VM ya da sürücüsü henüz kurulmamış ilk açılış; önizlemede `--software`): aurora
+  durur, süs döngüleri bekleme pozunda kalır (`Start-Loop`; yalnız "çalışıyor" diyenler, `-Always`, döner), gölgeler
+  kaldırılır. 9–16 → 55–68 kare/sn.
+- Duvar kağıdı küçük resimleri sayfaya girerken topluca değil, pencere boştayken tek tek açılır (geçiş 568 → ~300 ms).
+- Uygulamadaki karşılama kartı önizlemesi (`WelcomeCard`) aynı görünümle çizilir; renkler planın temasından gelir
+  (uygulamanınkinden değil). `Canvas`'a tema dışı renk çizimleri eklendi: renkli metin / ikon / çerçeve, iki renkli
+  dolgu, yumuşak ışık.
+
 ## D-125 — Güncellemelere karşı koru: kurulu Windows'ta, güncellemenin geri açtığını düzelten görev (2026-11-09)
 Bağlam: Kullanıcı "Referans araçtan farkımız" listesinden 5. maddeyi seçti ("nasıl bir koruma ekleyebilirsin"). Bir imajın
 seçimleri Windows Update'ten sağ çıkmıyor: toplu güncelleştirme bir hizmeti yeniden açabiliyor, bir ilkeyi

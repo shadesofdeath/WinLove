@@ -28,6 +28,12 @@
 - **Güncellemelere karşı koru (isteğe bağlı, Uygula'da):** kurulu Windows'ta bir görev, güncellemenin geri açtığı
   hizmeti, sıfırladığı ayarı, yeniden açtığı görevi ve geri kurduğu uygulamayı düzeltir. Sizin kendi
   değiştirdiklerinize dokunmaz. Günlük: `C:\ProgramData\WinLove\Guard\guard.log`.
+- **Yeni kurulum ekranları:** WinLove'un kurulum sihirbazı Windows'a benzemeyen kendi görünümüyle geliyor: vurgu
+  renginde akan arka plan, numaralı adımlar, her sayfada canlı bir sahne, hazırlanırken yüzde halkası. Ekran kartı
+  olmayan bilgisayarda (sanal makine, ekran kartı sürücüsü kurulmamış ilk açılış) da akıcı çalışır; Katılımsız
+  sayfasındaki önizleme de aynı görünümde.
+- **Bileşen kaldırma çok daha hızlı:** derin kaldırma adımları imajı her seferinde baştan taramıyor; değişmeyeni
+  bir kez okuyor. Ölçümde adım başına ~12 saniyeden ~1,7 saniyeye indi.
 - **Katılımsız** üst menüde, kendi sayfasında. WinLove kurulum ekranının aşamaları canlı önizlenir; tek anahtarla
   açılıp kapanır.
 - **Ayarlar:**
@@ -55,6 +61,9 @@
   - iki kalıcı yetenek yüzünden (0x800F0825);
   - küçültülmüş imajda CBS adımları 0x800F0830 döngüsüne giriyordu.
   İkisi de artık atlanıyor ve imaj kaydediliyor.
+- **Bazı bileşen kaldırmaları 0x800703EE ile düşüyor, imaj kaydedilmiyordu.** Windows'un servis yığını, imaj
+  bağlamasının henüz diske yazmadığı paket dosyalarını reddediyordu ("Symlink found"). WinLove artık bu dosyaları
+  diske yazıp kaldırmayı bir kez daha deniyor.
 - Sol menü kayıyor, bildirimler yazının tamamını gösteriyor, "İsteğe bağlı özellikler" sekmesi tıklanıyor, Hakkında
   sayfası düzeldi. Uygula sürerken adım listesindeki yazılar üst üste binmiyor.
 
@@ -299,6 +308,12 @@ What changed since 1.2.3 Beta:
 - **Guard against updates (optional, on Apply):** on the installed Windows a task puts back a service an update
   turned back on, a setting it reset, a task it enabled again and an app it brought back. What you changed yourself
   is left alone. Log: `C:\ProgramData\WinLove\Guard\guard.log`.
+- **New setup screens:** WinLove's setup wizard comes in a look of its own, not Windows': a flowing background in
+  the accent colour, numbered steps, a live scene on every page, a percentage ring while it prepares. It runs
+  smoothly on a PC without a graphics card too (a virtual machine, a first start before the display driver); the
+  preview on the Unattended page has the same look.
+- **Much faster component removal:** deep removal steps no longer scan the image from scratch each time; what does
+  not change is read once. Measured: from ~12 seconds per step to ~1.7.
 - **Unattended** has its own page in the top menu. The stages of WinLove's setup screens are previewed live; one
   switch turns them on or off.
 - **Settings:**
@@ -326,6 +341,9 @@ What changed since 1.2.3 Beta:
   - because of two permanent capabilities (0x800F0825);
   - on a shrunk image, CBS steps looped on 0x800F0830.
   Both are now skipped and the image is saved.
+- **Some component removals failed with 0x800703EE and the image was not saved.** Windows' servicing stack
+  refused package files the image mount had not written to disk yet ("Symlink found"). WinLove now writes them
+  out and tries the removal once more.
 - The side menu scrolls, notices show their whole text, the "Optional features" tab is clickable, and the About
   page is fixed. While Apply runs, the step list no longer draws its lines over each other.
 

@@ -3,6 +3,20 @@
 > Her oturumun sonunda güncellenir. En üstte güncel durum; geçmiş en altta kısa satırlar.
 
 ## Güncel
+- **1.3.0 Beta güncellendi (2026-11-09, kullanıcı: "commitle … son yayınladığımızı güncelle").** Bu oturumda:
+  - **D-126 kurulum ekranları "Aurora":** tasarım tuvalde onaylandı (https://claude.ai/artifact/W88ufVzn6yvHxYz4eZc6DQ),
+    `resources/scripts/oobe.ps1` ve uygulamadaki `WelcomeCard` önizlemesi bu görünümde. Kullanıcı "çok donuyor"
+    dedi: gölge efektleri her karede yeniden çiziliyordu; bit eşlem önbelleğiyle bütün sayfalar 96–160 kare/sn
+    (ekran kartıyla), ekran kartı olmadan 55–68. Ölçüm: `python -I tools/capture_oobe.py out.png --fps [--software]`.
+  - **D-127 0x800703EE:** kullanıcının raporundaki 6 kaldırma. Servis yığını WIM yer tutucusu paket dosyalarını
+    reddediyordu; artık diske indirilip bir kez daha deneniyor. Lab'da taze bağlamada hata tekrar üretilemedi:
+    **doğrulanmadı**. Kullanıcının tuttuğu imaj (`%LOCALAPPDATA%\WinLove\mount`, 26200.9818) hâlâ bağlı;
+    Uygula'yı yeniden çalıştırınca görülecek. O imaja dokunulmadı.
+  - **D-128 hız:** derin kaldırma adımı ~12 sn → ~1,7 sn (lab, `wlcli apply` 10 adım).
+  - **Sıradaki somut adım:** kullanıcı tutulan imajda Uygula'yı yeniden çalıştırsın (D-127 kanıtı); VM'de yeni
+    kurulum ekranlarıyla bir kurulum (ekran kartı olmayan VM'de akıcılık ve bütün sayfalar).
+  - Bilinen: ilk derin adım hâlâ ~38 sn (modüllerin içe aktarımları ilk kez okunuyor, tek iş parçacığı); DISM
+    oturumu her adımda yeniden açılıyor (~1,4 sn).
 - **YAYINLANDI: v1.3.0-beta (2026-11-09)** — https://github.com/shadesofdeath/WinLove/releases/tag/v1.3.0-beta
   (ek: `WinLove.exe`). Açık: güncelleme korumasının VM'de gerçek bir toplu güncelleştirmeden sonraki davranışı;
   kaldırmaları önceki bir oturumda yapılmış imaja sonradan güncelleme eklemek (referans araçta da düşer).
