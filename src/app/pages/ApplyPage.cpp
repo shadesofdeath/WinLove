@@ -28,7 +28,10 @@ constexpr float kTop = 0.0f;
 constexpr float kGap = 10.0f;
 constexpr float kInfoBar = 38.0f;
 constexpr float kStepsWidth = 420.0f;
-constexpr float kStepRow = 24.0f; // D-109
+// A step row holds two lines (the group, then "done / total · the step"): 24 (D-109) let the second
+// line run into the next row (user report 2026-11-09).
+constexpr float kStepRow = 42.0f;
+constexpr float kStepGap = 2.0f;
 constexpr float kProgress = 2.0f;
 constexpr float kEditionsLabel = 220.0f; // "Diğer sürümlere de uygula" column (D-055)
 constexpr float kEditionsRow = 28.0f;
@@ -707,9 +710,9 @@ void ApplyPage::paintSteps(ui::Canvas& canvas, RectF area) {
         const Color ink = active ? Color::AccentBase
                           : complete ? (failed ? Color::StatusWarning : Color::StatusSuccess)
                                      : Color::TextTertiary;
-        canvas.drawIcon(icon, {row.x + 8, row.y + 8}, ink);
+        canvas.drawIcon(icon, {row.x + 8, row.y + std::round((kStepRow - ui::tokens::size::icon) / 2)}, ink);
         const float x = row.x + 8 + ui::tokens::size::icon + 8;
-        canvas.drawText(groupName(r), {x, row.y + 1, row.right() - x - 8, 16},
+        canvas.drawText(groupName(r), {x, row.y + 4, row.right() - x - 8, 18},
                         active ? TypeStyle::BodyStrong : TypeStyle::Body,
                         active || complete ? Color::TextPrimary : Color::TextSecondary);
         std::wstring caption = active || complete ? std::format(L"{} / {}", done, total)
@@ -717,8 +720,8 @@ void ApplyPage::paintSteps(ui::Canvas& canvas, RectF area) {
         if (active && !current.empty()) {
             caption += L" · " + current;
         }
-        canvas.drawText(caption, {x, row.y + 16, row.right() - x - 8, 14}, TypeStyle::Caption, Color::TextTertiary);
-        y += kStepRow;
+        canvas.drawText(caption, {x, row.y + 22, row.right() - x - 8, 16}, TypeStyle::Caption, Color::TextTertiary);
+        y += kStepRow + kStepGap;
     }
 }
 

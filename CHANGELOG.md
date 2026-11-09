@@ -56,7 +56,7 @@
   - küçültülmüş imajda CBS adımları 0x800F0830 döngüsüne giriyordu.
   İkisi de artık atlanıyor ve imaj kaydediliyor.
 - Sol menü kayıyor, bildirimler yazının tamamını gösteriyor, "İsteğe bağlı özellikler" sekmesi tıklanıyor, Hakkında
-  sayfası düzeldi.
+  sayfası düzeldi. Uygula sürerken adım listesindeki yazılar üst üste binmiyor.
 
 ### 1.2.3 Beta — 2026-10-11
 
@@ -327,7 +327,7 @@ What changed since 1.2.3 Beta:
   - on a shrunk image, CBS steps looped on 0x800F0830.
   Both are now skipped and the image is saved.
 - The side menu scrolls, notices show their whole text, the "Optional features" tab is clickable, and the About
-  page is fixed.
+  page is fixed. While Apply runs, the step list no longer draws its lines over each other.
 
 ### 1.2.3 Beta — 2026-10-11
 
