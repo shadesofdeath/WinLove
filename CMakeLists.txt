@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
-project(WinLove VERSION 1.2.3 LANGUAGES C CXX)
+project(WinLove VERSION 1.3.0 LANGUAGES C CXX)
 # What people see (About, the release on GitHub); PROJECT_VERSION stays numeric for the file version.
-set(WL_VERSION_LABEL "1.2.3 Beta")
+set(WL_VERSION_LABEL "1.3.0 Beta")
 
 if(NOT WIN32 OR NOT MSVC)
     message(FATAL_ERROR "WinLove builds only with MSVC on Windows.")

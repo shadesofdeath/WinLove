@@ -6,6 +6,58 @@
 
 ## Türkçe
 
+### 1.3.0 Beta — 2026-11-09
+
+1.2.3 Beta'dan bu yana gelenler:
+
+#### Yeni
+
+- **Yeni arayüz:** referans araç düzeninde gezinme (≡ · Görüntü / Ön Ayar / Araçlar / Katılımsız · sol menü). Renkli
+  ikonlar, saf siyah tema, pencere kenarında vurgu rengi, yuvarlak onay kutuları. Uygulama ilk açılışta tam ekran
+  başlar.
+- **Bileşenler referans aracın modeliyle:**
+  - kategori ağacı ve şablonlar (Hafif / Genel / Gizlilik / Önerilmez);
+  - bileşen deposundan ölçülen gerçek boyutlar, 32 bit alt satırları, bağımlılık ağacı;
+  - kaldırma modu: Varsayılan+ / Derin / Maksimum;
+  - imajın kendi sürücüleri, dilleri, klavyeleri, yazı tipleri ve sistem uygulamaları da listede.
+- **Uyumluluk korumaları (31):** Windows Update, Mağaza, yazdırma, Wi-Fi / Bluetooth, ses, kurulum, etkinleştirme
+  gibi Windows özellikleri ve Office, Discord, Battle.net, EA, NVIDIA, Visual Studio gibi uygulamalar için.
+  "Windows'un temeli" koruması hep açık.
+- **Etki raporu:** Uygula, kuyruğun bozacağı özellikleri ve onları bozan adımları listeler. "Korumayı aç" derseniz
+  o adımlar kuyruktan çıkar.
+- **Güncellemelere karşı koru (isteğe bağlı, Uygula'da):** kurulu Windows'ta bir görev, güncellemenin geri açtığı
+  hizmeti, sıfırladığı ayarı, yeniden açtığı görevi ve geri kurduğu uygulamayı düzeltir. Sizin kendi
+  değiştirdiklerinize dokunmaz. Günlük: `C:\ProgramData\WinLove\Guard\guard.log`.
+- **Katılımsız** üst menüde, kendi sayfasında. WinLove kurulum ekranının aşamaları canlı önizlenir; tek anahtarla
+  açılıp kapanır.
+- **Ayarlar:**
+  - DISM motoru: Otomatik / Bu bilgisayar / Windows ADK;
+  - ESD sıkıştırması için iş parçacığı sayısı;
+  - ön ayar, oluşturulan ISO'nun kök dizinine de yazılır.
+- Güncelleme bulma Windows Update'in kendi kanalıyla. Ayrıca güç planı menüsü, sürücü sınıf adları ve ikonları,
+  Özellikler ağacı.
+
+#### Düzeltmeler
+
+- **Bileşen kaldırınca güncelleme ISO'ya girmiyordu.** Toplu güncelleştirme bileşen kaldırmalarından sonra
+  kuruluyordu. Windows'un servis yığını kaldırılan bileşenlerin kayıtlarını bozuk sayıp güncellemeyi reddediyordu
+  (0x80073712). Uygula da o adımı atlayıp imajı güncellemesiz kaydediyordu. Artık referans araçtaki gibi önce
+  güncellemeler bütün imaja kuruluyor, kaldırmalar ondan sonra yapılıyor.
+- **İndirme bitmeden Uygula:** güncelleme inerken Uygula başlatılabiliyordu. İndirme Uygula sırasında biterse
+  güncelleme sessizce düşüyor, bildirim yine "kuyruğa eklendi" diyordu. Artık:
+  - Uygula indirmenin bitmesini bekler;
+  - bekleyen indirmeler kaybolmaz, imaj yeniden bağlanınca kuyruğa girer.
+  Dil ve Mağaza indirmeleri için de aynısı geçerli.
+- **Ağır ön ayarlarla kurulan Windows açılmıyordu, OOBE döngüye giriyordu ya da explorer çöküyordu.** Şunlar artık
+  hiçbir kaldırmayla gitmiyor: önyükleme sürücüleri, oturum ve kurulum dosyaları, kalan modüllerin yüklediği
+  DLL'ler, çekirdek yazı tipleri, EFS'nin çekirdeği ve Windows'un çalışması için gereken diğer parçalar.
+- **Uygula imajı kaydetmiyordu:**
+  - iki kalıcı yetenek yüzünden (0x800F0825);
+  - küçültülmüş imajda CBS adımları 0x800F0830 döngüsüne giriyordu.
+  İkisi de artık atlanıyor ve imaj kaydediliyor.
+- Sol menü kayıyor, bildirimler yazının tamamını gösteriyor, "İsteğe bağlı özellikler" sekmesi tıklanıyor, Hakkında
+  sayfası düzeldi.
+
 ### 1.2.3 Beta — 2026-10-11
 
 1.2.2 Beta'dan bu yana gelenler:
@@ -225,6 +277,57 @@ WinLove alfadan çıkıp **beta** oldu. 1.0.2 Alpha'dan bu yana gelenler:
 ---
 
 ## English
+
+### 1.3.0 Beta — 2026-11-09
+
+What changed since 1.2.3 Beta:
+
+#### New
+
+- **New interface:** reference-style navigation (≡ · Image / Presets / Tools / Unattended · side menu). Coloured icons,
+  a pure black theme, the accent colour on the window border, round check boxes. The app starts maximized.
+- **Components on the reference tool's model:**
+  - category tree and templates (Light / General / Privacy / Not recommended);
+  - real sizes measured from the component store, 32-bit sub-rows, a dependency tree;
+  - removal mode: Default+ / Deep / Maximum;
+  - the image's own drivers, languages, keyboards, fonts and system apps are listed too.
+- **Compatibility guards (31):** for Windows features such as Windows Update, Store, printing, Wi-Fi / Bluetooth,
+  audio, setup and activation, and for apps such as Office, Discord, Battle.net, EA, NVIDIA and Visual Studio. The
+  "Windows core" guard is always on.
+- **Impact report:** Apply lists the features the queue would break and the steps that break them. "Turn the
+  guard on" takes those steps out of the queue.
+- **Guard against updates (optional, on Apply):** on the installed Windows a task puts back a service an update
+  turned back on, a setting it reset, a task it enabled again and an app it brought back. What you changed yourself
+  is left alone. Log: `C:\ProgramData\WinLove\Guard\guard.log`.
+- **Unattended** has its own page in the top menu. The stages of WinLove's setup screens are previewed live; one
+  switch turns them on or off.
+- **Settings:**
+  - DISM engine: Automatic / This PC / Windows ADK;
+  - the number of threads for ESD compression;
+  - the preset is also written to the root of the ISO it makes.
+- Updates are found through Windows Update's own channel. Also: power plan menu, driver class names and icons,
+  Features tree.
+
+#### Fixes
+
+- **With components removed, the update did not get into the ISO.** The cumulative update was installed after
+  the component removals. Windows' servicing stack took the removed components' entries for corrupt and refused
+  the update (0x80073712), and Apply skipped that step and saved the image without it. Now, as in the reference tool, the
+  updates go into the whole image first and the removals follow.
+- **Apply before the download finished:** Apply could start while an update was still downloading. If the
+  download finished during Apply, the update was silently dropped while the notice still said "queued". Now:
+  - Apply waits for the download to finish;
+  - held downloads are no longer lost: they are queued when the image is mounted again.
+  The same goes for language and Store downloads.
+- **With heavy presets the installed Windows did not boot, OOBE looped or explorer crashed.** None of these goes
+  with any removal any more: boot drivers, sign-in and setup files, DLLs that remaining modules load, core fonts,
+  EFS's core and the other parts Windows needs to run.
+- **Apply did not save the image:**
+  - because of two permanent capabilities (0x800F0825);
+  - on a shrunk image, CBS steps looped on 0x800F0830.
+  Both are now skipped and the image is saved.
+- The side menu scrolls, notices show their whole text, the "Optional features" tab is clickable, and the About
+  page is fixed.
 
 ### 1.2.3 Beta — 2026-10-11
 

@@ -3,6 +3,151 @@
 > Her oturumun sonunda güncellenir. En üstte güncel durum; geçmiş en altta kısa satırlar.
 
 ## Güncel
+- **1.3.0 Beta (2026-11-09) — D-107 … D-125 tek sürümde; kullanıcı "her şey bitince yeni sürümle commitle,
+  releases'te kısa net changelog ile paylaş" dedi.** Son oturumda:
+  - **D-124 etki raporu:** Uygula özetinde kapalı korumaların tutacağı adımlar özellik özellik, "Korumayı aç" ile.
+  - **D-124 hata ("ISO'ya güncelleme eklenmiyor", günlüksüz rapor):**
+    - Asıl neden: LCU, bileşen kaldırmalarından sonra kuruluyordu ve 0x80073712 ile düşüyordu. Kaldırılan
+      bileşenlerin depo kayıtları "metadata corrupt" görünüyordu. Uygula adımı atlayıp güncellemesiz kaydediyordu.
+    - Artık referans araçtaki gibi önce güncellemeler, sonra kaldırmalar (`Phase` sırası).
+    - Lab `build\lab\upd124` (25H2 26200.8037 + D-120 ön ayarı + KB5129195): eski sırada LCU düştü. Yeni sırada
+      26200.9457 oldu; 805/807 adım başarılı (2'si kalıcı yetenek); CheckHealth temiz.
+    - İkinci yol: indirme sürerken Uygula başlıyordu ve biten indirme kilitli kuyruğa düşüyordu. Artık Uygula
+      bekler; bekleyen indirmeler (güncelleme / dil / Mağaza) bağlanınca kuyruğa girer.
+  - **D-125 güncellemelere karşı koru:** isteğe bağlı. `ProgramData\WinLove\Guard` + `\WinLove\Update guard` görevi;
+    kural "güncelleme değiştirdiyse düzelt, kullanıcı değiştirdiyse bırak". Betik bu PC'de test anahtarıyla
+    doğrulandı; VM'de gerçek güncelleme sonrası denenmedi.
+- **ARAYÜZ v3 — referans araç birebir (2026-11-07, D-109 · D-110 · D-111) — kullanıcı testi bekliyor, commit yok.** Kullanıcı:
+  "UI hâlâ çok iri … referans araç ne kadar güzel tasarımı var … birebir bu tasarımda renklerde olsun" ve "bütün sayfalarımızı
+  menülerimizi referans araçla birebir aynı mantıkta çalışacak şekilde değiştir" (kanıtlar `Desktop\research`).
+  Yapılan: referans araç %175'te ölçüldü (yalnız referans araç penceresi, koyu + açık; görüntüler `research\analysis\evidence\screens\design\`);
+  `tokens.json` 3.0.0 (referans araç renkleri, 12px Segoe UI, satır 23,5); iskelet referans aracınki (≡ · sekmeler · başlık / şerit /
+  ipucu / sol gezinti kartı Başlat-Entegre et-Kaldır-Yapılandır-Bitir / sekmeli sayfa kartı / durum çubuğu); imaj başlığı,
+  sekme şeridi, Değişiklikler paneli kalktı. Bileşenler referans araç mantığında (14 kategori, işaret = tutulur, şablon renkleri
+  ve Şablon ▾, Kaldırma modu Varsayılan+/Derin/Maksimum, "Önerilen" koruması, boyut çubuğu, Tümü ▾ filtresi). Özellikler
+  referans araç düzeninde (iki sekme, FoD kategorileri, Etkin / Yüklendi). Formlar ve tablolar 23,5 satır, satır çizgisi yok.
+  D-107/D-108'in çalışma ağacı yedeği: `build\backup\d108-wip-*.{patch,tar}`.
+  **Doğrulanan:** 387 test, Debug + Release (`dist\WinLove.exe`), render (koyu/açık, 1207×700 @1,75) Görüntü, Bileşenler,
+  Güncellemeler, Sürücüler, Kayıt Defteri, Kurulum Sonrası, Ayarlar, Görevler, Katılımsız, Uygula, ISO, Presetler, Loglar,
+  Uygulama ayarları, Başlat menüsü, Simgeler, Hakkında. **Doğrulanmayan:** Özellikler render'ı (demo eskiden beri bozuk),
+  uygulama içi tıklama turu, Kaldırma modu penceresi ekranda.
+  **D-112 (aynı gün):** Bileşenler'e imajın kendi satırları referans aracın yöntemiyle — sürücüler (sınıf → "Sağlayıcı | inf" →
+  cihazlar), diller, klavye düzenleri, yazı tipleri, sistem uygulamaları; referans aracın bağlı imajında klavyeler 218/218,
+  sürücü INF'leri 715/715 ve sınıfları 116/116 birebir; kaldırma tarifleri `tools\lab_inventory.ps1` ile 27/27 PASS.
+  Açık: IME grubu, VM'de kurulum testi.
+  **D-113 (aynı gün):** Bileşenler'in statik kısmı referans aracın tanım modeliyle (REA: referans aracın ağacı ve MB'leri programa
+  gömülü sabitler; kopyalanmadı) — 145 WinLove tanımı imajın bileşen deposuna desenle bağlanır, her depo bileşeni en
+  özgül tanıma düşer, boyut WinSxS'ten bayt bayt ölçülür, "- 32 bit" alt satırları, bağımlılık ağacı (üst giderse
+  altlar gider, alt geri gelirse üstler gelir), kilitli çekirdek düğümleri; kaldırma referans aracın Varsayılan+'ı (kurulu
+  kopyalar + servis anahtarları, depo korunur). Referans aracın imajında 142 tanım / 4.070 MB, 108 adet 32 bit satırı;
+  `tools\lab_store_copies.ps1` sonucu (lab imajı, Pro): 23/23 PASS — Karakter Eşlemi, WMIC'in yalnız 32 bit kısmı, WebClient + servisi
+  kaldırıldı, WinSxS yükü yerinde, çekirdek bileşen ve çekirdek servis reddedildi, DISM `/ScanHealth` temiz.
+  **D-114 (aynı gün, kullanıcının 17 maddesi):** renkli ikonlar, saf siyah tema, kart formlar, Hakkında, Görüntü
+  düğmeleri, FE3 ile güncelleme bulma (3 → 8), Windows'un sürücü sınıf adları/ikonları ve hızlı içe aktarma, Kayıt
+  Defteri güç planı menüsü, Özellikler ağacı ve dil grupları. Açık: Ayarlar sayfasının içeriği (Olaylar, Ekstra Hizmetler
+  sekmeleri ve imajın Grup İlkesi şablonlarından ayar kataloğu — referans aracın listesi kopyalanmaz).
+  **Düzeltme (2026-11-07 akşam, kullanıcı raporu):** 859 adımlık ön ayarda yalnız iki kalıcı yetenek (Sense.Client,
+  WorkFolders.Client; DISM 0x800F0825 ile hiçbir şeye dokunmadan reddeder) 857 başarılı değişikliğin kaydını durdurdu.
+  Artık bu red `unchangedByFailure` (atlanır, imaj kaydedilir). Held bir çalışmadan sonra Kaydet / "Kaydet…" kalanları
+  dışarıda bırakıp kaydeder (`ApplyPage::awaitingSave`); elle "Kaydet ve çöz" de WIM'i Uygula gibi `optimizeWim` ile yazar.
+  İkinci hata: mount devralınınca D-084 dinleyicisi karşılama dosyalarını kuyruğa koyup queue.json'ın üzerine yazıyordu,
+  kayıtlı kuyruk geri gelmiyordu. Artık `savedQueue()` setMounted'dan önce okunur, `restoreQueue(saved)` birleştirir.
+  Üçüncü (D-115): kaydedilmemiş, WinSxS'i küçültülmüş imaja ön ayar ikinci kez uygulanınca bio-enrollment'ın DISM
+  kaldırması yarıda kaldı (D-079 `s..-installers-onecore`'u siliyordu: appxreg.dll yok → 0x8007007E), CBS imaja
+  `Unserviceable=1` + pending.xml yazdı, sonraki her paket adımı 0x800F0830. Artık küçültme yükleyicileri tutar;
+  `servicingClosed()` (küçük WinSxS ya da Unserviceable) Uygula'dan önce okunur, CBS adımları DISM'e gitmeden "atlandı"
+  olur (bekletmez), bileşen paketleri kalır, gerisi kaldırılır. Kullanıcının imajı elle onarıldı: 5 WinSxS klasörü özgün
+  WIM'den, /RevertPendingActions, Unserviceable silindi; CheckHealth temiz (geri alma ilk açılışta tamamlanır).
+  Dördüncü (D-116): kurulan sistem ilk açılışta önyükleyicide 0xc000000f verdi. `bitlocker` bileşeninin depo globu
+  `fvevol.sys`'i sildi; servisi kaldı (önyüklemede yüklenen kritik birim filtresi). Artık:
+  - Önyükleme sürücüleri, önyükleme yolu gruplarının sürücüleri ve aygıt sınıfı filtreleri hiçbir bileşen kaldırmasıyla
+    gitmez (`BootDrivers`).
+  - Kullanıcının kaydedilmiş install.wim'ine özgün ISO'dan `fvevol.sys` + `scfilter.sys` geri kondu. Bu yetmedi.
+  Beşinci (D-117): yeniden oluşturulan ISO VMware'de aynı 0xc000000f'i verdi; sanal makinede katman katman açıldı:
+  - `werkernel.sys`: wer globu siliyordu, `ntoskrnl.exe` içe aktarıyor.
+  - Hyper-V globu `winhv` / `winhvr` / `vmbkmcl`'ı siliyordu; `vmbus.sys` / `Vid.sys` kalıyordu.
+  - Siyah ekran: oturum 1'in csrss'i 1 sn'de bitiyordu (Volatility). İkiye bölmeyle bulundu: `utcapi.dll`; winlogon onu
+    adıyla yüklüyor, telemetri kaldırması siliyordu.
+  - Specialize hatası: `ProvSysprep.dll` → `provtool.exe` (provisioning kaldırması).
+  - `explorer.exe` → `AEPIC.dll`, `iertutil.dll` → `srvcli.dll`.
+  - WinLove'un kendi kurulum sayfaları yazısız açıldı. İki ayrı neden vardı:
+    - PowerShell kısıtlı dil kipindeydi: AppLocker kaldırması `srpapi.dll` + `appidapi.dll`'i siliyordu.
+    - PowerShell'in `ConvertFrom-Json`'u çalışmıyordu: ASP.NET kaldırması `System.Web`'i siliyordu. Katalog düzeltildi.
+  Artık kaldırma şunlara ve hepsinin geçişli içe aktarmalarına (API kümeleri imajın şemasıyla çözülerek) dokunmaz:
+  - yükleyicinin dosyaları;
+  - oturum / Kurulum programları ve adıyla yükledikleri DLL'ler;
+  - Windows'un otomatik servislerinin DLL'leri;
+  - sysprep modülleri;
+  - API kümesi şemasının bütün hostları (`keptBootFiles`).
+  Altıncı (D-118): D-117'li uçtan uca testte sihirbaz bitti, sonra OOBE "Bilgisayarım neden yeniden başladı?"
+  döngüsüne girdi. Yeni hesapta hiçbir Store paketi (VCLibs, UI.Xaml, WindowsAppRuntime …) kaydolmuyordu; görev çubuğu
+  yoktu, kabuk çöküyordu. AppX'in iç izi (TraceLogging) kaynağı gösterdi: `CdplIsSupported` → efswrt → feclient →
+  EFS. `efs` bileşeni EFS'nin çekirdeğini ve hizmetini siliyordu; VM'de geri konunca kayıt düzeldi. Düzeltmeler:
+  - `efs` artık yalnız arayüzü alıyor;
+  - kalan bir modülün içe aktardığı **ya da gecikmeli yüklediği** dosya gitmiyor (`keptImportedFiles`). 33 dosya bu
+    yüzden siliniyordu: IsoSessionCore, cldapi, efscore, ContactActivation, edgeangle, magnification …
+  Uçtan uca test (özgün ISO + ön ayar + yeni WinLove → VM) `build\lab\d117`'de yeniden çalışıyor.
+  Yedinci (D-119): OOBE döngüsünün asıl nedeni silinen çekirdek yazı tipleriydi (Arial, Times New Roman, Tahoma …);
+  bunlar artık kalıyor. edge-update de WebView2'nin kaydını silmiyor.
+  Sekizinci (D-120): ilk oturumda explorer çöküyordu. Referans aracın tanımları ikiliden okundu: erişilebilirlik deneyimi,
+  metin girişi hizmeti, özellik yapılandırması (flighting-featureconfiguration), Başlat'ın paketleri ve
+  ServicingStack'in tuttukları artık hiçbir kaldırmayla gitmiyor. Kurulum / Modern uygulama / Arama / Gece ışığı
+  korumaları eklendi; Önerilen her kırmızı satırı tutuyor; Windows özellikleri de korunuyor. Sonradan eklenen
+  korumalar eski ayarlarda varsayılanla açılıyor. CLI `apply --compat` arayüzün süzgecini uyguluyor. Uçtan uca test
+  (`build\lab\d120`, 2026-11-09): kullanıcının ön ayarıyla sıfırdan ISO → temiz kurulum → sihirbaz → **masaüstü**;
+  görev çubuğu, Başlat, Gezgin ve Ayarlar çalışıyor.
+  Dokuzuncu (D-121, 2026-11-09): referans aracın kalan korumaları. Referans aracın uyumluluk penceresi ve her korumanın kilitlediği
+  satırlar / servisler WinLove kimliklerine eşlendi. Yeni korumalar: Windows etkinleştirme, TPM (hile önleyiciler),
+  SFC, Yükseltme; "Uygulamaların ihtiyaçları" bölümü (Battle.net, Discord, EA Javelin, Eski oyunlar, Office, Netflix,
+  NVIDIA, Visual Studio). Kapatılamayan "Windows'un temeli" koruması ve 8 yeni korunan servis anahtarı (fvevol,
+  rdyboost …). Motor: tarifinin götürdüğü servis bir korumada olan bileşen de tutuluyor (Yazdırma koruması artık
+  Yazdırma bileşenini, Wi-Fi koruması Bluetooth'u da tutuyor). Var olan korumalar referans aracın listeleriyle genişledi;
+  Windows Güvenliği, Ağ paylaşımı ve Kamera yeni kullanıcıda açık. 31 koruma; testler ve Release dist geçti. VM'de
+  denenmedi (yalnız kuyruktan adım düşüren bir değişiklik; D-120'nin uçtan uca testi geçerli). Kullanıcının
+  ayarlarında ön ayarından 28 adım tutuluyor (5'i D-120'den, 23'ü yeni korumalardan).
+  Onuncu (D-122, 2026-11-09): daha çok tanım. İmajın deposunda WinLove'un dokunmadığı 4,7 GB'ın 2,1 GB'ını
+  referans araç tanımlıyor; adlar referans aracın desenleriyle eşlendi (`wlcli store-share` + "geri kalan" deseni).
+  - 17 var olan tanım tamamlandı (Bluetooth iki katına çıktı; WIA, biyometri, akıllı kart, telemetri, Oyun DVR,
+    telefon, sorun gidericiler …).
+  - 9 yeni tanım: IEFrame, CHM yardım, VCM kodekleri, WCN, Yakınlık / Wi-Fi Direct, Ayar eşitleme, Pencere öğeleri
+    platformu, OCR, Adım Kaydedici. Toplam 277.
+  - Kapsanan depo 165 MB büyüdü; hiçbir tanımdan ad kaymadı. Testler ve dist geçti, VM'de denenmedi.
+  On birinci (D-123, 2026-11-09): kullanıcının 14 arayüz maddesi.
+  - Sol menü kayar; Özellikler sekmesi hatası (0 genişlik) düzeldi; bildirim satır sarar.
+  - Onay kutuları yuvarlak, tema seçici ince, ≡ menüsü simgeli, bileşen boyutu ince ölçekli, Hakkında düzgün.
+  - Pencere kenarı vurgu renginde; ilk açılış tam ekran.
+  - Ayarlar'da DISM motoru (Otomatik / Host / ADK sürümleriyle), ESD iş parçacıkları (işlemci benzeşimiyle), ön ayarı
+    ISO köküne kaydet.
+  - Katılımsız üst menüde ve tam genişlik; üstte açık / kapalı belli "WinLove kurulum ekranı" kartı ve sihirbazın
+    aşamalarının uygulama içi önizlemesi.
+  - Testler ve dist geçti; ekranlar render'la denetlendi.
+  **Sıradaki (referans araç mantığı, sayfa sayfa):** daha çok tanım (referans araç ~1.300 satır; kalan büyük paylar: kabuk, oturum
+  açma, Defender, WebView2 deposu), Görüntü (Düzenleme önbelleği / Dağıtılmış / Salt Okunur ağacı + Ön Ayarlar kartı), Güncellemeler (sağda imajın
+  "Mevcut paketler"i), Zamanlanmış Görevler (TaskCache ağacı, Varsayılan/Etkin/Devre dışı/Kaldır — motor + lab önce),
+  Ayarlar (Favoriler sekmesi, Hizmetler / Ekstra Hizmetler), Uygula (sol seçenekler + görev listesi).
+- **ARAYÜZ v2 sıkılaştırma (2026-11-07, D-108) — kullanıcı testi bekliyor, commit yok.** Kullanıcı: "UI çok iri …
+  çok karmaşık, her sayfayı tek tek incele düzelt". Ölçek ~%85 (13px gövde, 30 kontrol), sekmeler tek satır (14 sekme;
+  ilişkili sayfalar sekme içinde segmentli seçim), sıfır sayaçlar gizli, imaj başlığı 64px ve yalnız Görüntü menüsünde,
+  Değişiklikler paneli yalnız Bileşenler/Ayarlar'da, Kurulum Sonrası "Adım ekle ▾" menüsü, Görüntü başlığında tekrar
+  eden Bağla yok, sayfa düzeltmeleri (Kişiselleştirme, Başlat menüsü, Windows indir, Güncellemeler, mono ağırlık).
+  Doğrulanan: tüm sayfalar render ile tek tek (açık tema 1440×900; Bileşenler koyu 1100×700), 387 test, Release dist.
+  Sıradaki somut adım: kullanıcı `dist\WinLove.exe` ile dener.
+- **ARAYÜZ v2 (2026-11-07, D-107) — kullanıcı testi bekliyor, yayınlanmadı, commit yok.** Kullanıcı hazır arayüz
+  paketini verdi (`Downloads\WinLoveUI` → repoda `design/WinLoveUI/`, token'ları `design/tokens.json`): "arayüzü
+  tamamen bununla değiştir, her şey olduğu gibi çalışsın". Yapılan: yeni renkler (zinc + `#2563EB`), Segoe UI Variable
+  (değişken eksenlerle gerçek 500), 14px gövde, 36/40/44 kontroller; bütün widget'lar paketin `Painter`'ına göre;
+  iskelet: menülü başlık çubuğu (Görüntü · Ön Ayar · Araçlar, Ctrl K, tema), imaj başlığı (ad + rozet + boyut
+  önce → sonra), gruplu sekmeler (27 sayfa, sığmayınca satır kayar), "Değişiklikler" sağ paneli (Uygula buraya taşındı),
+  yeni durum çubuğu (DISM + boş alan). NavRail kaldırıldı. Görüntü / Bileşenler / Ayarlar ekranları paketin ölçüleriyle;
+  diğer sayfalar ortak ölçülerle (sütunlar %15 geniş, satır 40, ikonlar ortalı), ISO formu kayar. Proje klasörü
+  `Desktop\Sistem\WinLover`'a taşınmış: `buildd-*` CMake önbellekleri silinip yeniden yapılandırıldı.
+  **Doğrulanan:** Debug + Release build, 387 birim testi geçiyor (tasarıma bağlı 9 beklenti güncellendi), tüm sayfalar
+  `--render` ile açık temada (`--demo-*` örnek verileriyle; Görüntü sayfası `build\lab\setup` kaynağıyla, salt okuma),
+  koyu tema Görüntü/Bileşenler, gerçek pencere `capture_window.py` (175% DPI). **Doğrulanmayan:** uygulama içinde
+  elle tıklama turu (menüler, sekme sürükleme yok, tema düğmesi, Değişiklikler → Uygula), yüksek karşıtlık teması, 1100×700'de
+  üç satır sekme. **Bilinen (eskiden beri):** `--render … --demo-languages` sonsuz döngüye giriyor (bir çekirdek %100);
+  değişikliklerden önceki commit (ac0f62c) ayrı çalışma ağacında derlenip denendi, o da aynı — arayüz işinden değil.
+  Diller sayfasının normal render'ı (kaynakla / kaynaksız) çalışıyor. **Sıradaki somut adım:** kullanıcı `dist\WinLove.exe`'yi dener; istediği ince ayarlar.
 - **Faz:** 3 — sayfalar. P01–P04 ✅. P05 Uygula, P06 ISO, P08 Güncellemeler, P09 Sürücüler, P10 Servisler, P11 Kayıt Defteri,
   P12 Ayarlar / Tweaks, P13 Katılımsız Kurulum, P14 Kurulum Sonrası, P15 Presetler, P16 Uygulama Ayarları, P17 Hakkında, P18 Komut Paleti:
   🟨 geliştirme bitti, kullanıcı testi bekliyor. P07 Bileşenler: 🟨 v2 (AppX + sistem bileşenleri + depo
