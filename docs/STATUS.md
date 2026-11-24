@@ -3,6 +3,31 @@
 > Her oturumun sonunda güncellenir. En üstte güncel durum; geçmiş en altta kısa satırlar.
 
 ## Güncel
+- **2026-11-24 (gece): D-153 … D-156'nın VM kurulum testi geçti + 1.5.0 Beta** (sahibi: "önce sanal makine kurulum
+  testini yap, sonra 1.5.0 Beta olarak yayınla").
+  - **Değişiklik kümesi uygulamanın kendi koduyla:** `tests/app/LabChangesetTests.cpp` (`--test-case="lab: *" --no-skip`,
+    normal koşuda atlanır) imajın ADMX'lerinden ve SOFTWARE kovanının kopyasından (`build\lab\d154\fake`)
+    `PolicyController::operationFor` / `ContextMenuController::operationFor` işlemlerini, üç uygulama kaldırmasını ve
+    `RemovalGaps`'in kuyruğa kendiliğinden eklediği düzeltmeleri yazar: 49 adım (4 ilke, 7 sağ tık, 3 kaldırma + boşluklar,
+    konuk denetimi).
+  - **VM** (`build\lab\vm156\run.ps1` → `tools\lab_vm.ps1 -Tag d156 -LogDisk`, sürüm 4 Pro 26200.8037, EFI, ağsız):
+    `wlcli apply` 49/49 adım 0 hata (Uygula'nın `Applier`'ı), commit, ISO, kurulum ~13 dk, masaüstü, konuk kendini kapattı;
+    ilk oturumda `tools\vm_check_policies_menu.ps1` **38/38 denetim geçti** (`build\lab\out\vm-d156\diag\check.txt`):
+    - Grup İlkesi: dört ilke kayıtta (AUOptions = seçilen 2); Registry.pol makine 2260 / kullanıcı 178 bayt, gpt.ini kayıt
+      CSE'li; elle silinen değerleri `gpupdate /force` geri yazdı (makine + kullanıcı); `gpresult` dördünü adıyla, Etkin /
+      Devre Dışı, "Yerel Grup İlkesi" kaynağıyla listeler; Group Policy günlüğünde uyarı / hata 0.
+    - Sağ tık: kabuğun fiil listesinde "Not Defteri ile aç" var; gizlenen üç öğe birer kez açılınca listeye dönüyor (Sık
+      Kullanılanlara ekle, Paylaş, Önceki Sürümleri Geri Yükle) ve yine gizleniyor; arka plan öğesi `%V`; VNC görüntüsünde
+      Windows 11 menüsünde "Keşfet" var (imajın gizlediği, gösterildi), "Terminalde aç" ve "Paylaş" yok.
+    - Boşluklar: üç uygulama yok; Print Screen = 0; .jpg / .png / .gif / .bmp Fotoğraf Görüntüleyicisi, .txt klasik Not
+      Defteri (`txtfilelegacy`).
+    - Temizlik: VM ve çalışma klasörü silindi, `build\lab\mount\vm-d156` boş.
+  - **Görülmeyen:** gpedit.msc penceresinin kendisi; klasik menünün görüntüsü (Shift+F10 pencere odağı yüzünden Başlat'a
+    gitti — kanıt kabuğun fiil listesi); Home'da Registry.pol; canlı pencerede tıklama; görev çubuğu ilerlemesi.
+  - **1.5.0 Beta:** CMake / `WinLove.rc` / README / CHANGELOG 1.5.0; `build.ps1 -Dist` (Release, birim testleri geçti),
+    `dist\WinLove.exe` 13.253.120 bayt, SHA-256 `6cb51a25beea78f8da708782462f006fb128e898ddfd5aacdc5e28f1f89bda39`, Hakkında
+    "Sürüm 1.5.0 Beta · build 2026.11.25". Etiket `v1.5.0-beta`, GitHub ön sürüm "WinLove 1.5.0 Beta" (TR + EN notlar).
+  - **Sıradaki somut adım:** sahibi 1.5.0 Beta'yı denesin (canlı pencerede Grup İlkesi / Sağ tık sayfaları, görev çubuğu).
 - **2026-11-24 (akşam): sahibinin seçtiği beş öneri — D-153 … D-156 (yayınlanmadı; commit yerel).** Sahibi önerilerden
   "1,2,3,4,5 bunları yap" dedi.
   - **1 · Ön ayar sorusu (D-156):** kuyruk doluyken ön ayar yükle → "Yerine koy" (kuyruk + boot.wim işaretleri boşalır,
@@ -25,10 +50,8 @@
     yedekleme yetkisiyle — ilk koşu 0 (manifestlerde CLSID süslü parantezsiz: düzeltildi, test eklendi), ikinci koşu 4
     (Paint, Clipchamp, Not Defteri, Terminal), toplam 57 öğe 595 ms.
     `--render` (koyu, TR): Grup İlkesi, seçenekler penceresi, Sağ tık menüsü, Öğe ekle, ön ayar sorusu.
-  - **Doğrulanmayan:** canlı pencerede tıklama; görev çubuğu ilerlemesi / yanıp sönme (yalnız derlendi); kurulan
-    Windows'ta gpedit'in ilkeyi göstermesi ve sağ tık menüsünün değişmesi (VM); Uygula'nın tam yolu (`SetPolicy` /
-    `SetContextMenu` adımı gerçek Uygula'da koşmadı — aynı fonksiyonlar `wlcli --set` ile koştu).
-  - **Sıradaki somut adım:** sahibi denesin; istenirse VM kurulumu (gpedit + sağ tık), sonra 1.5.0 Beta.
+  - **Doğrulanmayan:** canlı pencerede tıklama; görev çubuğu ilerlemesi / yanıp sönme (yalnız derlendi). (VM kurulumu
+    ve `Applier` yolu sonradan yapıldı: yukarıdaki girdi.)
 - **2026-11-24 (devam): Sıfırla düğmeleri (D-152) + 1.4.0 Beta yayını** (sahibi: "düzeltmeleri en son yeni sürüm
   numarası ile yayınlarsın", önce bir kullanıcının istediği Sıfırla eklensin).
   - **D-152:** Zamanlanmış Görevler, Kurulum Sonrası, Sürücüler, Kayıt Defteri, Güncellemeler şeridinde `Sıfırla`;

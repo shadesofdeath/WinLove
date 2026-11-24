@@ -6,7 +6,9 @@
 
 ## Türkçe
 
-### Sonraki sürüm (yayınlanmadı)
+### 1.5.0 Beta — 2026-11-25
+
+1.4.0 Beta'dan bu yana gelenler:
 
 #### Yeni
 
@@ -355,7 +357,9 @@ WinLove alfadan çıkıp **beta** oldu. 1.0.2 Alpha'dan bu yana gelenler:
 
 ## English
 
-### Next release (not published)
+### 1.5.0 Beta — 2026-11-25
+
+What came since 1.4.0 Beta:
 
 #### New
 

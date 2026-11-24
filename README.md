@@ -17,7 +17,7 @@
 
 ---
 
-> **1.4.0 Beta.** Değişiklikleri yine önce bir sanal makinede dene; asıl imajının yedeğini tut. Neler değişti:
+> **1.5.0 Beta.** Değişiklikleri yine önce bir sanal makinede dene; asıl imajının yedeğini tut. Neler değişti:
 > [CHANGELOG](CHANGELOG.md).
 > WinLove yalnızca **çevrimdışı imajlarla** çalışır (ISO / WIM / ESD / VHD); çalışan sistemine dokunmaz.
 
@@ -35,7 +35,8 @@
 | **Programlar** | winget deposunun tamamından (~15.400 paket) ya da hazır paketlerden (Temel, Oyuncu, Geliştirici…) seç; ilk oturumda kendi penceresinde kurulur — istersen kurulumlar imaja gömülür ve internetsiz kurulur; bu bilgisayarın programlarını da alır. |
 | **Ayarlar / Tweaks** | 280+ ayar on sekmede: gizlilik, yapay zekâ, uygulamalar, performans, görünüm, Gezgin, Başlat ve görev çubuğu, güncellemeler, güvenlik, sistem — ya da hepsi bu bilgisayardaki gibi. |
 | **Özellikler, güncellemeler, sürücüler, diller** | İsteğe bağlı özellikler; Microsoft Update Kataloğu'ndan toplu güncelleme indirme ve ekleme; sürücü ekleme / kaldırma; dil paketleri. |
-| **Kayıt defteri, servisler, görevler, hosts** | Kendi kayıt değerlerin ve .reg dosyaların; servis başlangıç türleri; zamanlanmış görevleri kapatır ya da kendi yinelenen görevini ekler; hosts listeleri. |
+| **Kayıt defteri, Grup İlkesi, servisler, görevler, hosts** | Kendi kayıt değerlerin ve .reg dosyaların; imajın kendi yönetim şablonlarından Grup İlkesi (gpedit de ayarlanmış gösterir); servis başlangıç türleri; zamanlanmış görevleri kapatır ya da kendi yinelenen görevini ekler; hosts listeleri. |
+| **Sağ tık menüsü** | Gezgin'in sağ tık öğelerini (Windows 11 uygulama öğeleri dahil) imajın kendi kayıtlarından gösterir; gizler, geri getirir ya da kendi komutunu ekler. |
 | **Simgeler ve kişiselleştirme** | Windows'un kendi simge dosyalarındaki simgeleri yedekleyerek değiştirir, 7TSP simge paketlerini (.7z / .zip) tek seferde uygular; duvar kâğıdı, OEM bilgileri, yazı tipleri. |
 | **Katılımsız kurulum ve sonrası** | `autounattend.xml` (yerel hesap, TPM / Secure Boot atlama, OOBE), kurulumdan sonra çalışacak uygulamalar, Wi-Fi, güç planı, betikler. |
 | **Kendi kurulum ekranı** | Windows'un OOBE sayfaları yerine WinLove'un Windows 11 görünümlü sihirbazı: ağ, hesap, bilgisayar adı, tema ve vurgu, duvar kâğıdı, uygulama paketleri, tercihler, gizlilik — 15 dilde, kurulan Windows'un dilinde; sonra doğrudan masaüstü. |
