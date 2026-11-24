@@ -9,12 +9,16 @@
     Ayarlar'da sekme başına `Bu sekmeyi sıfırla` (süzgeçliyken `Gösterilenleri sıfırla`), şeritte `Tümünü sıfırla`; Ön
     Ayar'da `Tüm değişiklikleri sıfırla` (Geri al'lı). Ayrıca `unqueueIf` tek geri alma adımı (eski Sıfırla'lardan sonra
     Geri al yalnız bir satırı getiriyordu).
-  - **Yayın:** sürüm 1.4.0 Beta (1.3.1 değil: 1.3.0'dan beri D-129 … D-152, yeni özellikler); CHANGELOG TR + EN; Hakkında
-    sözü (a) ile kapandı (aşağıda 1. madde). Commit / etiket / GitHub yayını bu girdinin sonunda.
+  - **YAYINLANDI: v1.4.0-beta (2026-11-24)** — https://github.com/shadesofdeath/WinLove/releases/tag/v1.4.0-beta
+    (ön sürüm, ek `WinLove.exe` 12.907.008 bayt, SHA-256 `c6da86bd…aedf9e` = GitHub'ın `digest`'i). Commit'ler `f9938f5`
+    (D-129 … D-152'nin bütün işi) + `76b8f07` (Release 1.4.0 Beta: CMake, CHANGELOG, README), etiket `v1.4.0-beta`;
+    yalnız `main` ve etiket gönderildi. 1.3.1 değil 1.4.0: 1.3.0'dan beri yeni özellikler (VHD, resmi ESD, kendini
+    güncelleme …). `wlcli update-check --current="1.3.0 Beta"` → "a newer release is out"; 1.4.0 → "up to date".
+    Hakkında sözü (a) ile kapandı (aşağıda 1. madde).
   - **Kanıtlı:** Debug `build.ps1 -Test` 666 vaka; `ResetTests` 6 vaka; `--render` (TR / EN, koyu) altı şerit + Ayarlar'ın
     dört hâli (1100 px'de çakışma bulunup düzeltildi).
   - **Doğrulanmayan:** canlı pencerede tıklama; açık sahip kararları 2–6 (aşağıda) yayını engellemiyor, sürüyor.
-- **2026-11-24: iki kullanıcı raporu (sahibinin aktardığı) — commit yok.** Kararlar D-150, D-151.
+- **2026-11-24: iki kullanıcı raporu (sahibinin aktardığı) — 1.4.0 Beta'da yayınlandı.** Kararlar D-150, D-151.
   - **Windows 10 Home 19045.7807, "İmaj kaydedilmedi" (D-150):** 3 bekleten adım. İkisi `0x800703EE` (`media-streaming`,
     `help`): D-127'nin deseni, kullanıcı `v1.3.0-beta`'nın **ilk** ekini (D-127'siz) kullanmış (günlükte yeniden deneme
     satırı yok; güncel ekte var). Üçüncüsü güncel kodda da olan hata: `pending.xml` yüzünden reddedilen WinSxS küçültme
@@ -30,8 +34,7 @@
     aynı ön ayar → 872 adım 0 hata, kaydedildi. Lab'ın bağlaması kalmadı.
   - **Doğrulanmayan:** `0x800703EE` iki yığında da üretilemedi (D-127 yolu hâlâ gerçek imajda kanıtsız); `LongPathsEnabled = 0`
     bir bilgisayarda UUP adlı ISO'nun uygulamadan açılması; günlükteki `build` damgası canlı Uygula'da görülmedi.
-  - **Sahibinin kararı bekleyen:** 1.3.0 Beta'nın eki aynı etiketle değiştirildiği için ilk eki indirenler (116 indirmenin
-    bir kısmı) güncelleme bildirimi almıyor → bu düzeltmeler yeni bir sürüm numarasıyla (ör. 1.3.1 Beta) yayınlansın mı?
+  - ~~Sahibinin kararı: yeni sürüm numarası~~ → sahibi "yeni sürüm numarası ile yayınlarsın" dedi: 1.4.0 Beta (yukarıda).
   - **Bilinen:** D-149 (resmi ESD indirici) kodda var, DECISIONS'ta kaydı yok (2026-11-11 akşam işi; notları
     `build\lab\esd\`). D-150 / D-151 numaraları bu yüzden atlamalı.
   - **Sıradaki somut adım:** kullanıcıdan güncel ekle aynı imajda Uygula'yı yeniden çalıştırması (günlüğün ilk satırında
