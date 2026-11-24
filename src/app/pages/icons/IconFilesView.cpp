@@ -10,6 +10,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <optional>
+#include <utility>
 
 namespace wl::app {
 
@@ -31,12 +34,62 @@ constexpr float kIcon = 48.0f;
 std::wstring groupRef(const std::wstring& fileName, const core::ResourceKey& key) {
     return key.named() ? fileName + L"," + key.name : fileName + L",-" + std::to_wstring(key.id);
 }
+
+// The queued PatchIcons request of a file, parsed once per value instead of once per cell and
+// frame (audit SUB-02: with an icon pack queued the value is ~20 KB of JSON, and the grid asked
+// the controller — which parses it anew — for each of the ~40 cells it draws, on every pointer
+// move). Checked against the queued value itself, so it can never be stale: ChangeSet::version()
+// starts again from 0 with a new mount and is no key on its own.
+class QueuedRequests {
+public:
+    explicit QueuedRequests(const AppState& state) : m_state(state) {}
+
+    // nullptr: nothing (readable) is queued for the file — what IconPatchController::request says.
+    // The pointer holds until the next call.
+    [[nodiscard]] const core::IconPatchRequest* of(const std::wstring& relative) {
+        const auto* op = m_state.changes().find(core::ops::OpKind::PatchIcons, relative);
+        if (!op) {
+            return nullptr;
+        }
+        Entry& entry = m_parsed[relative];
+        if (!entry.known || entry.value != op->value) {
+            entry.value = op->value;
+            entry.request.reset();
+            if (auto parsed = core::iconPatchRequest(op->value)) {
+                entry.request = std::move(*parsed);
+            }
+            entry.known = true;
+        }
+        return entry.request ? &*entry.request : nullptr;
+    }
+    [[nodiscard]] static const std::filesystem::path* replacement(const core::IconPatchRequest* request,
+                                                                  const core::ResourceKey& key) {
+        if (request) {
+            for (const auto& [k, source] : request->groups) {
+                if (k == key) {
+                    return &source;
+                }
+            }
+        }
+        return nullptr;
+    }
+
+private:
+    struct Entry {
+        bool known = false;
+        std::wstring value; // the operation's value `request` was read from
+        std::optional<core::IconPatchRequest> request;
+    };
+    const AppState& m_state;
+    std::map<std::wstring, Entry> m_parsed; // by file: at most the image's icon files
+};
 } // namespace
 
 // ---- the files ---------------------------------------------------------------------------------
 class IconFilesView::FileList : public ui::Widget {
 public:
-    FileList(IconPatchController& controller, const Localization& strings) : m_controller(controller), m_strings(strings) {
+    FileList(const AppState& state, IconPatchController& controller, const Localization& strings)
+        : m_controller(controller), m_strings(strings), m_queued(state) {
         setFocusable(true);
         setAccessible(ui::AccessRole::List, strings.get(Str::IconsTabFiles));
         m_scroll = &add<ui::ScrollBar>();
@@ -140,7 +193,9 @@ public:
             const auto& file = files[m_rows[static_cast<std::size_t>(row)]];
             const bool selected = file.relative == m_selected;
             if (selected || row == m_hover) {
-                canvas.fillRect({r.x + 1, r.y, r.width - 2, r.height}, selected ? Color::BgRaised : Color::BgPanel);
+                // D-137: the selection fill / the hover fill, as every list (were bg.raised / the panel's own
+                // colour, which showed no hover at all on the panel).
+                canvas.fillRect({r.x + 1, r.y, r.width - 2, r.height}, selected ? Color::AccentSubtle : Color::BgHover);
             }
             if (selected) {
                 canvas.fillRect({r.x + 1, r.y + 4, 2, r.height - 8}, Color::AccentBase);
@@ -148,13 +203,15 @@ public:
             // Badge first (right), then the name in what is left.
             std::wstring badge;
             Color badgeInk = Color::TextTertiary;
-            const int changed = m_controller.changedIn(file.relative);
-            if (m_controller.restoreQueued(file.relative)) {
+            // As IconPatchController::changedIn / restoreQueued, from one parse kept between frames.
+            const core::IconPatchRequest* request = m_queued.of(file.relative);
+            const int changed = !request ? 0 : request->restore ? 1 : static_cast<int>(request->groups.size());
+            if (request && request->restore) {
                 badge = m_strings.get(Str::IconsRestoreBadge);
                 badgeInk = Color::StatusWarning;
             } else if (changed > 0) {
                 badge = m_strings.format(Str::IconsChangedN, {{L"n", std::to_wstring(changed)}});
-                badgeInk = Color::AccentBase;
+                badgeInk = Color::AccentText;
             } else if (m_controller.patchedInImage(file.relative)) {
                 badge = m_strings.get(Str::IconsPatchedBadge);
             }
@@ -217,6 +274,7 @@ private:
 
     IconPatchController& m_controller;
     const Localization& m_strings;
+    QueuedRequests m_queued;
     ui::ScrollBar* m_scroll = nullptr;
     std::wstring m_filter;
     std::vector<std::size_t> m_rows;
@@ -228,7 +286,8 @@ private:
 // ---- the icons of one file ---------------------------------------------------------------------
 class IconFilesView::IconGrid : public ui::Widget {
 public:
-    IconGrid(IconPatchController& controller, const Localization& strings) : m_controller(controller), m_strings(strings) {
+    IconGrid(const AppState& state, IconPatchController& controller, const Localization& strings)
+        : m_controller(controller), m_strings(strings), m_queued(state) {
         setFocusable(true);
         setAccessible(ui::AccessRole::List, strings.get(Str::IconsTitle));
         m_scroll = &add<ui::ScrollBar>();
@@ -340,7 +399,9 @@ public:
                             ui::TextAlign::Center);
             return;
         }
-        const bool restoring = m_controller.restoreQueued(m_file);
+        // The file's queued request once for the frame, not once per cell (audit SUB-02).
+        const core::IconPatchRequest* request = m_queued.of(m_file);
+        const bool restoring = request && request->restore;
         const auto image = m_controller.pathInImage(m_file).wstring();
         const auto backup = m_controller.pathInImage(core::iconBackupPath(m_file)).wstring();
         canvas.pushClip(b);
@@ -350,10 +411,10 @@ public:
                 continue;
             }
             const auto& g = (*list)[static_cast<std::size_t>(i)];
-            const auto replacement = m_controller.replacement(m_file, g.key);
+            const std::filesystem::path* replacement = QueuedRequests::replacement(request, g.key);
             const bool selected = i == m_selected;
             if (selected || i == m_hover) {
-                canvas.fillRoundRect(c, ui::tokens::radius::r3, selected ? Color::BgRaised : Color::BgPanel);
+                canvas.fillRoundRect(c, ui::tokens::radius::r3, selected ? Color::AccentSubtle : Color::BgHover); // D-137, as the list
             }
             if (replacement || selected) {
                 canvas.strokeRoundRect(c, ui::tokens::radius::r3, replacement ? Color::AccentBase : Color::LineStrong);
@@ -371,7 +432,7 @@ public:
                 canvas.strokeRoundRect(icon, ui::tokens::radius::r2, replacement ? Color::StatusError : Color::LineSubtle);
             }
             canvas.drawText(g.key.named() ? g.key.name : L"#" + std::to_wstring(g.key.id), {c.x + 4, c.y + 64, c.width - 8, 16},
-                            TypeStyle::Caption, replacement ? Color::AccentBase : Color::TextSecondary, ui::TextAlign::Center);
+                            TypeStyle::Caption, replacement ? Color::AccentText : Color::TextSecondary, ui::TextAlign::Center);
         }
         canvas.popClip();
     }
@@ -426,7 +487,7 @@ private:
         }
         const auto& g = (*list)[static_cast<std::size_t>(i)];
         const std::wstring ref = groupRef(m_name, g.key);
-        if (const auto r = m_controller.replacement(m_file, g.key)) {
+        if (const auto* r = QueuedRequests::replacement(m_queued.of(m_file), g.key)) {
             return m_strings.format(Str::IconsTooltipNew, {{L"ref", ref}, {L"file", r->filename().wstring()}});
         }
         return m_strings.format(Str::IconsTooltip,
@@ -435,6 +496,7 @@ private:
 
     IconPatchController& m_controller;
     const Localization& m_strings;
+    mutable QueuedRequests m_queued; // a cache: tooltipFor() is const
     ui::ScrollBar* m_scroll = nullptr;
     std::wstring m_file;
     std::wstring m_name;
@@ -449,12 +511,12 @@ IconFilesView::IconFilesView(AppState& state, IconPatchController& controller, c
     m_search = &add<ui::SearchBox>(strings.get(Str::IconsSearchFiles));
     m_search->setAccessible(ui::AccessRole::Edit, strings.get(Str::IconsSearchFiles));
     m_search->onChange = [this](const std::wstring& text) { m_list->setFilter(text); };
-    m_list = &add<FileList>(controller, strings);
+    m_list = &add<FileList>(state, controller, strings);
     m_list->onSelect = [this](const std::wstring& relative) {
         m_file = relative;
         refresh();
     };
-    m_grid = &add<IconGrid>(controller, strings);
+    m_grid = &add<IconGrid>(state, controller, strings);
     m_grid->onPick = [this] { pick(); };
     m_grid->onRevert = [this] { revertSelected(); };
     m_grid->onSelectionChanged = [this] { updateButtons(); };

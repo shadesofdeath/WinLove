@@ -1,7 +1,6 @@
 #pragma once
-// InfoBar per infobar-toast-dialog.md: 32px, status.*Subtle background, 1px line.subtle above and
-// below, icon 16 in the status color, bodyStrong title + body message (single line, ellipsis),
-// close button on the right.
+// InfoBar per infobar-toast-dialog.md: kHeight tall, status.*Subtle background, icon 16 in the
+// status color, bodyStrong title + body message (single line, ellipsis), close button on the right.
 #include "ui/widgets/Button.h"
 
 #include <functional>
@@ -32,7 +31,9 @@ public:
         m_message += more;
         invalidate();
     }
-    [[nodiscard]] SizeF measure(SizeF available) override { return {available.width, 32.0f}; }
+    // D-136: one height on every page — its close button (size::control) with a spacing step around.
+    static constexpr float kHeight = tokens::size::control + 2 * tokens::spacing::s2;
+    [[nodiscard]] SizeF measure(SizeF available) override { return {available.width, kHeight}; }
     void layout() override;
     void paint(Canvas& canvas) override;
 

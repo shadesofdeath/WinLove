@@ -5,6 +5,7 @@
 // The steps are anchors into one scrolling form, not wizard pages.
 #include "app/Localization.h"
 #include "app/controllers/UnattendController.h"
+#include "app/shell/PageView.h"
 #include "ui/widgets/Button.h"
 #include "ui/widgets/Checkbox.h"
 #include "ui/widgets/Dropdown.h"
@@ -23,15 +24,19 @@ class StepBar;
 class XmlPreview;
 class WelcomeCard;
 
-class UnattendedPage : public ui::Widget {
+// 2026-11-11 (the owner: the wheel did not move the page): when the setup screens' card leaves the
+// form too little room, the whole page scrolls in the card (ScrollableBody); the form keeps kFormMin.
+class UnattendedPage : public ui::Widget, public ScrollableBody {
 public:
     UnattendedPage(AppState& state, UnattendController& controller, const Localization& strings);
     ~UnattendedPage() override;
 
     void showStep(int index); // scrolls the form to a section (step click, --demo-unattended)
     void layout() override;
+    [[nodiscard]] float contentHeight() const override { return m_content; }
 
 private:
+    float m_content = 0; // the page's height at its width (the form at its least): layout()
     using Options = core::UnattendOptions;
     // A dropdown over UnattendController::Choice values; item 0 is "ask during setup" (empty value).
     struct Picker {
@@ -40,6 +45,10 @@ private:
         std::vector<UnattendController::Choice> choices;
         std::function<std::wstring(const Options&)> get;
         std::vector<std::wstring> values; // what each item writes; rebuilt by sync()
+        // Audit PG-17: the box holds the list (sync() gave it), and a value the lists do not offer
+        // is in it as an extra item. Without the extra the next sync() only moves the selection.
+        bool listed = false;
+        bool fromFile = false;
     };
     struct TextField {
         ui::SearchBox* box = nullptr;

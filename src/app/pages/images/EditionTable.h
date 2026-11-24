@@ -7,6 +7,7 @@
 // Del = delete, F2 = rename, Ctrl+C = copy details, right click = row menu.
 #include "app/Localization.h"
 #include "app/pages/images/EditionSelection.h"
+#include "app/state/AppState.h"
 #include "core/image/ImageInfo.h"
 #include "ui/widget/Widget.h"
 #include "ui/widgets/ScrollBar.h"
@@ -16,6 +17,11 @@
 #include <vector>
 
 namespace wl::app {
+
+// 2026-11-11 (the owner: a deleted edition's Durum said "Bağlanıyor"): the word an edition's Durum
+// cell says while `op` runs on it — its own work, and for the ISO's copy step the work it is made
+// for. Empty: no row says anything (reading the lists: the mounted row stays "Bağlı").
+[[nodiscard]] std::optional<Str> operationRowWord(const EngineOperation& op);
 
 class EditionTable : public ui::Widget {
 public:
@@ -36,6 +42,8 @@ public:
     void setSelection(std::optional<int> primary, const std::vector<int>& marked); // edition indexes
     // Mounted / in-progress / failed row and whether other rows are dimmed (operation running).
     void setRowState(std::optional<int> index, RowState state, bool dimOthers);
+    // Working: these editions, each saying `word` ("Siliniyor", "Dışa aktarılıyor" …).
+    void setWorkingRows(std::vector<int> indexes, Str word, bool dimOthers);
     [[nodiscard]] float contentHeight() const noexcept;
 
     void paint(ui::Canvas& canvas) override;
@@ -63,6 +71,8 @@ private:
     std::vector<core::ImageInfo> m_images;
     EditionSelection m_selection; // rows
     std::optional<int> m_stateIndex;
+    std::vector<int> m_workingIndexes; // RowState::Working: every row the work is about
+    Str m_workingWord = Str::ImagesMountingState;
     RowState m_state = RowState::Normal;
     bool m_dimOthers = false;
     int m_hoverRow = -1;

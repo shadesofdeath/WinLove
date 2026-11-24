@@ -627,7 +627,13 @@ Result<void> ensureSetupCompleteLine(const std::filesystem::path& setupComplete,
     std::string existing;
     std::error_code ec;
     if (std::filesystem::exists(setupComplete, ec)) {
-        existing = readFileBytes(setupComplete).value_or(std::string());
+        // There but unreadable is not empty: the script (an OEM's, our other lines) would be
+        // written over (audit IMG-13).
+        auto read = readFileBytes(setupComplete);
+        if (!read) {
+            return std::unexpected(read.error());
+        }
+        existing = std::move(*read);
     }
     const std::string line(wanted);
     if (existing.find(line) != std::string::npos) {

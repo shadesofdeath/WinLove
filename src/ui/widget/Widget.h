@@ -77,8 +77,12 @@ public:
     // Gallery / --render state checks: show hover/press without a pointer.
     void forceVisualState(bool hover, bool press) noexcept;
 
-    void setTooltip(std::wstring text) { m_tooltip = std::move(text); }
+    // A new text while the pointer is on the widget (the item under it changed) re-arms the tooltip.
+    void setTooltip(std::wstring text);
     [[nodiscard]] const std::wstring& tooltip() const noexcept { return m_tooltip; }
+    // What the tooltip is placed against: the whole widget, or the item it is about (a navigation
+    // row, a status bar segment).
+    [[nodiscard]] virtual RectF tooltipAnchor() const { return m_bounds; }
 
     void setAccessible(AccessRole role, std::wstring name) {
         m_role = role;
@@ -141,6 +145,7 @@ public:
 private:
     friend class Host;
     void setHostRecursive(Host* host);
+    [[nodiscard]] RectF paintExtent() const; // bounds of this widget and its visible subtree
 
     Widget* m_parent = nullptr;
     Host* m_host = nullptr;

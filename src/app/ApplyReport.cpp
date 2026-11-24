@@ -4,6 +4,9 @@
 #include "app/pages/ApplyPage.h"
 #include "base/Utf8.h"
 
+#include <windows.h>
+
+#include <chrono>
 #include <format>
 
 namespace wl::app {
@@ -27,8 +30,20 @@ std::wstring escaped(std::wstring_view text) {
     return out;
 }
 
-std::chrono::local_seconds localTime(std::chrono::system_clock::time_point when) {
-    return std::chrono::floor<std::chrono::seconds>(std::chrono::current_zone()->to_local(when));
+// Win32, not std::chrono::current_zone(): that needs icu.dll, which Windows 10 before 1903 (and
+// LTSC 2019) does not have — it throws there, and "Raporu kaydet" took the app down (audit APP-18).
+SYSTEMTIME localTime(std::chrono::system_clock::time_point when) {
+    const auto unix = std::chrono::duration_cast<std::chrono::seconds>(when.time_since_epoch()).count();
+    // FILETIME: 100 ns ticks since 1601-01-01.
+    const ULONGLONG ticks = (static_cast<ULONGLONG>(unix) + 11644473600ULL) * 10000000ULL;
+    const FILETIME file{static_cast<DWORD>(ticks & 0xFFFFFFFF), static_cast<DWORD>(ticks >> 32)};
+    SYSTEMTIME utc{};
+    SYSTEMTIME local{};
+    FileTimeToSystemTime(&file, &utc);
+    if (!SystemTimeToTzSpecificLocalTime(nullptr, &utc, &local)) { // the daylight rule of that date
+        local = utc;
+    }
+    return local;
 }
 
 constexpr const wchar_t* kStyle =
@@ -76,7 +91,8 @@ std::wstring applySkipReason(const Localization& strings, const Error& error) {
 }
 
 std::wstring applyReportFileName(std::chrono::system_clock::time_point when) {
-    return std::format(L"WinLove-rapor-{:%Y%m%d-%H%M}.html", localTime(when));
+    const SYSTEMTIME t = localTime(when);
+    return std::format(L"WinLove-rapor-{:04}{:02}{:02}-{:02}{:02}.html", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute);
 }
 
 std::string applyReportHtml(const AppState& state, const AppState::ApplyRun& run, const Localization& strings,
@@ -91,8 +107,9 @@ std::string applyReportHtml(const AppState& state, const AppState::ApplyRun& run
     html += language == Language::Turkish ? L"tr" : L"en";
     html += L"\"><head><meta charset=\"utf-8\"><title>" + s(Str::ApplyReportTitle) + L"</title><style>" + kStyle +
             L"</style></head><body>\n";
+    const SYSTEMTIME at = localTime(when);
     html += L"<h1>" + s(Str::ApplyReportTitle) + L"</h1>\n<div class=\"meta\">" +
-            std::format(L"{:%Y-%m-%d %H:%M}", localTime(when)) + L"</div>\n";
+            std::format(L"{:04}-{:02}-{:02} {:02}:{:02}", at.wYear, at.wMonth, at.wDay, at.wHour, at.wMinute) + L"</div>\n";
 
     auto stat = [&](const std::wstring& key, const std::wstring& value, const wchar_t* cls = L"") {
         html += L"<tr><td>" + key + L"</td><td class=\"" + cls + L"\">" + escaped(value) + L"</td></tr>\n";

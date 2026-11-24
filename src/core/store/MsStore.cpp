@@ -149,17 +149,23 @@ Result<StoreProduct> parseStoreProduct(std::string_view json) {
         product.publisher = wide((*lp)[0], "PublisherName");
         product.description = wide((*lp)[0], "ShortDescription");
     }
-    for (const auto& sku : p.value("DisplaySkuAvailabilities", nlohmann::json::array())) {
-        const auto props = sku.value("Sku", nlohmann::json::object()).value("Properties", nlohmann::json::object());
-        if (const auto f = props.find("FulfillmentData"); f != props.end() && f->is_object() && product.wuCategoryId.empty()) {
-            product.wuCategoryId = wide(*f, "WuCategoryId");
-            product.packageFamilyName = wide(*f, "PackageFamilyName");
-        }
-        for (const auto& pkg : props.value("Packages", nlohmann::json::array())) {
-            if (const auto size = pkg.find("MaxDownloadSizeInBytes"); size != pkg.end() && size->is_number()) {
-                product.size = std::max(product.size, size->get<std::uint64_t>());
+    // value() throws when a key has another type ("Sku": null): the server's answer is then a
+    // parse error, not an exception out of the module.
+    try {
+        for (const auto& sku : p.value("DisplaySkuAvailabilities", nlohmann::json::array())) {
+            const auto props = sku.value("Sku", nlohmann::json::object()).value("Properties", nlohmann::json::object());
+            if (const auto f = props.find("FulfillmentData"); f != props.end() && f->is_object() && product.wuCategoryId.empty()) {
+                product.wuCategoryId = wide(*f, "WuCategoryId");
+                product.packageFamilyName = wide(*f, "PackageFamilyName");
+            }
+            for (const auto& pkg : props.value("Packages", nlohmann::json::array())) {
+                if (const auto size = pkg.find("MaxDownloadSizeInBytes"); size != pkg.end() && size->is_number()) {
+                    product.size = std::max(product.size, size->get<std::uint64_t>());
+                }
             }
         }
+    } catch (const nlohmann::json::exception&) {
+        return fail(ErrorCode::ParseError, L"the Store catalogue answered in a form WinLove does not know", product.productId);
     }
     if (product.wuCategoryId.empty()) {
         return fail(ErrorCode::Unsupported, L"this product is not delivered through Windows Update (not an app package)",

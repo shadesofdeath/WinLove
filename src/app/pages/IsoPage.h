@@ -8,6 +8,7 @@
 // new Setup cannot install it), read from install.wim's file lists on the reader thread.
 #include "app/Localization.h"
 #include "app/controllers/IsoController.h"
+#include "app/pages/iso/IsoOptions.h"
 #include "app/shell/PageView.h"
 #include "core/image/SetupMedia.h"
 #include "ui/widgets/Button.h"
@@ -15,6 +16,7 @@
 #include "ui/widgets/Dropdown.h"
 #include "ui/widgets/EmptyState.h"
 #include "ui/widgets/InfoBar.h"
+#include "ui/widgets/ProgressRing.h"
 #include "ui/widgets/SearchBox.h"
 #include "ui/widgets/TabBar.h"
 
@@ -30,6 +32,7 @@ public:
         std::function<void(std::function<void()>)> postToUi;
         std::function<void()> changed; // tab / drive / form: the header button follows
         std::function<void()> replaceMedia; // D-077: pick Windows 10 media for the setup files
+        std::function<void()> goDrivers;    // D-134: Sürücüler (a storage driver only in boot.wim)
     };
 
     IsoPage(AppState& state, IsoController& controller, const Localization& strings, Language language, Intents intents);
@@ -46,6 +49,8 @@ public:
     // Render demo (D-077): the editions the setup media "cannot install", whatever the source says.
     void setMediaCannotInstallDemo(std::vector<int> editions);
     void showUsbTab();
+    // D-144 addendum: the options shared with the Apply page's dialog (AppState::isoChoices).
+    [[nodiscard]] IsoOptionControls& options() { return *m_options; }
 
     void layout() override;
     void paint(ui::Canvas& canvas) override;
@@ -54,16 +59,13 @@ private:
     void refresh();
     void updateBlocker();
     void computeSize();
-    void checkWinre(); // editions the new Setup cannot install (reader thread)
-    void paintLegacyHint(ui::Canvas& canvas, float formRight);
     [[nodiscard]] std::vector<int> mediaCannotInstall() const; // D-077 (or the render demo's)
-    [[nodiscard]] std::wstring setupImageText() const;
-    // D-080: "KB5129195 · Setup KB5127216" — what the media update takes; empty: nothing downloaded.
-    [[nodiscard]] std::wstring mediaUpdateSource() const;
-    [[nodiscard]] std::pair<std::wstring, ui::tokens::Color> mediaUpdateSummary() const;
-    void paintMediaHint(ui::Canvas& canvas, float formRight);
-    // "Kurulum ekranı" in the summary: which Setup the media opens, and in what ink.
-    [[nodiscard]] std::pair<std::wstring, ui::tokens::Color> setupUiSummary() const;
+    // D-134: the boot.wim drivers in words for the summary ("pvscsi.inf, iastorvd.inf") and the storage
+    // ones the installed Windows would not get — worked out in refresh() (they read the scan, the queue
+    // and the media's driver lists), never in paint.
+    void syncBootDrivers();
+    std::wstring m_bootDriversText;
+    std::vector<std::filesystem::path> m_storageOnlyInBoot;
     void notifyChanged();
     void paintIsoForm(ui::Canvas& canvas, float y, float formRight);
     void paintUsbForm(ui::Canvas& canvas, float y, float formRight);
@@ -86,23 +88,14 @@ public:
 
 private:
     ui::InfoBar* m_bar = nullptr;
+    ui::ProgressRing* m_ring = nullptr; // D-142: the progress row's, while building
     ui::SearchBox* m_fileName = nullptr;
     ui::SearchBox* m_folder = nullptr;
     ui::Button* m_browse = nullptr;
-    ui::SearchBox* m_label = nullptr;
-    ui::RadioGroup* m_boot = nullptr;
-    ui::Dropdown* m_repack = nullptr;
-    ui::CheckField* m_noPrompt = nullptr;
-    ui::CheckField* m_bootBypass = nullptr;
-    ui::CheckField* m_legacySetup = nullptr;
-    ui::CheckField* m_mediaUpdate = nullptr; // D-080
-    ui::CheckField* m_secureBoot = nullptr;  // D-094: Windows UEFI CA 2023 boot manager
-    std::optional<bool> m_dbTrusts2023;      // this PC's firmware db (nullopt: not known)
-    void paintSecureBootHint(ui::Canvas& canvas, float formRight);
-    bool m_legacyTouched = false;  // the user's choice is kept from then on
-    std::vector<int> m_noWinre;    // 24H2+ editions without Winre.wim
+    // D-144 addendum: label, boot mode, compression and the boxes — the controls the Apply page's "ISO
+    // seçenekleri…" shows too, on AppState::isoChoices (pages/iso/IsoOptions).
+    std::unique_ptr<IsoOptionControls> m_options;
     std::optional<std::vector<int>> m_cannotInstallDemo; // D-077 render demo
-    ui::CheckField* m_sha = nullptr;
     ui::CheckField* m_open = nullptr;
     // USB tab
     std::vector<core::UsbDisk> m_disks;

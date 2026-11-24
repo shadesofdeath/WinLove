@@ -9,6 +9,9 @@ namespace wl::app {
 StartPinsController::StartPinsController(AppState& state, std::function<void(std::function<void()>)> postToUi, Surface surface,
                                          StartPinsController* appsFrom)
     : m_state(state), m_post(std::move(postToUi)), m_surface(surface), m_appsFrom(appsFrom) {
+    if (const auto& run = m_state.applyRun()) {
+        m_applyStage = run->stage; // a run already done when this page is made is not a new end
+    }
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Mount) {
             m_apps.reset();
@@ -17,6 +20,26 @@ StartPinsController::StartPinsController(AppState& state, std::function<void(std
             m_customChosen = false;
             m_merged.clear();
             m_mergedFrom = 0;
+        }
+        // After Uygula the image's apps and shortcuts may have changed (audit CTL-13): the list is
+        // read again the next time it is asked for. What the user chose on the page stays. Only as
+        // the run gets to Done: every later notification of the finished run (save, discard) would
+        // drop the list read since and read it again, the pins without names and icons meanwhile.
+        if (change == AppState::Change::Apply) {
+            const auto& run = m_state.applyRun();
+            std::optional<AppState::ApplyRun::Stage> stage;
+            if (run) {
+                stage = run->stage;
+            }
+            const bool ended = stage == AppState::ApplyRun::Stage::Done && m_applyStage != AppState::ApplyRun::Stage::Done;
+            m_applyStage = stage;
+            if (ended) {
+                m_apps.reset();
+                m_loading = false;
+                m_mountDir.clear();
+                m_merged.clear();
+                m_mergedFrom = 0;
+            }
         }
     });
 }
@@ -85,6 +108,8 @@ std::vector<core::StartApp> StartPinsController::pins() const {
 }
 
 void StartPinsController::store(Plan plan) {
+    // Out and in again is one change of the queue: one notification, one queue.json, one undo step.
+    const auto batch = m_state.batchQueue();
     m_state.unqueueMany(slots());
     if (m_surface == Surface::Taskbar) {
         m_state.queueMany(core::taskbarPinsOperations({plan.custom ? std::move(plan.pins) : std::vector<core::StartApp>{}, plan.once}));

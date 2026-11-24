@@ -1,5 +1,6 @@
 // P12: the settings catalog (shipped file, malformed entries) and the form ↔ queue mapping.
 #include "app/controllers/ImageSettingsController.h"
+#include "base/Utf8.h"
 
 #include <doctest.h>
 #include <json.hpp>
@@ -94,7 +95,6 @@ TEST_CASE("settings catalog: every shipped entry is valid and placed in a known 
                 CHECK_FALSE(o.label.en.empty());
             }
         }
-        CHECK(s.recommended != s.defaultOption); // recommending "leave it" is no recommendation
         // Every value lands in a hive an offline image has (the Applier would refuse it otherwise).
         for (const auto& o : s.options) {
             for (const auto& w : o.writes) {
@@ -423,26 +423,256 @@ TEST_CASE("settings catalog: a file outside the default profile and ProgramData 
     CHECK(catalog->settings().front().options[0].files.size() == 1);
 }
 
-TEST_CASE("form: 'apply recommended' picks every recommended option once") {
-    Fixture f;
-    const auto& catalog = f.controller.catalog();
-    const auto expected = std::ranges::count_if(catalog.settings(), [](const ImageSetting& s) { return s.recommended >= 0; });
-    REQUIRE(expected > 0);
-    // One already chosen by hand, another set against the recommendation.
-    const auto& ext = setting(catalog, "file-ext");
-    f.controller.select(ext, ext.recommended);
-    const auto& telemetry = setting(catalog, "telemetry");
-    f.controller.select(telemetry, option(telemetry, "required"));
+namespace {
 
-    CHECK(f.controller.applyRecommended() == expected - 1);
-    for (const auto& s : catalog.settings()) {
-        if (s.recommended >= 0) {
+const ImageSettingTemplate& preset(const ImageSettingsCatalog& catalog, std::string_view id) {
+    const auto* found = catalog.findTemplate(id);
+    REQUIRE(found != nullptr);
+    return *found;
+}
+
+nlohmann::json readJson(const std::filesystem::path& path) {
+    return nlohmann::json::parse(readFile(path));
+}
+
+} // namespace
+
+TEST_CASE("templates (D-146): every shipped template is whole: known settings and options, both languages") {
+    const auto catalog = shippedCatalog();
+    const auto raw = nlohmann::json::parse(shippedJson(L"settings.json"));
+    REQUIRE(raw.contains("templates"));
+    REQUIRE(catalog.templates().size() == raw["templates"].size()); // none skipped
+    for (const char* id : {"balanced", "privacy", "clean", "performance", "gaming", "work"}) {
+        CAPTURE(id);
+        CHECK(catalog.findTemplate(id) != nullptr);
+    }
+    CHECK(catalog.templates().front().id == "balanced"); // the safe one comes first in Şablon ▾
+    std::set<std::string> ids;
+    for (std::size_t t = 0; t < catalog.templates().size(); ++t) {
+        const auto& preset = catalog.templates()[t];
+        CAPTURE(preset.id);
+        CHECK(ids.insert(preset.id).second);
+        CHECK_FALSE(preset.title.tr.empty());
+        CHECK_FALSE(preset.title.en.empty());
+        CHECK_FALSE(preset.description.tr.empty());
+        CHECK_FALSE(preset.description.en.empty());
+        // Every pick of the file is in the template: no unknown setting, option or default slipped by.
+        CHECK(preset.picks.size() == raw["templates"][t]["settings"].size());
+        std::set<std::size_t> settings;
+        for (const auto& pick : preset.picks) {
+            REQUIRE(pick.setting < catalog.settings().size());
+            const auto& s = catalog.settings()[pick.setting];
             CAPTURE(s.id);
-            CHECK(f.controller.current(s) == s.recommended);
+            CHECK(settings.insert(pick.setting).second);
+            CHECK(pick.option != s.defaultOption);
+            CHECK_FALSE(ImageSettingsController::takesValue(s));
+            CHECK(ImageSettingsController::templateOption(catalog, preset, s) == pick.option);
+        }
+        CHECK(std::ranges::is_sorted(preset.picks, {}, &ImageSettingTemplate::Pick::setting));
+    }
+}
+
+TEST_CASE("templates (D-146): malformed picks and templates are skipped, the rest loads") {
+    const auto catalog = ImageSettingsCatalog::parse(R"({
+      "format": "winlove.catalog.settings",
+      "tabs": [ { "id": "t", "tr": "T", "en": "T" } ],
+      "sections": [ { "id": "s", "tab": "t", "tr": "S", "en": "S" } ],
+      "settings": [
+        { "id": "a", "section": "s", "control": "toggle", "tr": "a", "en": "a", "default": "on",
+          "writes": [ { "key": "HKCU\\Software\\X", "name": "a", "value": "dword:00000000" } ] },
+        { "id": "b", "section": "s", "control": "dropdown", "tr": "b", "en": "b",
+          "options": [ { "id": "default", "tr": "d", "en": "d" },
+                       { "id": "x", "tr": "x", "en": "x", "writes": [ { "key": "HKCU\\Software\\X", "name": "b", "value": "dword:00000001" } ] } ] },
+        { "id": "c", "section": "s", "control": "text", "tr": "c", "en": "c", "writes": [ { "key": "HKCU\\Software\\X", "name": "c" } ] }
+      ],
+      "templates": [
+        { "id": "one", "tr": "Bir", "en": "One", "desc_tr": "d", "desc_en": "d",
+          "settings": { "b": "x", "a": "off", "missing": "off", "c": "value" } },
+        { "id": "defaults", "tr": "V", "en": "V", "settings": { "a": "on", "b": "default", "b2": "x" } },
+        { "id": "one", "tr": "Yine", "en": "Again", "settings": { "a": "off" } },
+        { "id": "bad-option", "tr": "K", "en": "K", "settings": { "b": "nope" } }
+      ] })");
+    REQUIRE(catalog);
+    REQUIRE(catalog->templates().size() == 1);
+    const auto& one = catalog->templates().front();
+    CHECK(one.title.tr == L"Bir");
+    REQUIRE(one.picks.size() == 2); // "missing" and the text setting "c" are dropped
+    CHECK(one.picks[0].setting == 0); // in the catalog's order, not the file's
+    CHECK(one.picks[0].option == 0);  // toggle "a" off (default on)
+    CHECK(one.picks[1].setting == 1);
+    CHECK(one.picks[1].option == 1);
+    CHECK(catalog->findTemplate("defaults") == nullptr); // only the default / unknown: nothing left
+    CHECK(catalog->findTemplate("bad-option") == nullptr);
+}
+
+TEST_CASE("templates (D-146): two templates never give one setting different options") {
+    const auto catalog = shippedCatalog();
+    std::map<std::size_t, std::pair<int, std::string>> given;
+    for (const auto& preset : catalog.templates()) {
+        for (const auto& pick : preset.picks) {
+            CAPTURE(preset.id);
+            CAPTURE(catalog.settings()[pick.setting].id);
+            const auto [it, fresh] = given.try_emplace(pick.setting, pick.option, preset.id);
+            CHECK((fresh || it->second.first == pick.option));
         }
     }
-    CHECK(f.controller.changedCount() == expected);
-    CHECK(f.controller.applyRecommended() == 0);
+}
+
+TEST_CASE("templates (D-146): none takes what breaks Windows; Dengeli only low-risk, reversible values") {
+    const auto catalog = shippedCatalog();
+    // Never in a template: security off, Windows Update / Store updates off, networking, printing,
+    // accessibility, sign-in, device access, page file, or what cannot be taken back here.
+    const std::set<std::string> never{
+        "defender", "smartscreen", "uac-level", "uac-dim", "motw", "smart-app-control", "memory-integrity", "vbs",
+        "lsa-protection", "device-encryption", "remote-assistance", "workplace-join", "wpbt",
+        "wu-auto", "wu-drivers", "wu-msrt", "store-auto-update", "wu-restart", "wu-feature-defer", "wu-delivery",
+        "print-spooler", "web-printing", "vendor-apps", "ipv6", "dns-servers", "doh", "smb-signing", "smb-guest",
+        "wifi-hotspots", "new-network-prompt", "accessibility-shortcuts", "caps-lock", "notifications",
+        "perm-camera", "perm-microphone", "location", "find-my-device", "pagefile-mode", "xbox-services",
+        "search-indexing", "sysmain", "background-apps", "sensor-services", "compat-engine", "ntfs-8dot3",
+        "auto-end-tasks", "hibernation", "power-throttling", "mpo", "start-all-apps", "removable-twice",
+        "ctx-new-bmp-rtf", "context-share", "lockscreen-off", "ps-execution-policy", "developer-mode", "fast-startup"};
+    for (const auto& preset : catalog.templates()) {
+        for (const auto& pick : preset.picks) {
+            const auto& s = catalog.settings()[pick.setting];
+            CAPTURE(preset.id);
+            CAPTURE(s.id);
+            CHECK(s.risk != core::ops::Risk::High);
+            CHECK_FALSE(never.contains(s.id));
+            for (const auto& w : s.options[static_cast<std::size_t>(pick.option)].writes) {
+                CHECK(w.kind == core::RegistryWrite::Kind::Set); // a deletion has no way back
+            }
+        }
+    }
+    // Dengeli is for anyone: low risk only, registry values only (no service start, no file).
+    const auto& balanced = preset(catalog, "balanced");
+    CHECK(balanced.picks.size() >= 15);
+    for (const auto& pick : balanced.picks) {
+        const auto& s = catalog.settings()[pick.setting];
+        const auto& o = s.options[static_cast<std::size_t>(pick.option)];
+        CAPTURE(s.id);
+        CHECK(s.risk == core::ops::Risk::Low);
+        CHECK(o.services.empty());
+        CHECK(o.files.empty());
+        CHECK(o.copyTo.empty());
+        CHECK_FALSE(o.writes.empty());
+    }
+}
+
+TEST_CASE("templates (D-146): applying queues exactly the template; Sıfırla and undo take it back") {
+    Fixture f;
+    const auto& catalog = f.controller.catalog();
+    const auto& privacy = preset(catalog, "privacy");
+    const auto result = f.controller.applyTemplate(privacy);
+    CHECK(result.changed == static_cast<int>(privacy.picks.size()));
+    CHECK(result.already == 0);
+    CHECK(result.kept == 0);
+    CHECK(std::ranges::any_of(result.risky, [](const ImageSetting* s) { return s->id == "diagtrack-service"; }));
+    for (const ImageSetting* risky : result.risky) {
+        CHECK(risky->risk != core::ops::Risk::Low);
+    }
+    for (const auto& s : catalog.settings()) {
+        CAPTURE(s.id);
+        const int given = ImageSettingsController::templateOption(catalog, privacy, s);
+        CHECK(f.controller.current(s) == (given >= 0 ? given : s.defaultOption));
+    }
+    CHECK(f.controller.changedCount() == static_cast<int>(privacy.picks.size()));
+    // Every queued operation is one of the template's options.
+    std::size_t expected = 0;
+    for (const auto& pick : privacy.picks) {
+        expected += ImageSettingsController::operationsFor(catalog.settings()[pick.setting], pick.option).size();
+    }
+    CHECK(f.state.changes().size() == expected);
+    // Again: nothing to do.
+    const auto again = f.controller.applyTemplate(privacy);
+    CHECK(again.changed == 0);
+    CHECK(again.already == static_cast<int>(privacy.picks.size()));
+
+    CHECK(f.controller.resetChanges() == static_cast<int>(privacy.picks.size()));
+    CHECK(f.state.changes().empty());
+    CHECK(f.controller.changedCount() == 0);
+    CHECK(f.controller.resetChanges() == 0);
+
+    // One template is one undo step.
+    f.controller.applyTemplate(preset(catalog, "performance"));
+    CHECK_FALSE(f.state.changes().empty());
+    CHECK(f.state.undoQueue());
+    CHECK(f.state.changes().empty());
+}
+
+TEST_CASE("templates (D-146): what the user chose stays; templates stack in any order") {
+    Fixture f;
+    const auto& catalog = f.controller.catalog();
+    const auto& balanced = preset(catalog, "balanced");
+    const auto& telemetry = setting(catalog, "telemetry");
+    const auto& ext = setting(catalog, "file-ext");
+    REQUIRE(ImageSettingsController::templateOption(catalog, balanced, telemetry) == option(telemetry, "security"));
+    f.controller.select(telemetry, option(telemetry, "required")); // the user's own, not the template's
+    f.controller.select(ext, option(ext, "on"));                   // the template's already
+    const auto preview = f.controller.previewTemplate(balanced);
+    const auto result = f.controller.applyTemplate(balanced);
+    CHECK(preview.changed == result.changed);
+    CHECK(result.kept == 1);
+    CHECK(result.already == 1);
+    CHECK(result.changed == static_cast<int>(balanced.picks.size()) - 2);
+    CHECK(f.controller.current(telemetry) == option(telemetry, "required"));
+    CHECK(f.controller.previewTemplate(balanced).changed == 0);
+
+    // A setting the user took back to the Windows default is a choice too (the image has another).
+    // Here: stacking. Gizlilik after Dengeli, and Dengeli after Gizlilik, end the same.
+    Fixture a;
+    Fixture b;
+    const auto& privacy = preset(catalog, "privacy");
+    a.controller.applyTemplate(preset(a.controller.catalog(), "balanced"));
+    a.controller.applyTemplate(preset(a.controller.catalog(), "privacy"));
+    b.controller.applyTemplate(preset(b.controller.catalog(), "privacy"));
+    b.controller.applyTemplate(preset(b.controller.catalog(), "balanced"));
+    for (const auto& s : a.controller.catalog().settings()) {
+        CAPTURE(s.id);
+        CHECK(a.controller.current(s) == b.controller.current(s));
+        const int fromPrivacy = ImageSettingsController::templateOption(a.controller.catalog(), *a.controller.catalog().findTemplate("privacy"), s);
+        const int fromBalanced = ImageSettingsController::templateOption(a.controller.catalog(), *a.controller.catalog().findTemplate("balanced"), s);
+        const int expected = fromPrivacy >= 0 ? fromPrivacy : fromBalanced >= 0 ? fromBalanced : s.defaultOption;
+        CHECK(a.controller.current(s) == expected);
+    }
+    CHECK(privacy.picks.size() > balanced.picks.size());
+}
+
+TEST_CASE("templates (D-146): the image's own value is not a choice; a template changes it") {
+    Fixture f;
+    const auto& catalog = f.controller.catalog();
+    const auto& balanced = preset(catalog, "balanced");
+    const auto& telemetry = setting(catalog, "telemetry");
+    // The image already has "Gerekli" (D-045); the template's "Güvenlik" replaces it.
+    AppState::ImageValues values{AppState::ImageValues::Status::Ready, f.state.mounted()->mountDir, {}, {}, {}};
+    for (const auto& op : ImageSettingsController::operationsFor(telemetry, option(telemetry, "required"))) {
+        values.held.insert(AppState::imageValueKey(op.kind, op.target, op.value));
+    }
+    f.state.setImageValues(std::move(values));
+    REQUIRE(f.controller.imageOption(telemetry) == option(telemetry, "required"));
+    const auto result = f.controller.applyTemplate(balanced);
+    CHECK(result.kept == 0);
+    CHECK(f.controller.current(telemetry) == option(telemetry, "security"));
+    f.controller.resetChanges();
+    CHECK(f.controller.current(telemetry) == option(telemetry, "required")); // back to the image's
+}
+
+TEST_CASE("templates (D-146): the page's texts exist in Turkish and English") {
+    const auto dir = std::filesystem::path(WL_SOURCE_DIR) / L"resources/strings";
+    for (const wchar_t* file : {L"tr.json", L"en.json"}) {
+        const auto strings = readJson(dir / file);
+        const std::string name = utf8::fromWide(file);
+        CAPTURE(name);
+        REQUIRE(strings.contains("tweaks"));
+        for (const char* key : {"templateAction", "templateApplied", "templateNone", "templateKept", "templateRisky",
+                                "templateApply", "templatePreview", "templateOption", "filterAll", "filterTemplate",
+                                "undo", "redo", "resetAction"}) {
+            CAPTURE(key);
+            REQUIRE(strings["tweaks"].contains(key));
+            CHECK_FALSE(strings["tweaks"][key].get<std::string>().empty());
+        }
+        CHECK_FALSE(strings["tweaks"].contains("applyRecommended")); // Şablon ▾ took its place
+    }
 }
 
 TEST_CASE("form (D-062): page file typed as a drive and sizes, written as REG_MULTI_SZ; the new desktop / Control Panel / Defender rows") {

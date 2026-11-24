@@ -36,4 +36,12 @@ struct RectF {
     return std::round(dip * scale) / scale;
 }
 
+// A rectangle whose four edges lie on the physical pixel grid (its right and bottom edges snapped
+// too, so two rectangles that share an edge still share it after snapping).
+[[nodiscard]] inline RectF snapRect(RectF r, float scale) noexcept {
+    const float x = snap(r.x, scale);
+    const float y = snap(r.y, scale);
+    return {x, y, snap(r.right(), scale) - x, snap(r.bottom(), scale) - y};
+}
+
 } // namespace wl::ui

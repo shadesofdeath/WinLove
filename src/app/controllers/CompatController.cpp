@@ -150,8 +150,20 @@ core::ops::AppxNeeds CompatController::needs() const {
     return out;
 }
 
-core::ops::CompatBlock CompatController::block(const core::ops::Operation& op) const {
-    return core::ops::compatBlock(op, active(), needs(), m_state.changes());
+const CompatController::Inputs& CompatController::inputs() const {
+    if (m_inputs.revision != m_state.revision() || m_inputs.queueVersion != m_state.changes().version()) {
+        m_inputs.active = active();
+        m_inputs.needs = needs();
+        m_inputs.removedApps = core::ops::compatRemovedApps(m_state.changes());
+        m_inputs.revision = m_state.revision();
+        m_inputs.queueVersion = m_state.changes().version();
+    }
+    return m_inputs;
+}
+
+core::ops::CompatBlock CompatController::block(const core::ops::Operation& op, const core::ComponentRecipe* recipe) const {
+    const Inputs& in = inputs();
+    return core::ops::compatBlock(op, in.active, in.needs, in.removedApps, recipe);
 }
 
 std::wstring CompatController::appName(const std::wstring& identity) const {

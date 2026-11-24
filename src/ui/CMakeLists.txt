@@ -1,5 +1,6 @@
 # wl_ui — custom-draw UI framework (D2D/DirectWrite). Knows nothing about Windows images.
 add_library(wl_ui STATIC
+    anim/ItemMotion.cpp
     anim/Tween.cpp
     icons/IconCache.cpp
     platform/Clipboard.cpp
@@ -30,10 +31,14 @@ add_library(wl_ui STATIC
     widgets/Kbd.cpp
     widgets/Label.cpp
     widgets/PillGroup.cpp
+    widgets/ProgressRing.cpp
+    widgets/ColorPicker.cpp
     widgets/LogConsole.cpp
+    widgets/MarkdownView.cpp
     widgets/ScrollBar.cpp
     widgets/SearchBox.cpp
     widgets/Splitter.cpp
+    widgets/StripScroll.cpp
     widgets/TabBar.cpp
     widgets/TableView.cpp
     widgets/Toast.cpp

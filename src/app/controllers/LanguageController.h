@@ -56,8 +56,13 @@ class LanguageController {
 public:
     LanguageController(AppState& state, std::function<void(std::function<void()>)> postToUi);
     ~LanguageController();
+    LanguageController(const LanguageController&) = delete; // the subscription holds `this`
+    LanguageController& operator=(const LanguageController&) = delete;
 
-    void load(bool force = false); // the image's international settings
+    // The image's international settings. Without `force` a read is started only when this mount has
+    // none yet: a failed one is not retried by itself (the page's refresh on Change::Intl would
+    // start the next read, whose failure refreshes again — an endless loop of DISM sessions).
+    void load(bool force = false);
 
     // ---- language packs ----
     [[nodiscard]] std::wstring imageArchitecture() const;
@@ -120,6 +125,7 @@ private:
     std::function<void(std::function<void()>)> m_post;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     mutable PackageIndex m_index;
+    std::size_t m_subscription = 0; // drops m_index when the image's languages are read again
 };
 
 } // namespace wl::app

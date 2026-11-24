@@ -39,6 +39,15 @@ struct IconGroupInfo {
 // Every icon group of the tree, in directory order. Images whose RT_ICON is missing are skipped.
 [[nodiscard]] std::vector<IconGroupInfo> listIconGroups(const ResourceTree& tree);
 
+// The same groups and images in the same order, the image data as views into `tree` instead of
+// copies (comparing two trees of a .mun copied every icon of both). Valid while the tree is
+// neither changed nor destroyed.
+struct IconGroupData {
+    ResourceKey key;
+    std::vector<std::string_view> images;
+};
+[[nodiscard]] std::vector<IconGroupData> listIconGroupData(const ResourceTree& tree);
+
 // A .ico file ↔ images. parseIco checks every entry's bounds and reads the real size / depth from
 // the image data (PNG IHDR or BITMAPINFOHEADER), not from the directory.
 [[nodiscard]] Result<std::vector<IconImage>> parseIco(std::string_view ico);

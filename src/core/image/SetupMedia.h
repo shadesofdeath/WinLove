@@ -21,6 +21,12 @@ namespace wl::core {
 // one already, so "Önceki kurulumu kullan" has nothing to switch. False without setup media.
 [[nodiscard]] bool mediaOpensPreviousSetup(const SourceInfo& source);
 
+// D-149: a Media Creation Tool ESD's setup media into the empty folder `folder`: its "Windows Setup
+// Media" image applied, its two Windows PE images (PE, then Setup) exported as sources\boot.wim
+// (boot index 2) — Microsoft's own boot.wim. The editions are not touched.
+[[nodiscard]] Result<void> setupMediaFromEsd(const std::filesystem::path& esd, const std::filesystem::path& folder,
+                                             const TaskContext& task);
+
 // Replaces the setup files of `setupFolder` (boot.wim, setup.exe, efi\, boot\, sources\…) with
 // those of `from`: a Windows 10 ISO, a setup folder, or a Media Creation Tool ESD (its "Windows
 // Setup Media" image is applied, its two Windows PE images become boot.wim). What stays:

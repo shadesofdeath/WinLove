@@ -4,6 +4,7 @@
 #include "core/image/wim/Lzx.h"
 #include "core/image/wim/WimGapi.h"
 #include "core/image/wim/WimVerify.h"
+#include "core/image/MediaDrivers.h"
 #include "support/LzxChunk.h"
 
 #include <doctest.h>
@@ -542,4 +543,63 @@ TEST_CASE("an ESD no wimgapi can read: the error names the copies tried and the 
     CHECK(done.error().message.find(L"this ESD was made by another tool") != std::wstring::npos);
     CHECK_FALSE(std::filesystem::exists(dir / L"install.wim")); // nothing half-written is left
     std::filesystem::remove_all(dir, ec);
+}
+
+// D-134: the third-party drivers of an edition from its file list — Windows\INF\oemN.inf, named after the
+// driver store file with the same content (the same SHA-1).
+TEST_CASE("wim drivers: oemN.inf by number, its original name from the driver store, its INF read") {
+    const auto pvscsi = bytesOf("[Version]\r\nClass=SCSIAdapter\r\nProvider=\"Broadcom Inc.\"\r\nDriverVer=06/06/2024,1.3.28.0\r\n");
+    const auto vmd = bytesOf("[Version]\r\nClass=SCSIAdapter\r\nProvider=Intel\r\nDriverVer=10/25/2024,20.2.1.1016\r\nCatalogFile=iaStorVD.cat\r\n");
+    const auto lone = bytesOf("[Version]\r\nClass=Net\r\nProvider=Realtek\r\nDriverVer=05/08/2026,1168.30.50.508\r\nCatalogFile=rt.cat\r\n");
+    const auto inbox = bytesOf("[Version]\r\nClass=SCSIAdapter\r\nProvider=VMware\r\n");
+    auto file = [](const char16_t* name, const std::vector<std::byte>& content) { return Node{name, false, {}, 0, sha1(content)}; };
+    Node inf{u"INF", true, {file(u"oem10.inf", vmd), file(u"oem0.inf", pvscsi), file(u"pvscsii.inf", inbox), file(u"oem2.inf", lone),
+                            file(u"oemx.inf", lone)}};
+    Node repository{u"FileRepository", true,
+                    {Node{u"pvscsi.inf_amd64_6fdd05d9be9cf758", true, {file(u"pvscsi.inf", pvscsi), {u"pvscsi.sys"}}},
+                     Node{u"iastorvd.inf_amd64_da06297c4b8e9167", true, {file(u"iastorvd.inf", vmd)}},
+                     Node{u"pvscsii.inf_amd64_9aaa769bfa6923b1", true, {file(u"pvscsii.inf", inbox)}}}};
+    Node driverStore{u"DriverStore", true, {std::move(repository)}};
+    Node system32{u"System32", true, {std::move(driverStore)}};
+    Node windows{u"Windows", true, {std::move(inf), std::move(system32)}};
+    const auto meta = metadataOf(Node{u"", true, {std::move(windows)}});
+    const MemorySource wim = buildWim({Stream{pvscsi, pvscsi, false, false}, Stream{vmd, vmd, false, false},
+                                       Stream{lone, lone, false, false}, Stream{inbox, inbox, false, false},
+                                       Stream{meta, meta, false, true}});
+    auto edition = WimEdition::open(wim, 1);
+    REQUIRE(edition.has_value());
+    CHECK(edition->hash(L"Windows\\INF\\oem0.inf") == edition->hash(L"windows/system32/driverstore/filerepository/"
+                                                                         L"pvscsi.inf_amd64_6fdd05d9be9cf758/PVSCSI.INF"));
+    CHECK_FALSE(edition->hash(L"Windows\\INF").has_value()); // a folder
+    CHECK_FALSE(edition->hash(L"Windows\\INF\\oem9.inf").has_value());
+
+    const auto drivers = thirdPartyDrivers(*edition);
+    REQUIRE(drivers.size() == 3); // not pvscsii.inf (inbox), not "oemx.inf"
+    CHECK(drivers[0].publishedName == L"oem0.inf");
+    CHECK(drivers[0].originalName == L"pvscsi.inf");
+    CHECK(drivers[0].inf.className == L"SCSIAdapter");
+    CHECK(drivers[0].inf.provider == L"Broadcom Inc.");
+    CHECK(drivers[0].inf.version == L"1.3.28.0");
+    CHECK(drivers[1].publishedName == L"oem2.inf"); // oem2 before oem10
+    CHECK(drivers[1].originalName.empty());          // no driver store file with its content
+    CHECK(drivers[1].name() == L"oem2.inf");
+    CHECK(drivers[2].publishedName == L"oem10.inf");
+    CHECK(drivers[2].originalName == L"iastorvd.inf");
+
+    // Is a scanned package one of them: the same INF name and version; by its catalog when the name is not known.
+    DriverInf scanned = parseInfText(L"[Version]\nClass=SCSIAdapter\nDriverVer=06/06/2024,1.3.28.0\n", L"D:\\vmware\\PVSCSI.inf");
+    CHECK(containsDriver(drivers, scanned));
+    scanned.version = L"1.3.29.0"; // a newer one is not "already there"
+    CHECK_FALSE(containsDriver(drivers, scanned));
+    const DriverInf realtek = parseInfText(L"[Version]\nClass=Net\nDriverVer=05/08/2026,1168.30.50.508\nCatalogFile=RT.cat\n",
+                                           L"D:\\host\\rt68cx21x64.inf");
+    CHECK(containsDriver(drivers, realtek));
+    CHECK_FALSE(containsDriver({}, realtek));
+
+    // An edition without third-party drivers: nothing, and the driver store is not even walked.
+    const auto empty = metadataOf(Node{u"", true, {Node{u"Windows", true, {Node{u"INF", true, {file(u"machine.inf", inbox)}}}}}});
+    const MemorySource plain = buildWim({Stream{inbox, inbox, false, false}, Stream{empty, empty, false, true}});
+    auto none = WimEdition::open(plain, 1);
+    REQUIRE(none.has_value());
+    CHECK(thirdPartyDrivers(*none).empty());
 }

@@ -1,6 +1,7 @@
 # wl_app — shell, pages, app state, localization. Joins ui and core. Library so tests can link it.
 add_library(wl_app STATIC
     App.cpp
+    ChangelogWindow.cpp
     CrashReport.cpp
     catalog/AppxCatalog.cpp
     catalog/ComponentCatalog.cpp
@@ -8,6 +9,7 @@ add_library(wl_app STATIC
     catalog/CompatCatalog.cpp
     catalog/ImageSettingsCatalog.cpp
     controllers/ApplyController.cpp
+    controllers/UpdateController.cpp
     controllers/ComponentController.cpp
     controllers/CompatController.cpp
     controllers/FeatureController.cpp
@@ -17,6 +19,7 @@ add_library(wl_app STATIC
     controllers/ImageSettingsController.cpp
     controllers/ImageValuesController.cpp
     controllers/IsoController.cpp
+    controllers/AutoIsoController.cpp
     controllers/PostSetupController.cpp
     controllers/ProgramsController.cpp
     controllers/PreloadController.cpp
@@ -44,14 +47,18 @@ add_library(wl_app STATIC
     SystemInfo.cpp
     pages/AboutPage.cpp
     pages/GalleryPage.cpp
+    pages/apply/ApplyCards.cpp
     pages/apply/ImpactCard.cpp
     pages/apply/RiskConfirm.cpp
+    pages/apply/RunSummary.cpp
     pages/apply/StatStrip.cpp
     pages/components/CompatDialog.cpp
     pages/components/ModeDialog.cpp
     pages/components/ComponentInspector.cpp
     pages/ApplyPage.cpp
     pages/ComponentsPage.cpp
+    pages/DetailCard.cpp
+    pages/PageHeader.cpp
     pages/DriversPage.cpp
     pages/ServicesPage.cpp
     pages/RegistryPage.cpp
@@ -60,7 +67,12 @@ add_library(wl_app STATIC
     pages/SettingsPage.cpp
     pages/FeaturesPage.cpp
     pages/ImagesPage.cpp
+    pages/OverviewPage.cpp
+    pages/overview/OverviewModel.cpp
+    pages/overview/OverviewTiles.cpp
+    pages/overview/QueueChips.cpp
     pages/IsoPage.cpp
+    pages/iso/IsoOptions.cpp
     pages/LogsPage.cpp
     pages/images/EditionDialog.cpp
     pages/images/EditionSelection.cpp
@@ -96,8 +108,11 @@ add_library(wl_app STATIC
     pages/AppsPage.cpp
     pages/LanguagesPage.cpp
     pages/source/RecentList.cpp
+    pages/source/DropRow.cpp
     shell/CommandPalette.cpp
     shell/ChangesPanel.cpp
+    shell/ChromeText.cpp
+    shell/Changelog.cpp
     shell/ImageHeader.cpp
     shell/NavPanel.cpp
     shell/PageView.cpp
@@ -112,6 +127,8 @@ add_library(wl_app STATIC
     state/Preset.cpp
     state/RecentSources.cpp)
 wl_configure_target(wl_app)
+# Shell.cpp holds every page's wiring: past COFF's section limit in Debug (D-144 / D-145 added the last).
+set_source_files_properties(shell/Shell.cpp PROPERTIES COMPILE_OPTIONS /bigobj)
 target_link_libraries(wl_app PUBLIC wl_core wl_ui PRIVATE wl_json version crypt32 dbghelp)
 
 add_executable(WinLove WIN32
@@ -130,6 +147,7 @@ set(WL_EMBEDDED_RESOURCES
     ${PROJECT_SOURCE_DIR}/resources/fonts/Geist-SemiBold.ttf
     ${PROJECT_SOURCE_DIR}/resources/fonts/GeistMono-Regular.ttf
     ${PROJECT_SOURCE_DIR}/resources/fonts/JetBrainsMono-Regular.ttf
+    ${PROJECT_SOURCE_DIR}/resources/fonts/IBMPlexSans-SemiBold.ttf
     ${PROJECT_SOURCE_DIR}/resources/catalog/appx.json
     ${PROJECT_SOURCE_DIR}/resources/catalog/services.json
     ${PROJECT_SOURCE_DIR}/resources/catalog/settings.json

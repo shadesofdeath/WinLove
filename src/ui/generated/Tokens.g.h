@@ -6,7 +6,7 @@
 
 namespace wl::ui::tokens {
 
-inline constexpr const char* kVersion = "3.0.0";
+inline constexpr const char* kVersion = "5.0.0";
 
 // ---- Color -------------------------------------------------------------
 enum class Color : std::uint8_t {
@@ -56,9 +56,10 @@ enum class Color : std::uint8_t {
     IconPurple,
     IconTeal,
     IconSlate,
+    BgControl,
     Count
 };
-inline constexpr std::size_t kColorCount = 46;
+inline constexpr std::size_t kColorCount = 47;
 inline constexpr std::array<const char*, kColorCount> kColorNames = {
     "bg.base",
     "bg.panel",
@@ -106,103 +107,106 @@ inline constexpr std::array<const char*, kColorCount> kColorNames = {
     "icon.purple",
     "icon.teal",
     "icon.slate",
+    "bg.control",
 };
 // 0xAARRGGBB
 inline constexpr std::array<std::uint32_t, kColorCount> kDark = {
-    0xFF202020u, // bg.base
-    0xFF2B2B2Bu, // bg.panel
-    0xFF333333u, // bg.raised
-    0xFF3A3A3Au, // bg.pressed
-    0xFF2C2C2Cu, // bg.overlay
-    0xFF333333u, // bg.input
-    0x0FFFFFFFu, // bg.hover
-    0xFF353535u, // line.subtle
-    0xFF474747u, // line.strong
-    0xFFFFFFFFu, // text.primary
-    0xFFB8B8B8u, // text.secondary
-    0xFF858585u, // text.tertiary
-    0xFF5C5C5Cu, // text.disabled
-    0xFF000000u, // text.onAccent
-    0xFF4CC2FFu, // accent.base
-    0xFF47B1E8u, // accent.hover
-    0xFF42A1D2u, // accent.pressed
-    0xFF3E3E3Eu, // accent.subtle
-    0xFF4CC2FFu, // accent.focus
-    0xFF4CC2FFu, // accent.text
-    0xFF39B54Au, // status.success
-    0xFFF4D534u, // status.warning
-    0xFFF54137u, // status.error
-    0xFF4CC2FFu, // status.info
-    0xFF253A28u, // status.successSubtle
-    0xFF3D3720u, // status.warningSubtle
-    0xFF442726u, // status.errorSubtle
-    0xFF1F3A47u, // status.infoSubtle
+    0xFF17191Cu, // bg.base
+    0xFF25282Cu, // bg.panel
+    0xFF2D3035u, // bg.raised
+    0xFF3B3F45u, // bg.pressed
+    0xFF2A2D32u, // bg.overlay
+    0xFF1B1D21u, // bg.input
+    0x0EFFFFFFu, // bg.hover
+    0xFF34373Cu, // line.subtle
+    0xFF484C53u, // line.strong
+    0xFFECEEF1u, // text.primary
+    0xFFB1B6BEu, // text.secondary
+    0xFF8A9099u, // text.tertiary
+    0xFF62676Fu, // text.disabled
+    0xFFFFFFFFu, // text.onAccent
+    0xFF3070D9u, // accent.base
+    0xFF2C67C8u, // accent.hover
+    0xFF285EB6u, // accent.pressed
+    0xFF27364Fu, // accent.subtle
+    0xFF74A3EAu, // accent.focus
+    0xFF74A3EAu, // accent.text
+    0xFF57C27Cu, // status.success
+    0xFFE2AC45u, // status.warning
+    0xFFF27B72u, // status.error
+    0xFF6FA8F2u, // status.info
+    0xFF24392Fu, // status.successSubtle
+    0xFF3D3322u, // status.warningSubtle
+    0xFF432B2Cu, // status.errorSubtle
+    0xFF253650u, // status.infoSubtle
     0xFFC42B1Cu, // caption.close
     0x99000000u, // scrim
-    0x66000000u, // shadow.key
-    0x40000000u, // shadow.ambient
-    0xFF262626u, // bg.chrome
-    0xFF202020u, // bg.titleBar
-    0xFF39B54Au, // tier.privacy
-    0xFF3C7BA7u, // tier.general
-    0xFFF4D534u, // tier.light
-    0xFFF54137u, // tier.notRecommended
-    0xFF2E3C46u, // sizeBar
-    0xFF4CC2FFu, // icon.blue
-    0xFFFFB13Bu, // icon.amber
-    0xFF5FD068u, // icon.green
-    0xFFFF6B5Eu, // icon.red
-    0xFFB794F6u, // icon.purple
-    0xFF3DD6C6u, // icon.teal
-    0xFFA9B7C6u, // icon.slate
+    0x73000000u, // shadow.key
+    0x47000000u, // shadow.ambient
+    0xFF1F2125u, // bg.chrome
+    0xFF1C1E22u, // bg.titleBar
+    0xFF57C27Cu, // tier.privacy
+    0xFF5E95DAu, // tier.general
+    0xFFE2AC45u, // tier.light
+    0xFFF27B72u, // tier.notRecommended
+    0xFF2F343Cu, // sizeBar
+    0xFF6CA6F0u, // icon.blue
+    0xFFE9AA48u, // icon.amber
+    0xFF5FC27Fu, // icon.green
+    0xFFEF766Bu, // icon.red
+    0xFFA996EEu, // icon.purple
+    0xFF47C2B5u, // icon.teal
+    0xFFA3ADBAu, // icon.slate
+    0xFF34383Du, // bg.control
 };
 inline constexpr std::array<std::uint32_t, kColorCount> kLight = {
-    0xFFEEEEEEu, // bg.base
-    0xFFFBFBFBu, // bg.panel
-    0xFFF0F0F0u, // bg.raised
-    0xFFE3E3E3u, // bg.pressed
-    0xFFFBFBFBu, // bg.overlay
+    0xFFECEEF1u, // bg.base
+    0xFFFFFFFFu, // bg.panel
+    0xFFF5F6F8u, // bg.raised
+    0xFFE6E9EDu, // bg.pressed
+    0xFFFFFFFFu, // bg.overlay
     0xFFFFFFFFu, // bg.input
-    0x0A000000u, // bg.hover
-    0xFFE3E3E3u, // line.subtle
-    0xFFCFCFCFu, // line.strong
-    0xFF1B1B1Bu, // text.primary
-    0xFF525252u, // text.secondary
-    0xFF858585u, // text.tertiary
-    0xFFB5B5B5u, // text.disabled
+    0x0D1C2A40u, // bg.hover
+    0xFFE1E4E8u, // line.subtle
+    0xFFC9CED5u, // line.strong
+    0xFF1A1D21u, // text.primary
+    0xFF4A515Bu, // text.secondary
+    0xFF6B727Cu, // text.tertiary
+    0xFFA0A6AFu, // text.disabled
     0xFFFFFFFFu, // text.onAccent
-    0xFF0067C0u, // accent.base
-    0xFF1975C5u, // accent.hover
-    0xFF3183CAu, // accent.pressed
-    0xFFE3E3E3u, // accent.subtle
-    0xFF0058CDu, // accent.focus
-    0xFF0058CDu, // accent.text
-    0xFF0F7B0Fu, // status.success
-    0xFF9D5D00u, // status.warning
-    0xFFC42B1Cu, // status.error
-    0xFF0058CDu, // status.info
-    0xFFDFF6DDu, // status.successSubtle
-    0xFFFFF4CEu, // status.warningSubtle
-    0xFFFDE7E9u, // status.errorSubtle
-    0xFFE3EEFAu, // status.infoSubtle
+    0xFF3070D9u, // accent.base
+    0xFF2C67C8u, // accent.hover
+    0xFF285EB6u, // accent.pressed
+    0xFFEAF1FBu, // accent.subtle
+    0xFF3070D9u, // accent.focus
+    0xFF2462C7u, // accent.text
+    0xFF1A7535u, // status.success
+    0xFF8F5A00u, // status.warning
+    0xFFC3352Bu, // status.error
+    0xFF2361C6u, // status.info
+    0xFFE7F4EAu, // status.successSubtle
+    0xFFFCF1DCu, // status.warningSubtle
+    0xFFFCEAE8u, // status.errorSubtle
+    0xFFE7EFFCu, // status.infoSubtle
     0xFFC42B1Cu, // caption.close
-    0x66000000u, // scrim
-    0x1F000000u, // shadow.key
-    0x14000000u, // shadow.ambient
-    0xFFF5F5F5u, // bg.chrome
-    0xFFE6E6E6u, // bg.titleBar
-    0xFF39B54Au, // tier.privacy
-    0xFF0058CDu, // tier.general
-    0xFFF4D534u, // tier.light
-    0xFFF54137u, // tier.notRecommended
-    0xFFC3D7F0u, // sizeBar
-    0xFF0067C0u, // icon.blue
-    0xFFC77700u, // icon.amber
-    0xFF1F8A2Eu, // icon.green
-    0xFFC42B1Cu, // icon.red
-    0xFF7A4FCFu, // icon.purple
-    0xFF00837Au, // icon.teal
-    0xFF5A6B7Du, // icon.slate
+    0x590F172Au, // scrim
+    0x210F172Au, // shadow.key
+    0x140F172Au, // shadow.ambient
+    0xFFF7F8FAu, // bg.chrome
+    0xFFF3F4F6u, // bg.titleBar
+    0xFF2E9A4Eu, // tier.privacy
+    0xFF3B76CFu, // tier.general
+    0xFFB57F0Eu, // tier.light
+    0xFFCF3B33u, // tier.notRecommended
+    0xFFE3E9F2u, // sizeBar
+    0xFF2A66C9u, // icon.blue
+    0xFFB86E00u, // icon.amber
+    0xFF1F7F3Au, // icon.green
+    0xFFC8392Du, // icon.red
+    0xFF6D4FC6u, // icon.purple
+    0xFF0D7C70u, // icon.teal
+    0xFF5B6676u, // icon.slate
+    0xFFFFFFFFu, // bg.control
 };
 inline constexpr std::array<std::uint32_t, kColorCount> kHighContrast = {
     0xFF000000u, // bg.base
@@ -222,7 +226,7 @@ inline constexpr std::array<std::uint32_t, kColorCount> kHighContrast = {
     0xFF1AEBFFu, // accent.base
     0xFFFFFFFFu, // accent.hover
     0xFF1AEBFFu, // accent.pressed
-    0xFF1AEBFFu, // accent.subtle
+    0xFF00363Du, // accent.subtle
     0xFFFFFFFFu, // accent.focus
     0xFF1AEBFFu, // accent.text
     0xFF3FF23Fu, // status.success
@@ -251,54 +255,56 @@ inline constexpr std::array<std::uint32_t, kColorCount> kHighContrast = {
     0xFFFFFFFFu, // icon.purple
     0xFFFFFFFFu, // icon.teal
     0xFFFFFFFFu, // icon.slate
+    0xFF000000u, // bg.control
 };
 inline constexpr std::array<std::uint32_t, kColorCount> kBlack = {
     0xFF000000u, // bg.base
-    0xFF0D0D0Du, // bg.panel
-    0xFF171717u, // bg.raised
-    0xFF1F1F1Fu, // bg.pressed
-    0xFF0F0F0Fu, // bg.overlay
-    0xFF161616u, // bg.input
-    0x12FFFFFFu, // bg.hover
-    0xFF1E1E1Eu, // line.subtle
-    0xFF303030u, // line.strong
-    0xFFFFFFFFu, // text.primary
-    0xFFB8B8B8u, // text.secondary
-    0xFF858585u, // text.tertiary
-    0xFF5C5C5Cu, // text.disabled
-    0xFF000000u, // text.onAccent
-    0xFF4CC2FFu, // accent.base
-    0xFF47B1E8u, // accent.hover
-    0xFF42A1D2u, // accent.pressed
-    0xFF1C2630u, // accent.subtle
-    0xFF4CC2FFu, // accent.focus
-    0xFF4CC2FFu, // accent.text
-    0xFF39B54Au, // status.success
-    0xFFF4D534u, // status.warning
-    0xFFF54137u, // status.error
-    0xFF4CC2FFu, // status.info
-    0xFF0F2412u, // status.successSubtle
-    0xFF2A2410u, // status.warningSubtle
-    0xFF2E1312u, // status.errorSubtle
-    0xFF0F2633u, // status.infoSubtle
+    0xFF101114u, // bg.panel
+    0xFF181A1Du, // bg.raised
+    0xFF25282Cu, // bg.pressed
+    0xFF16181Bu, // bg.overlay
+    0xFF060708u, // bg.input
+    0x10FFFFFFu, // bg.hover
+    0xFF222428u, // line.subtle
+    0xFF383B41u, // line.strong
+    0xFFECEEF1u, // text.primary
+    0xFFB1B6BEu, // text.secondary
+    0xFF8A9099u, // text.tertiary
+    0xFF62676Fu, // text.disabled
+    0xFFFFFFFFu, // text.onAccent
+    0xFF3070D9u, // accent.base
+    0xFF2C67C8u, // accent.hover
+    0xFF285EB6u, // accent.pressed
+    0xFF182843u, // accent.subtle
+    0xFF74A3EAu, // accent.focus
+    0xFF74A3EAu, // accent.text
+    0xFF57C27Cu, // status.success
+    0xFFE2AC45u, // status.warning
+    0xFFF27B72u, // status.error
+    0xFF6FA8F2u, // status.info
+    0xFF13261Cu, // status.successSubtle
+    0xFF2A2213u, // status.warningSubtle
+    0xFF2E1A1Bu, // status.errorSubtle
+    0xFF142238u, // status.infoSubtle
     0xFFC42B1Cu, // caption.close
     0xB3000000u, // scrim
     0x66000000u, // shadow.key
     0x40000000u, // shadow.ambient
-    0xFF080808u, // bg.chrome
-    0xFF000000u, // bg.titleBar
-    0xFF39B54Au, // tier.privacy
-    0xFF3C7BA7u, // tier.general
-    0xFFF4D534u, // tier.light
-    0xFFF54137u, // tier.notRecommended
-    0xFF16222Bu, // sizeBar
-    0xFF4CC2FFu, // icon.blue
-    0xFFFFB13Bu, // icon.amber
-    0xFF5FD068u, // icon.green
-    0xFFFF6B5Eu, // icon.red
-    0xFFB794F6u, // icon.purple
-    0xFF3DD6C6u, // icon.teal
-    0xFFA9B7C6u, // icon.slate
+    0xFF0A0B0Du, // bg.chrome
+    0xFF08090Au, // bg.titleBar
+    0xFF57C27Cu, // tier.privacy
+    0xFF5E95DAu, // tier.general
+    0xFFE2AC45u, // tier.light
+    0xFFF27B72u, // tier.notRecommended
+    0xFF1A1D22u, // sizeBar
+    0xFF6CA6F0u, // icon.blue
+    0xFFE9AA48u, // icon.amber
+    0xFF5FC27Fu, // icon.green
+    0xFFEF766Bu, // icon.red
+    0xFFA996EEu, // icon.purple
+    0xFF47C2B5u, // icon.teal
+    0xFFA3ADBAu, // icon.slate
+    0xFF1E2125u, // bg.control
 };
 
 // ---- Typography --------------------------------------------------------
@@ -307,8 +313,10 @@ inline constexpr const wchar_t* kUi = L"Segoe UI";
 inline constexpr const wchar_t* kUiFallback = L"Segoe UI";
 inline constexpr const wchar_t* kMono = L"Cascadia Mono";
 inline constexpr const wchar_t* kMonoFallback = L"Consolas";
+inline constexpr const wchar_t* kBrand = L"IBM Plex Sans";
+inline constexpr const wchar_t* kBrandFallback = L"Segoe UI";
 } // namespace font
-enum class FontRole : std::uint8_t { Ui, Mono };
+enum class FontRole : std::uint8_t { Ui, Mono, Brand };
 struct TypeSpec {
     FontRole role;
     float size;
@@ -318,6 +326,7 @@ struct TypeSpec {
     bool uppercase;
 };
 enum class TypeStyle : std::uint8_t {
+    Wordmark,
     Display,
     Title,
     Panel,
@@ -335,20 +344,21 @@ enum class TypeStyle : std::uint8_t {
     Kbd,
     Count
 };
-inline constexpr std::array<TypeSpec, 15> kTypeStyles = {{
-    {FontRole::Ui, 15.0f, 20.0f, 600, 0.0f, false}, // display
-    {FontRole::Ui, 14.0f, 19.0f, 600, 0.0f, false}, // title
-    {FontRole::Ui, 12.0f, 16.0f, 600, 0.0f, false}, // panel
-    {FontRole::Ui, 12.0f, 16.0f, 400, 0.0f, false}, // body
-    {FontRole::Ui, 12.0f, 16.0f, 400, 0.0f, false}, // bodyStrong
-    {FontRole::Ui, 12.0f, 16.0f, 600, 0.0f, false}, // bodySemi
+inline constexpr std::array<TypeSpec, 16> kTypeStyles = {{
+    {FontRole::Brand, 15.0f, 20.0f, 600, 0.2f, false}, // wordmark
+    {FontRole::Ui, 17.0f, 22.0f, 600, 0.0f, false}, // display
+    {FontRole::Ui, 15.0f, 20.0f, 600, 0.0f, false}, // title
+    {FontRole::Ui, 14.0f, 19.0f, 600, 0.0f, false}, // panel
+    {FontRole::Ui, 13.0f, 18.0f, 400, 0.0f, false}, // body
+    {FontRole::Ui, 13.0f, 18.0f, 400, 0.0f, false}, // bodyStrong
+    {FontRole::Ui, 13.0f, 18.0f, 600, 0.0f, false}, // bodySemi
     {FontRole::Ui, 12.0f, 16.0f, 400, 0.0f, false}, // small
     {FontRole::Ui, 12.0f, 16.0f, 600, 0.0f, false}, // smallSemi
     {FontRole::Ui, 12.0f, 16.0f, 400, 0.0f, false}, // caption
     {FontRole::Ui, 12.0f, 16.0f, 400, 0.0f, false}, // counter
     {FontRole::Ui, 11.0f, 14.0f, 600, 0.0f, false}, // badge
     {FontRole::Ui, 12.0f, 16.0f, 400, 0.0f, false}, // groupCap
-    {FontRole::Ui, 12.0f, 16.0f, 400, 0.0f, false}, // section
+    {FontRole::Ui, 14.0f, 19.0f, 600, 0.0f, false}, // section
     {FontRole::Mono, 12.0f, 16.0f, 400, 0.0f, false}, // mono
     {FontRole::Ui, 11.0f, 14.0f, 400, 0.0f, false}, // kbd
 }};
@@ -369,54 +379,58 @@ inline constexpr float s9 = 32.0f;
 } // namespace spacing
 
 namespace radius {
-inline constexpr float r1 = 2.0f;
-inline constexpr float r2 = 4.0f;
-inline constexpr float r3 = 6.0f;
-inline constexpr float button = 4.0f;
-inline constexpr float badge = 4.0f;
-inline constexpr float menu = 4.0f;
+inline constexpr float r1 = 3.0f;
+inline constexpr float r2 = 6.0f;
+inline constexpr float r3 = 10.0f;
+inline constexpr float button = 6.0f;
+inline constexpr float badge = 6.0f;
+inline constexpr float menu = 8.0f;
 inline constexpr float focusOffset = 2.0f;
 } // namespace radius
 
 namespace size {
-inline constexpr float controlSmall = 20.0f;
-inline constexpr float control = 24.0f;
-inline constexpr float controlLarge = 26.0f;
-inline constexpr float controlXL = 28.0f;
-inline constexpr float row = 23.5f;
-inline constexpr float rowComfortable = 26.0f;
+inline constexpr float controlSmall = 22.0f;
+inline constexpr float control = 28.0f;
+inline constexpr float controlLarge = 30.0f;
+inline constexpr float controlXL = 32.0f;
+inline constexpr float row = 28.0f;
+inline constexpr float rowComfortable = 30.0f;
 inline constexpr float densityDelta = 2.0f;
 inline constexpr float icon = 16.0f;
 inline constexpr float iconLarge = 20.0f;
-inline constexpr float titleBar = 34.0f;
-inline constexpr float statusBar = 22.0f;
+inline constexpr float titleBar = 36.0f;
+inline constexpr float statusBar = 26.0f;
 inline constexpr float inspector = 300.0f;
 inline constexpr float inspectorWide = 320.0f;
 inline constexpr float captionButton = 40.0f;
-inline constexpr float menuButton = 24.0f;
-inline constexpr float search = 24.0f;
+inline constexpr float menuButton = 28.0f;
+inline constexpr float search = 28.0f;
 inline constexpr float searchMax = 300.0f;
-inline constexpr float contentPad = 16.0f;
+inline constexpr float contentPad = 20.0f;
 inline constexpr float headerTop = 0.0f;
 inline constexpr float tabsTop = 0.0f;
-inline constexpr float groupCaption = 25.0f;
-inline constexpr float tab = 26.0f;
+inline constexpr float groupCaption = 27.0f;
+inline constexpr float tab = 30.0f;
 inline constexpr float tabGap = 2.0f;
 inline constexpr float groupGap = 0.0f;
-inline constexpr float tableHead = 24.0f;
-inline constexpr float tableRow = 23.5f;
-inline constexpr float listRow = 28.0f;
-inline constexpr float settingRow = 23.5f;
-inline constexpr float panelPad = 8.0f;
-inline constexpr float journalRow = 22.0f;
-inline constexpr float pill = 24.0f;
-inline constexpr float segment = 24.0f;
-inline constexpr float checkbox = 13.0f;
-inline constexpr float toggleW = 38.0f;
-inline constexpr float toggleH = 18.0f;
-inline constexpr float toggleThumb = 12.0f;
+inline constexpr float tableHead = 28.0f;
+inline constexpr float tableRow = 28.0f;
+inline constexpr float listRow = 32.0f;
+inline constexpr float settingRow = 28.0f;
+inline constexpr float panelPad = 12.0f;
+inline constexpr float journalRow = 24.0f;
+inline constexpr float pill = 28.0f;
+inline constexpr float segment = 28.0f;
+inline constexpr float checkbox = 14.0f;
+inline constexpr float toggleW = 40.0f;
+inline constexpr float toggleH = 20.0f;
+inline constexpr float toggleThumb = 14.0f;
 inline constexpr float progress = 4.0f;
 inline constexpr float progressThick = 6.0f;
+inline constexpr float ring = 16.0f;
+inline constexpr float ringLarge = 20.0f;
+inline constexpr float ringStroke = 2.0f;
+inline constexpr float ringStrokeLarge = 2.5f;
 inline constexpr float dot = 6.0f;
 inline constexpr float scrollbarRest = 4.0f;
 inline constexpr float scrollbarHover = 8.0f;
@@ -426,8 +440,8 @@ inline constexpr float minWindowH = 700.0f;
 inline constexpr float ribbon = 50.0f;
 inline constexpr float hint = 34.0f;
 inline constexpr float nav = 200.0f;
-inline constexpr float navItem = 28.0f;
-inline constexpr float navLabel = 25.0f;
+inline constexpr float navItem = 32.0f;
+inline constexpr float navLabel = 27.0f;
 inline constexpr float navGroupGap = 11.0f;
 } // namespace size
 
@@ -437,6 +451,8 @@ inline constexpr float hoverOverlay = 0.04f;
 inline constexpr float pressedOverlay = 0.1f;
 inline constexpr float scrim = 0.6f;
 inline constexpr float placeholder = 1.0f;
+inline constexpr float accentTint = 0.2f;
+inline constexpr float ringTrack = 0.2f;
 } // namespace opacity
 
 // ---- Elevation ---------------------------------------------------------
@@ -445,6 +461,7 @@ namespace elevation {
 inline constexpr std::array<Shadow, 2> menu = {{Shadow{0.0f, 1.0f, 2.0f, Color::ShadowKey}, Shadow{0.0f, 8.0f, 24.0f, Color::ShadowAmbient}}};
 inline constexpr std::array<Shadow, 2> dialog = {{Shadow{0.0f, 2.0f, 4.0f, Color::ShadowKey}, Shadow{0.0f, 16.0f, 40.0f, Color::ShadowAmbient}}};
 inline constexpr std::array<Shadow, 2> toast = {{Shadow{0.0f, 1.0f, 2.0f, Color::ShadowKey}, Shadow{0.0f, 8.0f, 24.0f, Color::ShadowAmbient}}};
+inline constexpr std::array<Shadow, 2> card = {{Shadow{0.0f, 1.0f, 3.0f, Color::ShadowKey}, Shadow{0.0f, 4.0f, 12.0f, Color::ShadowAmbient}}};
 } // namespace elevation
 
 // ---- Motion ------------------------------------------------------------
@@ -457,9 +474,13 @@ inline constexpr float baseMs = 140.0f;
 inline constexpr float slowMs = 220.0f;
 inline constexpr float enterMs = 180.0f;
 inline constexpr float exitMs = 120.0f;
+inline constexpr float ringCycleMs = 1500.0f;
+inline constexpr float ringTurnMs = 2000.0f;
+inline constexpr float ringFrameMs = 25.0f;
 inline constexpr CubicBezier standard = {0.2f, 0.0f, 0.0f, 1.0f};
 inline constexpr CubicBezier decelerate = {0.0f, 0.0f, 0.0f, 1.0f};
 inline constexpr CubicBezier accelerate = {0.4f, 0.0f, 1.0f, 1.0f};
+inline constexpr CubicBezier ring = {0.4f, 0.0f, 0.2f, 1.0f};
 inline constexpr Spring spring = {380.0f, 34.0f, 1.0f};
 } // namespace motion
 

@@ -6,6 +6,7 @@
 #include <json.hpp>
 
 #include <algorithm>
+#include <unordered_set>
 
 namespace wl::app {
 
@@ -50,15 +51,55 @@ const Operation* HostsController::queuedSection(std::wstring_view id) const {
     return m_state.changes().find(OpKind::SetHosts, id);
 }
 
-bool HostsController::inImage(const HostsList& list) const {
+bool HostsController::inImageNow(const HostsList& list) const {
     return m_state.imageHas(Operation{OpKind::SetHosts, list.id, list.text()});
 }
 
-bool HostsController::on(const HostsList& list) const {
+bool HostsController::onNow(const HostsList& list) const {
     if (const auto* op = queuedSection(list.id)) {
         return core::formatHostEntries(core::parseHosts(op->value)) == list.text();
     }
-    return inImage(list);
+    return inImageNow(list);
+}
+
+const HostsController::Derived& HostsController::derived() const {
+    if (m_derived.revision == m_state.revision() && m_derived.queueVersion == m_state.changes().version()) {
+        return m_derived;
+    }
+    Derived d;
+    d.revision = m_state.revision();
+    d.queueVersion = m_state.changes().version();
+    if (const auto* op = queuedSection(kCustom)) {
+        d.custom = core::parseHosts(op->value);
+    } else if (const auto& values = m_state.imageValues()) {
+        if (const auto it = values->hostsSections.find(kCustom); it != values->hostsSections.end()) {
+            d.custom = core::parseHosts(it->second);
+        }
+    }
+    d.total = d.custom.size();
+    for (const auto& list : m_lists) {
+        d.inImage.push_back(inImageNow(list));
+        d.on.push_back(onNow(list));
+        if (d.on.back()) {
+            d.total += list.entries.size();
+        }
+    }
+    m_derived = std::move(d);
+    return m_derived;
+}
+
+bool HostsController::inImage(const HostsList& list) const {
+    if (!m_lists.empty() && &list >= m_lists.data() && &list < m_lists.data() + m_lists.size()) {
+        return derived().inImage[static_cast<std::size_t>(&list - m_lists.data())] != 0;
+    }
+    return inImageNow(list);
+}
+
+bool HostsController::on(const HostsList& list) const {
+    if (!m_lists.empty() && &list >= m_lists.data() && &list < m_lists.data() + m_lists.size()) {
+        return derived().on[static_cast<std::size_t>(&list - m_lists.data())] != 0;
+    }
+    return onNow(list);
 }
 
 void HostsController::setSection(std::wstring_view id, std::wstring entries, Risk risk) {
@@ -90,16 +131,8 @@ int HostsController::applyRecommended() {
     return n;
 }
 
-std::vector<core::HostEntry> HostsController::customEntries() const {
-    if (const auto* op = queuedSection(kCustom)) {
-        return core::parseHosts(op->value);
-    }
-    if (const auto& values = m_state.imageValues()) {
-        if (const auto it = values->hostsSections.find(kCustom); it != values->hostsSections.end()) {
-            return core::parseHosts(it->second);
-        }
-    }
-    return {};
+const std::vector<core::HostEntry>& HostsController::customEntries() const {
+    return derived().custom;
 }
 
 bool HostsController::customInImage() const {
@@ -108,10 +141,17 @@ bool HostsController::customInImage() const {
 }
 
 std::size_t HostsController::importText(std::wstring_view text) {
-    auto entries = customEntries();
+    auto entries = customEntries(); // a copy: it grows
+    // By name in a set: comparing each new line with every line so far made a block list of
+    // 100,000 lines some 5 billion comparisons, on the UI thread.
+    std::unordered_set<std::wstring> names;
+    names.reserve(entries.size());
+    for (const auto& e : entries) {
+        names.insert(e.name);
+    }
     std::size_t added = 0;
     for (auto& e : core::parseHosts(text)) {
-        if (std::ranges::none_of(entries, [&](const core::HostEntry& x) { return x.name == e.name; })) {
+        if (names.insert(e.name).second) {
             entries.push_back(std::move(e));
             ++added;
         }
@@ -131,13 +171,7 @@ int HostsController::changedCount() const {
 }
 
 std::size_t HostsController::totalEntries() const {
-    std::size_t n = customEntries().size();
-    for (const auto& list : m_lists) {
-        if (on(list)) {
-            n += list.entries.size();
-        }
-    }
-    return n;
+    return derived().total;
 }
 
 } // namespace wl::app

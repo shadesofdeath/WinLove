@@ -14,8 +14,11 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
+#include <exception>
 #include <format>
+#include <memory>
 #include <mutex>
+#include <new>
 #include <optional>
 #include <thread>
 
@@ -29,6 +32,9 @@ constexpr std::uint8_t kMetadata = 0x02;
 constexpr std::uint8_t kCompressed = 0x04;
 constexpr std::uint8_t kSolid = 0x10;
 constexpr std::size_t kReadAhead = 4u << 20; // compressed bytes read per request
+// The lookup table is read whole: 256 MiB is over five million streams, fifty times the largest
+// install.wim; a header that names more is damaged (audit ENG-10).
+constexpr std::uint64_t kMaxLookup = 1ull << 28;
 
 struct Entry {
     std::uint64_t offset = 0;
@@ -98,8 +104,14 @@ public:
 
     [[nodiscard]] bool usable() const noexcept { return m_hash != nullptr; }
     void update(std::span<const std::byte> data) noexcept {
-        BCryptHashData(m_hash, reinterpret_cast<PUCHAR>(const_cast<std::byte*>(data.data())),
-                       static_cast<ULONG>(data.size()), 0);
+        // BCrypt counts in a ULONG: in steps, or 4 GiB and more would go in cut short (audit ENG-10).
+        constexpr std::size_t kStep = std::size_t{1} << 30;
+        do {
+            const std::size_t count = std::min(data.size(), kStep);
+            BCryptHashData(m_hash, reinterpret_cast<PUCHAR>(const_cast<std::byte*>(data.data())),
+                           static_cast<ULONG>(count), 0);
+            data = data.subspan(count);
+        } while (!data.empty());
     }
     // Also readies the object for the next stream.
     [[nodiscard]] std::array<std::uint8_t, 20> finish() noexcept {
@@ -184,16 +196,29 @@ struct Worker {
         if (entry.offset > source.size() || entry.size > source.size() - entry.offset) {
             return L"lies outside the file (truncated?)";
         }
-        if ((entry.flags & kCompressed) == 0) {
-            out.resize(static_cast<std::size_t>(entry.size));
-            return out.empty() || source.read(entry.offset, out) ? std::wstring() : std::wstring(L"cannot be read");
+        // The sizes are the file's word (audit ENG-10): a damaged entry must come back as a problem,
+        // not as an exception on whatever thread asked. This is for file lists and small files.
+        constexpr std::uint64_t kMaxInMemory = 1ull << 32;
+        constexpr std::uint64_t kMaxReserve = 1ull << 30;
+        if (entry.original > kMaxInMemory || entry.size > kMaxInMemory) {
+            return L"is too large to read into memory";
         }
-        out.reserve(static_cast<std::size_t>(entry.original));
-        const std::atomic<bool> stop{false};
-        sink = &out;
-        std::wstring problem = hashChunks(entry, stop);
-        sink = nullptr;
-        return problem;
+        try {
+            if ((entry.flags & kCompressed) == 0) {
+                out.resize(static_cast<std::size_t>(entry.size));
+                return out.empty() || source.read(entry.offset, out) ? std::wstring() : std::wstring(L"cannot be read");
+            }
+            out.reserve(static_cast<std::size_t>(std::min(entry.original, kMaxReserve)));
+            const std::atomic<bool> stop{false};
+            sink = &out;
+            std::wstring problem = hashChunks(entry, stop);
+            sink = nullptr;
+            return problem;
+        } catch (const std::exception&) { // bad_alloc, length_error
+            sink = nullptr;
+            out.clear();
+            return L"is too large to read into memory";
+        }
     }
 
     [[nodiscard]] std::wstring hashChunks(const Entry& entry, const std::atomic<bool>& stop) {
@@ -203,7 +228,9 @@ struct Worker {
         }
         const std::size_t width = entry.original > 0xFFFFFFFFull ? 8 : 4;
         const std::uint64_t tableBytes = (chunks - 1) * width;
-        if (tableBytes > entry.size) {
+        // Every chunk is at least one byte of data (an empty one is refused below), so a table this
+        // long for the stream is a damaged size: refused before memory is asked for it.
+        if (tableBytes > entry.size || chunks - 1 > entry.size - tableBytes) {
             return L"chunk table larger than the stream";
         }
         table.resize(static_cast<std::size_t>(tableBytes));
@@ -281,7 +308,7 @@ Result<Table> readTable(const ByteSource& wim) {
         return fail(ErrorCode::Unsupported, L"XPRESS decompression is not available on this system", L"WIM");
     }
     if (header->lookupCompressed || header->lookupSize % kEntrySize != 0 || header->lookupOffset > wim.size() ||
-        header->lookupSize > wim.size() - header->lookupOffset || header->lookupSize > (1ull << 31)) {
+        header->lookupSize > wim.size() - header->lookupOffset || header->lookupSize > kMaxLookup) {
         return fail(ErrorCode::ParseError, L"the stream table of the image cannot be read", L"WIM");
     }
     const std::uint32_t chunkSize = header->compression == WimCompression::None ? 32768 : header->chunkSize;
@@ -444,10 +471,15 @@ std::vector<std::wstring> namesInMetadata(std::span<const std::byte> meta, std::
 
 } // namespace
 
-namespace {
+// What WimEdition keeps: the lookup table and the edition's file list (its metadata resource),
+// decompressed — read once, however many files are asked about (audit ENG-08).
+struct WimEdition::State {
+    const ByteSource& wim;
+    Table table;
+    std::vector<std::byte> meta;
+};
 
-// One edition's file list (its metadata resource), decompressed.
-Result<std::vector<std::byte>> editionMetadata(const ByteSource& wim, int index) {
+Result<WimEdition> WimEdition::open(const ByteSource& wim, int index) {
     auto table = readTable(wim);
     if (!table) {
         return std::unexpected(table.error());
@@ -469,58 +501,75 @@ Result<std::vector<std::byte>> editionMetadata(const ByteSource& wim, int index)
     if (auto problem = worker.read(*metadata, meta); !problem.empty()) {
         return fail(ErrorCode::ParseError, L"the file list of the edition " + problem, std::to_wstring(index));
     }
-    return meta;
+    WimEdition edition;
+    edition.m_state = std::make_shared<const State>(State{wim, std::move(*table), std::move(meta)});
+    return edition;
 }
 
-} // namespace
-
-Result<bool> wimFileExists(const ByteSource& wim, int index, std::wstring_view path) {
-    auto meta = editionMetadata(wim, index);
-    if (!meta) {
-        return std::unexpected(meta.error());
-    }
-    return fileInMetadata(*meta, path);
+bool WimEdition::exists(std::wstring_view path) const {
+    return fileInMetadata(m_state->meta, path);
 }
 
-Result<std::vector<std::wstring>> wimFolderNames(const ByteSource& wim, int index, std::wstring_view folder) {
-    auto meta = editionMetadata(wim, index);
-    if (!meta) {
-        return std::unexpected(meta.error());
-    }
-    return namesInMetadata(*meta, folder);
+std::vector<std::wstring> WimEdition::names(std::wstring_view folder) const {
+    return namesInMetadata(m_state->meta, folder);
 }
 
-Result<std::vector<std::byte>> wimFileData(const ByteSource& wim, int index, std::wstring_view path) {
-    auto table = readTable(wim);
-    if (!table) {
-        return std::unexpected(table.error());
-    }
-    auto meta = editionMetadata(wim, index);
-    if (!meta) {
-        return std::unexpected(meta.error());
-    }
-    const auto entry = entryInMetadata(*meta, path);
+Result<std::vector<std::byte>> WimEdition::data(std::wstring_view path) const {
+    const Table& table = m_state->table;
+    const auto entry = entryInMetadata(m_state->meta, path);
     if (!entry || (entry->attributes & kDirectory) != 0) {
         return fail(ErrorCode::NotFound, L"no such file in the edition", std::wstring(path));
     }
-    std::vector<std::byte> data;
+    std::vector<std::byte> bytes;
     if (std::ranges::all_of(entry->hash, [](std::uint8_t b) { return b == 0; })) {
-        return data; // an empty file
+        return bytes; // an empty file
     }
-    const auto stream = std::ranges::find_if(table->entries, [&](const Entry& e) { return e.hash == entry->hash; });
-    if (stream == table->entries.end()) {
+    const auto stream = std::ranges::find_if(table.entries, [&](const Entry& e) { return e.hash == entry->hash; });
+    if (stream == table.entries.end()) {
         return fail(ErrorCode::NotFound, L"the file's data is not in this file (a split image?)", std::wstring(path));
     }
-    Worker worker(wim, table->header.compression, table->chunkSize);
-    if (auto problem = worker.read(*stream, data); !problem.empty()) {
+    Worker worker(m_state->wim, table.header.compression, table.chunkSize);
+    if (auto problem = worker.read(*stream, bytes); !problem.empty()) {
         return fail(ErrorCode::ParseError, L"the file " + problem, std::wstring(path));
     }
     Sha1 sha;
-    sha.update(data);
+    sha.update(bytes);
     if (sha.usable() && sha.finish() != entry->hash) {
         return fail(ErrorCode::ParseError, L"the file does not match its SHA-1 (damaged image)", std::wstring(path));
     }
-    return data;
+    return bytes;
+}
+
+std::optional<std::array<std::uint8_t, 20>> WimEdition::hash(std::wstring_view path) const {
+    const auto entry = entryInMetadata(m_state->meta, path);
+    if (!entry || (entry->attributes & kDirectory) != 0) {
+        return std::nullopt;
+    }
+    return entry->hash;
+}
+
+Result<bool> wimFileExists(const ByteSource& wim, int index, std::wstring_view path) {
+    auto edition = WimEdition::open(wim, index);
+    if (!edition) {
+        return std::unexpected(edition.error());
+    }
+    return edition->exists(path);
+}
+
+Result<std::vector<std::wstring>> wimFolderNames(const ByteSource& wim, int index, std::wstring_view folder) {
+    auto edition = WimEdition::open(wim, index);
+    if (!edition) {
+        return std::unexpected(edition.error());
+    }
+    return edition->names(folder);
+}
+
+Result<std::vector<std::byte>> wimFileData(const ByteSource& wim, int index, std::wstring_view path) {
+    auto edition = WimEdition::open(wim, index);
+    if (!edition) {
+        return std::unexpected(edition.error());
+    }
+    return edition->data(path);
 }
 
 Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task) {
@@ -544,26 +593,40 @@ Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task
     unsigned running = std::clamp(std::thread::hardware_concurrency(), 1u, 8u);
     running = static_cast<unsigned>(std::min<std::size_t>(running, std::max<std::size_t>(entries.size(), 1)));
 
+    std::atomic<bool> workerFailed{false};
     auto work = [&] {
-        Worker worker(wim, header.compression, chunkSize);
-        if (!worker.sha.usable()) {
-            hashFailed = true;
+        // Nothing may leave this function: these threads are not the task runner's, an exception
+        // here ends the process (audit ENG-10). The buffers are sized by what the file says.
+        try {
+            Worker worker(wim, header.compression, chunkSize);
+            if (!worker.sha.usable()) {
+                hashFailed = true;
+                stop = true;
+            }
+            for (std::size_t i = next++; i < entries.size() && !stop; i = next++) {
+                const Entry& entry = entries[i];
+                std::wstring problem;
+                try {
+                    problem = worker.check(entry, stop);
+                } catch (const std::bad_alloc&) {
+                    (void)worker.sha.finish(); // ready for the next stream
+                    problem = L"needs more memory than there is (damaged sizes?)";
+                }
+                doneBytes += entry.size;
+                if (stop) {
+                    break;
+                }
+                std::scoped_lock lock(mutex);
+                ++report.streams;
+                report.bytes += entry.original;
+                if (!problem.empty()) {
+                    ++report.damaged;
+                    report.first.push_back({entry.offset, entry.size, (entry.flags & kMetadata) != 0, std::move(problem)});
+                }
+            }
+        } catch (...) {
+            workerFailed = true;
             stop = true;
-        }
-        for (std::size_t i = next++; i < entries.size() && !stop; i = next++) {
-            const Entry& entry = entries[i];
-            std::wstring problem = worker.check(entry, stop);
-            doneBytes += entry.size;
-            if (stop) {
-                break;
-            }
-            std::scoped_lock lock(mutex);
-            ++report.streams;
-            report.bytes += entry.original;
-            if (!problem.empty()) {
-                ++report.damaged;
-                report.first.push_back({entry.offset, entry.size, (entry.flags & kMetadata) != 0, std::move(problem)});
-            }
         }
         std::scoped_lock lock(mutex);
         --running;
@@ -571,8 +634,20 @@ Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task
     };
     std::vector<std::thread> threads;
     const unsigned count = running;
+    threads.reserve(count);
     for (unsigned i = 0; i < count; ++i) {
-        threads.emplace_back(work);
+        try {
+            threads.emplace_back(work);
+        } catch (...) {
+            // No more threads to be had: the ones that started do all of it. Leaving with them
+            // unjoined would end the process.
+            std::scoped_lock lock(mutex);
+            running -= count - i;
+            break;
+        }
+    }
+    if (threads.empty()) {
+        return fail(ErrorCode::Unknown, L"could not start a verification thread", L"WIM");
     }
     {
         // Progress and cancellation from this thread only: the callback need not be thread-safe.
@@ -596,6 +671,9 @@ Result<WimVerifyReport> verifyWim(const ByteSource& wim, const TaskContext& task
     if (hashFailed) {
         return fail(ErrorCode::Unknown, L"SHA-1 is not available", L"WIM");
     }
+    if (workerFailed) {
+        return fail(ErrorCode::Unknown, L"the verification could not go on (out of memory?)", L"WIM");
+    }
     std::ranges::sort(report.first, {}, &WimVerifyReport::Damage::offset);
     if (report.first.size() > WimVerifyReport::kMaxListed) {
         report.first.resize(WimVerifyReport::kMaxListed);
@@ -615,7 +693,7 @@ Result<std::vector<SolidResource>> solidResources(const ByteSource& wim) {
         return std::unexpected(header.error());
     }
     if (header->lookupCompressed || header->lookupSize % kEntrySize != 0 || header->lookupOffset > wim.size() ||
-        header->lookupSize > wim.size() - header->lookupOffset || header->lookupSize > (1ull << 31)) {
+        header->lookupSize > wim.size() - header->lookupOffset || header->lookupSize > kMaxLookup) {
         return fail(ErrorCode::ParseError, L"the stream table of the image cannot be read", L"WIM");
     }
     std::vector<std::byte> raw(static_cast<std::size_t>(header->lookupSize));

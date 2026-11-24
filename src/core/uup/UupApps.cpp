@@ -318,9 +318,11 @@ Result<std::vector<AppFeature>> readAppCompDb(const std::filesystem::path& cab, 
         return std::unexpected(r.error());
     }
     std::filesystem::path inner;
-    for (const auto& e : std::filesystem::directory_iterator(scratch / L"outer", ec)) {
-        if (text::iequals(e.path().filename().wstring(), kName)) {
-            inner = e.path();
+    // increment(ec): a range-for's ++ throws when the walk fails half way (audit OPS-13).
+    for (auto it = std::filesystem::directory_iterator(scratch / L"outer", ec);
+         !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+        if (text::iequals(it->path().filename().wstring(), kName)) {
+            inner = it->path();
         }
     }
     if (inner.empty()) {
@@ -330,9 +332,11 @@ Result<std::vector<AppFeature>> readAppCompDb(const std::filesystem::path& cab, 
         return std::unexpected(r.error());
     }
     std::filesystem::path xml;
-    for (const auto& e : std::filesystem::directory_iterator(scratch / L"inner", ec)) {
-        if (e.is_regular_file(ec)) {
-            xml = e.path();
+    std::error_code walk; // its own: an entry that cannot be read (`ec`) does not end the walk
+    for (auto it = std::filesystem::directory_iterator(scratch / L"inner", walk);
+         !walk && it != std::filesystem::directory_iterator(); it.increment(walk)) {
+        if (it->is_regular_file(ec)) {
+            xml = it->path();
         }
     }
     std::ifstream in(xml, std::ios::binary);
@@ -361,9 +365,11 @@ Result<void> writeLicenses(const std::vector<AppFeature>& apps, const std::files
 
 std::filesystem::path aggregatedMetadata(const std::filesystem::path& folder) {
     std::error_code ec;
-    for (const auto& e : std::filesystem::directory_iterator(folder, ec)) {
-        if (e.is_regular_file(ec) && text::iendsWith(e.path().filename().wstring(), L".AggregatedMetadata.cab")) {
-            return e.path();
+    std::error_code walk; // its own: an entry that cannot be read (`ec`) does not end the walk (audit OPS-13)
+    for (auto it = std::filesystem::directory_iterator(folder, walk);
+         !walk && it != std::filesystem::directory_iterator(); it.increment(walk)) {
+        if (it->is_regular_file(ec) && text::iendsWith(it->path().filename().wstring(), L".AggregatedMetadata.cab")) {
+            return it->path();
         }
     }
     return {};

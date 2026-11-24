@@ -1,5 +1,7 @@
 #include "ui/widgets/TableView.h"
 
+#include "ui/widgets/Checkbox.h"
+
 #include <windows.h>
 
 #include <algorithm>
@@ -83,20 +85,55 @@ RectF TableView::body() const {
 }
 
 std::vector<float> TableView::columnXs() const {
+    std::vector<float> xs;
+    columnXs(xs);
+    return xs;
+}
+
+void TableView::columnXs(std::vector<float>& xs) const {
+    xs.clear();
     const RectF b = bounds();
     float fixed = 0;
+    float give = 0; // what the fixed columns with a minWidth can give up
+    bool hasFlex = false;
     for (const auto& c : m_columns) {
+        if (c.hidden) {
+            continue;
+        }
         fixed += c.width;
+        hasFlex = hasFlex || c.width <= 0;
+        if (c.width > 0 && c.minWidth > 0) {
+            give += std::max(c.width - c.minWidth, 0.0f);
+        }
     }
-    const float flex = std::max(b.width - fixed, 120.0f);
-    std::vector<float> xs;
+    // D-136: a narrow table keeps its flexible (name) column at m_flexMin as long as the shrinkable
+    // fixed columns have room to give, each in proportion to what it can give.
+    const float wanted = hasFlex ? std::max(m_flexMin - (b.width - fixed), 0.0f) : 0.0f;
+    const float taken = std::min(wanted, give);
+    const float flex = std::max(b.width - fixed + taken, kFlexMin);
     float x = b.x;
     for (const auto& c : m_columns) {
         xs.push_back(x);
-        x += c.width > 0 ? c.width : flex;
+        if (c.hidden) {
+            continue; // no width: its left edge is the next one's
+        }
+        float w = c.width > 0 ? c.width : flex;
+        if (c.width > 0 && c.minWidth > 0 && give > 0) {
+            w -= taken * std::max(c.width - c.minWidth, 0.0f) / give;
+        }
+        x += w;
     }
     xs.push_back(x);
-    return xs;
+}
+
+float TableView::minimumWidth() const noexcept {
+    float width = 0;
+    for (const auto& c : m_columns) {
+        if (!c.hidden) {
+            width += c.width <= 0 ? m_flexMin : c.minWidth > 0 ? c.minWidth : c.width;
+        }
+    }
+    return width;
 }
 
 void TableView::layout() {
@@ -117,8 +154,32 @@ void TableView::setRowCount(int count) {
         sortRows();
     }
     m_hoverRow = -1;
+    m_hoverFade.snap(-1); // other rows now: nothing of the old highlight fades out over them
     layout();
     invalidate();
+}
+
+void TableView::revealCheck(int row) {
+    m_revealRow = row;
+    m_reveal.snapTo(0.0f);
+    if (m_reveal.animateTo(1.0f, Checkbox::kRevealMs)) {
+        animate();
+    }
+    invalidate();
+}
+
+bool TableView::tick(double now) {
+    const bool hover = m_hoverFade.tick(now);
+    const bool reveal = m_reveal.tick(now);
+    invalidate();
+    return hover || reveal;
+}
+
+void TableView::setHoverRow(int row) {
+    m_hoverRow = row;
+    if (m_hoverFade.set(row)) {
+        animate();
+    }
 }
 
 void TableView::clearSelection() {
@@ -154,14 +215,20 @@ RectF TableView::cellRect(int row, int column) const {
 }
 
 RectF TableView::focusRect() const {
+    // The Host draws its ring outside this rectangle (focusOffset + 1 out, 2 DIP wide, inwards):
+    // inset by that much, the ring lies on the selected row's own edge, as painted (rounded y).
+    // An outside ring was cut off by the card around a full-width table and covered half of the
+    // rows above and below; with nothing selected it went round the whole table, of which only
+    // the top line showed.
+    const float ring = tokens::radius::focusOffset + 1;
+    const RectF v = body();
     if (m_selected >= 0) {
-        const RectF v = body();
-        const float y = v.y + static_cast<float>(m_selected) * m_row - m_offset;
+        const float y = std::round(v.y + static_cast<float>(m_selected) * m_row - m_offset);
         if (y >= v.y - 1 && y + m_row <= v.bottom() + 1) {
-            return {v.x, y, v.width, m_row};
+            return RectF{v.x, y, v.width, m_row}.inset(ring, ring);
         }
     }
-    return bounds();
+    return v.width > 2 * ring && v.height > 2 * ring ? v.inset(ring, ring) : bounds();
 }
 
 void TableView::setOffset(float offset) {
@@ -216,20 +283,40 @@ void TableView::onPointerMove(PointF p) {
     if (header >= 0 && !m_columns[static_cast<std::size_t>(header)].sortable) {
         header = -1;
     }
-    if (row != m_hoverRow && tooltipFor) {
-        setTooltip(row >= 0 ? tooltipFor(toData(row)) : std::wstring{}); // D-110: a row says what it is
+    if (row != m_hoverRow || ((cellText || cellTooltip) && column != m_hoverColumn)) {
+        updateTooltip(row, column);
     }
     if (row != m_hoverRow || column != m_hoverColumn || header != m_hoverHeader) {
-        m_hoverRow = row;
+        setHoverRow(row);
         m_hoverColumn = column;
         m_hoverHeader = header;
         invalidate();
     }
 }
 
+void TableView::updateTooltip(int row, int column) {
+    // D-110: a row says what it is; D-136: else a cell whose text does not fit says it whole.
+    std::wstring tip = row >= 0 && column >= 0 && cellTooltip ? cellTooltip(toData(row), column) : std::wstring{};
+    if (tip.empty() && row >= 0 && tooltipFor) {
+        tip = tooltipFor(toData(row));
+    }
+    if (tip.empty() && row >= 0 && column >= 0 && cellText) {
+        TableCellText cell = cellText(toData(row), column);
+        const auto xs = columnXs();
+        const float room = xs[static_cast<std::size_t>(column) + 1] - xs[static_cast<std::size_t>(column)] - 2 * kCellPad - cell.inset;
+        if (!cell.text.empty() && textWidth(cell.text, cell.style) > room + 0.5f) {
+            tip = std::move(cell.text);
+        }
+    }
+    if (tip != tooltip()) {
+        setTooltip(std::move(tip));
+    }
+}
+
 void TableView::onHoverChanged(bool hovered) {
     if (!hovered) {
-        m_hoverRow = m_hoverColumn = m_hoverHeader = -1;
+        setHoverRow(-1);
+        m_hoverColumn = m_hoverHeader = -1;
     }
     invalidate();
 }
@@ -261,7 +348,7 @@ void TableView::onPointerDown(PointF p) {
     m_downRow = rowAt(p);
     m_downPoint = p;
     m_downColumn = m_downRow >= 0 ? columnAt(p.x) : -1;
-    m_hoverRow = m_downRow; // the press point is authoritative even if hover is stale
+    setHoverRow(m_downRow); // the press point is authoritative even if hover is stale
     m_hoverColumn = m_downColumn;
     if (m_downRow >= 0) {
         select(m_downRow, /*reveal=*/false);
@@ -311,10 +398,14 @@ bool TableView::onKeyDown(const KeyEvent& key) {
 
 void TableView::paint(Canvas& canvas) {
     const RectF b = bounds();
-    const auto xs = columnXs();
+    columnXs(m_xs);
+    const auto& xs = m_xs;
     // Header.
     for (std::size_t i = 0; i < m_columns.size(); ++i) {
         const auto& c = m_columns[i];
+        if (c.hidden) {
+            continue;
+        }
         const RectF cell{xs[i] + kCellPad, b.y, xs[i + 1] - xs[i] - 2 * kCellPad, m_header};
         const bool sorted = static_cast<int>(i) == m_sortColumn;
         const Color ink = sorted || static_cast<int>(i) == m_hoverHeader ? Color::TextSecondary : Color::TextTertiary;
@@ -340,19 +431,27 @@ void TableView::paint(Canvas& canvas) {
         const RectF line{v.x, y, v.width, m_row};
         const bool selected = row == m_selected;
         const bool hovered = row == m_hoverRow;
+        // bg.hover, faded in and out like a Button's: 1 for the hovered row at rest, so a still
+        // frame is the plain fill.
+        const float hover = m_hoverFade.amount(row);
         if (selected) { // Painter::RowBackground: acSoft + a 2px accent bar inset 10 (less on short rows)
             canvas.fillRect(line, Color::AccentSubtle);
             const float inset = std::min(10.0f, m_row / 4);
             canvas.fillRoundRect({line.x, y + inset, 2.0f, m_row - 2 * inset}, 1.0f, Color::AccentBase);
-        } else if (hovered) {
-            canvas.fillRect(line, Color::BgHover);
+        } else if (hover > 0) {
+            canvas.fillRect(line, Ink(Color::BgHover, Color::BgHover, 0.0f, hover));
         }
         // D-109: the reference tool's grids have no lines between rows.
         if (paintCell) {
+            const int data = toData(row);
+            const float reveal = m_reveal.running() && data == m_revealRow ? m_reveal.value() : 1.0f;
             for (std::size_t i = 0; i < m_columns.size(); ++i) {
+                if (m_columns[i].hidden) {
+                    continue;
+                }
                 const RectF cell{xs[i] + kCellPad, y, xs[i + 1] - xs[i] - 2 * kCellPad, m_row};
-                paintCell(canvas, toData(row), static_cast<int>(i), cell,
-                          CellState{hovered, selected, hovered && static_cast<int>(i) == m_hoverColumn});
+                paintCell(canvas, data, static_cast<int>(i), cell,
+                          CellState{hovered, selected, hovered && static_cast<int>(i) == m_hoverColumn, reveal});
             }
         }
     }

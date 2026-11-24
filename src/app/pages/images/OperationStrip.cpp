@@ -31,6 +31,10 @@ std::pair<Str, Str> labelsFor(EngineOperation::Kind kind) {
     case EngineOperation::Kind::Verifying: return {Str::ImagesVerifying, Str::ImagesExportingHint};
     case EngineOperation::Kind::Editions: return {Str::ImagesReadingEditions, Str::ImagesWorkingHint};
     case EngineOperation::Kind::Health: return {Str::ImagesHealthWorking, Str::ImagesWorkingHint};
+    case EngineOperation::Kind::Adopting: return {Str::ImagesAdopting, Str::ImagesAdoptingHint};
+    case EngineOperation::Kind::Remounting: return {Str::ImagesRemounting, Str::ImagesRemountingHint};
+    case EngineOperation::Kind::Duplicating: return {Str::ImagesDuplicating, Str::ImagesWorkingHint};
+    case EngineOperation::Kind::Moving: return {Str::ImagesMoving, Str::ImagesWorkingHint};
     }
     return {Str::ImagesMounting, Str::ImagesWorkingHint};
 }
@@ -53,13 +57,18 @@ OperationStrip::OperationStrip(const Localization& strings, const AppState& stat
 
 void OperationStrip::start() {
     m_now = ui::nowMs();
+    m_ring.start(m_now);
     animate();
 }
 
 bool OperationStrip::tick(double now) {
     m_now = now;
     invalidate();
-    return visible() && m_state.operation().has_value();
+    const bool on = visible() && m_state.operation().has_value();
+    if (!on) {
+        m_ring.stop();
+    }
+    return on;
 }
 
 void OperationStrip::layout() {
@@ -87,10 +96,9 @@ void OperationStrip::paint(ui::Canvas& canvas) {
     }
     const RectF b = bounds();
     canvas.fillRect(b, Color::BgPanel);
-    // Spinner: 8 slices, 45° steps every 100 ms (progress-skeleton-empty.md: 800 ms per turn).
-    const float angle = static_cast<float>(static_cast<int>(m_now / 100.0) % 8) * 45.0f;
-    canvas.drawIcon(ui::icons::Icon::Spinner, {b.x + kIconX, b.y + 17}, Color::AccentBase, ui::IconVariant::Regular16, 0,
-                    ui::reducedMotion() ? 0.0f : angle);
+    // D-142: the progress ring, where the 16 DIP spinner icon was (its centre).
+    const float iconMid = ui::tokens::size::icon / 2;
+    ui::paintRing(canvas, ui::ringBox({b.x + kIconX + iconMid, b.y + 17 + iconMid}, ui::tokens::size::ringLarge), m_ring.pose(m_now));
 
     const auto [titleKey, hintKey] = labelsFor(op->kind);
     const std::wstring pct = std::to_wstring(static_cast<int>(op->fraction * 100));

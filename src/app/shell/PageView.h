@@ -5,9 +5,12 @@
 // column is kept for the shell's NavPanel, the right one for a side card (the page's inspector);
 // the card has a header of tabs (size::tab: the page title, or the tab's pages as tabs) over the
 // body (bg.panel, radius r3). The body is laid out 8 inside the card, in a viewport: a body that
-// is taller than the room (ScrollableBody) scrolls in it.
+// is taller than the room (ScrollableBody) scrolls in it. A page with no action has no band drawn
+// (its hint is centred in the room of both); the cards start at the same height either way.
+#include "ui/anim/ItemMotion.h"
 #include "ui/widgets/Button.h"
 #include "ui/widgets/ScrollBar.h"
+#include "ui/widgets/StripScroll.h"
 
 #include <functional>
 
@@ -49,25 +52,39 @@ private:
     float m_content = 0;
 };
 
-// The card's header: one plate per tab (bg.chrome on the chosen one, rounded at the top), text
-// 7.5 in. One tab = the page's title; several = the pages of the nav item (Güncellemeler · Diller).
+// The card's header: one plate per tab (the chosen one is the card's own top: its colour, rounded
+// at the top, its rim joining the card's), text 7.5 in. One tab = the page's title; several = the
+// pages of the nav item (Güncellemeler · Diller). 2026-11-10: the hover fill of the other plates
+// fades like the tabs' (ItemHover); the plates are measured when the tabs or the bounds change,
+// not while painting. D-136: plates wider than the card scroll sideways (StripScroll, as TabBar's).
 class CardTabs : public ui::Widget {
 public:
     CardTabs();
     std::function<void(int)> onPick;
     void setTabs(std::vector<std::wstring> labels, int selected);
+    [[nodiscard]] const ui::StripScroll& strip() const noexcept { return m_strip; }
+    void layout() override;
     void paint(ui::Canvas& canvas) override;
+    bool tick(double now) override;
     void onPointerMove(ui::PointF p) override;
+    void onPointerDown(ui::PointF p) override;
     void onHoverChanged(bool hovered) override;
     void onClick() override;
     bool onKeyDown(const ui::KeyEvent& key) override;
+    bool onWheel(ui::PointF p, float lines) override;
     [[nodiscard]] ui::Cursor cursor() const override;
 
 private:
-    [[nodiscard]] std::vector<ui::RectF> plates() const;
+    void hoverTo(int index);
+    void place(); // the plates at the strip's offset
     std::vector<std::wstring> m_labels;
+    std::vector<ui::RectF> m_plates; // one per label (layout)
     int m_selected = 0;
     int m_hover = -1;
+    int m_hotChevron = 0;
+    bool m_onChevron = false; // the press was on a chevron: its click picks nothing
+    ui::ItemHover m_hoverFade;
+    ui::StripScroll m_strip;
 };
 
 class PageView : public ui::Widget {
@@ -101,9 +118,12 @@ public:
     // The shell's columns: `left` from the window's edge to the card (the nav and its margins),
     // `right` for a side card (0 = none).
     void setColumns(float left, float right);
-    // Where the card starts (the nav and a side card line up with it).
+    // Where the card starts (the nav and a side card line up with it) — the same with or without a
+    // ribbon, so nothing moves from one page to the next.
     [[nodiscard]] float contentTop() const;
     [[nodiscard]] ui::RectF cardRect() const;
+    // False for a page with no action at all: its band is not drawn (2026-11-10).
+    [[nodiscard]] bool ribbonShown() const noexcept { return m_ribbonShown; }
 
     void layout() override;
     void paint(ui::Canvas& canvas) override;
@@ -128,6 +148,7 @@ private:
     std::vector<ui::Button*> m_actions;
     std::vector<std::size_t> m_separators; // a line before m_actions[i]
     std::vector<float> m_separatorX;
+    bool m_ribbonShown = false; // a visible action (layout)
 };
 
 } // namespace wl::app

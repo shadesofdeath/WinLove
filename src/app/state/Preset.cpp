@@ -94,7 +94,7 @@ Result<void> writePreset(const std::filesystem::path& file, const Preset& preset
 Preset presetFromState(const AppState& state, std::wstring name) {
     Preset preset;
     preset.name = std::move(name);
-    preset.changes = state.changes();
+    preset.changes = state.changes().withoutHistory();
     const auto& unattend = state.unattend();
     if (unattend.includeInIso || !(unattend.options == core::UnattendOptions{})) {
         preset.unattend = unattend;

@@ -86,11 +86,9 @@ Result<void> removeAppxFamily(DismSession& session, const std::wstring& fullName
         log::info("apply", L"app not in the image (already removed or never there): " + fullName);
     }
     // The listing keeps SOFTWARE loaded by DISM until the session closes; later registry steps of
-    // the run would fail with 0x80070020 (SystemComponents.cpp). A new session lets go of it.
+    // the run would fail with 0x80070020 (SystemComponents.cpp). Closing the session lets go of it;
+    // the next DISM call opens it again (D-131).
     session.suspend();
-    if (auto reopened = session.reload(); !reopened) {
-        return reopened;
-    }
     return outcome;
 }
 
@@ -354,6 +352,13 @@ std::size_t ApplyReport::failures() const {
     return static_cast<std::size_t>(std::ranges::count_if(results, [](const StepResult& r) { return !r.outcome; }));
 }
 
+RunStop runStop(const ApplyReport& report) noexcept {
+    if (report.sessionLost) {
+        return RunStop::SessionLost; // completed is false then: this, not a cancel, is why (D-131)
+    }
+    return report.completed ? RunStop::None : RunStop::Stopped;
+}
+
 std::size_t ApplyReport::holdingFailures() const {
     return static_cast<std::size_t>(
         std::ranges::count_if(results, [](const StepResult& r) { return !r.outcome && !unchangedByFailure(r); }));
@@ -370,6 +375,8 @@ bool unchangedByFailure(const StepResult& result) noexcept {
     const bool closed = code == static_cast<std::uint32_t>(kServicingClosedCode);
     switch (result.step.operation.kind) {
     case OpKind::CleanupImage: return code == 0x800F0806 || closed;
+    // WinLove's own refusal before any folder is touched: pending.xml (report 2026-11-13).
+    case OpKind::ShrinkStore: return code == 0x800F0806;
     // A capability whose package is permanent (Defender for Endpoint, Work Folders …): CBS answers
     // CBS_E_CANNOT_UNINSTALL before it stages anything. A preset from another image can queue one.
     case OpKind::RemoveCapability: return code == 0x800F0825 || closed;
@@ -429,22 +436,43 @@ ApplyReport apply(const ApplyPlan& plan, DismSession& session, const TaskContext
                                                        static_cast<double>(total),
                                                    stage);
                                    }};
-        StepResult result{step, runStep(step.operation, session, stepTask, options, registry, deferred)};
+        // An exception out of a step (a preset's JSON with a wrongly typed field, a file system
+        // error) fails that step: the report of the steps before it must not be lost with the
+        // image changed and mounted.
+        StepResult result{step, [&]() -> Result<void> {
+                              try {
+                                  return runStep(step.operation, session, stepTask, options, registry, deferred);
+                              } catch (const std::exception& e) {
+                                  return fail(ErrorCode::Unknown, L"the step ended with an exception", utf8::toWide(e.what()));
+                              }
+                          }()};
         if (!result.outcome) {
             log::error("apply", describe(result.outcome.error()));
         }
-        if (session.reloadRequired()) {
-            log::info("apply", L"DISM asked for a new session (servicing stack changed); reopening");
+        // Only a session DISM itself declared stale, or one the step could not open again (once
+        // more, as the eager reopening after every step always gave it): one a step closed (hive
+        // and file work) stays closed until a step needs DISM, which opens it then (D-131).
+        if (session.lost() || (session.reloadRequired() && session.open())) {
+            log::info("apply", session.lost() ? L"DISM's session could not be opened again; once more"
+                                              : L"DISM asked for a new session (servicing stack changed); reopening");
             if (auto reloaded = session.reload(); !reloaded) {
-                log::error("apply", describe(reloaded.error()));
-                report.results.push_back(std::move(result));
-                return report; // cannot continue without a session
+                log::error("apply", describe(reloaded.error())); // lost() holds it now: the run ends below
             }
         }
+        // A session that could not be opened again — here, or by a DISM call of the step after it
+        // had closed it (D-131) — ends the run as it did before the lazy reopening: every later
+        // DISM step would fail on its own while the others went on editing the image, and an
+        // edition after the first would be saved half changed (applyToEdition saves failures).
+        // The step itself is reported like any other (its time, its row), and the report says why
+        // the run ends here: without this it read as a cancel (AUDIT-2026-10 A20).
         const bool failed = !result.outcome;
         report.results.push_back(std::move(result));
+        report.sessionLost = session.lost();
         if (callbacks.stepFinished) {
             callbacks.stepFinished(i, report.results.back());
+        }
+        if (report.sessionLost) {
+            return report; // cannot continue without a session; completed stays false
         }
         if (failed && policy == ErrorPolicy::Stop) {
             return report;

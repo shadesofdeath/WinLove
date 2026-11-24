@@ -26,9 +26,26 @@ struct DriverInf {
     // The same per models section decoration ("ntamd64.10.0", "" undecorated): Windows uses the
     // sections of its own architecture only.
     std::vector<std::pair<std::wstring, std::wstring>> models;
+    // D-134: the hardware IDs its models sections match ("PCI\VEN_15AD&DEV_07C0"), as written, each
+    // once — what tells a card on a bus from a virtual adapter of this PC.
+    std::vector<std::wstring> hardwareIds;
+    // D-134: the interface type a network INF gives its adapter (AddReg "*IfType": 6 Ethernet,
+    // 71 Wi-Fi); 0 when it sets none.
+    int ifType = 0;
     [[nodiscard]] std::vector<std::wstring> devicesFor(std::wstring_view arch) const; // "amd64" / "arm64" / "x86"
     [[nodiscard]] bool supports(std::wstring_view arch) const; // "x64" / "arm64" / "x86"
 };
+
+// D-134: what a driver can do for Windows Setup inside its own image (boot.wim): let it see the disk
+// (a storage controller: SCSIAdapter, HDC) or reach the network (a wired adapter on a bus). A Wi-Fi
+// adapter is of no use there (Windows PE has no WLAN service), nor a virtual adapter of the PC it
+// was exported from (VMware / Hyper-V switches: no hardware ID on a bus).
+enum class SetupRole : std::uint8_t { None, Storage, Network, Wireless, Virtual };
+[[nodiscard]] SetupRole setupRole(const DriverInf& inf);
+// The ones the "this PC's drivers for the setup media" pick ticks by themselves.
+[[nodiscard]] inline bool setupUseful(SetupRole role) noexcept {
+    return role == SetupRole::Storage || role == SetupRole::Network;
+}
 
 // Parses INF text (already decoded).
 [[nodiscard]] DriverInf parseInfText(const std::wstring& text, const std::filesystem::path& path = {});

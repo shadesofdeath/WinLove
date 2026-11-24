@@ -1,6 +1,7 @@
 #pragma once
 // P16 Uygulama ayarları (docs/pages/16-app-settings.md, screen 19): one form —
-// GÖRÜNÜM (theme, reduce motion), DİL (interface language), ÇALIŞMA ORTAMI (work folder, mount
+// GÖRÜNÜM (theme, accent colour — five presets or any colour, D-143 —, reduce motion), DİL
+// (interface language), ÇALIŞMA ORTAMI (work folder, mount
 // folder, the DISM library in use). Every change is saved to settings.json at once
 // (AppState::setSettings); the App applies theme / motion / language from there.
 // The folders cannot change while an image is mounted or something is running.
@@ -29,6 +30,8 @@ public:
     SettingsPage(AppState& state, const Localization& strings, Intents intents);
     ~SettingsPage() override;
 
+    // D-143: Vurgu rengi › the colour picker under the swatches (render: --demo-accent-picker).
+    void openAccentPicker();
     // "Varsayılanlara dön": appearance and language always; the folders when they may change.
     void resetToDefaults();
     // True while the work folders must stay as they are (mounted image / running job).
@@ -42,6 +45,13 @@ private:
     void edit(const std::function<void(AppSettings&)>& change);
     void commitFolder(PathField& field, std::filesystem::path AppSettings::*member, bool allowEmpty);
     void sync();
+    // occupiedFolder() of what is typed in the mount box, asked once per text (audit PG-16): with
+    // unsaved text in the box every progress notification of a running job asked the file system
+    // again (a share that does not answer: a network timeout each time). `fresh`: ask anyway (Enter).
+    [[nodiscard]] bool mountOccupied(const std::filesystem::path& typed, bool fresh = false);
+    std::wstring m_occupiedText;
+    bool m_occupiedKnown = false;
+    bool m_occupied = false;
 
     AppState& m_state;
     const Localization& m_strings;
@@ -62,6 +72,9 @@ private:
     ui::Dropdown* m_esdThreads = nullptr;        // item 0: automatic, item n: n threads
     int m_processors = 1;                        // this PC's logical processors (the last item)
     ui::Toggle* m_presetInIso = nullptr;
+    ui::Toggle* m_checkUpdates = nullptr; // D-140
+public:
+    [[nodiscard]] ui::Toggle& checkUpdatesToggle() const noexcept { return *m_checkUpdates; } // tests
 };
 
 } // namespace wl::app

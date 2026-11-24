@@ -74,7 +74,12 @@ int WINAPI wWinMain(HINSTANCE /*instance*/, HINSTANCE /*previous*/, PWSTR /*comm
     const std::wstring instance = instanceName(args);
     // Started by a WinLove that relaunches itself elevated: that one closes in a moment.
     const bool relaunched = std::ranges::find(args, std::wstring(L"--relaunched")) != args.end();
-    for (int wait = 0; relaunched && !render && wait < 100 && anotherInstance(instance); ++wait) {
+    // The same wait when the other one has no window (audit APP-01): it is either still starting or
+    // — more often — closed and waiting for a job to stop, its mutex still held. Leaving at once
+    // looked like "WinLove does not open". With a window it is simply brought to the front below.
+    for (int wait = 0; !render && wait < 100 && anotherInstance(instance) &&
+                       (relaunched || !FindWindowW(L"WinLove.Window", nullptr));
+         ++wait) {
         Sleep(100);
     }
     if (!render && anotherInstance(instance)) {

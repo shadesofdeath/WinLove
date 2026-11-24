@@ -113,6 +113,17 @@ private:
     Error m_error;
     std::size_t m_count = 0;
     std::optional<core::WingetIndex> m_index;
+    // What the page asks of the index over and over, kept for as long as this index is open. Every
+    // tick of a program's box rebuilt the rows — in "Tüm depo" a query and a sort over all ~15,400
+    // packages on the UI thread, a full-table scan for every catalog id otherwise.
+    struct Lists {
+        std::optional<std::vector<Category>> categories;
+        std::optional<std::vector<Bundle>> bundles;
+        std::optional<std::vector<core::WingetPackage>> everything;
+        std::map<std::size_t, std::vector<core::WingetPackage>> more;
+        std::map<std::wstring, std::optional<core::WingetPackage>> packages; // by lower-case id
+    };
+    mutable Lists m_lists; // UI thread only; emptied with m_index
     std::map<std::wstring, core::WingetDetails> m_details; // by lower-case id
     std::map<std::wstring, std::filesystem::path> m_icons; // empty path: none
     std::set<std::wstring> m_failed;

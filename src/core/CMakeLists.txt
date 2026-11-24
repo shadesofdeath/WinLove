@@ -5,6 +5,7 @@ add_library(wl_core STATIC
     image/Branding.cpp
     image/Fonts.cpp
     image/DriverInf.cpp
+    image/MediaDrivers.cpp
     image/OfflineHive.cpp
     image/RegistryEdit.cpp
     image/RegistryInput.cpp
@@ -30,6 +31,7 @@ add_library(wl_core STATIC
     image/MediaRefresh.cpp
     image/ImageFormat.cpp
     image/Source.cpp
+    image/VirtualDisk.cpp
     image/WorkCopy.cpp
     image/SystemComponents.cpp
     image/UdfImage.cpp
@@ -54,10 +56,13 @@ add_library(wl_core STATIC
     image/wim/WimGapi.cpp
     image/wim/WimVerify.cpp
     io/ByteSource.cpp
+    io/Cabinet.cpp
     iso/IsoBuilder.cpp
     iso/SecureBoot2023.cpp
     iso/UnsupportedUpgrade.cpp
     net/Http.cpp
+    net/ReleaseCheck.cpp
+    net/SelfUpdate.cpp
     ops/ApplyJob.cpp
     ops/Applier.cpp
     ops/ChangeSet.cpp
@@ -94,7 +99,9 @@ add_library(wl_core STATIC
     uup/UupConvert.cpp
     uup/UupApps.cpp
     uup/PsfPackage.cpp
+    esd/EsdCatalog.cpp
+    esd/EsdConvert.cpp
     updates/UupLanguages.cpp
     store/MsStore.cpp)
 wl_configure_target(wl_core)
-target_link_libraries(wl_core PUBLIC wl_base PRIVATE wl_pugixml wl_json advapi32 user32 shell32 setupapi powrprof ole32 oleaut32 shlwapi rstrtmgr bcrypt winhttp ws2_32 windowscodecs wlanapi wintrust crypt32 cabinet winsqlite3 version)
+target_link_libraries(wl_core PUBLIC wl_base PRIVATE wl_pugixml wl_json advapi32 user32 shell32 setupapi powrprof ole32 oleaut32 shlwapi rstrtmgr bcrypt winhttp ws2_32 windowscodecs wlanapi wintrust crypt32 cabinet winsqlite3 version virtdisk)

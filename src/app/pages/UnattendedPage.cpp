@@ -71,16 +71,20 @@ constexpr float kFieldWidth = 220.0f;
 constexpr float kPickerWidth = 280.0f;
 constexpr float kPanelGap = 16.0f;
 constexpr float kPanelBottom = 16.0f;
+constexpr float kFormMin = ui::FormView::kSection + 6 * ui::FormView::kRow; // the form's least room
 constexpr float kPreviewShare = 0.4435f; // of the width left after the gap (screen 11: 528 of 1191)
 
 // Lines of `now` that are not part of the longest common subsequence with `before`.
 std::vector<bool> changedLines(const std::vector<std::wstring>& before, const std::vector<std::wstring>& now) {
     const std::size_t n = before.size();
     const std::size_t m = now.size();
-    std::vector<std::vector<int>> lcs(n + 1, std::vector<int>(m + 1, 0));
+    // One table, not a vector per row (audit PG-17: every edit of the form comes through here).
+    const std::size_t stride = m + 1;
+    std::vector<int> table((n + 1) * stride, 0);
+    const auto lcs = [&](std::size_t i, std::size_t j) -> int& { return table[i * stride + j]; };
     for (std::size_t i = n; i-- > 0;) {
         for (std::size_t j = m; j-- > 0;) {
-            lcs[i][j] = before[i] == now[j] ? lcs[i + 1][j + 1] + 1 : std::max(lcs[i + 1][j], lcs[i][j + 1]);
+            lcs(i, j) = before[i] == now[j] ? lcs(i + 1, j + 1) + 1 : std::max(lcs(i + 1, j), lcs(i, j + 1));
         }
     }
     std::vector<bool> changed(m, true);
@@ -89,7 +93,7 @@ std::vector<bool> changedLines(const std::vector<std::wstring>& before, const st
             changed[j] = false;
             ++i;
             ++j;
-        } else if (lcs[i + 1][j] >= lcs[i][j + 1]) {
+        } else if (lcs(i + 1, j) >= lcs(i, j + 1)) {
             ++i;
         } else {
             ++j;
@@ -132,7 +136,7 @@ public:
     }
     [[nodiscard]] ui::Cursor cursor() const override { return m_hover >= 0 ? ui::Cursor::Hand : ui::Cursor::Arrow; }
     [[nodiscard]] RectF focusRect() const override {
-        const auto r = rects();
+        const auto& r = rects();
         return m_current >= 0 && m_current < static_cast<int>(r.size()) ? r[static_cast<std::size_t>(m_current)] : bounds();
     }
     void onPointerMove(ui::PointF p) override {
@@ -164,7 +168,8 @@ public:
         return true;
     }
     void paint(ui::Canvas& canvas) override {
-        const auto r = rects();
+        const auto& r = rects();
+        canvas.pushClip(bounds()); // a step that still does not fit stops at the bar's end, not over the preview
         for (int i = 0; i < static_cast<int>(r.size()); ++i) {
             const RectF step = r[static_cast<std::size_t>(i)];
             const bool current = i == m_current;
@@ -175,27 +180,47 @@ public:
             canvas.drawText(m_steps[static_cast<std::size_t>(i)], {step.x + kMark + kMarkGap, step.y, step.width, step.height},
                             TypeStyle::Caption, ink);
         }
+        canvas.popClip();
     }
 
 private:
     static constexpr float kMark = 6.0f;
     static constexpr float kMarkGap = 6.0f;
     static constexpr float kStepGap = 24.0f;
+    static constexpr float kMinGap = ui::tokens::spacing::s5;
 
-    [[nodiscard]] std::vector<RectF> rects() const {
-        std::vector<RectF> result;
+    // Kept while the bar stays where it is (audit PG-19: seven text measurements on every pointer
+    // move over the bar, and on every frame).
+    [[nodiscard]] const std::vector<RectF>& rects() const {
         const RectF b = bounds();
+        const bool hosted = host() != nullptr;
+        if (m_rectsKnown && hosted == m_rectsHosted && b.x == m_rectsFor.x && b.y == m_rectsFor.y &&
+            b.width == m_rectsFor.width && b.height == m_rectsFor.height) {
+            return m_rects;
+        }
+        m_rectsKnown = true;
+        m_rectsHosted = hosted;
+        m_rectsFor = b;
+        std::vector<RectF>& result = m_rects;
+        result.clear();
         float x = b.x;
+        // D-136: the steps close up (down to kMinGap) before the bar runs into the preview beside it.
+        float total = 0;
+        for (const auto& step : m_steps) {
+            total += kMark + kMarkGap + (host() ? std::ceil(host()->text().measure(step, TypeStyle::Caption)) : 60.0f);
+        }
+        const float gaps = static_cast<float>(std::max(static_cast<int>(m_steps.size()) - 1, 1));
+        const float gap = std::clamp(std::floor((b.width - total) / gaps), kMinGap, kStepGap);
         for (const auto& step : m_steps) {
             const float text = host() ? std::ceil(host()->text().measure(step, TypeStyle::Caption)) : 60.0f;
             const float width = kMark + kMarkGap + text;
             result.push_back({x, b.y, width, b.height});
-            x += width + kStepGap;
+            x += width + gap;
         }
         return result;
     }
     [[nodiscard]] int stepAt(ui::PointF p) const {
-        const auto r = rects();
+        const auto& r = rects();
         for (int i = 0; i < static_cast<int>(r.size()); ++i) {
             if (r[static_cast<std::size_t>(i)].contains(p)) {
                 return i;
@@ -205,6 +230,10 @@ private:
     }
 
     std::vector<std::wstring> m_steps;
+    mutable std::vector<RectF> m_rects;
+    mutable RectF m_rectsFor{};
+    mutable bool m_rectsKnown = false;
+    mutable bool m_rectsHosted = false;
     int m_current = 0;
     int m_hover = -1;
 };
@@ -237,13 +266,21 @@ public:
         // The first text is the starting point, not a change.
         m_changed = m_lines.empty() ? std::vector<bool>(lines.size(), false) : changedLines(m_lines, lines);
         m_lines = std::move(lines);
+        m_wrapStale = true;
         layout();
         invalidate();
     }
 
     void layout() override {
         const RectF b = bounds();
-        rewrap();
+        // layout() is also every wheel step and every move of the scroll bar's thumb (audit PG-17):
+        // the lines are broken again only for another text or another width.
+        if (const bool hosted = host() != nullptr; m_wrapStale || b.width != m_wrapWidth || hosted != m_wrapHosted) {
+            m_wrapStale = false;
+            m_wrapWidth = b.width;
+            m_wrapHosted = hosted;
+            rewrap();
+        }
         const float content = static_cast<float>(m_visual.size()) * kLine + kBottom;
         const float view = std::max(b.height - kHeader, 0.0f);
         m_offset = std::clamp(m_offset, 0.0f, std::max(content - view, 0.0f));
@@ -282,7 +319,7 @@ public:
                 }
                 const float x = b.x + kPad - 2 + numberWidth + kNumberGap;
                 canvas.drawText(line.text, {x, y, std::max(view.right() - x, 0.0f), kLine}, TypeStyle::Mono,
-                                line.changed ? Color::AccentBase : Color::TextSecondary);
+                                line.changed ? Color::AccentText : Color::TextSecondary);
             }
             y += kLine;
         }
@@ -347,6 +384,9 @@ private:
     ui::ScrollBar* m_scroll = nullptr;
     float m_offset = 0;
     float m_charWidth = 6.6f;
+    bool m_wrapStale = true;    // m_visual is not of m_lines yet
+    float m_wrapWidth = -1.0f;  // the panel width m_visual was broken for
+    bool m_wrapHosted = false;  // … and whether the text could be measured then
 };
 
 UnattendedPage::UnattendedPage(AppState& state, UnattendController& controller, const Localization& strings)
@@ -613,20 +653,31 @@ void UnattendedPage::sync() {
     auto has = [&](Problem p) { return std::ranges::find(problems, p) != problems.end(); };
 
     for (auto& picker : m_pickers) {
+        const std::wstring current = picker.get(o);
+        if (picker.listed && !picker.fromFile) {
+            // Audit PG-17: the box already holds these very items (the lists do not change between
+            // two edits) — every key typed anywhere in the form built the four lists (~1,200
+            // strings) again. Only the selection moves, unless the value is one the lists lack.
+            if (const auto known = std::ranges::find(picker.values, current); known != picker.values.end()) {
+                picker.box->setSelected(static_cast<int>(known - picker.values.begin()));
+                continue;
+            }
+        }
         std::vector<std::wstring> items{picker.firstLabel};
         picker.values = {std::wstring()};
         for (const auto& choice : picker.choices) {
             items.push_back(choice.label);
             picker.values.push_back(choice.value);
         }
-        const std::wstring current = picker.get(o);
         auto at = std::ranges::find(picker.values, current);
+        picker.fromFile = at == picker.values.end();
         if (at == picker.values.end()) {
             // A value from an imported file that the lists do not offer: shown, and kept.
             items.push_back(m_strings.format(Str::UnattendedFromFile, {{L"value", current}}));
             picker.values.push_back(current);
             at = picker.values.end() - 1;
         }
+        picker.listed = true;
         picker.box->setItems(std::move(items), static_cast<int>(at - picker.values.begin()));
     }
     for (const auto& field : m_texts) {
@@ -717,8 +768,12 @@ void UnattendedPage::editWelcome(const std::function<void(core::WelcomePlan&)>& 
 
 void UnattendedPage::layout() {
     const RectF whole = bounds();
+    const float before = m_content;
     // The setup screens' card across the top, as tall as its content; the form and the XML below it.
     const float cardH = m_card->preferredHeight(whole.width);
+    // The page's least height: the card, the step bar and a form of a few rows. Taller than the room,
+    // the page scrolls (the wheel over the card moved nothing: the form had a row or two of room).
+    m_content = cardH + kPanelGap + kTop + kStepsHeight + kFormGap + kFormMin;
     m_card->setBounds({whole.x, whole.y, whole.width, cardH});
     const RectF b{whole.x, whole.y + cardH + kPanelGap, whole.width, std::max(whole.height - cardH - kPanelGap, 0.0f)};
     const float previewWidth = std::round(std::max(b.width - kPanelGap, 0.0f) * kPreviewShare);
@@ -731,6 +786,7 @@ void UnattendedPage::layout() {
     const RectF header = m_preview->headerArea();
     const float width = m_include->measure({}).width;
     m_include->setBounds({header.right() - width, header.y, width, ui::tokens::size::control});
+    contentChanged(*this, before);
 }
 
 } // namespace wl::app

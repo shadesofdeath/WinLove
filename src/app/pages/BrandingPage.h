@@ -50,6 +50,7 @@ private:
     std::array<BrandingPictureField*, 4> m_pictures{}; // by core::PictureSlot
     ui::TableView* m_fonts = nullptr;
     std::vector<BrandingController::Font> m_fontRows;
+    std::wstring m_fontSummary; // "3 yazı tipi eklenecek", with the rows
     ui::EmptyState* m_empty = nullptr;
 };
 

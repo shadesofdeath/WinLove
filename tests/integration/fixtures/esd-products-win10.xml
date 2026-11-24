@@ -1,0 +1,179 @@
+<!-- D-149: trimmed products.xml of go.microsoft.com/fwlink/?LinkId=841361, 2026-11-11 (catalog 1.4.1, 19045.3803) -->
+<MCT>
+  <Catalogs>
+    <Catalog version="1.4.1">
+      <PublishedMedia id="" release="">
+        <Files>
+          <File id="">
+            <FileName>19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x86FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Turkey)</Language>
+            <Edition>Professional</Edition>
+            <Architecture>x86</Architecture>
+            <Size>2780056340</Size>
+            <Sha1>f6bdc379d471467312c136c5c5d4107b0e8f74f3</Sha1>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/cb22bc9f-0412-4f47-a02d-a9e4ad6ed212/19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x86FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_32%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x86FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Turkey)</Language>
+            <Edition>ProfessionalWorkstation</Edition>
+            <Architecture>x86</Architecture>
+            <Size>2780056340</Size>
+            <Sha1>f6bdc379d471467312c136c5c5d4107b0e8f74f3</Sha1>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/cb22bc9f-0412-4f47-a02d-a9e4ad6ed212/19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x86FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_32%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x86FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Turkey)</Language>
+            <Edition>Core</Edition>
+            <Architecture>x86</Architecture>
+            <Size>2780056340</Size>
+            <Sha1>f6bdc379d471467312c136c5c5d4107b0e8f74f3</Sha1>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/cb22bc9f-0412-4f47-a02d-a9e4ad6ed212/19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x86FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_32%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x86FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Turkey)</Language>
+            <Edition>CoreSingleLanguage</Edition>
+            <Architecture>x86</Architecture>
+            <Size>2780056340</Size>
+            <Sha1>f6bdc379d471467312c136c5c5d4107b0e8f74f3</Sha1>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/cb22bc9f-0412-4f47-a02d-a9e4ad6ed212/19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x86FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_32%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x86FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Turkey)</Language>
+            <Edition>Education</Edition>
+            <Architecture>x86</Architecture>
+            <Size>2780056340</Size>
+            <Sha1>f6bdc379d471467312c136c5c5d4107b0e8f74f3</Sha1>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/cb22bc9f-0412-4f47-a02d-a9e4ad6ed212/19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x86FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_32%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Turkey)</Language>
+            <Edition>Professional</Edition>
+            <Architecture>x64</Architecture>
+            <Size>3926396442</Size>
+            <Sha1>93b697ff8e6f2bc0d8a72ec39bbd91e87a55bb20</Sha1>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/b10c0e03-7b42-424b-a7fe-4905ab5dedc7/19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Turkey)</Language>
+            <Edition>ProfessionalWorkstation</Edition>
+            <Architecture>x64</Architecture>
+            <Size>3926396442</Size>
+            <Sha1>93b697ff8e6f2bc0d8a72ec39bbd91e87a55bb20</Sha1>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/b10c0e03-7b42-424b-a7fe-4905ab5dedc7/19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Turkey)</Language>
+            <Edition>Core</Edition>
+            <Architecture>x64</Architecture>
+            <Size>3926396442</Size>
+            <Sha1>93b697ff8e6f2bc0d8a72ec39bbd91e87a55bb20</Sha1>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/b10c0e03-7b42-424b-a7fe-4905ab5dedc7/19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Turkey)</Language>
+            <Edition>CoreSingleLanguage</Edition>
+            <Architecture>x64</Architecture>
+            <Size>3926396442</Size>
+            <Sha1>93b697ff8e6f2bc0d8a72ec39bbd91e87a55bb20</Sha1>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/b10c0e03-7b42-424b-a7fe-4905ab5dedc7/19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Turkey)</Language>
+            <Edition>Education</Edition>
+            <Architecture>x64</Architecture>
+            <Size>3926396442</Size>
+            <Sha1>93b697ff8e6f2bc0d8a72ec39bbd91e87a55bb20</Sha1>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/b10c0e03-7b42-424b-a7fe-4905ab5dedc7/19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTBUSINESS_VOL_x64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Turkey)</Language>
+            <Edition>Enterprise</Edition>
+            <Architecture>x64</Architecture>
+            <Size>3806297883</Size>
+            <Sha1>7450c8da4b8ccae25cba3586742d0dc799f78594</Sha1>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/9d7870a1-a81a-4f47-a643-09a0774792fb/19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTBUSINESS_VOL_x64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%ENTERPRISE%</Edition_Loc>
+            <IsRetailOnly>True</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTBUSINESS_VOL_x86FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Turkey)</Language>
+            <Edition>Enterprise</Edition>
+            <Architecture>x86</Architecture>
+            <Size>2706643746</Size>
+            <Sha1>2585cf39077294e3cf8187ba94f2285f44fdfbed</Sha1>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/b479279e-c072-43ae-a12d-b56cf200d3d3/19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTBUSINESS_VOL_x86FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_32%</Architecture_Loc>
+            <Edition_Loc>%ENTERPRISE%</Edition_Loc>
+            <IsRetailOnly>True</IsRetailOnly>
+          </File>
+        </Files>
+      </PublishedMedia>
+    </Catalog>
+  </Catalogs>
+</MCT>

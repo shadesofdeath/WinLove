@@ -42,7 +42,7 @@ Result<std::vector<std::filesystem::path>> expandSetupDynamicUpdate(const std::f
     std::vector<std::filesystem::path> files;
     for (auto it = std::filesystem::recursive_directory_iterator(folder, ec); !ec && it != std::filesystem::recursive_directory_iterator();
          it.increment(ec)) {
-        if (it->is_regular_file()) {
+        if (it->is_regular_file(ec)) { // the throwing overload would end the whole job (audit IMG-09)
             files.push_back(it->path());
         }
     }
@@ -66,7 +66,7 @@ std::vector<MediaFile> mediaRefreshFiles(const std::filesystem::path& setupFolde
     if (!setupDu.empty() && std::filesystem::is_directory(setupDu, ec)) {
         for (auto it = std::filesystem::recursive_directory_iterator(setupDu, ec); !ec && it != std::filesystem::recursive_directory_iterator();
              it.increment(ec)) {
-            if (!it->is_regular_file()) {
+            if (!it->is_regular_file(ec)) {
                 continue;
             }
             const auto relative = std::filesystem::relative(it->path(), setupDu, ec);
@@ -84,7 +84,7 @@ std::vector<MediaFile> mediaRefreshFiles(const std::filesystem::path& setupFolde
         if (std::filesystem::is_directory(sources, ec)) {
             for (auto it = std::filesystem::recursive_directory_iterator(sources, ec);
                  !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
-                if (it->is_regular_file()) {
+                if (it->is_regular_file(ec)) {
                     put(L"sources\\" + std::filesystem::relative(it->path(), sources, ec).wstring(), it->path());
                 }
             }
@@ -92,7 +92,7 @@ std::vector<MediaFile> mediaRefreshFiles(const std::filesystem::path& setupFolde
         // The boot manager wherever the media has it (efi\boot\bootx64.efi, bootmgr.efi at the root…).
         for (auto it = std::filesystem::recursive_directory_iterator(setupFolder, ec);
              !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
-            if (!it->is_regular_file()) {
+            if (!it->is_regular_file(ec)) {
                 continue;
             }
             const std::wstring name = text::lower(it->path().filename().wstring());

@@ -8,8 +8,24 @@ imajın kayıt defteri / servis değişikliklerine çevirmek (kuyruk → P05 Uyg
 olarak gösterirdi; D-067 ile hazır tweak'lerin tek yeri burası (P11 yalnız kullanıcının kendi kayıtları).
 
 ## 2. Ekran
-- Başlık eylemi: **Önerilenleri uygula** (katalogda önerilen seçeneği olan her ayarı toplu olarak o seçeneğe alır;
-  kaç ayarın değiştiği toast ile bildirilir).
+- Şerit (D-146, 2026-11-11; Bileşenler'in düzeni): `Bu bilgisayardan al · Şablon ▾ | Geri al · Yinele | Tümünü sıfırla`
+  (D-152: eski adı "Sıfırla").
+  ("Önerilenleri uygula" ve ayar başına `recommended` kalktı: kullanıcının seçimini eziyordu, küme herkes için güvenli
+  değildi.)
+  - **Şablon ▾:** Dengeli (24 ayar) · Gizlilik (59) · Sade ve sessiz (29) · Performans (12) · Oyun (12) · İş bilgisayarı
+    (26) — katalogda `"templates"`. Şablon **ekler, sıfırlamaz**: imajdaki hâlinde duran her ayarını kendi seçeneğine
+    alır, kuyrukta zaten değiştirilmiş ayara dokunmaz (imajın kendi değeri seçim sayılmaz); tek geri alma adımı.
+    Şablonlar birbiriyle çelişmez (birleşimleri sırasız). Hiçbirinde yüksek riskli ayar, geri dönüşsüz silme,
+    güncelleme / Defender / SmartScreen / UAC / ağ / yazdırma / erişilebilirlik / oturum / kamera-mikrofon / sayfa dosyası
+    yok. Toast: "{n} ayar şablona göre ayarlandı (…)" + açıklama + "{k} ayar senin seçtiğin gibi bırakıldı." + "Orta
+    riskli: …" + Geri al.
+  - **Süzgeç "Tümü ▾ / Şablon (…)":** şablonun ayarları bütün sekmelerden ("Sekme › Bölüm"), satırda "şablonda: Kapalı",
+    formun üstünde bilgi çubuğu ("{n} ayar · {k} tanesi değişecek", **Şablonu uygula**, kapat = Tümü).
+  - **Tümünü sıfırla:** formun bütün ayarları imajdaki hâline (yazılan metin / resim de), tek adım, onay yok; aynı değeri yazan
+    Servisler / Kayıt Defteri işlemi de çıkar (durum kuyruktan türer).
+  - **Bu sekmeyi sıfırla** (D-152, süzgeç satırının sağında): yalnız gösterilen sekmenin ayarları; arama / "Yalnızca
+    değişenler" / şablon süzgeci açıkken **Gösterilenleri sıfırla** (süzgecin bıraktığı satırlar). Sıfırlanacak bir şey
+    yoksa pasif; tek geri alma adımı.
 - Sekmeler (D-067): Gizlilik · Yapay zekâ · Uygulamalar · Performans · Görünüm · Gezgin · Başlat ve görev çubuğu ·
   Güncelleme · Güvenlik · Sistem (←/→).
 - Bölüm başlığı (büyük harf, alt çizgi) + 32 px satırlar: 240 px etiket sütunu, sonra kontrol:
@@ -106,12 +122,19 @@ pencereli oyun iyileştirmeleri.
 - [ ] VM: görev çubuğunda yalnız Dosya Gezgini; Copilot / sohbet düğmesi yok; Edge sihirbazsız açılır; kurulumda
       BitLocker kendiliğinden açılmaz; duvar kağıdı, kilit ekranı resmi ve Sistem › Hakkında'daki OEM satırları
       seçilenler.
-- [ ] "Önerilenleri uygula" → önerilen ayarlar seçilir; ikinci kez basınca "hepsi zaten seçili".
+- [ ] Şablon ▾ → Dengeli (D-146) → 24 ayar seçilir, toast sayıyı ve "senin seçtiğin gibi bırakıldı" sayısını söyler;
+      önce elle değiştirilen bir ayar şablonun seçeneğine alınmaz; Geri al tek adımda hepsini geri alır; ardından
+      Gizlilik → ikisinin birleşimi (çelişme yok); Tümü ▾ → Şablon (Oyun) süzgeci yalnız o şablonun ayarlarını gösterir,
+      **Şablonu uygula** çalışır; Sıfırla bütün formu imajdaki hâline döndürür. Birim testi (8 vaka) + render; pencerede
+      denenmedi.
 - [ ] Uygula → değerler hive'da (`wlcli reg` / yeniden bağlama ile), servis başlangıçları Servisler sayfasında.
 - [ ] Klavye: Tab ile kontroller, ←/→ sekme ve radio, Space toggle, Enter dropdown.
 
 ## 6. Görsel doğrulama
 Render: `--demo-tweaks` (tasarım 10'daki seçimlerle); `tools/compare_design.py 10-tweaks -- --demo-tweaks`.
+Şablonlar (D-146): `--demo-tweaks --demo-tweak-template=balanced,privacy` (sırayla uygular, son toast kalır),
+`--demo-tweak-filter=<id>`; menü açık kare `--click-at` ile. `tools/lab_settings_d067.ps1` artık `recommended`'a bakmaz,
+açılır listede son seçeneği dener.
 Sekme çubuğu, bölüm başlığı, çizgi ve satır dikey ölçüleri tasarımla piksel olarak örtüşüyor (2026-09-30; dark,
 light/EN, 1280×520'de kaydırma, tıklama ile toggle / radio / dropdown). `TabBar` seçili sekme zemini (bg.raised)
 ve 8 px içerden alt çizgi tasarım 10 / 16'ya göre düzeltildi.

@@ -1,21 +1,27 @@
 #include "app/App.h"
 
 #include "app/catalog/IconCatalog.h"
+#include "app/ChangelogWindow.h"
+#include "core/net/SelfUpdate.h"
 #include "core/updates/UupLanguages.h"
 
 #include "app/state/AnswerStore.h"
 
 #include "core/image/DriverInf.h"
 #include "core/image/RegistryInput.h"
+#include "core/image/Source.h"
+#include "core/image/VirtualDisk.h"
 #include "core/image/dism/HostDism.h"
 #include "core/image/wim/WimGapi.h"
 
 #include "app/pages/DownloadPage.h"
 #include "app/pages/AppsPage.h"
+#include "app/controllers/ImageDriverController.h"
 #include "app/pages/DriversPage.h"
 #include "app/pages/IconsPage.h"
 #include "app/pages/StartMenuPage.h"
 #include "app/pages/IsoPage.h"
+#include "app/pages/SettingsPage.h"
 #include "app/pages/UpdatesPage.h"
 
 #include "base/Log.h"
@@ -28,13 +34,18 @@
 #include "ui/anim/Tween.h"
 #include "ui/render/Canvas.h"
 #include "ui/render/OffscreenTarget.h"
+#include "ui/widgets/ProgressRing.h"
 
 #include <json.hpp>
 
+#include <shellapi.h>
+
+#include <chrono>
 #include <cwchar>
 #include <fstream>
 #include <iterator>
 #include <string_view>
+#include <thread>
 
 namespace wl::app {
 
@@ -188,13 +199,25 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             static constexpr const wchar_t* kNames[] = {L"blue", L"copper", L"sea", L"pomegranate", L"olive"};
             for (int i = 0; i < ui::kAccentCount; ++i) {
                 if (v == kNames[i]) {
-                    options.accent = static_cast<ui::Accent>(i);
+                    options.accent = ui::presetColor(static_cast<ui::Accent>(i));
                 }
             }
             if (!options.accent) {
-                return fail(ErrorCode::InvalidArgument, L"--accent must be blue|copper|sea|pomegranate|olive", arg);
+                options.accent = ui::parseHexColor(v); // D-143: any colour
             }
-            ui::setAccent(*options.accent);
+            if (!options.accent) {
+                return fail(ErrorCode::InvalidArgument, L"--accent must be blue|copper|sea|pomegranate|olive or #RRGGBB", arg);
+            }
+            ui::setAccentColor(*options.accent);
+        } else if (startsWith(a, L"--anim-time=")) {
+            const double ms = std::wcstod(std::wstring(value(L"--anim-time=")).c_str(), nullptr);
+            if (!(ms >= 0)) {
+                return fail(ErrorCode::InvalidArgument, L"--anim-time must be a number of milliseconds", arg);
+            }
+            options.animTime = ms;
+            ui::setRingTime(ms); // D-142
+        } else if (a == L"--demo-accent-picker") {
+            options.demoAccentPicker = true;
         } else if (startsWith(a, L"--lang=")) {
             const auto v = value(L"--lang=");
             if (v == L"tr") options.language = Language::Turkish;
@@ -228,6 +251,10 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             // main.cpp: started by a WinLove that is closing; it waits for that one to go.
         } else if (a == L"--no-elevate") {
             // handled in main.cpp (skip the startup UAC relaunch)
+        } else if (a == L"--demo-vhd" || startsWith(a, L"--demo-vhd=")) {
+            options.demoVhd = a == L"--demo-vhd" ? std::wstring(L"closed") : std::wstring(value(L"--demo-vhd="));
+        } else if (a == L"--demo-overview" || startsWith(a, L"--demo-overview=")) {
+            options.demoOverview = a == L"--demo-overview" ? std::wstring(L"ready") : std::wstring(value(L"--demo-overview="));
         } else if (startsWith(a, L"--demo-apply=")) {
             options.demoApply = std::wstring(value(L"--demo-apply="));
         } else if (a == L"--demo-registry" || a == L"--demo-registry=dialog") {
@@ -257,8 +284,9 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
         } else if (a == L"--demo-icons" || a == L"--demo-icons=redirect") {
             options.demoIcons = true;
             options.demoIconsRedirect = a.ends_with(L"=redirect");
-        } else if (a == L"--demo-mounts") {
+        } else if (a == L"--demo-mounts" || startsWith(a, L"--demo-mounts=")) {
             options.demoMounts = true;
+            options.demoMountsVariant = a == L"--demo-mounts" ? std::wstring() : std::wstring(value(L"--demo-mounts="));
         } else if (a == L"--demo-editions") {
             options.demoEditions = true;
         } else if (a == L"--demo-wifi") {
@@ -268,10 +296,14 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
         } else if (a == L"--demo-branding") {
             options.demoBranding = true;
         } else if (a == L"--demo-boot-drivers") {
-            options.demoBootDrivers = true;
+            options.demoBootDrivers = std::wstring();
+        } else if (startsWith(a, L"--demo-boot-drivers=")) {
+            options.demoBootDrivers = std::wstring(value(L"--demo-boot-drivers="));
         } else if (a.starts_with(L"--demo-download")) {
             const auto v = a.size() > 16 ? a.substr(16) : std::wstring_view(L"list");
-            options.demoDownload = v == L"pick" ? 1 : v == L"downloading" ? 2 : v == L"converting" ? 3 : v == L"apps" ? 4 : v == L"win10" ? 5 : v == L"failed" ? 6 : v == L"warnings" ? 7 : v == L"hotpatch" ? 8 : 0;
+            options.demoDownload = v == L"pick" ? 1 : v == L"downloading" ? 2 : v == L"converting" ? 3 : v == L"apps" ? 4 : v == L"win10" ? 5 : v == L"failed" ? 6 : v == L"warnings" ? 7 : v == L"hotpatch" ? 8
+                                 : v == L"esd" ? 9 : v == L"uup-only" ? 10 : v == L"esd-info" ? 11 : v == L"esd-downloading" ? 12
+                                 : v == L"esd-verifying" ? 13 : v == L"esd-converting" ? 14 : v == L"esd-failed" ? 15 : 0;
         } else if (a == L"--demo-hosts") {
             options.demoHosts = true;
         } else if (a == L"--demo-services") {
@@ -280,6 +312,17 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoTweaks = true;
         } else if (a == L"--demo-image-values") {
             options.demoImageValues = true;
+        } else if (startsWith(a, L"--demo-tweak-template=")) {
+            const std::string list = utf8::fromWide(value(L"--demo-tweak-template="));
+            for (std::size_t at = 0; at <= list.size();) {
+                const std::size_t comma = std::min(list.find(',', at), list.size());
+                if (comma > at) {
+                    options.demoTweakTemplates.push_back(list.substr(at, comma - at));
+                }
+                at = comma + 1;
+            }
+        } else if (startsWith(a, L"--demo-tweak-filter=")) {
+            options.demoTweakFilter = utf8::fromWide(value(L"--demo-tweak-filter="));
         } else if (a == L"--demo-unattended" || a == L"--demo-unattended=welcome") {
             options.demoUnattended = true;
             options.demoWelcome = a.ends_with(L"=welcome");
@@ -319,8 +362,28 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoComponents = true;
         } else if (a == L"--demo-compat") {
             options.demoCompat = true;
+        } else if (a == L"--demo-update" || startsWith(a, L"--demo-update=")) {
+            options.demoUpdate = a == L"--demo-update" ? std::wstring(L"available") : std::wstring(value(L"--demo-update="));
+            static constexpr const wchar_t* kStates[] = {L"available",   L"current", L"failed", L"checking", L"downloading",
+                                                         L"verifying",   L"ready",   L"install-failed", L"updated"};
+            if (std::ranges::find(kStates, *options.demoUpdate) == std::end(kStates)) {
+                return fail(ErrorCode::InvalidArgument,
+                            L"--demo-update must be available|current|failed|checking|downloading|verifying|ready|install-failed|updated", arg);
+            }
+        } else if (a == L"--demo-changelog" || startsWith(a, L"--demo-changelog=")) {
+            options.demoChangelog = a == L"--demo-changelog" ? std::wstring() : std::wstring(value(L"--demo-changelog="));
+        } else if (a == L"--auto-iso") {
+            options.autoIso = true;
+        } else if (a == L"--iso-choices") {
+            options.isoChoices = true;
+        } else if (a == L"--iso-options") {
+            options.isoOptions = true;
+        } else if (startsWith(a, L"--updated-from=")) {
+            options.updatedFrom = std::wstring(value(L"--updated-from="));
         } else if (startsWith(a, L"--demo-toast=")) {
             options.demoToast = std::wstring(value(L"--demo-toast="));
+        } else if (a == L"--toast-timeout") {
+            options.toastTimeout = true;
         } else if (a == L"--demo-app-menu") {
             options.demoAppMenu = true;
         } else if (a == L"--demo-features") {
@@ -345,9 +408,13 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
                                 : name == L"esc"   ? VK_ESCAPE
                                 : name == L"del"   ? VK_DELETE
                                 : name == L"tab"   ? VK_TAB
+                                : name == L"pgdn"  ? VK_NEXT
+                                : name == L"pgup"  ? VK_PRIOR
+                                : name == L"home"  ? VK_HOME
+                                : name == L"end"   ? VK_END
                                                    : 0;
                 if (vk == 0) {
-                    return fail(ErrorCode::InvalidArgument, L"--keys takes up,down,left,right,enter,esc,del,tab", arg);
+                    return fail(ErrorCode::InvalidArgument, L"--keys takes up,down,left,right,enter,esc,del,tab,pgdn,pgup,home,end", arg);
                 }
                 options.keys.push_back(vk);
             }
@@ -367,6 +434,20 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             ok = point(L"--click-at=", p);
             if (p) {
                 options.clickAt.push_back(*p);
+            }
+        } else if (startsWith(a, L"--click-after-load=")) {
+            std::optional<ui::PointF> p;
+            ok = point(L"--click-after-load=", p);
+            if (p) {
+                options.clickAfterLoad.push_back(*p);
+            }
+        } else if (startsWith(a, L"--settle=")) {
+            // "<ms>" or "<ms>,<quiet ms>" (a rate-limited answer waits 11 s without a word)
+            const std::wstring v(value(L"--settle="));
+            wchar_t* end = nullptr;
+            options.settleMs = static_cast<int>(std::wcstol(v.c_str(), &end, 10));
+            if (end && *end == L',') {
+                options.settleQuietMs = static_cast<int>(std::wcstol(end + 1, nullptr, 10));
             }
         } else if (startsWith(a, L"--context-at=")) {
             ok = point(L"--context-at=", options.contextAt);
@@ -419,7 +500,8 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
 }
 
 App::~App() {
-    // Widgets reference graphics-owned text styles: destroy the tree first.
+    // Widgets reference graphics-owned text styles: destroy the trees first.
+    m_changelog.reset();
     m_host.reset();
 }
 
@@ -501,8 +583,9 @@ Result<void> App::initialize() {
         }
         ui::setReducedMotionForced(settings.reduceMotion);
         if (!m_options.accent) {
-            ui::setAccent(settings.accent);
+            ui::setAccentColor(settings.accent);
         }
+        m_accentShown = ui::accentColor();
         if (!m_options.font) {
             m_options.font = settings.font;
         }
@@ -558,6 +641,29 @@ void App::buildUi(ui::HostServices services) {
             m_window.stopTimer(id);
         }
     };
+    if (!m_options.renderTo) {
+        // D-140: "Şimdi denetle". A render never reaches the network (the button does nothing there).
+        shellServices.checkForUpdates = [this] {
+            if (m_updates) {
+                m_updates->checkNow();
+            }
+        };
+        // D-145: "Yükle", its stop, the restart, the changelog window.
+        shellServices.installUpdate = [this] {
+            if (m_updates) {
+                m_updates->install();
+            }
+        };
+        shellServices.cancelUpdate = [this] {
+            if (m_updates) {
+                m_updates->cancelInstall();
+            }
+        };
+        shellServices.restartForUpdate = [this]() -> std::optional<AppState::AppUpdate::Install::Why> {
+            return m_updates ? m_updates->restart() : std::nullopt;
+        };
+        shellServices.showChangelog = [this] { openChangelog(); };
+    }
     shellServices.keepAwake = [this](const std::wstring& reason) {
         if (m_options.renderTo) {
             return;
@@ -599,6 +705,16 @@ int App::renderOffscreen() {
         return 1;
     }
     ui::forceInstantMotion(true);
+    if (m_options.demoChangelog) {
+        return renderChangelog(**target); // D-145: the changelog window, nothing else
+    }
+    if (m_options.autoIso || (m_options.demoOverview && m_options.demoOverview->starts_with(L"iso-"))) {
+        // D-144: "Bitince ISO oluştur" on; a folder that is the same on every machine (a render's settings are scratch).
+        AppSettings settings = m_state->settings();
+        settings.isoAfterApply = true;
+        settings.isoFolder = L"D:\\ISO";
+        m_state->setSettings(std::move(settings));
+    }
     if (m_options.demoLogs) {
         // Screen 18 sample (render only: the lines go to this process's buffer, nowhere else).
         log::setMinimumLevel(log::Level::Debug);
@@ -761,6 +877,9 @@ int App::renderOffscreen() {
             m_shell->showCompat();
         }
     }
+    if (m_options.demoUpdate) {
+        demoUpdate(); // D-140
+    }
     if (!m_options.demoToast.empty()) {
         const auto bar = m_options.demoToast.find(L'|');
         m_shell->showToast(ui::InfoKind::Warning, m_options.demoToast.substr(0, bar),
@@ -820,6 +939,9 @@ int App::renderOffscreen() {
             }
             m_shell->showPage(m_options.page.value_or(PageId::Apply));
             m_shell->requestApply();
+        } else if (m_options.demoApply == L"stopped" || m_options.demoApply == L"discarding" || m_options.demoApply == L"saving" ||
+                   m_options.demoApply == L"discarded" || m_options.demoApply == L"saved" || m_options.demoApply == L"closefailed") {
+            demoRunClose(m_options.demoApply);
         } else if (!m_options.demoApply.empty()) {
             AppState::ApplyRun run;
             run.changes = m_state->changes();
@@ -879,7 +1001,8 @@ int App::renderOffscreen() {
         }
         // A finished run is shown on the Apply page; a running one (and no run) on Features.
         const bool finished = m_options.demoApply == L"done" || m_options.demoApply == L"skipped" ||
-                              m_options.demoApply == L"held";
+                              m_options.demoApply == L"held" ||
+                              (m_state->applyRun().has_value() && m_state->applyRun()->stage == AppState::ApplyRun::Stage::Done);
         if (m_options.demoApply != L"confirm") {
             m_shell->showPage(m_options.page.value_or(finished ? PageId::Apply : PageId::Features));
         }
@@ -961,6 +1084,12 @@ int App::renderOffscreen() {
             }
         }
         m_shell->showPage(m_options.page.value_or(PageId::Tweaks));
+        for (const auto& id : m_options.demoTweakTemplates) { // D-146
+            m_shell->applyTweakTemplate(id);
+        }
+        if (!m_options.demoTweakFilter.empty()) {
+            m_shell->filterTweakTemplate(m_options.demoTweakFilter);
+        }
     }
     if (m_options.demoUnattended) {
         // The answers of screen 11; the second edit is what the preview marks as changed.
@@ -1218,6 +1347,7 @@ int App::renderOffscreen() {
         };
         m_state->setSystemMounts(std::move(mounts));
         m_shell->showPage(PageId::Source);
+        demoAdoption(m_options.demoMountsVariant);
     }
     if (m_options.demoLanguages) {
         // 25H2 Pro (26200.8037) with Turkish and the components 25H2 installs; English queued from
@@ -1442,17 +1572,22 @@ int App::renderOffscreen() {
         m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4,
                                          L"Windows 11 Pro"});
         auto inf = [](const wchar_t* file, const wchar_t* cls, const wchar_t* provider, const wchar_t* ver,
-                      const wchar_t* arch, std::uint64_t kb) {
+                      const wchar_t* arch, std::uint64_t kb, const wchar_t* hwid = L"PCI\\VEN_8086&DEV_0000", int ifType = 0) {
             std::wstring text = std::wstring(L"[Version]\nClass=") + cls + L"\nProvider=\"" + provider +
-                                L"\"\nDriverVer=05/14/2024," + ver + L"\n[Manufacturer]\n%M%=M," + arch + L"\n";
+                                L"\"\nCatalogFile=" + std::filesystem::path(file).stem().wstring() +
+                                L".cat\nDriverVer=05/14/2024," + ver + L"\n[Manufacturer]\n%M%=M," + arch + L"\n[M." + arch +
+                                L"]\n%D%=Install, " + hwid + L"\n";
+            if (ifType != 0) {
+                text += L"[Install.NDI]\n*IfType = " + std::to_wstring(ifType) + L"\n";
+            }
             auto d = core::parseInfText(text, std::filesystem::path(L"D:\\Drivers\\Dell\\") / file);
             d.size = kb * 1024;
             return d;
         };
         std::vector<core::DriverInf> infs{
-            inf(L"e2f68.inf", L"Net", L"Intel", L"12.19.2.45", L"NTamd64", 1840),
-            inf(L"netwtw08.inf", L"Net", L"Intel", L"23.60.1.2", L"NTamd64", 38200),
-            inf(L"rt640x64.inf", L"Net", L"Realtek", L"10.68.815.2023", L"NTamd64", 1200),
+            inf(L"e2f68.inf", L"Net", L"Intel", L"12.19.2.45", L"NTamd64", 1840, L"PCI\\VEN_8086&DEV_15F3", 6),
+            inf(L"netwtw08.inf", L"Net", L"Intel", L"23.60.1.2", L"NTamd64", 38200, L"PCI\\VEN_8086&DEV_2723", 71),
+            inf(L"rt640x64.inf", L"Net", L"Realtek", L"10.68.815.2023", L"NTamd64", 1200, L"PCI\\VEN_10EC&DEV_8168", 6),
             inf(L"iaStorVD.inf", L"SCSIAdapter", L"Intel Corporation", L"19.5.2.1049", L"NTamd64", 2950),
             inf(L"stornvme_oem.inf", L"SCSIAdapter", L"Samsung", L"3.3.0.2003", L"NTamd64", 410),
             inf(L"HdBusExt.inf", L"System", L"Intel", L"10.29.0.9677", L"NTamd64", 96),
@@ -1471,14 +1606,155 @@ int App::renderOffscreen() {
         }
         m_shell->showPage(m_options.page.value_or(PageId::Drivers));
     }
-    if (m_options.demoBootDrivers && !m_state->driverScan().infs.empty()) {
-        const auto& infs = m_state->driverScan().infs;
-        for (std::size_t i = 0; i < infs.size() && i < 3; ++i) {
-            m_state->setBootDriver(infs[i].path, true);
+    if (m_options.demoBootDrivers) {
+        // D-134: a 25H2 x64 medium whose boot.wim carries two packages already (as read from its file list).
+        const std::wstring variant = *m_options.demoBootDrivers;
+        const bool iso = variant == L"iso" || variant == L"iso-done" || variant == L"iso-running";
+        core::SourceInfo source;
+        source.path = L"D:\\ISO\\Win11_25H2_Turkish_x64.iso";
+        source.format = core::ImageFormat::Iso;
+        source.installImage = L"sources/install.wim";
+        source.installImageSize = 7217280579ull;
+        for (const auto& [index, name] : {std::pair{4, L"Windows 11 Pro"}, std::pair{1, L"Windows 11 Home"}}) {
+            core::ImageInfo image;
+            image.index = index;
+            image.name = name;
+            image.architecture = core::Architecture::X64;
+            image.build = 26200;
+            image.spBuild = 8037;
+            source.install.images.push_back(image);
         }
-        m_shell->showPage(PageId::Drivers);
-        if (auto* page = m_shell->driversPageForDemo()) {
-            page->showBootTab();
+        std::ranges::sort(source.install.images, {}, &core::ImageInfo::index);
+        core::WimFile boot;
+        boot.header.bootIndex = 2;
+        for (const int index : {1, 2}) {
+            core::ImageInfo pe;
+            pe.index = index;
+            pe.name = index == 1 ? L"Microsoft Windows PE (amd64)" : L"Microsoft Windows Setup (amd64)";
+            pe.architecture = core::Architecture::X64;
+            pe.build = 26100;
+            boot.images.push_back(pe);
+        }
+        source.boot = boot;
+        const std::filesystem::path sourcePath = source.path;
+        m_state->setSource(std::move(source));
+        auto present = [](const wchar_t* published, const wchar_t* original, const wchar_t* cls, const wchar_t* provider,
+                          const wchar_t* version) {
+            core::WimDriver d;
+            d.publishedName = published;
+            d.originalName = original;
+            d.inf = core::parseInfText(std::wstring(L"[Version]\nClass=") + cls + L"\nProvider=\"" + provider +
+                                           L"\"\nDriverVer=06/06/2024," + version + L"\n",
+                                       original);
+            return d;
+        };
+        AppState::MediaDrivers media;
+        media.status = AppState::MediaDrivers::Status::Ready;
+        media.source = sourcePath;
+        media.drivers.bootIndex = 2;
+        media.drivers.architecture = core::Architecture::X64;
+        media.drivers.installRead = true;
+        media.drivers.boot = {present(L"oem0.inf", L"pvscsi.inf", L"SCSIAdapter", L"Broadcom Inc.", L"1.3.28.0"),
+                              present(L"oem1.inf", L"rt640x64.inf", L"Net", L"Realtek", L"10.68.815.2023")};
+        m_state->setMediaDrivers(std::move(media));
+        if (variant == L"host") {
+            // "Bu bilgisayardan al" on the boot tab: this PC's packages (a VMD laptop with Wi-Fi, a GeForce,
+            // VMware's host adapters), and what the tab ticks of them.
+            m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4, L"Windows 11 Pro"});
+            auto host = [](const wchar_t* folder, const wchar_t* file, const wchar_t* cls, const wchar_t* provider, const wchar_t* ver,
+                           const wchar_t* hwid, int ifType, std::uint64_t kb) {
+                std::wstring text = std::wstring(L"[Version]\nClass=") + cls + L"\nProvider=\"" + provider + L"\"\nCatalogFile=x.cat\nDriverVer=05/08/2026," +
+                                    ver + L"\n[Manufacturer]\n%M%=M,NTamd64\n[M.NTamd64]\n%D%=Install, " + hwid + L"\n";
+                if (ifType != 0) {
+                    text += L"[Install.NDI]\n*IfType = " + std::to_wstring(ifType) + L"\n";
+                }
+                auto d = core::parseInfText(text, std::filesystem::path(L"C:\\WinLove\\host-drivers") / folder / file);
+                d.size = kb * 1024;
+                return d;
+            };
+            std::vector<core::DriverInf> infs{
+                host(L"oem0", L"iastorvd.inf", L"SCSIAdapter", L"Intel Corporation", L"20.2.1.1016", L"PCI\\VEN_8086&DEV_A77F", 0, 3400),
+                host(L"oem603", L"rt68cx21x64.inf", L"Net", L"Realtek", L"1168.30.50.508", L"PCI\\VEN_10EC&DEV_8125", 6, 2100),
+                host(L"oem604", L"netwtw6e.inf", L"Net", L"Intel", L"24.50.0.4", L"PCI\\VEN_8086&DEV_51F1", 71, 41000),
+                host(L"oem92", L"netadapter.inf", L"Net", L"Broadcom Inc.", L"17.6.0.0", L"*VMnetAdapter1", 6, 90),
+                host(L"oem611", L"nvhda.inf", L"MEDIA", L"NVIDIA Corporation", L"1.4.3.4", L"HDAUDIO\\FUNC_01&VEN_10DE", 0, 1800),
+                host(L"oem613", L"iigd_dch.inf", L"Display", L"Intel Corporation", L"32.0.101.6913", L"PCI\\VEN_8086&DEV_A7A0", 0, 254000),
+                host(L"oem584", L"ialpss2_i2c_adl.inf", L"System", L"Intel Corporation", L"30.100.2531.31", L"PCI\\VEN_8086&DEV_7A4C", 0, 300),
+            };
+            const auto picked = ImageDriverController::setupPick(infs, core::Architecture::X64, m_state->mediaDrivers()->drivers.boot);
+            for (const auto& d : infs) {
+                // As ImageDriverController::setBoot does with an image mounted: the storage one goes to the image too.
+                if (std::ranges::find(picked, d.path) != picked.end() && core::setupRole(d) == core::SetupRole::Storage) {
+                    m_state->queue(ImageDriverController::addOperationFor(d));
+                }
+            }
+            m_state->addDriverScan(L"C:\\WinLove\\host-drivers", std::move(infs));
+            m_state->setBootDrivers(picked, true);
+            m_shell->showPage(PageId::Drivers);
+            if (auto* page = m_shell->driversPageForDemo()) {
+                page->showBootTab();
+            }
+            m_shell->showToast(ui::InfoKind::Success,
+                               m_strings->format(Str::DriversHostPickedBoot, {{L"n", L"7"}, {L"p", std::to_wstring(picked.size())}}),
+                               L"C:\\WinLove\\host-drivers");
+        } else if (iso) {
+            // The ISO page: no mount (the build needs none), a scan, three drivers for boot.wim — the
+            // storage one is in no edition of the install image and not queued.
+            auto inf = [](const wchar_t* file, const wchar_t* cls, const wchar_t* provider, const wchar_t* hwid, int ifType) {
+                std::wstring text = std::wstring(L"[Version]\nClass=") + cls + L"\nProvider=\"" + provider + L"\"\nCatalogFile=x.cat\nDriverVer=05/14/2024,1.0.0.0\n[Manufacturer]\n%M%=M,NTamd64\n[M.NTamd64]\n%D%=Install, " + hwid + L"\n";
+                if (ifType != 0) {
+                    text += L"[Install.NDI]\n*IfType = " + std::to_wstring(ifType) + L"\n";
+                }
+                return core::parseInfText(text, std::filesystem::path(L"D:\\Drivers\\Dell\\") / file);
+            };
+            std::vector<core::DriverInf> infs{inf(L"iaStorVD.inf", L"SCSIAdapter", L"Intel Corporation", L"PCI\\VEN_8086&DEV_A77F", 0),
+                                              inf(L"e2f68.inf", L"Net", L"Intel", L"PCI\\VEN_8086&DEV_15F3", 6),
+                                              inf(L"qcwlan_arm.inf", L"Net", L"Qualcomm", L"PCI\\VEN_17CB&DEV_1103", 71)};
+            m_state->addDriverScan(L"D:\\Drivers\\Dell", infs);
+            m_state->setBootDrivers({infs[0].path, infs[1].path, infs[2].path}, true);
+            if (variant == L"iso-done") {
+                AppState::IsoRun run;
+                run.running = false;
+                run.output = L"C:\\Users\\Public\\Desktop\\Win11_25H2_WinLove.iso";
+                run.result = core::IsoResult{7406092288ull, {}};
+                run.bootDriversAdded = {infs[0].path, infs[1].path};
+                run.bootDriversRefused = {core::DriverRefusal{infs[2].path, core::DriverRefusal::Why::Architecture, L"arm64"},
+                                          core::DriverRefusal{L"D:\\Drivers\\Old\\oldraid.inf", core::DriverRefusal::Why::CatalogMissing,
+                                                              L"oldraid.cat"}};
+                m_state->setIsoRun(std::move(run));
+            } else if (variant == L"iso-running") { // D-142: the build under way — its progress row and ring
+                AppState::IsoRun run;
+                run.running = true;
+                run.stage = 2;
+                run.fraction = 0.42;
+                run.startedMs = ui::nowMs();
+                m_state->setIsoRun(std::move(run));
+            }
+            m_shell->showPage(PageId::Iso);
+        } else if (!m_state->driverScan().infs.empty()) {
+            // With --demo-drivers: its fake mount and queue (the two storage drivers are queued for the image).
+            const auto& infs = m_state->driverScan().infs;
+            std::vector<std::filesystem::path> ticked;
+            for (const auto& d : infs) {
+                const auto name = d.path.filename().wstring();
+                if (name == L"e2f68.inf" || name == L"iaStorVD.inf" || name == L"stornvme_oem.inf") {
+                    ticked.push_back(d.path);
+                }
+            }
+            m_state->setBootDrivers(ticked, true);
+            if (variant == L"storage-only") {
+                // The storage driver ticked for boot.wim only: not in the image's queue.
+                for (const auto& d : infs) {
+                    if (d.path.filename() == L"iaStorVD.inf") {
+                        m_state->unqueue(core::ops::OpKind::AddDriver, d.path.wstring());
+                    }
+                }
+            }
+            m_shell->showPage(PageId::Drivers);
+            if (auto* page = m_shell->driversPageForDemo()) {
+                page->showBootTab();
+                page->setArchFilterForDemo(0); // the ARM64 INF in view, dimmed
+            }
         }
     }
     if (m_options.openPath) {
@@ -1547,6 +1823,25 @@ int App::renderOffscreen() {
         m_shell->applyForDemo().setExtraEdition(images[2].index, true);
         m_shell->showPage(PageId::Apply);
     }
+    if (m_options.demoOverview) {
+        demoOverview();
+    }
+    if (m_options.demoVhd) {
+        demoVhd();
+    }
+    if (m_options.isoChoices) {
+        // D-144 addendum: options other than the first ones — the ISO page and the Apply row show the same.
+        AppState::IsoChoices choices = m_state->isoChoices();
+        choices.label = L"WINLOVE_TR";
+        choices.boot = core::BootMode::UefiOnly;
+        choices.repack = 3; // ESD
+        choices.noPrompt = true;
+        choices.secureBoot2023 = true;
+        m_state->setIsoChoices(std::move(choices));
+    }
+    if (m_options.isoOptions) {
+        m_shell->showIsoOptions(); // D-144 addendum: over the page shown (the Apply summary)
+    }
     if (m_options.demoUsbGiven && m_state->source()) {
         m_shell->showPage(PageId::Iso);
         if (auto* page = m_shell->isoPageForDemo()) {
@@ -1585,18 +1880,34 @@ int App::renderOffscreen() {
         }
     }
     if (m_options.fakeOperation && m_state->source()) {
-        const bool reading = *m_options.fakeOperation == L"read";
-        const bool verifying = *m_options.fakeOperation == L"verify";
-        EngineOperation op{reading                                  ? EngineOperation::Kind::Reading
-                           : verifying                              ? EngineOperation::Kind::Verifying
-                           : *m_options.fakeOperation == L"prepare" ? EngineOperation::Kind::Preparing
-                                                                    : EngineOperation::Kind::Mounting,
+        const std::wstring& name = *m_options.fakeOperation;
+        const bool reading = name == L"read";
+        const bool verifying = name == L"verify";
+        using K = EngineOperation::Kind;
+        const K kind = reading                     ? K::Reading
+                       : verifying                 ? K::Verifying
+                       : name == L"prepare" || name == L"prepare-delete" ? K::Preparing
+                       : name == L"delete"         ? K::Deleting
+                       : name == L"export"         ? K::Exporting
+                       : name == L"rename"         ? K::Renaming
+                       : name == L"duplicate"      ? K::Duplicating
+                       : name == L"move"           ? K::Moving
+                       : name == L"unmount"        ? K::Unmounting
+                                                   : K::Mounting;
+        EngineOperation op{kind,
                            verifying                  ? std::filesystem::path(m_state->source()->installImage).filename().wstring()
                            : m_state->selectedImage() ? m_state->selectedImage()->name
                                                       : L"",
                            verifying ? m_state->source()->path : std::filesystem::path(L"C:\\WinLove\\mount"),
                            verifying ? 0 : m_state->selectedIndex().value_or(1)};
         op.startedMs = ui::nowMs() - 60000.0 * m_options.fakeProgress;
+        if (name == L"prepare-delete") {
+            op.purpose = K::Deleting; // the ISO's copy step of a delete (2026-11-11: its row said "Bağlanıyor")
+        }
+        if ((kind == K::Deleting || kind == K::Exporting || kind == K::Preparing) && m_options.selectMarked.size() > 1) {
+            op.indexes = m_options.selectMarked; // several editions: each row says it
+            op.index = 0;
+        }
         if (reading) {
             // The second progress (D-027): the image is mounted, its lists are being read.
             m_state->setMounted(MountedImage{op.path, L"C:\\WinLove\\work\\sources\\install.wim", op.index, op.edition});
@@ -1632,9 +1943,18 @@ int App::renderOffscreen() {
         m_options.language = *m_options.switchLanguage;
         rebuildUi();
     }
+    if (m_options.toastTimeout) {
+        m_shell->onTimer(Shell::kToastTimer); // what the window's timer does after Toast::kDurationMs
+    }
     m_host->layout(m_options.size);
     if (m_options.palette) {
         m_shell->openPalette(*m_options.palette);
+    }
+    if (m_options.demoAccentPicker) { // D-143: Ayarlar › Vurgu rengi with its picker open
+        if (SettingsPage* settings = m_shell->settingsPageForDemo()) {
+            settings->openAccentPicker();
+            m_host->layout(m_options.size);
+        }
     }
     for (const UINT vk : m_options.keys) {
         // The window's own path: the focused widget first, then the shell's shortcuts.
@@ -1680,8 +2000,42 @@ int App::renderOffscreen() {
         m_shell->showAdminRequired();
     }
 
-    drainPosted(); // what the workers finished so far, on this thread
-    m_host->layout(m_options.size);
+    // --settle: a live page's workers (the network too) land before the click / the frame.
+    auto settle = [&] {
+        drainPosted(); // what the workers finished so far, on this thread
+        m_host->layout(m_options.size);
+        if (m_options.settleMs <= 0) {
+            return;
+        }
+        using clock = std::chrono::steady_clock;
+        const auto start = clock::now();
+        const auto deadline = start + std::chrono::milliseconds(m_options.settleMs);
+        auto quiet = start;
+        const auto still = std::chrono::milliseconds(m_options.settleQuietMs);
+        while (clock::now() < deadline && clock::now() - quiet < still) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            bool any = false;
+            {
+                std::scoped_lock lock(m_postedMutex);
+                any = !m_posted.empty();
+            }
+            if (any) {
+                drainPosted();
+                m_host->layout(m_options.size);
+                quiet = clock::now();
+            }
+        }
+        report(std::format(L"settled: last result {} ms after the start\n",
+                           std::chrono::duration_cast<std::chrono::milliseconds>(quiet - start).count()));
+    };
+    settle();
+    for (const auto& p : m_options.clickAfterLoad) {
+        // D-139: a row of a list a worker read (Programlar's index) exists only now.
+        pointerAt(p);
+        m_host->onPointer({ui::PointerAction::Down, p, m_host->windowZone(p)});
+        m_host->onPointer({ui::PointerAction::Up, p, m_host->windowZone(p)});
+        settle();
+    }
     ui::Canvas canvas((*target)->beginDraw(), m_options.theme, m_options.scale, *m_graphics->text, *m_graphics->icons);
     canvas.clear(Color::BgBase);
     // Hover/press tweens settle instantly in a still frame.
@@ -1709,8 +2063,15 @@ int App::runWindowed() {
     callbacks.resized = [this](ui::SizeF size, float scale) {
         if (m_target) {
             if (auto resized = m_target->resize(m_window.clientWidthPx(), m_window.clientHeightPx(), scale * 96.0f);
-                !resized && !deviceLost(resized.error().hresult)) { // a lost device is made again by paint()
-                showError(resized.error());
+                !resized) {
+                if (deviceLost(resized.error().hresult)) {
+                    // A lost device is made again by paint(). Said outright: the failed resize left
+                    // the context without a target, and whether EndDraw then answers with a code
+                    // paint() takes for a lost device was left to chance (audit APP-14).
+                    m_simulateDeviceLoss = true;
+                } else {
+                    showError(resized.error());
+                }
             }
         }
         if (m_host) {
@@ -1758,6 +2119,18 @@ int App::runWindowed() {
         }
     };
     callbacks.timer = [this](UINT id) {
+        if (id == kOldExeTimer) {
+            removeOldExe(); // D-145
+            return;
+        }
+        if (id == kUpdateCheckTimer) {
+            // D-140: a few seconds after the window came up, once; the check itself runs on its own thread.
+            m_window.stopTimer(kUpdateCheckTimer);
+            if (m_updates) {
+                m_updates->checkIfDue();
+            }
+            return;
+        }
         if (id == Shell::kToastTimer || id == Shell::kLogTimer) {
             if (m_shell) {
                 m_shell->onTimer(id);
@@ -1773,7 +2146,7 @@ int App::runWindowed() {
         m_window.invalidate();
     };
 
-    const ui::WindowAppearance appearance{appIcon(), m_options.theme != ui::ThemeKind::Light,
+    const ui::WindowAppearance appearance{appIcon(), appIconResource(), m_options.theme != ui::ThemeKind::Light,
                                           colorRef(m_options.theme, Color::AccentBase), // the border, as applyTheme()
                                           colorRef(m_options.theme, Color::BgBase)};
     const ui::SizeF minimum{ui::tokens::size::minWindowW, ui::tokens::size::minWindowH};
@@ -1785,6 +2158,10 @@ int App::runWindowed() {
         showError(created.error());
         return 1;
     }
+    // buildUi started reads (this PC's DISM files, the mounts on it) before there was a window: a
+    // result posted in that moment is queued without a message to run it and waited for the next
+    // post. An empty one, now that the window is there, runs whatever waits (audit APP-20).
+    m_window.post([] {});
     auto target = ui::SwapChainTarget::create(*m_graphics->device, m_window.hwnd(), m_window.clientWidthPx(),
                                               m_window.clientHeightPx(), m_window.scale() * 96.0f);
     if (!target) {
@@ -1830,7 +2207,22 @@ int App::runWindowed() {
         m_shell->images().adoptExistingMount();
     }
     m_shell->windowsDownload().releaseLeftovers(); // a conversion the app closed or crashed in
+    // D-140: is a newer WinLove out? Asked on a thread of its own a few seconds after start, at most
+    // once a day and only when Ayarlar says so (UpdateController::checkIfDue); the start never waits.
+    m_updates = std::make_unique<UpdateController>(
+        *m_state, [this](std::function<void()> fn) { m_window.post(std::move(fn)); }, UpdateController::networkFetch());
+    // D-145: "Yükle" works on this exe; "Yeniden başlat" closes this window once the new one runs.
+    m_updates->setInstaller(UpdateController::systemInstaller([this] { m_window.close(); }));
+    if (!m_options.updatedFrom.empty()) {
+        AppState::AppUpdate update = m_state->appUpdate();
+        update.updatedFrom = m_options.updatedFrom; // the shell says it once (a toast) and the About card
+        m_state->setAppUpdate(std::move(update));
+        log::info("update", L"started by an update from " + m_options.updatedFrom);
+    }
+    removeOldExe(); // an update's old file, once the process it belonged to is gone (tried a few times)
+    m_window.setTimer(kUpdateCheckTimer, kUpdateCheckDelayMs);
     const int exitCode = ui::Window::runMessageLoop();
+    m_updates.reset(); // its thread stops before the window and the state go
     if (m_dropTarget) {
         m_dropTarget->revoke();
         m_dropTarget = nullptr;
@@ -1842,14 +2234,142 @@ void App::applyTheme() {
     // 2026-11-09 (the user, like the reference tool): Windows 11's 1px window border in the chosen accent.
     m_window.setFrameColors(m_options.theme != ui::ThemeKind::Light, colorRef(m_options.theme, Color::AccentBase));
     m_window.invalidate();
+    if (m_changelog) {
+        m_changelog->applyTheme(); // D-145
+    }
+}
+
+void App::removeOldExe() {
+    if (m_options.renderTo) {
+        return;
+    }
+    wchar_t path[MAX_PATH * 4] = {};
+    const DWORD n = GetModuleFileNameW(nullptr, path, static_cast<DWORD>(std::size(path)));
+    const std::filesystem::path exe(std::wstring(path, n));
+    // The old process may still be closing (it started this one, then closed its window): again in a
+    // moment, a few times; whatever is left goes at the next start.
+    if (core::removeUpdateBackup(exe) || ++m_oldExeTries > 10) {
+        m_window.stopTimer(kOldExeTimer);
+    } else if (m_oldExeTries == 1) {
+        m_window.setTimer(kOldExeTimer, 2000);
+    }
+}
+
+void App::openChangelog() {
+    if (m_options.renderTo || !m_strings || !m_graphics) {
+        return; // a render never opens a window
+    }
+    if (m_changelog) {
+        m_changelog->bringToFront();
+        return;
+    }
+    auto openLink = [](const std::wstring& url) {
+        if (url.starts_with(L"https://") || url.starts_with(L"http://")) { // a note's link: web pages only
+            ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        }
+    };
+    ChangelogWindow::Context context{*m_graphics, *m_state, *m_strings, m_options.language};
+    context.theme = [this] { return m_options.theme; };
+    context.zoom = zoomFor(m_state->settings());
+    context.owner = m_window.hwnd();
+    context.icon = appIcon();
+    context.iconResource = appIconResource();
+    context.openLink = openLink;
+    context.install = [this] {
+        if (m_updates) {
+            m_updates->install();
+        }
+    };
+    context.openRelease = [this, openLink] {
+        const auto& u = m_state->appUpdate();
+        openLink(u.result && u.result->latest ? core::releasePageUrl(u.result->latest->url) : std::wstring(core::kReleasesPage));
+    };
+    context.closed = [this] {
+        m_window.post([this] { m_changelog.reset(); }); // not inside its window procedure
+    };
+    auto opened = ChangelogWindow::open(std::move(context));
+    if (!opened) {
+        log::warn("update", L"the changelog window did not open: " + describe(opened.error()));
+        return;
+    }
+    m_changelog = std::move(*opened);
+}
+
+int App::renderChangelog(ui::OffscreenTarget& target) {
+    // D-145: the window's content as it would open, from a saved GitHub answer (no network).
+    std::filesystem::path file = m_options.demoChangelog ? std::filesystem::path(*m_options.demoChangelog) : std::filesystem::path();
+    if (file.empty()) {
+        wchar_t path[MAX_PATH * 4] = {};
+        const DWORD n = GetModuleFileNameW(nullptr, path, static_cast<DWORD>(std::size(path)));
+        // build\<preset>\bin\WinLove.exe → the repository's fixture
+        file = std::filesystem::path(std::wstring(path, n)).parent_path().parent_path().parent_path().parent_path() / L"tests" /
+               L"integration" / L"fixtures" / L"changelog-sample.json";
+        std::error_code ec;
+        if (!std::filesystem::exists(file, ec)) {
+            file = std::filesystem::current_path(ec) / L"tests" / L"integration" / L"fixtures" / L"changelog-sample.json"; // run from the repository
+        }
+    }
+    std::ifstream in(file, std::ios::binary);
+    const std::string raw((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    auto releases = core::parseReleases(raw);
+    if (!releases) {
+        showError(Error{ErrorCode::NotFound, L"--demo-changelog: no release list", file.wstring()});
+        return 1;
+    }
+    const core::ReleaseCheck check = core::evaluateReleases(L"" WL_VERSION_LABEL, std::move(*releases));
+    ui::HostServices services;
+    services.text = m_graphics->text.get();
+    ui::Host host(std::move(services));
+    ChangelogView::Services view;
+    view.install = [] {}; // drawn; a render clicks nothing
+    view.openRelease = [] {};
+    auto root = std::make_unique<ChangelogView>(*m_strings, m_options.language, std::move(view));
+    ChangelogView* changelog = root.get();
+    host.setRoot(std::move(root));
+    constexpr std::int64_t kNow = 1794398400; // 2026-11-11 12:00 UTC: "2 gün önce" in every render
+    changelog->setCheck(check, kNow);
+    changelog->setInstallable(check.verdict == core::ReleaseVerdict::Available);
+    host.layout(m_options.size);
+    for (const UINT vk : m_options.keys) {
+        if (const ui::KeyEvent key{vk, false, false, false}; !host.onKeyDown(key)) {
+            changelog->onKeyDown(key);
+        }
+    }
+    for (const auto& p : m_options.clickAt) {
+        host.onPointer({ui::PointerAction::Move, p, host.windowZone(p)});
+        host.onPointer({ui::PointerAction::Down, p, host.windowZone(p)});
+        host.onPointer({ui::PointerAction::Up, p, host.windowZone(p)});
+    }
+    if (m_options.hoverAt) {
+        host.onPointer({ui::PointerAction::Move, *m_options.hoverAt, host.windowZone(*m_options.hoverAt)});
+    }
+    host.layout(m_options.size);
+    {
+        ui::Canvas canvas(target.beginDraw(), m_options.theme, m_options.scale, *m_graphics->text, *m_graphics->icons);
+        canvas.clear(Color::BgBase);
+        host.paint(canvas);
+        if (auto done = target.endDraw(); !done) {
+            showError(done.error());
+            return 1;
+        }
+    }
+    if (auto saved = target.savePng(*m_options.renderTo); !saved) {
+        showError(saved.error());
+        return 1;
+    }
+    report(L"rendered " + m_options.renderTo->wstring() + L"\n");
+    return 0;
 }
 
 ui::HostServices App::windowHostServices() {
-    return {
+    ui::HostServices services{
         [this] { m_window.invalidate(); },
         [this](UINT id, UINT ms) { m_window.setTimer(id, ms); },
         [this](UINT id) { m_window.stopTimer(id); },
     };
+    // The double-click area at the window's DPI, in the DIPs the host works in (Window::doubleClickArea).
+    services.doubleClickArea = [this] { return m_window.doubleClickArea(); };
+    return services;
 }
 
 void App::applySettings() {
@@ -1859,8 +2379,14 @@ void App::applySettings() {
     const AppSettings& settings = m_state->settings();
     ui::setReducedMotionForced(settings.reduceMotion);
     m_window.setZoom(zoomFor(settings));
-    if (settings.accent != ui::accent()) {
-        ui::setAccent(settings.accent);
+    if (m_changelog) {
+        m_changelog->setZoom(zoomFor(settings)); // D-145
+    }
+    // D-143: the picker previews a colour without saving it (ui::setAccentColor only); the window's frame
+    // takes the accent when it is saved.
+    if (settings.accent != m_accentShown) {
+        m_accentShown = settings.accent;
+        ui::setAccentColor(settings.accent);
         applyTheme(); // every accent brush is resolved at paint time: a repaint is enough
     }
     if (const ui::ThemeKind theme = resolveTheme(settings.theme); theme != m_options.theme) {
@@ -1881,6 +2407,7 @@ void App::rebuildUi(bool newFamilies) {
     if (!strings) {
         return;
     }
+    m_changelog.reset(); // D-145: it reads the old strings too (it opens again in the new language)
     releaseShell(); // the old shell reads the old strings: it goes first
     m_strings = std::move(*strings);
     if (newFamilies) { // nothing measures with the old text styles any more
@@ -1936,6 +2463,13 @@ void App::paint() {
         log::info("app", m_shell == shell ? L"device-loss recovery: new device, same shell"
                                           : L"device-loss recovery: the shell was rebuilt");
         m_window.invalidate();
+    } else if (!presented) {
+        // Any other failure leaves the frame undrawn; it used to pass without a word (audit APP-14).
+        // Once: it would come again with every frame.
+        static bool logged = false;
+        if (!std::exchange(logged, true)) {
+            log::error("app", L"drawing failed: " + describe(presented.error()));
+        }
     }
 }
 
@@ -1956,6 +2490,533 @@ Result<void> App::recreateGraphics() {
     }
     m_target = std::move(*target);
     return {};
+}
+
+
+// ---- D-140: --demo-update ---------------------------------------------------------------------
+
+void App::demoUpdate() {
+    // The update check's answers as the controller leaves them in the state — render only: nothing
+    // here touches the network or settings.json (a render's settings are a scratch file).
+    using Phase = AppState::AppUpdate::Phase;
+    const std::wstring variant = *m_options.demoUpdate;
+    const std::int64_t now = UpdateController::systemNow();
+    AppState::AppUpdate update;
+    update.at = now - 4 * 60;
+    if (variant == L"checking") {
+        update.phase = Phase::Checking;
+        update.manual = true;
+    } else if (variant == L"failed") {
+        update.phase = Phase::Failed;
+        update.manual = true;
+        update.error = Error{ErrorCode::IoError, L"the server did not answer", core::kReleasesApi,
+                             static_cast<std::int32_t>(0x80072EE7)}; // ERROR_WINHTTP_NAME_NOT_RESOLVED: offline
+    } else {
+        core::Release release;
+        if (variant == L"current") {
+            release.tag = L"v1.3.0-beta"; // GitHub's answer of 2026-11-11 (older than this build: "up to date")
+            release.name = L"WinLove 1.3.0 Beta";
+            release.published = 1794212128; // 2026-11-09T08:15:28Z
+        } else {
+            release.tag = L"v1.5.0-beta"; // newer than this build (1.4.0 Beta)
+            release.name = L"WinLove 1.5.0 Beta";
+            release.published = now - 2 * 86400;
+            release.notes = L"WinLove 1.5.0 Beta — VHD / VHDX kaynağı, güncelleme denetimi ve daha hızlı Uygula / VHD and VHDX "
+                            L"sources, an update check and a faster Apply.\n"
+                            L"• VHD / VHDX: bir sanal diskteki Windows doğrudan açılır.\n"
+                            L"• Güncelleme denetimi: yeni sürüm çıkınca Hakkında sayfası haber verir; hiçbir şey indirilmez.";
+        }
+        release.url = core::releasePageUrl(L"https://github.com/shadesofdeath/WinLove/releases/tag/" + release.tag);
+        release.prerelease = true;
+        release.version = core::parseAppVersion(release.tag);
+        update.phase = Phase::Done;
+        update.result = core::evaluateReleases(L"" WL_VERSION_LABEL, {release});
+        update.result->releasesListed = 10;
+        // A startup check that found a new release: the notice (a toast, the status bar) on any page but About.
+        update.notice = update.result->verdict == core::ReleaseVerdict::Available;
+    }
+    // D-145: "Yükle" in each of its states (as UpdateController leaves them; nothing is downloaded).
+    using Install = AppState::AppUpdate::Install;
+    if (variant == L"downloading" || variant == L"verifying" || variant == L"ready" || variant == L"install-failed") {
+        Install install;
+        install.tag = L"v1.5.0-beta";
+        install.name = L"WinLove 1.5.0 Beta";
+        install.total = 11'534'336;
+        if (variant == L"downloading") {
+            install.stage = Install::Stage::Downloading;
+            install.done = 4'771'840;
+        } else if (variant == L"verifying") {
+            install.stage = Install::Stage::Verifying;
+            install.done = install.total;
+        } else if (variant == L"ready") {
+            install.stage = Install::Stage::Ready;
+            install.done = install.total;
+        } else {
+            install.stage = Install::Stage::Failed;
+            install.why = Install::Why::Verify;
+            install.detail = L"sha256: 9b1e04\u2026, the release lists 32a1e5\u2026";
+        }
+        update.install = std::move(install);
+        update.notice = false; // the startup notice was followed: "Yükle" was clicked
+    } else if (variant == L"updated") {
+        update = {};
+        update.updatedFrom = L"1.2.3 Beta"; // this instance was started by a self-update from 1.2.3 Beta
+    }
+    m_state->setAppUpdate(std::move(update));
+}
+
+// ---- D-138: --demo-overview -------------------------------------------------------------------
+
+void App::demoAdoption(const std::wstring& variant) {
+    // 2026-11-11: taking over an image another tool mounted (Kaynak's list). Render only: nothing is read.
+    if (variant.empty()) {
+        return;
+    }
+    const std::filesystem::path folder = L"C:\\Tools\\Mount\\Win11_25H2";
+    const std::filesystem::path wim = L"D:\\ISO\\Win11_25H2\\sources\\install.wim";
+    if (variant == L"adopting" || variant == L"remounting") {
+        const bool remount = variant == L"remounting";
+        EngineOperation op{remount ? EngineOperation::Kind::Remounting : EngineOperation::Kind::Adopting,
+                           remount ? std::wstring(L"mount") : folder.filename().wstring(),
+                           remount ? std::filesystem::path(L"D:\\Work\\mount") : folder, 0};
+        op.startedMs = ui::nowMs() - 4'000.0;
+        m_state->beginOperation(op);
+        return;
+    }
+    if (variant == L"failed") {
+        m_shell->adoptFailedForDemo(core::MountState::Invalid);
+        return;
+    }
+    // Taken over: Windows 11 Pro from the other tool's setup folder, mounted in its folder.
+    core::SourceInfo source;
+    source.path = L"D:\\ISO\\Win11_25H2";
+    source.format = core::ImageFormat::Folder;
+    source.installImage = L"sources/install.wim";
+    source.installImageSize = 7'217'280'579ULL;
+    source.install.header.compression = core::WimCompression::Lzx;
+    const wchar_t* names[] = {L"Windows 11 Home", L"Windows 11 Education", L"Windows 11 Pro", L"Windows 11 Pro Education",
+                              L"Windows 11 Pro for Workstations", L"Windows 11 Home Single Language"};
+    for (int i = 0; i < 6; ++i) {
+        core::ImageInfo image;
+        image.index = i + 1;
+        image.name = names[i];
+        image.architecture = core::Architecture::X64;
+        image.build = 26200;
+        image.spBuild = 8037;
+        image.defaultLanguage = L"tr-TR";
+        image.languages = {L"tr-TR"};
+        image.totalBytes = 24'622'989'344ULL;
+        source.install.images.push_back(image);
+    }
+    const std::filesystem::path sourcePath = source.path;
+    m_shell->adoptOpened(std::move(source), MountedImage{folder, wim, 3, L"Windows 11 Pro"}, /*preload=*/false);
+    m_state->forgetRecent(sourcePath); // a made-up folder: not left in the renders' recent list
+    if (variant == L"overview") {
+        m_shell->showPage(PageId::Overview);
+    } else if (variant == L"unmount") {
+        m_shell->showPage(PageId::Images);
+        m_shell->askUnmount();
+    }
+}
+
+void App::demoRunClose(const std::wstring& variant) {
+    // 2026-11-11: a run stopped half way (the image still mounted, unsaved), then — from anywhere —
+    // saved or discarded: what the Apply page says while that runs and after. Render only.
+    AppState::ApplyRun run;
+    run.changes = m_state->changes();
+    run.plan = core::ops::plan(run.changes);
+    run.groups = core::ops::groups(run.plan);
+    run.stepState.assign(run.plan.steps.size(), 0);
+    run.edition = L"Windows 11 Pro";
+    run.sizeBefore = 24'622'989'344ULL;
+    run.stage = AppState::ApplyRun::Stage::Done;
+    run.fraction = 0.5;
+    run.startedMs = ui::nowMs() - 95'000;
+    run.mountSerial = m_state->mountSerial();
+    core::ops::ApplyJobResult result;
+    result.report.completed = false; // stopped before the second step
+    if (!run.plan.steps.empty()) {
+        result.report.results.push_back({run.plan.steps.front(), {}});
+        result.stepTimes.push_back(std::chrono::milliseconds(14'000));
+        run.stepState.front() = 2;
+    }
+    result.elapsed = std::chrono::milliseconds(47'000);
+    run.result = std::move(result);
+    run.queueVersionAtEnd = m_state->changes().version();
+    m_state->setApplyRun(std::move(run));
+    if (variant == L"stopped") {
+        return;
+    }
+    const bool commit = variant == L"saving" || variant == L"saved";
+    m_state->beginRunClose(commit);
+    if (variant == L"discarding" || variant == L"saving") {
+        const auto& mounted = *m_state->mounted();
+        EngineOperation op{EngineOperation::Kind::Unmounting, mounted.edition, mounted.mountDir, mounted.index};
+        op.startedMs = ui::nowMs() - 20'000.0;
+        m_state->beginOperation(op);
+        m_state->updateOperation(m_options.fakeProgress);
+        return;
+    }
+    if (variant == L"closefailed") {
+        m_state->endRunClose(Error{ErrorCode::DismFailure, L"Bir dosya kullanımda olduğundan imaj çözülemedi (0xC1420117).", L"unmount",
+                                   static_cast<std::int32_t>(0xC1420117)});
+        return;
+    }
+    if (commit) {
+        m_state->applyRunMutable()->sizeAfter = 24'401'112'000ULL;
+    }
+    m_state->endRunClose(std::nullopt);
+    m_state->setMounted(std::nullopt);
+}
+
+void App::demoOverview() {
+    demoOverview(*m_options.demoOverview, L"C:\\WinLove\\work\\sources\\install.wim", L"C:\\WinLove\\mount");
+}
+
+void App::demoOverview(const std::wstring& variant, const std::filesystem::path& imagePath, const std::filesystem::path& mountDir) {
+    // An image as it stands in the middle of the work — its lists read, a queue across the navigation —
+    // for Görüntü › Özet and the Apply screens. Render only: nothing here reads or writes a disk.
+    int index = 4;
+    std::wstring edition = L"Windows 11 Pro";
+    std::uint64_t before = 24'622'989'344ULL;
+    if (const auto& source = m_state->source(); source && !source->install.images.empty()) {
+        const auto& image = source->install.images.front();
+        index = image.index;
+        edition = image.name;
+        before = image.totalBytes ? image.totalBytes : before;
+        m_state->select(index);
+    }
+    m_state->setMounted(MountedImage{mountDir, imagePath, index, edition});
+    if (variant == L"unread") {
+        // Just mounted: the page lists are being read, features first; nothing else is read yet.
+        EngineOperation op{EngineOperation::Kind::Reading, edition, mountDir, index};
+        op.startedMs = ui::nowMs() - 12'000.0;
+        m_state->beginOperation(op);
+        m_state->updateOperation(0.18, 0);
+        m_state->setOptionalFeatures(AppState::OptionalFeatures{AppState::OptionalFeatures::Status::Loading, mountDir, {}, {}});
+        m_shell->showPage(m_options.page.value_or(PageId::Overview));
+        return;
+    }
+
+    // The lists, as a 25H2 Pro has them (sizes as measured, D-113).
+    constexpr std::uint64_t mb = 1024 * 1024;
+    auto app = [](const wchar_t* identity, const wchar_t* version, std::uint64_t size) {
+        core::AppxComponent c;
+        c.package.displayName = identity;
+        c.package.packageName = std::wstring(identity) + L"_" + version + L"_neutral_~_8wekyb3d8bbwe";
+        c.package.version = version;
+        c.size = size * 1024 * 1024;
+        return c;
+    };
+    std::vector<core::AppxComponent> apps{
+        app(L"Microsoft.GamingApp", L"2410.1001.4.0", 412), app(L"Microsoft.XboxGamingOverlay", L"7.224.11061.0", 96),
+        app(L"Microsoft.XboxIdentityProvider", L"12.115.1001.0", 8), app(L"Microsoft.ZuneMusic", L"11.2408.12.0", 142),
+        app(L"Microsoft.Windows.Photos", L"2024.11100.16010.0", 94), app(L"Clipchamp.Clipchamp", L"3.1.10020.0", 71),
+        app(L"Microsoft.MicrosoftOfficeHub", L"18.2408.1122.0", 41), app(L"Microsoft.Todos", L"2.114.7122.0", 38),
+        app(L"Microsoft.MicrosoftStickyNotes", L"6.1.2.0", 12), app(L"Microsoft.BingWeather", L"4.54.63007.0", 21),
+        app(L"Microsoft.BingNews", L"4.55.62231.0", 18), app(L"MicrosoftWindows.Client.WebExperience", L"424.1301.270.9", 64),
+        app(L"Microsoft.WindowsStore", L"22410.1401.1.0", 58), app(L"Microsoft.SecHealthUI", L"1000.26100.1.0", 9),
+        app(L"Microsoft.VCLibs.140.00", L"14.0.33519.0", 6), app(L"Microsoft.WindowsCalculator", L"11.2409.0.0", 14),
+        app(L"Microsoft.WindowsFeedbackHub", L"1.2409.1.0", 27),
+    };
+    for (auto& item : apps) {
+        const std::wstring& id = item.package.displayName;
+        if (id == L"Microsoft.WindowsStore" || id == L"Microsoft.WindowsCalculator" || id == L"Microsoft.Windows.Photos" ||
+            id == L"Microsoft.ZuneMusic" || id == L"Microsoft.BingWeather") {
+            item.needs = {L"Microsoft.VCLibs.140.00"};
+        }
+    }
+    m_state->setSystemComponents(AppState::SystemComponents{
+        mountDir,
+        {{"edge", {true, 803 * mb}}, {"edge-webview", {true, 796 * mb}}, {"edge-update", {true, 806 * mb}},
+         {"onedrive", {true, 197 * mb}}, {"winre", {true, 643 * mb}}, {"telemetry", {true, 11 * mb}},
+         {"defender-definitions", {true, 483 * mb}}, {"photo-viewer", {true, 19 * mb}}, {"media-streaming", {true, 12 * mb}},
+         {"casting", {true, 4 * mb}}, {"fonts-jpan", {true, 81 * mb}}, {"fonts-hans", {true, 56 * mb}}, {"fonts-hant", {true, 26 * mb}},
+         {"fonts-kore", {true, 17 * mb}}, {"appv", {true, 24 * mb}}, {"uev", {true, 15 * mb}}, {"kiosk", {true, 8 * mb}},
+         {"work-folders", {true, 4 * mb}}, {"remote-assistance", {true, 3 * mb}}, {"take-a-test", {true, 2 * mb}},
+         {"help", {true, 6 * mb}}, {"deep-modem", {true, 28 * mb}}, {"deep-tape", {true, 2 * mb}},
+         {"component-store-shrink", {true, 3041 * mb}}},
+        {}});
+    m_state->setAppxList(AppState::AppxList{AppState::AppxList::Status::Ready, mountDir, std::move(apps), {}});
+
+    using core::OptionalFeature;
+    using S = core::ServicingState;
+    auto feature = [](std::wstring name, std::wstring display, S state) {
+        return OptionalFeature{OptionalFeature::Kind::Feature, std::move(name), std::move(display), {}, state, 0, false};
+    };
+    auto capability = [](std::wstring name, std::wstring display, std::uint64_t size) {
+        return OptionalFeature{OptionalFeature::Kind::Capability, std::move(name), std::move(display), {}, S::Installed,
+                               size * 1024 * 1024, false};
+    };
+    std::vector<OptionalFeature> features{
+        feature(L"NetFx3", L".NET Framework 3.5", S::Staged),
+        feature(L"NetFx4-AdvSrvs", L".NET Framework 4.8 Gelişmiş Hizmetler", S::Installed),
+        feature(L"Microsoft-Hyper-V-All", L"Hyper-V", S::Staged),
+        feature(L"Containers-DisposableClientVM", L"Windows Sandbox", S::Staged),
+        feature(L"Microsoft-Windows-Subsystem-Linux", L"WSL", S::Staged),
+        feature(L"Printing-PrintToPDFServices-Features", L"Microsoft PDF'ye Yazdır", S::Installed),
+        feature(L"SearchEngine-Client-Package", L"Windows Arama", S::Installed),
+        feature(L"MSRDC-Infrastructure", L"Uzak Masaüstü Sıkıştırma", S::Installed),
+        feature(L"SmbDirect", L"SMB Direct", S::Installed),
+        feature(L"WorkFolders-Client", L"İş Klasörleri İstemcisi", S::Installed),
+        feature(L"MediaPlayback", L"Medya Özellikleri", S::Installed),
+        feature(L"Windows-Defender-Default-Definitions", L"Windows Defender varsayılan tanımları", S::Installed),
+        capability(L"Browser.InternetExplorer~~~~0.0.11.0", L"Internet Explorer modu", 42),
+        capability(L"OpenSSH.Client~~~~0.0.1.0", L"OpenSSH İstemcisi", 6),
+        capability(L"Media.WindowsMediaPlayer~~~~0.0.12.0", L"Windows Media Player (eski)", 31),
+        capability(L"Microsoft.Windows.WordPad~~~~0.0.1.0", L"Wordpad", 9),
+        capability(L"Language.Basic~~~tr-TR~0.0.1.0", L"Türkçe (Türkiye) yazma", 12),
+        capability(L"Language.Handwriting~~~tr-TR~0.0.1.0", L"Türkçe (Türkiye) el yazısı", 9),
+        capability(L"Language.OCR~~~tr-TR~0.0.1.0", L"Türkçe (Türkiye) OCR", 4),
+    };
+    m_state->setOptionalFeatures(AppState::OptionalFeatures{AppState::OptionalFeatures::Status::Ready, mountDir, std::move(features), {}});
+
+    using core::StartType;
+    auto svc = [](const wchar_t* name, const wchar_t* display, StartType start) {
+        core::ServiceEntry s;
+        s.name = name;
+        s.displayName = display;
+        s.start = start;
+        s.type = 0x10;
+        return s;
+    };
+    m_state->setServiceList(AppState::ServiceList{
+        AppState::ServiceList::Status::Ready,
+        mountDir,
+        {svc(L"DiagTrack", L"Bağlı Kullanıcı Deneyimleri ve Telemetri", StartType::Auto),
+         svc(L"dmwappushservice", L"Cihaz Yönetimi WAP Gönderme", StartType::Manual),
+         svc(L"WSearch", L"Windows Arama", StartType::AutoDelayed), svc(L"Spooler", L"Yazdırma Biriktiricisi", StartType::Auto),
+         svc(L"wuauserv", L"Windows Update", StartType::Manual), svc(L"RemoteRegistry", L"Uzak Kayıt Defteri", StartType::Disabled),
+         svc(L"XblAuthManager", L"Xbox Live Kimlik Doğrulama", StartType::Manual),
+         svc(L"BITS", L"Arka Plan Akıllı Aktarma Hizmeti", StartType::AutoDelayed),
+         svc(L"MapsBroker", L"İndirilen Haritalar Yöneticisi", StartType::AutoDelayed), svc(L"Fax", L"Faks", StartType::Disabled),
+         svc(L"RetailDemo", L"Perakende Tanıtım Hizmeti", StartType::Manual), svc(L"lfsvc", L"Coğrafi Konum Hizmeti", StartType::Manual)},
+        {}});
+
+    auto driver = [](const wchar_t* published, const wchar_t* original, const wchar_t* cls, const wchar_t* provider) {
+        core::DriverEntry d;
+        d.publishedName = published;
+        d.originalFileName = original;
+        d.className = cls;
+        d.provider = provider;
+        d.signed_ = true;
+        return d;
+    };
+    m_state->setImageDrivers(AppState::ImageDrivers{
+        AppState::ImageDrivers::Status::Ready,
+        mountDir,
+        {driver(L"oem0.inf", L"rt640x64.inf", L"Net", L"Realtek"), driver(L"oem1.inf", L"iastorvd.inf", L"SCSIAdapter", L"Intel Corporation"),
+         driver(L"oem2.inf", L"ibtusb.inf", L"Bluetooth", L"Intel Corporation")},
+        {}});
+    m_state->setImageIntl(
+        AppState::ImageIntl{AppState::ImageIntl::Status::Ready, mountDir, core::ImageIntl{{}, {L"tr-TR", L"en-US"}}, {}, {}});
+
+    // The queue, across the navigation: components and apps, features, two updates, a storage driver,
+    // two services, the recommended scheduled tasks.
+    {
+        const auto batch = m_state->batchQueue();
+        auto& components = m_shell->components();
+        const std::vector<std::wstring> removeApps{L"Microsoft.GamingApp", L"Microsoft.XboxGamingOverlay", L"Microsoft.ZuneMusic",
+                                                   L"Clipchamp.Clipchamp", L"Microsoft.Todos", L"Microsoft.BingNews",
+                                                   L"Microsoft.WindowsFeedbackHub"};
+        const std::vector<std::wstring> removeSystem{L"onedrive", L"telemetry", L"help", L"take-a-test", L"remote-assistance", L"kiosk"};
+        for (const auto& g : components.groups()) {
+            for (const auto& item : g.items) {
+                const bool pick = std::ranges::find(removeApps, item.identity) != removeApps.end() ||
+                                  (item.kind == ComponentController::Item::Kind::System &&
+                                   std::ranges::find(removeSystem, item.packageName) != removeSystem.end());
+                if (pick && !components.queued(item)) {
+                    components.toggle(item);
+                }
+            }
+        }
+        const auto featureList = m_state->optionalFeatures()->items; // a copy: queueing tells the listeners
+        for (const auto& f : featureList) {
+            if (f.name == L"Microsoft-Windows-Subsystem-Linux" || f.name == L"NetFx3" || f.name.starts_with(L"OpenSSH.Client") ||
+                f.name.starts_with(L"Browser.InternetExplorer")) {
+                m_state->queue(FeatureController::operationFor(f));
+            }
+        }
+        UpdatesPage::queuePackages(*m_state, {LR"(C:\Updates\windows11.0-kb5044284-x64_8d2c.msu)",
+                                              LR"(C:\Updates\windows11.0-kb5044030-x64-ndp481_a1b2.msu)"});
+        m_state->queue(core::ops::Operation{core::ops::OpKind::AddDriver, LR"(C:\Drivers\Intel\VMD\iaStorVD.inf)"});
+        auto& services = m_shell->services();
+        const auto serviceList = m_state->serviceList()->items;
+        services.set(serviceList[0], StartType::Disabled);
+        services.set(serviceList[1], StartType::Disabled);
+        m_shell->tasks().applyRecommended();
+    }
+
+    if (variant != L"ready") {
+        AppState::ApplyRun run;
+        run.changes = m_state->changes();
+        run.plan = core::ops::plan(run.changes);
+        run.groups = core::ops::groups(run.plan);
+        run.edition = edition;
+        run.sizeBefore = before;
+        const std::size_t steps = run.plan.steps.size();
+        run.stepState.assign(steps, 2);
+        if (variant == L"running") {
+            // Into the removals; one step was skipped on the way.
+            std::size_t current = std::min(steps - 1, steps * 55 / 100);
+            for (const auto& g : run.groups) {
+                if (g.phase == core::ops::Phase::Remove && g.count > 0) {
+                    current = g.first + std::min<std::size_t>(g.count - 1, 4);
+                }
+            }
+            std::fill(run.stepState.begin() + static_cast<std::ptrdiff_t>(current), run.stepState.end(), 0);
+            run.stepState[current] = 1;
+            if (current > 2) {
+                run.stepState[1] = 3;
+            }
+            run.currentStep = static_cast<int>(current);
+            run.fraction = 0.46;
+            run.startedMs = ui::nowMs() - 214'000.0;
+            const std::wstring of = L"/" + std::to_wstring(steps) + L"] ";
+            log::info("apply", L"[1" + of + L"enableFeature Microsoft-Windows-Subsystem-Linux \u2026 ok");
+            log::warn("apply", L"[2" + of + L"removeCapability OpenSSH.Client~~~~0.0.1.0: 0x800F0825 (permanent) \u2014 skipped");
+            log::info("dism", L"Remove-ProvisionedAppxPackage Microsoft.GamingApp_2410.1001.4.0_neutral_~_8wekyb3d8bbwe \u2026 ok");
+            log::info("dism", L"Remove-ProvisionedAppxPackage Microsoft.XboxGamingOverlay_7.224.11061.0_neutral_~_8wekyb3d8bbwe \u2026 ok");
+            log::info("apply", L"[" + std::to_wstring(current + 1) + of + L"removeComponent onedrive");
+            if (m_options.autoIso) {
+                run.autoIso = AppState::ApplyRun::AutoIso{m_shell->autoIsoForDemo().output()}; // D-144: waits for the save
+            }
+            m_state->setApplyRun(std::move(run));
+        } else if (variant == L"paused") {
+            run.stage = AppState::ApplyRun::Stage::Paused;
+            run.fraction = 0.86;
+            run.startedMs = ui::nowMs() - 412'000.0;
+            log::info("apply", L"paused before saving: C:\\WinLove\\mount is open for changes by hand");
+            m_state->setApplyRun(std::move(run));
+        } else {
+            const bool held = variant == L"held" || variant == L"iso-skipped";
+            run.stage = AppState::ApplyRun::Stage::Done;
+            run.fraction = 1.0;
+            run.startedMs = ui::nowMs() - 600'000.0;
+            core::ops::ApplyJobResult result;
+            result.report.completed = true;
+            for (const auto& step : run.plan.steps) {
+                result.report.results.push_back({step, {}});
+                result.stepTimes.push_back(std::chrono::milliseconds(21'000));
+            }
+            std::optional<core::ops::Operation> failedOp;
+            if (held && !result.report.results.empty()) {
+                // A step failed half way: nothing saved, still mounted; the queue keeps only that step (A7).
+                result.report.results.front().outcome = fail(ErrorCode::DismFailure, L"The process cannot access the file",
+                                                             L"enable feature", static_cast<std::int32_t>(0x80070020));
+                run.stepState.front() = 3;
+                failedOp = run.plan.steps.front().operation;
+            }
+            result.committed = !held;
+            result.held = held;
+            result.optimized = !held;
+            result.commitTime = std::chrono::milliseconds(held ? 0 : 96'000);
+            result.elapsed = std::chrono::milliseconds(held ? 402'000 : 582'000);
+            if (!held) {
+                const auto delta = run.changes.estimatedSizeDelta();
+                run.sizeAfter = static_cast<std::uint64_t>(std::max<std::int64_t>(static_cast<std::int64_t>(before) + delta, 1));
+            }
+            run.result = std::move(result);
+            if (failedOp) {
+                m_state->unqueueIf([&](const core::ops::Operation& op) {
+                    return !(op.kind == failedOp->kind && op.target == failedOp->target);
+                });
+            }
+            run.queueVersionAtEnd = m_state->changes().version();
+            if (variant.starts_with(L"iso-")) {
+                demoAutoIso(run, variant); // D-144
+            }
+            m_state->setApplyRun(std::move(run));
+            if (!held) {
+                m_state->setMounted(std::nullopt); // saved and unmounted
+            }
+            if (variant == L"iso-running") {
+                AppState::IsoRun iso;
+                iso.running = true;
+                iso.afterApply = true;
+                iso.fraction = 0.42;
+                iso.stage = 2;
+                iso.startedMs = ui::nowMs() - 48'000.0;
+                iso.output = m_state->applyRun()->autoIso->output;
+                m_state->setIsoRun(std::move(iso));
+            }
+        }
+    }
+    m_shell->showPage(m_options.page.value_or(PageId::Overview));
+}
+
+void App::demoAutoIso(AppState::ApplyRun& run, const std::wstring& variant) {
+    // D-144: the ISO after the run, as AutoIsoController leaves it in each state. Render only.
+    using State = AppState::ApplyRun::AutoIso::State;
+    AppState::ApplyRun::AutoIso iso;
+    iso.output = m_shell->autoIsoForDemo().output();
+    if (variant == L"iso-running") {
+        iso.state = State::Running;
+    } else if (variant == L"iso-done") {
+        iso.state = State::Done;
+        iso.bytes = 6'402'813'952ULL;
+    } else if (variant == L"iso-failed") {
+        iso.state = State::Failed;
+        iso.error = Error{ErrorCode::IoError, L"Diskte yeterli yer yok (0x80070070)", iso.output.wstring(),
+                          static_cast<std::int32_t>(0x80070070)};
+    } else if (variant == L"iso-cancelled") {
+        iso.state = State::Cancelled;
+    } else {
+        iso.state = State::NotStarted; // iso-skipped: the run held the image (a step failed), nothing saved
+        iso.skip = AppState::ApplyRun::AutoIso::Skip::NotSaved;
+    }
+    run.autoIso = std::move(iso);
+}
+
+// ---- D-141: --demo-vhd --------------------------------------------------------------------------
+
+void App::demoVhd() {
+    // A VHDX holding an applied 26200 Pro, as the lab's disk reads (build\lab\vhd, 2026-11-11). Made
+    // up here: nothing is attached, opened or read.
+    const std::wstring variant = *m_options.demoVhd;
+    core::SourceInfo source;
+    source.path = L"D:\\Diskler\\Win11-Pro.vhdx";
+    source.format = core::ImageFormat::Vhdx;
+    source.installImage = L"Win11-Pro.vhdx";
+    source.installImageSize = 14'935'916'544ULL;
+    source.install.header.imageCount = 1;
+    core::OfflineWindowsFacts facts;
+    facts.productName = L"Windows 10 Enterprise";
+    facts.editionId = L"Professional";
+    facts.installationType = L"Client";
+    facts.displayVersion = L"25H2";
+    facts.build = 26200;
+    facts.ubr = 8037;
+    facts.processorArchitecture = L"AMD64";
+    facts.languages = {L"tr-TR"};
+    facts.defaultLanguage = L"tr-TR";
+    facts.systemRoot = L"WINDOWS";
+    source.install.images.push_back(core::imageInfoFromFacts(facts, 14'732'476'416ULL));
+    core::VirtualDiskInfo disk;
+    disk.virtualSize = 40ULL << 30;
+    disk.fileSize = source.installImageSize;
+    disk.dynamic = true;
+    disk.volumeSize = 42'930'843'648ULL;
+    disk.volumeFree = 28'198'367'232ULL;
+    disk.volumeLabel = L"Windows";
+    disk.volumes = 1;
+    source.disk = disk;
+    const std::filesystem::path vhd = source.path;
+    m_state->setSource(std::move(source));
+    m_state->forgetRecent(vhd); // a made-up file: not into the render's recent list (the Source page of later frames)
+    m_state->select(1);
+    const std::filesystem::path folder = m_state->settings().vhdMountDirectory();
+    if (variant == L"mounted" || variant == L"unmount" || variant == L"done") {
+        demoOverview(variant == L"done" ? std::wstring(L"done") : std::wstring(L"ready"), vhd, folder);
+        if (variant == L"unmount") {
+            m_shell->askUnmount();
+        }
+        return;
+    }
+    m_shell->showPage(m_options.page.value_or(variant == L"iso" ? PageId::Iso : PageId::Images));
+    if (variant == L"confirm") {
+        m_shell->askMountVirtualDisk(vhd, core::changesDiskPath(vhd, m_state->settings().vhdWorkDirectory()), [] {});
+    }
 }
 
 } // namespace wl::app

@@ -23,6 +23,7 @@ constexpr float kButtons = 36.0f;     // the button row under the list
 constexpr float kCompareTop = 32.0f;  // section title band → A / B row
 constexpr float kChoiceWidth = 200.0f;
 constexpr float kDiffTop = 72.0f;     // A / B row → diff header
+constexpr float kItemMin = 200.0f;    // the comparison's item column at a narrow window (D-136)
 
 enum ListColumn : int { kName, kCount };
 enum DiffColumn : int { kMark, kCategory, kItem, kA, kB };
@@ -114,13 +115,28 @@ PresetsPage::PresetsPage(AppState& state, PresetController& controller, const Lo
 
     m_diff = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {L"", 20},
-        {s(Str::CommonCategory), 152},
+        {.title = s(Str::CommonCategory), .width = 152, .minWidth = 110},
         {s(Str::PresetsItem), 0},
-        {L"A", 160},
-        {L"B", 170},
+        {.title = L"A", .width = 160, .minWidth = 110},
+        {.title = L"B", .width = 170, .minWidth = 110},
     });
     m_diff->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState) {
         paintDiffCell(c, row, column, rect);
+    };
+    // D-136: beside the list the comparison is narrow at a small window; the category and the two
+    // values give way to the item, which (with the values) shows whole on hover when still cut.
+    m_diff->setFlexMin(kItemMin);
+    m_diff->cellText = [this](int row, int column) -> ui::TableCellText {
+        if (row < 0 || row >= static_cast<int>(m_rows.size())) {
+            return {};
+        }
+        const auto& diff = m_rows[static_cast<std::size_t>(row)];
+        switch (column) {
+        case kItem: return {diff.label};
+        case kA: return {diff.a};
+        case kB: return {diff.b};
+        default: return {};
+        }
     };
     setAccessible(ui::AccessRole::Group, s(Str::PresetsTitle));
 
@@ -169,6 +185,9 @@ void PresetsPage::reloadList() {
 void PresetsPage::updateDiff() {
     m_rows = m_controller.diff(choice(m_a->selected()), choice(m_b->selected()), m_same->isOn());
     m_summary = PresetController::summarize(m_rows);
+    m_summaryText = m_strings.format(Str::PresetsDiffSummary, {{L"a", std::to_wstring(m_summary.added)},
+                                                               {L"r", std::to_wstring(m_summary.removed)},
+                                                               {L"c", std::to_wstring(m_summary.changed)}});
     m_diff->setRowCount(static_cast<int>(m_rows.size()));
     m_diff->refresh();
     const bool any = m_list->selected() >= 0 && m_list->selected() < static_cast<int>(m_controller.presets().size());
@@ -242,10 +261,14 @@ void PresetsPage::layout() {
 
     const float panelX = b.x + listWidth + kPanelGap;
     const float rowY = top + kCompareTop;
-    m_a->setBounds({panelX, rowY, kChoiceWidth, kControl});
-    m_swap->setBounds({panelX + kChoiceWidth + 8, rowY, 28, kControl});
-    m_b->setBounds({panelX + kChoiceWidth + 44, rowY, kChoiceWidth, kControl});
-    m_same->setBounds({panelX + 2 * kChoiceWidth + 60, rowY, m_same->measure({}).width, kControl});
+    // The A / B choices give way when the panel is narrow (the switch after them ran past the card's
+    // edge at 1200 DIP); the summary is at the right of the "Karşılaştır" band above them.
+    const float sameW = m_same->measure({}).width;
+    const float choiceW = std::clamp(std::floor((b.right() - panelX - 60 - sameW) / 2), 120.0f, kChoiceWidth);
+    m_a->setBounds({panelX, rowY, choiceW, kControl});
+    m_swap->setBounds({panelX + choiceW + 8, rowY, 28, kControl});
+    m_b->setBounds({panelX + choiceW + 44, rowY, choiceW, kControl});
+    m_same->setBounds({panelX + 2 * choiceW + 60, rowY, sameW, kControl});
     const float diffY = top + kDiffTop;
     m_diff->setBounds({panelX, diffY, std::max(b.right() - panelX, 0.0f), std::max(b.bottom() - diffY, 0.0f)});
 }
@@ -258,12 +281,7 @@ void PresetsPage::paint(ui::Canvas& canvas) {
     canvas.drawText(m_strings.get(Str::PresetsCompare), {panelX, top, b.right() - panelX, ui::TableView::kHeader},
                     TypeStyle::Section, Color::TextTertiary);
     canvas.hairlineH(panelX, top + ui::TableView::kHeader - 1, b.right() - panelX, Color::LineSubtle);
-    const std::wstring summary =
-        m_strings.format(Str::PresetsDiffSummary, {{L"a", std::to_wstring(m_summary.added)},
-                                                   {L"r", std::to_wstring(m_summary.removed)},
-                                                   {L"c", std::to_wstring(m_summary.changed)}});
-    const float summaryX = m_same->bounds().right() + 12;
-    canvas.drawText(summary, {summaryX, top + kCompareTop, std::max(b.right() - summaryX, 0.0f), kControl}, TypeStyle::Caption,
+    canvas.drawText(m_summaryText, {panelX, top, std::max(b.right() - panelX, 0.0f), ui::TableView::kHeader}, TypeStyle::Caption,
                     Color::TextSecondary, ui::TextAlign::Trailing);
     if (m_controller.presets().empty()) {
         const RectF list = m_list->bounds();

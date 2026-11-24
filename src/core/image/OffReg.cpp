@@ -86,8 +86,13 @@ std::vector<OffRegKey::Value> OffRegKey::values(bool withData) const {
     // offreg answers a call without a data buffer with ERROR_MORE_DATA and leaves the NAME buffer
     // untouched (2026-10-02: every value then carried the previous one's name). The name is taken
     // from a call that succeeded, with a data buffer grown until the value fits.
-    std::wstring name(16384, L'\0');
-    std::vector<std::uint8_t> data(4096);
+    // Per thread, not per call: the component index asks ~70 000 keys in a row, and 36 KB zeroed
+    // for each was most of the work (audit IMG-10). Nothing here calls back into values().
+    thread_local std::wstring name(16384, L'\0');
+    thread_local std::vector<std::uint8_t> data(4096);
+    if (data.size() > (1u << 20)) {
+        data = std::vector<std::uint8_t>(4096); // one huge value must not stay allocated for good
+    }
     for (DWORD i = 0;; ++i) {
         DWORD status = ERROR_MORE_DATA;
         DWORD nameSize = 0;

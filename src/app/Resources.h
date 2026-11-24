@@ -11,7 +11,8 @@
 
 namespace wl::app {
 
-// The four bundled font files (IBM Plex Sans 400/500/600, JetBrains Mono 400).
+// The bundled font files: Inter and Geist with their monospace companions (D-092), and the wordmark's
+// face (D-147, one weight).
 [[nodiscard]] std::vector<ui::FontBytes> embeddedFonts();
 
 [[nodiscard]] Result<Localization> embeddedStrings(Language language);
@@ -33,5 +34,7 @@ namespace wl::app {
 [[nodiscard]] const std::vector<core::WelcomeLanguage>& embeddedWelcomeLanguages();
 
 [[nodiscard]] HICON appIcon();
+// The same icon as a resource name, for Window to load at its DPI (taskbar / Alt+Tab, WM_SETICON).
+[[nodiscard]] const wchar_t* appIconResource();
 
 } // namespace wl::app

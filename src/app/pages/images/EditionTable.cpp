@@ -33,7 +33,7 @@ constexpr float kArch = 52.0f;
 constexpr float kBuild = 92.0f;
 constexpr float kLang = 52.0f;
 constexpr float kSize = 76.0f;
-constexpr float kStatus = 76.0f;
+constexpr float kStatus = 116.0f; // 2026-11-11: "Yeniden adlandırılıyor", "Dışa aktarılıyor" (was 76: "Bağlanıyor")
 
 // Fixed columns from the right; "Değiştirilme" only while the name keeps at least kMinName.
 struct Columns {
@@ -65,6 +65,29 @@ Columns columnsFor(RectF b) {
 }
 } // namespace
 
+std::optional<Str> operationRowWord(const EngineOperation& op) {
+    using Kind = EngineOperation::Kind;
+    const Kind kind = op.kind == Kind::Preparing ? op.purpose.value_or(Kind::Preparing) : op.kind;
+    switch (kind) {
+    case Kind::Mounting: return Str::ImagesMountingState;
+    case Kind::Preparing: return Str::ImagesRowPreparing;
+    case Kind::Unmounting: return Str::ImagesRowUnmounting;
+    case Kind::Exporting: return Str::ImagesRowExporting;
+    case Kind::Deleting: return Str::ImagesRowDeleting;
+    case Kind::Renaming: return Str::ImagesRowRenaming;
+    case Kind::Duplicating: return Str::ImagesRowDuplicating;
+    case Kind::Moving: return Str::ImagesRowMoving;
+    case Kind::Verifying: return Str::ImagesRowVerifying;
+    case Kind::Editions: return Str::ImagesRowEditions;
+    case Kind::Health: return Str::ImagesRowHealth;
+    case Kind::Reading:
+    case Kind::Cleaning:
+    case Kind::Adopting:
+    case Kind::Remounting: break; // not about an edition of this list
+    }
+    return std::nullopt;
+}
+
 EditionTable::EditionTable(const Localization& strings, Language language) : m_strings(strings), m_language(language) {
     m_scrollBar = &add<ui::ScrollBar>();
     m_scrollBar->onScroll = [this](float offset) { setOffset(offset); };
@@ -95,7 +118,17 @@ void EditionTable::setSelection(std::optional<int> primary, const std::vector<in
 
 void EditionTable::setRowState(std::optional<int> index, RowState state, bool dimOthers) {
     m_stateIndex = index;
+    m_workingIndexes = index ? std::vector<int>{*index} : std::vector<int>{};
     m_state = state;
+    m_dimOthers = dimOthers;
+    invalidate();
+}
+
+void EditionTable::setWorkingRows(std::vector<int> indexes, Str word, bool dimOthers) {
+    m_stateIndex = indexes.empty() ? std::nullopt : std::optional<int>(indexes.front());
+    m_workingIndexes = std::move(indexes);
+    m_workingWord = word;
+    m_state = RowState::Working;
     m_dimOthers = dimOthers;
     invalidate();
 }
@@ -329,7 +362,8 @@ void EditionTable::paint(ui::Canvas& canvas) {
         const auto& image = m_images[static_cast<std::size_t>(i)];
         const bool selected = m_selection.contains(i);
         const bool primary = i == m_selection.primary;
-        const bool stateRow = m_stateIndex && *m_stateIndex == image.index;
+        const bool stateRow = m_state == RowState::Working ? std::ranges::find(m_workingIndexes, image.index) != m_workingIndexes.end()
+                                                           : m_stateIndex && *m_stateIndex == image.index;
         if (selected) {
             canvas.fillRect(row, Color::AccentSubtle);
             if (primary) {
@@ -367,7 +401,8 @@ void EditionTable::paint(ui::Canvas& canvas) {
         canvas.drawText(formatBytes(image.totalBytes, m_language), {c.size, row.y, kSize, kRow}, TypeStyle::Body,
                         Color::TextPrimary, ui::TextAlign::Trailing);
 
-        // Durum: "● Bağlı" (accent), "● Bağlanıyor" (warning), "● Bağlanamaz" (risk), else "—".
+        // Durum: "● Bağlı" (accent), "● Siliniyor" / "● Bağlanıyor" … (warning: the work on it), "● Bağlanamaz"
+        // (risk), else "—".
         std::wstring status = L"\u2014";
         Color statusInk = Color::TextTertiary;
         bool dot = false;
@@ -376,7 +411,7 @@ void EditionTable::paint(ui::Canvas& canvas) {
             statusInk = Color::AccentText;
             dot = true;
         } else if (stateRow && m_state == RowState::Working) {
-            status = m_strings.get(Str::ImagesMountingState);
+            status = m_strings.get(m_workingWord);
             statusInk = Color::StatusWarning;
             dot = true;
         } else if (stateRow && m_state == RowState::Failed) {

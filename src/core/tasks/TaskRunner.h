@@ -8,6 +8,7 @@
 #include <condition_variable>
 #include <deque>
 #include <mutex>
+#include <optional>
 #include <thread>
 
 namespace wl::core {
@@ -15,7 +16,7 @@ namespace wl::core {
 class TaskRunner {
 public:
     TaskRunner();
-    ~TaskRunner(); // cancels queued jobs' tokens, finishes the running job, joins
+    ~TaskRunner(); // cancels the tokens of the queued jobs and of the running one, waits for that one, joins
     TaskRunner(const TaskRunner&) = delete;
     TaskRunner& operator=(const TaskRunner&) = delete;
 
@@ -46,7 +47,8 @@ public:
     }
 
     [[nodiscard]] bool onEngineThread() const noexcept;
-    // Blocks until everything queued so far has run (tests, shutdown ordering).
+    // Blocks until everything queued so far has run (tests, shutdown ordering). Returns at once
+    // when a job calls it on the engine thread: it would wait for itself.
     void drain();
 
 private:
@@ -61,6 +63,7 @@ private:
     std::condition_variable m_wake;
     std::condition_variable m_idle;
     std::deque<Job> m_jobs;
+    std::optional<CancelToken> m_running; // the job on the thread now: the destructor cancels it too
     bool m_busy = false;
     bool m_stopping = false;
     std::thread m_thread;

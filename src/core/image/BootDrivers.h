@@ -139,6 +139,12 @@ struct BootDriver {
 // ~1.4 s). While a scope is open, these readers keep what they read between steps as long as the
 // files it came from are unchanged (size and last write: the hive DISM lets go of before a step, the
 // module itself). Apply opens one for its run; a single call and the tests read afresh.
+// What a scan scope kept is of no use once the scope is closed (the next one has another number and
+// reads again), but it stayed in the process: the resolved imports of every module of the image, the
+// component index … — by the look of it 100 MB and more after an Uygula, for as long as the app
+// stayed open. A cache registers how to let go of its own; the last scope to close calls them all.
+void releaseAtScanEnd(void (*release)());
+
 class ImageScanScope {
 public:
     ImageScanScope();

@@ -15,20 +15,27 @@ using ui::tokens::Color;
 using ui::tokens::TypeStyle;
 
 namespace {
-// D-107 / D-108: 13px names over 12px details, 42 per result, 32 per command.
+// D-107 / D-108: names over smaller details. D-136: every height from the tokens — the names' and
+// details' line heights with a spacing step around them, a command row as a table row, the
+// search row a control with a spacing step above and below, the group title its Section line.
+namespace tk = ui::tokens;
+constexpr float lineOf(TypeStyle style) {
+    return tk::kTypeStyles[static_cast<std::size_t>(style)].lineHeight;
+}
 constexpr float kWidth = 560.0f;
 constexpr float kTop = 80.0f;
 constexpr float kMargin = 8.0f;       // to the window edges when it is small
-constexpr float kSearchRow = 34.0f; // D-109
-constexpr float kGroupPad = 8.0f;     // above the group title and under the last row
-constexpr float kHeader = 26.0f;
-constexpr float kResultRow = 36.0f; // D-109: the name over its detail (18 + 16)
-constexpr float kCommandRow = 24.0f; // D-109
+constexpr float kSearchRow = tk::size::control + 2 * tk::spacing::s2;
+constexpr float kGroupPad = tk::spacing::s4; // above the group title and under the last row
+constexpr float kHeader = lineOf(TypeStyle::Section) + tk::spacing::s3;
+constexpr float kNameLine = lineOf(TypeStyle::Body);
+constexpr float kDetailLine = lineOf(TypeStyle::Caption);
+constexpr float kResultPad = tk::spacing::s2; // above the name, under the detail
+constexpr float kResultRow = kNameLine + kDetailLine + 2 * kResultPad;
+constexpr float kCommandRow = tk::size::row;
 constexpr float kSide = 16.0f;
 constexpr float kTextX = 40.0f;       // icon 16 + gap 8 after the side padding
 constexpr float kRowInset = 4.0f;     // the selected row's background
-constexpr float kNameLine = 18.0f;
-constexpr float kDetailLine = 16.0f;
 constexpr float kEmpty = 72.0f;
 constexpr float kKeysGap = 8.0f;
 } // namespace
@@ -153,8 +160,9 @@ int CommandPalette::rowAt(ui::PointF p) const {
 void CommandPalette::paintRow(ui::Canvas& canvas, const PaletteItem& item, RectF row, bool selected) const {
     const bool result = item.kind != PaletteItem::Kind::Command;
     if (selected) {
+        // D-137: the keyboard's row as a menu's hovered row (bg.raised was one shade from the panel).
         canvas.fillRoundRect({row.x + kRowInset, row.y, row.width - 2 * kRowInset, row.height}, ui::tokens::radius::menu,
-                             Color::BgRaised);
+                             Color::BgHover);
     }
     canvas.drawIcon(item.icon, {row.x + kSide, row.y + (row.height - ui::tokens::size::icon) / 2}, Color::TextSecondary);
 
@@ -169,7 +177,7 @@ void CommandPalette::paintRow(ui::Canvas& canvas, const PaletteItem& item, RectF
     const float x = row.x + kTextX;
     const float width = std::max(right - x, 0.0f);
     const TypeStyle style = selected ? TypeStyle::BodyStrong : TypeStyle::Body;
-    const RectF name = result ? RectF{x, row.y + 4, width, kNameLine}
+    const RectF name = result ? RectF{x, row.y + kResultPad, width, kNameLine}
                               : RectF{x, row.y + (row.height - kNameLine) / 2, width, kNameLine};
     if (item.markLength > 0 && item.markAt + item.markLength <= item.name.size()) {
         const std::wstring_view text = item.name;
@@ -181,7 +189,7 @@ void CommandPalette::paintRow(ui::Canvas& canvas, const PaletteItem& item, RectF
     }
     canvas.drawText(item.name, name, style, Color::TextPrimary);
     if (result) {
-        canvas.drawText(item.detail, {x, row.y + 4 + kNameLine, width, kDetailLine}, TypeStyle::Caption, Color::TextTertiary);
+        canvas.drawText(item.detail, {x, row.y + kResultPad + kNameLine, width, kDetailLine}, TypeStyle::Caption, Color::TextTertiary);
     }
 }
 

@@ -40,6 +40,13 @@ Result<void> swapIntoPlace(const std::filesystem::path& original, const std::fil
     std::error_code ec;
     const std::filesystem::path old = original.wstring() + L".old";
     std::filesystem::remove(old, ec);
+    // Same name: one rename that replaces, so there is no moment with no file under it — between
+    // the two renames below a crash left only "<original>.old" (audit A19). When Windows refuses
+    // (read-only, in use), the two steps report it as they always did.
+    if (original == destination &&
+        MoveFileExW(fresh.c_str(), destination.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        return {};
+    }
     std::filesystem::rename(original, old, ec);
     if (ec) {
         const auto code = ec.value();

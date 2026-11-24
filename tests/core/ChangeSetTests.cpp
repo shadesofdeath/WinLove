@@ -107,3 +107,88 @@ TEST_CASE("ChangeSet batches: one undo step for addAll / removeAll") {
     CHECK(set.size() == 1);
     CHECK(set.removeAll({{OpKind::SetRegistryValue, L"HKCU\\A::nope"}}) == 0);
 }
+
+TEST_CASE("audit: the slot index keeps find()'s rules — first match, any case, any script") {
+    ChangeSet set;
+    set.add({OpKind::RemovePackage, L"Çalışma~1"});
+    set.add({OpKind::RemovePackage, L"Résumé"});
+    set.add({OpKind::RemoveAppx, L"Résumé"}); // same target, another kind: another slot
+    CHECK(set.size() == 3);
+    CHECK(set.find(OpKind::RemovePackage, L"RÉSUMÉ") == &set.operations()[1]);
+    CHECK(set.find(OpKind::RemoveAppx, L"résumé") == &set.operations()[2]);
+    CHECK(set.find(OpKind::RemovePackage, L"Resume") == nullptr); // one placeholder for é, but iequals decides
+    set.add({OpKind::RemovePackage, L"RÉSUMÉ", L"v2"});           // replaces in place
+    CHECK(set.size() == 3);
+    CHECK(set.operations()[1].value == L"v2");
+    CHECK(set.remove(OpKind::RemovePackage, L"çalışma~1"));
+    CHECK(set.find(OpKind::RemovePackage, L"résumé") == &set.operations()[0]); // positions follow the erase
+    CHECK(set.undo());
+    CHECK(set.find(OpKind::RemovePackage, L"Çalışma~1") == &set.operations()[0]);
+    const ChangeSet copy = set.withoutHistory();
+    CHECK(copy.operations().size() == 3);
+    CHECK_FALSE(copy.canUndo());
+    CHECK(copy.find(OpKind::RemoveAppx, L"RÉSUMÉ") != nullptr);
+}
+
+TEST_CASE("audit: removeAll takes the slots out in one pass and keeps the order of the rest") {
+    ChangeSet set;
+    for (int i = 0; i < 10; ++i) {
+        set.add({OpKind::RemovePackage, L"p" + std::to_wstring(i)});
+    }
+    CHECK(set.removeAll({{OpKind::RemovePackage, L"P3"}, {OpKind::RemovePackage, L"p7"}, {OpKind::RemovePackage, L"p3"},
+                         {OpKind::RemoveAppx, L"p1"}, {OpKind::RemovePackage, L"none"}}) == 2);
+    REQUIRE(set.size() == 8);
+    const wchar_t* left[] = {L"p0", L"p1", L"p2", L"p4", L"p5", L"p6", L"p8", L"p9"};
+    for (std::size_t i = 0; i < 8; ++i) {
+        CHECK(set.operations()[i].target == left[i]);
+        CHECK(set.find(OpKind::RemovePackage, left[i]) == &set.operations()[i]);
+    }
+    CHECK(set.undo()); // one step for the batch
+    CHECK(set.size() == 10);
+    CHECK(set.removeAll({{OpKind::RemovePackage, L"none"}}) == 0);
+}
+
+TEST_CASE("audit PG-04: a group of changes is one undo step") {
+    ChangeSet set;
+    set.add({OpKind::RemovePackage, L"before"});
+    set.beginGroup();
+    for (int i = 0; i < 50; ++i) {
+        set.add({OpKind::RemoveCapability, L"cap" + std::to_wstring(i)});
+    }
+    set.remove(OpKind::RemoveCapability, L"cap0");
+    set.endGroup();
+    CHECK(set.size() == 50);
+    CHECK(set.undo());
+    CHECK(set.size() == 1); // the whole group
+    CHECK(set.redo());
+    CHECK(set.size() == 50);
+    set.add({OpKind::RemovePackage, L"after"}); // outside a group: its own step again
+    CHECK(set.undo());
+    CHECK(set.size() == 50);
+}
+
+TEST_CASE("audit OPS-03: the undo history is bounded by size, the newest state always stays") {
+    ChangeSet set;
+    // What the welcome puts in the queue: one step of ~1 MB.
+    set.add({OpKind::WriteFile, L"big", std::wstring(512 * 1024, L'x')});
+    for (int i = 0; i < 300; ++i) {
+        set.add({OpKind::RemovePackage, L"p" + std::to_wstring(i)});
+    }
+    int steps = 0;
+    while (set.undo()) {
+        ++steps;
+    }
+    CHECK(steps >= 1);
+    CHECK(steps <= 64);  // 64 MB of ~1 MB states; it was 200 (200 MB)
+    CHECK(set.size() >= 236); // never further back than what was kept
+
+    ChangeSet small; // an ordinary queue keeps its 200 steps
+    for (int i = 0; i < 300; ++i) {
+        small.add({OpKind::RemovePackage, L"p" + std::to_wstring(i)});
+    }
+    steps = 0;
+    while (small.undo()) {
+        ++steps;
+    }
+    CHECK(steps == 200);
+}

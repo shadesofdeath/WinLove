@@ -57,8 +57,10 @@ def generate() -> str:
             f'inline constexpr const wchar_t* kUiFallback = L"{fam["uiFallback"]}";',
             f'inline constexpr const wchar_t* kMono = L"{fam["mono"]}";',
             f'inline constexpr const wchar_t* kMonoFallback = L"{fam["monoFallback"]}";',
+            f'inline constexpr const wchar_t* kBrand = L"{fam["brand"]}";',
+            f'inline constexpr const wchar_t* kBrandFallback = L"{fam["brandFallback"]}";',
             "} // namespace font",
-            "enum class FontRole : std::uint8_t { Ui, Mono };",
+            "enum class FontRole : std::uint8_t { Ui, Mono, Brand };",
             "struct TypeSpec {", "    FontRole role;", "    float size;", "    float lineHeight;",
             "    std::uint16_t weight;", "    float letterSpacing;", "    bool uppercase;", "};",
             "enum class TypeStyle : std::uint8_t {"]
@@ -67,7 +69,7 @@ def generate() -> str:
     out += ["    Count", "};",
             f"inline constexpr std::array<TypeSpec, {len(styles)}> kTypeStyles = {{{{"]
     for name, s in styles.items():
-        role = "FontRole::Mono" if s.get("family") == "mono" else "FontRole::Ui"
+        role = {"mono": "FontRole::Mono", "brand": "FontRole::Brand"}.get(s.get("family"), "FontRole::Ui")
         upper = "true" if s.get("transform") == "uppercase" else "false"
         out.append(f"    {{{role}, {num(s['size'])}, {num(s['lineHeight'])}, {s['weight']}, "
                    f"{num(s['letterSpacing'])}, {upper}}}, // {name}")

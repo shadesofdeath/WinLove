@@ -2,6 +2,7 @@
 // AppState::setImageValues / setServiceList; the reader itself is tested in core/RegistryReadTests.
 #include "app/controllers/ImageSettingsController.h"
 #include "app/controllers/ImageValuesController.h"
+#include "support/UiThread.h"
 
 #include <doctest.h>
 
@@ -175,9 +176,9 @@ TEST_CASE("image values: text settings show the image's string") {
 TEST_CASE("image values: the controller reads once per mount and ignores a stale answer") {
     AppState state{scratch(L"recent2.json"), scratch(L"settings2.json")};
     int reads = 0;
-    std::vector<std::function<void()>> posted;
+    test::UiThread ui{test::UiThread::Mode::Queued};
     ImageValuesController controller(
-        state, ImageValueProbes{}, [&](std::function<void()> f) { posted.push_back(std::move(f)); },
+        state, ImageValueProbes{}, ui.post(),
         [&](const std::filesystem::path& mountDir, const ImageValueProbes&) -> Result<AppState::ImageValues> {
             ++reads;
             AppState::ImageValues v{AppState::ImageValues::Status::Ready, mountDir, {L"x"}, {}, {}};
@@ -192,10 +193,7 @@ TEST_CASE("image values: the controller reads once per mount and ignores a stale
     controller.load(); // already loading
     state.engine().drain();
     CHECK(reads == 1);
-    for (auto& p : posted) {
-        p();
-    }
-    posted.clear();
+    ui.run();
     REQUIRE(state.imageValues());
     CHECK(state.imageValues()->status == AppState::ImageValues::Status::Ready);
     CHECK(state.imageValues()->held.contains(L"x"));
@@ -207,8 +205,6 @@ TEST_CASE("image values: the controller reads once per mount and ignores a stale
     controller.load(/*force=*/true);
     state.engine().drain();
     state.setMounted(std::nullopt);
-    for (auto& p : posted) {
-        p();
-    }
+    ui.run();
     CHECK_FALSE(state.imageValues().has_value());
 }

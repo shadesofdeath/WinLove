@@ -55,6 +55,12 @@ ComponentController::ComponentController(AppState& state, AppxCatalog catalog, L
     : m_state(state), m_catalog(std::move(catalog)), m_systemCatalog(std::move(systemCatalog)), m_language(language),
       m_post(std::move(postToUi)) {
     m_subscription = m_state.subscribe([this](AppState::Change change) {
+        // The item list does not depend on the queue: a queue change that is the only thing between
+        // the list and now keeps it (audit CTL-04). Anything else told, or told without us hearing
+        // of it in between, leaves the key behind and the list is built again.
+        if (change == AppState::Change::Queue && m_itemsValid && m_itemsRevision + 1 == m_state.revision()) {
+            m_itemsRevision = m_state.revision();
+        }
         if (change == AppState::Change::Components) {
             readSystem();
             readInventory();
@@ -408,10 +414,16 @@ void ComponentController::addInventory(std::vector<Item>& items) const {
     }
 }
 
-std::vector<ComponentController::Item> ComponentController::allItems() const {
+const std::vector<ComponentController::Item>& ComponentController::allItems() const {
+    static const std::vector<Item> kNone;
     const auto& list = m_state.appxList();
     if (!list || list->status != AppState::AppxList::Status::Ready) {
-        return {};
+        return kNone; // asked before the cache: a new mount drops the lists before it tells anyone
+    }
+    // Audit CTL-04: ~1,300 items with their recipes were built again by every caller — twice or
+    // more per click, once per operation of a preset. Kept until the state tells of a change.
+    if (m_itemsValid && m_itemsRevision == m_state.revision()) {
+        return m_items;
     }
     std::vector<Item> items;
     std::vector<Item> pending; // D-113: rows a catalog entry adds after itself (its 32-bit part)
@@ -543,7 +555,10 @@ std::vector<ComponentController::Item> ComponentController::allItems() const {
         pending.clear();
     }
     placeDependents(items);
-    return items;
+    m_items = std::move(items);
+    m_itemsRevision = m_state.revision();
+    m_itemsValid = true;
+    return m_items;
 }
 
 // D-113: each catalog item under the nearest present entry it depends on (parentKey, same category
@@ -568,7 +583,12 @@ void ComponentController::placeDependents(std::vector<Item>& items) const {
         }
         return d;
     };
-    std::ranges::stable_sort(order, [&](std::size_t a, std::size_t b) { return depth(items[a].system) < depth(items[b].system); });
+    // Once per item, not once per comparison (each walks the catalog; audit CTL-04).
+    std::vector<int> depths(items.size(), 0);
+    for (const std::size_t i : order) {
+        depths[i] = depth(items[i].system);
+    }
+    std::ranges::stable_sort(order, [&](std::size_t a, std::size_t b) { return depths[a] < depths[b]; });
     for (const std::size_t i : order) {
         Item& item = items[i];
         std::vector<std::wstring> containers;
@@ -617,7 +637,7 @@ std::vector<ComponentController::Group> ComponentController::groups() const {
     if (uncategorized == categories.size()) {
         groups.push_back({static_cast<int>(categories.size()), m_language == Language::Turkish ? L"Kategorisiz" : L"Uncategorized", {}, 0});
     }
-    for (auto& item : allItems()) {
+    for (const auto& item : allItems()) {
         if (item.kind == Item::Kind::Cleanup || item.kind == Item::Kind::Shrink) {
             continue;
         }
@@ -628,7 +648,7 @@ std::vector<ComponentController::Group> ComponentController::groups() const {
             }
         }
         groups[g].size += item.size;
-        groups[g].items.push_back(std::move(item));
+        groups[g].items.push_back(item);
     }
     for (auto& group : groups) {
         std::ranges::sort(group.items, [](const Item& a, const Item& b) { return _wcsicmp(a.name.c_str(), b.name.c_str()) < 0; });
@@ -652,6 +672,7 @@ ComponentController::Level ComponentController::level() const {
 
 void ComponentController::setLevel(Level wanted) {
     // Derin: the store cleanup; Maksimum: the cleanup and the shrink; Varsayılan+: neither.
+    const auto batch = m_state.batchQueue();
     for (const auto& item : modeItems()) {
         const bool want = item.kind == Item::Kind::Cleanup ? wanted != Level::DefaultPlus : wanted == Level::Maximum;
         if (want && !queued(item)) {
@@ -779,6 +800,9 @@ core::ops::CompatBlock ComponentController::block(const Item& item) const {
     if (!blockOf || queued(item)) {
         return {};
     }
+    if (blockOfRecipe && kindOf(item) == OpKind::RemoveComponent) {
+        return blockOfRecipe(Operation{OpKind::RemoveComponent, item.packageName}, item.recipe);
+    }
     return blockOf(operationFor(item));
 }
 
@@ -818,7 +842,7 @@ void ComponentController::toggle(const Item& item) {
 }
 
 std::vector<ComponentController::Item> ComponentController::dependents(const Item& item) const {
-    const auto all = allItems();
+    const auto& all = allItems();
     std::vector<Item> out;
     std::set<std::wstring> keys{item.packageName};
     for (bool grew = true; grew;) {
@@ -835,7 +859,7 @@ std::vector<ComponentController::Item> ComponentController::dependents(const Ite
 }
 
 std::vector<ComponentController::Item> ComponentController::dependencies(const Item& item) const {
-    const auto all = allItems();
+    const auto& all = allItems();
     std::vector<Item> out;
     std::wstring key = item.parentKey;
     for (int guard = 0; !key.empty() && guard < 64; ++guard) {
@@ -863,6 +887,7 @@ void ComponentController::queueItem(const Item& item) {
 
 void ComponentController::toggleGroup(const Group& group) {
     const bool all = check(group) == Check::On;
+    const auto batch = m_state.batchQueue(); // one notification, one undo step (audit APP-05)
     for (const auto& item : group.items) {
         if (all) {
             m_state.unqueue(kindOf(item), item.packageName);
@@ -893,6 +918,10 @@ void ComponentController::setRemoved(const std::vector<Item>& items, bool remove
 
 void ComponentController::resetChanges() {
     m_state.unqueueIf([](const Operation& op) { return isComponentKind(op.kind); });
+}
+
+std::wstring_view ComponentController::shrinkPolicyTarget() noexcept {
+    return kNoAutoUpdateTarget;
 }
 
 std::size_t ComponentController::queuedCount() const {

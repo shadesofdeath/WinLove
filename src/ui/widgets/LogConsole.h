@@ -38,6 +38,12 @@ public:
     void setLines(std::vector<LogLine> lines);
     void append(std::span<const LogLine> lines);
     [[nodiscard]] std::size_t lineCount() const noexcept { return m_lines.size(); }
+    // Drops the oldest `count` lines. Unlike setLines() of the shortened list it keeps what the
+    // user sees: the selection and the scroll position move up with the lines, the "new lines"
+    // count stays (audit PG-09).
+    void dropFront(std::size_t count);
+    // At most this many lines are kept: append() drops the oldest beyond it. 0 (default) = no limit.
+    void setLineLimit(std::size_t limit);
 
     void setHighlight(std::wstring needle); // case-insensitive, message column
     void setAutoScroll(bool on);
@@ -68,6 +74,7 @@ private:
     float m_offset = 0;
     bool m_autoScroll = true;
     std::size_t m_unseen = 0; // lines appended while not following
+    std::size_t m_lineLimit = 0; // 0 = unlimited
     int m_anchor = -1;
     int m_selFrom = -1;
     int m_selTo = -1;

@@ -5,7 +5,9 @@
 #include "app/pages/images/EditionSelection.h"
 #include "app/shell/Shell.h"
 #include "support/TestGraphics.h"
+#include "support/UiThread.h"
 #include "ui/widget/Host.h"
+#include "app/pages/images/EditionTable.h"
 
 #include <doctest.h>
 
@@ -25,6 +27,22 @@ std::filesystem::path scratch(const wchar_t* name) {
     return dir / name;
 }
 
+// The Images page's editions table under `root`.
+const ui::Widget* findTable(const ui::Widget& root) {
+    for (const auto& child : root.children()) {
+        if (!child->visible()) {
+            continue;
+        }
+        if (const auto* table = dynamic_cast<const EditionTable*>(child.get())) {
+            return table;
+        }
+        if (const auto* found = findTable(*child)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
 core::SourceInfo source(core::ImageFormat format, const wchar_t* installImage, int editions) {
     core::SourceInfo info;
     info.path = scratch(L"missing") / L"install.wim"; // never on disk: nothing here may touch a file
@@ -42,18 +60,14 @@ core::SourceInfo source(core::ImageFormat format, const wchar_t* installImage, i
 
 struct Fixture {
     AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
-    std::mutex mutex;
-    std::vector<std::function<void()>> posted; // engine thread → "UI thread" (the test)
+    test::UiThread ui{test::UiThread::Mode::Queued}; // engine thread → "UI thread" (the test)
     std::vector<Str> refused;
     std::vector<ImageController::Failure> failed;
     std::vector<std::wstring> succeeded;
 
     ImageController controller{state,
                                ImageController::Events{
-                                   [this](std::function<void()> fn) {
-                                       std::scoped_lock lock(mutex);
-                                       posted.push_back(std::move(fn));
-                                   },
+                                   ui.post(),
                                    [this](ImageController::Failure f, const Error&) { failed.push_back(f); },
                                    [this](Str, std::wstring detail) { succeeded.push_back(std::move(detail)); },
                                    [this](Str why) { refused.push_back(why); },
@@ -65,14 +79,7 @@ struct Fixture {
     // Lets the engine job finish, then runs what it posted, in order.
     void settle() {
         state.engine().drain();
-        std::vector<std::function<void()>> run;
-        {
-            std::scoped_lock lock(mutex);
-            run.swap(posted);
-        }
-        for (auto& fn : run) {
-            fn();
-        }
+        ui.run();
     }
 };
 
@@ -147,10 +154,10 @@ TEST_CASE("editions: right click → \"Yalnız bu sürümü tut…\" → confirm
     const Localization strings = Localization::fromJson(text.str()).value();
 
     AppState state{scratch(L"recent-shell.json"), scratch(L"settings-shell.json")};
-    std::vector<std::function<void()>> posted;
+    test::UiThread ui{test::UiThread::Mode::Queued}; // the reader / engine threads' posts wait for this thread
     Shell::Services services;
     services.minimize = services.toggleMaximize = services.close = services.toggleTheme = [] {};
-    services.postToUi = [&](std::function<void()> fn) { posted.push_back(std::move(fn)); };
+    services.postToUi = ui.post();
     ui::Host host(ui::HostServices{[] {}, nullptr, nullptr, test::graphics().text.get()});
     auto shell = std::make_unique<Shell>(strings, Language::Turkish, state, services);
     Shell* raw = shell.get();
@@ -162,9 +169,13 @@ TEST_CASE("editions: right click → \"Yalnız bu sürümü tut…\" → confirm
     host.layout({1440, 900});
 
     auto key = [&](UINT vk) { host.onKeyDown(ui::KeyEvent{vk, false, false, false}); };
-    // Row 4 of the table (D-109: title 34 + ribbon 50 + hint 34, the card's tab 26 and 6 in, toolbar +
-    // caption + header, rows of 23.5 centered from 250): the right click selects it.
-    REQUIRE(host.onContextMenu({400, 320}));
+    // Row 4 of the table, wherever the page lays it out (D-136: the metrics follow the tokens; this
+    // was a fixed point of the D-109 layout): the right click selects it.
+    const ui::Widget* table = findTable(*raw);
+    REQUIRE(table != nullptr);
+    const ui::RectF t = table->bounds(); // header (tableHead), then rows (tableRow) from the top
+    const float row4 = t.y + ui::tokens::size::tableHead + 3.5f * ui::tokens::size::tableRow;
+    REQUIRE(host.onContextMenu({t.x + t.width / 2, row4}));
     host.layout({1440, 900});
     CHECK(state.selectedIndex() == 4);
     // Bağla · Dışa aktar · Yeniden adlandır… · Çoğalt… · Yukarı taşı · Aşağı taşı · Sürümü sil… · Yalnız bu sürümü tut…
@@ -181,9 +192,7 @@ TEST_CASE("editions: right click → \"Yalnız bu sürümü tut…\" → confirm
     CHECK(state.operation()->kind == EngineOperation::Kind::Deleting);
     CHECK(state.operation()->edition == L"5 sürüm");
     state.engine().drain(); // the fake WIM is not on disk: the job fails, nothing changes
-    for (auto& fn : std::vector(std::move(posted))) {
-        fn();
-    }
+    ui.run();
     CHECK_FALSE(state.operation().has_value());
     CHECK(state.source()->install.images.size() == 6);
 }
@@ -284,10 +293,10 @@ TEST_CASE("editions: the marked ones are deleted together; \"keep only\" keeps t
     const Localization strings = Localization::fromJson(text.str()).value();
 
     AppState state{scratch(L"recent-many.json"), scratch(L"settings-many.json")};
-    std::vector<std::function<void()>> posted;
+    test::UiThread ui{test::UiThread::Mode::Queued}; // the reader / engine threads' posts wait for this thread
     Shell::Services services;
     services.minimize = services.toggleMaximize = services.close = services.toggleTheme = [] {};
-    services.postToUi = [&](std::function<void()> fn) { posted.push_back(std::move(fn)); };
+    services.postToUi = ui.post();
     ui::Host host(ui::HostServices{[] {}, nullptr, nullptr, test::graphics().text.get()});
     auto shell = std::make_unique<Shell>(strings, Language::Turkish, state, services);
     Shell* raw = shell.get();
@@ -303,10 +312,7 @@ TEST_CASE("editions: the marked ones are deleted together; \"keep only\" keeps t
     };
     auto settle = [&] {
         state.engine().drain();
-        for (auto& fn : std::vector(std::move(posted))) {
-            fn();
-        }
-        posted.clear();
+        ui.run();
     };
 
     state.selectMany({2, 3}, 3);

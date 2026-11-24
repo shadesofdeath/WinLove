@@ -58,6 +58,8 @@ public:
     void clearCreatedTasks();
 
     [[nodiscard]] int changedCount() const; // nav badge: SetTaskState + CreateTask operations
+    // D-152: the page's Sıfırla — every task change and every created task leave the queue (one undo step).
+    void resetChanges();
 
 private:
     void queueCreatedTasks(const std::vector<core::CreatedTask>& tasks);

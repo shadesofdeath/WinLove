@@ -44,6 +44,19 @@ std::wstring trim(std::wstring_view s) {
     return std::wstring(text::trim(s));
 }
 
+// The next white-space separated word of `line` from `at` on (`at` moves past it); empty at the
+// end. By hand: a stream per line is what made a 100 000 line block list slow (audit IMG-14).
+std::wstring_view nextWord(std::wstring_view line, std::size_t& at) {
+    while (at < line.size() && std::iswspace(static_cast<wint_t>(line[at])) != 0) {
+        ++at;
+    }
+    const std::size_t from = at;
+    while (at < line.size() && std::iswspace(static_cast<wint_t>(line[at])) == 0) {
+        ++at;
+    }
+    return line.substr(from, at - from);
+}
+
 } // namespace
 
 bool validHostsSection(std::wstring_view id) {
@@ -78,23 +91,20 @@ bool validHostAddress(std::wstring_view address) {
 std::vector<HostEntry> parseHosts(std::wstring_view text) {
     std::vector<HostEntry> entries;
     std::set<std::wstring> seen;
-    for (auto line : splitLines(text)) {
-        if (const auto hash = line.find(L'#'); hash != std::wstring::npos) {
-            line.erase(hash);
-        }
-        std::wistringstream words(line);
-        std::wstring address;
-        if (!(words >> address) || !validHostAddress(address)) {
+    for (const auto& whole : splitLines(text)) {
+        const std::wstring_view line = std::wstring_view(whole).substr(0, whole.find(L'#')); // npos: the whole line
+        std::size_t at = 0;
+        const std::wstring address(nextWord(line, at));
+        if (address.empty() || !validHostAddress(address)) {
             continue;
         }
-        std::wstring name;
-        while (words >> name) {
-            name = text::lower(name);
+        for (auto word = nextWord(line, at); !word.empty(); word = nextWord(line, at)) {
+            std::wstring name = text::lower(word);
             if (name == L"localhost" || name == L"localhost.localdomain" || name == L"local" || name == L"broadcasthost" ||
                 name == L"0.0.0.0" || !validHostName(name) || !seen.insert(name).second) {
                 continue;
             }
-            entries.push_back({address, name});
+            entries.push_back({address, std::move(name)});
         }
     }
     return entries;
@@ -195,8 +205,9 @@ Result<void> applyHostsSection(const std::filesystem::path& mountDir, std::wstri
         return fail(ErrorCode::InvalidArgument, L"not a hosts section id", std::wstring(id));
     }
     // Only what parses is written: the value comes from presets and imported files.
+    const auto parsed = parseHosts(entries);
     std::wstring clean;
-    for (const auto& e : parseHosts(entries)) {
+    for (const auto& e : parsed) {
         clean += e.address + L" " + e.name + L"\r\n";
     }
     const auto file = hostsPath(mountDir);
@@ -204,7 +215,13 @@ Result<void> applyHostsSection(const std::filesystem::path& mountDir, std::wstri
     if (!std::filesystem::is_directory(file.parent_path(), ec)) {
         return fail(ErrorCode::NotFound, L"the image has no drivers\\etc folder", file.parent_path().wstring());
     }
-    const std::wstring text = setHostsSection(readText(file), id, clean);
+    // A file that is there but cannot be read is not an empty one: writing over it would lose
+    // every line that is not ours (audit IMG-13).
+    const auto existing = readFileBytes(file);
+    if (!existing && existing.error().code != ErrorCode::NotFound) {
+        return std::unexpected(existing.error());
+    }
+    const std::wstring text = setHostsSection(existing ? utf8::decodeText(*existing) : std::wstring(), id, clean);
     SetFileAttributesW(file.c_str(), FILE_ATTRIBUTE_NORMAL); // a read-only hosts file is still ours to change
     std::ofstream out(file, std::ios::binary | std::ios::trunc);
     const std::string bytes = utf8::fromWide(text);
@@ -212,7 +229,7 @@ Result<void> applyHostsSection(const std::filesystem::path& mountDir, std::wstri
     if (!out) {
         return fail(ErrorCode::IoError, L"could not write the hosts file", file.wstring());
     }
-    log::info("hosts", std::format(L"hosts section '{}': {} entries", id, parseHosts(clean).size()));
+    log::info("hosts", std::format(L"hosts section '{}': {} entries", id, parsed.size()));
     return {};
 }
 

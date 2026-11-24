@@ -15,6 +15,7 @@ enum class PageId : std::uint8_t {
     Source,
     Download, // D-093 Windows indir
     Images,
+    Overview, // D-138 Görüntü › Özet
     Components,
     Apps, // D-050 / D-054
     Programs, // D-078 winget programs at the first sign-in

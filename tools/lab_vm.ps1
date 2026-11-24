@@ -19,6 +19,8 @@
    TPM and no Secure Boot: does this media's Setup check Windows 11's requirements at all?).
   -ShotSeconds: the time between screenshots (default 30; e.g. 5 to see the first sign-in).
   -Cpus / -MemMB: the vCPU count and memory (default 2, 4096). (An NVMe disk does not start under vmrun here.)
+  -DiskBus pvscsi: the system disk on a VMware Paravirtual SCSI controller instead of SATA (D-134: Setup
+   sees it only with a pvscsi driver in boot.wim; the CD stays on SATA).
   -OpenThisPc: Explorer opens "This PC" at the first sign-in (icons tests).
   -Network: a NAT network card, e1000 (e1000e and vmxnet3 crash this VMware at power-on; Windows Update, Store and OOBE downloads happen; the default is none).
   -FirstLogon <command>: run at the first sign-in instead (e.g. a diagnostics script the changeset put
@@ -59,7 +61,8 @@ param(
     [string] $SetupFolder = '',
     [switch] $NoBypass,
     [string] $AnswerFile = '',
-    [string[]] $IsoArgs = @()
+    [string[]] $IsoArgs = @(),
+    [ValidateSet('sata', 'pvscsi')] [string] $DiskBus = 'sata'
 )
 $ErrorActionPreference = 'Stop'
 $Lab = [System.IO.Path]::GetFullPath($Lab)
@@ -271,8 +274,7 @@ uefi.secureBoot.enabled = "FALSE"
 memsize = "$MemMB"
 numvcpus = "$Cpus"
 sata0.present = "TRUE"
-sata0:0.present = "TRUE"
-sata0:0.fileName = "disk.vmdk"
+SYSTEMDISK
 sata0:1.present = "TRUE"
 sata0:1.deviceType = "cdrom-image"
 sata0:1.fileName = "$work\wl-$Tag.iso"
@@ -289,7 +291,11 @@ tools.upgrade.policy = "manual"
 logging = "TRUE"
 "@
     $card = if ($Network) { "ethernet0.present = `"TRUE`"`r`nethernet0.connectionType = `"nat`"`r`nethernet0.virtualDev = `"e1000`"`r`nethernet0.addressType = `"generated`"" } else { 'ethernet0.present = "FALSE"' }
-    $vmxText = $vmxText.Replace('NETWORKCARD', $card).Replace('DIAGDISK', $diagDisk)
+    # pvscsi sits on a PCIe root port: without pciBridge4-7 in the VMX this VMware refuses to power the VM
+    # on ("The operation was canceled", lab 2026-11-10 - probably also why e1000e / vmxnet3 "crash").
+    $rootPorts = (4..7 | ForEach-Object { "pciBridge$_.present = `"TRUE`"`r`npciBridge$_.virtualDev = `"pcieRootPort`"`r`npciBridge$_.functions = `"8`"" }) -join "`r`n"
+    $systemDisk = if ($DiskBus -eq 'pvscsi') { "pciBridge0.present = `"TRUE`"`r`n$rootPorts`r`nscsi0.present = `"TRUE`"`r`nscsi0.virtualDev = `"pvscsi`"`r`nscsi0:0.present = `"TRUE`"`r`nscsi0:0.fileName = `"disk.vmdk`"" } else { "sata0:0.present = `"TRUE`"`r`nsata0:0.fileName = `"disk.vmdk`"" }
+    $vmxText = $vmxText.Replace('NETWORKCARD', $card).Replace('DIAGDISK', $diagDisk).Replace('SYSTEMDISK', $systemDisk)
     [System.IO.File]::WriteAllText($vmx, $vmxText, (New-Object System.Text.UTF8Encoding $false))
     Say "`n> vmrun start $vmx nogui"
     Native { & $vmrun -T ws start $vmx nogui } | ForEach-Object { Say "  $_" }

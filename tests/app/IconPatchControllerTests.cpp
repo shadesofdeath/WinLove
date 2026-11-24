@@ -4,6 +4,7 @@
 #include "base/File.h"
 #include "core/image/icons/ResFile.h"
 #include "core/system/Process.h"
+#include "support/UiThread.h"
 
 #include <doctest.h>
 
@@ -31,7 +32,8 @@ const std::wstring kImageres = LR"(Windows\SystemResources\imageres.dll.mun)";
 struct Fixture {
     std::filesystem::path dir;
     AppState state;
-    IconPatchController controller{state, [](std::function<void()> f) { f(); }};
+    test::UiThread ui;
+    IconPatchController controller{state, ui.post()};
     explicit Fixture(const wchar_t* name = L"state") : dir(scratch(name)), state(dir / L"recent.json", dir / L"settings.json") {
         state.setMounted(MountedImage{L"C:\\", L"C:\\w\\install.wim", 1, L"Pro"});
     }

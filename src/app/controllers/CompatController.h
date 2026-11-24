@@ -37,7 +37,8 @@ public:
     // The guards that hold now: the user's that are on, and App Installer for the Programlar page.
     [[nodiscard]] std::vector<core::ops::CompatGuard> active() const;
     // What keeps `op` out of the current queue (empty: nothing).
-    [[nodiscard]] core::ops::CompatBlock block(const core::ops::Operation& op) const;
+    // `recipe`: a RemoveComponent's recipe when the caller has it (op.value is then not read).
+    [[nodiscard]] core::ops::CompatBlock block(const core::ops::Operation& op, const core::ComponentRecipe* recipe = nullptr) const;
     // One line for a tooltip: "Korunuyor: Windows Update" / "Kullanan: Hesap Makinesi, Microsoft Store".
     [[nodiscard]] std::wstring explain(const core::ops::CompatBlock& block) const;
 
@@ -74,6 +75,18 @@ private:
     Language m_language;
     std::size_t m_subscription = 0;
     bool m_enforcing = false;
+    // What block() reads of the state, kept while the state stands still. The Components page asks
+    // for every one of its ~1,300 rows after each queue change and key stroke; each question used to
+    // copy every guard, build the map of the apps' needs and walk the queue again.
+    struct Inputs {
+        std::uint64_t revision = ~std::uint64_t{0};
+        std::uint64_t queueVersion = ~std::uint64_t{0};
+        std::vector<core::ops::CompatGuard> active;
+        core::ops::AppxNeeds needs;
+        std::vector<std::wstring> removedApps;
+    };
+    mutable Inputs m_inputs; // UI thread only, like the controller
+    [[nodiscard]] const Inputs& inputs() const;
 };
 
 } // namespace wl::app

@@ -153,6 +153,13 @@ void RegistryController::toggle(std::size_t index) {
     }
 }
 
+void RegistryController::resetChanges() {
+    const auto batch = m_state.batchQueue();
+    for (const auto& entry : m_state.regImports()) {
+        setChecked(entry.writes, false, kRisk, kindOf(entry));
+    }
+}
+
 void RegistryController::remove(std::size_t index) {
     const auto& entries = m_state.regImports();
     if (index < entries.size()) {

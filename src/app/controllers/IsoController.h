@@ -43,10 +43,15 @@ public:
         // Ask goes through Events::workCopyChoice, which starts again with Fresh or Keep.
         enum class WorkCopy : std::uint8_t { Ask, Fresh, Keep };
         WorkCopy workCopy = WorkCopy::Ask;
+        // D-144: "Bitince ISO oluştur". The previous Setup when an edition has no WinRE, decided as the
+        // ISO page decides it (its box goes on by itself) — on the engine thread, before the build.
+        bool legacySetupAuto = false;
+        bool afterApply = false; // AppState::IsoRun::afterApply
     };
     // Why a build cannot start now (nullopt = it can).
     // UnattendInvalid: "ISO'ya ekle" is on and the answer file has a value Setup would reject.
-    enum class Blocker : std::uint8_t { NoSource, WimOnly, Mounted, Busy, UnattendInvalid };
+    // VirtualDisk (D-141): a VHD / VHDX source holds an installed Windows, not setup media.
+    enum class Blocker : std::uint8_t { NoSource, WimOnly, Mounted, Busy, UnattendInvalid, VirtualDisk };
 
     struct Events {
         std::function<void(std::function<void()>)> postToUi;
@@ -62,15 +67,33 @@ public:
     ~IsoController();
 
     [[nodiscard]] std::optional<Blocker> blocker() const;
+    // D-144: what blocker() says about the source and the answer file alone (a mounted image and a
+    // running Apply are what a run that ends with an ISO has until it saves).
+    [[nodiscard]] static std::optional<Blocker> sourceBlocker(const AppState& state);
+    // ISO Oluştur's first values, the ones its page shows before anything is changed (the page and
+    // "Bitince ISO oluştur" share them): "<source>_WinLove.iso" in the last ISO folder (else the
+    // Desktop), the source's volume label (else "WINLOVE"), UEFI + BIOS, SHA-256, the answers'
+    // bypasses into boot.wim, the downloaded media update when its box is on.
+    [[nodiscard]] static std::wstring defaultFileName(const AppState& state);
+    [[nodiscard]] static std::filesystem::path defaultFolder(const AppState& state);
+    [[nodiscard]] static std::wstring defaultLabel(const core::SourceInfo& source);
+    // The label AppState::isoChoices holds, else the source's (defaultLabel).
+    [[nodiscard]] static std::wstring chosenLabel(const AppState& state);
+    // "Bitince ISO oluştur"'s request: the options the ISO page and "ISO seçenekleri…" share
+    // (AppState::isoChoices; the media update's box), the run's saved work copy, no folder opened.
+    [[nodiscard]] static Request defaultRequest(const AppState& state, const std::filesystem::path& output);
     // Repacking rewrites the setup files: only allowed for folders WinLove extracted itself.
-    [[nodiscard]] bool canRepack() const;
+    [[nodiscard]] bool canRepack() const { return canRepack(m_state); }
+    [[nodiscard]] static bool canRepack(const AppState& state);
     [[nodiscard]] bool running() const;
     void start(Request request);
     void cancel();
 
-    // What `bootBypass` writes: the checks the answers switch off (empty: none, nothing to write).
-    // It does not depend on the answer file going into the ISO.
-    [[nodiscard]] static core::BootPatch bootPatch(const AppState& state);
+    // What goes into boot.wim: the checks the answers switch off (with `bypass`, the ISO page's box;
+    // independent of the answer file going into the ISO) and, always, the drivers ticked on
+    // Sürücüler › Kurulum ortamı (D-134: they used to ride on the bypass box and went missing
+    // without a word when it was cleared). Empty: nothing to write.
+    [[nodiscard]] static core::BootPatch bootPatch(const AppState& state, bool bypass = true);
     // Patches a boot.wim in a mount folder. The default is core::patchBootImage through DISM
     // (elevated process); tests put their own in.
     using BootPatcher = std::function<Result<core::BootPatchReport>(

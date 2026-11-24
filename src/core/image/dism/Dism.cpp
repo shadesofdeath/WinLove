@@ -120,6 +120,11 @@ Result<Dism*> Dism::instance() {
     // (ENGINE.md saha notu 2026-09-28).
     std::filesystem::create_directories(log::defaultDirectory(), ec);
     const auto logFile = log::defaultDirectory() / L"dism.log";
+    // DISM only ever appends, hundreds of lines per session: past 32 MiB the file becomes
+    // dism.old.log (over the one before it) and a new one starts (audit ENG-12).
+    if (const auto size = std::filesystem::file_size(logFile, ec); !ec && size > (32ull << 20)) {
+        std::filesystem::rename(logFile, log::defaultDirectory() / L"dism.old.log", ec);
+    }
     constexpr HRESULT kLoggingDisabled = static_cast<HRESULT>(0xC0040009); // DISMAPI_E_LOGGING_DISABLED
     const HRESULT hr = a.initialize(dismapi::LogErrorsWarningsInfo, logFile.c_str(), scratch.c_str());
     if (hr == kLoggingDisabled) {
@@ -202,7 +207,12 @@ Result<std::vector<MountInfo>> Dism::mounts() {
     std::vector<MountInfo> result;
     for (UINT i = 0; i < count; ++i) {
         const auto& m = info[i];
-        result.push_back({m.mountPath ? m.mountPath : L"", m.imageFilePath ? m.imageFilePath : L"",
+        // Without "\\?\": a tool that mounted with it gets it back here (2026-11-11), and the rest of
+        // WinLove — hive paths, comparisons, what the pages show — works with plain paths; DISM takes
+        // the plain one for that mount as well (lab 2026-11-11: mounted with "\\?\", read, applied
+        // and discarded through the plain path).
+        result.push_back({withoutLongPathPrefix(m.mountPath ? m.mountPath : L""),
+                          withoutLongPathPrefix(m.imageFilePath ? m.imageFilePath : L""),
                           static_cast<int>(m.imageIndex), m.mountMode == dismapi::ReadOnly,
                           m.mountStatus == dismapi::MountOk             ? DismMountStatus::Ok
                           : m.mountStatus == dismapi::MountNeedsRemount ? DismMountStatus::NeedsRemount
@@ -274,6 +284,10 @@ void DismSession::noteReload(long hr) noexcept {
     }
 }
 
+Result<void> DismSession::ensureOpen() {
+    return m_session != 0 ? Result<void>{} : reload();
+}
+
 Result<void> DismSession::reload() {
     if (m_session != 0) {
         m_dism.m_api->closeSession(m_session);
@@ -282,14 +296,19 @@ Result<void> DismSession::reload() {
     const HRESULT hr = m_dism.m_api->openSession(m_path.c_str(), nullptr, nullptr, &session);
     if (FAILED(hr)) {
         m_session = 0;
-        return std::unexpected(m_dism.error(hr, L"reopen session " + m_path.wstring()));
+        m_lost = m_dism.error(hr, L"reopen session " + m_path.wstring()); // ends an apply run (lost())
+        return std::unexpected(*m_lost);
     }
     m_session = session;
     m_reloadRequired = false;
+    m_lost.reset();
     return {};
 }
 
 Result<std::vector<PackageEntry>> DismSession::packages() {
+    if (auto opened = ensureOpen(); !opened) {
+        return std::unexpected(opened.error());
+    }
     dismapi::Package* list = nullptr;
     UINT count = 0;
     const HRESULT hr = m_dism.m_api->getPackages(m_session, &list, &count);
@@ -307,6 +326,9 @@ Result<std::vector<PackageEntry>> DismSession::packages() {
 }
 
 Result<std::vector<FeatureEntry>> DismSession::features() {
+    if (auto opened = ensureOpen(); !opened) {
+        return std::unexpected(opened.error());
+    }
     dismapi::Feature* list = nullptr;
     UINT count = 0;
     const HRESULT hr = m_dism.m_api->getFeatures(m_session, nullptr, dismapi::PackageNone, &list, &count);
@@ -323,6 +345,9 @@ Result<std::vector<FeatureEntry>> DismSession::features() {
 }
 
 Result<std::vector<CapabilityEntry>> DismSession::capabilities() {
+    if (auto opened = ensureOpen(); !opened) {
+        return std::unexpected(opened.error());
+    }
     dismapi::Capability* list = nullptr;
     UINT count = 0;
     const HRESULT hr = m_dism.m_api->getCapabilities(m_session, &list, &count);
@@ -339,6 +364,9 @@ Result<std::vector<CapabilityEntry>> DismSession::capabilities() {
 }
 
 Result<FeatureDetail> DismSession::featureInfo(const std::wstring& name) {
+    if (auto opened = ensureOpen(); !opened) {
+        return std::unexpected(opened.error());
+    }
     dismapi::FeatureInfo* info = nullptr;
     const HRESULT hr = m_dism.m_api->getFeatureInfo(m_session, name.c_str(), nullptr, dismapi::PackageNone, &info);
     if (FAILED(hr) || !info) {
@@ -351,6 +379,9 @@ Result<FeatureDetail> DismSession::featureInfo(const std::wstring& name) {
 }
 
 Result<CapabilityDetail> DismSession::capabilityInfo(const std::wstring& name) {
+    if (auto opened = ensureOpen(); !opened) {
+        return std::unexpected(opened.error());
+    }
     dismapi::CapabilityDetail* info = nullptr;
     const HRESULT hr = m_dism.m_api->getCapabilityInfo(m_session, name.c_str(), &info);
     if (FAILED(hr) || !info) {
@@ -363,6 +394,9 @@ Result<CapabilityDetail> DismSession::capabilityInfo(const std::wstring& name) {
 }
 
 Result<std::vector<AppxEntry>> DismSession::appxPackages() {
+    if (auto opened = ensureOpen(); !opened) {
+        return std::unexpected(opened.error());
+    }
     dismapi::AppxPackage* list = nullptr;
     UINT count = 0;
     const HRESULT hr = m_dism.m_api->getProvisionedAppx(m_session, &list, &count);
@@ -383,6 +417,9 @@ Result<std::vector<AppxEntry>> DismSession::appxPackages() {
 }
 
 Result<void> DismSession::removeAppx(const std::wstring& packageName) {
+    if (auto opened = ensureOpen(); !opened) {
+        return std::unexpected(opened.error());
+    }
     const HRESULT hr = m_dism.m_api->removeProvisionedAppx(m_session, packageName.c_str());
     if (FAILED(hr)) {
         return std::unexpected(m_dism.error(hr, L"remove appx " + packageName));
@@ -392,6 +429,9 @@ Result<void> DismSession::removeAppx(const std::wstring& packageName) {
 }
 
 Result<void> DismSession::addPackage(const std::filesystem::path& package, const TaskContext& task) {
+    if (auto opened = ensureOpen(); !opened) {
+        return std::unexpected(opened.error());
+    }
     const std::wstring path = package.wstring();
     ProgressBridge bridge{&task, path.c_str()};
     // IgnoreCheck FALSE: DISM verifies applicability; PreventPending FALSE: pending online actions allowed.
@@ -405,6 +445,9 @@ Result<void> DismSession::addPackage(const std::filesystem::path& package, const
 }
 
 Result<std::vector<DriverEntry>> DismSession::drivers() {
+    if (auto opened = ensureOpen(); !opened) {
+        return std::unexpected(opened.error());
+    }
     dismapi::DriverPackage* list = nullptr;
     UINT count = 0;
     // AllDrivers = FALSE: the third-party (oemN.inf) drivers only, what can be removed.
@@ -436,6 +479,9 @@ Result<std::vector<DriverEntry>> DismSession::drivers() {
 }
 
 Result<void> DismSession::removeDriver(const std::wstring& publishedName) {
+    if (auto opened = ensureOpen(); !opened) {
+        return std::unexpected(opened.error());
+    }
     const HRESULT hr = m_dism.m_api->removeDriver(m_session, publishedName.c_str());
     if (FAILED(hr)) {
         return std::unexpected(m_dism.error(hr, L"remove driver " + publishedName));
@@ -445,6 +491,9 @@ Result<void> DismSession::removeDriver(const std::wstring& publishedName) {
 }
 
 Result<void> DismSession::addDriver(const std::filesystem::path& inf, bool forceUnsigned) {
+    if (auto opened = ensureOpen(); !opened) {
+        return std::unexpected(opened.error());
+    }
     const HRESULT hr = m_dism.m_api->addDriver(m_session, inf.c_str(), forceUnsigned ? TRUE : FALSE);
     if (FAILED(hr)) {
         return std::unexpected(m_dism.error(hr, L"add driver " + inf.wstring()));
@@ -454,6 +503,9 @@ Result<void> DismSession::addDriver(const std::filesystem::path& inf, bool force
 }
 
 Result<void> DismSession::disableFeature(const std::wstring& name, const TaskContext& task) {
+    if (auto opened = ensureOpen(); !opened) {
+        return std::unexpected(opened.error());
+    }
     ProgressBridge bridge{&task, name.c_str()};
     const HRESULT hr = m_dism.m_api->disableFeature(m_session, name.c_str(), nullptr, FALSE, task.cancel.event(),
                                                     &onProgress, &bridge);
@@ -466,6 +518,9 @@ Result<void> DismSession::disableFeature(const std::wstring& name, const TaskCon
 
 Result<void> DismSession::enableFeature(const std::wstring& name, const TaskContext& task,
                                         const std::vector<std::filesystem::path>& sources) {
+    if (auto opened = ensureOpen(); !opened) {
+        return std::unexpected(opened.error());
+    }
     ProgressBridge bridge{&task, name.c_str()};
     std::vector<std::wstring> paths;
     for (const auto& p : sources) {
@@ -488,6 +543,9 @@ Result<void> DismSession::enableFeature(const std::wstring& name, const TaskCont
 }
 
 Result<void> DismSession::removePackage(const std::wstring& name, const TaskContext& task) {
+    if (auto opened = ensureOpen(); !opened) {
+        return std::unexpected(opened.error());
+    }
     ProgressBridge bridge{&task, name.c_str()};
     const HRESULT hr = m_dism.m_api->removePackage(m_session, name.c_str(), dismapi::PackageName, task.cancel.event(),
                                                    &onProgress, &bridge);
@@ -499,6 +557,9 @@ Result<void> DismSession::removePackage(const std::wstring& name, const TaskCont
 }
 
 Result<void> DismSession::removeCapability(const std::wstring& name, const TaskContext& task) {
+    if (auto opened = ensureOpen(); !opened) {
+        return std::unexpected(opened.error());
+    }
     ProgressBridge bridge{&task, name.c_str()};
     const HRESULT hr = m_dism.m_api->removeCapability(m_session, name.c_str(), task.cancel.event(), &onProgress, &bridge);
     if (FAILED(hr)) {

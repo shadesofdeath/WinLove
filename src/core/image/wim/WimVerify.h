@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -51,6 +52,26 @@ struct WimVerifyReport {
 // files out of boot.wim without a mount (D-094). NotFound when the edition has no such file. Same
 // limits as wimFileExists; meant for small files (the whole file is in memory).
 [[nodiscard]] Result<std::vector<std::byte>> wimFileData(const ByteSource& wim, int index, std::wstring_view path);
+
+// One edition opened for several questions: each of the three functions above reads the lookup
+// table and decompresses the edition's whole file list again, this does it once. Same results and
+// limits. Must not outlive `wim` (keep it a local).
+class WimEdition {
+public:
+    [[nodiscard]] static Result<WimEdition> open(const ByteSource& wim, int index);
+
+    [[nodiscard]] bool exists(std::wstring_view path) const;                       // wimFileExists
+    [[nodiscard]] std::vector<std::wstring> names(std::wstring_view folder) const; // wimFolderNames
+    [[nodiscard]] Result<std::vector<std::byte>> data(std::wstring_view path) const; // wimFileData
+    // D-134: the SHA-1 the file list records for file `path` (two files with the same content have the
+    // same one, as a WIM stores that content once); nullopt for no such file.
+    [[nodiscard]] std::optional<std::array<std::uint8_t, 20>> hash(std::wstring_view path) const;
+
+private:
+    WimEdition() = default;
+    struct State;
+    std::shared_ptr<const State> m_state;
+};
 
 // The solid resources of an ESD as their own headers describe them (compression, chunk size): what
 // tells an ESD Windows wrote (LZMS, 64 MiB chunks) from one another tool wrote in a form this PC's

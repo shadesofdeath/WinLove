@@ -36,7 +36,7 @@ public:
         const float right = r.right() - (m_card.state == State::None ? 12.0f : 30.0f);
         canvas.drawText(m_card.title, {x, r.y + 6, std::max(right - x, 0.0f), 16}, TypeStyle::BodyStrong, Color::TextPrimary);
         canvas.drawText(m_card.caption, {x, r.y + 22, std::max(right - x, 0.0f), 16}, TypeStyle::Caption,
-                        m_card.state == State::None ? Color::TextTertiary : Color::AccentBase);
+                        m_card.state == State::None ? Color::TextTertiary : Color::AccentText);
         if (all) {
             canvas.drawIcon(ui::icons::Icon::Check, {r.right() - 26, r.y + (r.height - 16) / 2}, Color::AccentBase);
         } else if (m_card.state == State::Some) {

@@ -13,13 +13,14 @@ namespace {
 constexpr float kTabsTop = 0.0f;
 constexpr float kTabsHeight = ui::tokens::size::control;
 constexpr float kFormGap = 11.0f;     // tab line → first section
-constexpr float kLabelWidth = 240.0f; // screens.md: "240px etiket sütunu"
+constexpr float kLabelWidth = 264.0f; // screens.md: "240px etiket sütunu"; D-136: grown with the 13 px labels (12 → 13)
 constexpr float kDropdownWidth = 180.0f; // D-109: the reference tool value cells
 constexpr float kBrowseWidth = 28.0f;
 constexpr float kBrowseGap = 4.0f;
 constexpr float kFilterHeight = ui::tokens::size::control;
 constexpr float kFilterGap = 10.0f;   // tabs → filter row → form
 constexpr float kSearchWidth = 260.0f;
+constexpr float kTemplateFilterWidth = 240.0f; // D-146: "Şablon (Sade ve sessiz)" whole
 } // namespace
 
 PictureField::PictureField(std::wstring browseTooltip) {
@@ -73,6 +74,28 @@ TweaksPage::TweaksPage(AppState& state, ImageSettingsController& controller, con
     m_onlyChanged = &add<ui::Toggle>(strings.get(Str::TweaksOnlyChanged), false);
     m_onlyChanged->setAccessible(ui::AccessRole::CheckBox, strings.get(Str::TweaksOnlyChanged));
     m_onlyChanged->onChange = [this](bool) { rebuild(); };
+    std::vector<std::wstring> filters{strings.get(Str::TweaksFilterAll)};
+    for (const auto& preset : m_controller.catalog().templates()) {
+        filters.push_back(strings.format(Str::TweaksFilterTemplate, {{L"name", preset.title.get(language)}}));
+    }
+    m_templateBox = &add<ui::Dropdown>(L"", std::move(filters), 0);
+    m_templateBox->setAccessible(ui::AccessRole::Group, strings.get(Str::TweaksTemplateAction));
+    m_templateBox->onChange = [this](int index) {
+        const auto& templates = m_controller.catalog().templates();
+        setTemplateFilter(index > 0 && index <= static_cast<int>(templates.size())
+                              ? templates[static_cast<std::size_t>(index - 1)].id
+                              : std::string());
+    };
+    m_templateBar = &add<ui::InfoBar>(ui::InfoKind::Info, L"", L"", strings.get(Str::CommonClose));
+    m_templateBar->setVisible(false);
+    m_templateBar->onClose = [this] { setTemplateFilter({}); };
+    m_templateBar->setAction(strings.get(Str::TweaksTemplateApply), [this] {
+        if (m_template && onApplyTemplate) {
+            onApplyTemplate(m_template->id);
+        }
+    });
+    m_resetTab = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::TweaksResetTab), ui::icons::Icon::Refresh);
+    m_resetTab->onInvoke = [this] { resetShown(); };
     m_tabs->onChange = [this](int index) { showTab(m_controller.catalog().tabs()[static_cast<std::size_t>(index)].id); };
     m_empty = &add<ui::EmptyState>(ui::icons::Icon::TweaksSliders, strings.get(Str::TweaksNoMountTitle),
                                    strings.get(Str::TweaksNoMountBody));
@@ -84,6 +107,10 @@ TweaksPage::TweaksPage(AppState& state, ImageSettingsController& controller, con
             refresh();
         } else if (change == AppState::Change::Queue || change == AppState::Change::ImageValues ||
                    change == AppState::Change::Services) {
+            if (!m_onlyTab.empty() && !visible()) {
+                m_stale = true; // the host shows another tab: catchUp() when it shows this one
+                return;
+            }
             sync();
             updateCounts();
         }
@@ -112,11 +139,66 @@ void TweaksPage::showTab(const std::string& tab) {
 }
 
 bool TweaksPage::filtering() const {
-    return m_onlyTab.empty() && (!m_query.empty() || (m_onlyChanged && m_onlyChanged->isOn()));
+    return m_onlyTab.empty() && (!m_query.empty() || (m_onlyChanged && m_onlyChanged->isOn()) || m_template);
+}
+
+void TweaksPage::setTemplateFilter(const std::string& id) {
+    const auto* preset = id.empty() ? nullptr : m_controller.catalog().findTemplate(id);
+    if (preset == m_template) {
+        return;
+    }
+    m_template = preset;
+    int index = 0;
+    for (std::size_t i = 0; preset && i < m_controller.catalog().templates().size(); ++i) {
+        if (&m_controller.catalog().templates()[i] == preset) {
+            index = static_cast<int>(i) + 1;
+        }
+    }
+    m_templateBox->setSelected(index);
+    rebuild(); // the dropdown and the bar are not in the form: rebuilding it is safe here
+}
+
+void TweaksPage::updateTemplateBar() {
+    const bool shown = m_template && m_state.mounted().has_value() && m_onlyTab.empty();
+    if (shown) {
+        const auto preview = m_controller.previewTemplate(*m_template);
+        const int total = static_cast<int>(m_template->picks.size());
+        // The count in the title: a long description is cut at its end, the numbers are not.
+        m_templateBar->set(ui::InfoKind::Info,
+                           m_template->title.get(m_language) + L" \u00b7 " +
+                               m_strings.format(Str::TweaksTemplatePreview, {{L"n", std::to_wstring(total)},
+                                                                             {L"left", std::to_wstring(preview.changed)}}),
+                           m_template->description.get(m_language));
+    }
+    if (m_templateBar->visible() != shown) {
+        m_templateBar->setVisible(shown);
+        layout();
+    }
+}
+
+TweaksPage::Held TweaksPage::held(const ImageSetting& setting) const {
+    if (const std::uint64_t revision = m_state.revision(); m_heldAt != revision) {
+        m_heldAt = revision;
+        m_held.clear();
+    }
+    const auto [it, fresh] = m_held.try_emplace(&setting);
+    if (fresh) {
+        it->second = {m_controller.current(setting), m_controller.imageOption(setting)};
+    }
+    return it->second;
 }
 
 bool TweaksPage::changed(const ImageSetting& setting) const {
-    return m_controller.current(setting) != m_controller.imageOption(setting);
+    const Held h = held(setting);
+    return h.current != h.image;
+}
+
+void TweaksPage::catchUp() {
+    if (m_stale && visible()) {
+        m_stale = false;
+        sync();
+        updateCounts();
+    }
 }
 
 const ui::Widget* TweaksPage::controlOf(const Binding& b) {
@@ -162,16 +244,55 @@ void TweaksPage::rebuild() {
     invalidate();
 }
 
-void TweaksPage::applyFilter() {
+bool TweaksPage::passes(const Binding& b) const {
     const bool onlyChanged = m_onlyChanged && m_onlyChanged->isOn() && m_onlyTab.empty();
-    for (const auto& b : m_bindings) {
-        bool shown = !onlyChanged || changed(*b.setting);
-        if (shown && !m_query.empty()) {
-            shown = wl::text::fold(b.setting->label.get(m_language)).find(m_query) != std::wstring::npos ||
-                    wl::text::fold(b.setting->hint.get(m_language)).find(m_query) != std::wstring::npos;
-        }
-        m_form->setRowVisible(*controlOf(b), shown);
+    bool shown = !onlyChanged || changed(*b.setting);
+    if (shown && m_template) {
+        shown = ImageSettingsController::templateOption(m_controller.catalog(), *m_template, *b.setting) >= 0;
     }
+    if (shown && !m_query.empty()) {
+        shown = wl::text::fold(b.setting->label.get(m_language)).find(m_query) != std::wstring::npos ||
+                wl::text::fold(b.setting->hint.get(m_language)).find(m_query) != std::wstring::npos;
+    }
+    return shown;
+}
+
+void TweaksPage::applyFilter() {
+    for (const auto& b : m_bindings) {
+        m_form->setRowVisible(*controlOf(b), passes(b));
+    }
+    updateResetTab();
+}
+
+std::vector<const ImageSetting*> TweaksPage::shownSettings() const {
+    // The form holds the shown tab's rows, or every tab's while filtering: those the filter leaves.
+    std::vector<const ImageSetting*> shown;
+    for (const auto& b : m_bindings) {
+        if (passes(b)) {
+            shown.push_back(b.setting);
+        }
+    }
+    return shown;
+}
+
+void TweaksPage::updateResetTab() {
+    const bool visibleNow = m_state.mounted().has_value() && m_onlyTab.empty();
+    m_resetTab->setVisible(visibleNow);
+    if (!visibleNow) {
+        return;
+    }
+    m_resetTab->setText(m_strings.get(m_allTabs ? Str::TweaksResetShown : Str::TweaksResetTab));
+    const auto shown = shownSettings();
+    m_resetTab->setEnabled(std::ranges::any_of(shown, [this](const ImageSetting* s) {
+        return changed(*s) || (ImageSettingsController::takesValue(*s) && !m_controller.value(*s).empty());
+    }));
+}
+
+void TweaksPage::resetShown() {
+    // A button of the page, not of the form: the form is not rebuilt under it. The queue change
+    // comes back as sync() + updateCounts(); "Yalnız değişenler" then hides the rows it took back.
+    m_controller.resetSettings(shownSettings());
+    applyFilter();
 }
 
 void TweaksPage::updateCounts() {
@@ -189,6 +310,8 @@ void TweaksPage::updateCounts() {
         }
     }
     m_tabs->setBadges(std::move(perTab));
+    updateTemplateBar();
+    updateResetTab();
     m_summary = total > 0 ? m_strings.format(Str::TweaksSummary, {{L"n", std::to_wstring(total)}}) : std::wstring();
     invalidate();
 }
@@ -302,8 +425,9 @@ void TweaksPage::sync() {
     const std::wstring separator = L" \u00b7 ";
     for (std::size_t i = 0; i < m_bindings.size(); ++i) {
         Binding& b = m_bindings[i];
-        const int current = m_controller.current(*b.setting);
-        const int image = m_controller.imageOption(*b.setting); // D-045
+        const Held h = held(*b.setting);
+        const int current = h.current;
+        const int image = h.image; // D-045
         const bool changed = current != image;
         // D-091: "değiştirilecek" / "imajda" when it applies; nothing for a row that stays as
         // Windows has it (the switch itself says on / off).
@@ -312,6 +436,16 @@ void TweaksPage::sync() {
                                                                  : std::wstring();
         if (!changed && image != b.setting->defaultOption && m_controller.revertOperations(*b.setting).empty()) {
             mark += separator + m_strings.get(Str::TweaksNoRevert);
+        }
+        // D-146: with a template shown, what it gives a row that does not have it yet.
+        if (const int given = m_template ? ImageSettingsController::templateOption(m_controller.catalog(), *m_template, *b.setting) : -1;
+            given >= 0 && given != current) {
+            const auto& option = b.setting->options[static_cast<std::size_t>(given)];
+            const std::wstring label = b.setting->control == ImageSetting::Control::Toggle
+                                           ? m_strings.get(given == 1 ? Str::TweaksStateOn : Str::TweaksStateOff)
+                                           : option.label.get(m_language);
+            const std::wstring note = m_strings.format(Str::TweaksTemplateOption, {{L"option", label}});
+            mark = mark.empty() ? note : note + separator + mark;
         }
         if (const ui::Widget* control = controlOf(b)) {
             m_form->setMarked(*control, changed);
@@ -322,7 +456,7 @@ void TweaksPage::sync() {
             }
             return text;
         };
-        const auto color = changed ? ui::tokens::Color::AccentBase : ui::tokens::Color::TextTertiary;
+        const auto color = changed ? ui::tokens::Color::AccentText : ui::tokens::Color::TextTertiary;
         if (b.text) {
             // What the image has, shown until something is typed over it.
             const std::wstring inImage = m_controller.imageValue(*b.setting);
@@ -372,8 +506,11 @@ void TweaksPage::refresh() {
     m_tabs->setVisible(mounted && m_onlyTab.empty());
     m_search->setVisible(mounted && m_onlyTab.empty());
     m_onlyChanged->setVisible(mounted && m_onlyTab.empty());
+    m_templateBox->setVisible(mounted && m_onlyTab.empty() && !m_controller.catalog().templates().empty());
+    updateTemplateBar();
     m_form->setVisible(mounted);
     sync();
+    updateResetTab();
     layout();
     invalidate();
 }
@@ -386,7 +523,17 @@ void TweaksPage::layout() {
     m_search->setBounds({b.x, filters, kSearchWidth, kFilterHeight});
     const ui::SizeF toggle = m_onlyChanged->measure({});
     m_onlyChanged->setBounds({b.x + kSearchWidth + 16.0f, filters, toggle.width, kFilterHeight});
-    const float top = m_onlyTab.empty() ? filters + kFilterHeight + kFormGap : b.y;
+    const ui::SizeF reset = m_resetTab->measure({});
+    m_resetTab->setBounds({b.right() - reset.width, filters, reset.width, kFilterHeight});
+    // A narrow window: the template filter gives way to the tab's Sıfırla (D-152), down to 140.
+    const float templateX = b.x + kSearchWidth + 16.0f + toggle.width + 16.0f;
+    const float room = m_resetTab->visible() ? b.right() - reset.width - 12.0f - templateX : kTemplateFilterWidth;
+    m_templateBox->setBounds({templateX, filters, std::clamp(room, 140.0f, kTemplateFilterWidth), kFilterHeight});
+    float top = m_onlyTab.empty() ? filters + kFilterHeight + kFormGap : b.y;
+    if (m_templateBar->visible()) {
+        m_templateBar->setBounds({b.x, top, b.width, ui::InfoBar::kHeight});
+        top += ui::InfoBar::kHeight + kFormGap;
+    }
     m_form->setBounds({b.x, top, b.width, std::max(b.bottom() - top, 0.0f)});
 }
 
@@ -394,9 +541,14 @@ void TweaksPage::paint(ui::Canvas& canvas) {
     if (m_summary.empty() || !m_search->visible()) {
         return;
     }
+    // "6 ayar değişecek" between the filters and the tab's Sıfırla (D-152), when it fits there.
     const RectF s = m_search->bounds();
-    const RectF b = bounds();
-    canvas.drawText(m_summary, {s.x, s.y, b.right() - s.x, s.height}, ui::tokens::TypeStyle::Caption,
+    const float left = (m_templateBox->visible() ? m_templateBox->bounds().right() : m_onlyChanged->bounds().right()) + 16.0f;
+    const float right = m_resetTab->visible() ? m_resetTab->bounds().x - 12.0f : bounds().right();
+    if (right - left < 96.0f) {
+        return;
+    }
+    canvas.drawText(m_summary, {left, s.y, right - left, s.height}, ui::tokens::TypeStyle::Caption,
                     ui::tokens::Color::TextSecondary, ui::TextAlign::Trailing);
 }
 

@@ -83,7 +83,9 @@ Result<int> exportHostDrivers(const std::filesystem::path& folder, const TaskCon
             }
             const std::filesystem::path target = folder / std::filesystem::path(inUse[i]).stem();
             std::filesystem::create_directories(target, ec);
-            auto one = runProcess(std::format(L"\"{}\" /export-driver {} \"{}\"", *pnputil, inUse[i], target.wstring()), keep);
+            // Stoppable (D-130): it only copies this PC's driver files into our folder.
+            auto one = runProcess(std::format(L"\"{}\" /export-driver {} \"{}\"", *pnputil, inUse[i], target.wstring()), keep,
+                                  &task.cancel);
             if (!one) {
                 return std::unexpected(one.error());
             }
@@ -93,7 +95,7 @@ Result<int> exportHostDrivers(const std::filesystem::path& folder, const TaskCon
         exit = worst;
         log::info("drivers", std::format(L"{} driver package(s) in use by this PC's devices", inUse.size()));
     } else {
-        exit = runProcess(std::format(L"\"{}\" /export-driver * \"{}\"", *pnputil, folder.wstring()), keep);
+        exit = runProcess(std::format(L"\"{}\" /export-driver * \"{}\"", *pnputil, folder.wstring()), keep, &task.cancel);
     }
     if (!exit) {
         return std::unexpected(exit.error());

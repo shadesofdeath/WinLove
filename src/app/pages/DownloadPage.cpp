@@ -36,6 +36,7 @@ constexpr float kPad = 20.0f; // D-107 / D-108: the panel padding
 constexpr float kLine = 18.0f;
 constexpr float kControl = ui::tokens::size::control;
 enum Column : int { kVersion, kBuildCol, kArchCol, kDateCol };
+constexpr float kVersionMin = 220.0f; // the version column's least beside the options card (D-136)
 
 std::uint64_t unixToFiletime(std::int64_t seconds) {
     return seconds <= 0 ? 0 : (static_cast<std::uint64_t>(seconds) + 11644473600ull) * 10'000'000ull;
@@ -88,6 +89,23 @@ std::wstring appName(const Localization& strings, const std::wstring& id) {
     return name;
 }
 
+// "261011-1601" (yyMMdd-HHmm, the ESD's build stamp) → FILETIME; 0 when it is not that shape.
+std::uint64_t stampFiletime(std::wstring_view stamp) {
+    if (stamp.size() < 6 || !std::all_of(stamp.begin(), stamp.begin() + 6, [](wchar_t c) { return c >= L'0' && c <= L'9'; })) {
+        return 0;
+    }
+    auto two = [&](std::size_t at) { return static_cast<WORD>((stamp[at] - L'0') * 10 + (stamp[at + 1] - L'0')); };
+    SYSTEMTIME st{};
+    st.wYear = static_cast<WORD>(2000 + two(0));
+    st.wMonth = two(2);
+    st.wDay = two(4);
+    FILETIME ft{};
+    if (st.wMonth < 1 || st.wMonth > 12 || st.wDay < 1 || st.wDay > 31 || !SystemTimeToFileTime(&st, &ft)) {
+        return 0;
+    }
+    return (static_cast<std::uint64_t>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+}
+
 std::filesystem::path downloadsFolder() {
     PWSTR path = nullptr;
     std::filesystem::path out;
@@ -110,6 +128,15 @@ public:
 
     Panel(const Localization& strings, Language language, const AppState& state)
         : m_strings(strings), m_language(language), m_state(state) {
+        // D-149: one source per download — the official ESD or the UUP set; picked for the selection.
+        m_source = &add<ui::PillGroup>(std::vector<std::wstring>{strings.get(Str::DownloadSourceEsd), strings.get(Str::DownloadSourceUup)}, 1);
+        m_source->onChange = [this](int i) {
+            m_user = i == 0 ? core::esd::Source::Esd : core::esd::Source::Uup;
+            sourceChanged();
+        };
+        m_info = &add<ui::Button>(ui::ButtonKind::Subtle, strings.get(Str::DownloadSourceInfo), ui::icons::Icon::InfoCircle);
+        m_info->setHeight(24);
+        m_info->onInvoke = [this] { setInfoOpen(!m_infoOpen); };
         m_lang = &add<ui::Dropdown>(L"", std::vector<std::wstring>{}, 0);
         m_lang->onChange = [this](int i) {
             if (i >= 0 && i < static_cast<int>(m_languages.size()) && onLanguage) {
@@ -169,6 +196,26 @@ public:
 
     std::function<void(std::wstring)> onLanguage;
     std::function<void()> onPickApps;
+    std::function<void()> onSourceChanged; // D-149: the source the download uses changed
+
+    // D-149: the selection's source choice (the page's core::esd::chooseSource); the user's switch stays.
+    void setChoice(core::esd::Choice choice) {
+        m_choice = std::move(choice);
+        syncSource();
+        refreshVisibility();
+        layout();
+        invalidate();
+    }
+    [[nodiscard]] const core::esd::Choice& choice() const noexcept { return m_choice; }
+    [[nodiscard]] core::esd::Source source() const noexcept { return core::esd::effectiveSource(m_choice, m_user); }
+    [[nodiscard]] bool esdSource() const noexcept { return source() == core::esd::Source::Esd; }
+    void setInfoOpen(bool open) {
+        m_infoOpen = open;
+        layout();
+        invalidate();
+    }
+    // The editions arrived for the selection (the choice waits for them).
+    [[nodiscard]] bool editionsReady() const noexcept { return !m_editions.empty(); }
     std::function<void()> onPrefsChanged;
 
     // The saved choices (settings.json) onto the boxes; no callbacks.
@@ -230,6 +277,9 @@ public:
 
     void setBuild(const core::uup::Build* build) {
         m_build = build ? std::optional(*build) : std::nullopt;
+        m_user.reset(); // a new selection gets its own choice
+        m_choice = core::esd::Choice{};
+        syncSource();
         m_languages.clear();
         m_lang->setItems({}, 0);
         clearEditions();
@@ -302,10 +352,11 @@ public:
         }
         return codes;
     }
-    [[nodiscard]] bool updates() const { return m_updates->checked(); }
-    [[nodiscard]] bool edge() const { return m_edge->checked(); }
+    // Under the official ESD: no updates, Edge or app choice (the ESD has none of their files).
+    [[nodiscard]] bool updates() const { return m_updates->checked() && !esdSource(); }
+    [[nodiscard]] bool edge() const { return m_edge->checked() && !esdSource(); }
     [[nodiscard]] bool esd() const { return m_esd->checked(); }
-    [[nodiscard]] bool apps() const { return m_apps->checked() && appsOffered(); }
+    [[nodiscard]] bool apps() const { return m_apps->checked() && appsOffered() && !esdSource(); }
     [[nodiscard]] bool netFx3() const { return m_netFx3->checked(); }
     [[nodiscard]] bool resetBase() const { return m_resetBase->checked(); }
     [[nodiscard]] const std::vector<std::wstring>& excluded() const { return m_excluded; }
@@ -315,7 +366,8 @@ public:
         const bool has = m_build.has_value();
         const bool running = m_state.windowsDownload().has_value();
         for (ui::Widget* w :
-             std::initializer_list<ui::Widget*>{m_lang, m_updates, m_edge, m_apps, m_pick, m_netFx3, m_resetBase, m_esd, m_change}) {
+             std::initializer_list<ui::Widget*>{m_source, m_info, m_lang, m_updates, m_edge, m_apps, m_pick, m_netFx3, m_resetBase,
+                                                m_esd, m_change}) {
             w->setVisible(has);
             w->setEnabled(!running);
         }
@@ -323,15 +375,20 @@ public:
             b->setVisible(has);
             b->setEnabled(!running);
         }
-        m_edge->setEnabled(!running && m_updates->checked());
+        m_info->setEnabled(true); // the explanation reads while a job runs too
+        // D-149: under the official ESD the UUP set's own options say why they are off (paint()).
+        const bool esd = esdSource();
+        m_updates->setEnabled(!running && !esd);
+        m_edge->setEnabled(!running && m_updates->checked() && !esd);
         // No app set: the box says so (it keeps its saved state for the builds that have one) and
         // "Seç…" goes. A list that failed to load is asked for again by "Seç…".
-        m_apps->setEnabled(!running && appsOffered());
-        m_pick->setVisible(has && appsOffered());
+        m_apps->setEnabled(!running && appsOffered() && !esd);
+        m_pick->setVisible(has && appsOffered() && !esd);
         m_pick->setEnabled(!running && m_apps->checked() &&
                            ((m_appList == AppList::Ready && m_appTotal > 0) || m_appList == AppList::Failed));
         m_start->setVisible(has && !running);
-        m_start->setEnabled(!m_languages.empty() && !editions().empty() && !m_output.empty());
+        m_start->setEnabled(!m_languages.empty() && !editions().empty() && !m_output.empty() &&
+                            (!esd || !m_choice.pick.files.empty()));
         m_stop->setVisible(running);
     }
 
@@ -340,6 +397,17 @@ public:
         const float x = b.x + kPad;
         const float w = b.width - 2 * kPad;
         float y = b.y + kPad + kLine + 4 + kLine + kGap; // title, subtitle
+        y += kLine + 4;                                   // "Kaynak" (D-149), "Fark ne?" on its right
+        const ui::SizeF info = m_info->measure({});
+        m_info->setBounds({b.right() - kPad - info.width + 8, y - kLine - 4 - 4, info.width, 24});
+        m_source->setBounds({x, y, w, kControl});
+        y += kControl + 4;
+        m_whyTop = y;
+        y += whyHeight(w) + kGap;
+        m_infoTop = y;
+        if (m_infoOpen) {
+            y += infoHeight(w) + kGap;
+        }
         y += kLine + 4;                                   // "Dil"
         m_lang->setBounds({x, y, w, kControl});
         y += kControl + kGap + kLine + 4;                 // "Sürümler"
@@ -379,7 +447,26 @@ public:
         const float stopTop = m_build ? y + 52 : b.y + kPad + kLine + kGap + 52;
         m_stop->setBounds({b.right() - kPad - stop.width, stopTop, stop.width, kControl});
         m_noteTop = y + kControl + 4 + kGap;
+        // How tall the card has to be for all of it (the note under the button the last line): the
+        // page scrolls when the room is shorter.
+        float needed = 0;
+        if (m_build && host()) {
+            float noteTop = m_state.windowsDownload() ? m_jobTop + 92 : m_noteTop;
+            if (const float notice = noticeHeight(w); notice > 0) {
+                noteTop += notice + kGap;
+            }
+            needed = noteTop + std::ceil(host()->text().measureWrapped(m_strings.get(noteKey()), TypeStyle::Caption, w)) +
+                     kPad - b.y;
+        }
+        if (needed != m_needed) {
+            m_needed = needed;
+            if (onNeededChanged) {
+                onNeededChanged();
+            }
+        }
     }
+    [[nodiscard]] float neededHeight() const noexcept { return m_needed; }
+    std::function<void()> onNeededChanged;
 
     void paint(ui::Canvas& canvas) override {
         const RectF b = bounds();
@@ -414,18 +501,30 @@ public:
             canvas.drawText(m_strings.get(label), {x, under.y - kLine - 4, w, kLine}, TypeStyle::Section,
                             Color::TextTertiary);
         };
+        heading(m_source->bounds(), Str::DownloadSource);
+        canvas.drawTextWrapped(whyText(), {x, m_whyTop, w, whyHeight(w)}, TypeStyle::Caption, Color::TextSecondary);
+        if (m_infoOpen) {
+            paintInfo(canvas, {x, m_infoTop, w, infoHeight(w)});
+        }
         heading(m_lang->bounds(), Str::DownloadLanguage);
         if (!m_editionBoxes.empty()) {
             heading(m_editionBoxes.front()->bounds(), Str::DownloadEditions);
         }
         heading(m_updates->bounds(), Str::DownloadOptions);
-        canvas.drawTextWrapped(m_strings.get(Str::DownloadUpdatesHint), {x + 24, m_hintTop, w - 24, hintHeight()},
-                               TypeStyle::Caption, Color::TextTertiary);
+        canvas.drawTextWrapped(hintText(), {x + 24, m_hintTop, w - 24, hintHeight()}, TypeStyle::Caption, Color::TextTertiary);
+        if (esdSource()) {
+            canvas.drawText(m_strings.get(Str::DownloadEsdInImage), m_edge->bounds(), TypeStyle::Caption, Color::TextTertiary,
+                            ui::TextAlign::Trailing);
+        }
         canvas.drawText(m_strings.get(Str::DownloadOutput), {x, m_pathTop - kLine - 4, w, kLine}, TypeStyle::Section,
                         Color::TextTertiary);
         // How many Store apps go in, left of "Seç…" ("…" while the list loads); without an app set,
         // why in the button's place.
-        if (!appsOffered()) {
+        if (esdSource()) {
+            const float left = m_apps->bounds().right();
+            canvas.drawText(m_strings.get(Str::DownloadEsdAppsInImage), {left - 40, m_appsRow, b.right() - kPad - left + 40, kControl},
+                            TypeStyle::Caption, Color::TextTertiary, ui::TextAlign::Trailing);
+        } else if (!appsOffered()) {
             const float left = m_apps->bounds().right();
             canvas.drawText(m_strings.get(m_appList == AppList::InImage ? Str::DownloadAppsInImage : Str::DownloadAppsNone),
                             {left, m_appsRow, b.right() - kPad - left, kControl}, TypeStyle::Caption, Color::TextTertiary,
@@ -439,7 +538,10 @@ public:
                 canvas.drawText(m_strings.get(Str::DownloadAppsFailed), count, TypeStyle::Caption, Color::TextTertiary,
                                 ui::TextAlign::Trailing);
             } else {
-                canvas.drawText(L"…", count, TypeStyle::Mono, Color::TextTertiary, ui::TextAlign::Trailing);
+                // The list can take a while (a 3 MB catalogue; the server makes a busy caller wait
+                // 11 s): said in words, "…" alone read as a button that never comes on.
+                canvas.drawText(m_strings.get(Str::DownloadAppsLoading), {count.x - 24, count.y, count.width + 24, count.height},
+                                TypeStyle::Caption, Color::TextTertiary, ui::TextAlign::Trailing);
             }
         }
         canvas.drawText(m_output.filename().wstring(), {x, m_pathTop, m_change->bounds().x - x - 8, kLine}, TypeStyle::Body,
@@ -450,7 +552,7 @@ public:
         std::wstring size = m_strings.get(Str::DownloadSizeLoading);
         if (editions().empty()) {
             size = m_strings.get(Str::DownloadNoEditions);
-        } else if (m_size) {
+        } else if (m_size || (esdSource() && downloadBytes() > 0)) {
             size = m_strings.format(Str::DownloadSize, {{L"size", formatBytes(downloadBytes(), m_language)},
                                                         {L"disk", formatBytes(diskBytes(), m_language)}});
         }
@@ -463,19 +565,30 @@ public:
             paintNotice(canvas, *m_state.windowsDownloadNotice(), {x, m_noteTop, w, notice});
             noteTop += notice + kGap;
         }
-        const float noteHeight = host() ? std::ceil(host()->text().measureWrapped(m_strings.get(Str::DownloadNote),
+        const float noteHeight = host() ? std::ceil(host()->text().measureWrapped(m_strings.get(noteKey()),
                                                                                    TypeStyle::Caption, w))
                                         : 32.0f;
-        canvas.drawTextWrapped(m_strings.get(Str::DownloadNote), {x, noteTop, w, noteHeight}, TypeStyle::Caption,
-                               Color::TextTertiary);
+        canvas.drawTextWrapped(m_strings.get(noteKey()), {x, noteTop, w, noteHeight}, TypeStyle::Caption, Color::TextTertiary);
     }
 
     void setNow(double now) { m_now = now; }
+    void setRing(ui::RingPose pose) { m_ringPose = pose; } // D-142
 
     // What goes over the network, and the room the job needs on the work drive on top of it (the
     // "gereken boş alan" line; 0 while the size is not known).
-    [[nodiscard]] std::uint64_t downloadBytes() const { return m_size ? *m_size + (apps() ? m_appsSize : 0) : 0; }
+    [[nodiscard]] std::uint64_t downloadBytes() const {
+        if (esdSource()) {
+            return m_choice.pick.bytes(); // D-149: the official ESD(s)
+        }
+        return m_size ? *m_size + (apps() ? m_appsSize : 0) : 0;
+    }
     [[nodiscard]] std::uint64_t diskBytes() const {
+        if (esdSource()) {
+            // The ESD, then the media and the ISO, each about 1.45× the ESD while both exist (lab
+            // 2026-11-11: 6.10 GB ESD → 8.74 GB ISO with its four editions in LZX; D-149).
+            const std::uint64_t esd = downloadBytes();
+            return esd + esd * 3;
+        }
         return m_size && !editions().empty() ? downloadBytes() + (updates() ? 16ull : 9ull) * 1'000'000'000ull : 0;
     }
 
@@ -512,6 +625,98 @@ private:
         }
     }
     [[nodiscard]] bool appsOffered() const { return m_appList != AppList::InImage && m_appList != AppList::NotOffered; }
+    [[nodiscard]] Str noteKey() const { return esdSource() ? Str::DownloadNoteEsd : Str::DownloadNote; }
+    [[nodiscard]] std::wstring hintText() const {
+        return m_strings.get(esdSource() ? Str::DownloadEsdUpdatesOff : Str::DownloadUpdatesHint);
+    }
+    void syncSource() {
+        m_source->setOptionEnabled(0, m_choice.esdAllowed);
+        m_source->setSelected(source() == core::esd::Source::Esd ? 0 : 1);
+    }
+    void sourceChanged() {
+        syncSource();
+        refreshVisibility();
+        layout();
+        invalidate();
+        if (onSourceChanged) {
+            onSourceChanged();
+        }
+    }
+    [[nodiscard]] std::wstring sourceName(core::esd::Source s) const {
+        return m_strings.get(s == core::esd::Source::Esd ? Str::DownloadSourceEsd : Str::DownloadSourceUup);
+    }
+    [[nodiscard]] std::wstring editionName(const std::wstring& code) const {
+        for (const auto& e : m_editions) {
+            if (text::iequals(e.code, code)) {
+                return e.name;
+            }
+        }
+        return code;
+    }
+    // D-149: the one line under the choice — what was picked automatically and why (or that the
+    // user switched).
+    [[nodiscard]] std::wstring whyText() const {
+        using core::esd::Reason;
+        const auto automatic = core::esd::effectiveSource(m_choice, std::nullopt);
+        if (m_user && core::esd::effectiveSource(m_choice, m_user) != automatic) {
+            return m_strings.format(Str::DownloadWhyManual, {{L"source", sourceName(automatic)}});
+        }
+        const std::wstring build = m_choice.esdBuild;
+        switch (m_choice.reason) {
+        case Reason::Exact: return m_strings.format(Str::DownloadWhyExact, {{L"build", build}});
+        case Reason::Newest: {
+            const std::uint64_t when = stampFiletime(m_choice.esdStamp);
+            return m_strings.format(Str::DownloadWhyNewest,
+                                    {{L"build", build}, {L"date", when ? formatDate(when, m_language) : m_choice.esdStamp}});
+        }
+        case Reason::OtherBuild: return m_strings.format(Str::DownloadWhyOther, {{L"build", build}});
+        case Reason::Loading: return m_strings.get(Str::DownloadWhyLoading);
+        case Reason::Waiting: return m_strings.get(Str::DownloadWhyWaiting);
+        case Reason::Failed: return m_strings.get(Str::DownloadWhyFailed);
+        case Reason::NotRelease: return m_strings.get(Str::DownloadWhyNotRelease);
+        case Reason::NoRelease: return m_strings.format(Str::DownloadWhyNoRelease, {{L"build", build}});
+        case Reason::NoLanguage: return m_strings.get(Str::DownloadWhyNoLanguage);
+        case Reason::NoArch: return m_strings.get(Str::DownloadWhyNoArch);
+        case Reason::NoEdition:
+            return m_choice.missingEdition.empty()
+                       ? m_strings.get(Str::DownloadWhyNoEditions)
+                       : m_strings.format(Str::DownloadWhyNoEdition, {{L"edition", editionName(m_choice.missingEdition)}});
+        }
+        return {};
+    }
+    [[nodiscard]] float whyHeight(float w) const {
+        return host() && w > 0 ? std::ceil(host()->text().measureWrapped(whyText(), TypeStyle::Caption, w)) : kLine;
+    }
+    // "Fark ne?": the two sources side by side, then what they share (the owner: the difference and
+    // how it works, in a few short lines).
+    static constexpr float kInfoPad = 12.0f;
+    [[nodiscard]] float infoTextHeight(Str key, float w) const {
+        return host() ? std::ceil(host()->text().measureWrapped(m_strings.get(key), TypeStyle::Caption, w)) : 32.0f;
+    }
+    [[nodiscard]] float infoHeight(float w) const {
+        const float inner = w - 2 * kInfoPad - 24;
+        return kInfoPad + kLine + 2 + infoTextHeight(Str::DownloadSourceInfoEsd, inner) + 8 + kLine + 2 +
+               infoTextHeight(Str::DownloadSourceInfoUup, inner) + 8 + infoTextHeight(Str::DownloadSourceInfoCommon, inner) + kInfoPad;
+    }
+    void paintInfo(ui::Canvas& canvas, RectF r) {
+        canvas.fillRoundRect(r, ui::tokens::radius::r2, Color::StatusInfoSubtle);
+        canvas.drawIcon(ui::icons::Icon::InfoCircle, {r.x + kInfoPad, r.y + kInfoPad + 1}, Color::StatusInfo);
+        const float x = r.x + kInfoPad + 24;
+        const float w = r.width - 2 * kInfoPad - 24;
+        float y = r.y + kInfoPad;
+        auto block = [&](std::optional<Str> title, Str body, Color ink) {
+            if (title) {
+                canvas.drawText(m_strings.get(*title), {x, y, w, kLine}, TypeStyle::SmallSemi, Color::TextPrimary);
+                y += kLine + 2;
+            }
+            const float h = infoTextHeight(body, w);
+            canvas.drawTextWrapped(m_strings.get(body), {x, y, w, h}, TypeStyle::Caption, ink);
+            y += h + 8;
+        };
+        block(Str::DownloadSourceEsd, Str::DownloadSourceInfoEsd, Color::TextSecondary);
+        block(Str::DownloadSourceUup, Str::DownloadSourceInfoUup, Color::TextSecondary);
+        block(std::nullopt, Str::DownloadSourceInfoCommon, Color::TextTertiary);
+    }
     void changed() {
         if (onPrefsChanged) {
             onPrefsChanged();
@@ -526,9 +731,7 @@ private:
     }
     [[nodiscard]] float hintHeight() const {
         const float w = bounds().width - 2 * kPad - 24;
-        return host() && w > 0 ? std::ceil(host()->text().measureWrapped(m_strings.get(Str::DownloadUpdatesHint),
-                                                                         TypeStyle::Caption, w))
-                                : 32.0f;
+        return host() && w > 0 ? std::ceil(host()->text().measureWrapped(hintText(), TypeStyle::Caption, w)) : 32.0f;
     }
     [[nodiscard]] std::wstring stepName(const std::wstring& step) const {
         if (step == L"references") return m_strings.get(Str::DownloadStepReferences);
@@ -545,15 +748,17 @@ private:
         std::wstring title;
         if (job.stage == Stage::Preparing) {
             title = m_strings.format(Str::DownloadPreparing, {{L"title", job.title}});
+        } else if (job.stage == Stage::Verifying) {
+            title = m_strings.format(Str::DownloadVerifying, {{L"hash", job.step.empty() ? std::wstring(L"SHA-256") : job.step}});
         } else if (job.stage == Stage::Downloading) {
             title = m_strings.format(Str::DownloadDownloading, {{L"done", formatBytes(job.doneBytes, m_language)},
                                                                 {L"total", formatBytes(job.totalBytes, m_language)}});
         } else {
             title = m_strings.format(Str::DownloadConverting, {{L"step", stepName(job.step)}});
         }
-        const float angle = static_cast<float>(static_cast<int>(m_now / 100.0) % 8) * 45.0f;
-        canvas.drawIcon(ui::icons::Icon::Spinner, {r.x, r.y + (r.height - 16) / 2}, Color::AccentBase, ui::IconVariant::Regular16, 0,
-                        ui::reducedMotion() ? 0.0f : angle);
+        // D-142: the progress ring in the 24 DIP the title leaves for it, on the title's line (the spinner icon
+        // sat lower, on the bar's start).
+        ui::paintRing(canvas, ui::ringBox({r.x + 8, r.y + 4 + kLine / 2}, ui::tokens::size::ring), m_ringPose);
         canvas.drawText(title, {r.x + 24, r.y + 4, r.width - 24, kLine}, TypeStyle::BodyStrong, Color::TextPrimary);
         const float fraction = static_cast<float>(std::clamp(job.fraction, 0.0, 1.0));
         canvas.progressBar({r.x, r.y + 30, r.width - 44, 4}, fraction);
@@ -579,6 +784,12 @@ private:
     std::optional<std::uint64_t> m_size;
     std::uint64_t m_appsSize = 0; // UUP dump's app set (what the apps take at most)
     std::filesystem::path m_output;
+    ui::PillGroup* m_source = nullptr; // D-149
+    ui::Button* m_info = nullptr;
+    bool m_infoOpen = false;
+    core::esd::Choice m_choice;
+    std::optional<core::esd::Source> m_user; // the user's switch for this selection
+    float m_whyTop = 0, m_infoTop = 0;
     ui::Dropdown* m_lang = nullptr;
     ui::CheckField* m_updates = nullptr;
     ui::CheckField* m_edge = nullptr;
@@ -596,7 +807,9 @@ private:
     ui::Button* m_start = nullptr;
     ui::Button* m_stop = nullptr;
     float m_hintTop = 0, m_pathTop = 0, m_sizeTop = 0, m_jobTop = 0, m_noteTop = 0;
+    float m_needed = 0;
     double m_now = 0;
+    ui::RingPose m_ringPose = ui::ringStillPose();
 };
 
 // ---- the page --------------------------------------------------------------------------------
@@ -616,14 +829,22 @@ DownloadPage::DownloadPage(AppState& state, const Localization& strings, Languag
     m_kind->onChange = [this](int) { refreshList(); };
     m_arch = &add<ui::Dropdown>(L"", std::vector<std::wstring>{L"x64", L"ARM64", L"x86", strings.get(Str::DownloadFilterAll)}, 0);
     m_arch->onChange = [this](int) { refreshList(); };
-    m_refresh = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::DownloadRefresh), ui::icons::Icon::Refresh);
-    m_refresh->onInvoke = [this] { loadBuilds(); };
+    // "Yenile" is the shell's ribbon action (reload()), as every page's actions are (2026-11-10).
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::DownloadColVersion), 0, ui::TextAlign::Leading, true},
-        {strings.get(Str::DownloadColBuild), 126, ui::TextAlign::Leading, true},
-        {strings.get(Str::DownloadColArch), 82, ui::TextAlign::Leading, true},
-        {strings.get(Str::DownloadColDate), 126, ui::TextAlign::Leading, true},
+        {strings.get(Str::DownloadColBuild), 126, ui::TextAlign::Leading, true, 100},
+        {strings.get(Str::DownloadColArch), 82, ui::TextAlign::Leading, true, 60},
+        {strings.get(Str::DownloadColDate), 126, ui::TextAlign::Leading, true, 92},
     });
+    // D-136: beside the options card the list is narrow; the build, architecture and date give way
+    // to the version's title, which shows whole on hover when it is still cut.
+    m_table->setFlexMin(kVersionMin);
+    m_table->cellText = [this](int row, int column) -> ui::TableCellText {
+        if (column != kVersion || row < 0 || row >= static_cast<int>(m_shown.size())) {
+            return {};
+        }
+        return {m_shown[static_cast<std::size_t>(row)].title};
+    };
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState) {
         paintCell(c, row, column, rect);
     };
@@ -643,13 +864,25 @@ DownloadPage::DownloadPage(AppState& state, const Localization& strings, Languag
     m_table->onSelect = [this](int row) { select(row); };
     m_empty = &add<ui::EmptyState>(ui::icons::Icon::WindowsDownload, L"", L"");
     m_panel = &add<Panel>(strings, language, state);
+    m_panel->onNeededChanged = [this] {
+        if (!m_inLayout) {
+            layout(); // a build picked, its editions arrived: the scroll range follows
+        }
+    };
     m_panel->onLanguage = [this](std::wstring code) {
         if (const auto* b = selectedBuild()) {
             m_controller.listEditions(b->id, code);
         }
     };
-    m_panel->onEditionsChanged = [this] { requestFiles(); };
+    m_panel->onEditionsChanged = [this] {
+        requestFiles();
+        updateChoice();
+    };
     m_panel->onPickApps = [this] { openAppPicker(); };
+    m_panel->onSourceChanged = [this] {
+        refreshOutput();
+        layout();
+    };
     m_panel->onPrefsChanged = [this] { savePrefs(); };
     m_panel->setPrefs(state.settings().windowsDownload);
     m_panel->onChangeOutput = [this] {
@@ -677,6 +910,16 @@ DownloadPage::DownloadPage(AppState& state, const Localization& strings, Languag
         request.netFx3 = m_panel->netFx3();
         request.resetBase = m_panel->resetBase();
         request.output = m_panel->output();
+        // D-149: the official ESD (one source per download; its own steps after the download).
+        const bool esd = m_panel->source() == core::esd::Source::Esd;
+        if (esd) {
+            request.source = core::esd::Source::Esd;
+            request.esdFiles = m_panel->choice().pick.files;
+            request.updates = false;
+            request.edge = false;
+            request.apps = false;
+            request.excludedApps.clear();
+        }
         // The conversion runs DISM: unelevated, an hour of download would end in "needs an elevated process".
         if (!core::isElevated()) {
             if (m_intents.adminRequired) {
@@ -690,7 +933,8 @@ DownloadPage::DownloadPage(AppState& state, const Localization& strings, Languag
             const std::filesystem::path root = m_state.settings().workRoot;
             std::error_code ec;
             const auto space = std::filesystem::space(std::filesystem::exists(root, ec) ? root : root.root_path(), ec);
-            const std::uint64_t have = std::min(core::treeBytes(m_controller.setFolder(request)), need);
+            const std::uint64_t have =
+                std::min(core::treeBytes(esd ? m_controller.esdFolder() : m_controller.setFolder(request)), need);
             if (!ec && space.available < need - have) {
                 log::warn("uup", std::format(L"not started: {} free on {}, {} needed", space.available, root.wstring(),
                                              need - have));
@@ -719,6 +963,14 @@ DownloadPage::DownloadPage(AppState& state, const Localization& strings, Languag
         }
     });
     loadBuilds();
+    // D-149: both official catalogs (kept for the session). The ones that came on an earlier visit
+    // are read here; the others land through setEsdCatalog.
+    for (const auto product : {core::esd::Product::Windows11, core::esd::Product::Windows10}) {
+        if (const auto* catalog = m_controller.esdCatalog(product)) {
+            m_esd[static_cast<std::size_t>(product)] = *catalog;
+        }
+    }
+    m_controller.listEsdCatalogs();
     if (m_state.windowsDownload()) {
         animate();
     }
@@ -729,9 +981,16 @@ DownloadPage::~DownloadPage() {
 }
 
 bool DownloadPage::tick(double now) {
+    const bool running = m_state.windowsDownload().has_value();
+    if (running) {
+        m_ring.start(now);
+    } else {
+        m_ring.stop();
+    }
     m_panel->setNow(now);
+    m_panel->setRing(m_ring.pose(now));
     m_panel->invalidate();
-    return m_state.windowsDownload().has_value();
+    return running;
 }
 
 void DownloadPage::setBuilds(std::vector<core::uup::Build> builds) {
@@ -757,6 +1016,67 @@ void DownloadPage::savePrefs() {
     if (!(settings == m_state.settings())) {
         m_state.setSettings(std::move(settings));
     }
+}
+
+void DownloadPage::setEsdCatalog(core::esd::Product product, Result<core::esd::Catalog> catalog) {
+    const auto slot = static_cast<std::size_t>(product);
+    if (catalog) {
+        m_esd[slot] = std::move(*catalog);
+        m_esdFailed[slot] = false;
+    } else {
+        m_esd[slot].reset();
+        m_esdFailed[slot] = true;
+    }
+    updateChoice();
+}
+
+bool DownloadPage::newestOfRelease(const core::uup::Build& build) const {
+    const int major = core::esd::majorBuild(build.build);
+    for (const auto& other : m_all) {
+        if (other.kind == BuildKind::Release && other.arch == build.arch && core::esd::majorBuild(other.build) == major &&
+            core::esd::productOf(other) == core::esd::productOf(build) && core::esd::revision(other.build) > core::esd::revision(build.build)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void DownloadPage::updateChoice() {
+    const auto* b = selectedBuild();
+    if (!b || !m_panel->build()) {
+        return;
+    }
+    core::esd::Choice choice;
+    const auto product = core::esd::productOf(*b);
+    if (m_panel->language().empty() || !m_panel->editionsReady()) {
+        // "Katalog alınıyor" only while the catalog really is on its way: the editions coming is
+        // something else.
+        const auto slot = product ? static_cast<std::size_t>(*product) : 0;
+        choice.reason = b->kind != BuildKind::Release || !product ? core::esd::Reason::NotRelease
+                        : m_esd[slot]                             ? core::esd::Reason::Waiting
+                        : m_esdFailed[slot]                       ? core::esd::Reason::Failed
+                                                                  : core::esd::Reason::Loading;
+    } else {
+        const auto slot = product ? static_cast<std::size_t>(*product) : 0;
+        const core::esd::Catalog* catalog = product && m_esd[slot] ? &*m_esd[slot] : nullptr;
+        const bool failed = product && m_esdFailed[slot];
+        const auto editions = m_panel->editions();
+        choice = core::esd::chooseSource(catalog, failed, *b, newestOfRelease(*b), m_panel->language(), editions);
+    }
+    m_panel->setChoice(std::move(choice));
+    refreshOutput();
+    layout();
+}
+
+void DownloadPage::refreshOutput() {
+    const auto* b = selectedBuild();
+    if (!b || m_panel->language().empty() || m_panel->output().empty()) {
+        return;
+    }
+    const bool esd = m_panel->source() == core::esd::Source::Esd;
+    m_panel->setOutput(m_panel->output().parent_path() /
+                       WindowsDownloadController::isoName(*b, m_panel->language(), esd ? m_panel->choice().esdBuild : L""));
+    m_panel->refreshVisibility();
 }
 
 void DownloadPage::setApps(const std::wstring& id, const std::wstring& language, const std::vector<std::wstring>& editions,
@@ -871,7 +1191,7 @@ void DownloadPage::openAppPicker() {
                        host()->popModal(raw);
                    },
                    /*primary=*/true);
-    host()->pushModal(std::move(dialog));
+    host()->pushModal(std::move(dialog), nullptr, /*scrim=*/true, /*owner=*/this);
 }
 
 void DownloadPage::setListFailed(const Error& error) {
@@ -910,6 +1230,7 @@ void DownloadPage::setEditions(const std::wstring& id, const std::wstring& langu
     m_panel->setEditions(std::move(editions));
     m_panel->setOutput(m_panel->output().parent_path() / WindowsDownloadController::isoName(*b, language));
     requestFiles();
+    updateChoice();
 }
 
 void DownloadPage::setFiles(const std::wstring& id, const std::wstring& language, const std::vector<std::wstring>& editions,
@@ -1002,7 +1323,7 @@ void DownloadPage::refreshList() {
     } else if (m_listError) {
         m_empty->setContent(ui::icons::Icon::WindowsDownload, m_strings.get(Str::DownloadListFailed),
                             m_strings.get(Str::DownloadListFailedBody));
-        m_empty->setAction(m_strings.get(Str::DownloadRefresh)).onInvoke = [this] { m_refresh->onInvoke(); };
+        m_empty->setAction(m_strings.get(Str::DownloadRefresh)).onInvoke = [this] { loadBuilds(); };
     } else {
         m_empty->setContent(ui::icons::Icon::WindowsDownload, m_strings.get(Str::DownloadNoBuilds), L"");
         m_empty->clearAction();
@@ -1036,13 +1357,11 @@ void DownloadPage::layout() {
     const float y = b.y + kTop;
     // D-114: one row while it fits (the search box gives way first), the filters on a second row
     // under it when the window is narrow — never one control drawn over another.
-    const ui::SizeF refresh = m_refresh->measure({});
     const float available = listWidth - kGap;
     constexpr float kFilters = 120 + 8 + 110 + 8 + 96;
-    const float searchOneRow = available - (kFilters + 8 + refresh.width + 8);
+    const float searchOneRow = available - (kFilters + 8);
     const bool oneRow = searchOneRow >= 160;
-    m_refresh->setBounds({b.x + available - refresh.width, y, refresh.width, kControl});
-    const float searchWidth = oneRow ? std::min(searchOneRow, 320.0f) : std::max(available - refresh.width - 8, 120.0f);
+    const float searchWidth = oneRow ? std::min(searchOneRow, 320.0f) : std::max(available, 120.0f);
     m_search->setBounds({x, y, searchWidth, kControl});
     float fy = y;
     if (oneRow) {
@@ -1062,7 +1381,12 @@ void DownloadPage::layout() {
     const RectF list{b.x, top, available, b.bottom() - top};
     m_table->setBounds(list);
     m_empty->setBounds(list);
+    m_inLayout = true;
     m_panel->setBounds({b.x + listWidth, b.y, kPanel, b.height});
+    m_inLayout = false;
+    const float before = m_contentHeight;
+    m_contentHeight = m_panel->neededHeight();
+    contentChanged(*this, before);
 }
 
 void DownloadPage::paint(ui::Canvas& canvas) {
@@ -1116,7 +1440,7 @@ void DownloadPage::demo(int what) {
         return;
     }
     if (what >= 1) {
-        m_table->setSelected(0, false);
+        m_table->setSelected(what == 10 ? 3 : 0, false); // 10: the 25H2 row (D-149: not in the catalog)
         m_panel->setBuild(selectedBuild());
         m_panel->setLanguages({{L"en-us", localLanguageName({L"en-us", L"English (United States)"})},
                                {L"tr-tr", localLanguageName({L"tr-tr", L"Turkish"})}},
@@ -1149,6 +1473,55 @@ void DownloadPage::demo(int what) {
         m_appSet = true;
         m_appsArrived = true;
         updateAppList();
+    }
+    if (what >= 9 && what <= 15) {
+        // D-149: the official ESD catalog (a trimmed stand-in: the 26H2 consumer ESD, Pro and Home).
+        core::esd::Catalog catalog;
+        catalog.product = core::esd::Product::Windows11;
+        catalog.version = L"2.1";
+        for (const wchar_t* edition : {L"Professional", L"Core"}) {
+            core::esd::Entry e;
+            e.fileName = L"26300.9457.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd";
+            e.language = L"tr-tr";
+            e.edition = edition;
+            e.architecture = L"x64";
+            e.size = 6'096'708'340ull;
+            e.sha256 = L"b0a405780d4cbd8f5871a3ee8b058cc6e0a958252004d4296916f9bf503026d4";
+            e.url = L"http://dl.delivery.mp.microsoft.com/filestreamingservice/files/demo/" + e.fileName;
+            e.build = L"26300.9457";
+            e.stamp = L"261011-1601";
+            catalog.entries.push_back(std::move(e));
+        }
+        m_esd[0] = std::move(catalog);
+        // 10: the 25H2 row (selected above) is not in the catalog (it has 26H2): UUP, the ESD choice off with the reason.
+        updateChoice();
+        if (what == 11) {
+            m_panel->setInfoOpen(true);
+        }
+        if (what >= 12 && what <= 14) { // downloading, verifying, converting
+            AppState::WindowsDownload job;
+            job.stage = what == 12   ? AppState::WindowsDownload::Stage::Downloading
+                        : what == 13 ? AppState::WindowsDownload::Stage::Verifying
+                                     : AppState::WindowsDownload::Stage::Converting;
+            job.esd = true;
+            job.title = L"Windows 11, version 26H2 (26300.9550)";
+            job.totalBytes = 6'096'708'340ull;
+            job.fraction = what == 12 ? 0.42 : what == 13 ? 0.71 : 0.38;
+            job.doneBytes = what == 12 ? static_cast<std::uint64_t>(job.fraction * static_cast<double>(job.totalBytes)) : job.totalBytes;
+            job.step = what == 14 ? L"export" : L"SHA-256";
+            job.startedMs = ui::nowMs() - (what == 13 ? 15'000 : 240'000);
+            m_state.setWindowsDownload(std::move(job));
+            m_panel->setNow(ui::nowMs());
+        }
+        if (what == 15) {
+            using Notice = AppState::WindowsDownloadNotice;
+            m_state.setWindowsDownloadNotice(Notice{Notice::Kind::Failed, m_strings.get(Str::DownloadFailedTitle),
+                                                    L"the downloaded file does not match its published hash "
+                                                    L"(26300.9457.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd)",
+                                                    true});
+        }
+        layout();
+        return;
     }
     if (what == 4) {
         layout();

@@ -349,6 +349,9 @@ public:
             return;
         }
         std::scoped_lock lock(s_mutex);
+        // Set before any return below: every count up needs its count down, or the depth never
+        // gets back to zero and the process stays narrowed for good (audit ENG-13).
+        m_active = true;
         if (s_depth++ > 0) {
             return; // an outer export already narrowed it
         }
@@ -370,7 +373,6 @@ public:
             s_previous = process;
             log::info("wim", std::format(L"ESD compression on {} logical processor(s)", n));
         }
-        m_active = true;
     }
     ~CpuLimit() {
         if (!m_active) {
@@ -1188,6 +1190,69 @@ Result<void> applyImage(const std::filesystem::path& wimInput, int index, const 
     }
     task.report(1.0, L"export");
     return {};
+}
+
+Result<std::vector<MountInfo>> wimMountedImages() {
+    // wimgapi.h (ADK 10.1.26100): MountedImageInfoLevel1 and WIM_MOUNT_INFO_LEVEL1, the WIM_MOUNT_FLAG_* bits.
+    struct MountInfoLevel1 {
+        WCHAR wimPath[MAX_PATH];
+        WCHAR mountPath[MAX_PATH];
+        DWORD imageIndex;
+        DWORD mountFlags;
+    };
+    constexpr int kLevel1 = 1;
+    constexpr DWORD kRemountable = 0x4;
+    constexpr DWORD kInvalid = 0x8;
+    constexpr DWORD kNoWim = 0x10;
+    constexpr DWORD kNoMountDir = 0x20;
+    constexpr DWORD kReadWrite = 0x100;
+    using GetMountedImageInfoFn = BOOL(WINAPI*)(int, PDWORD, PVOID, DWORD, PDWORD);
+
+    // This PC's copy, as every other call here; loaded once (defaultLibrary keeps it loaded).
+    const Library& library = defaultLibrary();
+    if (!library.status) {
+        return std::unexpected(library.status.error());
+    }
+    const HMODULE module = GetModuleHandleW(library.path.c_str());
+    GetMountedImageInfoFn getInfo = nullptr;
+    if (!module || !load(module, "WIMGetMountedImageInfo", getInfo)) {
+        return fail(ErrorCode::Unsupported, L"WIMGetMountedImageInfo not available", library.path.wstring());
+    }
+    DWORD count = 0;
+    DWORD needed = 0;
+    std::vector<MountInfoLevel1> items;
+    // The list may grow between the size query and the read: asked again a few times.
+    for (int attempt = 0; attempt < 4; ++attempt) {
+        const DWORD bytes = static_cast<DWORD>(items.size() * sizeof(MountInfoLevel1));
+        if (getInfo(kLevel1, &count, items.empty() ? nullptr : items.data(), bytes, &needed)) {
+            items.resize(std::min<std::size_t>(count, items.size()));
+            break;
+        }
+        const DWORD error = GetLastError();
+        if (error != ERROR_INSUFFICIENT_BUFFER || needed == 0) {
+            return fail(ErrorCode::WimFailure, L"WIMGetMountedImageInfo failed", library.path.wstring(),
+                        static_cast<std::int32_t>(HRESULT_FROM_WIN32(error)));
+        }
+        items.resize(needed / sizeof(MountInfoLevel1) + 1);
+        if (attempt == 3) {
+            return fail(ErrorCode::WimFailure, L"WIMGetMountedImageInfo: the list kept changing", library.path.wstring());
+        }
+    }
+    std::vector<MountInfo> result;
+    result.reserve(items.size());
+    for (const auto& item : items) {
+        MountInfo info;
+        info.mountPath = withoutLongPathPrefix(item.mountPath); // as DISM's list (Dism::mounts)
+        info.imagePath = withoutLongPathPrefix(item.wimPath);
+        info.index = static_cast<int>(item.imageIndex);
+        info.readOnly = (item.mountFlags & kReadWrite) == 0;
+        info.wimFlags = item.mountFlags;
+        info.status = (item.mountFlags & (kInvalid | kNoWim | kNoMountDir)) != 0 ? DismMountStatus::Invalid
+                      : (item.mountFlags & kRemountable) != 0                    ? DismMountStatus::NeedsRemount
+                                                                                 : DismMountStatus::Ok;
+        result.push_back(std::move(info));
+    }
+    return result;
 }
 
 } // namespace wl::core

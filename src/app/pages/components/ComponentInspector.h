@@ -32,6 +32,9 @@ private:
     std::wstring m_group;
     bool m_queued = false;
     std::wstring m_held;
+    // Texts of the item, made in set() and only drawn in paint() (audit SUB-06).
+    std::wstring m_sizeText;
+    std::wstring m_contentsTitle;
     ui::Button* m_toggle = nullptr;
 };
 

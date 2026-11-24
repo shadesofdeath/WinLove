@@ -76,9 +76,21 @@ void UnattendController::setWelcomePlan(core::WelcomePlan plan) {
     const auto& options = m_state.unattend().options;
     plan.timeZone = options.timeZone;
     plan.computerName = options.randomComputerName ? std::wstring() : options.computerName;
-    m_state.unqueueMany(core::welcomeSlots());
     // Every translation rides in the oobe.json so the wizard shows the installed Windows' language (D-103).
-    m_state.queueMany(core::welcomeOperations(plan, embeddedWelcomeLanguages()));
+    auto ops = core::welcomeOperations(plan, embeddedWelcomeLanguages());
+    // Audit CTL-06: this runs on every key typed into the computer name. What is queued as it is
+    // stays; otherwise the two edits are one (one queue.json, one undo step, the whole script and
+    // every language's texts copied into the history once, not twice).
+    const auto& queued = m_state.changes();
+    if (std::ranges::all_of(ops, [&](const core::ops::Operation& op) {
+            const auto* now = queued.find(op.kind, op.target);
+            return now && now->value == op.value && now->risk == op.risk && now->sizeDelta == op.sizeDelta;
+        })) {
+        return;
+    }
+    const auto batch = m_state.batchQueue();
+    m_state.unqueueMany(core::welcomeSlots());
+    m_state.queueMany(std::move(ops));
 }
 
 Result<void> UnattendController::previewWelcome() const {
@@ -86,8 +98,13 @@ Result<void> UnattendController::previewWelcome() const {
     plan.texts = welcomeTextsNow();
     auto json = nlohmann::json::parse(core::welcomeJson(plan, embeddedWelcomeLanguages()));
     json["preview"] = true; // a window, nothing done (oobe.ps1); the wizard still picks this PC's language
-    const auto folder = std::filesystem::temp_directory_path() / L"WinLove" / L"welcome-preview";
+    // The error_code form: a broken %TEMP% is a failed preview, not an exception on the UI thread (audit CTL-19).
     std::error_code ec;
+    const auto temp = std::filesystem::temp_directory_path(ec);
+    if (ec) {
+        return fail(ErrorCode::IoError, L"the temporary folder is not available", L"%TEMP%", ec.value());
+    }
+    const auto folder = temp / L"WinLove" / L"welcome-preview";
     std::filesystem::create_directories(folder, ec);
     if (auto r = writeFileAtomic(folder / L"oobe.ps1", core::scripts::kOobe); !r) {
         return r;

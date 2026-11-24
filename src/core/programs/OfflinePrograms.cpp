@@ -105,7 +105,8 @@ Result<OfflineInstaller> downloadProgramOffline(const std::wstring& id, const st
                                      L" --disable-interactivity";
     std::string output;
     task.report(0.0, L"winget download " + id);
-    const auto run = runProcess(commandLine, [&](std::string_view chunk) { output += chunk; });
+    // Stoppable (D-130): a download cut short leaves a folder the next attempt empties first.
+    const auto run = runProcess(commandLine, [&](std::string_view chunk) { output += chunk; }, &task.cancel);
     if (!run) {
         return std::unexpected(run.error());
     }
@@ -117,14 +118,17 @@ Result<OfflineInstaller> downloadProgramOffline(const std::wstring& id, const st
     // Find the manifest (.yaml) and the installer (the file next to it with the same stem).
     std::filesystem::path manifest;
     std::vector<std::filesystem::path> others;
-    for (const auto& entry : std::filesystem::directory_iterator(dest, ec)) {
-        if (!entry.is_regular_file()) {
+    // increment(walk) and is_regular_file(ec): the throwing forms end the whole Apply (audit OPS-13).
+    std::error_code walk;
+    for (auto it = std::filesystem::directory_iterator(dest, walk);
+         !walk && it != std::filesystem::directory_iterator(); it.increment(walk)) {
+        if (!it->is_regular_file(ec)) {
             continue;
         }
-        if (text::iequals(entry.path().extension().wstring(), L".yaml")) {
-            manifest = entry.path();
+        if (text::iequals(it->path().extension().wstring(), L".yaml")) {
+            manifest = it->path();
         } else {
-            others.push_back(entry.path());
+            others.push_back(it->path());
         }
     }
     if (others.empty()) {

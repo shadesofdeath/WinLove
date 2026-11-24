@@ -8,6 +8,7 @@
 #include "core/ops/Planner.h"
 
 #include <functional>
+#include <optional>
 
 namespace wl::core::ops {
 
@@ -25,11 +26,21 @@ struct ApplyReport {
     // The failures that may have left the image half changed, the ones a save waits for: all but
     // those that changed nothing (unchangedByFailure).
     [[nodiscard]] std::size_t holdingFailures() const;
+    // Set when the run stopped because DISM's session could not be opened again after a step
+    // (AUDIT-2026-10 A20): `completed` is false then, and this — not a cancel — is why.
+    std::optional<Error> sessionLost;
 };
+
+// Why a run ended before its last step (wlcli's summary, the app's stopped card): it did not
+// (None), DISM's session could not be opened again (SessionLost, D-131), or it was cancelled /
+// stopped at a failed step under ErrorPolicy::Stop (Stopped).
+enum class RunStop : std::uint8_t { None, SessionLost, Stopped };
+[[nodiscard]] RunStop runStop(const ApplyReport& report) noexcept;
 
 // A failed step that left the image as it was: the component store cleanup DISM refuses while an
 // earlier step of the run has an operation pending until first boot (0x800F0806; enabling or
-// disabling a feature does that), or a capability removal DISM refuses because its package is
+// disabling a feature does that) and the WinSxS shrink WinLove refuses for the same reason (the
+// same code, before any folder goes), or a capability removal DISM refuses because its package is
 // permanent (0x800F0825, before anything is staged), or a package operation on an image that takes
 // no more servicing (0x800F0830 — DISM's own refusal, or WinLove's before calling it).
 [[nodiscard]] bool unchangedByFailure(const StepResult& result) noexcept;

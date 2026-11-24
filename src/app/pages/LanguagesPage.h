@@ -9,8 +9,12 @@
 // - BÖLGE VE DİL: Arayüz dili, Sistem yerel ayarı, Kullanıcı yerel ayarı, Klavye, Saat dilimi —
 //   each "Değiştirme" by default; a choice queues SetIntl.
 // Header actions (Shell): "Klasörden ekle…", "Dil ekle…".
+// D-139: the list's title row has the summary at its right ("3 dil · 1 eklenecek · 1,2 GB"); the selected
+// language in the detail card (beside it the component-language and size columns are the card's).
 #include "app/Localization.h"
 #include "app/controllers/LanguageController.h"
+#include "app/pages/DetailCard.h"
+#include "app/pages/PageHeader.h"
 #include "app/shell/PageView.h"
 #include "ui/widgets/Dropdown.h"
 #include "ui/widgets/EmptyState.h"
@@ -21,7 +25,7 @@
 
 namespace wl::app {
 
-class LanguagesPage : public ui::Widget, public ScrollableBody {
+class LanguagesPage : public ui::Widget, public ScrollableBody, public DetailSource {
 public:
     struct Intents {
         std::function<void()> goImages;
@@ -33,6 +37,13 @@ public:
 
     // "Dil paketi", "Temel (yazım, klavye)" …
     [[nodiscard]] static std::wstring kindLabel(const Localization& strings, core::LanguagePackFile::Kind kind);
+
+    // D-139: the detail card.
+    enum Action : int { kActionRemove = 1 };
+    [[nodiscard]] DetailModel detail() const override;
+    [[nodiscard]] bool detailAvailable() const override { return m_table->visible(); }
+    void detailAction(int id) override;
+    [[nodiscard]] std::wstring summaryText() const { return m_summaryLine->text(); } // tests
 
     void layout() override;
     void paint(ui::Canvas& canvas) override;
@@ -54,12 +65,17 @@ private:
     Intents m_intents;
     std::size_t m_subscription = 0;
     std::vector<LanguageRow> m_rows;
+    std::vector<std::wstring> m_names; // m_rows' display names (refresh())
     FetchStrip* m_fetch = nullptr;
+    SummaryLine* m_summaryLine = nullptr;
     ui::TableView* m_table = nullptr;
     ui::InfoBar* m_lcu = nullptr;
     bool m_lcuClosed = false; // closed for this page's life
     ui::Dropdown* m_fields[5] = {}; // UI language, system locale, user locale, keyboard, time zone
     std::vector<std::wstring> m_values[5]; // the choice values behind each dropdown (index 0 = unchanged)
+    // What each dropdown was last given (audit PG-10): the same items again only move the selection,
+    // so an open list is not closed under the user by every queue change.
+    std::vector<std::wstring> m_shown[5];
     ui::EmptyState* m_empty = nullptr;
     float m_contentHeight = 0;
 };

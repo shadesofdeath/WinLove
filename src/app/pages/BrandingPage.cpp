@@ -131,7 +131,7 @@ BrandingPage::BrandingPage(AppState& state, BrandingController& controller, cons
             m_controller.removeFont(m_fontRows[static_cast<std::size_t>(row)].file);
         }
     };
-    m_empty = &add<ui::EmptyState>(ui::icons::Icon::WindowsLogoGeneric, s(Str::BrandingNoMountTitle), s(Str::BrandingNoMountBody));
+    m_empty = &add<ui::EmptyState>(ui::icons::Icon::Personalize, s(Str::BrandingNoMountTitle), s(Str::BrandingNoMountBody));
     m_empty->setAction(s(Str::CommonGoImages)).onInvoke = [this] {
         if (m_intents.goImages) {
             m_intents.goImages();
@@ -170,6 +170,8 @@ void BrandingPage::refresh() {
     }
     m_fontRows = m_controller.fonts();
     m_fonts->setRowCount(static_cast<int>(m_fontRows.size()));
+    m_fontSummary = m_fontRows.empty() ? m_strings.get(Str::BrandingFontsEmpty)
+                                       : m_strings.format(Str::BrandingFontsN, {{L"n", std::to_wstring(m_fontRows.size())}});
     m_fonts->refresh();
     invalidate();
 }
@@ -214,10 +216,11 @@ void BrandingPage::paint(ui::Canvas& canvas) {
     }
     const RectF t = m_fonts->bounds();
     const RectF title{t.x, t.y - kFontsTitle, t.width, kFontsTitle - 6};
-    canvas.drawText(m_strings.get(Str::BrandingFonts), title, TypeStyle::Section, Color::TextTertiary);
-    const std::wstring summary = m_fontRows.empty() ? m_strings.get(Str::BrandingFontsEmpty)
-                                                    : m_strings.format(Str::BrandingFontsN, {{L"n", std::to_wstring(m_fontRows.size())}});
-    canvas.drawText(summary, title, TypeStyle::Caption, Color::TextTertiary, ui::TextAlign::Trailing);
+    // A section title as the form's above it ("OEM bilgileri", "Varsayılan görseller"), its summary at
+    // the right as every toolbar's (2026-11-10: it was a small grey caption under them).
+    canvas.drawText(m_strings.get(Str::BrandingFonts), {title.x + 4, title.y, title.width - 4, title.height}, TypeStyle::BodySemi,
+                    Color::TextPrimary);
+    canvas.drawText(m_fontSummary, title, TypeStyle::Caption, Color::TextSecondary, ui::TextAlign::Trailing);
 }
 
 } // namespace wl::app

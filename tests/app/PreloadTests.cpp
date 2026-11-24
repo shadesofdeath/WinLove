@@ -1,10 +1,10 @@
 // D-027: after a mount the page lists are read in one engine job, shown as a second progress.
 #include "app/controllers/PreloadController.h"
+#include "support/UiThread.h"
 
 #include <doctest.h>
 
 #include <filesystem>
-#include <mutex>
 
 using namespace wl;
 using namespace wl::app;
@@ -19,9 +19,8 @@ std::filesystem::path scratch(const wchar_t* name) {
 
 struct Fixture {
     AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
-    std::mutex mutex;
-    std::vector<std::function<void()>> posted; // engine thread → "UI thread" (the test)
-    std::vector<int> calls;                    // reader order
+    test::UiThread ui{test::UiThread::Mode::Queued}; // engine thread → "UI thread" (the test)
+    std::vector<int> calls;                  // reader order
     bool failApps = false;
     bool cancelInFeatures = false;
     int cancelled = 0;
@@ -56,12 +55,7 @@ struct Fixture {
         };
     }
 
-    PreloadController controller{state,
-                                 [this](std::function<void()> fn) {
-                                     std::scoped_lock lock(mutex);
-                                     posted.push_back(std::move(fn));
-                                 },
-                                 readers()};
+    PreloadController controller{state, ui.post(), readers()};
 
     Fixture() {
         controller.onCancelled = [this] { ++cancelled; };
@@ -77,14 +71,7 @@ struct Fixture {
     // Lets the engine job finish, then runs what it posted, in order.
     void settle() {
         state.engine().drain();
-        std::vector<std::function<void()>> run;
-        {
-            std::scoped_lock lock(mutex);
-            run.swap(posted);
-        }
-        for (auto& fn : run) {
-            fn();
-        }
+        ui.run();
     }
 };
 

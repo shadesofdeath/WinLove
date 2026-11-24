@@ -67,7 +67,10 @@ std::wstring logoFile(const std::filesystem::path& packageDir, const std::filesy
     std::error_code ec;
     std::filesystem::path best;
     int bestScore = -1;
-    for (const auto& entry : std::filesystem::directory_iterator(dir, std::filesystem::directory_options::skip_permission_denied, ec)) {
+    // Not a range-for (here and below): its increment throws on a read error (audit IMG-09).
+    for (auto it = std::filesystem::directory_iterator(dir, std::filesystem::directory_options::skip_permission_denied, ec);
+         !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+        const auto& entry = *it;
         const std::wstring name = text::lower(entry.path().filename().wstring());
         if (!name.starts_with(stem) || !name.ends_with(L".png")) {
             continue;
@@ -257,7 +260,9 @@ std::vector<StartApp> listStartApps(const std::filesystem::path& mountDir) {
     // Packaged: the newest version of every family.
     std::map<std::wstring, Manifested> families;
     const auto windowsApps = mountDir / L"Program Files\\WindowsApps";
-    for (const auto& dir : std::filesystem::directory_iterator(windowsApps, std::filesystem::directory_options::skip_permission_denied, ec)) {
+    for (auto it = std::filesystem::directory_iterator(windowsApps, std::filesystem::directory_options::skip_permission_denied, ec);
+         !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+        const auto& dir = *it;
         const std::wstring full = dir.path().filename().wstring();
         const std::wstring family = familyFromFullName(full);
         const auto manifest = dir.path() / L"AppxManifest.xml";
@@ -273,7 +278,9 @@ std::vector<StartApp> listStartApps(const std::filesystem::path& mountDir) {
         slot.apps = appsOf(manifest, family, mountDir);
     }
     ec.clear();
-    for (const auto& dir : std::filesystem::directory_iterator(mountDir / L"Windows\\SystemApps", std::filesystem::directory_options::skip_permission_denied, ec)) {
+    for (auto it = std::filesystem::directory_iterator(mountDir / L"Windows\\SystemApps", std::filesystem::directory_options::skip_permission_denied, ec);
+         !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+        const auto& dir = *it;
         const std::wstring family = dir.path().filename().wstring();
         const auto manifest = dir.path() / L"AppxManifest.xml";
         if (family.find(L'_') == std::wstring::npos || families.contains(family) || !std::filesystem::is_regular_file(manifest, ec)) {

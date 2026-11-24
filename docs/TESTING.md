@@ -5,7 +5,7 @@
 |---|---|---|---|
 | Unit (core) | `tests/core` — doctest | Hayır | Her build (`./build.ps1 -Test`) |
 | Unit (ui) | `tests/ui` — layout hesapları, hit-test, text ölçüm, tema | Hayır | Her build |
-| Render | `WinLove.exe --render=<png> --page=<anahtar>` ile tek kare + `tools/compare_design.py` (tasarım \| render \| fark); otomatik piksel eşiği yok, gözle onaylanır | Hayır | Her UI değişikliğinde |
+| Render | `WinLove.exe --render=<png> --page=<anahtar>` ile tek kare + `tools/compare_design.py` (tasarım \| render \| fark); otomatik piksel eşiği yok, gözle onaylanır; iki ikili arasındaki fark `tools/render_diff.py` ile (aşağıda 3b) | Hayır | Her UI değişikliğinde |
 | Integration | `tests/integration` — gerçek imajda `wl::image` + `wlcli --json` | **Evet** | `./build.ps1 -Test -Integration`, sayfa kapanışında zorunlu |
 | Uçtan uca | Oluşturulan ISO'nun VM'de kurulması (Hyper-V) | Evet | P06'dan itibaren her motor değişikliğinde |
 | Manuel | Sayfa spec'indeki "Kullanıcı test senaryosu" | Kullanıcı | Sayfa kapanışı |
@@ -23,7 +23,9 @@ build\lab\
 ├─ mount\       mount noktaları (0,1,2...)
 └─ out\         üretilen ISO'lar
 ```
-- Kaynak ISO: `C:\Users\shades\Downloads\Win11_25H2_Turkish_x64_v2.iso` — **asla değiştirilmez**.
+- Kaynak ISO: `C:\Users\shades\Downloads\Win11_25H2_Turkish_x64_v2.iso` — **asla değiştirilmez**. 2026-11-10: bu dosya
+  artık yok; yerine `build\lab\uup\out\x64-9448.iso` (26200.9448 Pro tr-tr) ve `build\lab\setup\sources\install.wim`
+  (sürüm 4 = Pro 26200.8037) kullanılıyor — aynı kural: salt okunur, işlemler kopyalarında.
 - `tools/lab_setup.ps1` laboratuvarı hazırlar (Faz 2.6). Golden WIM tek index (Pro) → testler hızlı.
 - Her integration testi: golden → work kopyası → mount → işlem → doğrula → **discard** unmount → kopyayı sil. Test sonunda `wlcli mounts` boş olmalı.
 - Disk: tam ISO çıkarımı + golden + work ≈ 25–30 GB. (Şu an C: üzerinde ~330 GB boş.)
@@ -32,6 +34,22 @@ build\lab\
 1. `WinLove.exe --render=out.png --theme=dark --scale=1.5 [--lang=en] [--page=<anahtar>] [--hover-at=x,y] [--click-at=x,y] [--maximized]`: pencere açmadan tek kare (bayrakların tam listesi: `src/app/App.h`). Hata olursa diyalog açmaz, konsola yazar ve 1 ile çıkar.
 2. `python tools/compare_design.py 01-welcome-source --theme=dark [--crop=x,y,w,h] [--zoom=2]`: tasarım SVG'si ve WinLove render'ı alt alta + fark satırı → `build/visual/<ekran>-<tema>.png`.
 3. `python tools/capture_window.py out.png [--maximized] [-- <uygulama argümanları>]`: gerçek HWND'yi açar, **yalnızca kendi penceresini** `PrintWindow` ile yakalar (üstünde başka pencere olsa bile), `WM_CLOSE` ile kapatır ve çıkış kodunu yazar. Özel çerçeve, DPI ve ekranı kaplama davranışı bununla doğrulanır.
+3b. `python -I tools/render_diff.py <eski WinLove.exe> <yeni WinLove.exe> [--iso=<yol>]` (2026-11-10): envanterdeki bütün
+   sayfalar, demo durumları, diyaloglar ve menüler koyu + açık, `--scale=1.75 --size=1207x700`, pencere açmadan; pikseller
+   **RGB** karşılaştırılır (ilk sürüm yalnız alfaya bakıyordu: PERF-BASELINE "Tarihçe"); farklı kareler PNG olarak kalır,
+   çıkış 1. Eski ikiliyi işten önce ayrı bir klasöre kopyala (`build\lab\<iş>\before\`). Çizimi değiştirmemesi gereken
+   işte 0 fark beklenir; değiştiren işte her fark açıklanır (D-137 … D-141'in Sonuç'ları örnek). Bilinen gürültü: durum
+   çubuğundaki "Boş alan" rakamı (canlı veri), log satırlarının saati, `--demo-icons` (demo marka ikonunu exe'nin yerine
+   göre arar: iki exe aynı klasör derinliğinde olmalı); `--demo-store=dialog` iki exe'de de açılmaz (atlanır). Eski exe'nin
+   tanımadığı yeni bayraklar "başarısız" sayılır (eski exe 1 ile çıkar). Yeni bir render durumu eklenince envantere de
+   eklenir. 2026-11-11'de envantere girenler: `--demo-mounts=adopting|remounting|failed|adopted|overview|unmount`,
+   `--demo-apply=stopped|discarding|discarded|saving|saved|closefailed`, `--operation=delete|prepare-delete|rename
+   --select=…` (kaynakla), `--demo-unattended=welcome --demo-overview=unread --page=overview` (D-148);
+   `--demo-boot-drivers=iso-running` (D-142); `--accent=#RRGGBB`, `--demo-accent-picker` (D-143); `--auto-iso`,
+   `--demo-overview=iso-running|iso-done|iso-failed|iso-cancelled|iso-skipped`, `--iso-choices`, `--iso-options` (D-144);
+   `--demo-update=downloading|verifying|ready|install-failed|updated`, `--demo-changelog`, durum çubuğu menüsü
+   `--click-at=200,688` (D-145); `--demo-tweak-template=…`, `--demo-tweak-filter=…` (D-146). Varsayılan render karesinde
+   ilerleme halkası duran yaydır (deterministik); belirli bir an için `--anim-time=<ms>` (D-142).
 4. `python tools/gui.py …`: **uygulamayı içinden sınamak** (kullanıcı yokken de). İlk komut yönetici bir sunucu başlatır
    (bu makinede UAC sormadan yükseltir); tıklama / tuş / metin pencereye ileti olarak gider (kullanıcının faresi ve klavyesi
    kullanılmaz), görüntü yalnız WinLove penceresinden (`PrintWindow`, istemci alanı, DIP). Uygulama `build\lab\gui\bin`'deki
@@ -75,6 +93,34 @@ build\lab\
 ## Sayfa testleri
 - `tests/app/SourceTests.cpp`: biçimleme, son kullanılanlar kalıcılığı, sürükleme kuralları ve **Shell → motor → UI akışı** (gerçek ISO, `postToUi` sahte kuyruğu + `engine().drain()` ile deterministik). Yeni sayfalar aynı kalıbı izler.
 - Render fixture: `tests/integration/fixtures/recent-sample.json` (`--recent-file=`), kullanıcının gerçek geçmişinden bağımsız görüntüler için.
+- **Güncelleme denetimi (D-140) testte ve render'da asla ağa çıkmaz:** denetleyiciyi (`UpdateController`) yalnız
+  pencereli çalışma kurar; render'da `Shell::Services::checkForUpdates` boş; birim testleri kendi fetch / saat
+  fonksiyonlarını verir (`tests/app/UpdateCheckTests.cpp`, kabuğun kendi başına ağa çıkamadığı da denetlenir; kayıtlı
+  gerçek yanıt `tests/core/ReleaseCheckTests.cpp`'de). Gerçek GitHub'a yalnız elle: `wlcli update-check [--json]
+  [--verbose] [--save=<dosya>] [--current=<sürüm>]` (çıkış 0 denetlendi · 2 yanıt yok · 130 iptal). Ekran durumları:
+  `--demo-update[=available|current|failed|checking]`.
+- **VHD / VHDX (D-141) arayüzü** `--demo-vhd[=closed|confirm|mounted|unmount|done|iso]` ile: uydurma kaynak, hiçbir şey
+  bağlanmaz, render'ın son kullanılanlar listesine girmez. Gerçek disk yalnız yönetici lab'ında (`tools\lab_vhd.ps1`,
+  aşağıda). Birim testleri `tests/core/VirtualDiskTests.cpp`, `tests/app/VhdSourceTests.cpp`.
+- **Bağlı imajı devralma (D-148):** `wlcli adopt <klasör> [--json]` (yönetici; Ok / NeedsRemount → kullan, gerisi dokunmadan
+  red) ve `wlcli mounts --fast [--json]` (wimgapi listesi + ham bayraklar). Gerçek bağlamayla yalnız yönetici lab'ında
+  (`build\lab\fixes\lab-adopt.ps1`, aşağıdaki tabloda). Kullanıcının kendi bağlamalarına (başka araçlarınkiler dahil)
+  dokunulmaz: lab önce / sonra bağlama tablosunu karşılaştırır, NeedsRemount bu yüzden üretilmez (WIM filtresini koparmak
+  diğer bağlamaları da etkiler) — yalnız birim testi (`tests/app/MountAdoptionTests.cpp`).
+- **Kendini güncelleme (D-145) testte ve render'da ne ağa çıkar ne bir exe başlatır:** birim testleri sahte yükleyici ve
+  kayıtlı gerçek yanıtla (`tests/core/SelfUpdateTests.cpp`, `tests/app/SelfUpdateAppTests.cpp`); `wlcli update-install
+  --exe=<kopya> (--asset=<dosya|https> | --releases=<yanıt.json>) [--tag=] [--expect=] [--bytes=] [--fail-at=verify|swap]
+  [--json]` (çıkış 0 yüklendi · 2 indirme / ek yok · 3 dosya bu sürümün değil · 4 takas geri alındı) ve `wlcli
+  update-rollback --exe=<kopya>` yalnız bir **kopyada** (asla `dist\` ya da çalışan WinLove). Lab
+  `build\lab\update\selfupdate\lab.ps1` (yönetici gerekmez). Ekran: `--demo-update=…`, `--demo-changelog[=<yanıt.json>]`
+  (varsayılan `tests\integration\fixtures\changelog-sample.json`), `--keys=pgdn,pgup,home,end`.
+- **Otomatik ISO (D-144)** yalnız birim testi + render (`tests/app/AutoIsoTests.cpp`; `--auto-iso` ISO klasörünü `D:\ISO`
+  sabitler, hiçbir şey yazılmaz). Gerçek imajla Uygula + ISO zinciri henüz koşmadı.
+- **Testlerde `postToUi`: her zaman `wl::test::UiThread` (`tests/support/UiThread.h`).** `[](auto fn) { fn(); }` taklidi
+  yasak: motor/okuyucu işinin sonucunu motor iş parçacığında çalıştırır, AppState'i ve sayfaları test iş parçacığıyla aynı
+  anda değiştirir. 2026-11-11'deki aralıklı Release çökmesinin (0xC0000374, ~%12,5) nedeni buydu; ASan 4/20 → 0/20,
+  Release 5/40 → 0/100 (`build\lab\heap\NOTES.md`). Sonuç bekleyen testler `ui.settle(runners...)` kullanır. Bir koşu
+  0xC0000374 ile düşerse "geçti" sayılmaz: yeniden koşulur ve düşüş rapora yazılır.
 
 ## Test verisi sabitleri
 Integration testleri beklenen değerleri (index sayısı, sürüm adları, build no) `tests/integration/fixtures/win11_25h2_tr.json`'dan okur. ISO değişirse yalnızca bu dosya güncellenir.
@@ -87,9 +133,13 @@ Integration testleri beklenen değerleri (index sayısı, sürüm adları, build
 | `tools\lab_editions.ps1 [-Keep "Windows 11 Pro"]` | Lab WIM'inin kopyasında sürüm siler (`wlcli delete-index`): reddedilen istekler, tek sürüm, "yalnız bunu tut"; 7-Zip varsa akış testi. Kopyayı siler. **Yönetici gerekmez**, ~14 GB boş alan, ~3 dk | konsol (PASS / FAIL) |
 | `tools\lab_appx.ps1` | **Yönetici.** Kopya imajda: bir uygulamayı DISM ile kaldırıp tarifimizin adını verdiği her şeyin gittiğini doğrular (tarif = DISM'in yaptığı); bir uygulamayı yerel kaldırır; DISM'in reddettiği SecHealthUI ve DesktopAppInstaller'ı DISM → yerel yoluyla kaldırır; DISM hâlâ listeliyor mu bakar; discard. ~5 dk | `build\lab\out\appx-test.log` |
 | `tools\lab_boot.ps1 [-Driver <inf>]` | **Yönetici.** Test ISO'sundan boot.wim'i çıkarır, `wlcli boot-patch --bypass=all` ile LabConfig yazar (isteğe bağlı sürücü), commit; yeniden bağlayıp beş değeri okur, index sayısı / önyükleme index'i / akış doğrulaması. ~2 dk (2026-09-30: 14 / 14, sürücüsüz) | `build\lab\out\boot-test.log` |
+| `tools\lab_boot_drivers.ps1 [-Vm] [-SkipNegative] [-SkipEngine]` | **Yönetici.** D-134, hepsi `build\lab\bootdrv` altında (wlcli oraya kopyalanır: arada derlemek koşuyu bozmaz). Motor (~6 dk): `build\lab\setup` boot.wim kopyasına `wlcli boot-patch` ile VMware pvscsi (Workstation'ın `windows.iso`'sundan, tar ile) + bu PC'nin depolama ve kablolu ağ sürücüsü (`export-host-drivers` + `driver-scan`'in seçtiği) + girmemesi gereken dört INF (ARM64, katalogsuz, kataloğu uyuşmayan depolama, kataloğu uyuşmayan ağ); `dism /Get-Drivers` her iki index, `wlcli drivers`, `media-drivers` (dosya listesi), önyükleme index'i, verify; bağlamalar önce / sonra aynı. `-Vm` (~1 sa, VMware): diski yalnız pvscsi denetleyicide (`lab_vm.ps1 -DiskBus pvscsi`, PCIe kök bağlantı noktalarıyla) VM; boot.wim kopyasından kutudaki pvscsii çıkarılır — negatif: sürücüsüz ISO (kurulum disk görmez), pozitif: aynı kopyadan `wlcli iso --boot-driver=<pvscsi.inf>` (kurulum Windows'u kurar, masaüstü) | `build\lab\bootdrv\out\boot-drivers-test.log` (`-Vm`: `…-all-test.log`, `-Vm -SkipEngine`: `…-vm-test.log`), kareler `out\vm-bd-neg\|bd-pos` |
 | `tools\lab_legacy_setup.ps1 [-Vm]` | **Yönetici.** Test ISO'sunun boot.wim'ine `wlcli boot-patch --legacy-setup`, geri bağlayıp `Setup\CmdLine`'ı okur, akış doğrulaması (~1 dk). `-Vm` (VMware, ~1 sa): Winre.wim'i silinmiş sürümle iki ISO; özgün boot.wim (yeni kurulum) hata vermeli, yamalı (önceki kurulum) masaüstüne kurmalı; VNC kareleri `out\vm-legacy-new|legacy` | `build\lab\out\legacy-setup-test.log` |
 | `tools\lab_edition.ps1 [-Target Professional]` | **Yönetici.** Kopya imajda Home'u `wlcli edition --set` (`dism /Set-Edition`) ile Pro'ya çevirir, commit eder, WIM'in yeni sürüm kimliğini okur, adını değiştirir, `wlcli verify` ile her akışı doğrular. Kopyayı siler. ~10 dk | `build\lab\out\edition-test.log` |
 | `tools\lab_usb.ps1 [-Gpt] [-Keep]` | **Yönetici.** Önce `wlcli extract-all <test.iso> build\lab\setup` (yönetici gerekmez). `build\lab\usb\stick.vhdx` (16 GB, genişleyen) oluşturup bağlar, `wlcli usb-write --allow-virtual --yes` ile yazar; bölüm stili / etkin bölüm, FAT32, BOOTMGR önyükleme kodu, dosyalar, .swm parçaları (DISM okuyor mu), 4 GB üstü dosya yok. VHDX'i ayırır ve siler (`-Keep` bırakır: VM'de önyükleme için). ~5 dk | `build\lab\out\usb-test.log` |
+| `tools\lab_vhd.ps1 -Phase Prepare\|Run\|VhdFormat` | **Yönetici.** D-141, hepsi `build\lab\vhd` altında (wlcli `bin\`'e kopyalanır, kayıt dosyası `--vhd-records=records.json`). Prepare: 40 GB dinamik `golden.vhdx` (diskpart yalnız `create vdisk file=`, disk kendi dosyasının görüntü nesnesinden ve denetlenerek biçimlenir), lab WIM'i index 4 uygulanır (~2 dk). Run (~5 dk): taze kopyada info, mount, okuma komutları, apply + discard (dosya değişmedi mi), öldürülen apply + kayıttan kurtarma, yeniden başlatma benzetimi + repair, SHA-256 aynı mı, apply --commit (birleştirme) + yeniden bağlayıp doğrulama + ScanHealth; kopya silinir. VhdFormat: aynısı WinPE'li küçük `.vhd` ile, sonra silinir. Her aşama önce / sonra DISM bağlama tablosunu karşılaştırır; hiçbir temizlik komutu yok | `build\lab\vhd\lab-<aşama>.log`, `out\<aşama>\`, `lab-<aşama>.done` |
+| `build\lab\fixes\lab-adopt.ps1` (depoda değil: `build\` altında) | **Yönetici.** D-148. Lab WIM'inin kopyası çevresinde kurulum dosyası olmayan bir `…\Sources\install.wim`; `dism.exe` ile `\\?\` yollarıyla index 4 bağlanır → `wlcli mounts --json` (düz yollar) ve `--fast` (bayraklar) → `wlcli adopt \\?\…` (kaynak WIM'in kendisi, sürüm adı, DISM oturumu) → boş klasörde `adopt` reddi → özellik / appx okuması → tek kayıt değeri + `reg-check` → `wlcli unmount <düz yol> --discard`; önce / sonra bağlama tablosu aynı olmalı. 2026-11-11: iki koşu geçti | `build\lab\fixes\lab-adopt.log` (`lab-adopt-run1.log`) |
+| `build\lab\update\selfupdate\lab.ps1` (depoda değil) | **Yönetici gerekmez.** D-145, yalnız exe kopyaları: yerel dosyayla `update-install` (takas), `update-rollback`, `--fail-at=verify`, etiket / dosya sürüm uyuşmazlığı, `--fail-at=swap`, çalışan bir sürecin exe'sinde takas ve geri alma, gerçek GitHub ekiyle (`--releases=releases.json`) indirme + SHA-256 = `digest`. Her durumda exe / `.old` / `.new` SHA-256'ları denetlenir | `build\lab\update\selfupdate\lab.log` |
 | `tools\lab_features.ps1 [-LanguageFolder <medya>]` | **Yönetici.** Lab WIM'inden iki sürümlük kopya (Home + Pro), bağlar: imajdaki sürücüler (listele, bu bilgisayardan birini ekle, `DismRemoveDriver` ile kaldır), `pnputil` dışa aktarma, `/Get-Intl` + saat dilimi / klavye yazıp geri okuma, isteğe bağlı dil paketi, varsayılan ilişkilendirme içe aktarma, Windows Terminal provision (`build\lab\appx`), görev + hosts + dosya kuyruğu commit ve `--also=2` ile ikinci sürüme; ikinci sürümü salt okunur bağlayıp betik / hosts / dosyaya bakar. Her şeyi siler. ~15 dk, ~25 GB (2026-10-01: ALL PASSED, dil paketi atlandı) | `build\lab\out\features-test.log` |
 | `tools\lab_branding.ps1 [-SkipScanHealth]` | **Yönetici.** Lab WIM'inden Pro kopyası: varsayılan görseller (masaüstü, kilit ekranı, hesap resmi, OEM logo) değiştirilir — boyut aynı, yeni dosya (tek bağlantı), WinSxS eşi değişmez; imajda olmayan bir yazı tipi, OEM değerleri, Wi-Fi adımı, WinRE kaldırma; `reg-check` ile kayıt değerleri; DISM `/ScanHealth`. Discard + siler. ~10 dk (2026-10-01: ALL PASSED) | `build\lab\out\branding-test.log` |
 | `tools\lab_imagetools.ps1 [-Iso <test.iso>]` | Yönetici (yalnız yakalama için; gerisi gerekmez). ISO SHA-256 (eşleşme / büyük harf + önek / eşleşmeme exit 3); lab WIM'inden iki sürümlük kopyada sürüm çoğaltma (akışlar ortak), XPRESS → ESD → LZX yeniden sıkıştırma, SWM'e bölme ve geri birleştirme + verify, ISO'dan ve SWM'den sürüm ekleme + verify, klasör yakalama (ikinci yakalama yeni sürüm) + verify; siler. ~25 dk (2026-10-01: ALL PASSED) | `build\lab\out\imagetools-test.log` |
@@ -107,7 +157,7 @@ Hazırlık: `dist\WinLove.exe` (yönetici) → test ISO'sunu aç → Pro'yu bağ
 1. Bileşenler: birkaç uygulama + **OneDrive kurulumu** + **Microsoft Edge** (+ istersen WinRE) + **Bileşen deposu temizliği**.
 2. Özellikler: bir özelliği kapat, bir FoD'u (ör. Adım Kaydedici) kaldır.
 3. Servisler: DiagTrack → Devre dışı.
-4. Ayarlar / Tweaks: "Önerilenleri uygula".
+4. Ayarlar / Tweaks: Şablon ▾ → Dengeli (D-146; "Önerilenleri uygula" kalktı).
 5. Kayıt Defteri: bir "İlk oturumda" tweak'i + küçük bir `.reg` içe aktar (HKLM ve HKCU değeri olsun).
 6. Kurulum Sonrası: bir winget adımı (ör. `Mozilla.Firefox` — Edge kaldırıldıysa tarayıcı), bir komut
    (`cmd /c echo ok > C:\winlove-postsetup.txt`), bir dosya kopyalama.

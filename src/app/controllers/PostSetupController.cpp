@@ -13,7 +13,19 @@ using core::PostSetupStep;
 using core::ops::OpKind;
 using core::ops::Operation;
 
-PostSetupController::PostSetupController(AppState& state) : m_state(state) {}
+PostSetupController::PostSetupController(AppState& state) : m_state(state) {
+    // Audit CTL-18: a new mount brings a new queue whose version counts from 0 again — it can reach
+    // the number the old image's plan was kept under, and plan() would hand that one out.
+    m_subscription = m_state.subscribe([this](AppState::Change change) {
+        if (change == AppState::Change::Mount) {
+            m_cachedVersion = ~0ull;
+        }
+    });
+}
+
+PostSetupController::~PostSetupController() {
+    m_state.unsubscribe(m_subscription);
+}
 
 const PostSetupPlan& PostSetupController::plan() const {
     const std::uint64_t version = m_state.changes().version();
@@ -175,6 +187,14 @@ void PostSetupController::remove(std::size_t index) {
     if (index < next.steps.size()) {
         next.steps.erase(next.steps.begin() + static_cast<std::ptrdiff_t>(index));
         store(std::move(next));
+    }
+}
+
+void PostSetupController::resetSteps() {
+    PostSetupPlan next = plan();
+    if (!next.steps.empty()) {
+        next.steps.clear();
+        store(std::move(next)); // with no program left either, the operation leaves the queue
     }
 }
 

@@ -22,6 +22,7 @@ constexpr float kPadding = ui::tokens::size::panelPad;
 constexpr float kKeyWidth = 104.0f;
 constexpr float kRow = 23.0f;   // Small 16 + 7 apart (D-108)
 constexpr float kLine = 18.0f;
+constexpr float kSectionLine = ui::tokens::kTypeStyles[static_cast<std::size_t>(TypeStyle::Section)].lineHeight;
 constexpr float kIconButton = 28.0f;
 constexpr float kButton = ui::tokens::size::controlLarge; // 40
 constexpr float kFootGap = 14.0f;
@@ -139,8 +140,9 @@ void ImageInspector::layout() {
 
 void ImageInspector::paint(ui::Canvas& canvas) {
     const RectF b = bounds();
-    // D-114: a card like the others (rounded, no seam), not a strip glued to the window edge.
-    canvas.fillRoundRect(b, ui::tokens::radius::r3, Color::BgPanel);
+    // D-114: a card like the others (rounded, no seam), not a strip glued to the window edge; D-136:
+    // raised like the page card beside it.
+    canvas.raisedCard(b, ui::tokens::radius::r3, Color::BgPanel);
     if (!m_image || !m_source) {
         return;
     }
@@ -165,26 +167,44 @@ void ImageInspector::paint(ui::Canvas& canvas) {
     // The foot (mount block) keeps its room: the facts are clipped above it.
     const float foot = m_primary->bounds().y - kFootGap;
     canvas.hairlineH(x, foot, width, Color::LineSubtle);
-    canvas.pushClip({b.x, y, b.width, std::max(foot - 8 - y, 0.0f)});
+    const float factsBottom = foot - 8;
+    canvas.pushClip({b.x, y, b.width, std::max(factsBottom - y, 0.0f)});
+    // D-136: only whole rows — a short window leaves the last facts out instead of cutting one in half.
+    bool full = false;
+    auto fits = [&](float height) {
+        full = full || y + height > factsBottom + 0.5f;
+        return !full;
+    };
     auto row = [&](Str key, const std::wstring& value, bool mono = false) {
-        canvas.drawText(m_strings.get(key), {x, y, kKeyWidth - 8, kRow}, TypeStyle::Small, Color::TextTertiary);
-        canvas.drawText(value, {x + kKeyWidth, y, width - kKeyWidth, kRow}, mono ? TypeStyle::Mono : TypeStyle::Small,
-                        Color::TextPrimary);
+        if (fits(kRow)) {
+            canvas.drawText(m_strings.get(key), {x, y, kKeyWidth - 8, kRow}, TypeStyle::Small, Color::TextTertiary);
+            canvas.drawText(value, {x + kKeyWidth, y, width - kKeyWidth, kRow}, mono ? TypeStyle::Mono : TypeStyle::Small,
+                            Color::TextPrimary);
+        }
         y += kRow;
     };
     auto divider = [&] {
         y += 9;
-        canvas.hairlineH(x, y, width, Color::LineSubtle);
+        if (fits(kRow)) { // a line with nothing under it is left out too
+            canvas.hairlineH(x, y, width, Color::LineSubtle);
+        }
         y += 10;
     };
     auto section = [&](Str title) {
         divider();
-        canvas.drawText(m_strings.get(title), {x, y, width, 18}, TypeStyle::Section, Color::TextTertiary);
-        y += 24;
+        if (fits(kSectionLine + kRow)) { // a title with no row under it is left out
+            canvas.drawText(m_strings.get(title), {x, y, width, kSectionLine}, TypeStyle::Section, Color::TextTertiary);
+        }
+        y += kSectionLine + 5;
     };
+    // D-141: a virtual disk's registry has no branch, sysprep state or WIM dates: those rows give way
+    // to the disk's own facts below.
+    const bool disk = m_source->disk.has_value();
     row(Str::ImagesEdition, orDash(image.editionId));
     row(Str::ImagesBuild, core::releaseSummary(image.build, image.spBuild, core::architectureName(image.architecture)));
-    row(Str::ImagesBranch, orDash(image.branch), true);
+    if (!disk) {
+        row(Str::ImagesBranch, orDash(image.branch), true);
+    }
     row(Str::ImagesArch, core::architectureName(image.architecture));
     std::wstring languages = image.defaultLanguage.empty()
                                  ? L"—"
@@ -198,17 +218,36 @@ void ImageInspector::paint(ui::Canvas& canvas) {
         installType += L" · " + image.productType;
     }
     row(Str::ImagesInstallType, installType);
-    row(Str::ImagesImageState, imageStateText(image.imageState, m_strings));
+    if (!disk) {
+        row(Str::ImagesImageState, imageStateText(image.imageState, m_strings));
+    }
     divider();
-    row(Str::ImagesCreated, formatDate(image.creationTime, m_language));
-    row(Str::ImagesModified, formatDate(image.modifiedTime, m_language));
+    if (!disk) {
+        row(Str::ImagesCreated, formatDate(image.creationTime, m_language));
+        row(Str::ImagesModified, formatDate(image.modifiedTime, m_language));
+    }
     row(Str::CommonSize, formatBytes(image.totalBytes, m_language), true);
-    row(Str::ImagesContents, m_strings.format(Str::ImagesFilesDirs, {{L"files", formatCount(image.fileCount, m_language)},
-                                                                     {L"dirs", formatCount(image.directoryCount, m_language)}}));
+    if (image.fileCount > 0 || !m_source->disk) { // a virtual disk's Windows is not counted file by file
+        row(Str::ImagesContents, m_strings.format(Str::ImagesFilesDirs, {{L"files", formatCount(image.fileCount, m_language)},
+                                                                         {L"dirs", formatCount(image.directoryCount, m_language)}}));
+    }
     if (image.wimBoot) {
         row(Str::CommonType, L"WIMBoot");
     }
 
+    if (const auto& vhdDisk = m_source->disk) {
+        // D-141: the disk, not a WIM — and what happens to it when the image is saved.
+        section(Str::ImagesVhdSection);
+        const Str kind = vhdDisk->differencing ? Str::ImagesVhdDifferencing : vhdDisk->dynamic ? Str::ImagesVhdDynamic : Str::ImagesVhdFixed;
+        row(Str::CommonType, std::format(L"{} · {}", core::formatName(m_source->format), m_strings.get(kind)));
+        row(Str::ImagesVhdSize, formatBytes(vhdDisk->virtualSize, m_language), true);
+        row(Str::ImagesFileSize, formatBytes(m_source->installImageSize, m_language), true);
+        row(Str::ImagesVhdVolume, m_strings.format(Str::ImagesVhdVolumeValue, {{L"size", formatBytes(vhdDisk->volumeSize, m_language)},
+                                                                                {L"free", formatBytes(vhdDisk->volumeFree, m_language)}}));
+        row(Str::ImagesVhdChanges, m_strings.get(Str::ImagesVhdChangesValue));
+        canvas.popClip();
+        return;
+    }
     section(Str::ImagesWimFile);
     const auto& header = m_source->install.header;
     const std::wstring container = m_source->installImage.ends_with(L".esd") ? L"ESD" : L"WIM";

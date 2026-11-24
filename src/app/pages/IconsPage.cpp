@@ -5,6 +5,9 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace wl::app {
 
@@ -18,7 +21,7 @@ int g_lastTab = 0; // the tab shown when the page opens again
 constexpr float kTop = 0.0f;
 constexpr float kTabs = ui::tokens::size::control;
 constexpr float kNote = 20.0f;
-constexpr float kSection = 40.0f;
+constexpr float kSection = ui::FormView::kSection; // the forms' title block (paintFormSection)
 constexpr float kCardW = 172.0f;
 constexpr float kCardH = 88.0f;
 constexpr float kGap = 10.0f;
@@ -37,6 +40,22 @@ public:
     }
     std::function<void(const IconSlot&)> onPick;
     std::function<void(const IconSlot&)> onReset;
+
+    // Audit PG-07: each card asked the mounted image "is the file there" on every frame (a mount
+    // is a slow filter driver; ~20 cards). The answers hold until the image changes: the page
+    // drops them on a mount change and while Uygula runs, and has them read again outside paint.
+    void dropDefaults() { m_defaults.clear(); }
+    void ensureDefaults() {
+        if (m_defaults.size() == m_slots.size()) {
+            return;
+        }
+        m_defaults.clear();
+        m_defaults.reserve(m_slots.size());
+        for (const IconSlot* slot : m_slots) {
+            auto [file, index] = m_controller.defaultIcon(*slot);
+            m_defaults.emplace_back(file.wstring(), index);
+        }
+    }
 
     [[nodiscard]] float contentHeight(float width) const {
         const int columns = std::max(1, static_cast<int>((width + kGap) / (kCardW + kGap)));
@@ -175,10 +194,11 @@ private:
         canvas.fillRoundRect(c, ui::tokens::radius::r3, hover ? Color::BgRaised : Color::BgPanel);
         canvas.strokeRoundRect(c, ui::tokens::radius::r3, icon ? Color::AccentBase : selected ? Color::LineStrong : Color::LineSubtle);
         // Now → then.
-        const auto [file, index] = m_controller.defaultIcon(slot);
+        ensureDefaults(); // the page did it in refresh(); here only if it was dropped since
+        const auto& [file, index] = m_defaults[i];
         const float y = c.y + 12;
         const RectF now{c.x + 20, y, kIcon, kIcon};
-        if (!canvas.drawFileIcon(file.wstring(), index, now, icon ? 0.55f : 1.0f)) {
+        if (!canvas.drawFileIcon(file, index, now, icon ? 0.55f : 1.0f)) {
             canvas.strokeRoundRect(now, ui::tokens::radius::r2, Color::LineSubtle);
         }
         canvas.drawIcon(ui::icons::Icon::ArrowRight, {c.x + c.width / 2 - 8, y + 8}, icon ? Color::AccentBase : Color::TextTertiary);
@@ -197,7 +217,7 @@ private:
         const std::wstring source = noArrow ? m_strings.get(Str::IconsArrowNone)
                                     : icon  ? icon->filename().wstring()
                                             : m_strings.get(Str::IconsWindowsDefault);
-        canvas.drawText(source, {c.x + 10, c.y + 68, c.width - 20, 14}, TypeStyle::Caption, icon ? Color::AccentBase : Color::TextTertiary);
+        canvas.drawText(source, {c.x + 10, c.y + 68, c.width - 20, 14}, TypeStyle::Caption, icon ? Color::AccentText : Color::TextTertiary);
         if (icon && hover) {
             const RectF r = resetRect(static_cast<int>(i));
             if (m_hoverReset) {
@@ -210,6 +230,7 @@ private:
     IconController& m_controller;
     const Localization& m_strings;
     std::vector<const IconSlot*> m_slots;
+    std::vector<std::pair<std::wstring, int>> m_defaults; // per slot: Windows' own icon (file, index)
     std::vector<RectF> m_cards;
     std::vector<RectF> m_sections;
     int m_selected = 0;
@@ -242,7 +263,7 @@ IconsPage::IconsPage(AppState& state, IconController& controller, IconPatchContr
         }
     };
     m_grid->onReset = [this](const IconSlot& slot) { m_controller.reset(slot); };
-    m_empty = &add<ui::EmptyState>(ui::icons::Icon::DensityComfortable, strings.get(Str::IconsNoMountTitle), strings.get(Str::IconsNoMountBody));
+    m_empty = &add<ui::EmptyState>(ui::icons::Icon::IconSet, strings.get(Str::IconsNoMountTitle), strings.get(Str::IconsNoMountBody));
     m_empty->setAction(strings.get(Str::CommonGoImages)).onInvoke = [this] {
         if (m_intents.goImages) {
             m_intents.goImages();
@@ -251,6 +272,9 @@ IconsPage::IconsPage(AppState& state, IconController& controller, IconPatchContr
     setAccessible(ui::AccessRole::Group, strings.get(Str::IconsTitle));
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Queue || change == AppState::Change::Mount || change == AppState::Change::Apply) {
+            if (change != AppState::Change::Queue) {
+                m_grid->dropDefaults(); // another image, or Uygula is writing this one
+            }
             refresh();
         }
     });
@@ -275,6 +299,9 @@ void IconsPage::refresh() {
     m_grid->setVisible(mounted && g_lastTab == 1);
     if (m_files->visible()) {
         m_files->refresh();
+    }
+    if (m_grid->visible()) {
+        m_grid->ensureDefaults();
     }
     layout();
     invalidate();

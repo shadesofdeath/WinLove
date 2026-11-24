@@ -16,6 +16,7 @@
 #include "app/controllers/UnattendController.h"
 #include "app/controllers/FeatureController.h"
 #include "app/controllers/IsoController.h"
+#include "app/controllers/AutoIsoController.h"
 #include "app/controllers/PostSetupController.h"
 #include "app/controllers/ProgramsController.h"
 #include "app/controllers/ImageController.h"
@@ -64,6 +65,8 @@ namespace wl::app {
 class SourcePage;
 class ImagesPage;
 class ImageInspector;
+class DetailCard;
+class DetailSource;
 class LogsPage;
 class FeaturesPage;
 class ApplyPage;
@@ -79,6 +82,7 @@ class UnattendedPage;
 class PresetsPage;
 class SettingsPage;
 class AboutPage;
+struct OverviewInputs; // D-138
 
 class Shell : public ui::Widget {
 public:
@@ -88,6 +92,8 @@ public:
     void showAppMenu(); // D-109: the ≡ button (public for --demo-app-menu)
     void showMode();   // D-110: the Kaldırma modu dialog (Bileşenler)
     void applyComponentTemplate(Tier tier); // D-110: Şablon ▾
+    void applyTweakTemplate(const std::string& id); // D-146: Şablon ▾ on Ayarlar (a catalog template id)
+    void filterTweakTemplate(const std::string& id); // D-146 (render): Ayarlar's filter on that template
     // Everything the shell needs from the window/app, as plain callbacks (keeps it testable and
     // usable from the headless --render path).
     struct Services {
@@ -104,6 +110,14 @@ public:
         // Work that must not be cut runs (`reason`) or stopped (empty): no sleep, and Windows asks
         // before shutting down (audit A13).
         std::function<void(const std::wstring& reason)> keepAwake;
+        // D-140: "Şimdi denetle" (App's UpdateController; empty in renders and tests: no network).
+        std::function<void()> checkForUpdates;
+        // D-145: "Yükle", its stop, "Yeniden başlat" (why it waits, if it does) and the changelog window
+        // (App's; empty in renders and tests: the buttons are drawn, a click does nothing).
+        std::function<void()> installUpdate;
+        std::function<void()> cancelUpdate;
+        std::function<std::optional<AppState::AppUpdate::Install::Why>()> restartForUpdate;
+        std::function<void()> showChangelog;
     };
     static constexpr UINT kToastTimer = 2;
     static constexpr UINT kLogTimer = 3; // Loglar: poll the log buffer while the page is shown
@@ -126,6 +140,9 @@ public:
     RegistryController& registry() { return *m_registry; }
     TaskController& tasks() { return *m_tasks; }
     ApplyController& applyForDemo() { return *m_apply; }
+    AutoIsoController& autoIsoForDemo() { return *m_autoIso; } // D-144
+    // D-144 addendum: "ISO seçenekleri…" on the Apply row — ISO Oluştur's options in a dialog (also the render).
+    void showIsoOptions();
     FilesController& filesForDemo() { return *m_files; }
     AppsController& appsForDemo() { return *m_apps; }
     LanguageController& languagesForDemo() { return *m_languages; }
@@ -142,6 +159,8 @@ public:
     class IconsPage* iconsPageForDemo() const;
     class StartMenuPage* startMenuPageForDemo() const;
     class DownloadPage* downloadPageForDemo() const { return downloadPage(); }
+    // render: --demo-accent-picker (D-143)
+    [[nodiscard]] SettingsPage* settingsPageForDemo() const;
     // "Paket yükle…": a menu under the action — an archive (.7z / .zip, 7TSP or WinLove layout) or a folder.
     void showIconPackMenu(ui::RectF anchor);
     void loadIconPack(bool archive);
@@ -190,6 +209,8 @@ public:
     // An ISO's work copy that changed since it was extracted, or is another ISO's (WorkCopy.h):
     // extract again, use it as it is (not for another ISO's), or nothing.
     void askWorkCopy(core::WorkCopyState copy, const std::filesystem::path& folder, std::function<void(bool fresh)> proceed);
+    // D-141: what mounting a VHD / VHDX does to the file (changes disk; save merges, discard deletes).
+    void askMountVirtualDisk(const std::filesystem::path& vhd, const std::filesystem::path& changes, std::function<void()> proceed);
     // Mounting, saving, an ISO / USB being written: what a shutdown or sleep would cut (a WIM or a
     // stick left half written). Reading an image's lists does not count.
     [[nodiscard]] bool imageWorkRunning() const;
@@ -200,6 +221,9 @@ public:
     // Toast body after a mount was taken over: the queue that came back with it, if any.
     [[nodiscard]] std::wstring restoredQueueText(std::size_t restored, const std::wstring& otherwise) const;
     void restoreMount(const std::filesystem::path& source, MountedImage mounted);
+    // 2026-11-11: an image mounted elsewhere, taken over (ImageController::adoptMount): its source was
+    // read with it; it becomes the mounted image as a restored one does.
+    void adoptOpened(core::SourceInfo source, MountedImage mounted, bool preload = true); // preload: false in renders
     // Restores AppState::mountFolder's healthy mount (Images page "Devam et", and automatically).
     void continueFolderMount();
     void pickSourceFile();
@@ -216,6 +240,7 @@ public:
 
     // ---- images (P02) ---------------------------------------------------------------------
     void askUnmount();
+    void adoptFailedForDemo(core::MountState state) { showAdoptFailure(state, Error{}); } // render: --demo-mounts=failed
     void askDiscardMount(const std::filesystem::path& folder, const std::wstring& edition); // D-064
     // Confirms, then deletes the selected edition — or, with `keepOnly`, every other one.
     void askDeleteSelected(bool keepOnly = false);
@@ -261,10 +286,32 @@ private:
     // `itemIcons`: one per item (D-114: icons in menus), or empty.
     void addMenuAction(ui::ButtonKind kind, std::wstring label, std::optional<ui::icons::Icon> icon, std::vector<MenuAction> items,
                        std::vector<std::optional<ui::icons::Icon>> itemIcons = {});
+    // D-152: "| Sıfırla" at the end of a page's ribbon (as on Bileşenler and Özellikler): `reset`
+    // takes the page's own changes out of the queue.
+    void addResetAction(std::function<void()> reset);
+    // D-152: Ön Ayar › "Tüm değişiklikleri sıfırla": the whole queue (and the boot.wim driver ticks)
+    // out, with a toast that undoes it.
+    void resetAllChanges();
     void attachSubNav();      // the tab's other pages, as a segmented control in the page header
     void updateImagesChrome();
+    // The Görüntü tab's ribbon: Sürümler and Özet (D-138) share it.
+    void addImageActions();
+    // D-138: what the overview asks of the controllers (by OverviewPage::Part), and its button.
+    void gatherOverview(OverviewInputs& inputs, unsigned parts);
+    void overviewAction(int next); // OverviewModel::Next
     void updateStatus();
+    void showUpdateNotice(); // D-140: a newer WinLove's one toast
+    // D-145: the status bar segment's menu (install, what is new, About), the install's own toasts
+    // (ready, refused, failed), the new instance's "updated" toast.
+    void showUpdateMenu();
+    void showInstallNotice();
+    [[nodiscard]] std::wstring installWhyText(const AppState::AppUpdate::Install& install) const;
+    // D-144: Uygula's start (the ribbon, the head card, the confirm dialog): the run, then its ISO plan.
+    void startApplyRun();
     void onImageFailure(ImageController::Failure failure, const Error& error);
+    void onImageFailureRest(ImageController::Failure failure, const Error& error, const std::wstring& code);
+    // 2026-11-11: a take-over refused or failed — the reason on Kaynak and in a toast.
+    void showAdoptFailure(std::optional<core::MountState> state, const Error& error);
     [[nodiscard]] SourcePage* sourcePage() const;
     [[nodiscard]] ImagesPage* imagesPage() const;
     [[nodiscard]] LogsPage* logsPage() const;
@@ -273,7 +320,10 @@ private:
     [[nodiscard]] IsoPage* isoPage() const;
     [[nodiscard]] ComponentsPage* componentsPage() const;
     [[nodiscard]] class ProgramsPage* programsPage() const;
-    void updateProgramInspector();
+    // D-139: the detail card beside a working page (DetailSource): made with the page, filled on its notice.
+    void attachDetailCard();
+    void updateDetailCard();
+    [[nodiscard]] DetailSource* detailSource() const;
     void updateComponentInspector();
     void loadPreset();
     [[nodiscard]] UpdatesPage* updatesPage() const;
@@ -372,6 +422,7 @@ private:
     std::unique_ptr<FeatureController> m_features;
     std::unique_ptr<ApplyController> m_apply;
     std::unique_ptr<IsoController> m_iso;
+    std::unique_ptr<AutoIsoController> m_autoIso; // D-144
     std::unique_ptr<UpdateCatalogController> m_updateCatalog;
     std::unique_ptr<WindowsDownloadController> m_windowsDownload; // D-093
     std::unique_ptr<TaskController> m_tasks;   // D-048
@@ -392,17 +443,15 @@ private:
     // D-124: downloads that came in when nothing could be queued (no mount, an Apply running). They
     // were dropped before (AppState::queue ignores a locked queue) while the toast said "queued":
     // now they are queued at the next mount of the same source.
-    struct PendingDownloads {
-        std::filesystem::path source;
-        std::vector<std::filesystem::path> updates;
-        std::vector<std::filesystem::path> safeOs;
-        std::vector<std::filesystem::path> languages;
-        std::wstring uiLanguage;
-        std::vector<std::filesystem::path> apps;
-        [[nodiscard]] std::size_t count() const { return updates.size() + safeOs.size() + languages.size() + apps.size(); }
-    };
-    PendingDownloads m_pendingDownloads;
+    // Kept in the AppState: this shell is built again when the language or the type family
+    // changes, and what it held was lost with it (audit APP-03).
+    using PendingDownloads = AppState::HeldDownloads;
+    PendingDownloads& m_pendingDownloads;
     bool m_applyWaitsForDownload = false; // ApplyController::waitingForDownload, last seen
+    // D-145: the install's stage and reason last seen (its toasts once per change; a shell built again
+    // starts from what the state says, so it does not say it again).
+    std::optional<std::pair<int, int>> m_installSeen;
+    bool m_installSeenInit = false;
     [[nodiscard]] bool canQueueNow() const; // mounted, no Apply holding the queue
     void holdDownload(const std::function<void(PendingDownloads&)>& add);
     void flushPendingDownloads();
@@ -419,7 +468,9 @@ private:
     std::unique_ptr<PreloadController> m_preload; // reads the page lists right after a mount
     std::unique_ptr<ImageValuesController> m_imageValues; // what the image already has (D-045)
     std::unique_ptr<PaletteIndex> m_palette;      // P18: what Ctrl+K searches
-    ui::Widget* m_sideInspector = nullptr; // pages other than Images (Components)
+    ui::Widget* m_sideInspector = nullptr; // pages other than Images (the D-139 detail card)
+    DetailCard* m_detailCard = nullptr;    // D-139: m_sideInspector when the page is a DetailSource
+    bool m_detailWanted = false;          // the page has rows to choose from (the card belongs beside it)
     ui::Button* m_actionExpand = nullptr;  // Components: "Tümünü genişlet / daralt"
     ui::Button* m_actionCompat = nullptr;  // Components: "Uyumluluk · N" (D-082)
     ui::Button* m_actionIso = nullptr; // ISO page: "ISO Oluştur" / "İptal"
@@ -429,6 +480,7 @@ private:
     // Engine results arrive later on the UI thread; they check this before touching the shell
     // (it is rebuilt on device loss and destroyed at exit).
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
+    std::weak_ptr<core::CancelToken> m_hashCancel; // verifyHash: the read of the open SHA-256 dialog
     TitleBar* m_titleBar = nullptr;
     ImageHeader* m_header = nullptr;
     TabStrip* m_tabs = nullptr;   // D-109: kept for its counts; the NavPanel is shown

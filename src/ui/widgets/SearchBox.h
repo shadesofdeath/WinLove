@@ -6,6 +6,7 @@
 #include "ui/widget/Widget.h"
 
 #include <functional>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,10 @@ public:
         }
     }
     void setWidth(float width) noexcept { m_width = width; }
+    // The longest text typing and pasting can make (setText is not limited). No limit unless a
+    // caller sets one: a box that takes a registry value's data or a command must never cut what
+    // is pasted into it, and a long text no longer freezes the box (one kept layout, audit UI-06).
+    void setMaxLength(std::size_t length) noexcept { m_maxLength = length; }
 
     [[nodiscard]] SizeF measure(SizeF available) override;
     void paint(Canvas& canvas) override;
@@ -57,6 +62,7 @@ private:
     [[nodiscard]] float offsetOf(std::size_t index) const; // text-space x of a caret index
     [[nodiscard]] bool hasSelection() const noexcept { return m_anchor != m_caret; }
     [[nodiscard]] std::wstring displayText() const; // what is drawn and measured
+    [[nodiscard]] IDWriteTextLayout* shapedText() const; // displayText() laid out once; null without a host
     [[nodiscard]] bool acceptCompletion();
     void replaceSelection(std::wstring_view with);
     void moveCaret(std::size_t to, bool extend);
@@ -75,6 +81,12 @@ private:
     bool m_password = false;
     bool m_bare = false;
     std::wstring m_completion;
+    std::size_t m_maxLength = std::numeric_limits<std::size_t>::max(); // none (setMaxLength)
+    // The layout offsetOf() / indexAt() ask, and what it was made of (see shapedText()).
+    mutable ComPtr<IDWriteTextLayout> m_shaped;
+    mutable std::wstring m_shapedText;
+    mutable const TextStyles* m_shapedWith = nullptr;
+    mutable bool m_shapedPassword = false;
 };
 
 } // namespace wl::ui

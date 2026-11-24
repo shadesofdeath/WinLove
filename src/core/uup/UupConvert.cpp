@@ -232,7 +232,12 @@ Result<UupSetFiles> scanUupFolder(const std::filesystem::path& folderInput) {
     const std::filesystem::path folder = nativePath(folderInput);
     UupSetFiles set;
     std::error_code ec;
-    for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
+    // increment(walk): a range-for's ++ throws when the folder goes away half way (a pulled USB
+    // drive, a network share; audit OPS-13). Its own code: an unreadable entry (`ec`) is only skipped.
+    std::error_code walk;
+    for (auto it = std::filesystem::directory_iterator(folder, walk);
+         !walk && it != std::filesystem::directory_iterator(); it.increment(walk)) {
+        const std::filesystem::directory_entry& entry = *it;
         if (!entry.is_regular_file(ec)) {
             continue;
         }

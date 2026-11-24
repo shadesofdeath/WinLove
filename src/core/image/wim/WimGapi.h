@@ -7,6 +7,7 @@
 // the one next to the file (a setup media's sources\wimgapi.dll). Errors name the copy used.
 #include "core/image/WimFile.h"
 #include "core/tasks/Task.h"
+#include "core/image/dism/Dism.h"
 
 #include <filesystem>
 #include <optional>
@@ -74,6 +75,12 @@ void setCompressionThreads(int threads);
                                          const TaskContext& task);
 // Every index 1..count exactly once.
 [[nodiscard]] bool isPermutation(std::span<const int> order, int count);
+
+// The images mounted on this PC as wimgapi lists them (WIMGetMountedImageInfo, level 1): no DISM
+// session, milliseconds — the Source page shows them at once, DISM's own reading follows (2026-11-11).
+// Needs an elevated process. Status from the mount flags: invalid / no WIM / no folder → Invalid,
+// remountable → NeedsRemount.
+[[nodiscard]] Result<std::vector<MountInfo>> wimMountedImages();
 
 // The texts of an edition: what DISM and Setup's edition list show. Written into the image's XML
 // (NAME / DISPLAYNAME, DESCRIPTION / DISPLAYDESCRIPTION, FLAGS); the file grows by the difference,

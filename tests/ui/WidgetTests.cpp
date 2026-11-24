@@ -1,6 +1,8 @@
 // Widget tree behavior: layout, pointer routing, focus order, tooltips, teardown safety, easing.
 #include "support/TestGraphics.h"
 #include "ui/anim/Tween.h"
+#include "ui/render/Canvas.h"
+#include "ui/render/OffscreenTarget.h"
 #include "ui/widget/Host.h"
 #include "ui/widget/Stack.h"
 #include "ui/widgets/Button.h"
@@ -321,4 +323,62 @@ TEST_CASE("LogConsole follows new lines until the user scrolls up, then counts t
     raw->scrollToEnd();
     CHECK(raw->autoScroll());
     CHECK(follow == std::vector<bool>{false, true});
+}
+
+TEST_CASE("audit PG-01: a modal goes with the widget that opened it") {
+    // A page opens a menu whose handlers use the page; a finished job replaces the page while the
+    // menu is open. The menu must not outlive it.
+    auto root = std::make_unique<Probe>();
+    Probe* rootRaw = root.get();
+    Harness h(std::move(root));
+    auto* page = &rootRaw->add<Probe>();
+    auto* inner = &page->add<Probe>();
+    h.host->pushModal(std::make_unique<Probe>(), nullptr, /*scrim=*/false, /*owner=*/inner);
+    Widget* own = &h.host->pushModal(std::make_unique<Probe>()); // the shell's own: no owner
+    REQUIRE(h.host->hasModal());
+    rootRaw->removeChild(page);
+    CHECK(h.host->hasModal()); // the unowned one stays
+    h.host->popModal(own);
+    CHECK_FALSE(h.host->hasModal()); // the page's went with the page
+}
+
+namespace {
+
+// A progress strip: ticks slowly, repaints itself from the tick.
+class SlowTicker : public Widget {
+public:
+    void start() { animate(); }
+    int ticks = 0;
+
+protected:
+    bool tick(double) override {
+        ++ticks;
+        invalidate();
+        return true;
+    }
+    [[nodiscard]] float tickIntervalMs() const override { return 200.0f; }
+};
+
+} // namespace
+
+TEST_CASE("audit UI-01: a slow tick that invalidates waits for its timer, not for the next display frame") {
+    auto ticker = std::make_unique<SlowTicker>();
+    SlowTicker* raw = ticker.get();
+    Harness h(std::move(ticker));
+    raw->start();
+    auto target = OffscreenTarget::create(*test::graphics().device, {400, 200}, 1.0f);
+    REQUIRE(target.has_value());
+    h.frames = 0;
+    h.timers.clear();
+    {
+        Canvas canvas((*target)->beginDraw(), ThemeKind::Dark, 1.0f, *test::graphics().text, *test::graphics().icons);
+        h.host->paint(canvas);
+    }
+    REQUIRE((*target)->endDraw().has_value());
+    CHECK(raw->ticks == 1);
+    CHECK(h.frames == 0); // before the fix: 1, and so a frame for every display refresh
+    REQUIRE(h.timers.size() == 1);
+    CHECK(h.timers[0] == std::pair<UINT, UINT>{Host::kFrameTimer, 200});
+    raw->invalidate(); // outside a tick it asks for a frame as always
+    CHECK(h.frames == 1);
 }

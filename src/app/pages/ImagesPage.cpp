@@ -18,7 +18,7 @@ namespace {
 constexpr float kToolbarTop = 0.0f;
 constexpr float kToolbar = ui::tokens::size::control;
 constexpr float kGap = 10.0f;
-constexpr float kInfoBar = 38.0f;
+constexpr float kInfoBar = ui::InfoBar::kHeight;
 constexpr float kSearchWidth = 260.0f;
 constexpr float kSectionCaption = 24.0f; // section caption 14 + 10
 } // namespace
@@ -136,6 +136,19 @@ bool ImagesPage::remedyRepairs(core::Remedy remedy) noexcept {
 }
 
 void ImagesPage::updateFolderBar() {
+    if (m_state.mountedElsewhere()) {
+        // 2026-11-11: an image taken over from another tool — whose folder it is, what a save touches.
+        const std::wstring where = m_state.mounted()->mountDir.wstring();
+        m_folder->set(ui::InfoKind::Info, m_strings.get(Str::ImagesElsewhereTitle),
+                      m_strings.format(Str::ImagesElsewhereBody, {{L"folder", where}}));
+        m_folder->setTooltip(m_strings.format(Str::ImagesElsewhereBody, {{L"folder", where}}));
+        m_folder->setAction(L"", nullptr);
+        if (!m_folder->visible()) {
+            m_folder->setVisible(true);
+        }
+        layout();
+        return;
+    }
     const auto& folder = m_state.mountFolder();
     // Free = nothing to say; Ok while the app shows it as mounted = normal. Anything else
     // (leftovers, invalid, a mount the app does not know about) gets the bar.
@@ -309,7 +322,7 @@ bool ImagesPage::showRowMenu(ui::PointF at) {
         [] {});
     popup->setIcons(std::move(icons));
     ui::Widget* raw = popup.get();
-    host()->pushModal(std::move(popup), raw, /*scrim=*/false);
+    host()->pushModal(std::move(popup), raw, /*scrim=*/false, /*owner=*/this);
     return true;
 }
 
@@ -372,11 +385,14 @@ void ImagesPage::refresh(AppState::Change change) {
         m_strip->start();
         m_error->setVisible(false);
     }
-    // While its contents are read the image is already mounted: the row says so.
-    if (op && op->kind != EngineOperation::Kind::Reading) {
-        // "Bağlanıyor" is for a mount; any other work only dims the rows it is not about.
-        const bool mounting = op->kind == EngineOperation::Kind::Mounting || op->kind == EngineOperation::Kind::Preparing;
-        m_table->setRowState(op->index, mounting ? EditionTable::RowState::Working : EditionTable::RowState::Normal, true);
+    // While its contents are read the image is already mounted: the row says so. Any other work: the
+    // rows it is about say what it is (2026-11-11: a delete said "Bağlanıyor"), the others are dimmed;
+    // when it ends (or fails) the rows go back to what they were.
+    const auto word = op ? operationRowWord(*op) : std::nullopt;
+    if (op && word && !operationRows(*op).empty()) {
+        m_table->setWorkingRows(operationRows(*op), *word, true);
+    } else if (op && op->kind != EngineOperation::Kind::Reading) {
+        m_table->setRowState(std::nullopt, EditionTable::RowState::Normal, true);
     } else if (const auto& mounted = m_state.mounted()) {
         m_table->setRowState(mounted->index, EditionTable::RowState::Mounted, false);
     } else if (const auto failed = m_controller.failedIndex()) {
@@ -398,7 +414,8 @@ void ImagesPage::layout() {
         const float archWidth = std::min(m_arch->measure({}).width, 200.0f);
         m_arch->setBounds({x, b.y + kToolbarTop, archWidth, kToolbar});
     }
-    float y = b.y + kToolbarTop + kToolbar + 16;
+    // One edition: no search or filter (refresh()), and no empty row where they would be.
+    float y = m_search->visible() ? b.y + kToolbarTop + kToolbar + 16 : b.y;
     if (m_error->visible()) {
         m_error->setBounds({b.x, y, b.width, kInfoBar});
         y += kInfoBar + kGap;

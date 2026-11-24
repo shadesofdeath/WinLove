@@ -50,6 +50,18 @@ void ComponentInspector::set(std::optional<ComponentController::Item> item, std:
     m_group = std::move(group);
     m_queued = queued;
     m_held = std::move(held);
+    // The panel is drawn with every frame of the page (each pointer move over the tree next to
+    // it): what it says is put together here, once per item (audit SUB-06).
+    m_sizeText.clear();
+    m_contentsTitle.clear();
+    if (m_item) {
+        m_sizeText = m_item->size ? formatBytes(m_item->size, m_language) : std::wstring(L"—");
+        // What goes: the package full name; a system component lists its packages and paths.
+        m_contentsTitle = m_strings.get(Str::ComponentsContents) + L" · " +
+                          m_strings.format(m_item->kind == ComponentController::Item::Kind::Appx ? Str::ComponentsPackages
+                                                                                                 : Str::ComponentsItemsN,
+                                           {{L"n", std::to_wstring(m_item->contents.size())}});
+    }
     m_toggle->setText(m_strings.get(queued ? Str::ComponentsRemoveFromQueue : Str::ComponentsAddToQueue));
     m_toggle->setVisible(m_item.has_value());
     m_toggle->setEnabled(m_held.empty());
@@ -64,8 +76,9 @@ void ComponentInspector::layout() {
 
 void ComponentInspector::paint(ui::Canvas& canvas) {
     const RectF b = bounds();
-    // D-114: a card like the others (rounded, no seam), not a strip glued to the window edge.
-    canvas.fillRoundRect(b, ui::tokens::radius::r3, Color::BgPanel);
+    // D-114: a card like the others (rounded, no seam), not a strip glued to the window edge; D-136:
+    // raised like the page card beside it.
+    canvas.raisedCard(b, ui::tokens::radius::r3, Color::BgPanel);
     if (!m_item) {
         return;
     }
@@ -96,7 +109,7 @@ void ComponentInspector::paint(ui::Canvas& canvas) {
         y += 26;
     };
     row(Str::ComponentsCategory, m_group);
-    row(Str::CommonSize, item.size ? formatBytes(item.size, m_language) : std::wstring(L"—"), TypeStyle::Mono);
+    row(Str::CommonSize, m_sizeText, TypeStyle::Mono);
     row(Str::RiskColumn, m_strings.get(riskText(item.risk)), TypeStyle::Small, riskInk(item.risk));
     row(Str::CommonStatus, m_strings.get(m_queued ? Str::ComponentsQueued : Str::ComponentsStays));
     row(Str::ComponentsReversible, m_strings.get(Str::CommonNo));
@@ -119,12 +132,7 @@ void ComponentInspector::paint(ui::Canvas& canvas) {
         canvas.drawTextWrapped(notes, {x + 14, y, width - 14, h}, TypeStyle::Small, ink);
         y += h + 6;
     }
-    // What goes: the package full name; a system component lists its packages and paths.
-    const std::wstring count = std::to_wstring(item.contents.size());
-    section(m_strings.get(Str::ComponentsContents) + L" · " +
-            m_strings.format(item.kind == ComponentController::Item::Kind::Appx ? Str::ComponentsPackages
-                                                                                : Str::ComponentsItemsN,
-                             {{L"n", count}}));
+    section(m_contentsTitle);
     const float bottom = m_toggle->bounds().y - 12;
     for (const auto& line : item.contents) {
         if (y + 22 > bottom) {

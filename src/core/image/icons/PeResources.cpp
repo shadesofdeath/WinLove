@@ -151,6 +151,15 @@ private:
             !readAt(m_bytes, at + 8, leaf.codePage)) {
             return std::unexpected(bad(L"resource data entry out of range"));
         }
+        // Counted while reading, not after (audit ENG-05): only directories are visited once, so
+        // thousands of entries may all point at one large block and each of them is a copy.
+        if (++m_leaves > kMaxEntries) {
+            return std::unexpected(bad(L"too many resources"));
+        }
+        m_copied += size;
+        if (m_copied > 2 * std::uint64_t{m_bytes.size()}) {
+            return std::unexpected(bad(L"resource data larger than the file"));
+        }
         if (size == 0) {
             return leaf;
         }
@@ -173,6 +182,8 @@ private:
     std::uint64_t m_limit;
     const std::vector<PeSection>& m_sections;
     std::set<std::uint32_t> m_visited;
+    std::uint32_t m_leaves = 0;
+    std::uint64_t m_copied = 0; // bytes of resource data taken so far
 };
 
 // The tree laid out at `baseRva`: directory tables, name strings, data entries, data.
@@ -457,9 +468,18 @@ Result<std::string> PeImage::build() const {
             lastVirtual = i;
         }
     }
+    // What follows trusts these (audit ENG-04); a file Windows itself would load passes them all.
+    // Checked here and not in parse(): reading the icons of an odd file keeps working as it did.
+    if (rawEnd > m_bytes.size()) {
+        return std::unexpected(bad(L"the headers are larger than the file"));
+    }
+    if (m_fileAlignment > 0x10000) {
+        return std::unexpected(bad(L"bad file alignment")); // the format's limit; the padding below is this large
+    }
     // Data after the last section: only a signature may be there (and it goes).
     if (rawEnd < m_bytes.size()) {
         const bool onlySignature = m_securitySize != 0 && m_securityOffset >= rawEnd &&
+                                   m_securityOffset <= m_bytes.size() &&
                                    std::uint64_t{m_securityOffset} + m_securitySize >= m_bytes.size() &&
                                    std::all_of(m_bytes.begin() + static_cast<std::ptrdiff_t>(rawEnd),
                                                m_bytes.begin() + static_cast<std::ptrdiff_t>(m_securityOffset),
@@ -484,6 +504,10 @@ Result<std::string> PeImage::build() const {
         sectionHeader = m_sectionTableOffset + static_cast<std::uint32_t>(rsrcIndex) * kSectionHeader;
         sectionVa = rsrc->virtualAddress;
         rawPointer = rsrc->rawPointer;
+        // The headers are patched in `out` below: all of them must lie before the section.
+        if (rawPointer < std::uint64_t{m_sectionTableOffset} + m_sections.size() * kSectionHeader) {
+            return std::unexpected(bad(L"the resource section overlaps the headers"));
+        }
         out.assign(m_bytes.data(), rawPointer);
     } else {
         // A new section after the last one: room for its header is needed.
@@ -523,9 +547,14 @@ Result<std::string> PeImage::build() const {
     writeAt(out, sizeOfImageOffset, alignUp(std::uint64_t{sectionVa} + data.size(), m_sectionAlignment));
     writeAt(out, dirOffset + 2 * 8, sectionVa);
     writeAt(out, dirOffset + 2 * 8 + 4, static_cast<std::uint32_t>(data.size()));
-    // The signature covered the old bytes; it is gone with them.
-    writeAt(out, dirOffset + 4 * 8, std::uint32_t{0});
-    writeAt(out, dirOffset + 4 * 8 + 4, std::uint32_t{0});
+    // The signature covered the old bytes; it is gone with them. A header with fewer than five
+    // data directories has no such entry: those eight bytes are already the section table.
+    std::uint32_t dirCount = 0;
+    readAt(m_bytes, m_optionalOffset + (m_is64 ? 108 : 92), dirCount);
+    if (dirCount > 4) {
+        writeAt(out, dirOffset + 4 * 8, std::uint32_t{0});
+        writeAt(out, dirOffset + 4 * 8 + 4, std::uint32_t{0});
+    }
     // SizeOfInitializedData follows the sections' raw sizes.
     std::uint32_t initialized = 0;
     std::uint16_t count = 0;

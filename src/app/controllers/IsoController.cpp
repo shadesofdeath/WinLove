@@ -9,11 +9,15 @@
 #include "app/state/Preset.h"
 #include "base/Log.h"
 #include "core/image/MediaRefresh.h"
+#include "core/image/SetupMedia.h"
 #include "core/image/Source.h"
 #include "core/image/WorkCopy.h"
 #include "core/image/dism/Dism.h"
 #include "core/system/Privileges.h"
 
+#include <shlobj.h>
+
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <format>
@@ -80,13 +84,27 @@ IsoController::~IsoController() {
     *m_alive = false;
 }
 
-std::optional<IsoController::Blocker> IsoController::blocker() const {
-    const auto& source = m_state.source();
+std::optional<IsoController::Blocker> IsoController::sourceBlocker(const AppState& state) {
+    const auto& source = state.source();
     if (!source) {
         return Blocker::NoSource;
     }
+    if (core::isVirtualDiskFormat(source->format)) {
+        return Blocker::VirtualDisk; // D-141: an installed Windows, no setup files (boot.wim, setup)
+    }
     if (source->format != core::ImageFormat::Folder && source->format != core::ImageFormat::Iso) {
         return Blocker::WimOnly;
+    }
+    if (state.unattend().includeInIso && !core::validateUnattend(UnattendController::effective(state)).empty()) {
+        return Blocker::UnattendInvalid;
+    }
+    return std::nullopt;
+}
+
+std::optional<IsoController::Blocker> IsoController::blocker() const {
+    const auto fromSource = sourceBlocker(m_state);
+    if (fromSource && *fromSource != Blocker::UnattendInvalid) {
+        return fromSource;
     }
     if (m_state.mounted()) {
         return Blocker::Mounted;
@@ -95,32 +113,91 @@ std::optional<IsoController::Blocker> IsoController::blocker() const {
     if (m_state.operation() || running() || (apply && apply->stage != AppState::ApplyRun::Stage::Done)) {
         return Blocker::Busy;
     }
-    if (m_state.unattend().includeInIso && !core::validateUnattend(UnattendController::effective(m_state)).empty()) {
-        return Blocker::UnattendInvalid;
-    }
-    return std::nullopt;
+    return fromSource; // the answer file, checked last as before
 }
 
-bool IsoController::canRepack() const {
-    const auto& source = m_state.source();
+std::wstring IsoController::defaultLabel(const core::SourceInfo& source) {
+    if (!source.volumeLabel.empty()) {
+        return source.volumeLabel.substr(0, 32);
+    }
+    return L"WINLOVE";
+}
+
+std::wstring IsoController::defaultFileName(const AppState& state) {
+    const auto& source = state.source();
+    return (source ? source->path.stem().wstring() : std::wstring(L"Windows")) + L"_WinLove.iso";
+}
+
+std::filesystem::path IsoController::defaultFolder(const AppState& state) {
+    if (!state.settings().isoFolder.empty()) {
+        return state.settings().isoFolder;
+    }
+    PWSTR path = nullptr;
+    std::filesystem::path desktop;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Desktop, 0, nullptr, &path))) {
+        desktop = path;
+    }
+    CoTaskMemFree(path);
+    return desktop;
+}
+
+std::wstring IsoController::chosenLabel(const AppState& state) {
+    if (const auto& label = state.isoChoices().label) {
+        return *label;
+    }
+    return state.source() ? defaultLabel(*state.source()) : std::wstring(L"WINLOVE");
+}
+
+IsoController::Request IsoController::defaultRequest(const AppState& state, const std::filesystem::path& output) {
+    // D-144 addendum: the options as the ISO page / "ISO seçenekleri…" leave them (AppState::isoChoices).
+    const auto& choices = state.isoChoices();
+    Request r;
+    r.output = output;
+    r.label = chosenLabel(state);
+    if (r.label.empty()) {
+        r.label = state.source() ? defaultLabel(*state.source()) : std::wstring(L"WINLOVE"); // the page refuses an empty one
+    }
+    r.boot = choices.boot;
+    r.noPrompt = choices.noPrompt;
+    r.repack = static_cast<Repack>(std::min<std::uint8_t>(choices.repack, static_cast<std::uint8_t>(Repack::Esd)));
+    r.sha256 = choices.sha256;
+    r.openFolder = false; // the Apply page names the file and shows it in its folder on a click
+    r.bootBypass = choices.bootBypass;
+    const bool previousMedia = state.source() && core::mediaOpensPreviousSetup(*state.source());
+    if (choices.legacySetup && !previousMedia) {
+        r.legacySetup = *choices.legacySetup; // the user's own choice
+    } else {
+        r.legacySetupAuto = !previousMedia; // the page's rule, decided on the engine thread before the build
+    }
+    r.mediaUpdate = state.mediaUpdate().enabled && state.mediaUpdate().any();
+    r.secureBoot2023 = choices.secureBoot2023;
+    r.workCopy = Request::WorkCopy::Keep; // the copy the run just saved is the one to build from
+    r.afterApply = true;
+    return r;
+}
+
+bool IsoController::canRepack(const AppState& state) {
+    const auto& source = state.source();
     if (!source) {
         return false;
     }
     // ISO sources are extracted into the work folder first, so they qualify too.
     const auto legacyWork = AppSettings::legacyMountDirectory().parent_path(); // C:\WinLove (before 2026-09-28)
-    return source->format == core::ImageFormat::Iso || isInside(source->path, m_state.settings().workRoot) ||
+    return source->format == core::ImageFormat::Iso || isInside(source->path, state.settings().workRoot) ||
            isInside(source->path, legacyWork);
 }
 
-core::BootPatch IsoController::bootPatch(const AppState& state) {
+core::BootPatch IsoController::bootPatch(const AppState& state, bool bypass) {
     const core::UnattendOptions& answers = state.unattend().options;
     core::BootPatch patch;
-    patch.bypassTpm = answers.bypassTpm;
-    patch.bypassSecureBoot = answers.bypassSecureBoot;
-    patch.bypassRam = answers.bypassRam;
-    patch.bypassCpu = answers.bypassCpu;
-    patch.bypassStorage = answers.bypassStorage;
-    patch.drivers = state.bootDrivers(); // D-056: Sürücüler › Kurulum ortamı
+    if (bypass) {
+        patch.bypassTpm = answers.bypassTpm;
+        patch.bypassSecureBoot = answers.bypassSecureBoot;
+        patch.bypassRam = answers.bypassRam;
+        patch.bypassCpu = answers.bypassCpu;
+        patch.bypassStorage = answers.bypassStorage;
+    }
+    patch.drivers = state.bootDrivers(); // D-056 / D-134: Sürücüler › Kurulum ortamı
     return patch;
 }
 
@@ -186,7 +263,7 @@ void IsoController::start(Request request) {
             presetFile = presetToJson(preset);
         }
     }
-    core::BootPatch boot = request.bootBypass ? bootPatch(m_state) : core::BootPatch{};
+    core::BootPatch boot = bootPatch(m_state, request.bootBypass);
     boot.legacySetup = request.legacySetup; // D-074
     const std::filesystem::path bootFolder = m_state.settings().workRoot / L"boot"; // the copy and its mount folder
     // D-080: the cumulative update into boot.wim (Setup's files kept for the media) and the Setup
@@ -216,6 +293,7 @@ void IsoController::start(Request request) {
     }
     Run run;
     run.running = true;
+    run.afterApply = request.afterApply;
     run.usb = request.usb.has_value();
     run.output = request.usb ? std::filesystem::path(request.usb->name) : request.output;
     run.startedMs = 0;
@@ -235,8 +313,9 @@ void IsoController::start(Request request) {
         log::info("iso", std::format(L"answer file: autounattend.xml ({} bytes) goes to the ISO root", answerFile.size()));
     }
     if (!boot.empty()) {
-        log::info("iso", std::format(L"setup image: {} requirement check(s) are switched off in boot.wim as well{}",
-                                     boot.labConfigValues().size(), boot.legacySetup ? L"; it boots into the previous Setup" : L""));
+        log::info("iso", std::format(L"setup image: {} requirement check(s) are switched off in boot.wim as well, {} driver(s){}",
+                                     boot.labConfigValues().size(), boot.drivers.size(),
+                                     boot.legacySetup ? L"; it boots into the previous Setup" : L""));
     }
 
     auto post = m_events.postToUi;
@@ -260,9 +339,21 @@ void IsoController::start(Request request) {
     };
 
     auto usbRoot = std::make_shared<std::wstring>(); // the stick's drive, set by the job
+    auto bootReport = std::make_shared<core::BootPatchReport>(); // D-134: what became of the drivers
     m_state.engine().run<core::IsoResult>(
         [source, workFolder, request, cancel, report, answerFile, presetFile, boot, bootFolder, patcher, usbWriter, usbRoot,
-         setupDu, extract, fresh](const core::TaskContext&) -> Result<core::IsoResult> {
+         setupDu, extract, fresh, bootReport](const core::TaskContext&) mutable -> Result<core::IsoResult> {
+            if (request.legacySetupAuto && !request.legacySetup) {
+                // D-144: what the ISO page's box does by itself — a 24H2+ edition without WinRE gets the
+                // previous Setup (unless the media is older and opens it anyway).
+                if (auto missing = core::editionsWithoutWinre(source); missing && !missing->empty() &&
+                                                                       !core::mediaOpensPreviousSetup(source)) {
+                    boot.legacySetup = true;
+                    log::info("iso", std::format(L"{} edition(s) without WinRE: the media boots into the previous Setup", missing->size()));
+                } else if (!missing) {
+                    log::warn("iso", L"cannot tell whether the editions have WinRE: " + describe(missing.error()));
+                }
+            }
             // Weights: extract 0.30 (ISO sources), repack 0.30 (if asked), boot image 0.15 (if
             // asked), build the rest.
             const bool repack = request.repack != Repack::AsIs;
@@ -329,8 +420,16 @@ void IsoController::start(Request request) {
                 if (!done) {
                     return std::unexpected(done.error());
                 }
-                log::info("iso", std::format(L"boot.wim index {}: {} requirement check(s) switched off{}", done->index,
-                                             boot.labConfigValues().size(), boot.legacySetup ? L", previous Setup" : L""));
+                log::info("iso", std::format(L"boot.wim index {}: {} requirement check(s) switched off, {} driver(s) added, "
+                                             L"{} there already, {} refused{}",
+                                             done->index, boot.labConfigValues().size(), done->driversAdded.size(),
+                                             done->driversPresent.size(), done->driversRefused.size(),
+                                             boot.legacySetup ? L", previous Setup" : L""));
+                for (const auto& refused : done->driversRefused) {
+                    // One driver Setup's image does not take does not cost the ISO: the result names it.
+                    log::warn("iso", L"boot.wim driver not added: " + core::describe(refused));
+                }
+                *bootReport = *done;
                 options.replacedFiles.push_back({L"sources\\boot.wim", patched.file});
             }
             // D-080: the media's own files — the Setup dynamic update, then Setup and the boot manager
@@ -393,8 +492,8 @@ void IsoController::start(Request request) {
                                       }};
             return core::buildIso(options, t);
         },
-        [this, post, alive, request, usbRoot](Result<core::IsoResult> result) {
-            post([this, alive, request, usbRoot, result = std::move(result)] {
+        [this, post, alive, request, usbRoot, bootReport](Result<core::IsoResult> result) {
+            post([this, alive, request, usbRoot, bootReport, result = std::move(result)] {
                 if (const auto a = alive.lock(); !a || !*a) {
                     return;
                 }
@@ -414,6 +513,9 @@ void IsoController::start(Request request) {
                 }
                 run->fraction = 1.0;
                 run->result = *result;
+                run->bootDriversAdded = bootReport->driversAdded;
+                run->bootDriversPresent = bootReport->driversPresent;
+                run->bootDriversRefused = bootReport->driversRefused;
                 if (request.usb && !usbRoot->empty()) {
                     run->output = *usbRoot;
                 }

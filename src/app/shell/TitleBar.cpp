@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cwctype>
 
 namespace wl::app {
 
@@ -20,11 +21,15 @@ namespace {
 // and 2 apart, the palette box centered (at most 440×34; 380 kept free on each side).
 constexpr float kMenusGap = 26.0f; // D-109: the reference tool's first tab starts ~66 in, after the ≡ button
 constexpr float kMenuPadX = 12.0f;
+constexpr float kMenuIconGap = ui::tokens::spacing::s3; // a menu's icon → its label
 constexpr float kMenuGap = 4.0f;
 constexpr float kPaletteIconX = 10.0f;
 constexpr float kPaletteTextX = 32.0f;
 constexpr float kGlyph = 10.0f;      // minimize / maximize / close glyph box
 constexpr float kThemeGlyph = 15.0f; // sun / moon
+constexpr float kTitleClearLeft = 16.0f;  // the title keeps this far from the last menu
+constexpr float kTitleClearRight = 8.0f;  // and from the theme button (its glyph sits 12 further in)
+constexpr float kTitleLeast = 40.0f;      // narrower than this the title is left out
 
 bool isActivationKey(const ui::KeyEvent& key) {
     return key.virtualKey == VK_SPACE || key.virtualKey == VK_RETURN;
@@ -70,7 +75,7 @@ bool PaletteTrigger::onKeyDown(const ui::KeyEvent& key) {
 
 // ---- MenuButton --------------------------------------------------------------------------------
 
-MenuButton::MenuButton(std::wstring label) : m_label(std::move(label)) {
+MenuButton::MenuButton(std::wstring label, std::optional<ui::icons::Icon> icon) : m_label(std::move(label)), m_icon(icon) {
     setFocusable(true);
     setAccessible(ui::AccessRole::TabItem, m_label);
 }
@@ -83,19 +88,36 @@ void MenuButton::setActive(bool active) {
 }
 
 ui::SizeF MenuButton::measure(ui::SizeF /*available*/) {
-    return {std::ceil(textWidth(m_label, TypeStyle::Body, 60.0f)) + 2 * kMenuPadX, size::titleBar};
+    m_textWidth = std::ceil(textWidth(m_label, TypeStyle::Body, 60.0f)); // kept for paint()
+    const float icon = m_icon ? size::icon + kMenuIconGap : 0.0f;
+    return {icon + m_textWidth + 2 * kMenuPadX, size::titleBar};
 }
 
 void MenuButton::paint(ui::Canvas& canvas) {
     // D-109: the reference tool's ribbon tabs — text only; the chosen one in text.primary over a 2px accent
     // line as wide as its text, the others text.secondary (text.primary on hover).
+    // 2026-11-11: the workspace's icon before it, in its own colour (the navigation's look).
     const RectF b = bounds();
-    canvas.drawText(m_label, b, TypeStyle::Body, m_active || hovered() ? Color::TextPrimary : Color::TextSecondary,
-                    ui::TextAlign::Center);
-    if (m_active) {
-        const float w = std::ceil(canvas.text().measure(m_label, TypeStyle::Body));
-        canvas.fillRoundRect({b.x + std::round((b.width - w) / 2), b.bottom() - 5, w, 2}, 1.0f, Color::AccentBase);
+    const float icon = m_icon ? size::icon + kMenuIconGap : 0.0f;
+    const float contentW = std::min(icon + m_textWidth, b.width);
+    const float x = b.x + std::round((b.width - contentW) / 2);
+    if (m_icon) {
+        canvas.drawIcon(*m_icon, {x, b.y + std::round((b.height - size::icon) / 2)},
+                        m_active || hovered() ? ui::Ink(Color::AccentBase) : ui::Ink(Color::TextSecondary));
     }
+    canvas.drawText(m_label, {x + icon, b.y, std::max(b.right() - x - icon, 0.0f), b.height}, TypeStyle::Body,
+                    m_active || hovered() ? Color::TextPrimary : Color::TextSecondary);
+    if (m_active) {
+        canvas.fillRoundRect({x, b.bottom() - 5, contentW, 2}, 1.0f, Color::AccentBase);
+    }
+}
+
+RectF MenuButton::focusRect() const {
+    // The Host draws the ring focusOffset + 1 outside this: 1 DIP clear of the bar's top and bottom,
+    // the accent line under the label inside it.
+    const RectF b = bounds();
+    const float inset = ui::tokens::radius::focusOffset + 2;
+    return {b.x, b.y + inset, b.width, std::max(b.height - 2 * inset, 0.0f)};
 }
 
 void MenuButton::onClick() {
@@ -150,6 +172,12 @@ bool CaptionButton::tick(double now) {
     const bool running = m_hover.tick(now);
     invalidate();
     return running;
+}
+
+RectF CaptionButton::focusRect() const {
+    const float inset = ui::tokens::radius::focusOffset + 1;
+    const RectF b = bounds();
+    return {b.x + inset, b.y + inset, std::max(b.width - 2 * inset, 0.0f), std::max(b.height - 2 * inset, 0.0f)};
 }
 
 void CaptionButton::onClick() {
@@ -235,8 +263,15 @@ void CaptionButton::paint(ui::Canvas& canvas) {
 
 TitleBar::TitleBar(const Labels& labels)
     : m_appName(labels.appName), m_maximizeName(labels.maximize), m_restoreName(labels.restore) {
+    // D-147: the wordmark's second word (from its second capital: "Win" + "Love") takes the accent.
+    for (std::size_t i = 1; i < m_appName.size(); ++i) {
+        if (std::iswupper(m_appName[i])) {
+            m_accentFrom = i;
+            break;
+        }
+    }
     for (std::size_t i = 0; i < labels.menus.size(); ++i) {
-        auto& menu = add<MenuButton>(labels.menus[i]);
+        auto& menu = add<MenuButton>(labels.menus[i], i < labels.menuIcons.size() ? std::optional(labels.menuIcons[i]) : std::nullopt);
         menu.onInvoke = [this, i] {
             if (onMenu) {
                 onMenu(static_cast<int>(i));
@@ -293,30 +328,53 @@ void TitleBar::layout() {
 
     float x = b.x + button + kMenusGap - kMenuPadX;
     m_menusLeft = x;
+    float menusRight = x;
     for (auto* menu : m_menus) {
         const ui::SizeF s = menu->measure({});
         menu->setBounds({x, b.y, s.width, b.height});
+        menusRight = menu->bounds().right();
         x += s.width + kMenuGap;
     }
     m_palette->setBounds({x, b.y, 0, 0});
+    // The window title (the reference tool centres it in the window); measured here, not in paint().
+    m_titleWidth = textWidth(m_appName, TypeStyle::Wordmark);
+    m_leadWidth = m_accentFrom ? textWidth(std::wstring_view(m_appName).substr(0, m_accentFrom), TypeStyle::Wordmark) : 0;
+    m_titleRect = titleRectFor(b, m_titleWidth + 2, menusRight + kTitleClearLeft, m_theme->bounds().x - kTitleClearRight);
+}
+
+RectF TitleBar::titleRectFor(RectF bar, float textWidth, float leftLimit, float rightLimit) {
+    float left = std::max(bar.x + std::round((bar.width - textWidth) / 2), leftLimit);
+    if (left + textWidth > rightLimit) {
+        left = std::max(rightLimit - textWidth, leftLimit); // off centre before it is cut
+    }
+    const float room = rightLimit - left;
+    if (room < kTitleLeast || textWidth <= 0) {
+        return {};
+    }
+    return {left, bar.y, std::min(textWidth, room), bar.height};
 }
 
 void TitleBar::paint(ui::Canvas& canvas) {
     const RectF b = bounds();
     canvas.fillRect(b, Color::BgTitleBar);
-    // The window title, centered in the window (the reference tool: "The reference tool"); never over the tabs.
-    const float w = std::ceil(canvas.text().measure(m_appName, TypeStyle::Body)) + 2;
-    float left = b.x + std::round((b.width - w) / 2);
-    float tabsRight = m_menusLeft;
-    for (const auto* menu : m_menus) {
-        tabsRight = std::max(tabsRight, menu->bounds().right());
+    if (m_titleRect.width <= 0) {
+        return;
     }
-    left = std::max(left, tabsRight + 16);
-    const float right = m_theme->bounds().x - 8;
-    if (right - left > 40) {
-        canvas.drawText(m_appName, {left, b.y, std::min(w, right - left), b.height}, TypeStyle::Body,
-                        m_windowActive ? Color::TextPrimary : Color::TextTertiary);
+    // D-147: the wordmark. Inactive window: dimmed, one colour. High contrast: the text colour only.
+    const Color text = m_windowActive ? Color::TextPrimary : Color::TextTertiary;
+    const bool twoTone = m_accentFrom > 0 && m_windowActive && canvas.theme() != ui::ThemeKind::HighContrast &&
+                         !ui::systemHighContrast() && m_titleRect.width >= m_titleWidth;
+    if (!twoTone) {
+        // Cut with "…" (the text format's trimming) when the window is too narrow for all of it.
+        canvas.drawText(m_appName, m_titleRect, TypeStyle::Wordmark, text);
+        return;
     }
+    const std::wstring_view name = m_appName;
+    canvas.drawText(name.substr(0, m_accentFrom), {m_titleRect.x, m_titleRect.y, m_leadWidth + 1, m_titleRect.height},
+                    TypeStyle::Wordmark, text);
+    canvas.drawText(name.substr(m_accentFrom),
+                    {m_titleRect.x + m_leadWidth, m_titleRect.y, m_titleRect.width - m_leadWidth, m_titleRect.height},
+                    TypeStyle::Wordmark, Color::AccentText);
 }
 
 } // namespace wl::app

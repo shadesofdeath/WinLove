@@ -1,10 +1,13 @@
 #include "app/pages/ServicesPage.h"
 
+#include "app/Format.h"
 #include "app/pages/PageBits.h"
 #include "base/Text.h"
+#include "core/image/Services.h"
 #include "ui/widget/Host.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace wl::app {
 
@@ -19,9 +22,14 @@ constexpr float kToolbarTop = 0.0f;
 constexpr float kToolbar = ui::tokens::size::control;
 constexpr float kGap = 10.0f;
 constexpr float kTableGap = 12.0f;
-constexpr float kChoiceH = 20.0f;
+// The start type's box in its cell: a small control (D-136: from the tokens), at most kChoiceW wide.
+constexpr float kChoiceH = ui::tokens::size::controlSmall;
+constexpr float kChoiceW = 176.0f;
+constexpr float kIconGap = ui::tokens::spacing::s3; // the service's icon → its name
 
-enum Column : int { kService, kName, kDefault, kNew, kRisk };
+constexpr int kMarkSlots = 2; // D-139: state, risk
+
+enum Column : int { kService, kMarks, kName, kDefault, kNew };
 
 constexpr StartType kChoices[] = {StartType::Auto, StartType::AutoDelayed, StartType::Manual, StartType::Disabled};
 
@@ -73,13 +81,39 @@ ServicesPage::ServicesPage(AppState& state, ServiceController& controller, const
         m_onlyChanged = on;
         refilter();
     };
+    m_summaryLine = &add<SummaryLine>();
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::ServicesService), 0, ui::TextAlign::Leading, true},
-        {strings.get(Str::CommonName), 206, ui::TextAlign::Leading, true},
-        {strings.get(Str::ServicesDefault), 172, ui::TextAlign::Leading, true},
-        {strings.get(Str::ServicesNewStart), 212},
-        {strings.get(Str::RiskColumn), 92},
+        {L"", marksColumnWidth(kMarkSlots)},
+        {strings.get(Str::CommonName), 206, ui::TextAlign::Leading, true, 130},
+        {strings.get(Str::ServicesDefault), 172, ui::TextAlign::Leading, true, 140},
+        {.title = strings.get(Str::ServicesNewStart), .width = 212, .minWidth = kChoiceW + ui::tokens::spacing::s4},
     });
+    // D-139: a mark says what it means on hover; the risk's word is there and in the card.
+    m_table->cellTooltip = [this](int row, int column) -> std::wstring {
+        const auto* item = itemAt(row);
+        if (column != kMarks || !item) {
+            return {};
+        }
+        const RowMarks marks = marksOf(row);
+        const std::wstring change =
+            m_strings.format(Str::ServicesWillBecome, {{L"start", m_strings.get(startName(m_controller.target(*item)))}});
+        return marksTooltip(m_strings, marks, change, explainGuard ? explainGuard(*item) : std::wstring(),
+                            m_controller.notes(*item, m_language));
+    };
+    m_table->onSelect = [this](int) { detailChanged(); };
+    // D-136: the service's name keeps its room at a narrow window; a cut name or id shows whole on hover.
+    m_table->setFlexMin(kNameColumnMin);
+    m_table->cellText = [this](int row, int column) -> ui::TableCellText {
+        const auto* item = itemAt(row);
+        if (!item) {
+            return {};
+        }
+        if (column == kService) {
+            return {item->displayName, TypeStyle::BodyStrong, ui::tokens::size::icon + kIconGap};
+        }
+        return column == kName ? ui::TableCellText{item->name, TypeStyle::Mono} : ui::TableCellText{};
+    };
     // D-091: sorting by a header click.
     m_table->sortKey = [this](int row, int column) -> ui::TableSortKey {
         const auto* item = itemAt(row);
@@ -115,6 +149,8 @@ ServicesPage::ServicesPage(AppState& state, ServiceController& controller, const
                 m_table->refresh();
                 invalidate();
             }
+            updateSummary();
+            detailChanged();
         }
     });
     m_controller.load();
@@ -185,7 +221,8 @@ void ServicesPage::refresh() {
                   Str::CommonGoImages, m_intents.goImages);
     } else if (!list || list->status == AppState::ServiceList::Status::Loading) {
         m_controller.load();
-        showEmpty(ui::icons::Icon::Spinner, Str::ServicesLoadingTitle, m_strings.get(Str::ServicesLoadingBody),
+        // D-139: a quiet line under the page's icon while the list is read (no spinner that never turns).
+        showEmpty(ui::icons::Icon::ServicesGear, Str::ServicesLoadingTitle, m_strings.get(Str::ServicesLoadingBody),
                   std::nullopt, {});
     } else if (list->status == AppState::ServiceList::Status::Failed) {
         showEmpty(ui::icons::Icon::ErrorOctagon, Str::ServicesFailedTitle,
@@ -194,12 +231,135 @@ void ServicesPage::refresh() {
     } else {
         m_empty->setVisible(false);
     }
-    for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_search, m_startBox, m_changed, m_table}) {
+    for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_search, m_startBox, m_changed, m_summaryLine, m_table}) {
         w->setVisible(ready);
     }
     refilter();
+    updateSummary();
     layout();
     invalidate();
+    detailChanged();
+}
+
+void ServicesPage::updateSummary() {
+    // "214 servis · 2 devre dışı bırakılacak" (or "· 3 değişecek" when not every change disables).
+    const auto& list = m_state.serviceList();
+    std::vector<SummaryPart> parts;
+    if (list && list->status == AppState::ServiceList::Status::Ready) {
+        parts.push_back({m_strings.format(Str::ServicesSummary, {{L"n", formatCount(list->items.size(), m_language)}})});
+        std::size_t changed = 0;
+        std::size_t disabled = 0;
+        for (const auto& service : list->items) {
+            if (m_controller.changed(service)) {
+                ++changed;
+                disabled += m_controller.target(service) == StartType::Disabled ? 1 : 0;
+            }
+        }
+        if (changed > 0) {
+            parts.push_back({m_strings.format(disabled == changed ? Str::ServicesSummaryDisable : Str::ServicesSummaryChange,
+                                              {{L"n", formatCount(changed, m_language)}}),
+                             SummaryPart::Tone::Change, m_strings.format(Str::ServicesSummaryChange, {{L"n", formatCount(changed, m_language)}})});
+        }
+    }
+    m_summaryLine->set(std::move(parts));
+}
+
+RowMarks ServicesPage::marksOf(int row) {
+    RowMarks marks;
+    const auto* item = itemAt(row);
+    if (!item || static_cast<std::size_t>(row) >= m_rowStates.size()) {
+        return marks;
+    }
+    RowState& state = m_rowStates[static_cast<std::size_t>(row)];
+    if (const std::uint64_t revision = m_state.revision(); state.at != revision) {
+        state.at = revision;
+        state.changed = m_controller.changed(*item);
+        state.guarded = m_controller.guarded(*item);
+        state.target = m_controller.target(*item);
+        state.risk = m_controller.risk(*item);
+    }
+    marks.mark = state.changed ? RowMark::Queued : state.guarded ? RowMark::Held : RowMark::None;
+    marks.risk = state.risk;
+    return marks;
+}
+
+DetailModel ServicesPage::detail() const {
+    DetailModel model;
+    const int row = m_table->selected();
+    const auto* item = m_table->visible() ? itemAt(row) : nullptr;
+    if (!item) {
+        return model;
+    }
+    const StartType target = m_controller.target(*item);
+    const bool changed = m_controller.changed(*item);
+    const bool guarded = m_controller.guarded(*item);
+    const auto risk = m_controller.risk(*item);
+    model.icon = ui::icons::Icon::ServicesGear;
+    model.title = item->displayName;
+    model.identity = item->name;
+    if (changed) {
+        model.state = {ui::icons::Icon::QueueClock,
+                       m_strings.format(Str::ServicesWillBecome, {{L"start", m_strings.get(startName(target))}}), DetailTone::Change};
+    } else if (guarded) {
+        model.state = {ui::icons::Icon::ShieldCheck, m_strings.get(Str::MarksHeld), DetailTone::Quiet};
+    } else {
+        model.state = {ui::icons::Icon::Check, m_strings.get(Str::ServicesKeeps), DetailTone::Quiet};
+    }
+    // What it is: the image's own description, then the catalog's note.
+    model.about = item->description.starts_with(L"@") ? std::wstring() : item->description;
+    if (const std::wstring notes = m_controller.notes(*item, m_language); !notes.empty()) {
+        model.about += (model.about.empty() ? L"" : L"\n") + notes;
+    }
+    model.facts.push_back({m_strings.get(Str::ServicesDefault), m_strings.get(startName(item->start))});
+    model.facts.push_back({m_strings.get(Str::DetailAtApply), m_strings.get(startName(target)),
+                           changed ? DetailTone::Change : DetailTone::Normal});
+    model.facts.push_back({m_strings.get(Str::RiskColumn), m_strings.get(riskText(risk)),
+                           risk == core::ops::Risk::Low ? DetailTone::Success : risk == core::ops::Risk::High ? DetailTone::Error : DetailTone::Warning,
+                           false, true});
+    if (!item->account.empty()) {
+        model.facts.push_back({m_strings.get(Str::ServicesAccount), item->account});
+    }
+    if (!item->imagePath.empty()) {
+        model.facts.push_back({m_strings.get(Str::DetailPath), item->imagePath, DetailTone::Normal, true});
+    }
+    if (guarded && explainGuard) {
+        model.notes.push_back({ui::icons::Icon::ShieldCheck, explainGuard(*item) + L"\n" + m_strings.get(Str::CompatLockedHint)});
+    }
+    if (target == StartType::Disabled) {
+        if (const auto dependents = m_controller.activeDependents(*item); !dependents.empty()) {
+            model.notes.push_back({ui::icons::Icon::WarningTriangle,
+                                   m_strings.format(Str::ServicesDependentsWarn, {{L"name", item->displayName},
+                                                                                  {L"n", std::to_wstring(dependents.size())}}),
+                                   DetailTone::Warning});
+        }
+    }
+    if (!item->dependsOn.empty()) {
+        model.lists.push_back({m_strings.get(Str::DetailDependsOn), item->dependsOn, true});
+    }
+    if (const auto& list = m_state.serviceList(); list) {
+        if (auto users = core::dependentsOf(list->items, item->name); !users.empty()) {
+            model.lists.push_back({m_strings.get(Str::DetailNeededBy), std::move(users), true});
+        }
+    }
+    model.actions.push_back({kActionChoose, m_strings.get(Str::ServicesChooseStart)});
+    if (changed) {
+        model.actions.push_back({kActionRevert, m_strings.get(Str::ServicesRevert)});
+    }
+    return model;
+}
+
+void ServicesPage::detailAction(int id) {
+    const int row = m_table->selected();
+    const auto* item = itemAt(row);
+    if (!item) {
+        return;
+    }
+    if (id == kActionChoose) {
+        openChoice(row); // the cell's own menu, where the cell is
+    } else if (id == kActionRevert) {
+        const ServiceEntry service = *item; // a copy: the queue's notification rebuilds the rows
+        choose(service, service.start);
+    }
 }
 
 void ServicesPage::refilter() {
@@ -221,12 +381,13 @@ void ServicesPage::refilter() {
             m_rows.push_back(static_cast<int>(i));
         }
     }
+    m_rowStates.assign(m_rows.size(), RowState{});
     m_table->setRowCount(static_cast<int>(m_rows.size()));
     invalidate();
 }
 
 RectF ServicesPage::choiceRect(RectF cell) const {
-    return {cell.x, cell.y + (cell.height - kChoiceH) / 2, std::min(cell.width - 8, 176.0f), kChoiceH};
+    return {cell.x, cell.y + std::round((cell.height - kChoiceH) / 2), std::min(cell.width - ui::tokens::spacing::s4, kChoiceW), kChoiceH};
 }
 
 void ServicesPage::openChoice(int row) {
@@ -258,7 +419,7 @@ void ServicesPage::openChoice(int row) {
         },
         [] {});
     ui::Widget* raw = popup.get();
-    host()->pushModal(std::move(popup), raw, /*scrim=*/false);
+    host()->pushModal(std::move(popup), raw, /*scrim=*/false, /*owner=*/this);
 }
 
 void ServicesPage::choose(const ServiceEntry& service, StartType start) {
@@ -287,11 +448,20 @@ void ServicesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
     if (!item) {
         return;
     }
-    const bool changed = m_controller.changed(*item);
+    if (static_cast<std::size_t>(row) >= m_rowStates.size()) {
+        return;
+    }
+    const RowMarks marks = marksOf(row); // brings the row's state up to date (cached per revision)
+    const RowState& state = m_rowStates[static_cast<std::size_t>(row)];
+    const bool changed = state.changed;
     switch (column) {
+    case kMarks:
+        paintMarks(canvas, rect, marks, kMarkSlots);
+        break;
     case kService: {
-        canvas.drawIcon(ui::icons::Icon::ServicesGear, {rect.x, rect.y + (rect.height - 16) / 2}, Color::TextSecondary);
-        const float x = rect.x + ui::tokens::size::icon + 6;
+        canvas.drawIcon(ui::icons::Icon::ServicesGear, {rect.x, rect.y + std::round((rect.height - ui::tokens::size::icon) / 2)},
+                        Color::TextSecondary);
+        const float x = rect.x + ui::tokens::size::icon + kIconGap;
         canvas.drawText(item->displayName, {x, rect.y, rect.right() - x, rect.height},
                         cell.selected || changed ? TypeStyle::BodyStrong : TypeStyle::Body, Color::TextPrimary);
         break;
@@ -309,20 +479,16 @@ void ServicesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
         canvas.strokeRoundRect(box, ui::tokens::radius::r2, border);
         const float chevronX = box.right() - 4 - ui::tokens::size::icon;
         float textRight = chevronX;
-        if (m_controller.guarded(*item)) {
+        if (state.guarded) {
             // D-082: a compatibility guard keeps it from being disabled.
             textRight -= ui::tokens::size::icon + 2;
             canvas.drawIcon(ui::icons::Icon::Lock, {textRight, box.y + (box.height - ui::tokens::size::icon) / 2},
                             Color::TextTertiary);
         }
-        canvas.drawText(m_strings.get(startName(m_controller.target(*item))),
+        canvas.drawText(m_strings.get(startName(state.target)),
                         {box.x + 6, box.y, textRight - box.x - 8, box.height}, TypeStyle::Body, Color::TextPrimary);
         canvas.drawIcon(ui::icons::Icon::ChevronDown, {chevronX, box.y + (box.height - ui::tokens::size::icon) / 2},
                         Color::TextTertiary);
-        break;
-    }
-    case kRisk: {
-        paintRisk(canvas, rect, m_controller.risk(*item), m_strings);
         break;
     }
     default: break;
@@ -330,17 +496,23 @@ void ServicesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
 }
 
 void ServicesPage::layout() {
+    // D-139: the header row — search, Başlangıç, "Yalnızca değişenler", the summary at the right.
     const RectF b = bounds();
     const float y = b.y + kToolbarTop;
     float x = b.x;
-    m_search->setWidth(240);
+    // Beside the detail card the row is short: the search box and the filter give the summary room.
+    m_search->setWidth(detailShown() ? 160.0f : 240.0f);
     for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_search, m_startBox, m_changed}) {
         const ui::SizeF size = w->measure({});
-        w->setBounds({x, y, size.width, kToolbar});
-        x += size.width + kGap;
+        const float width = w == m_startBox && detailShown() ? std::min(size.width, 180.0f) : size.width;
+        w->setBounds({x, y, width, kToolbar});
+        x += width + kGap;
     }
+    m_summaryLine->setBounds({x, y, std::max(b.right() - x, 0.0f), kToolbar});
     const float top = y + kToolbar + kTableGap;
     m_table->setBounds({b.x, top, b.width, std::max(b.bottom() - top, 0.0f)});
+    // Beside the detail card the service's key name is the card's (its identity line).
+    fitColumns(*m_table, b.width, detailShown(), {kName, kDefault});
     m_empty->setBounds(b);
 }
 
@@ -349,14 +521,6 @@ void ServicesPage::paint(ui::Canvas& canvas) {
         return;
     }
     const RectF b = bounds();
-    const float left = m_changed->bounds().right() + kGap;
-    const auto& list = m_state.serviceList();
-    std::wstring summary = m_strings.format(Str::CommonChangesQueued, {{L"n", std::to_wstring(m_controller.queuedCount())}});
-    if (list) {
-        summary = m_strings.format(Str::CommonItems, {{L"n", std::to_wstring(list->items.size())}}) + L" · " + summary;
-    }
-    canvas.drawText(summary, {left, b.y + kToolbarTop, std::max(b.right() - left, 0.0f), kToolbar}, TypeStyle::Caption,
-                    Color::TextSecondary, ui::TextAlign::Trailing);
     if (m_rows.empty()) {
         paintTableEmpty(canvas, {b.x, m_table->bounds().y, b.width, 0}, m_strings.get(Str::ServicesNoResults));
     }

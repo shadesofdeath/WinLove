@@ -1,9 +1,11 @@
 #include "app/pages/GalleryPage.h"
 
 #include "ui/widgets/Button.h"
+#include "ui/widgets/ColorPicker.h"
 #include "ui/widgets/EmptyState.h"
 #include "ui/widgets/Kbd.h"
 #include "ui/widgets/Label.h"
+#include "ui/widgets/ProgressRing.h"
 #include "ui/widgets/Splitter.h"
 
 #include <format>
@@ -93,6 +95,24 @@ GalleryPage::GalleryPage() : Stack(Axis::Vertical, 12.0f) {
 
     auto& splitRow = row(*this, L"Splitter");
     splitRow.addItem<Splitter>(Sizing::fixed(tokens::size::splitterHit));
+
+    // D-142: indeterminate 16 / 20, then determinate 0 / 25 / 60 / 100 %.
+    auto& ringRow = row(*this, L"ProgressRing");
+    for (const float size : {tokens::size::ring, tokens::size::ringLarge}) {
+        ringRow.addItem<ProgressRing>(Sizing::autoSize(), CrossAlign::Center, size).setRunning(true);
+    }
+    for (const float value : {0.0f, 0.25f, 0.6f, 1.0f}) {
+        ringRow.addItem<ProgressRing>(Sizing::autoSize(), CrossAlign::Center, tokens::size::ringLarge).setValue(value);
+    }
+
+    // D-143: the accent colour picker (in Ayarlar it opens in a panel under the swatches).
+    auto& pickerRow = addItem<Stack>(Sizing::autoSize(), Axis::Horizontal, kGap);
+    pickerRow.addItem<Label>(Sizing::fixed(kLabelColumn), CrossAlign::Start, L"ColorPicker", tokens::TypeStyle::Caption,
+                             tokens::Color::TextSecondary);
+    pickerRow.addItem<ColorPicker>(Sizing::fixed(ColorPicker::kWidth), CrossAlign::Start,
+                                   ColorPicker::Texts{L"Saturation and brightness", L"Hue", L"#RRGGBB", L"Aa",
+                                                      L"Darkened for white text.", L"Lightened for the dark themes."})
+        .setColor(0xF5E663);
 
     auto& empty = addItem<EmptyState>(Sizing::fixed(140), icons::Icon::DiscIso, L"EmptyState title",
                                       L"Caption body text explains what to do next.");

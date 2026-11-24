@@ -21,7 +21,10 @@ void collect(const std::filesystem::path& mountDir, std::wstring_view folder, st
              const auto& keep) {
     std::error_code ec;
     std::vector<std::wstring> found;
-    for (const auto& entry : std::filesystem::directory_iterator(mountDir / std::wstring(folder), ec)) {
+    // Not a range-for: its increment throws on a read error (audit IMG-09).
+    for (auto it = std::filesystem::directory_iterator(mountDir / std::wstring(folder), ec);
+         !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+        const auto& entry = *it;
         if (!entry.is_regular_file(ec)) {
             continue;
         }

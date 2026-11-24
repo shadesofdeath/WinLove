@@ -2,6 +2,7 @@
 
 #include "base/Log.h"
 #include "base/Path.h"
+#include "base/Text.h"
 #include "core/image/RegistryEdit.h"
 #include "core/image/WimFile.h"
 #include "core/image/dism/MountHealth.h"
@@ -10,6 +11,7 @@
 #include "core/image/wim/WimVerify.h"
 #include "core/io/ByteSource.h"
 
+#include <algorithm>
 #include <format>
 
 namespace wl::core {
@@ -18,6 +20,7 @@ namespace {
 
 constexpr const wchar_t* kSetupKey = L"HKLM\\SYSTEM\\Setup";
 constexpr const wchar_t* kLabConfigKey = L"HKLM\\SYSTEM\\Setup\\LabConfig";
+constexpr std::int32_t kNotSupported = static_cast<std::int32_t>(0x80070032); // DISM: unsigned boot-critical driver
 
 // What is done to the mounted image; the caller unmounts.
 Result<void> applyPatch(Dism& dism, const std::filesystem::path& mountDir, const BootPatch& patch,
@@ -62,18 +65,73 @@ Result<void> applyPatch(Dism& dism, const std::filesystem::path& mountDir, const
     if (!session) {
         return std::unexpected(session.error());
     }
+    // D-134: what DISM lists before and after each package tells "added", "was there already" (it
+    // adds an identical package once) and "taken as unsigned" apart — it says none of that itself.
+    std::vector<DriverEntry> known;
+    bool listed = false;
+    if (auto list = (*session)->drivers(); list) {
+        known = std::move(*list);
+        listed = true;
+    } else {
+        log::warn("boot", L"cannot list the image's drivers: " + describe(list.error()));
+    }
+    auto isKnown = [&](const DriverEntry& e) {
+        return std::ranges::any_of(known, [&](const DriverEntry& k) { return _wcsicmp(k.publishedName.c_str(), e.publishedName.c_str()) == 0; });
+    };
     for (std::size_t i = 0; i < patch.drivers.size(); ++i) {
         if (auto go = task.cancel.check(L"boot image drivers"); !go) {
             return go;
         }
         const auto& inf = patch.drivers[i];
-        if (auto added = (*session)->addDriver(nativePath(inf)); added) {
-            ++report.driversAdded;
-            log::info("boot", L"driver added: " + inf.wstring());
-        } else {
+        if (auto added = (*session)->addDriver(nativePath(inf)); !added) {
             // One driver Setup's image does not take must not cost the others (or the bypass).
-            log::warn("boot", L"driver not added: " + describe(added.error()));
-            report.driversRefused.push_back(inf.filename().wstring() + L": " + added.error().message);
+            std::wstring why = added.error().message;
+            if (added.error().hresult == kNotSupported) {
+                why = L"DISM refuses it as an unsigned boot-critical driver: its catalog is missing or does not match "
+                      L"its files (0x80070032)";
+            }
+            log::warn("boot", L"driver not added: " + inf.wstring() + L": " + why);
+            // 0x80070032 is DISM's "unsigned boot-critical driver" (dism.log): the same refusal as one it takes
+            // and lists unsigned, in the same words for the user.
+            report.driversRefused.push_back({inf, added.error().hresult == kNotSupported ? DriverRefusal::Why::Unsigned : DriverRefusal::Why::Dism,
+                                             added.error().hresult == kNotSupported ? std::wstring(L"0x80070032") : why});
+        } else if (!listed) {
+            report.driversAdded.push_back(inf);
+            log::info("boot", L"driver added: " + inf.wstring());
+        } else if (auto now = (*session)->drivers(); !now) {
+            report.driversAdded.push_back(inf);
+            log::warn("boot", L"driver added, the list could not be read again: " + describe(now.error()));
+        } else {
+            std::vector<DriverEntry> fresh;
+            for (const auto& e : *now) {
+                if (!isKnown(e)) {
+                    fresh.push_back(e);
+                }
+            }
+            known = std::move(*now);
+            bool unsigned_ = false;
+            for (const auto& e : fresh) {
+                if (e.signed_) {
+                    continue;
+                }
+                // Windows PE does not load an unsigned kernel driver: in the image it would only
+                // look like it worked (DISM takes one that is not boot-critical, lab 2026-11-10).
+                unsigned_ = true;
+                if (auto removed = (*session)->removeDriver(e.publishedName); !removed) {
+                    return std::unexpected(removed.error()); // never commit a half-refused package
+                }
+                std::erase_if(known, [&](const DriverEntry& k) { return _wcsicmp(k.publishedName.c_str(), e.publishedName.c_str()) == 0; });
+                log::warn("boot", std::format(L"driver taken out again: DISM lists {} ({}) as unsigned", e.publishedName, inf.wstring()));
+            }
+            if (unsigned_) {
+                report.driversRefused.push_back({inf, DriverRefusal::Why::Unsigned, {}});
+            } else if (fresh.empty()) {
+                report.driversPresent.push_back(inf);
+                log::info("boot", L"driver already in the image (DISM added nothing): " + inf.wstring());
+            } else {
+                report.driversAdded.push_back(inf);
+                log::info("boot", std::format(L"driver added as {}: {}", fresh.front().publishedName, inf.wstring()));
+            }
         }
         task.report(static_cast<double>(i + 1) / static_cast<double>(patch.drivers.size()), L"drivers");
     }
@@ -81,6 +139,52 @@ Result<void> applyPatch(Dism& dism, const std::filesystem::path& mountDir, const
 }
 
 } // namespace
+
+std::wstring describe(const DriverRefusal& refusal) {
+    const std::wstring name = refusal.inf.filename().wstring();
+    switch (refusal.why) {
+    case DriverRefusal::Why::Missing: return name + L": no such file";
+    case DriverRefusal::Why::Architecture: return name + L": built for " + refusal.detail + L" only, not for the setup image's architecture";
+    case DriverRefusal::Why::NoCatalog: return name + L": unsigned (the INF names no catalog file)";
+    case DriverRefusal::Why::CatalogMissing: return name + L": unsigned (its catalog " + refusal.detail + L" is not next to it)";
+    case DriverRefusal::Why::Unsigned:
+        return name + L": unsigned: its catalog does not match its files, Windows PE would not load it" +
+               (refusal.detail.empty() ? std::wstring() : L" (DISM " + refusal.detail + L")");
+    case DriverRefusal::Why::Dism: return name + L": " + refusal.detail;
+    }
+    return name;
+}
+
+bool fitsArchitecture(const DriverInf& inf, Architecture arch) {
+    switch (arch) {
+    case Architecture::X64: return inf.supports(L"x64");
+    case Architecture::Arm64: return inf.supports(L"arm64");
+    case Architecture::X86: return inf.supports(L"x86");
+    default: return true;
+    }
+}
+
+std::optional<DriverRefusal> checkBootDriver(const std::filesystem::path& infPath, Architecture arch) {
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(nativePath(infPath), ec)) {
+        return DriverRefusal{infPath, DriverRefusal::Why::Missing, {}};
+    }
+    const DriverInf inf = parseInf(nativePath(infPath));
+    if (!fitsArchitecture(inf, arch)) {
+        std::wstring has;
+        for (const auto& a : inf.architectures) {
+            has += (has.empty() ? L"" : L", ") + (a == L"amd64" ? std::wstring(L"x64") : a);
+        }
+        return DriverRefusal{infPath, DriverRefusal::Why::Architecture, has};
+    }
+    if (inf.catalog.empty()) {
+        return DriverRefusal{infPath, DriverRefusal::Why::NoCatalog, {}};
+    }
+    if (!std::filesystem::is_regular_file(nativePath(infPath.parent_path() / inf.catalog), ec)) {
+        return DriverRefusal{infPath, DriverRefusal::Why::CatalogMissing, inf.catalog};
+    }
+    return std::nullopt;
+}
 
 std::vector<std::wstring> BootPatch::labConfigValues() const {
     std::vector<std::wstring> values;
@@ -143,6 +247,23 @@ Result<int> setupImageIndex(const std::filesystem::path& bootWim) {
 namespace {
 
 constexpr std::int32_t kKnownLcuFailure = static_cast<std::int32_t>(0x8007007E); // Microsoft: "a known issue … we can ignore"
+
+Architecture imageArchitecture(const std::filesystem::path& wim, int index) {
+    auto file = DiskFile::open(nativePath(wim));
+    if (!file) {
+        return Architecture::Unknown;
+    }
+    auto read = readWim(**file);
+    if (!read) {
+        return Architecture::Unknown;
+    }
+    for (const auto& image : read->images) {
+        if (image.index == index) {
+            return image.architecture;
+        }
+    }
+    return Architecture::Unknown;
+}
 
 std::wstring imageVersion(const std::filesystem::path& wim, int index) {
     auto file = DiskFile::open(nativePath(wim));
@@ -244,10 +365,10 @@ int buildOf(const std::wstring& version) {
 } // namespace
 
 Result<BootPatchReport> patchBootImage(Dism& dism, const std::filesystem::path& bootWimInput,
-                                       const std::filesystem::path& mountDir, const BootPatch& patch,
+                                       const std::filesystem::path& mountDir, const BootPatch& requested,
                                        const TaskContext& task) {
     BootPatchReport report;
-    if (patch.empty()) {
+    if (requested.empty()) {
         return report;
     }
     const std::filesystem::path bootWim = nativePath(bootWimInput);
@@ -256,6 +377,29 @@ Result<BootPatchReport> patchBootImage(Dism& dism, const std::filesystem::path& 
         return std::unexpected(index.error());
     }
     report.index = *index;
+    // D-134: each INF once (the same path twice would read as two drivers added), and what cannot
+    // go in told before anything is mounted — DISM would take a wrong-architecture INF without a word.
+    BootPatch patch = requested;
+    patch.drivers.clear();
+    const Architecture arch = imageArchitecture(bootWim, *index);
+    for (const auto& inf : requested.drivers) {
+        const std::wstring key = text::lower(inf.lexically_normal().wstring());
+        if (std::ranges::any_of(patch.drivers, [&](const auto& p) { return text::lower(p.lexically_normal().wstring()) == key; }) ||
+            std::ranges::any_of(report.driversRefused, [&](const auto& r) { return text::lower(r.inf.lexically_normal().wstring()) == key; })) {
+            log::info("boot", L"driver listed twice, added once: " + inf.wstring());
+            continue;
+        }
+        if (auto refused = checkBootDriver(inf, arch)) {
+            log::warn("boot", L"driver not added: " + describe(*refused));
+            report.driversRefused.push_back(std::move(*refused));
+            continue;
+        }
+        patch.drivers.push_back(inf);
+    }
+    if (patch.empty()) {
+        log::info("boot", L"nothing left to write into the boot image: it is not mounted");
+        return report;
+    }
     log::info("boot", std::format(L"patch {} [{}]: {} LabConfig value(s), {} driver(s){}{}", bootWim.wstring(), *index,
                                   patch.labConfigValues().size(), patch.drivers.size(),
                                   patch.legacySetup ? L", previous Setup" : L"",
@@ -332,12 +476,17 @@ Result<BootPatchReport> patchBootImage(Dism& dism, const std::filesystem::path& 
         if (auto out = exportImages(bootWim, all, rewritten, WimCompression::Lzx, TaskContext{task.cancel, {}}); !out) {
             return std::unexpected(out.error());
         }
+        // The export must not stay behind in sources\ on a failure: an ISO / USB made from this
+        // folder would carry it (audit IMG-12).
         if (auto marked = setBootImage(rewritten, *index); !marked) {
+            std::filesystem::remove(rewritten, ec);
             return std::unexpected(marked.error());
         }
         std::filesystem::rename(rewritten, bootWim, ec);
         if (ec) {
-            return fail(ErrorCode::IoError, L"cannot replace the boot image with its export", bootWim.wstring(), ec.value());
+            const int renameError = ec.value();
+            std::filesystem::remove(rewritten, ec);
+            return fail(ErrorCode::IoError, L"cannot replace the boot image with its export", bootWim.wstring(), renameError);
         }
         report.versionAfter = imageVersion(bootWim, *index);
         log::info("boot", std::format(L"Setup image {} → {}, {} image(s) updated", report.versionBefore, report.versionAfter,

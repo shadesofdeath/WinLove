@@ -39,6 +39,18 @@ uyarısı; özette "Kurulum ekranı: önceki kurulum / yeni kurulum / yeni kurul
 Sapma: tasarımdaki "4 GB üstü WIM → ESD" satırı sıkıştırma listesindeki ESD seçeneğine taşındı; yerine önyükleme
 istemi seçeneği geldi (USB/FAT32 konusu USB sekmesiyle ele alınacak).
 
+**Seçenekler Uygula ile ortak (D-144, 2026-11-11):** ISO sekmesinin seçenekleri (etiket, önyükleme modu, sıkıştırma, istem,
+atlamalar boot.wim'e, önceki kurulum, Secure Boot 2023, SHA-256, bitince klasörü aç) artık sayfanın widget'larında değil
+`AppState::IsoChoices`'ta (`Change::Iso`); denetimler ortak bileşen `app/pages/iso/IsoOptions` (`IsoOptionControls`; D-074 /
+D-077 / D-080 / D-094 kuralları, ipuçları, özet kartının Kurulum ortamı / Kurulum ekranı / Güncelleme satırları ve WinRE
+okuması buraya taşındı). Sayfa yeniden kurulunca, dil değişince seçimler korunur (önce kayboluyordu); uygulama kapanınca
+ilk değerlere döner (settings.json'a yazılmaz). Etiket ve önceki kurulum kaynağa ait: başka kaynak açılınca sıfırlanır.
+Aynı denetimler Uygula › Bitince › **ISO seçenekleri…** iletişim kutusunda; ilk değerler ve otomatik ISO'nun isteği
+`IsoController::defaultRequest` (sayfanın dosya adı / klasör / etiket varsayılanları da buradan). Yerleşim, sıra, klavye
+sırası ve çizim değişmedi (render_diff'te ISO sayfasının bütün durumları birebir aynı).
+**İlerleme satırı:** ISO yazılırken WinLove'un ilerleme halkası döner (D-142; önce dönmüyordu). Render
+`--page=iso --demo-boot-drivers=iso-running`, `--iso-choices` (değiştirilmiş seçenekler).
+
 ## 3b. USB sekmesi (D-047)
 - Motor `core/usb/UsbMedia`: `listUsbDisks` (USB / SD / MMC; sistem diski asla), `planUsbCopy` (yer, 4 GB denetimi),
   `writeUsb` (diskpart + bootsect + kopya + `splitWim`). CLI: `wlcli usb-list [--all]`, `wlcli usb-write <disk>
@@ -62,6 +74,8 @@ istemi seçeneği geldi (USB/FAT32 konusu USB sekmesiyle ele alınacak).
 - [ ] AIO (D-077): Win11 ISO aç → İmajlar › Araçlar › Başka imajdan sürüm ekle (Win10 ISO / ESD) → ISO Oluştur'da uyarı +
       "Windows 10 ortamını al…" → aynı Win10 kaynağını seç → uyarı kalkar → ISO → VM'de Win10 ve Win11 kurulur.
 - [ ] Kaynak açıkken ISO Oluştur → ilerleme → ISO + .sha256; klasör açılır.
+- [ ] ISO Oluştur'da bir seçeneği değiştir → Uygula › ISO seçenekleri… aynı değeri gösterir (ve tersi); başka sayfaya git,
+      geri gel → seçim duruyor (D-144; birim testi, pencerede denenmedi).
 - [ ] ISO'yu VM'de UEFI ve BIOS ile başlat → Windows kurulumu açılır.
 - [ ] Uygula sonrası LZX yeniden paketle → install.wim küçülür.
 - [ ] Katılımsız Kurulum'da TPM / Secure Boot atlaması seçili, "ISO'ya ekle" kapalı → ISO üret → log'da

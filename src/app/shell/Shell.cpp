@@ -23,14 +23,19 @@
 #include "app/pages/components/CompatDialog.h"
 #include "app/pages/components/ModeDialog.h"
 #include "app/pages/components/ComponentInspector.h"
+#include "app/pages/overview/QueueChips.h"
+#include "core/image/RegistryEdit.h"
 #include "app/pages/FeaturesPage.h"
 #include "app/pages/apply/RiskConfirm.h"
 #include "app/pages/ImagesPage.h"
 #include "app/pages/IsoPage.h"
+#include "app/pages/iso/IsoOptions.h"
+#include "app/pages/OverviewPage.h"
+#include "app/pages/apply/RunSummary.h"
 #include "app/pages/LogsPage.h"
 #include "app/pages/PostSetupPage.h"
 #include "app/pages/ProgramsPage.h"
-#include "app/pages/programs/ProgramInspector.h"
+#include "app/pages/DetailCard.h"
 #include "app/pages/PresetsPage.h"
 #include "app/ApplyReport.h"
 #include "app/pages/postsetup/AppsDialog.h"
@@ -54,6 +59,7 @@
 #include "app/pages/UpdatesPage.h"
 #include "app/pages/DownloadPage.h"
 #include "app/pages/images/ImageInspector.h"
+#include "app/shell/ChromeText.h"
 #include "app/shell/CommandPalette.h"
 #include "base/File.h"
 #include "base/Log.h"
@@ -79,6 +85,7 @@
 #include <atomic>
 #include <cmath>
 #include <format>
+#include <fstream>
 #include <regex>
 #include <string>
 #include <utility>
@@ -104,12 +111,15 @@ bool isSourceCandidate(const std::filesystem::path& path) {
     case core::ImageFormat::Iso:
     case core::ImageFormat::Wim:
     case core::ImageFormat::Esd:
-    case core::ImageFormat::Swm: return true;
+    case core::ImageFormat::Swm:
+    case core::ImageFormat::Vhd: // D-141: an installed Windows on a virtual disk
+    case core::ImageFormat::Vhdx: return true;
     default: return false;
     }
 }
 
-constexpr float kToastMargin = 16.0f;
+// The toast's right and bottom edges line up with the page card's (D-136: was 16 against the cards' 20).
+constexpr float kToastMargin = size::contentPad;
 
 // D-107: the title bar's workspaces. Görüntü holds every page that edits the image, in the
 // package's groups; Ön Ayar the preset library; Araçlar what is not about one image.
@@ -141,7 +151,10 @@ const std::vector<GroupDef>& workspaceTabs(int workspace) {
     // registry-like, programs and files run or land after setup, services and the look are
     // settings (the reference tool's Ayarlar has Hizmetler and Görseller tabs), the ISO is part of Uygula.
     static const std::vector<GroupDef> image = {
-        {Str::TabsGroupStart, {{PageId::Images, {PageId::Images}, Str::TabsImage, false}}},
+        // 2026-11-11 (the owner: no way back to "Kaynak seç" once an image was open): the Source page is
+        // the Görüntü tab's first card tab while an image is open (attachSubNav). D-138: Özet, where the
+        // image stands, after Sürümler (opening an image still lands on the editions table).
+        {Str::TabsGroupStart, {{PageId::Images, {PageId::Source, PageId::Images, PageId::Overview}, Str::TabsImage, false}}},
         {Str::TabsGroupAdd,
          {{PageId::Updates, {PageId::Updates, PageId::Languages, PageId::Apps}},
           {PageId::Drivers, {PageId::Drivers}},
@@ -202,13 +215,16 @@ int workspaceOf(PageId page) {
 } // namespace
 
 Shell::Shell(const Localization& strings, Language language, AppState& state, Services services)
-    : m_strings(strings), m_language(language), m_state(state), m_services(std::move(services)) {
+    : m_strings(strings), m_language(language), m_state(state), m_services(std::move(services)),
+      m_pendingDownloads(state.heldDownloads()) {
     LanguageController::setNameLanguage(language);
     auto s = [&](Str key) { return strings.get(key); };
     m_titleBar = &add<TitleBar>(TitleBar::Labels{s(Str::AppName), s(Str::TitleCmdk), s(Str::KbdCtrl), s(Str::TitleMinimize),
                                                  s(Str::TitleClose), s(Str::TitleMaximize), s(Str::TitleRestore),
                                                  s(Str::MenuTheme), s(Str::TitleAppMenu),
-                                                 {s(Str::MenuImage), s(Str::MenuPresets), s(Str::MenuTools), s(Str::MenuUnattended)}});
+                                                 {s(Str::MenuImage), s(Str::MenuPresets), s(Str::MenuTools), s(Str::MenuUnattended)},
+                                                 {ui::icons::Icon::LayersEditions, ui::icons::Icon::PresetBookmark,
+                                                  ui::icons::Icon::Settings, ui::icons::Icon::UnattendedRobot}});
     m_header = &add<ImageHeader>();
     m_header->onLink = [this] {
         if (m_state.source()) {
@@ -223,7 +239,18 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     m_header->setVisible(false);
     m_nav = &add<NavPanel>();
     m_nav->onSelect = [this](PageId tab) { openTab(tab); };
-    m_status = &add<StatusBar>(StatusBar::Labels{s(Str::StatusNoMount), s(Str::StatusMounted)});
+    m_status = &add<StatusBar>();
+    m_status->onSegment = [this](StatusBar::Segment segment) {
+        // 2026-11-10: each segment goes where it belongs — the image to Görüntü, the queue to Uygula.
+        // D-138: an open image's segment to its overview (what it is, what is in it, what is queued).
+        if (segment == StatusBar::Segment::Image) {
+            showPage(m_state.source() ? PageId::Overview : PageId::Source);
+        } else if (segment == StatusBar::Segment::Update) {
+            showUpdateMenu(); // D-145: install it / what is new / About (D-140: About alone)
+        } else {
+            showPage(PageId::Apply);
+        }
+    };
     m_changes = &add<ChangesPanel>(ChangesPanel::Labels{s(Str::ChangesTitle), s(Str::ChangesEmpty), s(Str::ChangesEmptyHint),
                                                         s(Str::ChangesMounted), s(Str::ChangesNoMount), s(Str::StatusApply),
                                                         s(Str::ApplyStop)});
@@ -243,7 +270,7 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
                       : menu == kToolWorkspace       ? m_lastToolPage
                       : menu == kUnattendedWorkspace ? PageId::Unattended
                                                      : m_lastImagePage;
-        if (page == PageId::Images && !m_state.source()) {
+        if ((page == PageId::Images || page == PageId::Overview) && !m_state.source()) {
             page = PageId::Source;
         }
         showPage(page);
@@ -358,8 +385,12 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     });
     m_imageDriverCtl = std::make_unique<ImageDriverController>(m_state, ImageDriverController::Events{
         m_services.postToUi,
-        [this](int packages, const std::filesystem::path& folder) {
-            showToast(ui::InfoKind::Success, m_strings.format(Str::DriversHostExported, {{L"n", std::to_wstring(packages)}}),
+        [this](int packages, const std::filesystem::path& folder, std::size_t picked) {
+            // D-134: from the boot tab, what was ticked for the setup media is the news.
+            showToast(ui::InfoKind::Success,
+                      picked > 0 ? m_strings.format(Str::DriversHostPickedBoot, {{L"n", std::to_wstring(packages)},
+                                                                                 {L"p", std::to_wstring(picked)}})
+                                 : m_strings.format(Str::DriversHostExported, {{L"n", std::to_wstring(packages)}}),
                       folder.wstring());
         },
         [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::DriversHostFailed), errorText(e)); },
@@ -406,6 +437,9 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         };
         auto blockOf = [this](const core::ops::Operation& op) { return m_compat->block(op); };
         m_components->blockOf = blockOf;
+        m_components->blockOfRecipe = [this](const core::ops::Operation& op, const core::ComponentRecipe& recipe) {
+            return m_compat->block(op, &recipe);
+        };
         m_components->onBlocked = [this](const ComponentController::Item& item, const core::ops::CompatBlock& block) {
             showToast(ui::InfoKind::Warning, item.name, m_compat->explain(block));
         };
@@ -449,8 +483,10 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
             if (openFolder) {
                 revealInExplorer(output);
             }
-            // A repack rewrote the setup folder: re-read sizes when it is the open source.
-            if (const auto& source = m_state.source(); source && source->format == core::ImageFormat::Folder) {
+            // A repack rewrote the setup folder: re-read sizes when it is the open source. D-144: the ISO
+            // after a run repacks nothing (and the run's card keeps its sizes).
+            const bool afterApply = m_state.isoRun() && m_state.isoRun()->afterApply;
+            if (const auto& source = m_state.source(); !afterApply && source && source->format == core::ImageFormat::Folder) {
                 openSource(source->path);
             }
         },
@@ -582,6 +618,11 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
             showToast(ui::InfoKind::Warning, m_strings.get(Str::DownloadStoppedTitle), m_strings.get(Str::DownloadStoppedBody));
             updateKeepAwake();
         },
+        [this](core::esd::Product product, Result<core::esd::Catalog> catalog) { // D-149
+            if (auto* page = downloadPage()) {
+                page->setEsdCatalog(product, std::move(catalog));
+            }
+        },
     });
     m_apply = std::make_unique<ApplyController>(m_state, ApplyController::Events{
         m_services.postToUi,
@@ -591,7 +632,29 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
             m_state.select(index);
         },
         [this](const Error& e) { showToast(ui::InfoKind::Error, m_strings.get(Str::ApplyFailedTitle), errorText(e)); },
-        {},
+        [this] {
+            if (m_autoIso) {
+                m_autoIso->runFinished(); // D-144: the run saved the image: its ISO now (or why not)
+            }
+        },
+    });
+    // D-144: "Bitince ISO oluştur" through the one ISO engine (IsoController), with the ISO page's checks.
+    m_autoIso = std::make_unique<AutoIsoController>(m_state, AutoIsoController::Hooks{
+        [this] { return m_iso->blocker(); },
+        [this](IsoController::Request request) { m_iso->start(std::move(request)); },
+        [this]() -> std::wstring {
+            if (!(m_unattend->welcome() && m_unattend->includeInIso() && m_state.source())) {
+                return {};
+            }
+            auto missing = core::editionsWithoutWelcome(*m_state.source(), m_unattend->options().imageIndex);
+            std::wstring editions;
+            if (missing) {
+                for (const int i : *missing) {
+                    editions += (editions.empty() ? L"" : L", ") + std::to_wstring(i);
+                }
+            }
+            return editions;
+        },
     });
     m_images = std::make_unique<ImageController>(m_state, ImageController::Events{
         m_services.postToUi,
@@ -608,6 +671,10 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         [this](core::WorkCopyState copy, std::filesystem::path folder, std::function<void(bool)> proceed) {
             askWorkCopy(copy, folder, std::move(proceed));
         },
+        [this](std::filesystem::path vhd, std::filesystem::path changes, std::function<void()> proceed) {
+            askMountVirtualDisk(vhd, changes, std::move(proceed));
+        },
+        [this](core::SourceInfo source, MountedImage mounted) { adoptOpened(std::move(source), std::move(mounted)); },
     });
 
     m_subscription = m_state.subscribe([this](AppState::Change change) {
@@ -662,6 +729,10 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
             change == AppState::Change::Operation || change == AppState::Change::Source) {
             updateIsoChrome();
         }
+        if (change == AppState::Change::AppUpdate) {
+            showUpdateNotice(); // D-140
+            showInstallNotice(); // D-145
+        }
         if (change != AppState::Change::Recent) {
             updateBreadcrumb();
             updateImagesChrome();
@@ -670,6 +741,180 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
     });
     showPage(PageId::Source);
     updateStatus();
+    showUpdateNotice(); // a shell built again (a new language) while a notice waits for its toast
+    showInstallNotice(); // D-145: "updated" once; an install's stage as the state has it (no toast again)
+}
+
+void Shell::showUpdateNotice() {
+    // D-140: one toast per new release (the tag is already saved: never again for it), "Göster" opens
+    // the About page; the status bar segment stays until that page is seen. Never a dialog.
+    const auto& update = m_state.appUpdate();
+    if (!update.notice || !update.result || !update.result->latest) {
+        return;
+    }
+    if (m_page == PageId::About) {
+        m_state.dismissAppUpdateNotice(); // it is on the screen already
+        return;
+    }
+    if (update.toastShown || !m_toast) {
+        return;
+    }
+    m_state.markAppUpdateToastShown();
+    const auto& release = *update.result->latest;
+    const auto now = std::chrono::system_clock::now();
+    const std::wstring date = release.published > 0
+                                  ? formatRecentTime(std::chrono::system_clock::time_point(std::chrono::seconds(release.published)),
+                                                     m_language, m_strings, now)
+                                  : std::wstring(L"—");
+    // D-145: two actions — install it, or see what changed first.
+    m_toast->show(ui::InfoKind::Info, m_strings.format(Str::AppUpdateToastTitle, {{L"name", release.title()}}),
+                  m_strings.format(Str::AppUpdateToastBody, {{L"date", date}}), m_strings.get(Str::AppUpdateSelfInstall),
+                  [this] {
+                      m_state.dismissAppUpdateNotice();
+                      if (m_services.installUpdate) {
+                          m_services.installUpdate();
+                      }
+                  },
+                  m_strings.get(Str::AppUpdateSelfChangelog), [this] {
+                      if (m_services.showChangelog) {
+                          m_services.showChangelog();
+                      }
+                  });
+    layout();
+    if (m_services.startTimer) {
+        m_services.startTimer(kToastTimer, ui::Toast::kDurationMs + 6000); // two choices: time to read
+    }
+}
+
+void Shell::showUpdateMenu() {
+    using Stage = AppState::AppUpdate::Install::Stage;
+    const auto& u = m_state.appUpdate();
+    if (u.install && u.install->stage == Stage::Ready) {
+        if (m_services.restartForUpdate) {
+            if (const auto why = m_services.restartForUpdate()) {
+                AppState::AppUpdate::Install wait = *u.install;
+                wait.why = *why;
+                showToast(ui::InfoKind::Warning, m_strings.get(Str::AppUpdateSelfRestartWait), installWhyText(wait));
+            }
+        }
+        return;
+    }
+    if (u.install && (u.install->stage == Stage::Downloading || u.install->stage == Stage::Verifying)) {
+        showPage(PageId::About); // the download's card (its meter and its stop)
+        return;
+    }
+    if (!host()) {
+        return;
+    }
+    const ui::RectF seg = m_status->segmentRect(StatusBar::Segment::Update);
+    auto actions = std::make_shared<std::vector<std::function<void()>>>();
+    std::vector<std::wstring> names;
+    std::vector<std::optional<ui::icons::Icon>> icons;
+    if (u.result && u.result->verdict == core::ReleaseVerdict::Available) {
+        names.push_back(m_strings.get(Str::AppUpdateSelfInstall));
+        icons.emplace_back(ui::icons::Icon::UpdateDownload);
+        actions->push_back([this] {
+            m_state.dismissAppUpdateNotice();
+            if (m_services.installUpdate) {
+                m_services.installUpdate();
+            }
+        });
+    }
+    names.push_back(m_strings.get(Str::AppUpdateSelfChangelog));
+    icons.emplace_back(ui::icons::Icon::File);
+    actions->push_back([this] {
+        if (m_services.showChangelog) {
+            m_services.showChangelog();
+        }
+    });
+    names.push_back(m_strings.get(Str::AppUpdateSelfAbout));
+    icons.emplace_back(ui::icons::Icon::InfoCircle);
+    actions->push_back([this] { showPage(PageId::About); });
+    auto popup = std::make_unique<ui::MenuPopup>(
+        ui::RectF{seg.x, seg.y - 4, std::max(seg.width, 220.0f), 0}, std::move(names), -1,
+        [this, actions](int picked) {
+            if (picked >= 0 && picked < static_cast<int>(actions->size())) {
+                m_services.postToUi([run = (*actions)[static_cast<std::size_t>(picked)], alive = std::weak_ptr<bool>(m_alive)] {
+                    if (const auto a = alive.lock(); a && *a) {
+                        run();
+                    }
+                });
+            }
+        },
+        [] {});
+    popup->setIcons(std::move(icons));
+    ui::Widget* raw = popup.get();
+    host()->pushModal(std::move(popup), raw, /*scrim=*/false);
+}
+
+std::wstring Shell::installWhyText(const AppState::AppUpdate::Install& install) const {
+    using Why = AppState::AppUpdate::Install::Why;
+    const std::wstring& d = install.detail;
+    switch (install.why) {
+    case Why::NoAsset: return m_strings.get(Str::AppUpdateSelfNoAsset);
+    case Why::Mounted: return m_strings.get(Str::AppUpdateSelfMounted);
+    case Why::Busy: return m_strings.get(Str::AppUpdateSelfBusy);
+    case Why::NotWritable: return m_strings.format(Str::AppUpdateSelfNotWritable, {{L"detail", d}});
+    case Why::Download: return m_strings.format(Str::AppUpdateSelfDownload, {{L"detail", d}});
+    case Why::Verify: return m_strings.format(Str::AppUpdateSelfVerify, {{L"detail", d}});
+    case Why::Swap: return m_strings.format(Str::AppUpdateSelfSwap, {{L"detail", d}});
+    case Why::Restart: return m_strings.format(Str::AppUpdateSelfRestartFailed, {{L"detail", d}});
+    case Why::Cancelled: return m_strings.get(Str::AppUpdateSelfCancelled);
+    case Why::None: break;
+    }
+    return d;
+}
+
+void Shell::showInstallNotice() {
+    // D-145: the install's news once per stage — ready (the restart is a click away), refused or failed
+    // (why, and the release page when it cannot be installed from here). The download itself is the
+    // About card's and the status bar's.
+    using Stage = AppState::AppUpdate::Install::Stage;
+    using Why = AppState::AppUpdate::Install::Why;
+    const auto& u = m_state.appUpdate();
+    if (!u.updatedFrom.empty() && !u.updatedShown && m_toast) {
+        AppState::AppUpdate shown = u;
+        shown.updatedShown = true;
+        m_state.setAppUpdate(std::move(shown)); // before the toast: the notification comes back here
+        showToast(ui::InfoKind::Success,
+                  m_strings.format(Str::AppUpdateSelfUpdatedTitle, {{L"from", m_state.appUpdate().updatedFrom}, {L"to", L"" WL_VERSION_LABEL}}),
+                  m_strings.get(Str::AppUpdateSelfUpdatedBody));
+        return;
+    }
+    const auto& install = m_state.appUpdate().install;
+    const std::optional<std::pair<int, int>> now =
+        install ? std::optional<std::pair<int, int>>({static_cast<int>(install->stage), static_cast<int>(install->why)}) : std::nullopt;
+    if (!m_installSeenInit || now == m_installSeen || !m_toast) {
+        m_installSeenInit = true; // a shell built again starts from what the state says
+        m_installSeen = now;
+        return;
+    }
+    m_installSeen = now;
+    if (!install) {
+        return;
+    }
+    if (install->stage == Stage::Ready) {
+        showActionToast(ui::InfoKind::Success, m_strings.format(Str::AppUpdateSelfReadyTitle, {{L"name", install->name}}),
+                        m_strings.format(Str::AppUpdateSelfReadyBody, {{L"file", L"WinLove.exe.old"}}),
+                        m_strings.get(Str::AppUpdateSelfRestart), [this] { showUpdateMenu(); });
+    } else if (install->stage == Stage::Failed) {
+        const bool page = install->why == Why::NoAsset || install->why == Why::NotWritable || install->why == Why::Verify ||
+                          install->why == Why::Swap || install->why == Why::Restart;
+        const ui::InfoKind kind = install->why == Why::Cancelled || install->why == Why::Mounted || install->why == Why::Busy
+                                      ? ui::InfoKind::Warning
+                                      : ui::InfoKind::Error;
+        if (page && u.result && u.result->latest) {
+            const std::wstring url = core::releasePageUrl(u.result->latest->url);
+            showActionToast(kind, m_strings.get(Str::AppUpdateSelfFailedTitle), installWhyText(*install),
+                            m_strings.get(Str::AppUpdateSelfOpenDownload), [url] {
+                                if (url.starts_with(L"https://")) {
+                                    ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                                }
+                            });
+        } else {
+            showToast(kind, m_strings.get(Str::AppUpdateSelfFailedTitle), installWhyText(*install));
+        }
+    }
 }
 
 bool Shell::canQueueNow() const {
@@ -721,6 +966,11 @@ bool Shell::requireMount(Str title, Str body) {
 Shell::~Shell() {
     *m_alive = false;
     m_state.unsubscribe(m_subscription);
+    // A SHA-256 still being read for a dialog that goes with this shell: nobody waits for it any
+    // more, and it held the reader thread (and the exit) for the rest of a multi-GB file (audit APP-01).
+    if (const auto hash = m_hashCancel.lock()) {
+        hash->cancel();
+    }
     // The pages and dialogs before the controllers they hold references to: the members go before
     // the base class's children otherwise (StartMenuPage's destructor wrote to a freed controller).
     clearChildren();
@@ -746,6 +996,10 @@ ApplyPage* Shell::applyPage() const {
     return m_page == PageId::Apply ? dynamic_cast<ApplyPage*>(m_pageBody) : nullptr;
 }
 
+SettingsPage* Shell::settingsPageForDemo() const {
+    return m_page == PageId::Settings ? dynamic_cast<SettingsPage*>(m_pageBody) : nullptr;
+}
+
 IsoPage* Shell::isoPage() const {
     return m_page == PageId::Iso ? dynamic_cast<IsoPage*>(m_pageBody) : nullptr;
 }
@@ -756,25 +1010,6 @@ ComponentsPage* Shell::componentsPage() const {
 
 ProgramsPage* Shell::programsPage() const {
     return m_page == PageId::Programs ? dynamic_cast<ProgramsPage*>(m_pageBody) : nullptr;
-}
-
-void Shell::updateProgramInspector() {
-    auto* page = programsPage();
-    auto* inspector = dynamic_cast<ProgramInspector*>(m_sideInspector);
-    if (!page || !inspector) {
-        return;
-    }
-    const auto program = page->selectedProgram();
-    const core::WingetDetails* details = program ? m_programs->details(program->id) : nullptr;
-    const auto icon = program ? m_programs->icon(program->id) : std::filesystem::path();
-    const bool wasVisible = inspector->visible();
-    inspector->set(program, details, icon, program && m_programs->picked(program->id),
-                   program && m_programs->detailsFailed(program->id));
-    inspector->setVisible(program.has_value());
-    if (wasVisible != inspector->visible()) {
-        layout();
-    }
-    invalidate();
 }
 
 DownloadPage* Shell::downloadPage() const {
@@ -1168,6 +1403,77 @@ void Shell::applyComponentTemplate(Tier tier) {
     }
 }
 
+void Shell::applyTweakTemplate(const std::string& id) {
+    const ImageSettingTemplate* preset = m_imageSettings->catalog().findTemplate(id);
+    if (!preset || !requireMount(Str::TweaksNoMountTitle, Str::TweaksNoMountBody) || m_state.queueLocked()) {
+        return;
+    }
+    const std::wstring& name = preset->title.get(m_language);
+    const auto result = m_imageSettings->applyTemplate(*preset);
+    // D-146: who the template is for, what it left as the user set it, and the medium-risk rows it changed.
+    std::wstring message = preset->description.get(m_language);
+    if (result.kept > 0) {
+        message += L" " + m_strings.format(Str::TweaksTemplateKept, {{L"n", std::to_wstring(result.kept)}});
+    }
+    if (!result.risky.empty()) {
+        std::wstring names;
+        for (const ImageSetting* risky : result.risky) {
+            names += (names.empty() ? L"" : L", ") + risky->label.get(m_language);
+        }
+        message += L" " + m_strings.format(Str::TweaksTemplateRisky, {{L"names", names}});
+    }
+    if (result.changed > 0) {
+        showUndoToast(m_strings.format(Str::TweaksTemplateApplied, {{L"n", std::to_wstring(result.changed)}, {L"name", name}}),
+                      std::move(message));
+    } else {
+        showToast(ui::InfoKind::Info, m_strings.format(Str::TweaksTemplateNone, {{L"name", name}}),
+                  result.kept > 0 ? m_strings.format(Str::TweaksTemplateKept, {{L"n", std::to_wstring(result.kept)}}) : L"");
+    }
+}
+
+void Shell::filterTweakTemplate(const std::string& id) {
+    if (auto* page = dynamic_cast<TweaksPage*>(m_pageBody)) {
+        page->setTemplateFilter(id);
+    }
+}
+
+DetailSource* Shell::detailSource() const {
+    return m_detailCard ? dynamic_cast<DetailSource*>(m_pageBody) : nullptr;
+}
+
+void Shell::attachDetailCard() {
+    auto* source = dynamic_cast<DetailSource*>(m_pageBody);
+    if (!source || m_sideInspector) {
+        return;
+    }
+    auto& card = add<DetailCard>(m_strings);
+    m_detailCard = &card;
+    m_sideInspector = &card;
+    card.setEmptyIcon(pageInfo(m_page).icon);
+    // A card button runs the page's own action for its row; later, not inside the button's click
+    // when the action rebuilds what the card shows (set() keeps its buttons: only their texts change).
+    card.onAction = [this](int id) {
+        if (auto* s = detailSource()) {
+            s->detailAction(id);
+        }
+    };
+    source->onDetailChanged = [this] { updateDetailCard(); };
+    updateDetailCard();
+}
+
+void Shell::updateDetailCard() {
+    auto* source = detailSource();
+    if (!source) {
+        return;
+    }
+    m_detailCard->set(source->detail());
+    if (const bool wanted = source->detailAvailable(); wanted != m_detailWanted) {
+        m_detailWanted = wanted;
+        layout();
+    }
+    invalidate();
+}
+
 void Shell::updateComponentInspector() {
     auto* page = componentsPage();
     auto* inspector = dynamic_cast<ComponentInspector*>(m_sideInspector);
@@ -1373,14 +1679,27 @@ void Shell::importHostsFile() {
     if (!file) {
         return;
     }
-    auto read = readFileBytes(*file);
-    if (!read) {
-        showToast(ui::InfoKind::Error, m_strings.get(Str::HostsImport), errorText(read.error()));
-        return;
-    }
-    std::string bytes = std::move(*read);
-    if (bytes.size() > (64u << 20)) {
-        bytes.resize(64u << 20);
+    // The first 64 MB at most. The size is asked before reading: the filter takes any file, and one
+    // of several GB picked by mistake was read whole (a frozen window, or no memory) only to be cut
+    // here (audit APP-10).
+    constexpr std::size_t kLimit = std::size_t{64} << 20;
+    std::string bytes;
+    std::error_code sizeError;
+    if (const auto size = std::filesystem::file_size(*file, sizeError); !sizeError && size > kLimit) {
+        std::ifstream in(*file, std::ios::binary);
+        bytes.resize(kLimit);
+        in.read(bytes.data(), static_cast<std::streamsize>(kLimit));
+        bytes.resize(static_cast<std::size_t>(std::max<std::streamsize>(in.gcount(), 0)));
+    } else {
+        auto read = readFileBytes(*file);
+        if (!read) {
+            showToast(ui::InfoKind::Error, m_strings.get(Str::HostsImport), errorText(read.error()));
+            return;
+        }
+        bytes = std::move(*read);
+        if (bytes.size() > kLimit) {
+            bytes.resize(kLimit);
+        }
     }
     const std::size_t added = m_hosts->importText(utf8::toWide(bytes));
     showToast(added > 0 ? ui::InfoKind::Success : ui::InfoKind::Info,
@@ -1445,6 +1764,15 @@ void Shell::showStoreDialog() {
     actions.install = [this](core::StoreSearchResult app) { m_store->install(std::move(app)); };
     StoreDialog built = makeStoreDialog(m_strings, m_store->architecture(), std::move(actions));
     m_storeDialog = built.handle;
+    showModal(slot, std::move(built.dialog), built.initialFocus);
+}
+
+void Shell::showIsoOptions() {
+    if (!host()) {
+        return;
+    }
+    const ModalSlot slot = modalSlot();
+    IsoOptionsDialog built = makeIsoOptionsDialog(m_state, m_strings, m_services.postToUi, slot.close);
     showModal(slot, std::move(built.dialog), built.initialFocus);
 }
 
@@ -1769,7 +2097,7 @@ void Shell::updateApplyChrome() {
     if (m_page != PageId::Apply) {
         return;
     }
-    const int mode = static_cast<int>(ApplyPage::modeFor(m_state));
+    const int mode = ApplyPage::modeKey(m_state);
     if (mode != m_applyMode) {
         // Rebuild later: this may run inside a click on a header button of the page being replaced.
         m_applyMode = mode;
@@ -1799,7 +2127,12 @@ void Shell::requestApply() {
         showApplyConfirm();
         return;
     }
+    startApplyRun();
+}
+
+void Shell::startApplyRun() {
     m_apply->start();
+    m_autoIso->attach(); // D-144: with the option on, the run carries its ISO from the start
 }
 
 void Shell::showApplyConfirm() {
@@ -1823,7 +2156,7 @@ void Shell::showApplyConfirm() {
     ui::Button& go = raw->addButton(ui::ButtonKind::Danger, m_strings.get(removals ? Str::ApplyConfirmGo : Str::ApplyConfirmGoSettings),
                                     [this, raw] {
                                         host()->popModal(raw);
-                                        m_apply->start();
+                                        startApplyRun();
                                     },
                                     /*primary=*/true);
     go.setEnabled(false);
@@ -1895,6 +2228,11 @@ bool Shell::inspectorVisible() const {
 
 void Shell::updateBreadcrumb() {
     // D-107: the image header — what is open, its state, its facts, and what the queue does to its size.
+    // Since D-109 it is never shown (the constructor and layout() hide it): its texts were built
+    // again on every state change, twice on a queue change (audit APP-11).
+    if (!m_header->visible()) {
+        return;
+    }
     auto s = [this](Str key) { return m_strings.get(key); };
     ImageHeader::Model model;
     const auto& source = m_state.source();
@@ -2034,10 +2372,34 @@ void Shell::showAppMenu() {
 void Shell::openTab(PageId tab) {
     const int last = m_lastSub[static_cast<std::size_t>(tab)];
     PageId page = last >= 0 ? static_cast<PageId>(last) : tab;
-    if (page == PageId::Images && !m_state.source()) {
+    if ((page == PageId::Images || page == PageId::Overview) && !m_state.source()) {
         page = PageId::Source; // "Görüntü" is the Source page until something is open
     }
     showPage(page);
+}
+
+void Shell::addResetAction(std::function<void()> reset) {
+    m_pageView->addSeparator();
+    m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::CommonResetAction), ui::icons::Icon::Refresh).onInvoke =
+        std::move(reset);
+}
+
+void Shell::resetAllChanges() {
+    const std::size_t queued = m_state.changes().size();
+    const bool boot = !m_state.bootDrivers().empty();
+    if (m_state.queueLocked()) {
+        return; // Uygula runs: the queue is frozen (and the ribbon says so elsewhere)
+    }
+    if (queued == 0 && !boot) {
+        showToast(ui::InfoKind::Info, m_strings.get(Str::PresetsResetAllNone), L"");
+        return;
+    }
+    m_state.unqueueIf([](const core::ops::Operation&) { return true; });
+    if (boot) {
+        const std::vector<std::filesystem::path> ticked = m_state.bootDrivers(); // a copy: the call edits the list
+        m_state.setBootDrivers(ticked, false);
+    }
+    showUndoToast(m_strings.format(Str::PresetsResetAllDone, {{L"n", std::to_wstring(queued)}}), L"");
 }
 
 void Shell::addMenuAction(ui::ButtonKind kind, std::wstring label, std::optional<ui::icons::Icon> icon,
@@ -2078,11 +2440,16 @@ void Shell::attachSubNav() {
     if (!m_pageView || !def || def->pages.size() < 2) {
         return;
     }
+    const bool sourceTab = std::ranges::find(def->pages, PageId::Source) != def->pages.end();
+    if (sourceTab && !m_state.source()) {
+        return; // nothing open: the Source page is the tab, under its own title
+    }
     std::vector<std::wstring> labels;
     int selected = 0;
     for (std::size_t i = 0; i < def->pages.size(); ++i) {
         const PageId p = def->pages[i];
-        std::wstring label = m_strings.get(pageInfo(p).navLabel);
+        // "Kaynak seç" · "Sürümler": the pages' titles (their nav labels are "Kaynak" and "Görüntü").
+        std::wstring label = m_strings.get(sourceTab ? pageInfo(p).title : pageInfo(p).navLabel);
         if (const int n = m_counts[static_cast<std::size_t>(p)]; n > 0) {
             label += L" \u00b7 " + std::to_wstring(n);
         }
@@ -2109,7 +2476,9 @@ bool Shell::changesVisible() const {
 }
 
 void Shell::updateChanges() {
-    if (!m_changes || !m_tabs) {
+    // Since D-109 the panel is never shown (the constructor and layout() hide it): building its
+    // rows three times per queue change was work for nothing (audit APP-11).
+    if (!m_changes || !m_tabs || !m_changes->visible()) {
         return;
     }
     std::vector<ChangesPanel::Entry> entries;
@@ -2191,15 +2560,14 @@ void Shell::updateWorkflow() {
 }
 
 void Shell::updateStatus() {
-    if (const auto& mounted = m_state.mounted()) {
-        m_status->setMount(mounted->edition, mounted->mountDir.wstring());
-    } else {
-        m_status->setMount(std::nullopt, L"");
-    }
+    // 2026-11-10 (UI polish): the status bar's segments, from the state. D-147: the title bar keeps
+    // the app's name; the open image is named here and on the pages.
+    m_status->setModel(statusModel(m_state, m_strings, m_language));
     {
-        // D-109 (the reference tool): right, the image's facts ("Windows 11 Pro 25H2 x64 - 10.0.26100.1742");
-        // with nothing open, this PC's DISM and the free space where WinLove works.
-        std::wstring info;
+        // D-109 (the reference tool): right, the image's facts ("Windows 11 Pro 25H2 x64 - 10.0.26100.1742";
+        // without the name while one is mounted — the left side names it); with nothing open, this
+        // PC's DISM. Then, always, the free space where WinLove works.
+        std::vector<std::wstring> info;
         const core::ImageInfo* image = nullptr;
         if (const auto& source = m_state.source()) {
             if (const auto& mounted = m_state.mounted()) {
@@ -2214,38 +2582,42 @@ void Shell::updateStatus() {
             }
         }
         if (image) {
-            info = image->name + L" " + core::releaseLabel(image->build) + L" " +
-                   std::wstring(core::architectureName(image->architecture)) + L" - 10.0." + std::to_wstring(image->build) + L"." +
-                   std::to_wstring(image->spBuild);
-        } else {
-            if (const auto& host = m_state.hostDism(); host && !host->dismVersion.empty()) {
-                info = m_strings.format(Str::StatusInfoDism, {{L"version", host->dismVersion}});
+            std::wstring facts = core::releaseLabel(image->build) + L" " + std::wstring(core::architectureName(image->architecture)) +
+                                 L" - 10.0." + std::to_wstring(image->build) + L"." + std::to_wstring(image->spBuild);
+            info.push_back(m_state.mounted() ? std::move(facts) : image->name + L" " + facts);
+        } else if (const auto& host = m_state.hostDism(); host && !host->dismVersion.empty()) {
+            info.push_back(m_strings.format(Str::StatusInfoDism, {{L"version", host->dismVersion}}));
+        }
+        const std::filesystem::path root = m_state.settings().workRoot.root_path();
+        ULARGE_INTEGER free{};
+        if (!root.empty() && GetDiskFreeSpaceExW(root.c_str(), &free, nullptr, nullptr)) {
+            std::wstring drive = root.wstring();
+            while (!drive.empty() && (drive.back() == L'\\' || drive.back() == L'/')) {
+                drive.pop_back();
             }
-            const std::filesystem::path root = m_state.settings().workRoot.root_path();
-            ULARGE_INTEGER free{};
-            if (!root.empty() && GetDiskFreeSpaceExW(root.c_str(), &free, nullptr, nullptr)) {
-                std::wstring drive = root.wstring();
-                while (!drive.empty() && (drive.back() == L'\\' || drive.back() == L'/')) {
-                    drive.pop_back();
-                }
-                info += (info.empty() ? L"" : L"     ") +
-                        m_strings.format(Str::StatusInfoFree, {{L"drive", drive}, {L"size", formatBytes(free.QuadPart, m_language)}});
-            }
+            info.push_back(
+                m_strings.format(Str::StatusInfoFree, {{L"drive", drive}, {L"size", formatBytes(free.QuadPart, m_language)}}));
         }
         m_status->setInfo(std::move(info));
     }
     const auto& run = m_state.applyRun();
     const auto& iso = m_state.isoRun();
     if (run && run->stage != AppState::ApplyRun::Stage::Done) {
-        m_status->setTask(m_strings.get(Str::StatusApplying), static_cast<float>(run->fraction));
+        // D-144: a run that ends with an ISO says so from the start.
+        m_status->setTask(m_strings.get(run->autoIso ? Str::StatusApplyingThenIso : Str::StatusApplying), static_cast<float>(run->fraction));
     } else if (iso && iso->running) {
-        m_status->setTask(m_strings.get(Str::StatusBuilding), static_cast<float>(iso->fraction));
+        m_status->setTask(m_strings.get(iso->afterApply ? Str::StatusBuildingAfterApply : Str::StatusBuilding),
+                          static_cast<float>(iso->fraction));
     } else if (const auto& op = m_state.operation()) {
-        const Str label = op->kind == EngineOperation::Kind::Mounting    ? Str::StatusMounting
-                          : op->kind == EngineOperation::Kind::Reading   ? Str::StatusReading
-                          : op->kind == EngineOperation::Kind::Verifying ? Str::StatusVerifying
-                                                                         : Str::StatusWorking;
-        m_status->setTask(m_strings.get(label), static_cast<float>(op->fraction));
+        const Str label = op->kind == EngineOperation::Kind::Mounting     ? Str::StatusMounting
+                          : op->kind == EngineOperation::Kind::Reading    ? Str::StatusReading
+                          : op->kind == EngineOperation::Kind::Verifying  ? Str::StatusVerifying
+                          : op->kind == EngineOperation::Kind::Adopting   ? Str::StatusAdopting
+                          : op->kind == EngineOperation::Kind::Remounting ? Str::StatusRemounting
+                          : op->kind == EngineOperation::Kind::Unmounting ? Str::StatusUnmounting
+                                                                          : Str::StatusWorking;
+        const bool unmeasured = op->kind == EngineOperation::Kind::Adopting || op->kind == EngineOperation::Kind::Remounting;
+        m_status->setTask(m_strings.get(label), unmeasured ? -1.0f : static_cast<float>(op->fraction));
     } else if (const auto& windows = m_state.windowsDownload()) {
         // D-093: from any page — the download, then the conversion into an ISO.
         const bool converting = windows->stage == AppState::WindowsDownload::Stage::Converting;
@@ -2292,7 +2664,10 @@ void Shell::updateImagesChrome() {
         }
     }
     if (m_actionExport) {
-        m_actionExport->setEnabled(!busy && image != nullptr);
+        // D-141: a virtual disk has no WIM to export from: disabled, the tooltip says why.
+        const bool vhd = m_images->isVirtualDiskSource();
+        m_actionExport->setEnabled(!busy && image != nullptr && !vhd);
+        m_actionExport->setTooltip(vhd ? m_strings.get(Str::ImagesVhdNoWim) : std::wstring{});
     }
     if (m_actionVerify) {
         const auto refusal = m_images->verifyRefusal();
@@ -2336,6 +2711,162 @@ void Shell::updateImagesChrome() {
     }
     layout();
     invalidate();
+}
+
+void Shell::addImageActions() {
+    // The reference tool's "Ekle ▾": another ISO / WIM / ESD / SWM, an unpacked image folder, a capture, a
+    // download — once an image is open the Source page is not in the tabs any more.
+    addMenuAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesAdd), ui::icons::Icon::Add,
+                  {{m_strings.get(Str::ImagesAddFile), [this] { pickSourceFile(); }},
+                   {m_strings.get(Str::ImagesAddFolder), [this] { pickSourceFolder(); }},
+                   {m_strings.get(Str::SourceCaptureAction), [this] { askCapture(); }},
+                   {m_strings.get(Str::ImagesAddDownload), [this] { showPage(PageId::Download); }},
+                   {m_strings.get(Str::ImagesAddRecent), [this] { showPage(PageId::Source); }}},
+                  {ui::icons::Icon::OpenFolder, ui::icons::Icon::Folder, ui::icons::Icon::ImageWim,
+                   ui::icons::Icon::WindowsDownload, ui::icons::Icon::Source});
+    m_pageView->addSeparator();
+    if (m_state.source()) {
+        m_actionTools = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesTools),
+                                               ui::icons::Icon::MoreHorizontal);
+        m_actionTools->onInvoke = [this] { showImageTools(); };
+        m_actionEsd = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesEsdToWim),
+                                             ui::icons::Icon::ImageWim);
+        m_actionEsd->onInvoke = [this] { convertEsd(); };
+        // D-114: what one does with the mounted image, at hand: save (apply the queue first when
+        // there is one), unmount (asks: save or discard), the ISO.
+        m_pageView->addSeparator();
+        m_actionSave = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::CommonSave),
+                                              ui::icons::Icon::Save);
+        m_actionSave->onInvoke = [this] {
+            if (!m_state.mounted()) {
+                return;
+            }
+            if (ApplyPage::awaitingSave(m_state)) {
+                askUnmount(); // a held run: save what ran (the dialog says what is left out)
+            } else if (!m_state.changes().empty()) {
+                showPage(PageId::Apply); // the queue goes in first, then the image is saved
+            } else {
+                m_images->unmount(/*commit=*/true);
+            }
+        };
+        m_actionUnmount = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesUnmount),
+                                                 ui::icons::Icon::Unmount);
+        m_actionUnmount->onInvoke = [this] { askUnmount(); };
+        m_actionExplore = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesExploreMount),
+                                                 ui::icons::Icon::OpenFolder);
+        m_actionExplore->onInvoke = [this] { exploreMount(); };
+        m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::NavIso), ui::icons::Icon::IsoBuild).onInvoke =
+            [this] { showPage(PageId::Iso); };
+        m_pageView->addSeparator();
+        m_actionVerify = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesVerify),
+                                                ui::icons::Icon::ShieldCheck);
+        m_actionVerify->onInvoke = [this] { m_images->verify(); };
+        m_actionExport = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesExport),
+                                                ui::icons::Icon::Export);
+        m_actionExport->onInvoke = [this] { exportSelected(); };
+        // D-108: Bağla / Çıkar is the WIM panel's primary button (the package's place for it);
+        // the header no longer repeats it.
+    }
+}
+
+void Shell::gatherOverview(OverviewInputs& in, unsigned parts) {
+    // D-138: what the controllers know, asked for by part (the page knows which part a change touches).
+    if ((parts & OverviewPage::kQueuePart) != 0) {
+        // 2026-11-11: each queued operation in the tab of the page whose work it is (QueueChips.h) —
+        // the chips add up to the card's "N değişiklik". Görüntü's own (the edition upgrade) and the
+        // answer file's (the welcome, Kurulum) are groups too; only Uygula has none.
+        std::vector<QueueLayout> layout;
+        for (const auto& group : workspaceTabs(kImageWorkspace)) {
+            if (group.caption == Str::TabsGroupFinish) {
+                continue;
+            }
+            QueueLayout g{group.caption, {}};
+            for (const auto& tab : group.tabs) {
+                g.tabs.push_back({tab.tab, tab.label ? *tab.label : pageInfo(tab.tab).navLabel, tab.pages});
+            }
+            layout.push_back(std::move(g));
+        }
+        layout.push_back({Str::OverviewQueueGroupSetup, {{PageId::Unattended, Str::TabsUnattended, {PageId::Unattended}}}});
+        QueueClaims claims;
+        const auto& changes = m_state.changes();
+        if (m_unattend->welcomeQueued()) {
+            claims.unattended = core::welcomeSlots();
+        }
+        if (changes.count(core::ops::OpKind::ShrinkStore) > 0) {
+            claims.components.emplace_back(core::ops::OpKind::SetRegistryValue, std::wstring(ComponentController::shrinkPolicyTarget()));
+        }
+        const auto& imports = m_state.regImports();
+        for (std::size_t i = 0; i < imports.size(); ++i) {
+            if (m_registry->checked(i)) {
+                const auto kind = RegistryController::kindOf(imports[i]);
+                for (const auto& write : imports[i].writes) {
+                    claims.registry.emplace_back(kind, core::registryTarget(write));
+                }
+            }
+        }
+        in.queue = queueGroups(changes, claims, layout);
+        in.pageCounts = m_counts;
+        in.risky.clear();
+        in.estimateSeconds = 0;
+        if (!m_state.changes().empty()) {
+            const auto risky = m_apply->highRisk();
+            for (auto& item : RiskConfirm::itemsFor(m_state, m_imageSettings->catalog(), m_strings, m_language, risky)) {
+                in.risky.push_back(std::move(item.name));
+            }
+            in.estimateSeconds = planSeconds(core::ops::groups(m_apply->currentPlan()));
+        }
+        in.waitingForDownload = m_apply->waitingForDownload();
+    }
+    if ((parts & OverviewPage::kCompatPart) != 0) {
+        in.impacted.clear();
+        if (!m_state.changes().empty()) {
+            for (auto& impact : m_compat->impact()) {
+                in.impacted.push_back(std::move(impact.name));
+            }
+        }
+        in.guardsOn = m_compat->onCount();
+    }
+    if ((parts & OverviewPage::kComponentsPart) != 0) {
+        in.categories.clear();
+        if (const auto& apps = m_state.appxList(); apps && apps->status == AppState::AppxList::Status::Ready) {
+            for (const auto& group : m_components->groups()) {
+                in.categories.emplace_back(group.name, group.items.size());
+            }
+        }
+    }
+    if ((parts & OverviewPage::kImagePart) != 0) {
+        in.canMount = m_state.selectedIndex().has_value() && m_images->canMount();
+        in.packedSource = m_images->isPackedSource();
+    }
+}
+
+void Shell::overviewAction(int next) {
+    using Next = OverviewModel::Next;
+    switch (static_cast<Next>(next)) {
+    case Next::ChooseSource: showPage(PageId::Source); break;
+    case Next::Mount:
+        if (const auto index = m_state.selectedIndex(); index && m_images->canMount()) {
+            m_images->mount(*index);
+        }
+        break;
+    case Next::ConvertEsd: convertEsd(); break;
+    case Next::PickChanges: showPage(PageId::Components); break;
+    case Next::ReviewQueue:
+    case Next::WatchRun:
+    case Next::ResolveRun: showPage(PageId::Apply); break;
+    case Next::BuildIso: showPage(PageId::Iso); break;
+    case Next::IsoReady: // D-144: the ISO the run made, in its folder
+        if (const auto& run = m_state.applyRun(); run && run->autoIso) {
+            revealInExplorer(run->autoIso->output);
+        }
+        break;
+    case Next::DiskSaved:
+        if (const auto index = m_state.selectedIndex(); index && m_images->canMount()) {
+            m_images->mount(*index);
+        }
+        break;
+    case Next::Wait: break;
+    }
 }
 
 void Shell::showPage(PageId page) {
@@ -2382,6 +2913,8 @@ void Shell::showPage(PageId page) {
         removeChild(m_sideInspector);
         m_sideInspector = nullptr;
     }
+    m_detailCard = nullptr;
+    m_detailWanted = false;
     m_actionExpand = nullptr;
     m_actionMount = m_actionExport = m_actionEsd = m_actionVerify = m_actionTools = nullptr;
     m_actionSave = m_actionUnmount = m_actionExplore = nullptr;
@@ -2420,59 +2953,7 @@ void Shell::showPage(PageId page) {
                                     }});
             m_images->scanSystemMounts(); // D-064: what other tools mounted, read again each visit
         } else if (page == PageId::Images) {
-            // The reference tool's "Ekle ▾": another ISO / WIM / ESD / SWM, an unpacked image folder, a capture, a
-            // download — once an image is open the Source page is not in the tabs any more.
-            addMenuAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesAdd), ui::icons::Icon::Add,
-                          {{m_strings.get(Str::ImagesAddFile), [this] { pickSourceFile(); }},
-                           {m_strings.get(Str::ImagesAddFolder), [this] { pickSourceFolder(); }},
-                           {m_strings.get(Str::SourceCaptureAction), [this] { askCapture(); }},
-                           {m_strings.get(Str::ImagesAddDownload), [this] { showPage(PageId::Download); }},
-                           {m_strings.get(Str::ImagesAddRecent), [this] { showPage(PageId::Source); }}},
-                          {ui::icons::Icon::OpenFolder, ui::icons::Icon::Folder, ui::icons::Icon::ImageWim,
-                           ui::icons::Icon::WindowsDownload, ui::icons::Icon::Source});
-            m_pageView->addSeparator();
-            if (m_state.source()) {
-                m_actionTools = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesTools),
-                                                       ui::icons::Icon::MoreHorizontal);
-                m_actionTools->onInvoke = [this] { showImageTools(); };
-                m_actionEsd = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesEsdToWim),
-                                                     ui::icons::Icon::ImageWim);
-                m_actionEsd->onInvoke = [this] { convertEsd(); };
-                // D-114: what one does with the mounted image, at hand: save (apply the queue first when
-                // there is one), unmount (asks: save or discard), the ISO.
-                m_pageView->addSeparator();
-                m_actionSave = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::CommonSave),
-                                                      ui::icons::Icon::Save);
-                m_actionSave->onInvoke = [this] {
-                    if (!m_state.mounted()) {
-                        return;
-                    }
-                    if (ApplyPage::awaitingSave(m_state)) {
-                        askUnmount(); // a held run: save what ran (the dialog says what is left out)
-                    } else if (!m_state.changes().empty()) {
-                        showPage(PageId::Apply); // the queue goes in first, then the image is saved
-                    } else {
-                        m_images->unmount(/*commit=*/true);
-                    }
-                };
-                m_actionUnmount = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesUnmount),
-                                                         ui::icons::Icon::Unmount);
-                m_actionUnmount->onInvoke = [this] { askUnmount(); };
-                m_actionExplore = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesExploreMount),
-                                                         ui::icons::Icon::OpenFolder);
-                m_actionExplore->onInvoke = [this] { exploreMount(); };
-                m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::NavIso), ui::icons::Icon::IsoBuild).onInvoke =
-                    [this] { showPage(PageId::Iso); };
-                m_pageView->addSeparator();
-                m_actionVerify = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesVerify),
-                                                        ui::icons::Icon::ShieldCheck);
-                m_actionVerify->onInvoke = [this] { m_images->verify(); };
-                m_actionExport = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesExport),
-                                                        ui::icons::Icon::Export);
-                m_actionExport->onInvoke = [this] { exportSelected(); };
-                // D-108: Bağla / Çıkar is the WIM panel's primary button (the package's place for it);
-                // the header no longer repeats it.
-            }
+            addImageActions(); // D-138: Özet has the same band
             m_pageBody = &m_pageView->setBody<ImagesPage>(m_state, *m_images, m_strings, m_language,
                                                           [this] { showPage(PageId::Source); });
             auto& images = *static_cast<ImagesPage*>(m_pageBody);
@@ -2498,6 +2979,27 @@ void Shell::showPage(PageId page) {
             m_inspector->onRename = [this] { askRenameSelected(); };
             m_inspector->onUpgrade = [this] { askUpgradeEdition(); };
             m_inspector->onExplore = [this] { exploreMount(); };
+        } else if (page == PageId::Overview) {
+            // D-138: where the image stands; the band is the Görüntü tab's. Its links and its button leave
+            // the page: later, not inside the click of a widget that goes with it.
+            addImageActions();
+            OverviewPage::Intents overview;
+            overview.gather = [this](OverviewInputs& in, unsigned parts) { gatherOverview(in, parts); };
+            overview.open = [this](PageId target) {
+                m_services.postToUi([this, target, alive = std::weak_ptr<bool>(m_alive)] {
+                    if (const auto a = alive.lock(); a && *a) {
+                        showPage(target);
+                    }
+                });
+            };
+            overview.act = [this](OverviewModel::Next next) {
+                m_services.postToUi([this, next, alive = std::weak_ptr<bool>(m_alive)] {
+                    if (const auto a = alive.lock(); a && *a) {
+                        overviewAction(static_cast<int>(next));
+                    }
+                });
+            };
+            m_pageBody = &m_pageView->setBody<OverviewPage>(m_state, m_strings, m_language, std::move(overview));
         } else if (page == PageId::Components) {
             // D-110: the reference tool's Bileşenler ribbon (Mod · Uyumluluk · Şablon ▾ | Geri al · Yinele |
             // Genişlet · Daralt | Sıfırla); what a row is shows in its tooltip, no side panel.
@@ -2571,22 +3073,13 @@ void Shell::showPage(PageId page) {
             auto& body = m_pageView->setBody<ProgramsPage>(m_state, *m_programs, m_strings, m_language,
                                                            [this] { showPage(PageId::Images); });
             m_pageBody = &body;
-            auto& inspector = add<ProgramInspector>(m_strings, m_language);
-            m_sideInspector = &inspector;
-            inspector.setVisible(false);
-            inspector.onToggle = [this] {
-                if (auto* p = programsPage()) {
-                    if (const auto program = p->selectedProgram()) {
-                        m_programs->toggle(*program);
-                    }
-                }
-            };
-            inspector.onOpenUrl = [](const std::wstring& url) {
+            // D-139: the selected program in the shared detail card (attachDetailCard), as on every
+            // working page; its "Ana sayfa" opens the manifest's address.
+            body.openUrl = [](const std::wstring& url) {
                 if (url.starts_with(L"https://")) { // a manifest's address: only web pages open
                     ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
                 }
             };
-            body.onSelectionChanged = [this] { updateProgramInspector(); };
         } else if (page == PageId::Registry) {
             auto pick = [this] {
                 importRegFiles(ui::pickFiles(owner(), m_strings.get(Str::RegistryImportReg),
@@ -2611,32 +3104,52 @@ void Shell::showPage(PageId page) {
                                 importRegFiles(ui::pickFiles(owner(), m_strings.get(Str::RegistryImportReg),
                                                              {{m_strings.get(Str::RegistryFilter), L"*.reg"}}));
                             }}});
+            addResetAction([this] { m_registry->resetChanges(); }); // D-152: the entries stay, switched off
             m_pageBody = &m_pageView->setBody<RegistryPage>(
                 m_state, *m_registry, m_strings, m_language,
                 RegistryPage::Intents{[this] { showPage(PageId::Images); },
                                       [this](std::size_t entry) { editRegistryValue(entry); }});
         } else if (page == PageId::About) {
+            // 2026-11-10: the page's actions in the ribbon like every page's (they were buttons in its
+            // cards, and the page had no band): the project and its issues | the licenses, the logs.
+            auto openLink = [](const std::wstring& url) {
+                // Only the page's own https addresses reach here.
+                if (url.starts_with(L"https://")) {
+                    ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                }
+            };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::AboutActionProject), ui::icons::Icon::ExternalLink)
+                .onInvoke = [openLink] { openLink(AboutPage::kProjectUrl); };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::AboutActionIssue), ui::icons::Icon::QuestionCircle)
+                .onInvoke = [openLink] { openLink(AboutPage::kIssuesUrl); };
+            m_pageView->addSeparator();
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::AboutLicenses), ui::icons::Icon::File).onInvoke = [this] {
+                if (!host()) {
+                    return;
+                }
+                auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::AboutLicenses), m_strings.get(Str::AboutLicensesBody),
+                                                           ui::icons::Icon::InfoCircle, ui::tokens::Color::TextSecondary);
+                ui::Dialog* raw = dialog.get();
+                raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::CommonOk), closer(raw), /*primary=*/true);
+                pushDialog(std::move(dialog));
+            };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::AboutOpenLogFolder), ui::icons::Icon::OpenFolder)
+                .onInvoke = [this] { openLogFolder(); };
             m_pageBody = &m_pageView->setBody<AboutPage>(
-                m_state, m_strings,
-                AboutPage::Intents{[this] {
-                                       if (!host()) {
-                                           return;
+                m_state, m_strings, m_language,
+                AboutPage::Intents{openLink, m_services.checkForUpdates, m_services.installUpdate, m_services.cancelUpdate,
+                                   [this] {
+                                       if (m_services.restartForUpdate) {
+                                           if (const auto why = m_services.restartForUpdate(); why && m_state.appUpdate().install) {
+                                               AppState::AppUpdate::Install wait = *m_state.appUpdate().install;
+                                               wait.why = *why;
+                                               showToast(ui::InfoKind::Warning, m_strings.get(Str::AppUpdateSelfRestartWait),
+                                                         installWhyText(wait));
+                                           }
                                        }
-                                       auto dialog = std::make_unique<ui::Dialog>(
-                                           m_strings.get(Str::AboutLicenses), m_strings.get(Str::AboutLicensesBody),
-                                           ui::icons::Icon::InfoCircle, ui::tokens::Color::TextSecondary);
-                                       ui::Dialog* raw = dialog.get();
-                                       raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::CommonOk),
-                                                      closer(raw), /*primary=*/true);
-                                       pushDialog(std::move(dialog));
                                    },
-                                   [this] { openLogFolder(); },
-                                   [](const std::wstring& url) {
-                                       // Only the page's own https addresses reach here.
-                                       if (url.starts_with(L"https://")) {
-                                           ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-                                       }
-                                   }});
+                                   m_services.showChangelog});
+            m_state.dismissAppUpdateNotice(); // D-140: the new release is seen here
         } else if (page == PageId::Settings) {
             auto& body = m_pageView->setBody<SettingsPage>(
                 m_state, m_strings,
@@ -2644,11 +3157,29 @@ void Shell::showPage(PageId page) {
                                           return ui::pickFolder(owner(), m_strings.get(Str::SettingsWorkDir));
                                       },
                                       // A language change rebuilds every controller: not while a job or a
-                                      // download reports into one (audit A6).
+                                      // download reports into one (audit A6). Nor while this PC's
+                                      // drivers or apps are being taken: destroying those controllers
+                                      // waits for the job, minutes with a frozen window (audit APP-03).
+                                      // Nor while one of the image's lists is read: the controller that
+                                      // reads it goes, its result is dropped and the page says "loading"
+                                      // for good (audit CTL-09). A read needs a mounted image, so the
+                                      // work folders (also locked by this) are locked then anyway.
                                       [this] {
+                                          const bool listReading =
+                                              (m_state.optionalFeatures() &&
+                                               m_state.optionalFeatures()->status == AppState::OptionalFeatures::Status::Loading) ||
+                                              (m_state.appxList() && m_state.appxList()->status == AppState::AppxList::Status::Loading) ||
+                                              (m_state.serviceList() &&
+                                               m_state.serviceList()->status == AppState::ServiceList::Status::Loading) ||
+                                              (m_state.imageValues() &&
+                                               m_state.imageValues()->status == AppState::ImageValues::Status::Loading) ||
+                                              (m_state.imageDrivers() &&
+                                               m_state.imageDrivers()->status == AppState::ImageDrivers::Status::Loading) ||
+                                              (m_state.imageIntl() && m_state.imageIntl()->status == AppState::ImageIntl::Status::Loading);
                                           return m_images->busy() || m_apply->running() || m_iso->running() ||
                                                  m_updateCatalog->busy() || m_languageFetch->busy() || m_store->busy() ||
-                                                 m_windowsDownload->running();
+                                                 m_windowsDownload->running() || m_imageDriverCtl->exporting() ||
+                                                 m_apps->importingHost() || listReading;
                                       }});
             m_pageBody = &body;
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::CommonReset), ui::icons::Icon::Refresh).onInvoke = [this, &body] {
@@ -2662,6 +3193,11 @@ void Shell::showPage(PageId page) {
                 .onInvoke = [this] { importPreset(); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PresetsNew), ui::icons::Icon::Add)
                 .onInvoke = [this] { newPreset(); };
+            // D-152 (a user: "another preset, without the one before on top"): the whole queue out,
+            // one undo step; then a preset applies on an empty queue.
+            m_pageView->addSeparator();
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::PresetsResetAll), ui::icons::Icon::Refresh)
+                .onInvoke = [this] { resetAllChanges(); };
             m_presets->reload();
             auto byIndex = [this](std::size_t index) -> const Preset* {
                 return index < m_presets->presets().size() ? &m_presets->presets()[index] : nullptr;
@@ -2726,6 +3262,7 @@ void Shell::showPage(PageId page) {
                            {m_strings.get(Str::PostsetupCommands), [this] { pickPostSetupCommands(); }},
                            // D-078: the programs have a page of their own, over winget's whole repository.
                            {m_strings.get(Str::PostsetupCatalog), [this] { showPage(PageId::Programs); }}});
+            addResetAction([this] { m_postSetup->resetSteps(); }); // D-152: the Programlar page's picks stay
             m_pageBody = &m_pageView->setBody<PostSetupPage>(
                 m_state, *m_postSetup, m_strings, m_language,
                 PostSetupPage::Intents{[this](std::size_t index) {
@@ -2747,8 +3284,21 @@ void Shell::showPage(PageId page) {
             };
             m_pageBody = &unattended;
         } else if (page == PageId::StartMenu) {
-            m_pageBody = &m_pageView->setBody<StartMenuPage>(m_state, *m_startPins, *m_taskbarPins, *m_imageSettings, m_strings, m_language,
-                                                             [this] { showPage(PageId::Images); });
+            // 2026-11-10: the pin list's actions in the ribbon (they were over the preview, and the page had
+            // no band); the page runs them and keeps them enabled ("my list" on a pin tab).
+            StartMenuPage::Ribbon ribbon;
+            ribbon.add = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::StartmenuAdd), ui::icons::Icon::Pin);
+            m_pageView->addSeparator();
+            ribbon.left = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::StartmenuMoveLeft), ui::icons::Icon::ArrowLeft);
+            ribbon.right =
+                &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::StartmenuMoveRight), ui::icons::Icon::ArrowRight);
+            ribbon.remove = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::StartmenuRemove), ui::icons::Icon::Unpin);
+            m_pageView->addSeparator();
+            ribbon.clear = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::StartmenuClear), ui::icons::Icon::Delete);
+            auto& startMenu = m_pageView->setBody<StartMenuPage>(m_state, *m_startPins, *m_taskbarPins, *m_imageSettings, m_strings,
+                                                                 m_language, [this] { showPage(PageId::Images); });
+            startMenu.attachRibbon(ribbon);
+            m_pageBody = &startMenu;
         } else if (page == PageId::Tweaks) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TweaksFromThisPc), ui::icons::Icon::Download)
                 .onInvoke = [this] {
@@ -2762,23 +3312,28 @@ void Shell::showPage(PageId page) {
                         showToast(ui::InfoKind::Info, m_strings.get(Str::TweaksFromThisPcNone), L"");
                     }
                 };
-            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TweaksApplyRecommended), ui::icons::Icon::ShieldCheck).onInvoke = [this] {
-                if (!requireMount(Str::TweaksNoMountTitle, Str::TweaksNoMountBody)) {
-                    return;
-                }
-                const int changed = m_imageSettings->applyRecommended();
-                if (changed > 0) {
-                    showUndoToast(m_strings.format(Str::TweaksRecommendedApplied, {{L"n", std::to_wstring(changed)}}), L"");
-                } else {
-                    showToast(ui::InfoKind::Success, m_strings.get(Str::TweaksRecommendedNone), L"");
-                }
-            };
+            // D-146: Bileşenler's Şablon ▾ (D-110) on Ayarlar too: the catalog's templates | Geri al · Yinele | Sıfırla.
+            std::vector<MenuAction> templates;
+            for (const auto& preset : m_imageSettings->catalog().templates()) {
+                templates.emplace_back(preset.title.get(m_language), [this, id = preset.id] { applyTweakTemplate(id); });
+            }
+            addMenuAction(ui::ButtonKind::Secondary, m_strings.get(Str::TweaksTemplateAction), ui::icons::Icon::PresetBookmark,
+                          std::move(templates));
+            m_pageView->addSeparator();
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TweaksUndo), ui::icons::Icon::Undo).onInvoke =
+                [this] { m_state.undoQueue(); };
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TweaksRedo), ui::icons::Icon::Redo).onInvoke =
+                [this] { m_state.redoQueue(); };
+            m_pageView->addSeparator();
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TweaksResetAction), ui::icons::Icon::Refresh)
+                .onInvoke = [this] { m_imageSettings->resetChanges(); };
             m_pageBody = &m_pageView->setBody<TweaksPage>(
                 m_state, *m_imageSettings, m_strings, m_language, [this] { showPage(PageId::Images); },
                 [this]() -> std::optional<std::filesystem::path> {
                     return ui::pickFile(owner(), m_strings.get(Str::TweaksPickImage),
                                         {{m_strings.get(Str::TweaksJpegFiles), L"*.jpg;*.jpeg"}});
                 });
+            static_cast<TweaksPage*>(m_pageBody)->onApplyTemplate = [this](const std::string& id) { applyTweakTemplate(id); };
         } else if (page == PageId::Tasks) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::TasksCreateAction), ui::icons::Icon::QueueClock)
                 .onInvoke = [this] { createTaskDialog(); };
@@ -2795,6 +3350,7 @@ void Shell::showPage(PageId page) {
                     showToast(ui::InfoKind::Success, m_strings.get(Str::TasksRecommendedNone), L"");
                 }
             };
+            addResetAction([this] { m_tasks->resetChanges(); }); // D-152
             m_pageBody = &m_pageView->setBody<TasksPage>(m_state, *m_tasks, m_strings, m_language,
                                                          [this] { showPage(PageId::Images); });
         } else if (page == PageId::Languages) {
@@ -2895,8 +3451,10 @@ void Shell::showPage(PageId page) {
         } else if (page == PageId::Icons) {
             ui::Button& loadPack = m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::IconsLoadPack), ui::icons::Icon::OpenFolder);
             loadPack.onInvoke = [this, &loadPack] { showIconPackMenu(loadPack.bounds()); };
+            // The only ribbon action without an icon was this one (2026-11-10): the shortcut's link arrow.
             m_pageView->addAction(ui::ButtonKind::Secondary,
-                                  m_strings.get(m_icons->shortcutArrowRemoved() ? Str::IconsArrowBack : Str::IconsArrowRemove))
+                                  m_strings.get(m_icons->shortcutArrowRemoved() ? Str::IconsArrowBack : Str::IconsArrowRemove),
+                                  ui::icons::Icon::Link)
                 .onInvoke = [this] {
                 if (!requireMount(Str::IconsNoMountTitle, Str::IconsNoMountBody)) {
                     return;
@@ -2935,12 +3493,18 @@ void Shell::showPage(PageId page) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ServicesReset), ui::icons::Icon::Refresh).onInvoke = [this] {
                 m_serviceCtl->resetChanges();
             };
-            m_pageBody = &m_pageView->setBody<ServicesPage>(
+            auto& services = m_pageView->setBody<ServicesPage>(
                 m_state, *m_serviceCtl, m_strings, m_language,
                 ServicesPage::Intents{[this] { showPage(PageId::Images); },
                                       [this](std::wstring title, std::wstring body) {
                                           showToast(ui::InfoKind::Warning, std::move(title), std::move(body));
                                       }});
+            m_pageBody = &services;
+            // D-139: what keeps a service from being disabled, in the guards' words (its mark, the card).
+            services.explainGuard = [this](const core::ServiceEntry& service) {
+                return m_compat->explain(m_compat->block(
+                    ServiceController::operationFor(service, core::StartType::Disabled, core::ops::Risk::Low)));
+            };
         } else if (page == PageId::Drivers) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesScanFolder), ui::icons::Icon::OpenFolder)
                 .onInvoke = [this] { scanDriverFolder(); };
@@ -2954,12 +3518,22 @@ void Shell::showPage(PageId page) {
                         return;
                     }
                     showToast(ui::InfoKind::Info, m_strings.get(Str::DriversHostExporting), m_imageDriverCtl->hostFolder().wstring());
-                    m_imageDriverCtl->exportHost();
+                    // D-134: on the boot tab the storage and wired network drivers get ticked for boot.wim.
+                    const auto* page = driversPage();
+                    m_imageDriverCtl->exportHost(page && page->bootTabShown());
                 };
+            addResetAction([this] { m_imageDriverCtl->resetChanges(); }); // D-152
             m_pageBody = &m_pageView->setBody<DriversPage>(
                 m_state, *m_imageDriverCtl, m_strings, m_language,
                 DriversPage::Intents{[this] { scanDriverFolder(); }, [this] { showPage(PageId::Images); }});
         } else if (page == PageId::Download) {
+            // 2026-11-10: the page's own action in the ribbon like every page's (it was in the filter row).
+            m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::DownloadRefresh), ui::icons::Icon::Refresh)
+                .onInvoke = [this] {
+                if (auto* p = downloadPage()) {
+                    p->reload();
+                }
+            };
             m_pageBody = &m_pageView->setBody<DownloadPage>(
                 m_state, m_strings, m_language, *m_windowsDownload,
                 DownloadPage::Intents{[this](const std::filesystem::path& suggested) {
@@ -2973,14 +3547,25 @@ void Shell::showPage(PageId page) {
                 .onInvoke = [this] { findUpdates(); };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesScanFolder), ui::icons::Icon::OpenFolder)
                 .onInvoke = [this] {
-                    if (const auto folder = ui::pickFolder(owner(), m_strings.get(Str::UpdatesScanFolder))) {
-                        const auto files = core::scanUpdates(*folder);
-                        if (files.empty()) {
-                            showToast(ui::InfoKind::Warning, m_strings.get(Str::UpdatesNoneFound), folder->wstring());
-                        } else {
-                            addUpdates(files);
-                        }
+                    const auto folder = ui::pickFolder(owner(), m_strings.get(Str::UpdatesScanFolder));
+                    if (!folder) {
+                        return;
                     }
+                    // The folder is walked with everything under it: on the reader thread, as the
+                    // driver scan is — a drive's root froze the window (audit APP-10).
+                    auto files = std::make_shared<std::vector<std::filesystem::path>>();
+                    readThenUi<bool>(
+                        [path = *folder, files](const core::TaskContext&) -> Result<bool> {
+                            *files = core::scanUpdates(path);
+                            return true;
+                        },
+                        [this, path = *folder, files](Result<bool>) {
+                            if (files->empty()) {
+                                showToast(ui::InfoKind::Warning, m_strings.get(Str::UpdatesNoneFound), path.wstring());
+                            } else {
+                                addUpdates(*files);
+                            }
+                        });
                 };
             auto pick = [this] {
                 addUpdates(ui::pickFiles(owner(), m_strings.get(Str::UpdatesPickTitle),
@@ -2988,6 +3573,7 @@ void Shell::showPage(PageId page) {
             };
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesAddPackage), ui::icons::Icon::Add)
                 .onInvoke = pick;
+            addResetAction([this] { UpdatesPage::resetQueued(m_state); }); // D-152: language packs stay (Diller)
             m_pageBody = &m_pageView->setBody<UpdatesPage>(m_state, m_strings, m_language,
                                                            UpdatesPage::Intents{pick, [this] { showPage(PageId::Images); },
                                                                                 [this] { m_updateCatalog->cancel(); }});
@@ -3009,12 +3595,23 @@ void Shell::showPage(PageId page) {
             m_actionReset = &m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ComponentsResetAction),
                                                    ui::icons::Icon::Refresh);
             m_actionReset->onInvoke = [this] { m_features->resetChanges(); };
-            m_pageBody = &m_pageView->setBody<FeaturesPage>(m_state, *m_features, m_strings, m_language,
-                                                            [this] { showPage(PageId::Images); });
+            auto& features = m_pageView->setBody<FeaturesPage>(m_state, *m_features, m_strings, m_language,
+                                                               [this] { showPage(PageId::Images); });
+            m_pageBody = &features;
+            // D-139: what keeps a capability in the image, in the guards' words (its mark, the card).
+            features.explainGuard = [this](const core::OptionalFeature& item) {
+                return m_compat->explain(m_compat->block(FeatureController::operationFor(item)));
+            };
         } else if (page == PageId::Apply) {
             const auto mode = ApplyPage::modeFor(m_state);
-            m_applyMode = static_cast<int>(mode);
-            if (mode == ApplyPage::Mode::Summary) {
+            m_applyMode = ApplyPage::modeKey(m_state);
+            if (mode == ApplyPage::Mode::Empty || mode == ApplyPage::Mode::NoMount) {
+                // 2026-11-10: nothing to apply yet — the summary's two actions, not usable: the band is
+                // there as on every page and stays put when the first change arrives.
+                m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ApplySaveAsPreset), ui::icons::Icon::PresetBookmark)
+                    .setEnabled(false);
+                m_pageView->addAction(ui::ButtonKind::Primary, m_strings.get(Str::NavApply), ui::icons::Icon::ApplyPlay).setEnabled(false);
+            } else if (mode == ApplyPage::Mode::Summary) {
                 m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::ApplySaveAsPreset),
                                       ui::icons::Icon::PresetBookmark)
                     .onInvoke = [this] { savePreset(m_state.changes()); };
@@ -3062,6 +3659,42 @@ void Shell::showPage(PageId page) {
                 });
             };
             applyIntents.openCompat = [this] { showCompat(); };
+            // D-138: the head cards' buttons do what the ribbon's do in that mode (a page rebuilt by a
+            // mode change runs them later, not inside the button's own click).
+            auto later = [this](std::function<void()> run) {
+                return [this, run = std::move(run)] {
+                    m_services.postToUi([run, alive = std::weak_ptr<bool>(m_alive)] {
+                        if (const auto a = alive.lock(); a && *a) {
+                            run();
+                        }
+                    });
+                };
+            };
+            applyIntents.start = later([this] { requestApply(); });
+            applyIntents.openFolder = [this] { exploreMount(); };
+            applyIntents.stop = later([this] { m_apply->cancel(); });
+            applyIntents.resume = later([this] { m_apply->resume(); });
+            applyIntents.buildIso = later([this] { showPage(PageId::Iso); });
+            applyIntents.saveReport = [this] { saveApplyReport(); };
+            applyIntents.saveToPreset = [this] {
+                if (const auto& run = m_state.applyRun()) {
+                    savePreset(run->changes);
+                }
+            };
+            applyIntents.saveLog = [this] { saveApplyLog(); };
+            // D-144: "Bitince ISO oluştur".
+            applyIntents.isoUnavailable = [this] { return m_autoIso->unavailable(); };
+            applyIntents.isoOutput = [this] { return m_autoIso->output(); };
+            applyIntents.pickIsoOutput = [this] {
+                const std::filesystem::path now = m_autoIso->output();
+                if (const auto target = ui::pickSaveFile(owner(), m_strings.get(Str::ApplyAutoIsoPick),
+                                                         {{m_strings.get(Str::ApplyAutoIsoFiles), L"*.iso"}}, now.filename().wstring(), L"iso")) {
+                    m_autoIso->setOutput(*target);
+                }
+            };
+            applyIntents.isoOptions = later([this] { showIsoOptions(); });
+            applyIntents.cancelIso = [this] { m_iso->cancel(); };
+            applyIntents.showIsoInFolder = [](const std::filesystem::path& file) { revealInExplorer(file); };
             auto& body = m_pageView->setBody<ApplyPage>(m_state, *m_apply, m_imageSettings->catalog(), m_strings, m_language,
                                                         std::move(applyIntents));
             m_pageBody = &body;
@@ -3096,7 +3729,11 @@ void Shell::showPage(PageId page) {
                                      if (file) {
                                          m_images->replaceSetupMedia(*file);
                                      }
-                                 }});
+                                 },
+                                 [this] { showPage(PageId::Drivers); }}); // D-134: add the storage driver to the image too
+            // D-134: what the media carries already (whether a storage driver ticked for boot.wim is in the
+            // install image too) — the file lists, on the reader thread.
+            m_imageDriverCtl->loadMedia();
         } else if (page == PageId::Logs) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::LogsClear), ui::icons::Icon::Delete).onInvoke = [this] {
                 if (auto* logs = logsPage()) {
@@ -3117,6 +3754,7 @@ void Shell::showPage(PageId page) {
         }
     }
     attachSubNav();
+    attachDetailCard();
     // The toast stays on top of whatever page is shown.
     if (!m_toast) {
         m_toast = &add<ui::Toast>();
@@ -3332,6 +3970,27 @@ void Shell::restoreMount(const std::filesystem::path& source, MountedImage mount
     });
 }
 
+void Shell::adoptOpened(core::SourceInfo source, MountedImage mounted, bool preload) {
+    const bool same = m_state.source() && _wcsicmp(m_state.source()->path.c_str(), source.path.c_str()) == 0;
+    if (!same) {
+        m_state.setSource(std::move(source));
+    }
+    m_state.select(mounted.index);
+    const std::wstring edition = mounted.edition;
+    const std::wstring folder = mounted.mountDir.wstring();
+    auto saved = m_state.savedQueue(mounted); // before setMounted (see restoreMount)
+    m_state.setMounted(std::move(mounted));
+    if (auto* page = sourcePage()) {
+        page->setLoading(false);
+    }
+    showPage(PageId::Images);
+    showToast(ui::InfoKind::Info, m_strings.format(Str::ImagesMountAdopted, {{L"edition", edition}}),
+              restoredQueueText(m_state.restoreQueue(std::move(saved)), folder));
+    if (preload) {
+        startPreload();
+    }
+}
+
 void Shell::checkHost() {
     readThenUi<core::HostDismReport>([](const core::TaskContext&) -> Result<core::HostDismReport> { return core::checkHostDism(); },
                                      [this](Result<core::HostDismReport> report) {
@@ -3348,7 +4007,7 @@ void Shell::startPreload() {
 
 void Shell::pickSourceFile() {
     const auto file = ui::pickFile(owner(), m_strings.get(Str::SourceOpenFile),
-                                   {{m_strings.get(Str::SourceFilterImages), L"*.iso;*.wim;*.esd;*.swm"},
+                                   {{m_strings.get(Str::SourceFilterImages), L"*.iso;*.wim;*.esd;*.swm;*.vhd;*.vhdx"},
                                     {m_strings.get(Str::SourceFilterAll), L"*.*"}});
     if (file) {
         openSource(*file);
@@ -3446,6 +4105,10 @@ void Shell::showAdminRequired(std::wstring relaunchArgs) {
 }
 
 bool Shell::dragEnter(const std::vector<std::filesystem::path>& files) {
+    // A dialog or menu is open: its handlers hold the page a drop would replace.
+    if (host() && host()->hasModal()) {
+        return false;
+    }
     if (registryPage() && m_state.mounted()) {
         return std::ranges::any_of(files, [](const auto& f) { return _wcsicmp(f.extension().c_str(), L".reg") == 0; });
     }
@@ -3486,6 +4149,9 @@ void Shell::dragLeave() {
 }
 
 void Shell::drop(const std::vector<std::filesystem::path>& files) {
+    if (host() && host()->hasModal()) {
+        return;
+    }
     if (registryPage() && m_state.mounted()) {
         std::vector<std::filesystem::path> regs;
         std::ranges::copy_if(files, std::back_inserter(regs),
@@ -3538,6 +4204,34 @@ void Shell::drop(const std::vector<std::filesystem::path>& files) {
 
 void Shell::onImageFailure(ImageController::Failure failure, const Error& error) {
     const std::wstring code = std::format(L"0x{:08X}", static_cast<unsigned>(error.hresult));
+    if (failure == ImageController::Failure::Adopt) {
+        showAdoptFailure(m_images->adoptState(), error);
+        return;
+    }
+    onImageFailureRest(failure, error, code);
+}
+
+void Shell::showAdoptFailure(std::optional<core::MountState> state, const Error& error) {
+    {
+        // 2026-11-11: taking over a mount made elsewhere — the reason in words, where the row was
+        // double-clicked (Kaynak), and the list read again (it may have changed under it).
+        std::wstring message;
+        if (state && core::adoptionStep(*state) == core::AdoptStep::Refuse) {
+            message = m_strings.get(*state == core::MountState::Invalid        ? Str::SourceAdoptInvalid
+                                    : *state == core::MountState::ImageMissing ? Str::SourceAdoptMissing
+                                                                               : Str::SourceAdoptNotMounted);
+        } else {
+            message = errorText(error);
+        }
+        if (auto* page = sourcePage()) {
+            page->showError(message);
+        }
+        showToast(ui::InfoKind::Error, m_strings.get(Str::SourceAdoptFailedTitle), message);
+        m_images->scanSystemMounts();
+    }
+}
+
+void Shell::onImageFailureRest(ImageController::Failure failure, const Error& error, const std::wstring& code) {
     const bool mountFailure = failure == ImageController::Failure::Mount;
     const std::wstring title = mountFailure ? m_strings.format(Str::ImagesMountFailed, {{L"code", code}})
                                             : std::format(L"{} ({})", m_strings.get(Str::ImagesFailedTitle), code);
@@ -3609,12 +4303,20 @@ void Shell::askUnmount() {
     // Apply (which would only try those steps again).
     const bool held = queued > 0 && ApplyPage::awaitingSave(m_state);
     const bool saveFirst = queued == 0 || held;
-    auto dialog = std::make_unique<ui::Dialog>(
-        m_strings.get(Str::ImagesUnmountTitle),
-        queued == 0 ? m_strings.get(Str::ImagesUnmountBody)
-        : held      ? m_strings.format(Str::ImagesUnmountHeld, {{L"count", std::to_wstring(queued)}})
-                    : m_strings.format(Str::ImagesUnmountQueued, {{L"count", std::to_wstring(queued)}}),
-        ui::icons::Icon::Unmount, queued == 0 ? ui::tokens::Color::TextSecondary : ui::tokens::Color::StatusWarning);
+    // D-141: a virtual disk: saving merges its changes disk into the file, not saving deletes it.
+    const bool vhd = core::isVirtualDiskPath(m_state.mounted()->imagePath);
+    std::wstring body =
+        queued == 0 && vhd ? m_strings.format(Str::ImagesUnmountVhdBody, {{L"name", m_state.mounted()->imagePath.filename().wstring()}})
+        : queued == 0      ? m_strings.get(Str::ImagesUnmountBody)
+        : held ? m_strings.format(vhd ? Str::ImagesUnmountHeldVhd : Str::ImagesUnmountHeld, {{L"count", std::to_wstring(queued)}})
+               : m_strings.format(vhd ? Str::ImagesUnmountQueuedVhd : Str::ImagesUnmountQueued, {{L"count", std::to_wstring(queued)}});
+    if (m_state.mountedElsewhere()) {
+        // 2026-11-11: another tool's mount, taken over — whose folder it is, and that only it is touched.
+        body += L"\n\n" + m_strings.format(Str::ImagesUnmountElsewhere, {{L"folder", m_state.mounted()->mountDir.wstring()}});
+    }
+    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::ImagesUnmountTitle), body, ui::icons::Icon::Unmount,
+                                               queued == 0 && !m_state.mountedElsewhere() ? ui::tokens::Color::TextSecondary
+                                                                                          : ui::tokens::Color::StatusWarning);
     ui::Dialog* raw = dialog.get();
     raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
     raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::ImagesUnmountDiscard), [this, raw] {
@@ -3662,6 +4364,28 @@ void Shell::askWorkCopy(core::WorkCopyState copy, const std::filesystem::path& f
                        },
                        /*primary=*/true);
     }
+    pushDialog(std::move(dialog));
+}
+
+void Shell::askMountVirtualDisk(const std::filesystem::path& vhd, const std::filesystem::path& changes, std::function<void()> proceed) {
+    if (!host()) {
+        proceed();
+        return;
+    }
+    // D-141: before anything is attached, what happens to the user's file — and what does not.
+    auto dialog = std::make_unique<ui::Dialog>(
+        m_strings.get(Str::ImagesVhdMountTitle),
+        m_strings.format(Str::ImagesVhdMountBody, {{L"name", vhd.filename().wstring()}, {L"changes", changes.wstring()}}),
+        ui::icons::Icon::Mount, ui::tokens::Color::TextSecondary);
+    ui::Dialog* raw = dialog.get();
+    auto shared = std::make_shared<std::function<void()>>(std::move(proceed));
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
+    raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::ImagesVhdMountAction),
+                   [this, raw, shared] {
+                       host()->popModal(raw);
+                       (*shared)();
+                   },
+                   /*primary=*/true);
     pushDialog(std::move(dialog));
 }
 
@@ -4269,6 +4993,7 @@ void Shell::verifyHash(const std::filesystem::path& file) {
     const ModalSlot slot = modalSlot();
     auto open = std::make_shared<bool>(true);
     auto cancel = std::make_shared<core::CancelToken>();
+    m_hashCancel = cancel; // ~Shell stops the read too (audit APP-01)
     auto close = [pop = slot.close, open, cancel] {
         *open = false;
         cancel->cancel();
@@ -4566,6 +5291,14 @@ void Shell::layout() {
     m_nav->setVisible(!noNav);
     const float navWidth = noNav ? 0.0f : m_nav->preferredWidth();
     const float left = noNav ? pad : pad + navWidth + pad;
+    if (m_detailCard) {
+        // D-139: beside the page when it has rows to choose from and the page card keeps its room.
+        const bool show = m_detailWanted && detailCardFits(b.width - left - pad);
+        m_detailCard->setVisible(show);
+        if (auto* source = detailSource()) {
+            source->setDetailShown(show);
+        }
+    }
     const bool inspector = inspectorVisible();
     // D-114: the Görüntü panel gives way on narrower windows (the edition names need the room).
     const float wide = std::clamp(b.width * 0.27f, size::inspector, size::inspectorWide);

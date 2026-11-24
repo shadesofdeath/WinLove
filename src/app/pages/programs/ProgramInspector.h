@@ -38,6 +38,11 @@ private:
     std::filesystem::path m_icon;
     bool m_picked = false;
     bool m_failed = false;
+    // Texts of the program, made in set() and only drawn in paint() (audit SUB-06).
+    std::wstring m_publisher;
+    std::wstring m_installer;
+    std::wstring m_architectures;
+    std::wstring m_tags;
     ui::Button* m_toggle = nullptr;
     ui::Button* m_homepage = nullptr;
 };

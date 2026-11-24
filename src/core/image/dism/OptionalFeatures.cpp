@@ -116,8 +116,18 @@ std::map<std::wstring, std::wstring> readFeatureParents(const std::filesystem::p
         if (_wcsicmp(path.extension().c_str(), L".mum") != 0 || file.find(L"~~") == std::wstring::npos) {
             continue;
         }
-        std::ifstream in(path, std::ios::binary);
-        const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        // One read of the known size: there are thousands of these and the iterator form took each
+        // a character at a time through the stream buffer (audit ENG-15). Unreadable = empty, as before.
+        std::string text;
+        if (std::ifstream in(path, std::ios::binary | std::ios::ate); in) {
+            const std::streamsize size = in.tellg();
+            if (size > 0) {
+                text.resize(static_cast<std::size_t>(size));
+                in.seekg(0);
+                in.read(text.data(), size);
+                text.resize(static_cast<std::size_t>(std::max<std::streamsize>(in.gcount(), 0)));
+            }
+        }
         if (text.find("detectUpdate") == std::string::npos && text.find("ServerComponent") == std::string::npos) {
             continue;
         }

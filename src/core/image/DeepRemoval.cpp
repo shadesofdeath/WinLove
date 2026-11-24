@@ -147,6 +147,12 @@ Result<StoreEntries> storeIndex(const std::filesystem::path& hiveFile) {
     };
     static std::mutex lock;
     static Kept kept;
+    static const bool registered = (releaseAtScanEnd([] {
+                                        const std::scoped_lock guard(lock);
+                                        kept = Kept{};
+                                    }),
+                                    true);
+    (void)registered;
     const FileStamp stamp = fileStamp(hiveFile);
     const std::wstring file = lower(hiveFile.wstring());
     const std::scoped_lock guard(lock);
@@ -162,32 +168,145 @@ Result<StoreEntries> storeIndex(const std::filesystem::path& hiveFile) {
     return kept.entries;
 }
 
-std::vector<std::filesystem::path> otherLinks(const std::filesystem::path& file) {
-    std::vector<std::filesystem::path> links;
+std::wstring withoutTrailingSlash(std::wstring text) {
+    while (!text.empty() && text.back() == L'\\') {
+        text.pop_back();
+    }
+    return text;
+}
+
+// A file's volume root, no backslash at its end ("C:"); empty when it cannot be told.
+std::wstring volumeRootOf(const std::filesystem::path& file) {
     wchar_t volume[MAX_PATH];
     if (!GetVolumePathNameW(file.c_str(), volume, MAX_PATH)) {
-        return links;
+        return {};
     }
-    std::wstring root = volume;
-    while (!root.empty() && root.back() == L'\\') {
-        root.pop_back();
-    }
+    return withoutTrailingSlash(volume);
+}
+
+// Every name of a (hard-linked) file, each below its volume's root ("\Windows\System32\x.dll").
+std::vector<std::wstring> linkNames(const std::filesystem::path& file) {
+    std::vector<std::wstring> names;
     std::wstring name(1024, L'\0');
     DWORD length = static_cast<DWORD>(name.size());
     HANDLE find = FindFirstFileNameW(file.c_str(), 0, &length, name.data());
+    if (find == INVALID_HANDLE_VALUE && GetLastError() == ERROR_MORE_DATA) {
+        // A name longer than the buffer: it used to drop every link of the file without a word
+        // (audit IMG-04). `length` is what the name needs.
+        name.assign(static_cast<std::size_t>(length) + 1, L'\0');
+        length = static_cast<DWORD>(name.size());
+        find = FindFirstFileNameW(file.c_str(), 0, &length, name.data());
+    }
     if (find == INVALID_HANDLE_VALUE) {
+        return names;
+    }
+    for (;;) {
+        names.emplace_back(name.c_str());
+        length = static_cast<DWORD>(name.size());
+        if (FindNextFileNameW(find, &length, name.data())) {
+            continue;
+        }
+        if (GetLastError() != ERROR_MORE_DATA) {
+            break;
+        }
+        name.assign(static_cast<std::size_t>(length) + 1, L'\0');
+        length = static_cast<DWORD>(name.size());
+        if (!FindNextFileNameW(find, &length, name.data())) {
+            break;
+        }
+    }
+    FindClose(find);
+    return names;
+}
+
+// The other names of a file of the mounted image, as paths below the mount folder.
+//
+// Windows gives a link's name below the volume's root, by the folders' real names. A mount folder
+// reached through a junction, a SUBST drive or a short (8.3) name is not spelled that way: every
+// link then read as "outside the image", no installed copy went and the step still said it was done
+// (audit IMG-04). Such a name is now recognised by the mount folder's final path and written the way
+// the mount folder was given; a name below the mount folder as given is taken exactly as before.
+class ImageLinks {
+public:
+    explicit ImageLinks(const std::filesystem::path& mountDir)
+        : m_mountDir(mountDir), m_mount(withoutTrailingSlash(mountDir.wstring())) {
+        HANDLE folder = CreateFileW(mountDir.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+                                    FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+        if (folder == INVALID_HANDLE_VALUE) {
+            return;
+        }
+        std::wstring finalPath(32768, L'\0');
+        const DWORD length = GetFinalPathNameByHandleW(folder, finalPath.data(), static_cast<DWORD>(finalPath.size()),
+                                                       FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+        CloseHandle(folder);
+        if (length == 0 || length >= finalPath.size()) {
+            return;
+        }
+        finalPath.resize(length);
+        // "\\?\C:\real\mount": only a drive path is of use here (not "\\?\UNC\…").
+        constexpr std::wstring_view kPrefix = L"\\\\?\\";
+        if (!finalPath.starts_with(kPrefix) || finalPath.size() < kPrefix.size() + 3 || finalPath[kPrefix.size() + 1] != L':') {
+            return;
+        }
+        finalPath = withoutTrailingSlash(finalPath.substr(kPrefix.size()));
+        if (_wcsicmp(finalPath.c_str(), m_mount.c_str()) == 0) {
+            return; // spelled as it is: nothing to translate
+        }
+        m_realVolume = volumeRootOf(finalPath);
+        if (!m_realVolume.empty()) {
+            m_real = std::move(finalPath);
+        }
+    }
+
+    [[nodiscard]] std::vector<std::filesystem::path> of(const std::filesystem::path& file) {
+        std::vector<std::filesystem::path> links;
+        const std::wstring root = volumeRootOf(file);
+        if (root.empty()) {
+            return links;
+        }
+        for (const auto& name : linkNames(file)) {
+            std::filesystem::path full = root + name;
+            if (_wcsicmp(full.c_str(), file.c_str()) == 0) {
+                continue;
+            }
+            if (under(full, m_mountDir)) { // the test this always was
+                ++m_inside;
+                links.push_back(std::move(full));
+                continue;
+            }
+            if (!m_real.empty()) {
+                if (const std::wstring real = m_realVolume + name; below(real, m_real)) {
+                    std::filesystem::path mapped = m_mount + real.substr(m_real.size());
+                    if (_wcsicmp(mapped.c_str(), file.c_str()) != 0) {
+                        ++m_inside;
+                        links.push_back(std::move(mapped));
+                    }
+                    continue;
+                }
+            }
+            ++m_outside;
+        }
         return links;
     }
-    do {
-        std::filesystem::path full = root + std::wstring(name.c_str());
-        if (_wcsicmp(full.c_str(), file.c_str()) != 0) {
-            links.push_back(std::move(full));
-        }
-        length = static_cast<DWORD>(name.size());
-    } while (FindNextFileNameW(find, &length, name.data()));
-    FindClose(find);
-    return links;
-}
+
+    // Names that could not be placed below the mount folder: the files they name stay.
+    [[nodiscard]] std::size_t outside() const noexcept { return m_outside; }
+    [[nodiscard]] std::size_t inside() const noexcept { return m_inside; }
+
+private:
+    // `path` is inside `folder` (no backslash at its end), case not regarded.
+    [[nodiscard]] static bool below(const std::wstring& path, const std::wstring& folder) {
+        return path.size() > folder.size() && path[folder.size()] == L'\\' &&
+               _wcsnicmp(path.c_str(), folder.c_str(), folder.size()) == 0;
+    }
+
+    std::filesystem::path m_mountDir;
+    std::wstring m_mount;      // the mount folder as given, no backslash at its end
+    std::wstring m_real;       // its final path, when that is spelled differently
+    std::wstring m_realVolume; // m_real's volume root
+    std::size_t m_outside = 0;
+    std::size_t m_inside = 0;
+};
 
 // Deletes the subkeys of `parent` the predicate picks. Returns how many went.
 Result<std::size_t> deleteSubkeys(HKEY parent, const std::function<bool(const std::wstring&)>& pick) {
@@ -519,11 +638,12 @@ Result<DeepRemovalResult> deepRemoveDrivers(const std::filesystem::path& mountDi
         }
     }
     std::set<std::wstring> seen;
+    ImageLinks links(mountDir);
     for (const auto& payload : payloads) {
         std::vector<std::filesystem::path> files;
         filesUnder(payload, files);
         for (const auto& file : files) {
-            for (auto& link : otherLinks(file)) {
+            for (auto& link : links.of(file)) {
                 // Inside the image only, outside what goes whole anyway.
                 if (!under(link, mountDir) || under(link, sxs) || under(link, repository) || !seen.insert(lower(link.wstring())).second) {
                     continue;
@@ -535,6 +655,16 @@ Result<DeepRemovalResult> deepRemoveDrivers(const std::filesystem::path& mountDi
             }
         }
         plan.files.push_back(payload);
+    }
+    if (links.outside() > 0) {
+        // Loud only when no copy at all was found: then the step would take nothing and still say done.
+        const std::wstring note = std::format(L"deep removal: {} link name(s) are not below the mount folder {}; those copies stay",
+                                              links.outside(), mountDir.wstring());
+        if (links.inside() == 0) {
+            log::warn("cbs", note);
+        } else {
+            log::debug("cbs", note);
+        }
     }
     for (const auto& d : drivers) {
         plan.files.push_back(repository / d.package);
@@ -642,16 +772,27 @@ Result<StoreRemovalResult> removeStoreCopies(const std::filesystem::path& mountD
     // 2. Their installed copies: the other names of each payload file, inside the image, outside WinSxS.
     std::vector<std::filesystem::path> copies;
     std::set<std::wstring> seen;
+    ImageLinks links(mountDir);
     for (const auto& payload : payloads) {
         std::vector<std::filesystem::path> files;
         filesUnder(payload, files);
         for (const auto& file : files) {
-            for (auto& link : otherLinks(file)) {
+            for (auto& link : links.of(file)) {
                 if (!under(link, mountDir) || under(link, sxs) || !seen.insert(lower(link.wstring())).second) {
                     continue;
                 }
                 copies.push_back(std::move(link));
             }
+        }
+    }
+    if (links.outside() > 0) {
+        // Loud only when no copy at all was found: then the step would take nothing and still say done.
+        const std::wstring note = std::format(L"store copies: {} link name(s) are not below the mount folder {}; those copies stay",
+                                              links.outside(), mountDir.wstring());
+        if (links.inside() == 0) {
+            log::warn("cbs", note);
+        } else {
+            log::debug("cbs", note);
         }
     }
 
@@ -662,6 +803,7 @@ Result<StoreRemovalResult> removeStoreCopies(const std::filesystem::path& mountD
     // werkernel.sys, which ntoskrnl.exe imports). Both times the installed system stopped in the
     // loader with 0xc000000f. The hive is read before step 3 loads it.
     std::set<std::wstring> keptServices;
+    bool filtersKnown = true; // false: the boot drivers could not be read, so no service key goes
     const bool anyBootType = std::ranges::any_of(copies, [](const std::filesystem::path& copy) { return isBootFileType(copy); });
     if (anyBootType || !services.empty()) {
         auto boot = findBootDrivers(mountDir);
@@ -687,6 +829,11 @@ Result<StoreRemovalResult> removeStoreCopies(const std::filesystem::path& mountD
                 log::info("cbs", L"service kept: " + name + L" is a device filter (D-116)");
                 keptServices.insert(std::move(name));
             }
+        } else if (!services.empty()) {
+            // As with the files above: which of these services is a device filter is not known,
+            // and a filter's key gone leaves a system that does not start (D-116).
+            filtersKnown = false;
+            log::warn("cbs", L"boot drivers not readable, every service key stays: " + describe(boot.error()));
         }
     }
     lap(L"boot");
@@ -733,7 +880,7 @@ Result<StoreRemovalResult> removeStoreCopies(const std::filesystem::path& mountD
             if (isProtectedService(service)) {
                 return fail(ErrorCode::InvalidArgument, L"a service Windows cannot start without (D-113)", service);
             }
-            if (!keptServices.contains(lower(service))) {
+            if (filtersKnown && !keptServices.contains(lower(service))) {
                 named.insert(lower(service));
             }
         }

@@ -2,8 +2,11 @@
 
 #include <windows.h>
 
+#include <cstdint>
 #include <fstream>
 #include <iterator>
+#include <limits>
+#include <system_error>
 
 namespace wl {
 
@@ -15,7 +18,20 @@ Result<std::string> readFileBytes(const std::filesystem::path& file) {
         return fail(exists ? ErrorCode::IoError : ErrorCode::NotFound, exists ? L"could not read the file" : L"no such file",
                     file.wstring());
     }
-    std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    // The whole file in one read when its size is known; byte by byte through the iterator took
+    // most of a second for a .reg or catalog of tens of MB (audit BASE-03).
+    std::string bytes;
+    std::error_code sizeError;
+    const std::uintmax_t size = std::filesystem::file_size(file, sizeError);
+    if (!sizeError && size > 0 && size <= static_cast<std::uintmax_t>(std::numeric_limits<std::streamsize>::max())) {
+        bytes.resize(static_cast<std::size_t>(size));
+        in.read(bytes.data(), static_cast<std::streamsize>(size));
+        bytes.resize(static_cast<std::size_t>(in.gcount())); // shorter than announced: what was there
+    }
+    if (in.good()) {
+        // No size (not a plain file), or the file grew meanwhile: the rest, as before.
+        bytes.append(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
     if (in.bad()) {
         return fail(ErrorCode::IoError, L"could not read the file", file.wstring());
     }

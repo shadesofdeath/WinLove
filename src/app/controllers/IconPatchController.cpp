@@ -116,9 +116,15 @@ const std::vector<IconPatchController::File>& IconPatchController::files() {
         if (name.size() <= kMun.size() || lower(name).substr(name.size() - kMun.size()) != kMun) {
             continue;
         }
-        const auto rel = std::filesystem::relative(it->path(), mountDir, ec);
-        if (ec) {
-            continue;
+        // The entries are `root` + what was found: cutting the mount folder off needs no look at the
+        // disk. relative() resolved both paths for each of the ~400 files, in the mounted image,
+        // on the UI thread (audit CTL-16); it stays for a path that does not start as expected.
+        auto rel = it->path().lexically_relative(mountDir);
+        if (rel.empty() || rel.native().starts_with(L"..")) {
+            rel = std::filesystem::relative(it->path(), mountDir, ec);
+            if (ec) {
+                continue;
+            }
         }
         list.push_back(File{rel.wstring(), name.substr(0, name.size() - kMun.size()), it->file_size(ec)});
     }
@@ -473,16 +479,26 @@ Result<IconPatchController::PackResult> IconPatchController::applyPack(const std
             }
         }
     }
-    for (const auto& dir : std::filesystem::directory_iterator(folder, std::filesystem::directory_options::skip_permission_denied, ec)) {
-        if (!dir.is_directory(ec) || dir.is_symlink(ec)) {
+    // increment(ec), not a range-for: its ++ throws when the folder goes away under it (a stick
+    // pulled, a share dropped), and this runs in a UI event handler (audit CTL-19). What was read
+    // until then is taken, as with a folder that cannot be opened.
+    const std::filesystem::directory_iterator none;
+    for (auto dirs = std::filesystem::directory_iterator(folder, std::filesystem::directory_options::skip_permission_denied, ec);
+         !ec && dirs != none; dirs.increment(ec)) {
+        const auto& dir = *dirs;
+        std::error_code ignored; // of one entry: the walk goes on
+        if (!dir.is_directory(ignored) || dir.is_symlink(ignored)) {
             continue;
         }
         const std::wstring fileName = dir.path().filename().wstring();
         if (!fileNamed(list, fileName)) {
             continue; // other folders of a pack (previews, the redirect kind) are not ours
         }
-        for (const auto& entry : std::filesystem::directory_iterator(dir.path(), std::filesystem::directory_options::skip_permission_denied, ec)) {
-            if (!entry.is_regular_file(ec)) {
+        std::error_code inner;
+        for (auto entries = std::filesystem::directory_iterator(dir.path(), std::filesystem::directory_options::skip_permission_denied, inner);
+             !inner && entries != none; entries.increment(inner)) {
+            const auto& entry = *entries;
+            if (!entry.is_regular_file(ignored)) {
                 continue;
             }
             const auto ext = lower(entry.path().extension().wstring());

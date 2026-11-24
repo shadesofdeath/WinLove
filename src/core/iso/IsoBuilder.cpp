@@ -264,8 +264,12 @@ Result<IsoResult> buildIso(const IsoOptions& options, const TaskContext& task) {
     std::filesystem::remove(output, ec);
     std::filesystem::rename(partial, output, ec);
     if (ec) {
+        // The target is open elsewhere (mounted, in a VM): like every other failure here, the
+        // multi-GB .part does not stay behind (AUDIT-2026-10 B20); nothing ever resumes it.
+        const int why = ec.value();
+        std::filesystem::remove(partial, ec);
         return fail(ErrorCode::IoError, L"cannot rename the ISO into place", output.wstring(),
-                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(ec.value())));
+                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(why)));
     }
 
     IsoResult iso;

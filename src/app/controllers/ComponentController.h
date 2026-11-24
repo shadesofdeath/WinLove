@@ -96,10 +96,15 @@ public:
     // queued or when nothing does. A group check box passes over held items; a click on one calls
     // `onBlocked` instead of queueing it.
     std::function<core::ops::CompatBlock(const core::ops::Operation&)> blockOf;
+    // The same with the item's recipe handed over as it is: without it every question wrote the
+    // recipe out as JSON for the guards to parse it back (1,300 rows after every queue change).
+    std::function<core::ops::CompatBlock(const core::ops::Operation&, const core::ComponentRecipe&)> blockOfRecipe;
     std::function<void(const Item&, const core::ops::CompatBlock&)> onBlocked;
     [[nodiscard]] core::ops::CompatBlock block(const Item& item) const;
     void resetChanges();
     [[nodiscard]] std::size_t queuedCount() const;   // component operations of every kind
+    // The update policy the store shrink queues with it (its target): the shrink's, on Özet's Kuyruk card.
+    [[nodiscard]] static std::wstring_view shrinkPolicyTarget() noexcept;
     [[nodiscard]] std::uint64_t queuedBytes() const;  // their size
 
     [[nodiscard]] static core::ops::Operation operationFor(const Item& item);
@@ -109,7 +114,9 @@ public:
                                                                 const std::filesystem::path& mountDir);
 
 private:
-    [[nodiscard]] std::vector<Item> allItems() const; // apps, system components, cleanup and shrink
+    // Apps, system components, cleanup and shrink. Kept between calls (audit CTL-04): the reference
+    // holds until the next change of the state, callers that edit the queue copy what they need.
+    [[nodiscard]] const std::vector<Item>& allItems() const;
     void readSystem(); // once per mount, after the app list is there
     void readInventory(); // D-112: drivers, languages, keyboards, fonts, system apps; once per mount
     void addInventory(std::vector<Item>& items) const;
@@ -124,6 +131,11 @@ private:
     std::function<void(std::function<void()>)> m_post;
     std::size_t m_subscription = 0;
     std::filesystem::path m_probing; // mount whose system components are being read
+    // allItems(): what it built and the AppState::revision() it is good for. The list does not
+    // depend on the queue, so the subscription carries the key over a queue change.
+    mutable std::vector<Item> m_items;
+    mutable std::uint64_t m_itemsRevision = 0;
+    mutable bool m_itemsValid = false;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
 

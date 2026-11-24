@@ -15,6 +15,7 @@ constexpr std::array<PageInfo, static_cast<std::size_t>(PageId::Count)> kPages =
     {PageId::Source, "source", Str::NavSource, Str::SourceTitle, Str::SourceDesc, Icon::Source, 0, "P01"},
     {PageId::Download, "download", Str::NavDownload, Str::DownloadTitle, Str::DownloadDesc, Icon::WindowsDownload, 0, "D-093"},
     {PageId::Images, "images", Str::NavImages, Str::ImagesTitle, Str::ImagesDesc, Icon::LayersEditions, 0, "P02"},
+    {PageId::Overview, "overview", Str::NavOverview, Str::OverviewTitle, Str::OverviewDesc, Icon::Workflow, 0, "D-138"},
     {PageId::Components, "components", Str::NavComponents, Str::ComponentsTitle, Str::ComponentsDesc, Icon::ComponentsRemove, 1, "P07"},
     {PageId::Apps, "apps", Str::NavApps, Str::AppsTitle, Str::AppsDesc, Icon::AppxPackage, 1, "D-050"},
     {PageId::Programs, "programs", Str::NavPrograms, Str::ProgramsTitle, Str::ProgramsDesc, Icon::Programs, 1, "D-078"},
@@ -38,7 +39,7 @@ constexpr std::array<PageInfo, static_cast<std::size_t>(PageId::Count)> kPages =
     {PageId::Presets, "presets", Str::NavPresets, Str::PresetsTitle, Str::PresetsDesc, Icon::PresetBookmark, 5, "P15"},
     {PageId::Logs, "logs", Str::NavLogs, Str::LogsTitle, Str::LogsDesc, Icon::LogTerminal, 5, "P03"},
     {PageId::Settings, "settings", Str::NavSettings, Str::SettingsTitle, Str::SettingsDesc, Icon::Settings, 5, "P16"},
-    {PageId::About, "about", Str::NavAbout, Str::AboutTitle, std::nullopt, Icon::AboutInfo, 5, "P17"},
+    {PageId::About, "about", Str::NavAbout, Str::AboutTitle, Str::AboutDesc, Icon::AboutInfo, 5, "P17"},
     {PageId::Gallery, "gallery", Str::AppName, Str::AppName, std::nullopt, Icon::DensityCompact, -1, "1.8"},
 }};
 

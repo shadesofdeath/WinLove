@@ -59,3 +59,18 @@ TEST_CASE("Windows download: the ISO's name") {
     b.arch = L"amd64";
     CHECK(WindowsDownloadController::isoName(b, L"de-de") == L"Win10_22H2_19045.6456_de-de_x64.iso");
 }
+
+TEST_CASE("Windows download: an official ESD's ISO is named after the ESD's own build (D-149)") {
+    core::uup::Build b;
+    b.title = L"Windows 11, version 26H2 (26300.9802)";
+    b.build = L"26300.9802";
+    b.arch = L"amd64";
+    // The catalog is a month behind the list's newest build: the ISO says what is in it.
+    CHECK(WindowsDownloadController::isoName(b, L"tr-tr", L"26300.9711") == L"Win11_26H2_26300.9711_tr-tr_x64.iso");
+    CHECK(WindowsDownloadController::isoName(b, L"tr-tr", L"26300.9802") == L"Win11_26H2_26300.9802_tr-tr_x64.iso");
+    CHECK(WindowsDownloadController::isoName(b, L"tr-tr", L"") == L"Win11_26H2_26300.9802_tr-tr_x64.iso");
+    // A request is UUP unless the page says otherwise.
+    WindowsDownloadController::Request request;
+    CHECK(request.source == core::esd::Source::Uup);
+    CHECK(request.esdFiles.empty());
+}

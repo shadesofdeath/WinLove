@@ -325,7 +325,8 @@ void MenuPopup::paint(Canvas& canvas) {
         const RectF row{m_panel.x + kMenuPadding, m_panel.y + kMenuPadding + kItem * static_cast<float>(i - m_first),
                         m_panel.width - 2 * kMenuPadding - (scrolls ? 4.0f : 0.0f), kItem};
         if (i == m_hover) {
-            canvas.fillRoundRect(row, tokens::radius::menu, Color::BgRaised);
+            // D-137: a hovered row is the hover fill, as in every list (was bg.raised: one shade from the menu).
+            canvas.fillRoundRect(row, tokens::radius::menu, Color::BgHover);
         }
         if (i == m_selected) {
             canvas.drawIcon(icons::Icon::Check, {row.x + 8, row.y + (kItem - tokens::size::icon) / 2}, Color::AccentText);

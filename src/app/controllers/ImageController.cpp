@@ -4,6 +4,8 @@
 #include "base/Path.h"
 #include "core/image/UdfImage.h"
 #include "core/image/SetupMedia.h"
+#include "core/image/Source.h"
+#include "core/image/VirtualDisk.h"
 #include "core/image/WindowsRelease.h"
 #include "core/image/dism/Dism.h"
 #include "core/image/dism/DismErrors.h"
@@ -19,10 +21,7 @@
 namespace wl::app {
 
 std::filesystem::path sourceForMountedImage(const std::filesystem::path& imagePath) {
-    if (_wcsicmp(imagePath.parent_path().filename().c_str(), L"sources") == 0) {
-        return imagePath.parent_path().parent_path();
-    }
-    return imagePath;
+    return core::sourceForMountedImage(imagePath); // only real setup media; else the image file (2026-11-11)
 }
 
 ImageController::ImageController(AppState& state, Events events) : m_state(state), m_events(std::move(events)) {}
@@ -60,10 +59,17 @@ bool ImageController::canMount() const {
     return m_state.source() && !isPackedSource() && !m_state.mounted() && !busy();
 }
 
+bool ImageController::isVirtualDiskSource() const {
+    return m_state.source() && core::isVirtualDiskFormat(m_state.source()->format);
+}
+
 std::optional<Str> ImageController::editRefusal() const {
     const auto& source = m_state.source();
     if (!source) {
         return Str::ImagesEmptyTitle;
+    }
+    if (isVirtualDiskSource()) {
+        return Str::ImagesVhdNoWim; // one installed Windows: no WIM edition list to edit
     }
     if (busy()) {
         return Str::ImagesBusy;
@@ -96,6 +102,9 @@ std::optional<Str> ImageController::verifyRefusal() const {
     const auto& source = m_state.source();
     if (!source) {
         return Str::ImagesEmptyTitle;
+    }
+    if (isVirtualDiskSource()) {
+        return Str::ImagesVhdNoWim;
     }
     if (busy()) {
         return Str::ImagesBusy;
@@ -132,10 +141,15 @@ std::wstring ImageController::editionName(int index) const {
     return std::format(L"#{}", index);
 }
 
-void ImageController::run(EngineOperation op, Work work, std::function<void()> onSuccess, Failure failure) {
+void ImageController::run(EngineOperation op, Work work, std::function<void()> onSuccess, Failure failure,
+                          std::function<void(const Error&)> onFailure) {
     op.startedMs = ui::nowMs();
     const core::CancelToken cancel = op.cancel;
-    const int index = op.index;
+    // The row says "Bağlanamadı" only when a mount (or the work copy made for one) failed — not a
+    // delete's copy step (2026-11-11).
+    const bool mountWork = op.kind == EngineOperation::Kind::Mounting ||
+                           (op.kind == EngineOperation::Kind::Preparing && op.purpose.value_or(op.kind) == EngineOperation::Kind::Mounting);
+    const int index = mountWork ? op.index : 0;
     m_state.beginOperation(std::move(op));
     auto post = m_events.postToUi;
     std::weak_ptr<bool> alive = m_alive;
@@ -160,20 +174,22 @@ void ImageController::run(EngineOperation op, Work work, std::function<void()> o
             }
             return true;
         },
-        [this, post, alive, onSuccess = std::move(onSuccess), failure, index](Result<bool> result) {
-            post([this, alive, onSuccess, failure, index, result = std::move(result)] {
+        [this, post, alive, onSuccess = std::move(onSuccess), failure, index, onFailure = std::move(onFailure)](Result<bool> result) {
+            post([this, alive, onSuccess, failure, index, onFailure, result = std::move(result)] {
                 if (const auto a = alive.lock(); !a || !*a) {
                     return;
                 }
                 m_state.endOperation();
                 if (!result) {
                     log::error("app", describe(result.error()));
+                    if (onFailure) {
+                        onFailure(result.error()); // before the toast: the page that shows it is set first
+                    }
                     if (result.error().code == ErrorCode::Cancelled) {
                         m_events.refused(Str::ImagesCancelledToast);
                         return;
                     }
-                    if (failure == Failure::Mount || failure == Failure::Unmount || failure == Failure::Prepare ||
-                        failure == Failure::Cleanup) {
+                    if (index > 0) {
                         m_failedIndex = index; // the row says "Bağlanamadı": only a mount's failure is that
                     }
                     m_events.failed(failure, result.error());
@@ -187,7 +203,7 @@ void ImageController::run(EngineOperation op, Work work, std::function<void()> o
         {});
 }
 
-void ImageController::withWritableSource(int index, std::function<void()> next) {
+void ImageController::withWritableSource(int index, EngineOperation::Kind purpose, std::vector<int> rows, std::function<void()> next) {
     const auto& source = m_state.source();
     if (source->format != core::ImageFormat::Iso) {
         next();
@@ -200,11 +216,12 @@ void ImageController::withWritableSource(int index, std::function<void()> next) 
     const core::WorkCopyState copy = core::inspectWorkCopy(iso, folder);
     log::info("app", std::format(L"work copy {}: {}", folder.wstring(), core::workCopyStateName(copy)));
     std::weak_ptr<bool> alive = m_alive; // the answer to a dialog may come after a UI rebuild
-    auto prepare = [this, alive, iso, folder, index, next = std::move(next)](bool extract, bool fresh) mutable {
+    auto prepare = [this, alive, iso, folder, index, purpose, rows = std::move(rows), next = std::move(next)](bool extract,
+                                                                                                         bool fresh) mutable {
         if (const auto a = alive.lock(); !a || !*a) {
             return;
         }
-        prepareWorkCopy(iso, folder, index, extract, fresh, std::move(next));
+        prepareWorkCopy(iso, folder, index, extract, fresh, std::move(next), purpose, rows);
     };
     switch (copy) {
     case core::WorkCopyState::Missing:
@@ -228,13 +245,18 @@ void ImageController::withWritableSource(int index, std::function<void()> next) 
 }
 
 void ImageController::prepareWorkCopy(const std::filesystem::path& iso, const std::filesystem::path& folder, int index,
-                                      bool extract, bool fresh, std::function<void()> next) {
+                                      bool extract, bool fresh, std::function<void()> next, EngineOperation::Kind purpose,
+                                      const std::vector<int>& rows) {
     if (busy()) {
         m_events.refused(Str::ImagesBusy);
         return;
     }
     auto opened = std::make_shared<std::optional<core::SourceInfo>>();
-    run(EngineOperation{EngineOperation::Kind::Preparing, iso.filename().wstring(), folder, index},
+    // The rows the work after it is about say what that work is (a delete's copy step: "Siliniyor").
+    EngineOperation op{EngineOperation::Kind::Preparing, iso.filename().wstring(), folder, rows.size() == 1 ? rows.front() : 0};
+    op.indexes = rows.size() > 1 ? rows : std::vector<int>{};
+    op.purpose = purpose;
+    run(std::move(op),
         [iso, folder, opened, extract, fresh](const core::TaskContext& task) -> Result<void> {
             if (extract) {
                 if (auto r = core::extractWorkCopy(iso, folder, fresh, task); !r) {
@@ -274,7 +296,23 @@ void ImageController::mount(int index) {
         m_events.needsAdmin(std::format(L"{} --page=images --mount={}", core::quoteArgument(m_state.source()->path.wstring()), index));
         return;
     }
-    withWritableSource(index, [this, index] {
+    if (isVirtualDiskSource()) {
+        // D-141: what happens to the user's disk is said first (changes disk, save = merge).
+        const std::filesystem::path vhd = m_state.source()->path;
+        const std::filesystem::path child = core::changesDiskPath(vhd, m_state.settings().vhdWorkDirectory());
+        if (!m_events.confirmVirtualDisk) {
+            mountVirtualDisk();
+            return;
+        }
+        std::weak_ptr<bool> alive = m_alive;
+        m_events.confirmVirtualDisk(vhd, child, [this, alive] {
+            if (const auto a = alive.lock(); a && *a) {
+                mountVirtualDisk();
+            }
+        });
+        return;
+    }
+    withWritableSource(index, EngineOperation::Kind::Mounting, {index}, [this, index] {
         const auto wim = installWimPath();
         const auto mountDir = m_state.settings().mountDirectory();
         const std::wstring edition = editionName(index);
@@ -302,14 +340,106 @@ void ImageController::mount(int index) {
     });
 }
 
+void ImageController::mountVirtualDisk() {
+    if (busy() || m_state.mounted() || !isVirtualDiskSource()) {
+        return;
+    }
+    const std::filesystem::path vhd = m_state.source()->path;
+    const std::filesystem::path folder = m_state.settings().vhdMountDirectory();
+    const std::filesystem::path work = m_state.settings().vhdWorkDirectory();
+    const std::wstring edition = editionName(1);
+    auto record = std::make_shared<std::optional<core::VhdMountRecord>>();
+    run(EngineOperation{EngineOperation::Kind::Mounting, edition, folder, 1},
+        [vhd, folder, work, record](const core::TaskContext& task) -> Result<void> {
+            auto mounted = core::mountVirtualDisk(vhd, folder, work, L"WinLove", task);
+            if (!mounted) {
+                return std::unexpected(mounted.error());
+            }
+            *record = std::move(*mounted);
+            return {};
+        },
+        [this, record, vhd, edition] {
+            m_state.setMounted(MountedImage{(*record)->folder, vhd, 1, edition, false});
+            m_events.succeeded(Str::ImagesMountedToast, edition);
+            if (m_events.mounted) {
+                m_events.mounted();
+            }
+        },
+        Failure::Mount);
+}
+
+void ImageController::unmountVirtualDisk(bool commit) {
+    const auto mounted = m_state.mounted();
+    if (!mounted || busy()) {
+        return;
+    }
+    auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
+    m_state.beginRunClose(commit); // a finished run's image: its card says so (2026-11-11)
+    run(EngineOperation{EngineOperation::Kind::Unmounting, mounted->edition, mounted->mountDir, mounted->index},
+        [dir = mounted->mountDir, vhd = mounted->imagePath, commit, reopened](const core::TaskContext& task) -> Result<void> {
+            auto outcome = core::unmountVirtualDisk(dir, commit, task);
+            if (!outcome) {
+                return std::unexpected(outcome.error());
+            }
+            if (commit) {
+                // What the saved disk holds now (its size): read again, read only, detached at once.
+                if (auto info = core::openSource(vhd)) {
+                    *reopened = std::move(*info);
+                } else {
+                    log::warn("images", L"saved, but the disk was not read again: " + describe(info.error()));
+                }
+            }
+            return {};
+        },
+        [this, reopened, commit] {
+            if (*reopened) {
+                noteSavedSize(**reopened, 1);
+            }
+            m_state.endRunClose(std::nullopt);
+            m_state.setMounted(std::nullopt);
+            if (*reopened && m_state.source() && core::isVirtualDiskFormat(m_state.source()->format)) {
+                m_state.setSource(std::move(**reopened));
+                m_state.select(1);
+            }
+            m_events.succeeded(commit ? Str::ImagesVhdSavedToast : Str::ImagesVhdDiscardedToast, L"");
+        },
+        Failure::Unmount, [this](const Error& e) { m_state.endRunClose(e, e.code == ErrorCode::Cancelled); });
+}
+
+void ImageController::noteSavedSize(const core::SourceInfo& source, int index) {
+    auto& run = m_state.applyRunMutable();
+    if (!run || !run->closing || !run->closing->commit) {
+        return;
+    }
+    for (const auto& image : source.install.images) {
+        if (image.index == index) {
+            run->sizeAfter = image.totalBytes; // what the save came to (the run's card: before → after)
+        }
+    }
+}
+
 void ImageController::unmount(bool commit) {
     const auto mounted = m_state.mounted();
     if (!mounted || busy()) {
         return;
     }
+    if (core::isVirtualDiskPath(mounted->imagePath)) {
+        unmountVirtualDisk(commit); // D-141: detach; save = merge the changes disk, discard = delete it
+        return;
+    }
     auto recovered = std::make_shared<bool>(false);
+    auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
+    // 2026-11-11: an image taken over from another tool — DISM's commit of that folder only; its WIM
+    // is not rewritten (replaced) under the tool that keeps it.
+    const bool elsewhere = m_state.mountedElsewhere();
+    // Saving what a finished run left mounted ends that run: its card follows the save / discard, and
+    // a save reads the edition's size again for it.
+    const bool closesRun = m_state.runLeftImageMounted();
+    const std::filesystem::path sourcePath = closesRun && commit && m_state.source() ? m_state.source()->path : std::filesystem::path();
+    m_state.beginRunClose(commit);
     run(EngineOperation{EngineOperation::Kind::Unmounting, mounted->edition, mounted->mountDir, mounted->index},
-        [dir = mounted->mountDir, wim = mounted->imagePath, commit, recovered](const core::TaskContext& task) -> Result<void> {
+        [dir = mounted->mountDir, wim = elsewhere ? std::filesystem::path() : mounted->imagePath, commit, recovered, sourcePath,
+         reopened](const core::TaskContext& task) -> Result<void> {
             auto dism = core::Dism::instance();
             if (!dism) {
                 return std::unexpected(dism.error());
@@ -328,14 +458,30 @@ void ImageController::unmount(bool commit) {
                                             describe(rewritten.error()));
                 }
             }
+            if (!sourcePath.empty()) {
+                if (auto info = core::openSource(sourcePath)) {
+                    *reopened = std::move(*info);
+                } else {
+                    log::warn("images", L"saved, but the source was not read again: " + describe(info.error()));
+                }
+            }
             return {};
         },
-        [this, recovered] {
+        [this, recovered, reopened, index = mounted->index] {
+            if (*reopened) {
+                noteSavedSize(**reopened, index);
+            }
+            m_state.endRunClose(std::nullopt);
             m_state.setMounted(std::nullopt);
+            if (*reopened && m_state.source() && m_state.source()->path == (*reopened)->path) {
+                const auto selected = m_state.selectedIndex();
+                m_state.setSource(std::move(**reopened)); // the saved edition's new size and date
+                m_state.select(selected);
+            }
             m_events.succeeded(*recovered ? Str::ImagesUnmountRecovered : Str::ImagesUnmountedToast, L"");
             inspectMountFolder();
         },
-        Failure::Unmount);
+        Failure::Unmount, [this](const Error& e) { m_state.endRunClose(e, e.code == ErrorCode::Cancelled); });
 }
 
 void ImageController::scanSystemMounts() {
@@ -351,6 +497,30 @@ void ImageController::scanSystemMounts() {
     }
     auto post = m_events.postToUi;
     std::weak_ptr<bool> alive = m_alive;
+    // 2026-11-11 (the owner: other tools' mounts showed up after half a minute): wimgapi's list on the
+    // reader thread first — no DISM session, nothing queued before it — shown at once; DISM's own
+    // reading below (behind whatever the engine is doing) replaces it when it arrives.
+    m_state.reader().run<std::vector<core::MountCheck>>(
+        [](const core::TaskContext&) { return core::inspectMountsFast(); },
+        [this, post, alive](Result<std::vector<core::MountCheck>> result) {
+            if (!result) {
+                log::warn("app", describe(result.error())); // DISM's reading still comes
+                return;
+            }
+            post([this, alive, items = std::move(*result)]() mutable {
+                if (const auto a = alive.lock(); !a || !*a) {
+                    return;
+                }
+                const auto& current = m_state.systemMounts();
+                if (current && current->status != AppState::SystemMounts::Status::Loading) {
+                    return; // DISM's reading came first
+                }
+                AppState::SystemMounts early; // still Loading: DISM's reading follows
+                early.items = std::move(items);
+                m_state.setSystemMounts(std::move(early));
+            });
+        },
+        {});
     m_state.engine().run<std::vector<core::MountCheck>>(
         [](const core::TaskContext&) -> Result<std::vector<core::MountCheck>> {
             auto dism = core::Dism::instance();
@@ -380,20 +550,35 @@ void ImageController::scanSystemMounts() {
         {});
 }
 
-void ImageController::adoptMount(const std::filesystem::path& folder) {
+void ImageController::adoptMount(const std::filesystem::path& folderInput) {
+    const std::filesystem::path folder = withoutLongPathPrefix(nativePath(folderInput));
     if (busy()) {
         m_events.refused(Str::ImagesBusy);
         return;
     }
     if (const auto& mounted = m_state.mounted()) {
-        if (_wcsicmp(nativePath(mounted->mountDir).c_str(), nativePath(folder).c_str()) != 0) {
+        if (_wcsicmp(withoutLongPathPrefix(nativePath(mounted->mountDir)).c_str(), folder.c_str()) != 0) {
             m_events.refused(Str::SourceMountedBusy);
         }
         return; // the same mount: already the one WinLove works on
     }
+    if (!core::isElevated()) {
+        m_events.needsAdmin(L"--page=source"); // DISM's record of the mount needs it
+        return;
+    }
+    // 2026-11-11 (the owner: another tool's mount stayed at "Bağlanıyor %0", then "folder has no
+    // sources\install.wim"): one engine job does it all — DISM's record of the folder, a remount
+    // when DISM asks for one (said as such), the source its image opens as (the image file itself
+    // unless it really is setup media) — and every failure ends the work and says why.
+    m_adoptState.reset();
+    auto found = std::make_shared<std::optional<core::MountState>>();
     auto record = std::make_shared<std::optional<core::MountInfo>>();
-    run(EngineOperation{EngineOperation::Kind::Mounting, folder.filename().wstring(), folder, 0},
-        [folder, record](const core::TaskContext& task) -> Result<void> {
+    auto opened = std::make_shared<std::optional<core::SourceInfo>>();
+    auto post = m_events.postToUi;
+    std::weak_ptr<bool> alive = m_alive;
+    EngineOperation op{EngineOperation::Kind::Adopting, folder.filename().wstring(), folder, 0};
+    run(std::move(op),
+        [this, folder, found, record, opened, post, alive](const core::TaskContext& task) -> Result<void> {
             auto dism = core::Dism::instance();
             if (!dism) {
                 return std::unexpected(dism.error());
@@ -402,31 +587,53 @@ void ImageController::adoptMount(const std::filesystem::path& folder) {
             if (!check) {
                 return std::unexpected(check.error());
             }
-            if (check->state == core::MountState::NeedsRemount) { // after a reboot: the WIM filter let go
-                auto repaired = core::repairMount(**dism, *check, task);
-                if (!repaired) {
-                    return std::unexpected(repaired.error());
-                }
-                check = std::move(repaired);
+            *found = check->state;
+            if (core::adoptionStep(check->state) == core::AdoptStep::Remount && post) {
+                post([this, alive] { // the strip and the status bar say "Yeniden bağlanıyor"
+                    if (const auto a = alive.lock(); a && *a && m_state.operation() &&
+                                                     m_state.operation()->kind == EngineOperation::Kind::Adopting) {
+                        auto now = *m_state.operation();
+                        now.kind = EngineOperation::Kind::Remounting;
+                        m_state.beginOperation(std::move(now));
+                    }
+                });
             }
-            if (check->state != core::MountState::Ok || !check->record) {
-                return fail(ErrorCode::InvalidArgument,
-                            std::format(L"this mount cannot be worked on ({})", core::mountStateName(check->state)),
-                            folder.wstring());
+            auto adopted = core::adoptMount(**dism, *check, task);
+            if (!adopted) {
+                return std::unexpected(adopted.error());
             }
-            *record = check->record;
+            *record = adopted->record;
+            auto source = core::openMountedImageSource((*record)->imagePath);
+            if (!source) {
+                return std::unexpected(source.error());
+            }
+            *opened = std::move(*source);
             return {};
         },
-        [this, record] {
-            // Handed over like a mount restored at startup: its source opens, it becomes the mounted image.
-            if (!*record || !m_events.restored) {
+        [this, record, opened] {
+            if (!*record || !*opened) {
                 return;
             }
             const auto& m = **record;
-            log::info("app", std::format(L"taking over the mount {} <- {} [{}]", m.mountPath.wstring(), m.imagePath.wstring(), m.index));
-            m_events.restored(sourceForMountedImage(m.imagePath), MountedImage{m.mountPath, m.imagePath, m.index, {}, m.readOnly});
+            MountedImage mounted{withoutLongPathPrefix(m.mountPath), withoutLongPathPrefix(m.imagePath), m.index, {}, m.readOnly};
+            mounted.edition = std::format(L"#{}", m.index);
+            for (const auto& image : (*opened)->install.images) {
+                if (image.index == m.index) {
+                    mounted.edition = image.name;
+                }
+            }
+            log::info("app", std::format(L"taking over the mount {} <- {} [{}] (source {})", mounted.mountDir.wstring(),
+                                         mounted.imagePath.wstring(), m.index, (*opened)->path.wstring()));
+            if (m_events.adopted) {
+                m_events.adopted(std::move(**opened), std::move(mounted));
+                return;
+            }
+            const int index = mounted.index;
+            m_state.setSource(std::move(**opened));
+            m_state.select(index);
+            m_state.setMounted(std::move(mounted));
         },
-        Failure::Mount);
+        Failure::Adopt, [this, found](const Error&) { m_adoptState = *found; });
 }
 
 void ImageController::discardMount(const std::filesystem::path& folder, std::wstring edition) {
@@ -466,11 +673,11 @@ void ImageController::discardMount(const std::filesystem::path& folder, std::wst
 }
 
 void ImageController::exportIndex(int index, const std::filesystem::path& destination) {
-    if (busy()) {
-        m_events.refused(Str::ImagesBusy);
+    if (busy() || isVirtualDiskSource()) {
+        m_events.refused(busy() ? Str::ImagesBusy : Str::ImagesVhdNoWim);
         return;
     }
-    withWritableSource(index, [this, index, destination] {
+    withWritableSource(index, EngineOperation::Kind::Exporting, {index}, [this, index, destination] {
         const auto wim = installWimPath();
         run(EngineOperation{EngineOperation::Kind::Exporting, editionName(index), destination, index},
             [wim = *wim, index, destination](const core::TaskContext& task) -> Result<void> {
@@ -482,17 +689,20 @@ void ImageController::exportIndex(int index, const std::filesystem::path& destin
 }
 
 void ImageController::exportEditions(std::vector<int> indexes, const std::filesystem::path& destination) {
-    if (busy()) {
-        m_events.refused(Str::ImagesBusy);
+    if (busy() || isVirtualDiskSource()) {
+        m_events.refused(busy() ? Str::ImagesBusy : Str::ImagesVhdNoWim);
         return;
     }
     if (indexes.empty()) {
         return;
     }
     const int selected = m_state.selectedIndex().value_or(indexes.front());
-    withWritableSource(selected, [this, indexes = std::move(indexes), destination] {
+    const std::vector<int> rows = indexes;
+    withWritableSource(selected, EngineOperation::Kind::Exporting, rows, [this, indexes = std::move(indexes), destination] {
         const auto wim = installWimPath();
-        run(EngineOperation{EngineOperation::Kind::Exporting, destination.filename().wstring(), destination, 0},
+        EngineOperation op{EngineOperation::Kind::Exporting, destination.filename().wstring(), destination, 0};
+        op.indexes = indexes; // each marked edition's row says so
+        run(std::move(op),
             [wim = *wim, indexes, destination](const core::TaskContext& task) -> Result<void> {
                 // One after another into the same file: progress across all of them.
                 for (std::size_t i = 0; i < indexes.size(); ++i) {
@@ -515,7 +725,7 @@ void ImageController::renameEdition(int index, std::wstring name, std::wstring d
         m_events.refused(*refusal);
         return;
     }
-    withWritableSource(index, [this, index, name = std::move(name), description = std::move(description)] {
+    withWritableSource(index, EngineOperation::Kind::Renaming, {index}, [this, index, name = std::move(name), description = std::move(description)] {
         const auto wim = installWimPath();
         const std::filesystem::path sourcePath = m_state.source()->path;
         auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
@@ -695,7 +905,7 @@ void ImageController::convertEsd(const std::filesystem::path& destination) {
         m_events.refused(busy() ? Str::ImagesBusy : Str::ImagesEsdOnly);
         return;
     }
-    withWritableSource(m_state.selectedIndex().value_or(1), [this, destination] {
+    withWritableSource(m_state.selectedIndex().value_or(1), EngineOperation::Kind::Exporting, {}, [this, destination] {
         const auto esd = installWimPath();
         std::vector<int> indexes;
         for (const auto& image : m_state.source()->install.images) {
@@ -729,6 +939,9 @@ std::optional<Str> ImageController::toolsRefusal() const {
     if (!m_state.source()) {
         return Str::ImagesEmptyTitle;
     }
+    if (isVirtualDiskSource()) {
+        return Str::ImagesVhdNoWim;
+    }
     if (busy()) {
         return Str::ImagesBusy;
     }
@@ -747,7 +960,7 @@ void ImageController::recompress(core::WimCompression target) {
         m_events.refused(Str::ImagesSwmJoinFirst);
         return;
     }
-    withWritableSource(m_state.selectedIndex().value_or(1), [this, target] {
+    withWritableSource(m_state.selectedIndex().value_or(1), EngineOperation::Kind::Exporting, {}, [this, target] {
         const auto wim = installWimPath();
         const auto source = *m_state.source();
         auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
@@ -784,7 +997,7 @@ void ImageController::splitSwm(const std::filesystem::path& firstPart, std::uint
         m_events.refused(isEsdSource() ? Str::ImagesSplitNeedsWim : Str::ImagesSwmJoinFirst);
         return;
     }
-    withWritableSource(m_state.selectedIndex().value_or(1), [this, firstPart, partMiB] {
+    withWritableSource(m_state.selectedIndex().value_or(1), EngineOperation::Kind::Exporting, {}, [this, firstPart, partMiB] {
         const auto wim = installWimPath();
         auto parts = std::make_shared<int>(0);
         run(EngineOperation{EngineOperation::Kind::Exporting, wim->filename().wstring(), firstPart, 0},
@@ -841,12 +1054,12 @@ void ImageController::duplicateEdition(int index, std::wstring name) {
         m_events.refused(*refusal);
         return;
     }
-    withWritableSource(index, [this, index, name = std::move(name)] {
+    withWritableSource(index, EngineOperation::Kind::Duplicating, {index}, [this, index, name = std::move(name)] {
         const auto wim = installWimPath();
         const std::filesystem::path sourcePath = m_state.source()->path;
         auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
         auto added = std::make_shared<int>(0);
-        run(EngineOperation{EngineOperation::Kind::Exporting, editionName(index), *wim, index},
+        run(EngineOperation{EngineOperation::Kind::Duplicating, editionName(index), *wim, index},
             [wim = *wim, index, name, sourcePath, reopened, added](const core::TaskContext& task) -> Result<void> {
                 auto copy = core::duplicateEdition(wim, index, name, task);
                 if (!copy) {
@@ -877,7 +1090,7 @@ void ImageController::appendFrom(const std::filesystem::path& other, std::vector
     if (indexes.empty()) {
         return;
     }
-    withWritableSource(m_state.selectedIndex().value_or(1), [this, other, indexes = std::move(indexes)] {
+    withWritableSource(m_state.selectedIndex().value_or(1), EngineOperation::Kind::Exporting, {}, [this, other, indexes = std::move(indexes)] {
         const auto wim = installWimPath();
         const std::filesystem::path sourcePath = m_state.source()->path;
         const core::WimCompression compression = m_state.source()->install.header.compression;
@@ -938,7 +1151,7 @@ void ImageController::replaceSetupMedia(const std::filesystem::path& from) {
         m_events.refused(*refusal);
         return;
     }
-    withWritableSource(m_state.selectedIndex().value_or(1), [this, from] {
+    withWritableSource(m_state.selectedIndex().value_or(1), EngineOperation::Kind::Preparing, {}, [this, from] {
         const std::filesystem::path folder = m_state.source()->path;
         auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
         run(EngineOperation{EngineOperation::Kind::Preparing, from.filename().wstring(), folder, 0},
@@ -1007,11 +1220,11 @@ void ImageController::moveEdition(int index, int delta) {
     std::iota(order.begin(), order.end(), 1);
     std::swap(order[static_cast<std::size_t>(index - 1)], order[static_cast<std::size_t>(target - 1)]);
     const std::wstring name = editionName(index);
-    withWritableSource(index, [this, order, index, target, name] {
+    withWritableSource(index, EngineOperation::Kind::Moving, {index}, [this, order, index, target, name] {
         const auto wim = installWimPath();
         const std::filesystem::path sourcePath = m_state.source()->path;
         auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
-        run(EngineOperation{EngineOperation::Kind::Exporting, name, *wim, index},
+        run(EngineOperation{EngineOperation::Kind::Moving, name, *wim, index},
             [wim = *wim, order, sourcePath, reopened](const core::TaskContext& task) -> Result<void> {
                 if (auto r = core::reorderImages(wim, order, task); !r) {
                     return r;
@@ -1052,11 +1265,14 @@ void ImageController::removeEditions(std::vector<int> indexes, std::wstring labe
     // One edition: its row shows the work. Several: no single row does.
     const int row = indexes.size() == 1 ? indexes.front() : 0;
     const int selected = m_state.selectedIndex().value_or(indexes.front());
-    withWritableSource(selected, [this, indexes = std::move(indexes), label = std::move(label), row] {
+    const std::vector<int> rows = indexes;
+    withWritableSource(selected, EngineOperation::Kind::Deleting, rows, [this, indexes = std::move(indexes), label = std::move(label), row] {
         const auto wim = installWimPath();
         const std::filesystem::path sourcePath = m_state.source()->path;
         auto reopened = std::make_shared<std::optional<core::SourceInfo>>();
-        run(EngineOperation{EngineOperation::Kind::Deleting, label, *wim, row},
+        EngineOperation op{EngineOperation::Kind::Deleting, label, *wim, row};
+        op.indexes = indexes.size() > 1 ? indexes : std::vector<int>{}; // several: each of their rows
+        run(std::move(op),
             [wim = *wim, indexes, sourcePath, reopened](const core::TaskContext& task) -> Result<void> {
                 if (auto r = core::removeImages(wim, indexes, task); !r) {
                     return r;
@@ -1147,6 +1363,7 @@ void ImageController::adoptExistingMount() {
     struct Found {
         core::MountCheck before;
         core::MountCheck after;
+        std::optional<core::VhdMountRecord> vhd; // D-141: WinLove's own virtual disk, attached again if need be
     };
     auto post = m_events.postToUi;
     std::weak_ptr<bool> alive = m_alive;
@@ -1155,8 +1372,25 @@ void ImageController::adoptExistingMount() {
     if (_wcsicmp(AppSettings::legacyMountDirectory().c_str(), folders.front().c_str()) != 0) {
         folders.push_back(AppSettings::legacyMountDirectory());
     }
+    const std::filesystem::path vhdFolder = m_state.settings().vhdMountDirectory();
     m_state.engine().run<Found>(
-        [folders](const core::TaskContext& task) -> Result<Found> {
+        [folders, vhdFolder](const core::TaskContext& task) -> Result<Found> {
+            // D-141: only the record of WinLove's own VHD folder is looked at (never another disk);
+            // a reboot detached it: attached again (its changes are kept), as a WIM is remounted.
+            std::optional<core::VhdMountRecord> vhd;
+            if (auto check = core::inspectVhdMount(vhdFolder)) {
+                log::info("app", std::format(L"virtual disk mount {}: {}", vhdFolder.wstring(), core::vhdMountStateName(check->state)));
+                if (check->action != core::VhdAction::None) {
+                    if (auto repaired = core::repairVirtualDisk(*check, task)) {
+                        check = std::move(*repaired);
+                    } else {
+                        log::warn("app", L"virtual disk not attached again: " + describe(repaired.error()));
+                    }
+                }
+                if (check->state == core::VhdMountState::Ok) {
+                    vhd = check->record;
+                }
+            }
             auto dism = core::Dism::instance();
             if (!dism) {
                 return std::unexpected(dism.error());
@@ -1179,7 +1413,7 @@ void ImageController::adoptExistingMount() {
             if (!after) {
                 return std::unexpected(after.error());
             }
-            return Found{std::move(*before), std::move(*after)};
+            return Found{std::move(*before), std::move(*after), std::move(vhd)};
         },
         [this, post, alive](Result<Found> result) {
             post([this, alive, result = std::move(result)] {
@@ -1191,12 +1425,20 @@ void ImageController::adoptExistingMount() {
                     m_events.failed(Failure::Cleanup, result.error());
                     return;
                 }
-                const auto& [before, after] = *result;
+                const auto& [before, after, vhd] = *result;
                 m_state.setMountFolder(after);
                 log::info("app", std::format(L"mount folder {}: {} → {}", before.folder.wstring(),
                                              core::mountStateName(before.state), core::mountStateName(after.state)));
                 if (before.action == core::MountAction::Discard) {
                     m_events.refused(Str::ImagesMountDiscarded);
+                }
+                if (vhd) {
+                    // The virtual disk a previous run left mounted: its disk opens, it is the mounted image.
+                    log::info("app", L"restoring virtual disk " + vhd->vhd.wstring() + L" on " + vhd->folder.wstring());
+                    if (m_events.restored) {
+                        m_events.restored(vhd->vhd, MountedImage{vhd->folder, vhd->vhd, 1, {}, false});
+                    }
+                    return;
                 }
                 if (after.state != core::MountState::Ok || !after.record) {
                     return;

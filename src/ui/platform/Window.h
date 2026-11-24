@@ -54,13 +54,39 @@ struct WindowCallbacks {
     std::function<void(wchar_t)> character;          // WM_CHAR, printable characters only
     std::function<bool()> closeRequested;            // WM_CLOSE: false keeps the window open
     std::function<bool()> endSessionBlocked;         // WM_QUERYENDSESSION: true asks Windows not to shut down yet
+    // D-145: the window is gone (WM_NCDESTROY; closed by the user or by Windows). The owner may let go
+    // of the Window object afterwards — not inside this call.
+    std::function<void()> destroyed;
+};
+
+// While one lives, what is posted to a window (Window::post) waits. For system dialogs: their own
+// message loop would otherwise run engine results in the middle of the code that opened the dialog
+// (a finished "open source" switches the page and destroys the one waiting for a folder).
+class PostHold {
+public:
+    explicit PostHold(HWND window) noexcept;
+    ~PostHold();
+    PostHold(const PostHold&) = delete;
+    PostHold& operator=(const PostHold&) = delete;
+
+private:
+    HWND m_window;
 };
 
 struct WindowAppearance {
     HICON icon = nullptr;
+    // The same icon as a resource (MAKEINTRESOURCE): loaded again at the window's DPI for the
+    // taskbar / Alt+Tab (WM_SETICON) — the class icon is the system DPI's 32 px.
+    const wchar_t* iconResource = nullptr;
     bool darkFrame = true;       // DWM immersive dark mode (system menu, border shading)
     COLORREF borderColor = 0;    // Windows 11 1px window border
     COLORREF background = 0;     // shown before the first D2D frame (avoids a white flash)
+    // D-145: a second top-level window (the changelog): its own class name (the single-instance
+    // check looks for the main one by its class), owned by the main window (above it, minimised with
+    // it), and closing it does not end the message loop.
+    const wchar_t* className = nullptr; // nullptr: "WinLove.Window"
+    HWND owner = nullptr;
+    bool quitOnClose = true;
 };
 
 class Window {
@@ -80,6 +106,8 @@ public:
     void minimize();
     void toggleMaximize();
     void close();
+    // D-145: restores a minimised window and brings it to the front (a second "Değişiklikleri gör").
+    void bringToFront();
     // Thread-safe: run `fn` on the UI thread (engine results, progress). Dropped after destroy.
     void post(std::function<void()> fn);
     void setTimer(UINT id, UINT ms);
@@ -98,6 +126,8 @@ public:
     [[nodiscard]] UINT clientWidthPx() const noexcept { return m_widthPx; }
     [[nodiscard]] UINT clientHeightPx() const noexcept { return m_heightPx; }
     [[nodiscard]] bool isMaximized() const noexcept;
+    // Windows' double-click rectangle at this window's DPI, in client DIPs.
+    [[nodiscard]] SizeF doubleClickArea() const;
 
 private:
     static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
@@ -107,6 +137,7 @@ private:
     [[nodiscard]] PointF toClientDips(POINT screen) const;
     [[nodiscard]] int frameThicknessPx() const;
     void trackLeave(bool nonClient);
+    void setIcons(UINT dpi);
 
     HWND m_hwnd = nullptr;
     bool m_releasingCapture = false; // our own ReleaseCapture: its WM_CAPTURECHANGED is no cancel
@@ -120,9 +151,13 @@ private:
     float m_dpiScale = 1.0f;
     float m_zoom = 1.0f;
     HBRUSH m_background = nullptr;
+    const wchar_t* m_iconResource = nullptr;
+    HICON m_smallIcon = nullptr; // WM_SETICON at the window's DPI (owned)
+    HICON m_bigIcon = nullptr;
     std::mutex m_postMutex;
     std::deque<std::function<void()>> m_posted;
     bool m_wasMaximized = false;
+    bool m_quitOnClose = true;
 };
 
 } // namespace wl::ui

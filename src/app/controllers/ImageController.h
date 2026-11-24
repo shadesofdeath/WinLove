@@ -10,6 +10,7 @@
 #include "core/image/WorkCopy.h"
 #include "core/image/dism/Edition.h"
 #include "core/image/dism/ImageHealth.h"
+#include "core/image/dism/MountHealth.h"
 #include "core/image/wim/WimVerify.h"
 
 #include <functional>
@@ -25,7 +26,8 @@ namespace wl::app {
 
 class ImageController {
 public:
-    enum class Failure : std::uint8_t { Mount, Unmount, Export, Delete, Prepare, Cleanup, Rename, Verify, Editions, Health };
+    // Adopt: an image mounted elsewhere could not be taken over (adoptState() says what DISM found).
+    enum class Failure : std::uint8_t { Mount, Unmount, Export, Delete, Prepare, Cleanup, Rename, Verify, Editions, Health, Adopt };
 
     struct Events {
         std::function<void(std::function<void()>)> postToUi;
@@ -47,6 +49,14 @@ public:
         // are (nothing is lost), another ISO's copy is refused.
         std::function<void(core::WorkCopyState state, std::filesystem::path folder, std::function<void(bool fresh)> proceed)>
             workCopyChoice;
+        // D-141: before a VHD / VHDX is mounted the shell says what happens to it (changes go into
+        // `changesDisk`; saving merges them into `vhd`, discarding deletes them). proceed() mounts.
+        // Not set (tests, render): mounted at once.
+        std::function<void(std::filesystem::path vhd, std::filesystem::path changesDisk, std::function<void()> proceed)>
+            confirmVirtualDisk;
+        // 2026-11-11: an image mounted elsewhere was taken over — its source already read (`source`),
+        // `mounted` named. The shell shows it as mounted. Not set (tests): the state is set directly.
+        std::function<void(core::SourceInfo source, MountedImage mounted)> adopted;
     };
 
     ImageController(AppState& state, Events events);
@@ -67,6 +77,8 @@ public:
     // first, like an ESD.
     [[nodiscard]] bool isSolidInstall() const;
     [[nodiscard]] bool isPackedSource() const { return isEsdSource() || isSolidInstall(); } // read for its editions, not mounted / edited
+    // D-141: the source is a VHD / VHDX (one installed Windows, no WIM: nothing of the WIM tools applies).
+    [[nodiscard]] bool isVirtualDiskSource() const;
     [[nodiscard]] std::optional<int> failedIndex() const noexcept { return m_failedIndex; }
 
     void mount(int index);
@@ -76,7 +88,10 @@ public:
     void scanSystemMounts();
     // Work on the image mounted in `folder` (a remount first when DISM asks for one): its source is
     // opened and it becomes the mounted image, as at startup. Refused while something is mounted.
+    // An invalid mount, a missing image or leftovers are refused untouched (Failure::Adopt).
     void adoptMount(const std::filesystem::path& folder);
+    // What DISM found in the folder the last take-over failed on (empty: it did not get that far).
+    [[nodiscard]] std::optional<core::MountState> adoptState() const noexcept { return m_adoptState; }
     // Unmount `folder` without saving (another tool's mount that is broken or not wanted).
     void discardMount(const std::filesystem::path& folder, std::wstring edition);
     void exportIndex(int index, const std::filesystem::path& destination);
@@ -142,14 +157,22 @@ public:
 
 private:
     using Work = std::function<Result<void>(const core::TaskContext&)>;
-    // Runs `work` as EngineOperation `op`; `onSuccess` runs on the UI thread.
-    void run(EngineOperation op, Work work, std::function<void()> onSuccess, Failure failure);
-    // For ISO sources: extracts to the work folder, switches the source to it, then `next`.
-    void withWritableSource(int index, std::function<void()> next);
+    // Runs `work` as EngineOperation `op`; `onSuccess` runs on the UI thread, `onFailure` (when given)
+    // too, before Events::failed / the cancel toast.
+    void run(EngineOperation op, Work work, std::function<void()> onSuccess, Failure failure,
+             std::function<void(const Error&)> onFailure = {});
+    // For ISO sources: extracts to the work folder, switches the source to it, then `next`. The copy
+    // step is shown as the work it is for (`purpose`, on the editions `rows`; none: the whole file).
+    void withWritableSource(int index, EngineOperation::Kind purpose, std::vector<int> rows, std::function<void()> next);
     void prepareWorkCopy(const std::filesystem::path& iso, const std::filesystem::path& folder, int index, bool extract,
-                         bool fresh, std::function<void()> next);
+                         bool fresh, std::function<void()> next, EngineOperation::Kind purpose, const std::vector<int>& rows);
     [[nodiscard]] std::optional<std::filesystem::path> installWimPath() const;
+    void mountVirtualDisk();
+    void unmountVirtualDisk(bool commit);
     [[nodiscard]] std::wstring editionName(int index) const;
+    // A save that ends a finished run: the edition's size it came to, for the run's card.
+    void noteSavedSize(const core::SourceInfo& source, int index);
+    std::optional<core::MountState> m_adoptState;
 
     AppState& m_state;
     Events m_events;

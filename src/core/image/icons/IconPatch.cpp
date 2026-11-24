@@ -315,22 +315,29 @@ Result<std::string> patchIconBytes(const std::string& original, const std::vecto
     if (!before->hasResources()) {
         return fail(ErrorCode::InvalidArgument, L"the file has no resources", L"");
     }
-    PeImage after = *before;
-    for (const auto& r : replacements) {
-        if (auto ok = replaceIconGroup(after.resources(), r.group, r.images); !ok) {
-            return std::unexpected(ok.error());
+    // A .mun is tens of megabytes of resources and every PeImage holds them twice (the file and the
+    // tree), so as few of them as possible live side by side (audit ENG-09): of the original only
+    // the tree is kept for the read-back, the parsed image itself is the working copy and goes as
+    // soon as the new file is built.
+    const ResourceTree oldTree = before->resources();
+    auto bytes = [&]() -> Result<std::string> {
+        PeImage after = std::move(*before); // `before` is not used past this line
+        for (const auto& r : replacements) {
+            if (auto ok = replaceIconGroup(after.resources(), r.group, r.images); !ok) {
+                return std::unexpected(ok.error());
+            }
         }
-    }
-    auto bytes = after.build();
+        return after.build();
+    }();
     if (!bytes) {
         return std::unexpected(bytes.error());
     }
-    // Read back what was written and hold it against the plan.
-    auto check = PeImage::parse(*bytes);
+    // Read back what was written and hold it against the plan. The new bytes move into the parsed
+    // image and come out of it again at the end.
+    auto check = PeImage::parse(std::move(*bytes));
     if (!check) {
         return fail(ErrorCode::Unknown, L"the patched file does not parse", check.error().message);
     }
-    const auto& oldTree = before->resources();
     const auto& newTree = check->resources();
     for (const auto& type : oldTree.types) {
         if (!type.key.named() && (type.key.id == kRtIcon || type.key.id == kRtGroupIcon)) {
@@ -341,21 +348,25 @@ Result<std::string> patchIconBytes(const std::string& original, const std::vecto
             return fail(ErrorCode::Unknown, L"a resource that was not an icon changed", type.key.text());
         }
     }
-    const auto oldGroups = listIconGroups(oldTree);
-    const auto newGroups = listIconGroups(newTree);
+    // Views into the two trees: the comparison needs no copy of any icon.
+    const auto oldGroups = listIconGroupData(oldTree);
+    const auto newGroups = listIconGroupData(newTree);
     if (oldGroups.size() != newGroups.size()) {
         return fail(ErrorCode::Unknown, L"the number of icons changed", L"");
     }
     for (std::size_t i = 0; i < oldGroups.size(); ++i) {
         const auto replaced = std::ranges::find(replacements, oldGroups[i].key, &IconReplacement::group);
-        const auto& want = replaced != replacements.end() ? replaced->images : oldGroups[i].images;
         const auto& got = newGroups[i].images;
-        if (newGroups[i].key != oldGroups[i].key || want.size() != got.size() ||
-            !std::ranges::equal(want, got, [](const IconImage& a, const IconImage& b) { return a.data == b.data; })) {
+        const bool same =
+            replaced != replacements.end()
+                ? std::ranges::equal(replaced->images, got,
+                                     [](const IconImage& a, std::string_view b) { return std::string_view(a.data) == b; })
+                : std::ranges::equal(oldGroups[i].images, got);
+        if (newGroups[i].key != oldGroups[i].key || !same) {
             return fail(ErrorCode::Unknown, L"an icon came out different", oldGroups[i].key.text());
         }
     }
-    return std::move(*bytes);
+    return std::move(*check).takeBytes();
 }
 
 Result<std::vector<IconReplacement>> fitIconReplacements(const PeImage& pe, std::vector<IconReplacement> replacements) {
@@ -502,14 +513,18 @@ Result<std::wstring> patchImageIcons(const std::filesystem::path& mountDir, std:
     if (!base) {
         return std::unexpected(base.error());
     }
-    auto pe = PeImage::parse(*base);
-    if (!pe) {
-        return std::unexpected(pe.error());
-    }
-    if (auto ok = checkIconPatchTarget(relative, *pe); !ok) {
-        return std::unexpected(ok.error());
-    }
-    auto fitted = fitIconReplacements(*pe, replacements);
+    // Parsed here only to check the target and fit the pictures: patchIconBytes parses for itself,
+    // and this copy (the file and its tree again) must not sit beside that one.
+    auto fitted = [&]() -> Result<std::vector<IconReplacement>> {
+        auto pe = PeImage::parse(*base);
+        if (!pe) {
+            return std::unexpected(pe.error());
+        }
+        if (auto ok = checkIconPatchTarget(relative, *pe); !ok) {
+            return std::unexpected(ok.error());
+        }
+        return fitIconReplacements(*pe, replacements);
+    }();
     if (!fitted) {
         return std::unexpected(fitted.error());
     }

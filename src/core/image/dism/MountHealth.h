@@ -57,11 +57,29 @@ struct MountCheck {
 [[nodiscard]] Result<MountCheck> inspectMount(Dism& dism, const std::filesystem::path& folder);
 // Every mount DISM knows about (any folder).
 [[nodiscard]] Result<std::vector<MountCheck>> inspectMounts(Dism& dism);
+// The same from wimgapi's list (WIMGetMountedImageInfo): no DISM session, so nothing to wait for —
+// what the Source page shows at once while DISM's reading (above) runs behind other engine jobs.
+[[nodiscard]] Result<std::vector<MountCheck>> inspectMountsFast();
+
+// ---- taking over a mount made elsewhere (another tool, dism.exe, an earlier run) -------------
+// The documented order (DISM API): DismGetMountedImageInfo names the mount (MountPath,
+// ImageFilePath, ImageIndex, MountMode, MountStatus); NeedsRemount → DismRemountImage(MountPath);
+// Ok → DismOpenSession(MountPath) works on it as it is. Invalid / image missing / leftovers are
+// refused and left untouched (repairing them is the folder owner's call, or Kaynak's Delete).
+enum class AdoptStep : std::uint8_t { Use, Remount, Refuse };
+[[nodiscard]] AdoptStep adoptionStep(MountState state) noexcept;
+// Carries out adoptionStep(found.state): the Ok check to work on (remounted first when asked), or
+// the reason it cannot be (InvalidArgument for a refused state; nothing was changed then).
+[[nodiscard]] Result<MountCheck> adoptMount(Dism& dism, const MountCheck& found, const TaskContext& task);
 
 // Registry hives loaded (RegLoadKey) from files under `folder`, as \REGISTRY\... names.
 [[nodiscard]] std::vector<std::wstring> hivesLoadedFrom(const std::filesystem::path& folder);
 // Unloads them (needs SeBackup/SeRestore, enabled here). Done before every unmount.
 [[nodiscard]] Result<void> unloadHivesUnder(const std::filesystem::path& folder);
+// The same by a device path prefix ("\Device\HarddiskVolume12\"): a VHD's volume on a mount
+// point folder shows in hivelist by its own device, not by the folder (D-141).
+[[nodiscard]] std::vector<std::wstring> hivesLoadedFromDevice(const std::wstring& devicePrefix);
+[[nodiscard]] Result<void> unloadHives(const std::vector<std::wstring>& hives);
 
 // Carries out check.action. Returns the state afterwards (re-inspected). Moves Explorer windows
 // out of the folder first; leftovers are removed with forceRemoveContents.

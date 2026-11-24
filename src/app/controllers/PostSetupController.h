@@ -25,6 +25,9 @@ public:
     };
 
     explicit PostSetupController(AppState& state);
+    ~PostSetupController();
+    PostSetupController(const PostSetupController&) = delete; // the subscription holds `this`
+    PostSetupController& operator=(const PostSetupController&) = delete;
 
     [[nodiscard]] const core::PostSetupPlan& plan() const; // parsed once per queue version
     [[nodiscard]] std::size_t stepCount() const { return plan().steps.size(); }
@@ -56,6 +59,8 @@ public:
 
     void replace(std::size_t index, core::PostSetupStep step);
     void remove(std::size_t index);
+    // D-152: the page's Sıfırla — every step goes; the Programlar page's picks and the plan's options stay.
+    void resetSteps();
     // Moves a step up (-1) or down (+1); false at the ends.
     bool move(std::size_t index, int delta);
     void toggleWait(std::size_t index); // command steps only
@@ -77,6 +82,7 @@ private:
     bool m_nextOffline = false; // "Çevrimdışı kur" before any program is picked
     mutable core::PostSetupPlan m_cached;
     mutable std::uint64_t m_cachedVersion = ~0ull;
+    std::size_t m_subscription = 0;
     std::map<std::wstring, std::uint64_t> m_sizes; // copy source → bytes (walking a folder is slow)
 };
 

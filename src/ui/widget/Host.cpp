@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 #include <vector>
 
 namespace wl::ui {
@@ -12,7 +13,9 @@ namespace {
 
 // contextmenu.md "Tooltip": 400 ms delay, 20px tall, padding 2 6, caption text, 4px below target.
 constexpr UINT kTooltipDelayMs = 400;
-constexpr float kTooltipHeight = 24.0f; // D-107 / D-108
+// D-107 / D-108; D-136: its Caption line with a spacing step above and below.
+constexpr float kTooltipHeight =
+    tokens::kTypeStyles[static_cast<std::size_t>(tokens::TypeStyle::Caption)].lineHeight + 2 * tokens::spacing::s2;
 constexpr float kTooltipPaddingX = 8.0f;
 constexpr float kTooltipGap = 6.0f;
 constexpr float kTooltipMaxWidth = 360.0f;
@@ -62,7 +65,7 @@ Widget* Host::inputRoot() const noexcept {
     return m_modals.empty() ? m_root.get() : m_modals.back().widget.get();
 }
 
-Widget& Host::pushModal(std::unique_ptr<Widget> modal, Widget* initialFocus, bool scrim) {
+Widget& Host::pushModal(std::unique_ptr<Widget> modal, Widget* initialFocus, bool scrim, Widget* owner) {
     hideTooltip();
     setHovered(nullptr);
     setPressed(nullptr);
@@ -70,7 +73,7 @@ Widget& Host::pushModal(std::unique_ptr<Widget> modal, Widget* initialFocus, boo
     modal->setHostRecursive(this);
     modal->setBounds({0, 0, m_size.width, m_size.height});
     Widget& ref = *modal;
-    m_modals.push_back({std::move(modal), previous, scrim});
+    m_modals.push_back({std::move(modal), previous, scrim, owner});
     if (initialFocus) {
         setFocus(initialFocus, /*visible=*/true);
     } else {
@@ -99,6 +102,9 @@ void Host::popModal(Widget* modal) {
 }
 
 void Host::requestFrame() {
+    if (m_ticking) {
+        return; // see paint()
+    }
     if (m_services.requestFrame) {
         m_services.requestFrame();
     }
@@ -131,6 +137,24 @@ void Host::release(Widget* widget) {
 
 void Host::forget(Widget* widget) {
     clearSlots(widget);
+    if (m_upTarget && isAncestor(widget, m_upTarget)) {
+        m_upTarget = nullptr; // destroyed only: a widget merely hidden by its release is still clicked
+    }
+    // The modals this widget (or one inside it) opened: moved out before they are destroyed, as in
+    // popModal — their own destructors come back here.
+    std::vector<std::unique_ptr<Widget>> orphans;
+    for (auto it = m_modals.begin(); it != m_modals.end();) {
+        if (it->owner && isAncestor(widget, it->owner)) {
+            orphans.push_back(std::move(it->widget));
+            it = m_modals.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    if (!orphans.empty()) {
+        orphans.clear();
+        requestFrame();
+    }
     std::erase_if(m_animating, [widget](Widget* w) { return isAncestor(widget, w); });
 }
 
@@ -157,14 +181,22 @@ void Host::paint(Canvas& canvas) {
         return;
     }
     const double now = nowMs();
-    // Tick a copy: tick() may start/stop other animations.
-    auto running = m_animating;
-    m_animating.clear();
+    // Tick a copy: tick() may start/stop other animations. Swapped into a kept buffer, not copied:
+    // while anything animates this runs every frame, and it allocated every frame.
+    auto& running = m_tickList;
+    running.clear();
+    running.swap(m_animating);
+    // What a tick changes is drawn by this very frame: an invalidate() from inside it must not ask
+    // for another one. It used to — the window was valid again by now, so every tick of a progress
+    // strip (100-250 ms apart by tickIntervalMs) made the whole window draw at the display's rate
+    // for as long as the job ran. The next frame is decided once, at the end of this function.
+    m_ticking = true;
     for (Widget* w : running) {
         if (w->tick(now)) {
             m_animating.push_back(w);
         }
     }
+    m_ticking = false;
 
     m_root->paintTree(canvas);
     for (auto& modal : m_modals) {
@@ -179,7 +211,8 @@ void Host::paint(Canvas& canvas) {
         const float offset = tokens::radius::focusOffset;
         // Clipped like the control itself: scrolled out of a table / form, its ring must not float
         // over the header around it.
-        std::vector<const Widget*> clips;
+        auto& clips = m_ringClips;
+        clips.clear();
         for (const Widget* w = m_focused->parent(); w; w = w->parent()) {
             if (w->clipsChildren()) {
                 clips.push_back(w);
@@ -286,9 +319,13 @@ void Host::onPointer(const PointerEvent& event) {
         m_lastPointer = event.position;
         // While pressed, hover follows the pressed widget only (drag out = visual cancel).
         setHovered(m_pressed ? (hit == m_pressed ? m_pressed : nullptr) : hit);
-        if (m_pressed) {
-            m_pressed->onPointerMove(event.position);
-            m_pressed->invalidate();
+        if (Widget* dragged = m_pressed) {
+            dragged->onPointerMove(event.position);
+            // A drag callback may hide, disable or destroy the widget, or open a modal: each of
+            // those ends the press (audit UI-07).
+            if (m_pressed == dragged) {
+                dragged->invalidate();
+            }
         } else if (hit) {
             hit->onPointerMove(event.position);
         }
@@ -326,13 +363,21 @@ void Host::onPointer(const PointerEvent& event) {
         Widget* pressed = m_pressed;
         setPressed(nullptr);
         if (pressed) {
+            // onPointerUp may destroy the widget (a drag's end callback rebuilding its page):
+            // forget() then clears this slot, and there is nothing left to click (audit UI-07).
+            m_upTarget = pressed;
             pressed->onPointerUp(event.position);
-            if (hit == pressed) {
+            const bool alive = std::exchange(m_upTarget, nullptr) == pressed;
+            if (alive && hit == pressed) {
                 const double now = nowMs();
                 // Double click: same widget, within the system time AND distance (two rows of one
                 // table clicked quickly are two clicks, not an activation).
-                const float slopX = static_cast<float>(GetSystemMetrics(SM_CXDOUBLECLK)) / 2;
-                const float slopY = static_cast<float>(GetSystemMetrics(SM_CYDOUBLECLK)) / 2;
+                const SizeF area = m_services.doubleClickArea
+                                       ? m_services.doubleClickArea()
+                                       : SizeF{static_cast<float>(GetSystemMetrics(SM_CXDOUBLECLK)),
+                                               static_cast<float>(GetSystemMetrics(SM_CYDOUBLECLK))};
+                const float slopX = area.width / 2;
+                const float slopY = area.height / 2;
                 const bool isDouble = m_lastClickWidget == pressed && now - m_lastClickTime < GetDoubleClickTime() &&
                                       std::abs(event.position.x - m_lastClickPos.x) <= slopX &&
                                       std::abs(event.position.y - m_lastClickPos.y) <= slopY;
@@ -439,8 +484,23 @@ void Host::onTimer(UINT id) {
     }
     if (m_tooltipOwner && m_tooltipOwner == m_hovered && !m_pressed) {
         m_tooltipVisible = true;
-        m_tooltipAnchor = {m_tooltipOwner->bounds().x, m_tooltipOwner->bounds().bottom() + kTooltipGap};
+        const RectF anchor = m_tooltipOwner->tooltipAnchor();
+        m_tooltipAnchor = {anchor.x, anchor.bottom() + kTooltipGap};
+        m_tooltipFlipY = anchor.y;
         requestFrame();
+    }
+}
+
+void Host::tooltipChanged(Widget* widget) {
+    if (widget != m_hovered || m_pressed) {
+        return;
+    }
+    hideTooltip();
+    if (!widget->tooltip().empty()) {
+        m_tooltipOwner = widget;
+        if (m_services.startTimer) { // headless renders deliver the timer by hand
+            m_services.startTimer(kTooltipTimer, kTooltipDelayMs);
+        }
     }
 }
 
@@ -467,7 +527,7 @@ void Host::paintTooltip(Canvas& canvas) {
     // Keep inside the window: shift left at the right edge, flip above at the bottom.
     x = std::clamp(x, 4.0f, std::max(4.0f, m_size.width - width - 4.0f));
     if (y + kTooltipHeight > m_size.height - 4.0f) {
-        y = m_tooltipOwner->bounds().y - kTooltipGap - kTooltipHeight;
+        y = m_tooltipFlipY - kTooltipGap - kTooltipHeight;
     }
     const RectF box{std::round(x), std::round(y), width, kTooltipHeight};
     canvas.panel(box, tokens::radius::menu, tokens::elevation::menu);

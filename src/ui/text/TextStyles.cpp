@@ -56,12 +56,14 @@ Result<std::unique_ptr<TextStyles>> TextStyles::create(IDWriteFactory6* factory,
     for (std::size_t i = 0; i < styles->m_formats.size(); ++i) {
         const auto& spec = tokens::kTypeStyles[i];
         const bool mono = spec.role == tokens::FontRole::Mono;
-        const wchar_t* primary = mono ? families.mono : families.ui;
+        const bool brand = spec.role == tokens::FontRole::Brand;
+        const wchar_t* primary = mono ? families.mono : brand ? families.brand : families.ui;
         const bool bundled = fonts.hasFamily(primary);
         // Bundled font if present; else the system's family of that name (Segoe UI Variable), else
         // the fallback, both from the system collection.
         const wchar_t* family = bundled || systemHasFamily(factory, primary) ? primary
                                 : mono                                       ? families.monoFallback
+                                : brand                                      ? families.brandFallback
                                                                              : families.uiFallback;
         IDWriteFontCollection* collection = bundled ? fonts.collection() : nullptr;
         const auto weight = static_cast<DWRITE_FONT_WEIGHT>(spec.weight);
@@ -177,13 +179,46 @@ float TextStyles::measureWrapped(std::wstring_view text, tokens::TypeStyle style
     return metrics.height;
 }
 
+void TextStyles::setLocale(std::wstring locale) {
+    m_locale = std::move(locale);
+    // Uppercase styles are cased by the locale: their widths are other ones now.
+    std::scoped_lock lock(m_measureMutex);
+    for (auto& widths : m_measured) {
+        widths.clear();
+    }
+    m_measuredCount = 0;
+}
+
 float TextStyles::measure(std::wstring_view text, tokens::TypeStyle style) const {
+    // Interface texts are short; a long one (a pasted text, a log line) is measured each time.
+    constexpr std::size_t kLongestKept = 128;
+    constexpr std::size_t kMostKept = 4096;
+    const bool kept = text.size() <= kLongestKept;
+    auto& widths = m_measured[static_cast<std::size_t>(style)];
+    if (kept) {
+        std::scoped_lock lock(m_measureMutex);
+        if (const auto found = widths.find(text); found != widths.end()) {
+            return found->second;
+        }
+    }
     auto l = layout(text, style, 100000.0f, spec(style).lineHeight, TextAlign::Leading);
     if (!l) {
         return 0;
     }
     DWRITE_TEXT_METRICS metrics{};
     (*l)->GetMetrics(&metrics);
+    if (kept) {
+        std::scoped_lock lock(m_measureMutex);
+        if (m_measuredCount >= kMostKept) {
+            for (auto& all : m_measured) {
+                all.clear();
+            }
+            m_measuredCount = 0;
+        }
+        if (widths.emplace(std::wstring(text), metrics.widthIncludingTrailingWhitespace).second) {
+            ++m_measuredCount;
+        }
+    }
     return metrics.widthIncludingTrailingWhitespace;
 }
 

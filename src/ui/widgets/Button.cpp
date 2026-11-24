@@ -127,8 +127,9 @@ void Button::paint(Canvas& canvas) {
         text = Color::TextOnAccent;
         break;
     case ButtonKind::Secondary:
-        // D-109: the reference tool's push button — the input fill, a strong line, pressed darker.
-        canvas.fillRoundRect(b, radius, p > 0 ? Ink(Color::BgRaised, Color::BgPressed, p) : Ink(Color::BgInput, Color::BgPressed, h));
+        // A push button: the control fill (D-137: lighter than every surface in the dark themes, white in
+        // light — an input field is inset, a button is not), a strong line, pressed darker.
+        canvas.fillRoundRect(b, radius, p > 0 ? Ink(Color::BgRaised, Color::BgPressed, p) : Ink(Color::BgControl, Color::BgPressed, h));
         canvas.strokeRoundRect(b, radius, Color::LineStrong);
         break;
     case ButtonKind::Subtle:

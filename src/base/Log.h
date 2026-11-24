@@ -45,6 +45,11 @@ inline void error(std::string_view source, std::wstring message) { write(Level::
 [[nodiscard]] const wchar_t* levelName(Level level) noexcept; // "DBG", "INFO", "WARN", "ERR"
 // "14:02:11.482 INFO  wim   message" — the format of the file sink and stdout.
 [[nodiscard]] std::wstring formatLine(const Entry& entry);
+// The local wall clock of a moment: "14:02:07", with `milliseconds` "14:02:07.123". Through Win32,
+// not std::chrono::current_zone(): that one goes to ICU on every call — once per log line, and
+// once per line again for each of the Logs page's 20,000 rows — and throws on a Windows 10 that
+// has no icu.dll.
+[[nodiscard]] std::wstring clockText(std::chrono::system_clock::time_point time, bool milliseconds);
 
 // Keeps the last `capacity` entries; the Logs page polls snapshot() when version() changes.
 class RingBufferSink final : public Sink {

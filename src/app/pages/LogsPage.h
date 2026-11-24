@@ -34,7 +34,9 @@ private:
     enum class MinLevel : std::uint8_t { All, Debug, Info, Warn, Error };
     [[nodiscard]] bool passes(const log::Entry& entry) const;
     void rebuild();          // filters changed: refilter everything
-    void updateSources();    // new source tags appeared
+    // New source tags appeared: looks at m_entries from `from` on (audit PG-09: every poll went
+    // through all 20,000 entries; the ones before were looked at when they came).
+    void updateSources(std::size_t from);
 
     AppState& m_state;
     const Localization& m_strings;
@@ -46,6 +48,11 @@ private:
     std::string m_source;    // empty = all
     std::wstring m_needle;   // lower-cased search text
     std::wstring m_lastTime; // time of the newest visible line
+    // The toolbar's counter, kept while the two things it says stand (audit PG-19).
+    std::wstring m_counter;
+    std::wstring m_counterTime;
+    std::size_t m_counterLines = 0;
+    bool m_counterKnown = false;
     ui::SearchBox* m_search = nullptr;
     ui::Dropdown* m_level = nullptr;
     ui::Dropdown* m_sourceBox = nullptr;

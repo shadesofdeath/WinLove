@@ -119,7 +119,7 @@ Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& moun
     }
     if (options.commitAndUnmount && result.report.failures() > result.report.holdingFailures()) {
         log::info("apply", std::format(L"saved all the same: {} step(s) Windows refused changed nothing (a permanent "
-                                       L"package, or a store cleanup while an operation is pending until first boot)",
+                                       L"package, or a store cleanup / shrink while an operation is pending until first boot)",
                                        result.report.failures() - result.report.holdingFailures()));
     }
     if (options.commitAndUnmount && callbacks.beforeCommit) {
@@ -142,7 +142,9 @@ Result<ApplyJobResult> runApplyJob(Dism& dism, const std::filesystem::path& moun
         const TaskContext commitTask{task.cancel, [&](double fraction, std::wstring_view stage) {
                                          task.report((stepsWeight + fraction * commitWeight) / total, stage);
                                      }};
-        if (auto r = unmountSafely(dism, mountDir, /*commit=*/true, commitTask); !r) {
+        if (auto r = options.saveImage ? options.saveImage(commitTask)
+                                       : unmountSafely(dism, mountDir, /*commit=*/true, commitTask).transform([](const UnmountOutcome&) {});
+            !r) {
             log::error("apply", L"commit failed: " + describe(r.error()));
             result.commitError = r.error();
         } else {
@@ -201,8 +203,20 @@ Result<ApplyJobResult> applyToEdition(Dism& dism, const std::filesystem::path& w
     // Mount ~15 %, the rest is the job (its own steps + commit).
     constexpr double kMountShare = 0.15;
     const TaskContext mountTask{task.cancel, [&](double f, std::wstring_view stage) { task.report(f * kMountShare, stage); }};
-    if (auto mounted = dism.mount(wim, index, mountDir, /*readOnly=*/false, mountTask); !mounted) {
+    // mountSafely, like the first edition and the UUP conversion (audit OPS-15): a half mount the
+    // edition before left in the folder (a failed or cancelled mount, a lock at its unmount) is
+    // repaired first, and a "folder busy" answer is retried once, instead of every later edition
+    // failing on the same folder.
+    auto mounted = mountSafely(dism, wim, index, mountDir, /*readOnly=*/false, mountTask);
+    if (!mounted) {
         return std::unexpected(mounted.error());
+    }
+    if (mounted->reused) {
+        // This edition was already mounted there (an earlier run could neither save nor discard
+        // it): what it holds is unknown, so nothing is applied on top of it and it is left as it
+        // is, which is what the plain mount did by failing.
+        return fail(ErrorCode::DismFailure, L"the edition is already mounted in the mount folder",
+                    std::format(L"{} [{}] in {}", wim.wstring(), index, mountDir.wstring()));
     }
     ApplyJobOptions own = options;
     own.commitAndUnmount = true;

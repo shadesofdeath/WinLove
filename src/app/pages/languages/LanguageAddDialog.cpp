@@ -39,6 +39,20 @@ public:
                                    -1, LanguageController::localeName(b.language).c_str(), -1, nullptr, nullptr,
                                    0) == CSTR_LESS_THAN;
         });
+        // What a row shows, made once: paintCell runs for every visible cell on every frame (each
+        // pointer move over the table), and a name is a locale API call, the features a walk over
+        // the language's files (audit SUB-05).
+        for (const auto& l : m_all) {
+            m_names.push_back(LanguageController::localeName(l.language));
+            std::vector<Kind> kinds;
+            for (const auto& f : l.files) {
+                if (f.file.kind != Kind::LanguagePack && f.file.kind != Kind::Satellite &&
+                    std::ranges::find(kinds, f.file.kind) == kinds.end()) {
+                    kinds.push_back(f.file.kind);
+                }
+            }
+            m_partTexts.push_back(languagePartsText(strings, kinds));
+        }
         m_search = &add<ui::SearchBox>(strings.get(Str::LanguagesAddSearch));
         m_search->onChange = [this](const std::wstring&) { filter(); };
         m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
@@ -161,7 +175,7 @@ private:
         m_rows.clear();
         for (std::size_t i = 0; i < m_all.size(); ++i) {
             const auto& tag = m_all[i].language;
-            const std::wstring name = LanguageController::localeName(tag);
+            const std::wstring& name = m_names[i];
             if (q.empty() || text::lower(name).find(q) != std::wstring::npos || text::lower(tag).find(q) != std::wstring::npos) {
                 m_rows.push_back(i);
             }
@@ -180,6 +194,7 @@ private:
         const auto& tag = m_all[i].language;
         if (!m_checked.erase(tag)) {
             m_checked.insert(tag);
+            m_table->revealCheck(row); // the user's tick draws in
         }
         m_table->refresh();
         notify();
@@ -205,16 +220,17 @@ private:
         switch (column) {
         case kName: {
             if (blocked) {
-                canvas.pushOpacity(ui::tokens::opacity::disabled);
+                // Bounded by the cell, which holds the check: an unbounded layer is window-sized (audit UI-04).
+                canvas.pushOpacity(ui::tokens::opacity::disabled, rect);
             }
             ui::Checkbox::paintBox(canvas, {rect.x, rect.y + (rect.height - ui::Checkbox::kBox) / 2},
                                    blocked || m_checked.contains(l.language) ? ui::CheckState::On : ui::CheckState::Off,
-                                   cell.hovered && !blocked);
+                                   cell.hovered && !blocked, blocked ? 1.0f : cell.checkReveal);
             if (blocked) {
                 canvas.popOpacity();
             }
             const float x = rect.x + ui::Checkbox::kBox + 8;
-            canvas.drawText(LanguageController::localeName(l.language), {x, rect.y, std::max(rect.right() - x, 0.0f), rect.height},
+            canvas.drawText(m_names[i], {x, rect.y, std::max(rect.right() - x, 0.0f), rect.height},
                             cell.selected ? TypeStyle::BodyStrong : TypeStyle::Body, blocked ? Color::TextTertiary : Color::TextPrimary);
             break;
         }
@@ -224,20 +240,16 @@ private:
                 canvas.drawText(m_strings.get(Str::LanguagesAddInImage), rect, TypeStyle::Caption, Color::TextTertiary);
                 break;
             }
-            std::vector<Kind> kinds;
-            for (const auto& f : l.files) {
-                if (f.file.kind != Kind::LanguagePack && f.file.kind != Kind::Satellite &&
-                    std::ranges::find(kinds, f.file.kind) == kinds.end()) {
-                    kinds.push_back(f.file.kind);
-                }
-            }
-            canvas.drawText(languagePartsText(m_strings, kinds), rect, TypeStyle::Caption, Color::TextSecondary);
+            canvas.drawText(m_partTexts[i], rect, TypeStyle::Caption, Color::TextSecondary);
             break;
         }
         case kSize: {
             if (blocked) {
                 break;
             }
+            // Asked each time: what pick() leaves out follows the image's own languages, which can
+            // arrive after the dialog opened — a size kept from the constructor showed 0.6 MB too
+            // much per row (found by tools/render_diff.py).
             std::uint64_t bytes = 0;
             for (const auto& f : m_controller.pick(l, parts())) {
                 bytes += f.source.size;
@@ -255,6 +267,8 @@ private:
     const LanguageController& m_controller;
     std::vector<core::UupLanguage> m_all;
     std::vector<bool> m_complete;  // per m_all: nothing left to add
+    std::vector<std::wstring> m_names;     // per m_all: the name shown
+    std::vector<std::wstring> m_partTexts; // per m_all: "Temel · El yazısı · OCR"
     std::vector<std::size_t> m_rows; // m_all indexes shown (search)
     std::set<std::wstring> m_checked;
     ui::SearchBox* m_search = nullptr;

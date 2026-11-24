@@ -8,6 +8,8 @@
 #include <format>
 #include <fstream>
 
+#include <windows.h>
+
 namespace wl::core {
 
 namespace {
@@ -470,7 +472,14 @@ Result<void> UdfImage::copyNode(const Node& file, const std::filesystem::path& d
     const auto written = [&]() -> Result<void> {
         std::ofstream out(partial, std::ios::binary | std::ios::trunc);
         if (!out) {
-            return fail(ErrorCode::IoError, L"cannot create destination", partial.wstring());
+            // Windows' own reason, not 0x00000000 (report 2026-11-24: a path past 259 characters
+            // where long paths are off answers ERROR_PATH_NOT_FOUND).
+            const DWORD why = GetLastError();
+            const std::wstring text = partial.wstring();
+            return fail(ErrorCode::IoError,
+                        text.size() > 259 ? std::format(L"cannot create destination: the path is {} characters long", text.size())
+                                          : std::wstring(L"cannot create destination"),
+                        text, why != 0 ? static_cast<std::int32_t>(HRESULT_FROM_WIN32(why)) : 0);
         }
         UdfFileSource source(m_iso, file);
         constexpr std::size_t kChunk = 8u << 20;

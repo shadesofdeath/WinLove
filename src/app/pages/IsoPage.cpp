@@ -1,9 +1,7 @@
 #include "app/pages/IsoPage.h"
 
-#include "core/iso/SecureBoot2023.h"
-#include "core/image/UpdatePackage.h"
-
 #include "app/Format.h"
+#include "app/controllers/ImageDriverController.h"
 #include "app/pages/PageBits.h"
 #include "base/Log.h"
 #include "core/usb/UsbMedia.h"
@@ -23,29 +21,43 @@ using ui::tokens::TypeStyle;
 
 namespace {
 constexpr float kTop = 0.0f;
-constexpr float kLabelWidth = 220.0f;
-constexpr float kRow = 26.0f; // D-109: the reference tool density (a 24 control in it)
-constexpr float kSection = 40.0f;
-constexpr float kSummaryWidth = 320.0f;
+constexpr float kLabelWidth = 190.0f; // D-136: the longest label at 13 px with room; the fields keep the rest
+constexpr float kRow = ui::tokens::size::control + ui::tokens::spacing::s2; // D-136: a control and a little air
+constexpr float kSection = ui::FormView::kSection; // the forms' title block (paintFormSection)
 constexpr float kSummaryRow = 26.0f;
-constexpr float kInfoBar = 38.0f;
+constexpr float kFormGap = 24.0f;  // the form ↔ the summary card
+constexpr float kButtonGap = ui::tokens::spacing::s2; // a field ↔ its icon button (browse, refresh)
+constexpr float kIconButton = ui::tokens::size::control;
 
-std::filesystem::path desktop() {
-    PWSTR path = nullptr;
-    std::filesystem::path result;
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Desktop, 0, nullptr, &path))) {
-        result = path;
-    }
-    CoTaskMemFree(path);
-    return result;
+// D-136: the summary card is 320 wide, narrower (to 280) on a narrow page: the form's fields (the
+// boot mode's three segments) keep their room and nothing reaches into the card.
+float summaryWidth(float pageWidth) {
+    return std::clamp(std::floor(pageWidth * 0.36f), 280.0f, 320.0f);
+}
+constexpr float kInfoBar = ui::InfoBar::kHeight;
+
+// Whether the answer file says anything at all (audit PG-19: paint built an empty one to compare
+// with on every frame).
+bool noAnswers(const core::UnattendOptions& options) {
+    static const core::UnattendOptions kNone{};
+    return options == kNone;
 }
 
-std::wstring defaultLabel(const core::SourceInfo& source) {
-    if (!source.volumeLabel.empty()) {
-        return source.volumeLabel.substr(0, 32);
+// D-134: why a driver did not go into boot.wim, in the user's words.
+std::wstring refusalText(const core::DriverRefusal& refusal, const Localization& strings) {
+    using Why = core::DriverRefusal::Why;
+    Str key = Str::IsoBootRefusedDism;
+    switch (refusal.why) {
+    case Why::Missing: key = Str::IsoBootRefusedMissing; break;
+    case Why::Architecture: key = Str::IsoBootRefusedArch; break;
+    case Why::NoCatalog:
+    case Why::CatalogMissing: key = Str::IsoBootRefusedNoCatalog; break;
+    case Why::Unsigned: key = Str::IsoBootRefusedUnsigned; break;
+    case Why::Dism: key = Str::IsoBootRefusedDism; break;
     }
-    return L"WINLOVE";
+    return refusal.inf.filename().wstring() + L": " + strings.format(key, {{L"arch", refusal.detail}, {L"why", refusal.detail}});
 }
+
 } // namespace
 
 IsoPage::IsoPage(AppState& state, IsoController& controller, const Localization& strings, Language language,
@@ -61,21 +73,23 @@ IsoPage::IsoPage(AppState& state, IsoController& controller, const Localization&
     };
     m_bar = &add<ui::InfoBar>(ui::InfoKind::Info, L"", L"", strings.get(Str::CommonClose));
     m_bar->setVisible(false);
+    m_ring = &add<ui::ProgressRing>(ui::tokens::size::ring);
+    m_ring->setVisible(false);
     m_bar->onClose = [this] {
         m_bar->setVisible(false);
         layout();
     };
 
     const auto& source = m_state.source();
-    const std::wstring stem = source ? source->path.stem().wstring() : L"Windows";
+    // D-144: the same first values as "Bitince ISO oluştur" (IsoController::defaultRequest).
     m_fileName = &add<ui::SearchBox>(L"");
     m_fileName->setPlain(true);
     m_fileName->setWidth(360);
-    m_fileName->setText(stem + L"_WinLove.iso");
+    m_fileName->setText(IsoController::defaultFileName(m_state));
     m_folder = &add<ui::SearchBox>(L"");
     m_folder->setPlain(true);
     m_folder->setWidth(328);
-    m_folder->setText((m_state.settings().isoFolder.empty() ? desktop() : m_state.settings().isoFolder).wstring());
+    m_folder->setText(IsoController::defaultFolder(m_state).wstring());
     m_browse = &add<ui::Button>(ui::ButtonKind::Secondary, L"", ui::icons::Icon::OpenFolder);
     m_browse->setTooltip(strings.get(Str::IsoFolder));
     m_browse->onInvoke = [this] {
@@ -85,46 +99,20 @@ IsoPage::IsoPage(AppState& state, IsoController& controller, const Localization&
             }
         }
     };
-    m_label = &add<ui::SearchBox>(L"");
-    m_label->setPlain(true);
-    m_label->setWidth(200);
-    m_label->setText(source ? defaultLabel(*source) : L"WINLOVE");
-
-    m_boot = &add<ui::RadioGroup>(std::vector<std::wstring>{strings.get(Str::IsoBootBoth), strings.get(Str::IsoBootUefi),
-                                                              strings.get(Str::IsoBootBios)},
-                                  0);
-    m_boot->onChange = [this](int) { invalidate(); };
-    m_repack = &add<ui::Dropdown>(L"",
-                                  std::vector<std::wstring>{strings.get(Str::IsoRepackAsIs), strings.get(Str::IsoRepackLzx),
-                                                            strings.get(Str::IsoRepackXpress), strings.get(Str::IsoRepackEsd)},
-                                  0);
-    m_repack->onChange = [this](int) { invalidate(); };
-    if (!m_controller.canRepack()) {
-        m_repack->setEnabled(false);
-        m_repack->setTooltip(strings.get(Str::IsoRepackOnlyWork));
-    }
-    m_noPrompt = &add<ui::CheckField>(strings.get(Str::IsoNoPrompt), false);
-    m_bootBypass = &add<ui::CheckField>(strings.get(Str::IsoBootBypass), true);
-    m_bootBypass->onChange = [this](bool) { invalidate(); };
-    m_legacySetup = &add<ui::CheckField>(strings.get(Str::IsoLegacySetup), false);
-    m_legacySetup->onChange = [this](bool) {
-        m_legacyTouched = true;
-        invalidate();
-    };
-    m_secureBoot = &add<ui::CheckField>(strings.get(Str::IsoSecureBootBox), false);
-    m_secureBoot->onChange = [this](bool) { invalidate(); };
-    m_dbTrusts2023 = core::firmwareTrustsCa2023();
-    m_mediaUpdate = &add<ui::CheckField>(strings.get(Str::IsoMediaUpdateBox), true);
-    m_mediaUpdate->onChange = [this](bool on) {
-        auto media = m_state.mediaUpdate();
-        media.enabled = on;
-        m_state.setMediaUpdate(std::move(media));
-    };
-    // The row label says it: the boxes stand alone (screen 16).
-    m_sha = &add<ui::CheckField>(L"", true);
-    m_sha->setAccessible(ui::AccessRole::CheckBox, strings.get(Str::IsoSha));
-    m_open = &add<ui::CheckField>(L"", true);
+    // D-144 addendum: the options the Apply page's "ISO seçenekleri…" shares (AppState::isoChoices).
+    m_options = std::make_unique<IsoOptionControls>(*this, m_state, strings,
+                                                    IsoOptionControls::Hooks{m_intents.postToUi, [this] {
+                                                        invalidate();
+                                                        notifyChanged(); // the label: the header button follows
+                                                    }});
+    // The row label says it: the box stands alone (screen 16).
+    m_open = &add<ui::CheckField>(L"", m_state.isoChoices().openFolder);
     m_open->setAccessible(ui::AccessRole::CheckBox, strings.get(Str::IsoOpenWhenDone));
+    m_open->onChange = [this](bool on) {
+        AppState::IsoChoices choices = m_state.isoChoices();
+        choices.openFolder = on;
+        m_state.setIsoChoices(std::move(choices));
+    };
 
     m_disk = &add<ui::Dropdown>(L"", std::vector<std::wstring>{strings.get(Str::IsoUsbNoDisk)}, 0);
     m_disk->onChange = [this](int) {
@@ -137,7 +125,7 @@ IsoPage::IsoPage(AppState& state, IsoController& controller, const Localization&
     m_usbLabel = &add<ui::SearchBox>(L"");
     m_usbLabel->setPlain(true);
     m_usbLabel->setWidth(200);
-    m_usbLabel->setText(source ? core::fatLabel(defaultLabel(*source)) : L"WINLOVE");
+    m_usbLabel->setText(source ? core::fatLabel(IsoController::defaultLabel(*source)) : L"WINLOVE");
     m_usbLabel->onChange = [this](const std::wstring&) { notifyChanged(); };
     m_scheme = &add<ui::RadioGroup>(std::vector<std::wstring>{strings.get(Str::IsoUsbMbr), strings.get(Str::IsoUsbGpt)}, 0);
     m_scheme->onChange = [this](int) { invalidate(); };
@@ -145,17 +133,17 @@ IsoPage::IsoPage(AppState& state, IsoController& controller, const Localization&
 
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Source) {
-            computeSize(); // a re-read source (after a commit) is another size: USB check, estimate
-            checkWinre();  // and maybe WinRE is gone now
+            computeSize();           // a re-read source (after a commit) is another size: USB check, estimate
+            m_options->checkWinre(); // and maybe WinRE is gone now
         }
         if (change == AppState::Change::Iso || change == AppState::Change::Mount || change == AppState::Change::Source ||
             change == AppState::Change::Apply || change == AppState::Change::Operation ||
-            change == AppState::Change::Unattend) {
-            refresh();
+            change == AppState::Change::Unattend || change == AppState::Change::Drivers || change == AppState::Change::Queue) {
+            refresh(); // D-134: Drivers / Queue — the boot.wim drivers and whether the image gets them too
         }
     });
     computeSize();
-    checkWinre();
+    m_options->checkWinre();
     refresh();
 }
 
@@ -198,44 +186,8 @@ void IsoPage::computeSize() {
         });
 }
 
-void IsoPage::checkWinre() {
-    const auto& source = m_state.source();
-    if (!source) {
-        m_noWinre.clear();
-        return;
-    }
-    std::weak_ptr<bool> alive = m_alive;
-    auto missing = std::make_shared<std::vector<int>>();
-    m_state.reader().run<bool>(
-        [info = *source, missing](const core::TaskContext&) -> Result<bool> {
-            auto editions = core::editionsWithoutWinre(info);
-            if (!editions) {
-                // ESD, damaged: nothing known, the box stays as the user leaves it.
-                log::warn("iso", L"cannot tell whether the editions have WinRE: " + describe(editions.error()));
-                return false;
-            }
-            *missing = std::move(*editions);
-            return true;
-        },
-        [this, alive, missing, post = m_intents.postToUi](Result<bool>) {
-            if (!post) {
-                return;
-            }
-            post([this, alive, missing] {
-                if (const auto a = alive.lock(); a && *a) {
-                    setEditionsWithoutWinre(std::move(*missing));
-                }
-            });
-        });
-}
-
 void IsoPage::setEditionsWithoutWinre(std::vector<int> editions) {
-    m_noWinre = std::move(editions);
-    const auto& source = m_state.source();
-    // Older media (Windows 10, D-077) installs a WinRE-less image with its own, previous Setup.
-    if (!m_noWinre.empty() && !m_legacyTouched && !(source && core::mediaOpensPreviousSetup(*source))) {
-        m_legacySetup->setChecked(true);
-    }
+    m_options->setEditionsWithoutWinre(std::move(editions));
     refresh();
 }
 
@@ -249,16 +201,17 @@ IsoController::Request IsoPage::request() const {
         name += L".iso";
     }
     r.output = std::filesystem::path(m_folder->text()) / name;
-    r.label = m_label->text();
-    r.boot = static_cast<core::BootMode>(m_boot->selected());
-    r.noPrompt = m_noPrompt->checked();
-    r.repack = static_cast<IsoController::Repack>(m_controller.canRepack() ? m_repack->selected() : 0);
-    r.sha256 = m_sha->checked();
+    const IsoOptionControls& o = *m_options;
+    r.label = o.label->text();
+    r.boot = static_cast<core::BootMode>(o.boot->selected());
+    r.noPrompt = o.noPrompt->checked();
+    r.repack = static_cast<IsoController::Repack>(m_controller.canRepack() ? o.repack->selected() : 0);
+    r.sha256 = o.sha->checked();
     r.openFolder = m_open->checked();
-    r.bootBypass = m_bootBypass->checked();
-    r.legacySetup = m_legacySetup->checked();
-    r.mediaUpdate = m_mediaUpdate->checked() && m_state.mediaUpdate().any();
-    r.secureBoot2023 = m_secureBoot->checked();
+    r.bootBypass = o.bootBypass->checked();
+    r.legacySetup = o.legacySetup->checked();
+    r.mediaUpdate = o.mediaUpdate->checked() && m_state.mediaUpdate().any();
+    r.secureBoot2023 = o.secureBoot->checked();
     if (usbTab()) {
         if (const auto* disk = selectedDisk()) {
             r.usb = IsoController::Request::UsbTarget{disk->number, disk->identity(), disk->name(),
@@ -347,7 +300,7 @@ bool IsoPage::formValid() const {
         const std::uint64_t room = partition ? partition * 1024 * 1024 : disk->size;
         return m_sourceBytes == 0 || m_sourceBytes + (64ull << 20) <= room;
     }
-    return !m_folder->text().empty() && std::filesystem::path(m_folder->text()).is_absolute() && !m_label->text().empty();
+    return !m_folder->text().empty() && std::filesystem::path(m_folder->text()).is_absolute() && !m_options->label->text().empty();
 }
 
 double IsoPage::estimateSeconds() const {
@@ -360,16 +313,16 @@ double IsoPage::estimateSeconds() const {
     if (source->format == core::ImageFormat::Iso) {
         seconds += mb / 200.0;   // extract
     }
-    if (m_repack->selected() != 0 && m_controller.canRepack()) {
+    if (m_options->repack->selected() != 0 && m_controller.canRepack()) {
         seconds += static_cast<double>(source->installImageSize) / (1024.0 * 1024.0) / 25.0;
     }
-    if (m_sha->checked() && !usbTab()) {
+    if (m_options->sha->checked() && !usbTab()) {
         seconds += mb / 800.0;
     }
-    if ((m_bootBypass->checked() && !IsoController::bootPatch(m_state).empty()) || m_legacySetup->checked()) {
-        seconds += 30; // mount + commit of boot.wim's setup image
+    if (!IsoController::bootPatch(m_state, m_options->bootBypass->checked()).empty() || m_options->legacySetup->checked()) {
+        seconds += 30 + 3.0 * static_cast<double>(m_state.bootDrivers().size()); // mount + commit; a driver ~1–3 s (lab)
     }
-    if (m_mediaUpdate->checked() && m_state.mediaUpdate().any()) {
+    if (m_options->mediaUpdate->checked() && m_state.mediaUpdate().any()) {
         // Lab, 2026-10-07: the cumulative update into both images of boot.wim took 430 s.
         seconds += (m_state.mediaUpdate().lcu.empty() ? 0 : 450) + (m_state.mediaUpdate().setupDu.empty() ? 0 : 10);
     }
@@ -386,19 +339,34 @@ std::vector<int> IsoPage::mediaCannotInstall() const {
 
 void IsoPage::setMediaCannotInstallDemo(std::vector<int> editions) {
     m_cannotInstallDemo = std::move(editions);
+    m_options->setIgnoreMediaSetup(true);
     refresh();
 }
 
 void IsoPage::updateBlocker() {
     const auto& run = m_state.isoRun();
+    m_bar->setTooltip(std::wstring()); // set below where the line runs past the bar (D-134)
     if (run && run->running) {
         m_bar->setVisible(false);
         return;
     }
+    // D-134: a driver boot.wim did not take does not fail the build — the result says which and why.
+    std::wstring refused; // first in the line: the path is one click away ("Klasörü aç")
+    if (run && run->result) {
+        for (const auto& r : run->bootDriversRefused) {
+            refused += refusalText(r, m_strings) + L" · ";
+        }
+    }
+    const bool anyRefused = run && run->result && !run->bootDriversRefused.empty();
+    const std::wstring refusedN = anyRefused ? std::to_wstring(run->bootDriversRefused.size()) : std::wstring();
     if (run && run->result && run->usb) {
-        m_bar->set(ui::InfoKind::Success, m_strings.get(Str::IsoUsbDone),
-                   m_strings.format(Str::IsoDoneBody, {{L"path", run->output.wstring()},
-                                                       {L"size", formatBytes(run->result->bytes, m_language)}}));
+        const std::wstring body = refused + m_strings.format(Str::IsoDoneBody, {{L"path", run->output.wstring()},
+                                                                                {L"size", formatBytes(run->result->bytes, m_language)}});
+        m_bar->set(anyRefused ? ui::InfoKind::Warning : ui::InfoKind::Success,
+                   anyRefused ? m_strings.format(Str::IsoUsbDoneRefused, {{L"n", refusedN}}) : m_strings.get(Str::IsoUsbDone), body);
+        if (anyRefused) {
+            m_bar->setTooltip(body);
+        }
         const auto output = run->output;
         m_bar->setAction(m_strings.get(Str::IsoOpenFolder), [this, output] {
             if (m_intents.openFolder) {
@@ -409,9 +377,13 @@ void IsoPage::updateBlocker() {
         return;
     }
     if (run && run->result) {
-        m_bar->set(ui::InfoKind::Success, m_strings.get(Str::IsoDone),
-                   m_strings.format(Str::IsoDoneBody, {{L"path", run->output.wstring()},
-                                                       {L"size", formatBytes(run->result->bytes, m_language)}}));
+        const std::wstring body = refused + m_strings.format(Str::IsoDoneBody, {{L"path", run->output.wstring()},
+                                                                                {L"size", formatBytes(run->result->bytes, m_language)}});
+        m_bar->set(anyRefused ? ui::InfoKind::Warning : ui::InfoKind::Success,
+                   anyRefused ? m_strings.format(Str::IsoDoneRefused, {{L"n", refusedN}}) : m_strings.get(Str::IsoDone), body);
+        if (anyRefused) {
+            m_bar->setTooltip(body);
+        }
         const auto output = run->output;
         m_bar->setAction(m_strings.get(Str::IsoOpenFolder), [this, output] {
             if (m_intents.openFolder) {
@@ -439,6 +411,7 @@ void IsoPage::updateBlocker() {
         case IsoController::Blocker::Mounted: text = Str::IsoBlockMounted; break;
         case IsoController::Blocker::Busy: text = Str::IsoBlockBusy; break;
         case IsoController::Blocker::UnattendInvalid: text = Str::IsoBlockUnattend; break;
+        case IsoController::Blocker::VirtualDisk: text = Str::IsoBlockVirtualDisk; break;
         }
         m_bar->set(ui::InfoKind::Warning, m_strings.get(text), L"");
         m_bar->setAction(L"", nullptr);
@@ -458,6 +431,24 @@ void IsoPage::updateBlocker() {
         m_bar->set(ui::InfoKind::Warning, m_strings.get(Str::IsoAioTitle), m_strings.format(Str::IsoAioBody, {{L"list", list}}));
         if (m_intents.replaceMedia) {
             m_bar->setAction(m_strings.get(Str::IsoAioAction), [this] { m_intents.replaceMedia(); });
+        } else {
+            m_bar->setAction(L"", nullptr);
+        }
+        m_bar->setVisible(true);
+        return;
+    }
+    // D-134: a storage driver Setup gets but the installed Windows does not — it would boot from the
+    // very controller it has no driver for.
+    if (!m_storageOnlyInBoot.empty()) {
+        std::wstring names;
+        for (const auto& p : m_storageOnlyInBoot) {
+            names += (names.empty() ? L"" : L", ") + p.filename().wstring();
+        }
+        const std::wstring body = m_strings.format(Str::IsoBootStorageOnlyBody, {{L"names", names}});
+        m_bar->set(ui::InfoKind::Warning, m_strings.get(Str::IsoBootStorageOnlyTitle), body);
+        m_bar->setTooltip(body);
+        if (m_intents.goDrivers) {
+            m_bar->setAction(m_strings.get(Str::IsoBootStorageOnlyAction), [this] { m_intents.goDrivers(); });
         } else {
             m_bar->setAction(L"", nullptr);
         }
@@ -488,36 +479,25 @@ void IsoPage::refresh() {
     const bool isoTab = m_tabs->selected() == 0;
     const auto& run = m_state.isoRun();
     const bool running = run && run->running;
-    // Nothing to write into Setup's image while the answers switch no check off.
-    const bool bypasses = !IsoController::bootPatch(m_state).empty();
-    for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_fileName, m_folder, m_browse, m_label, m_boot, m_noPrompt,
-                                                            m_sha}) {
+    syncBootDrivers();
+    // The shared options from AppState::isoChoices (values, enabled states, tooltips), then what the tab shows.
+    m_options->sync(running);
+    for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_fileName, m_folder, m_browse}) {
         w->setVisible(isoTab);
         w->setEnabled(!running);
+    }
+    for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_options->label, m_options->boot, m_options->noPrompt, m_options->sha}) {
+        w->setVisible(isoTab);
     }
     for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_disk, m_refresh, m_usbLabel, m_scheme}) {
         w->setVisible(!isoTab);
         w->setEnabled(!running && (w != m_disk || !m_disks.empty()));
     }
-    // Shared by both tabs. Media older than 24H2 opens the previous Setup already: nothing to switch.
-    const auto& source = m_state.source();
-    const bool previousMedia = source && core::mediaOpensPreviousSetup(*source) && !m_cannotInstallDemo;
-    if (previousMedia && m_legacySetup->checked()) {
-        m_legacySetup->setChecked(false);
-    }
-    m_legacySetup->setEnabled(!running && !previousMedia);
-    {
-        const auto& media = m_state.mediaUpdate();
-        m_mediaUpdate->setChecked(media.any() && media.enabled);
-        m_mediaUpdate->setEnabled(!running && media.any());
-        m_mediaUpdate->setTooltip(media.any() ? std::wstring() : m_strings.get(Str::IsoMediaUpdateNone));
-    }
-    m_secureBoot->setEnabled(!running);
-    for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_repack, m_bootBypass, m_open}) {
-        w->setEnabled(!running && (w != m_repack || m_controller.canRepack()) && (w != m_bootBypass || bypasses));
-    }
-    m_bootBypass->setTooltip(bypasses ? std::wstring() : m_strings.get(Str::IsoBootBypassNone));
+    m_open->setChecked(m_state.isoChoices().openFolder);
+    m_open->setEnabled(!running);
     m_open->setAccessible(ui::AccessRole::CheckBox, m_strings.get(isoTab ? Str::IsoOpenWhenDone : Str::IsoUsbOpenWhenDone));
+    m_ring->setRunning(running);
+    m_ring->setVisible(running);
     updateBlocker();
     layout();
     invalidate();
@@ -531,35 +511,44 @@ void IsoPage::layout() {
     y += ui::tokens::size::control + 2 + 12;
     const auto& run = m_state.isoRun();
     if (run && run->running) {
-        y += kInfoBar + 12; // progress row (painted)
+        // The progress row (painted), its ring a widget of its own (D-142): it turns while it is drawn.
+        m_ring->setBounds({b.x, y + 4, ui::tokens::size::ring, ui::tokens::size::ring});
+        y += kInfoBar + 12;
     } else if (m_bar->visible()) {
-        m_bar->setBounds({b.x, y, b.width - kSummaryWidth - 24, kInfoBar});
+        m_bar->setBounds({b.x, y, b.width - summaryWidth(b.width) - kFormGap, kInfoBar});
         y += kInfoBar + 12;
     }
     const float fieldX = b.x + kLabelWidth;
+    // A control ends where the form does, 24 before the summary card (a long check label ran up to
+    // the card's edge); its text ends in "…" there.
+    const float formRight = b.right() - summaryWidth(b.width) - kFormGap;
     auto place = [&](ui::Widget* w, float width) {
         const ui::SizeF size = w->measure({});
-        w->setBounds({fieldX, y + (kRow - ui::tokens::size::control) / 2, width > 0 ? width : size.width,
-                      ui::tokens::size::control});
+        w->setBounds({fieldX, y + (kRow - ui::tokens::size::control) / 2,
+                      std::max(std::min(width > 0 ? width : size.width, formRight - fieldX), 0.0f), ui::tokens::size::control});
+    };
+    // A field with an icon button after it (browse, refresh): the two end where the form does.
+    auto placeWithButton = [&](ui::Widget* w, float width, ui::Widget* button) {
+        place(w, std::min(width, std::max(formRight - fieldX - kButtonGap - kIconButton, 0.0f)));
+        button->setBounds({w->bounds().right() + kButtonGap, y + (kRow - kIconButton) / 2, kIconButton, kIconButton});
     };
     if (usbTab()) {
         y += kSection; // USB BELLEK
-        place(m_disk, 360);
-        m_refresh->setBounds({fieldX + 364, y + (kRow - ui::tokens::size::control) / 2, 28, ui::tokens::size::control});
+        placeWithButton(m_disk, 360, m_refresh);
         y += kRow;
         place(m_usbLabel, 200);
         y += kRow + kSection; // ÖNYÜKLEME
         place(m_scheme, 0);
         y += kRow;
-        place(m_repack, 240);
+        place(m_options->repack, 240);
         y += kRow;
-        place(m_bootBypass, 0);
+        place(m_options->bootBypass, 0);
         y += kRow;
-        place(m_legacySetup, 0);
+        place(m_options->legacySetup, 0);
         y += kRow;
-        place(m_mediaUpdate, 0);
+        place(m_options->mediaUpdate, 0);
         y += kRow;
-        place(m_secureBoot, 0);
+        place(m_options->secureBoot, 0);
         y += kRow + kSection; // BİTİNCE
         place(m_open, 0);
         m_contentHeight = y + kRow + 12 - b.y;
@@ -569,26 +558,25 @@ void IsoPage::layout() {
     y += kSection; // ÇIKTI
     place(m_fileName, 360);
     y += kRow;
-    place(m_folder, 328);
-    m_browse->setBounds({fieldX + 332, y + (kRow - ui::tokens::size::control) / 2, 28, ui::tokens::size::control});
+    placeWithButton(m_folder, 328, m_browse);
     y += kRow;
-    place(m_label, 200);
+    place(m_options->label, 200);
     y += kRow + kSection; // ÖNYÜKLEME
-    place(m_boot, 0);
+    place(m_options->boot, 0);
     y += kRow;
-    place(m_repack, 240);
+    place(m_options->repack, 240);
     y += kRow;
-    place(m_noPrompt, 0);
+    place(m_options->noPrompt, 0);
     y += kRow;
-    place(m_bootBypass, 0);
+    place(m_options->bootBypass, 0);
     y += kRow;
-    place(m_legacySetup, 0);
+    place(m_options->legacySetup, 0);
     y += kRow;
-    place(m_mediaUpdate, 0);
+    place(m_options->mediaUpdate, 0);
     y += kRow;
-    place(m_secureBoot, 0);
+    place(m_options->secureBoot, 0);
     y += kRow + kSection; // DOĞRULAMA
-    place(m_sha, 0);
+    place(m_options->sha, 0);
     y += kRow;
     place(m_open, 0);
     m_contentHeight = y + kRow + 12 - b.y;
@@ -597,7 +585,7 @@ void IsoPage::layout() {
 
 void IsoPage::paint(ui::Canvas& canvas) {
     const RectF b = bounds();
-    const float formRight = b.right() - kSummaryWidth - 24;
+    const float formRight = b.right() - summaryWidth(b.width) - kFormGap;
     float y = b.y + kTop + ui::tokens::size::control + 2 + 12;
     const auto& run = m_state.isoRun();
     if (run && run->running) {
@@ -605,7 +593,6 @@ void IsoPage::paint(ui::Canvas& canvas) {
                                           Str::IsoStageBoot,    Str::IsoStageUsb};
         const std::wstring text = std::format(L"{} · {}%", m_strings.get(kStages[std::clamp(run->stage, 0, 5)]),
                                               static_cast<int>(run->fraction * 100));
-        canvas.drawIcon(ui::icons::Icon::Spinner, {b.x, y + 4}, Color::AccentBase);
         canvas.drawText(text, {b.x + 24, y, formRight - b.x - 24, 20}, TypeStyle::BodyStrong, Color::TextPrimary);
         canvas.progressBar({b.x, y + 24, formRight - b.x, 2}, static_cast<float>(run->fraction));
         y += kInfoBar + 12;
@@ -640,11 +627,11 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
     label(Str::IsoPrompt);
     label(Str::IsoSetupImage);
     label(Str::IsoSetupUi);
-    paintLegacyHint(canvas, formRight);
+    m_options->paintLegacyHint(canvas, formRight);
     label(Str::IsoMediaUpdate);
-    paintMediaHint(canvas, formRight);
+    m_options->paintMediaHint(canvas, formRight);
     label(Str::IsoSecureBoot);
-    paintSecureBootHint(canvas, formRight);
+    m_options->paintSecureBootHint(canvas, formRight);
     section(Str::IsoVerify);
     label(Str::IsoSha);
     label(Str::IsoOpenWhenDone);
@@ -653,9 +640,9 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
     // P13: the answer file always has its row — that it is NOT going into the ISO is worth seeing
     // before the build, not at Setup's first question.
     const auto& unattend = m_state.unattend();
-    const bool answersUnused = !unattend.includeInIso && !(unattend.options == core::UnattendOptions{});
-    const RectF box{b.right() - kSummaryWidth, b.y + kTop + ui::tokens::size::control + 2 + 12, kSummaryWidth,
-                    52 + 9 * kSummaryRow};
+    const bool answersUnused = !unattend.includeInIso && !noAnswers(unattend.options);
+    const RectF box{b.right() - summaryWidth(b.width), b.y + kTop + ui::tokens::size::control + 2 + 12, summaryWidth(b.width),
+                    52 + 10 * kSummaryRow};
     canvas.fillRoundRect(box, ui::tokens::radius::r3, Color::BgPanel);
     canvas.strokeRoundRect(box, ui::tokens::radius::r3, Color::LineSubtle);
     float sy = box.y + 12;
@@ -678,7 +665,7 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
     }
     row(Str::IsoSource, sourceLine, false);
     static constexpr Str kBootText[] = {Str::IsoBootSummaryBoth, Str::IsoBootSummaryUefi, Str::IsoBootSummaryBios};
-    row(Str::IsoBoot, m_strings.get(kBootText[std::clamp(m_boot->selected(), 0, 2)]), false);
+    row(Str::IsoBoot, m_strings.get(kBootText[std::clamp(m_options->boot->selected(), 0, 2)]), false);
     if (unattend.includeInIso) {
         row(Str::IsoUnattend, L"autounattend.xml", true);
     } else if (answersUnused) {
@@ -688,126 +675,35 @@ void IsoPage::paintIsoForm(ui::Canvas& canvas, float y, float formRight) {
     }
     // Setup's own image: what the build writes into boot.wim (D-038, D-074).
     {
-        const std::wstring text = setupImageText();
+        const std::wstring text = m_options->setupImageText();
         row(Str::IsoSetupImage, text.empty() ? m_strings.get(Str::IsoBootUntouched) : text, false,
             text.empty() ? Color::TextSecondary : Color::TextPrimary);
     }
+    // D-134: which drivers go into it (a storage one only there is the warning above).
+    row(Str::IsoBootDrivers, m_bootDriversText.empty() ? m_strings.get(Str::IsoBootDriversNone) : m_bootDriversText, false,
+        m_bootDriversText.empty() ? Color::TextSecondary : !m_storageOnlyInBoot.empty() ? Color::StatusWarning : Color::TextPrimary);
     {
-        const auto [text, ink] = setupUiSummary();
+        const auto [text, ink] = m_options->setupUiSummary(!mediaCannotInstall().empty());
         row(Str::IsoSetupUi, text, false, ink);
     }
     {
-        const auto [text, ink] = mediaUpdateSummary();
+        const auto [text, ink] = m_options->mediaUpdateSummary();
         row(Str::IsoMediaUpdateShort, text, false, ink);
     }
-    row(Str::IsoSecureBoot, m_strings.get(m_secureBoot->checked() ? Str::IsoSecureBoot2023 : Str::IsoSecureBoot2011), false,
-        m_secureBoot->checked() ? Color::TextPrimary : Color::TextSecondary);
+    row(Str::IsoSecureBoot, m_strings.get(m_options->secureBoot->checked() ? Str::IsoSecureBoot2023 : Str::IsoSecureBoot2011),
+        false, m_options->secureBoot->checked() ? Color::TextPrimary : Color::TextSecondary);
     row(Str::IsoEstIso, m_sourceBytes ? formatBytes(m_sourceBytes, m_language) : std::wstring(L"…"), true);
     row(Str::IsoDuration, m_sourceBytes ? formatDuration(estimateSeconds(), m_language, true) : std::wstring(L"…"),
         true);
 }
 
-// What the build writes into boot.wim; empty: nothing.
-std::wstring IsoPage::setupImageText() const {
-    const std::size_t checks = m_bootBypass->checked() ? IsoController::bootPatch(m_state).labConfigValues().size() : 0;
-    if (checks > 0) {
-        return m_strings.format(Str::IsoBootBypassN, {{L"n", std::to_wstring(checks)}});
+void IsoPage::syncBootDrivers() {
+    const auto& drivers = m_state.bootDrivers();
+    m_bootDriversText.clear();
+    for (const auto& p : drivers) {
+        m_bootDriversText += (m_bootDriversText.empty() ? L"" : L", ") + p.filename().wstring();
     }
-    // The previous Setup has a row of its own ("Kurulum ekranı").
-    return m_legacySetup->checked() ? m_strings.get(Str::IsoBootPatched) : std::wstring();
-}
-
-std::wstring IsoPage::mediaUpdateSource() const {
-    const auto& media = m_state.mediaUpdate();
-    std::wstring text;
-    if (!media.lcu.empty()) {
-        const auto kb = core::analyzeUpdate(media.lcu).kb;
-        text = kb.empty() ? media.lcu.filename().wstring() : kb;
-    }
-    if (!media.setupDu.empty()) {
-        const auto kb = core::analyzeUpdate(media.setupDu).kb;
-        text += (text.empty() ? L"" : L" \u00b7 ") + std::wstring(L"Setup ") + (kb.empty() ? media.setupDu.filename().wstring() : kb);
-    }
-    return text;
-}
-
-std::pair<std::wstring, Color> IsoPage::mediaUpdateSummary() const {
-    const auto& media = m_state.mediaUpdate();
-    if (!media.any() || !m_mediaUpdate->checked()) {
-        return {m_strings.get(Str::IsoBootUntouched), Color::TextSecondary};
-    }
-    const Str what = media.lcu.empty()       ? Str::IsoMediaUpdateFilesOnly
-                     : media.setupDu.empty() ? Str::IsoMediaUpdateBootOnly
-                                             : Str::IsoMediaUpdateSummary;
-    return {m_strings.get(what), Color::TextPrimary};
-}
-
-// Beside the box: which updates it takes, or where they come from.
-// Beside the box: whether media signed only by the 2023 CA starts on this PC (its UEFI db).
-void IsoPage::paintSecureBootHint(ui::Canvas& canvas, float formRight) {
-    const RectF box = m_secureBoot->bounds();
-    const float x = box.right() + 12;
-    if (x >= formRight) {
-        return;
-    }
-    Str text = Str::IsoSecureBootUnknown;
-    Color ink = Color::TextTertiary;
-    if (m_dbTrusts2023 && *m_dbTrusts2023) {
-        text = Str::IsoSecureBootTrusted;
-    } else if (m_dbTrusts2023) {
-        text = Str::IsoSecureBootUntrusted;
-        ink = m_secureBoot->checked() ? Color::StatusWarning : Color::TextTertiary;
-    }
-    canvas.drawText(m_strings.get(text), {x, box.y, formRight - x, box.height}, TypeStyle::Caption, ink);
-}
-
-void IsoPage::paintMediaHint(ui::Canvas& canvas, float formRight) {
-    const RectF box = m_mediaUpdate->bounds();
-    const float x = box.right() + 12;
-    if (x >= formRight) {
-        return;
-    }
-    const std::wstring source = mediaUpdateSource();
-    canvas.drawText(source.empty() ? m_strings.get(Str::IsoMediaUpdateNone) : source, {x, box.y, formRight - x, box.height},
-                    source.empty() ? TypeStyle::Caption : TypeStyle::Mono, Color::TextTertiary);
-}
-
-std::pair<std::wstring, Color> IsoPage::setupUiSummary() const {
-    const auto& source = m_state.source();
-    if (!mediaCannotInstall().empty()) {
-        // D-077: neither the new nor the previous Setup of 24H2+ media installs Windows 10.
-        return {m_strings.get(Str::IsoAioSummary), Color::StatusWarning};
-    }
-    if (source && core::mediaOpensPreviousSetup(*source)) {
-        return {m_strings.get(Str::IsoLegacySetupMedia), Color::TextSecondary};
-    }
-    if (m_legacySetup->checked()) {
-        return {m_strings.get(Str::IsoLegacySetupPrevious), Color::TextPrimary};
-    }
-    if (!m_noWinre.empty()) {
-        return {m_strings.get(Str::IsoLegacySetupNewFails), Color::StatusWarning};
-    }
-    return {m_strings.get(Str::IsoLegacySetupNew), Color::TextSecondary};
-}
-
-// Beside the box: what it does, or why it is on by itself.
-void IsoPage::paintLegacyHint(ui::Canvas& canvas, float formRight) {
-    const RectF box = m_legacySetup->bounds();
-    const float x = box.right() + 12;
-    if (x >= formRight) {
-        return;
-    }
-    const auto& source = m_state.source();
-    if (source && core::mediaOpensPreviousSetup(*source) && !m_cannotInstallDemo) {
-        canvas.drawText(m_strings.get(Str::IsoLegacySetupClassic), {x, box.y, formRight - x, box.height}, TypeStyle::Caption,
-                        Color::TextTertiary);
-        return;
-    }
-    const bool noWinre = !m_noWinre.empty();
-    canvas.drawText(m_strings.get(noWinre ? Str::IsoLegacySetupNoWinre : Str::IsoLegacySetupHint),
-                    {x, box.y, formRight - x, box.height}, TypeStyle::Caption,
-                    noWinre && !m_legacySetup->checked() ? Color::StatusWarning
-                                                         : (noWinre ? Color::TextSecondary : Color::TextTertiary));
+    m_storageOnlyInBoot = ImageDriverController::storageOnlyInBoot(m_state);
 }
 
 void IsoPage::paintUsbForm(ui::Canvas& canvas, float y, float formRight) {
@@ -823,7 +719,7 @@ void IsoPage::paintUsbForm(ui::Canvas& canvas, float y, float formRight) {
     section(Str::IsoUsbSection);
     label(Str::IsoUsbDisk);
     {
-        const float hx = b.x + kLabelWidth + 208;
+        const float hx = m_usbLabel->bounds().right() + 8; // after the label field, wherever it ends
         canvas.drawText(m_strings.get(Str::IsoUsbLabelHint), {hx, y, std::max(formRight - hx, 0.0f), kRow},
                         TypeStyle::Caption, Color::TextTertiary);
     }
@@ -833,19 +729,19 @@ void IsoPage::paintUsbForm(ui::Canvas& canvas, float y, float formRight) {
     label(Str::IsoCompression);
     label(Str::IsoSetupImage);
     label(Str::IsoSetupUi);
-    paintLegacyHint(canvas, formRight);
+    m_options->paintLegacyHint(canvas, formRight);
     label(Str::IsoMediaUpdate);
-    paintMediaHint(canvas, formRight);
+    m_options->paintMediaHint(canvas, formRight);
     label(Str::IsoSecureBoot);
-    paintSecureBootHint(canvas, formRight);
+    m_options->paintSecureBootHint(canvas, formRight);
     section(Str::IsoUsbWhenDone);
     label(Str::IsoUsbOpenWhenDone);
 
     // Summary box.
     const auto& unattend = m_state.unattend();
-    const bool answersUnused = !unattend.includeInIso && !(unattend.options == core::UnattendOptions{});
-    const RectF box{b.right() - kSummaryWidth, b.y + kTop + ui::tokens::size::control + 2 + 12, kSummaryWidth,
-                    52 + 9 * kSummaryRow};
+    const bool answersUnused = !unattend.includeInIso && !noAnswers(unattend.options);
+    const RectF box{b.right() - summaryWidth(b.width), b.y + kTop + ui::tokens::size::control + 2 + 12, summaryWidth(b.width),
+                    52 + 10 * kSummaryRow};
     canvas.fillRoundRect(box, ui::tokens::radius::r3, Color::BgPanel);
     canvas.strokeRoundRect(box, ui::tokens::radius::r3, Color::LineSubtle);
     float sy = box.y + 12;
@@ -871,7 +767,7 @@ void IsoPage::paintUsbForm(ui::Canvas& canvas, float y, float formRight) {
     row(Str::IsoUsbDisk, disk ? disk->name() + L" \u00b7 " + formatBytes(disk->size, m_language) : std::wstring(L"—"), false,
         disk ? Color::TextPrimary : Color::TextTertiary);
     row(Str::IsoUsbScheme, m_strings.get(m_scheme->selected() == 1 ? Str::IsoUsbGpt : Str::IsoUsbMbr), false);
-    const bool split = source && source->installImageSize > core::kFat32FileLimit && m_repack->selected() == 0;
+    const bool split = source && source->installImageSize > core::kFat32FileLimit && m_options->repack->selected() == 0;
     row(Str::IsoUsbInstall, m_strings.get(split ? Str::IsoUsbSplit : Str::IsoUsbAsIs), false);
     if (unattend.includeInIso) {
         row(Str::IsoUnattend, L"autounattend.xml", true);
@@ -881,16 +777,19 @@ void IsoPage::paintUsbForm(ui::Canvas& canvas, float y, float formRight) {
         row(Str::IsoUnattend, m_strings.get(Str::IsoUnattendNone), false, Color::TextSecondary);
     }
     {
-        const std::wstring text = setupImageText();
+        const std::wstring text = m_options->setupImageText();
         row(Str::IsoSetupImage, text.empty() ? m_strings.get(Str::IsoBootUntouched) : text, false,
             text.empty() ? Color::TextSecondary : Color::TextPrimary);
     }
+    // D-134: which drivers go into it (a storage one only there is the warning above).
+    row(Str::IsoBootDrivers, m_bootDriversText.empty() ? m_strings.get(Str::IsoBootDriversNone) : m_bootDriversText, false,
+        m_bootDriversText.empty() ? Color::TextSecondary : !m_storageOnlyInBoot.empty() ? Color::StatusWarning : Color::TextPrimary);
     {
-        const auto [text, ink] = setupUiSummary();
+        const auto [text, ink] = m_options->setupUiSummary(!mediaCannotInstall().empty());
         row(Str::IsoSetupUi, text, false, ink);
     }
     {
-        const auto [text, ink] = mediaUpdateSummary();
+        const auto [text, ink] = m_options->mediaUpdateSummary();
         row(Str::IsoMediaUpdateShort, text, false, ink);
     }
     row(Str::IsoDuration, m_sourceBytes ? formatDuration(estimateSeconds(), m_language, true) : std::wstring(L"…"),

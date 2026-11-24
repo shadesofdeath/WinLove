@@ -212,6 +212,9 @@ std::optional<WelcomePlan> welcomePlanFromOperations(const std::vector<ops::Oper
             continue;
         }
         const auto doc = nlohmann::json::parse(utf8::fromWide(op.value), nullptr, false);
+        // value() throws when a key is there with another type ("defaults": 5): a preset edited by
+        // hand must read as "no welcome", not end the process (this runs on the UI thread).
+        try {
         if (doc.is_discarded() || !doc.is_object() || doc.value("format", std::string{}) != "winlove.welcome") {
             return std::nullopt;
         }
@@ -238,6 +241,9 @@ std::optional<WelcomePlan> welcomePlanFromOperations(const std::vector<ops::Oper
             }
         }
         return plan;
+        } catch (const nlohmann::json::exception&) {
+            return std::nullopt;
+        }
     }
     return std::nullopt;
 }

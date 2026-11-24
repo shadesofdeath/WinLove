@@ -156,15 +156,20 @@ bool samePath(std::wstring_view a, std::wstring_view b) {
 }
 
 // Runs a tool; its output (OEM code page, localised) goes to the log line by line.
+// Only diskpart and bootsect come here, both writing the disk: if WinLove dies they finish on
+// their own (a format or a boot sector cut in the middle leaves the stick unusable).
 Result<std::uint32_t> runLogged(const std::wstring& commandLine, std::wstring& tail) {
     log::info("usb", L"run: " + commandLine);
     std::string output;
-    auto exit = runProcess(commandLine, [&](std::string_view chunk) {
-        output.append(chunk);
-        if (output.size() > 65536) {
-            output.erase(0, output.size() - 32768);
-        }
-    });
+    auto exit = runProcess(
+        commandLine,
+        [&](std::string_view chunk) {
+            output.append(chunk);
+            if (output.size() > 65536) {
+                output.erase(0, output.size() - 32768);
+            }
+        },
+        nullptr, ProcessLife::Outlives);
     const std::wstring text = utf8::fromCodePage(output, CP_OEMCP);
     std::size_t start = 0;
     tail.clear();

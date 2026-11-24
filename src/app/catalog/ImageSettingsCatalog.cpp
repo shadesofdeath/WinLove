@@ -60,7 +60,7 @@ bool readOperations(const Json& j, ImageSettingOption& option, std::wstring& why
     return true;
 }
 
-// Fills `setting.options`, defaultOption and recommended. False (with `why`) when malformed.
+// Fills `setting.options` and defaultOption. False (with `why`) when malformed.
 bool readOptions(const Json& j, ImageSetting& setting, std::wstring& why) {
     if (setting.control == ImageSetting::Control::Toggle) {
         const std::string natural = j.value("default", std::string{});
@@ -78,8 +78,6 @@ bool readOptions(const Json& j, ImageSetting& setting, std::wstring& why) {
             why = L"toggle without writes, services or files";
             return false;
         }
-        const auto recommended = j.find("recommended");
-        setting.recommended = recommended != j.end() && recommended->is_boolean() && recommended->get<bool>() ? other : -1;
         return true;
     }
     if (setting.control == ImageSetting::Control::Text || setting.control == ImageSetting::Control::File) {
@@ -134,15 +132,6 @@ bool readOptions(const Json& j, ImageSetting& setting, std::wstring& why) {
     }
     setting.defaultOption = static_cast<int>(std::ranges::find_if(setting.options, &ImageSettingOption::isDefault) -
                                              setting.options.begin());
-    const auto recommended = j.find("recommended");
-    if (recommended != j.end() && recommended->is_string()) {
-        const auto it = std::ranges::find(setting.options, recommended->get<std::string>(), &ImageSettingOption::id);
-        if (it == setting.options.end()) {
-            why = L"recommended option does not exist";
-            return false;
-        }
-        setting.recommended = static_cast<int>(it - setting.options.begin());
-    }
     return true;
 }
 
@@ -190,6 +179,11 @@ std::wstring pagefileTyped(std::wstring_view entry) {
     return sizes.empty() || sizes == L"0 0" ? drive : drive + L" " + sizes;
 }
 
+const ImageSettingTemplate* ImageSettingsCatalog::findTemplate(std::string_view id) const {
+    const auto it = std::ranges::find(m_templates, id, &ImageSettingTemplate::id);
+    return it == m_templates.end() ? nullptr : &*it;
+}
+
 Result<ImageSettingsCatalog> ImageSettingsCatalog::parse(std::string_view json) {
     const auto doc = Json::parse(json, nullptr, /*allow_exceptions=*/false);
     if (doc.is_discarded() || !doc.is_object() || doc.value("format", std::string{}) != "winlove.catalog.settings") {
@@ -229,6 +223,44 @@ Result<ImageSettingsCatalog> ImageSettingsCatalog::parse(std::string_view json) 
                 continue;
             }
             catalog.m_settings.push_back(std::move(setting));
+        }
+        for (const auto& t : doc.value("templates", Json::array())) {
+            ImageSettingTemplate preset;
+            preset.id = t.value("id", std::string{});
+            preset.title = text(t, "tr", "en");
+            preset.description = text(t, "desc_tr", "desc_en");
+            const std::wstring name = utf8::toWide(preset.id);
+            if (preset.id.empty() || catalog.findTemplate(preset.id)) {
+                log::warn("app", L"template " + name + L": no id or one seen before");
+                continue;
+            }
+            const Json picks = t.value("settings", Json::object()); // a local: items() refers to it
+            for (const auto& [settingId, optionValue] : picks.items()) {
+                const std::string optionId = optionValue.is_string() ? optionValue.get<std::string>() : std::string{};
+                const auto setting = std::ranges::find(catalog.m_settings, settingId, &ImageSetting::id);
+                const std::wstring where = L"template " + name + L", " + utf8::toWide(settingId) + L": ";
+                if (setting == catalog.m_settings.end()) {
+                    log::warn("app", where + L"unknown setting");
+                    continue;
+                }
+                if (setting->control == ImageSetting::Control::Text || setting->control == ImageSetting::Control::File) {
+                    log::warn("app", where + L"a text / file setting takes no template");
+                    continue;
+                }
+                const auto option = std::ranges::find(setting->options, optionId, &ImageSettingOption::id);
+                if (option == setting->options.end() || option->isDefault()) {
+                    log::warn("app", where + L"unknown option or the Windows default");
+                    continue;
+                }
+                preset.picks.push_back({static_cast<std::size_t>(setting - catalog.m_settings.begin()),
+                                        static_cast<int>(option - setting->options.begin())});
+            }
+            if (preset.picks.empty()) {
+                log::warn("app", L"template " + name + L": nothing in it");
+                continue;
+            }
+            std::ranges::sort(preset.picks, {}, &ImageSettingTemplate::Pick::setting);
+            catalog.m_templates.push_back(std::move(preset));
         }
     } catch (const Json::exception& e) {
         return fail(ErrorCode::ParseError, L"malformed settings catalog", utf8::toWide(e.what()));

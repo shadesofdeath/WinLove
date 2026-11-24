@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cwctype>
 #include <format>
+#include <optional>
 
 namespace wl::core {
 
@@ -285,8 +286,11 @@ Result<AppxInstall> planAppxInstall(const std::filesystem::path& package, std::w
     std::vector<std::filesystem::path> licenses;
     std::error_code ec;
     const auto folder = package.parent_path();
-    for (auto it = std::filesystem::recursive_directory_iterator(folder, ec); !ec && it != std::filesystem::end(it);
-         it.increment(ec)) {
+    // A subfolder that cannot be opened is passed over, not the end of the scan: what comes after
+    // it would otherwise read as a missing dependency (audit IMG-07).
+    for (auto it = std::filesystem::recursive_directory_iterator(
+             folder, std::filesystem::directory_options::skip_permission_denied, ec);
+         !ec && it != std::filesystem::end(it); it.increment(ec)) {
         if (it.depth() > 2) {
             it.disable_recursion_pending();
             continue;
@@ -301,10 +305,17 @@ Result<AppxInstall> planAppxInstall(const std::filesystem::path& package, std::w
             licenses.push_back(it->path());
         }
     }
+    // Each candidate is opened once, when the first dependency asks, not once per dependency
+    // (a Downloads folder: 6 dependencies × 30 packages; audit IMG-07).
+    std::vector<std::optional<Result<AppxPackageInfo>>> opened(candidates.size());
     for (const auto& dep : info->dependencies) {
         bool found = false;
-        for (const auto& candidate : candidates) {
-            auto other = readAppxPackage(candidate);
+        for (std::size_t i = 0; i < candidates.size(); ++i) {
+            const auto& candidate = candidates[i];
+            if (!opened[i]) {
+                opened[i].emplace(readAppxPackage(candidate));
+            }
+            const Result<AppxPackageInfo>& other = *opened[i];
             if (!other || _wcsicmp(other->name.c_str(), dep.name.c_str()) != 0) {
                 continue;
             }

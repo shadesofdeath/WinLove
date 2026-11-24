@@ -7,6 +7,7 @@
 #include "app/controllers/ComponentController.h"
 #include "app/controllers/PostSetupController.h"
 #include "app/controllers/ServiceController.h"
+#include "support/UiThread.h"
 
 #include <doctest.h>
 
@@ -195,7 +196,8 @@ TEST_CASE("compat controller: rows held by guards and kept apps; what leaves the
     AppState state{scratch(L"recent.json"), settingsFile};
     auto appxCatalog = AppxCatalog::parse(readFile(source(L"resources/catalog/appx.json")));
     REQUIRE(appxCatalog);
-    ComponentController components(state, *appxCatalog, Language::Turkish, [](std::function<void()> fn) { fn(); });
+    test::UiThread ui;
+    ComponentController components(state, *appxCatalog, Language::Turkish, ui.post());
     PostSetupController postSetup(state);
     CompatController compat(state, strings, Language::Turkish,
                             CompatCatalog::parse(readFile(source(L"resources/catalog/compat.json"))).value(), components.catalog(),
@@ -303,7 +305,7 @@ TEST_CASE("compat controller: rows held by guards and kept apps; what leaves the
     CHECK(compat.explain(components.block(*installer)) == L"Korunuyor: Programlar sayfası (winget)");
 
     // A service a guard keeps is not disabled; switching a guard on takes such a change back.
-    ServiceController services(state, R"({"format":"winlove.catalog.services","services":[]})", [](std::function<void()> fn) { fn(); });
+    ServiceController services(state, R"({"format":"winlove.catalog.services","services":[]})", ui.post());
     services.blockOf = [&](const core::ops::Operation& op) { return compat.block(op); };
     int servicesRefused = 0;
     services.onBlocked = [&](const core::ServiceEntry&, const core::ops::CompatBlock&) { ++servicesRefused; };

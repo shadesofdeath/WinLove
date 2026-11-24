@@ -1,5 +1,6 @@
 #include "app/pages/ProgramsPage.h"
 
+#include "app/pages/PageBits.h"
 #include "app/pages/programs/ProgramInspector.h"
 #include "base/Text.h"
 #include "ui/widget/Host.h"
@@ -17,8 +18,9 @@ namespace {
 constexpr float kToolbarTop = 0.0f;
 constexpr float kToolbar = ui::tokens::size::control;
 constexpr float kGap = 10.0f;
-constexpr float kInfoBar = 38.0f;
+constexpr float kInfoBar = ui::InfoBar::kHeight;
 constexpr float kIcon = 16.0f;
+constexpr float kProgramMin = 220.0f; // the name column's least at a narrow window (D-136)
 constexpr std::size_t kSearchLimit = 200;
 
 enum Column : int { kName, kId, kVersion };
@@ -53,6 +55,7 @@ ProgramsPage::ProgramsPage(AppState& state, ProgramsController& controller, cons
         m_onlyPicked = on;
         rebuildRows();
     };
+    m_summaryLine = &add<SummaryLine>();
     m_bundleStrip = &add<BundleStrip>();
     m_bundleStrip->onPick = [this](int card) {
         if (card >= 0 && card < static_cast<int>(m_bundles.size())) {
@@ -67,9 +70,10 @@ ProgramsPage::ProgramsPage(AppState& state, ProgramsController& controller, cons
     m_bar->setVisible(false);
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
         {strings.get(Str::ProgramsColProgram), 0},
-        {strings.get(Str::ProgramsColId), 276},
-        {strings.get(Str::ProgramsColVersion), 148, ui::TextAlign::Trailing},
+        {.title = strings.get(Str::ProgramsColId), .width = 276, .minWidth = 180},
+        {strings.get(Str::ProgramsColVersion), 148, ui::TextAlign::Trailing, false, 110},
     });
+    m_table->setFlexMin(kProgramMin); // D-136: the program's name keeps its room beside the side card
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
         paintCell(c, row, column, rect, cell);
     };
@@ -82,13 +86,11 @@ ProgramsPage::ProgramsPage(AppState& state, ProgramsController& controller, cons
         if (r.more >= 0) {
             openCategory(r.more);
         } else {
-            m_controller.toggle(r.package);
+            togglePick(row);
         }
     };
     m_table->onSelect = [this](int) {
-        if (onSelectionChanged) {
-            onSelectionChanged();
-        }
+        selectionChanged();
     };
     m_empty = &add<ui::EmptyState>(ui::icons::Icon::Download, L"", L"");
     setAccessible(ui::AccessRole::Group, strings.get(Str::ProgramsTitle));
@@ -105,20 +107,21 @@ ProgramsPage::ProgramsPage(AppState& state, ProgramsController& controller, cons
             } else {
                 m_table->refresh();
             }
-            if (onSelectionChanged) {
-                onSelectionChanged();
-            }
+            updateSummary();
+            selectionChanged();
         } else if (change == AppState::Change::Queue) {
-            if (m_onlyPicked || !searching()) {
-                rebuildRows(); // the picks group follows the queue
+            // The picks group follows the queue: "only selected", and the start view, which lists
+            // the picks the catalog lacks. A category or the whole repository does not change
+            // with a pick (audit PG-06: each click built the 15,000 rows of the repository again).
+            if (m_onlyPicked || (!searching() && m_categoryFilter == 0)) {
+                rebuildRows();
             }
             updateBar();
             updateBundles();
             m_table->refresh();
             invalidate();
-            if (onSelectionChanged) {
-                onSelectionChanged();
-            }
+            updateSummary();
+            selectionChanged();
         }
     });
     m_controller.load();
@@ -157,7 +160,8 @@ void ProgramsPage::refresh() {
     const Status status = m_controller.status();
     const bool ready = m_state.mounted() && status == Status::Ready;
     if (!m_state.mounted()) {
-        m_empty->setContent(ui::icons::Icon::Download, m_strings.get(Str::ProgramsNoMountTitle), m_strings.get(Str::ProgramsNoMountBody));
+        // The page's own icon, as every "Bağlı imaj yok" has (2026-11-10).
+        m_empty->setContent(ui::icons::Icon::Programs, m_strings.get(Str::ProgramsNoMountTitle), m_strings.get(Str::ProgramsNoMountBody));
         m_empty->setAction(m_strings.get(Str::CommonGoImages)).onInvoke = m_goToImages;
         m_empty->setVisible(true);
     } else if (status == Status::Failed) {
@@ -166,13 +170,14 @@ void ProgramsPage::refresh() {
         m_empty->setAction(m_strings.get(Str::CommonRetry)).onInvoke = [this] { m_controller.load(/*refresh=*/true); };
         m_empty->setVisible(true);
     } else if (status != Status::Ready) {
-        m_empty->setContent(ui::icons::Icon::Spinner, m_strings.get(Str::ProgramsLoadingTitle), m_strings.get(Str::ProgramsLoadingBody));
+        // D-139: a quiet line under the page's icon while the index is read (no spinner that never turns).
+        m_empty->setContent(ui::icons::Icon::Programs, m_strings.get(Str::ProgramsLoadingTitle), m_strings.get(Str::ProgramsLoadingBody));
         m_empty->hideAction();
         m_empty->setVisible(true);
     } else {
         m_empty->setVisible(false);
     }
-    for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_search, m_category, m_pickedOnly, m_bundleStrip, m_table}) {
+    for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_search, m_category, m_pickedOnly, m_summaryLine, m_bundleStrip, m_table}) {
         w->setVisible(ready);
     }
     if (ready) {
@@ -292,9 +297,30 @@ void ProgramsPage::rebuildRows() {
         m_table->clearSelection();
     }
     invalidate();
+    updateSummary();
+    selectionChanged();
+}
+
+void ProgramsPage::selectionChanged() {
     if (onSelectionChanged) {
         onSelectionChanged();
     }
+    detailChanged();
+}
+
+void ProgramsPage::updateSummary() {
+    // D-139: what a search found (quiet), what is picked (in the accent) — as every page's header row.
+    std::vector<SummaryPart> parts;
+    if (searching()) {
+        const auto n = static_cast<std::size_t>(std::ranges::count_if(m_rows, [](const Row& r) { return !r.group && r.more < 0; }));
+        parts.push_back({n == 0 ? m_strings.get(Str::ProgramsNoResults) : m_strings.format(Str::ProgramsResults, {{L"n", std::to_wstring(n)}})});
+    }
+    if (m_controller.pickCount() > 0) {
+        parts.push_back({m_strings.format(Str::ProgramsPickedN, {{L"n", std::to_wstring(m_controller.pickCount())}}), SummaryPart::Tone::Change});
+    } else if (!searching()) {
+        parts.push_back({m_strings.get(Str::ProgramsNoneQueued)});
+    }
+    m_summaryLine->set(std::move(parts));
 }
 
 void ProgramsPage::updateBar() {
@@ -362,7 +388,19 @@ void ProgramsPage::click(int row, int column, ui::PointF p) {
     const RectF cell = m_table->cellRect(row, column);
     const float boxX = cell.x + ui::TableView::kCellPad;
     if (p.x >= boxX - 4 && p.x < boxX + ui::Checkbox::kBox + 6) {
-        m_controller.toggle(m_rows[static_cast<std::size_t>(row)].package);
+        togglePick(row);
+    }
+}
+
+void ProgramsPage::togglePick(int row) {
+    const std::wstring id = m_rows[static_cast<std::size_t>(row)].package.id;
+    m_controller.toggle(m_rows[static_cast<std::size_t>(row)].package);
+    // The user's tick draws in - when the row is still that program (the picks group above the
+    // start view is rebuilt with the queue and may have moved it).
+    if (row < static_cast<int>(m_rows.size()) && m_rows[static_cast<std::size_t>(row)].more < 0 &&
+        !m_rows[static_cast<std::size_t>(row)].group && m_rows[static_cast<std::size_t>(row)].package.id == id &&
+        m_controller.picked(id)) {
+        m_table->revealCheck(row);
     }
 }
 
@@ -370,7 +408,7 @@ void ProgramsPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
     if (row < 0 || row >= static_cast<int>(m_rows.size())) {
         return;
     }
-    const Row& r = m_rows[static_cast<std::size_t>(row)];
+    Row& r = m_rows[static_cast<std::size_t>(row)];
     if (r.more >= 0) {
         if (column == kName) {
             const float x = rect.x + ui::Checkbox::kBox + 8;
@@ -378,13 +416,13 @@ void ProgramsPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
                             cell.hoveredCell ? Color::AccentHover : Color::AccentBase);
             canvas.drawText(m_strings.format(Str::ProgramsMoreRow, {{L"n", std::to_wstring(r.count)}}),
                             {x + kIcon + 8, rect.y, rect.right() - x - kIcon - 8, rect.height}, TypeStyle::Body,
-                            cell.hoveredCell ? Color::AccentHover : Color::AccentBase);
+                            cell.hoveredCell ? Color::TextPrimary : Color::AccentText);
         }
         return;
     }
     if (r.group) {
         if (column == kName) {
-            canvas.drawText(r.title, rect, TypeStyle::BodyStrong, Color::TextPrimary);
+            canvas.drawText(r.title, rect, kGroupStyle, Color::TextPrimary); // D-139: a group row is a head
         } else if (column == kId) {
             canvas.drawText(m_strings.format(Str::ComponentsItemsN, {{L"n", std::to_wstring(r.count)}}), rect, TypeStyle::Caption,
                             Color::TextTertiary);
@@ -395,8 +433,12 @@ void ProgramsPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
     switch (column) {
     case kName: {
         float x = rect.x;
+        if (const std::uint64_t revision = m_state.revision(); r.pickedAt != revision) {
+            r.pickedAt = revision;
+            r.picked = m_controller.picked(package.id);
+        }
         ui::Checkbox::paintBox(canvas, {x, rect.y + (rect.height - ui::Checkbox::kBox) / 2},
-                               m_controller.picked(package.id) ? ui::CheckState::On : ui::CheckState::Off, cell.hoveredCell);
+                               r.picked ? ui::CheckState::On : ui::CheckState::Off, cell.hoveredCell, cell.checkReveal);
         x += ui::Checkbox::kBox + 8;
         const RectF iconBox{x, rect.y + (rect.height - kIcon) / 2, kIcon, kIcon};
         // Rows on screen ask for their icon: fetched one at a time, newest first, cached on disk.
@@ -406,7 +448,11 @@ void ProgramsPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect
         }
         x += kIcon + 8;
         if (searching()) {
-            const auto at = wl::text::fold(package.name).find(wl::text::fold(m_needle));
+            if (!r.matchKnown) {
+                r.matchKnown = true;
+                r.matchAt = wl::text::fold(package.name).find(wl::text::fold(m_needle));
+            }
+            const auto at = r.matchAt;
             if (at != std::wstring::npos) {
                 const float x0 = x + canvas.text().measure(std::wstring_view(package.name).substr(0, at), TypeStyle::Body);
                 const float x1 = x + canvas.text().measure(std::wstring_view(package.name).substr(0, at + m_needle.size()), TypeStyle::Body);
@@ -431,13 +477,14 @@ void ProgramsPage::layout() {
     m_empty->setBounds(b);
     float y = b.y + kToolbarTop;
     float x = b.x;
-    m_search->setWidth(280);
+    m_search->setWidth(detailShown() ? 180.0f : 280.0f);
     for (ui::Widget* w : std::initializer_list<ui::Widget*>{m_search, m_category, m_pickedOnly}) {
         const ui::SizeF size = w->measure({});
-        const float width = w == m_category ? std::min(size.width, 200.0f) : size.width;
+        const float width = w == m_category ? std::min(size.width, detailShown() ? 160.0f : 200.0f) : size.width;
         w->setBounds({x, y, width, kToolbar});
         x += width + kGap;
     }
+    m_summaryLine->setBounds({x + kHeaderGap - kGap, y, std::max(b.right() - x - kHeaderGap + kGap, 0.0f), kToolbar});
     y += kToolbar + 12;
     if (m_bundleStrip->visible()) {
         const float height = m_bundleStrip->heightFor(b.width);
@@ -449,26 +496,85 @@ void ProgramsPage::layout() {
         y += kInfoBar + 8;
     }
     m_table->setBounds({b.x, y, b.width, std::max(b.bottom() - y, 0.0f)});
+    fitColumns(*m_table, b.width, detailShown(), {kId}, kProgramMin);
 }
 
-void ProgramsPage::paint(ui::Canvas& canvas) {
-    if (!m_table->visible()) {
+void ProgramsPage::paint(ui::Canvas&) {}
+
+DetailModel ProgramsPage::detail() const {
+    // D-139: what ProgramInspector showed, as the shared card: icon, name, publisher, id; what the
+    // manifest says about it; version, licence, installer, architectures; its tags; pick / homepage.
+    DetailModel model;
+    const auto program = m_table->visible() ? selectedProgram() : std::nullopt;
+    if (!program) {
+        return model;
+    }
+    const core::WingetDetails* d = m_controller.details(program->id); // asks for them once (Change::Programs when they come)
+    const bool picked = m_controller.picked(program->id);
+    model.iconFile = m_controller.icon(program->id).wstring();
+    model.letter = true;
+    model.title = d && !d->name.empty() ? d->name : program->name;
+    model.subtitle = d && !d->publisher.empty() ? d->publisher : program->id.substr(0, program->id.find(L'.'));
+    model.identity = program->id;
+    if (picked) {
+        model.state = {ui::icons::Icon::QueueClock, m_strings.get(Str::ProgramsWillInstall), DetailTone::Change};
+    }
+    if (!d) {
+        model.notes.push_back({m_controller.detailsFailed(program->id) ? ui::icons::Icon::ErrorOctagon : ui::icons::Icon::InfoCircle,
+                               m_strings.get(m_controller.detailsFailed(program->id) ? Str::ProgramsDetailsFailed : Str::ProgramsDetailsLoading),
+                               m_controller.detailsFailed(program->id) ? DetailTone::Error : DetailTone::Quiet});
+    } else {
+        model.about = !d->shortDescription.empty() ? d->shortDescription : d->description;
+    }
+    model.facts.push_back({m_strings.get(Str::ProgramsVersion), d && !d->version.empty() ? d->version : program->version, DetailTone::Normal, true});
+    if (d) {
+        auto joined = [](const std::vector<std::wstring>& parts, std::wstring_view separator) {
+            std::wstring out;
+            for (const auto& part : parts) {
+                out += (out.empty() ? L"" : std::wstring(separator)) + part;
+            }
+            return out;
+        };
+        if (!d->license.empty()) {
+            model.facts.push_back({m_strings.get(Str::ProgramsLicense), d->license});
+        }
+        std::vector<std::wstring> scopes;
+        for (const auto& scope : d->scopes) {
+            scopes.push_back(text::iequals(scope, L"user") ? m_strings.get(Str::ProgramsScopeUser) : m_strings.get(Str::ProgramsScopeMachine));
+        }
+        std::wstring installer = joined(d->installerTypes, L", ");
+        if (!scopes.empty()) {
+            installer += (installer.empty() ? L"" : L" · ") + joined(scopes, L", ");
+        }
+        if (!installer.empty()) {
+            model.facts.push_back({m_strings.get(Str::ProgramsInstaller), installer});
+        }
+        if (!d->architectures.empty()) {
+            model.facts.push_back({m_strings.get(Str::ProgramsArchitecture), joined(d->architectures, L", "), DetailTone::Normal, true});
+        }
+        if (!d->tags.empty()) {
+            model.lists.push_back({m_strings.get(Str::ProgramsTags), d->tags});
+        }
+    }
+    model.actions.push_back({kActionToggle, m_strings.get(picked ? Str::ProgramsRemove : Str::ProgramsAdd)});
+    if (d && text::istartsWith(d->homepage, L"https://")) {
+        model.actions.push_back({kActionHomepage, m_strings.get(Str::ProgramsHomepage)});
+    }
+    return model;
+}
+
+void ProgramsPage::detailAction(int id) {
+    const auto program = selectedProgram();
+    if (!program) {
         return;
     }
-    const RectF b = bounds();
-    const float left = m_pickedOnly->bounds().right() + kGap;
-    std::wstring text;
-    if (searching()) {
-        const auto n = std::ranges::count_if(m_rows, [](const Row& r) { return !r.group; });
-        text = n == 0 ? m_strings.get(Str::ProgramsNoResults)
-                      : m_strings.format(Str::ProgramsResults, {{L"n", std::to_wstring(n)}});
-    } else {
-        text = m_controller.pickCount() == 0
-                   ? m_strings.get(Str::ProgramsNoneQueued)
-                   : m_strings.format(Str::ProgramsPickedN, {{L"n", std::to_wstring(m_controller.pickCount())}});
+    if (id == kActionToggle) {
+        togglePick(m_table->selected()); // the row's own click / Enter
+    } else if (id == kActionHomepage && openUrl) {
+        if (const core::WingetDetails* d = m_controller.details(program->id); d && text::istartsWith(d->homepage, L"https://")) {
+            openUrl(d->homepage);
+        }
     }
-    canvas.drawText(text, {left, b.y + kToolbarTop, std::max(b.right() - left, 0.0f), kToolbar}, TypeStyle::Caption,
-                    Color::TextSecondary, ui::TextAlign::Trailing);
 }
 
 } // namespace wl::app

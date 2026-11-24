@@ -25,6 +25,10 @@ public:
     Toast();
     void show(InfoKind kind, std::wstring title, std::wstring message, std::wstring action = {},
               std::function<void()> onAction = {});
+    // D-145: two actions ("Yükle" · "Değişiklikleri gör"): a row of their own under the text, the
+    // first at the right and filled (the text keeps the toast's whole width).
+    void show(InfoKind kind, std::wstring title, std::wstring message, std::wstring action, std::function<void()> onAction,
+              std::wstring second, std::function<void()> onSecond);
     void hide();
 
     void paint(Canvas& canvas) override;
@@ -33,17 +37,22 @@ public:
     void onClick() override;
     bool tick(double now) override;
     [[nodiscard]] float paintOpacity() const override { return m_enter.value(); }
-    [[nodiscard]] Cursor cursor() const override { return m_overAction ? Cursor::Hand : Cursor::Arrow; }
+    [[nodiscard]] Cursor cursor() const override { return m_overAction || m_overSecond ? Cursor::Hand : Cursor::Arrow; }
     [[nodiscard]] bool hoveredNow() const noexcept { return hovered(); }
 
 private:
     [[nodiscard]] RectF actionRect() const;
+    [[nodiscard]] RectF secondRect() const; // D-145; empty without a second action
+    [[nodiscard]] bool stacked() const noexcept { return !m_second.empty(); }
     InfoKind m_kind = InfoKind::Info;
     std::wstring m_title;
     std::wstring m_message;
     std::wstring m_action;
     std::function<void()> m_onAction;
+    std::wstring m_second;
+    std::function<void()> m_onSecond;
     bool m_overAction = false;
+    bool m_overSecond = false;
     Tween m_enter{1.0f};
 };
 

@@ -4,14 +4,19 @@
 #include "base/Path.h"
 #include "base/Text.h"
 #include "core/image/Source.h"
+#include "core/image/VirtualDisk.h"
 #include "core/image/dism/DismErrors.h"
+#include "core/image/wim/WimGapi.h"
 #include "core/system/Privileges.h"
 
 #include <windows.h>
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <format>
+#include <string_view>
+#include <vector>
 
 namespace wl::core {
 
@@ -75,19 +80,38 @@ bool fileExists(const std::filesystem::path& file) {
 
 // C:\WinLove\mount → \Device\HarddiskVolume3\WinLove\mount (the form hivelist uses).
 std::wstring devicePath(const std::filesystem::path& folder) {
-    const std::wstring full = std::filesystem::absolute(folder).lexically_normal().wstring();
-    if (full.size() < 2 || full[1] != L':') {
-        return full;
+    std::wstring full = withoutLongPathPrefix(std::filesystem::absolute(folder).lexically_normal()).wstring();
+    // More than once only for a SUBST drive: it answers "\??\C:\real\folder", a DOS path again,
+    // while hivelist names the volume — the hives under such a mount folder were never found
+    // (audit ENG-17). Bounded: a SUBST of a SUBST is possible, a loop must not hang.
+    for (int depth = 0; depth < 4; ++depth) {
+        if (full.size() < 2 || full[1] != L':') {
+            return full;
+        }
+        wchar_t device[MAX_PATH]{};
+        const std::wstring drive = full.substr(0, 2);
+        if (QueryDosDeviceW(drive.c_str(), device, MAX_PATH) == 0) {
+            return full;
+        }
+        std::wstring target(device);
+        while (!target.empty() && target.back() == L'\\') {
+            target.pop_back(); // "\??\C:\" for a SUBST of a drive's root
+        }
+        target += full.substr(2);
+        constexpr std::wstring_view kDosPrefix = L"\\??\\";
+        if (!target.starts_with(kDosPrefix)) {
+            return target;
+        }
+        full = target.substr(kDosPrefix.size());
     }
-    wchar_t device[MAX_PATH]{};
-    const std::wstring drive = full.substr(0, 2);
-    if (QueryDosDeviceW(drive.c_str(), device, MAX_PATH) == 0) {
-        return full;
-    }
-    return std::wstring(device) + full.substr(2);
+    return full;
 }
 
-MountCheck check(const std::filesystem::path& folder, std::optional<MountInfo> record) {
+// `blockers`: who holds files in a folder that is not Ok (walks it and asks Restart Manager —
+// seconds on a mounted image). Only a single folder's inspection wants that; the lists of every
+// mount do not (2026-11-11: each Kaynak visit walked another tool's mount, the source opened behind
+// it waited 12 s).
+MountCheck check(const std::filesystem::path& folder, std::optional<MountInfo> record, bool blockers = true) {
     MountCheck c;
     c.folder = folder;
     const bool entries = hasEntries(folder);
@@ -97,10 +121,11 @@ MountCheck check(const std::filesystem::path& folder, std::optional<MountInfo> r
     c.windowsImage = fileExists(folder / L"Windows" / L"System32" / L"config" / L"SOFTWARE");
     c.loadedHives = hivesLoadedFrom(folder);
     // Only where it helps a decision: the scan walks the folder and asks Restart Manager.
-    if (c.state != MountState::Free && c.state != MountState::Ok) {
+    if (blockers && c.state != MountState::Free && c.state != MountState::Ok) {
         c.blockers = blockersOf(folder);
     }
-    if (record && fileExists(record->imagePath)) {
+    // A VHD another tool mounted through DISM is not opened here: reading one attaches it (D-141).
+    if (record && fileExists(record->imagePath) && !isVirtualDiskPath(record->imagePath)) {
         if (auto info = openSource(record->imagePath)) {
             for (const auto& image : info->install.images) {
                 if (image.index == record->index) {
@@ -219,6 +244,19 @@ Result<MountCheck> inspectMount(Dism& dism, const std::filesystem::path& folderI
     return check(folder, std::nullopt);
 }
 
+Result<std::vector<MountCheck>> inspectMountsFast() {
+    auto mounts = wimMountedImages();
+    if (!mounts) {
+        return std::unexpected(mounts.error());
+    }
+    std::vector<MountCheck> result;
+    for (auto& m : *mounts) {
+        const auto folder = m.mountPath;
+        result.push_back(check(folder, std::move(m), /*blockers=*/false));
+    }
+    return result;
+}
+
 Result<std::vector<MountCheck>> inspectMounts(Dism& dism) {
     auto mounts = dism.mounts();
     if (!mounts) {
@@ -227,31 +265,96 @@ Result<std::vector<MountCheck>> inspectMounts(Dism& dism) {
     std::vector<MountCheck> result;
     for (auto& m : *mounts) {
         const auto folder = m.mountPath;
-        result.push_back(check(folder, std::move(m)));
+        result.push_back(check(folder, std::move(m), /*blockers=*/false));
     }
     return result;
 }
 
+AdoptStep adoptionStep(MountState state) noexcept {
+    switch (state) {
+    case MountState::Ok: return AdoptStep::Use;
+    case MountState::NeedsRemount: return AdoptStep::Remount;
+    case MountState::Free:
+    case MountState::Invalid:
+    case MountState::ImageMissing:
+    case MountState::Orphaned:
+    case MountState::Foreign: return AdoptStep::Refuse;
+    }
+    return AdoptStep::Refuse;
+}
+
+Result<MountCheck> adoptMount(Dism& dism, const MountCheck& found, const TaskContext& task) {
+    switch (adoptionStep(found.state)) {
+    case AdoptStep::Use: break;
+    case AdoptStep::Remount: {
+        // What DISM asks for after a reboot (the WIM filter let go): the documented DismRemountImage
+        // on that folder only. No progress of its own: the caller says "yeniden bağlanıyor".
+        log::info("dism", L"taking over " + found.folder.wstring() + L": it needs a remount first");
+        task.report(0.0, L"remount");
+        if (auto r = dism.remount(found.folder); !r) {
+            return std::unexpected(r.error());
+        }
+        auto after = inspectMount(dism, found.folder);
+        if (!after) {
+            return std::unexpected(after.error());
+        }
+        if (after->state != MountState::Ok || !after->record) {
+            return fail(ErrorCode::DismFailure,
+                        std::format(L"the image was remounted but is not usable ({})", mountStateName(after->state)),
+                        found.folder.wstring());
+        }
+        return after;
+    }
+    case AdoptStep::Refuse:
+        // Nothing is changed: no discard, no cleanup — the folder is someone else's to fix.
+        return fail(ErrorCode::InvalidArgument,
+                    std::format(L"this mount cannot be worked on ({}); WinLove left it as it is", mountStateName(found.state)),
+                    found.folder.wstring());
+    }
+    if (!found.record) {
+        return fail(ErrorCode::InvalidArgument, L"no DISM record for this folder", found.folder.wstring());
+    }
+    return found;
+}
+
 std::vector<std::wstring> hivesLoadedFrom(const std::filesystem::path& folder) {
+    return hivesLoadedFromDevice(devicePath(folder) + L"\\");
+}
+
+std::vector<std::wstring> hivesLoadedFromDevice(const std::wstring& prefix) {
     std::vector<std::wstring> result;
+    if (prefix.size() < 2) {
+        return result;
+    }
     HKEY key = nullptr;
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Control\\hivelist", 0, KEY_READ, &key) !=
         ERROR_SUCCESS) {
         return result;
     }
-    const std::wstring prefix = devicePath(folder) + L"\\";
+    std::vector<wchar_t> data(1024);
     for (DWORD i = 0;; ++i) {
         wchar_t name[512]{};
-        wchar_t data[1024]{};
-        DWORD nameLength = 512;
-        DWORD dataBytes = sizeof(data) - sizeof(wchar_t);
         DWORD type = 0;
-        const LSTATUS status =
-            RegEnumValueW(key, i, name, &nameLength, nullptr, &type, reinterpret_cast<BYTE*>(data), &dataBytes);
+        // One character is kept back: the value need not end in a null.
+        auto read = [&]() -> LSTATUS {
+            std::fill(data.begin(), data.end(), L'\0');
+            DWORD nameLength = 512;
+            DWORD dataBytes = static_cast<DWORD>((data.size() - 1) * sizeof(wchar_t));
+            const LSTATUS status =
+                RegEnumValueW(key, i, name, &nameLength, nullptr, &type, reinterpret_cast<BYTE*>(data.data()), &dataBytes);
+            if (status == ERROR_MORE_DATA && dataBytes > (data.size() - 1) * sizeof(wchar_t) && dataBytes < (1u << 20)) {
+                data.assign(dataBytes / sizeof(wchar_t) + 2, L'\0'); // a hive path longer than the buffer
+            }
+            return status;
+        };
+        LSTATUS status = read();
+        if (status == ERROR_MORE_DATA) {
+            status = read(); // once more with the size it asked for (a long mount path was skipped before)
+        }
         if (status == ERROR_NO_MORE_ITEMS) {
             break;
         }
-        if (status == ERROR_SUCCESS && type == REG_SZ && text::istartsWith(data, prefix)) {
+        if (status == ERROR_SUCCESS && type == REG_SZ && text::istartsWith(data.data(), prefix)) {
             result.emplace_back(name);
         }
     }
@@ -260,7 +363,10 @@ std::vector<std::wstring> hivesLoadedFrom(const std::filesystem::path& folder) {
 }
 
 Result<void> unloadHivesUnder(const std::filesystem::path& folder) {
-    const auto hives = hivesLoadedFrom(folder);
+    return unloadHives(hivesLoadedFrom(folder));
+}
+
+Result<void> unloadHives(const std::vector<std::wstring>& hives) {
     if (hives.empty()) {
         return {};
     }
@@ -281,7 +387,14 @@ Result<void> unloadHivesUnder(const std::filesystem::path& folder) {
             continue;
         }
         log::info("dism", L"unloading hive " + hive);
-        if (const LSTATUS status = RegUnLoadKeyW(root, sub.c_str()); status != ERROR_SUCCESS) {
+        // Whoever had it open (a scanner, a closing regedit) is often done a moment later
+        // (docs/ENGINE.md, field notes: a short retry), and failing here fails the whole unmount.
+        LSTATUS status = RegUnLoadKeyW(root, sub.c_str());
+        for (int retry = 0; retry < 3 && status == ERROR_ACCESS_DENIED; ++retry) {
+            Sleep(200);
+            status = RegUnLoadKeyW(root, sub.c_str());
+        }
+        if (status != ERROR_SUCCESS) {
             return fail(ErrorCode::AccessDenied, L"could not unload registry hive (a handle is still open)", hive,
                         static_cast<std::int32_t>(HRESULT_FROM_WIN32(status)));
         }

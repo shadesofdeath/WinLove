@@ -1,5 +1,7 @@
 #include "ui/platform/FileDialog.h"
 
+#include "ui/platform/Window.h"
+
 #include <shobjidl.h>
 #include <wrl/client.h>
 
@@ -34,6 +36,13 @@ std::optional<std::filesystem::path> fileSystemPath(IShellItem* item) {
     return result;
 }
 
+// The dialog runs a message loop of its own: what the engine posts meanwhile waits (PostHold),
+// or a finished job could rebuild the page whose code is waiting for this dialog.
+HRESULT show(IFileDialog* dialog, HWND owner) {
+    const PostHold hold(owner);
+    return dialog->Show(owner);
+}
+
 std::optional<std::filesystem::path> showOpen(HWND owner, const std::wstring& title, const std::vector<FileFilter>& filters,
                                               bool folders) {
     ComPtr<IFileOpenDialog> dialog;
@@ -42,7 +51,7 @@ std::optional<std::filesystem::path> showOpen(HWND owner, const std::wstring& ti
     }
     prepare(dialog.Get(), title, FOS_PATHMUSTEXIST | (folders ? FOS_PICKFOLDERS : FOS_FILEMUSTEXIST), folders ? std::vector<FileFilter>{} : filters);
     ComPtr<IShellItem> item;
-    if (FAILED(dialog->Show(owner)) || FAILED(dialog->GetResult(&item))) {
+    if (FAILED(show(dialog.Get(), owner)) || FAILED(dialog->GetResult(&item))) {
         return std::nullopt; // cancelled
     }
     return fileSystemPath(item.Get());
@@ -62,7 +71,7 @@ std::vector<std::filesystem::path> pickFiles(HWND owner, const std::wstring& tit
     }
     prepare(dialog.Get(), title, FOS_ALLOWMULTISELECT | FOS_FILEMUSTEXIST, filters);
     ComPtr<IShellItemArray> items;
-    if (FAILED(dialog->Show(owner)) || FAILED(dialog->GetResults(&items))) {
+    if (FAILED(show(dialog.Get(), owner)) || FAILED(dialog->GetResults(&items))) {
         return result;
     }
     DWORD count = 0;
@@ -92,7 +101,7 @@ std::optional<std::filesystem::path> pickSaveFile(HWND owner, const std::wstring
     dialog->SetFileName(defaultName.c_str());
     dialog->SetDefaultExtension(extension.c_str());
     ComPtr<IShellItem> item;
-    if (FAILED(dialog->Show(owner)) || FAILED(dialog->GetResult(&item))) {
+    if (FAILED(show(dialog.Get(), owner)) || FAILED(dialog->GetResult(&item))) {
         return std::nullopt;
     }
     return fileSystemPath(item.Get());

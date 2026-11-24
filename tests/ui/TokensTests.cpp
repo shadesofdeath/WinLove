@@ -2,21 +2,27 @@
 
 #include <doctest.h>
 
+#include <string>
+
 using namespace wl::ui;
 
-TEST_CASE("token tables match the reference tool's look (D-109)") {
-    CHECK(tokens::kDark[static_cast<std::size_t>(tokens::Color::BgBase)] == 0xFF202020u);
-    CHECK(tokens::kDark[static_cast<std::size_t>(tokens::Color::BgPanel)] == 0xFF2B2B2Bu);
-    CHECK(tokens::kDark[static_cast<std::size_t>(tokens::Color::BgChrome)] == 0xFF262626u);
-    CHECK(tokens::kLight[static_cast<std::size_t>(tokens::Color::BgBase)] == 0xFFEEEEEEu);
-    CHECK(tokens::kLight[static_cast<std::size_t>(tokens::Color::BgPanel)] == 0xFFFBFBFBu);
-    CHECK(tokens::kLight[static_cast<std::size_t>(tokens::Color::BgChrome)] == 0xFFF5F5F5u);
-    CHECK(colorArgb(ThemeKind::Dark, tokens::Color::AccentBase) == 0xFF4CC2FFu); // Windows' accent on dark
-    CHECK(colorArgb(ThemeKind::Light, tokens::Color::AccentBase) == 0xFF0067C0u);
-    CHECK(colorArgb(ThemeKind::Light, tokens::Color::AccentText) == 0xFF0058CDu);
-    CHECK(colorArgb(ThemeKind::Dark, tokens::Color::TierNotRecommended) == 0xFFF54137u);
+TEST_CASE("token tables carry WinLove's own colours (D-137; were the reference tool's, D-109)") {
+    // Slate-biased neutrals: a deep page under the frame and the cards; the accent WinLove's own blue,
+    // one fill in both themes with white text (was the Windows accent, #4CC2FF / #0067C0).
+    CHECK(tokens::kDark[static_cast<std::size_t>(tokens::Color::BgBase)] == 0xFF17191Cu);
+    CHECK(tokens::kDark[static_cast<std::size_t>(tokens::Color::BgPanel)] == 0xFF25282Cu);
+    CHECK(tokens::kDark[static_cast<std::size_t>(tokens::Color::BgChrome)] == 0xFF1F2125u);
+    CHECK(tokens::kLight[static_cast<std::size_t>(tokens::Color::BgBase)] == 0xFFECEEF1u);
+    CHECK(tokens::kLight[static_cast<std::size_t>(tokens::Color::BgPanel)] == 0xFFFFFFFFu);
+    CHECK(tokens::kLight[static_cast<std::size_t>(tokens::Color::BgChrome)] == 0xFFF7F8FAu);
+    CHECK(colorArgb(ThemeKind::Dark, tokens::Color::AccentBase) == 0xFF3070D9u);
+    CHECK(colorArgb(ThemeKind::Light, tokens::Color::AccentBase) == 0xFF3070D9u);
+    CHECK(colorArgb(ThemeKind::Dark, tokens::Color::TextOnAccent) == 0xFFFFFFFFu);
+    CHECK(colorArgb(ThemeKind::Light, tokens::Color::AccentText) == 0xFF2462C7u);
+    CHECK(colorArgb(ThemeKind::Dark, tokens::Color::TierNotRecommended) == colorArgb(ThemeKind::Dark, tokens::Color::StatusError));
     CHECK(colorArgb(ThemeKind::HighContrast, tokens::Color::AccentBase) == 0xFF1AEBFFu);
     CHECK(colorArgb(ThemeKind::Dark, tokens::Color::Scrim) == 0x99000000u);
+    CHECK(std::string(tokens::kVersion) == "5.0.0");
 }
 
 TEST_CASE("toRgba unpacks ARGB") {
@@ -26,20 +32,21 @@ TEST_CASE("toRgba unpacks ARGB") {
     CHECK(c.a == doctest::Approx(128.0f / 255.0f));
 }
 
-TEST_CASE("The reference tool's density (D-109)") {
-    // One 12px Segoe UI, 23.5 rows, 24 controls - measured on the reference tool at 175 %.
-    CHECK(tokens::size::titleBar == 34.0f);
-    CHECK(tokens::size::statusBar == 22.0f);
+TEST_CASE("WinLove's density (D-136; was the reference tool's of D-109)") {
+    // 13px Segoe UI body text, 28 rows and controls, 32 navigation items, rounder corners - the look
+    // the owner approved on before/after renders (2026-11-10). The ribbon band stays as it was.
+    CHECK(tokens::size::titleBar == 36.0f);
+    CHECK(tokens::size::statusBar == 26.0f);
     CHECK(tokens::size::ribbon == 50.0f);
-    CHECK(tokens::size::control == 24.0f);
-    CHECK(tokens::size::tableRow == 23.5f);
-    CHECK(tokens::size::navItem == 28.0f);
-    CHECK(tokens::size::checkbox == 13.0f);
-    CHECK(tokens::radius::button == 4.0f);
-    CHECK(tokens::radius::r3 == 6.0f); // cards
-    CHECK(tokens::kTypeStyles[static_cast<std::size_t>(tokens::TypeStyle::Body)].size == 12.0f);
+    CHECK(tokens::size::control == 28.0f);
+    CHECK(tokens::size::tableRow == 28.0f);
+    CHECK(tokens::size::navItem == 32.0f);
+    CHECK(tokens::size::checkbox == 14.0f);
+    CHECK(tokens::radius::button == 6.0f);
+    CHECK(tokens::radius::r3 == 10.0f); // cards
+    CHECK(tokens::kTypeStyles[static_cast<std::size_t>(tokens::TypeStyle::Body)].size == 13.0f);
     for (const auto& style : tokens::kTypeStyles) {
-        CHECK(style.size <= 15.0f);            // nothing large
+        CHECK(style.size <= 17.0f);            // nothing large
         CHECK(style.lineHeight >= style.size); // no style clips its own glyphs
     }
 }
@@ -94,7 +101,7 @@ TEST_CASE("every accent color meets the contrast rules of the tokens, in dark an
     CHECK(colorArgb(ThemeKind::Dark, tokens::Color::AccentBase) == tokens::kDark[static_cast<std::size_t>(tokens::Color::AccentBase)]);
     CHECK(colorArgb(ThemeKind::Light, tokens::Color::AccentSubtle) == tokens::kLight[static_cast<std::size_t>(tokens::Color::AccentSubtle)]);
     setAccent(Accent::Sea);
-    CHECK(colorArgb(ThemeKind::Dark, tokens::Color::AccentBase) == 0xFF147971u);
+    CHECK(colorArgb(ThemeKind::Dark, tokens::Color::AccentBase) == 0xFF177F77u); // D-137: a shade lighter (a mark on the dark panel)
     CHECK(colorArgb(ThemeKind::Dark, tokens::Color::BgBase) == tokens::kDark[static_cast<std::size_t>(tokens::Color::BgBase)]); // surfaces stay
     setAccent(Accent::Blue);
 }

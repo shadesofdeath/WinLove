@@ -11,6 +11,7 @@ using tokens::Color;
 
 constexpr float kPaddingLeft = 14.0f;
 constexpr float kGap = 10.0f;
+constexpr float kButtonInset = tokens::spacing::s2; // the close button from the bar's right end, as from its top
 
 } // namespace
 
@@ -58,10 +59,11 @@ void InfoBar::setAction(std::wstring label, std::function<void()> onInvoke) {
 void InfoBar::layout() {
     const RectF b = bounds();
     const float size = tokens::size::control;
-    m_close->setBounds({b.right() - 4 - size, b.y + std::round((b.height - size) / 2), size, size});
+    m_close->setBounds({b.right() - kButtonInset - size, b.y + std::round((b.height - size) / 2), size, size});
     if (m_action && m_action->visible()) {
         const SizeF a = m_action->measure({});
-        m_action->setBounds({m_close->bounds().x - 4 - a.width, b.y + std::round((b.height - a.height) / 2), a.width, a.height});
+        m_action->setBounds({m_close->bounds().x - kButtonInset - a.width, b.y + std::round((b.height - a.height) / 2), a.width,
+                             a.height});
     }
 }
 

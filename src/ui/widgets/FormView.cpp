@@ -8,11 +8,22 @@ namespace wl::ui {
 namespace {
 using tokens::Color;
 using tokens::TypeStyle;
-constexpr float kHintGap = 8.0f;
+constexpr float kHintGap = tokens::spacing::s4;
 constexpr float kRowPad = (FormView::kRow - FormView::kControl) / 2;
-constexpr float kLabelInset = 16.0f; // D-114: inside the section card
-constexpr float kMark = 6.0f; // D-107: the changed-row dot after the label
+constexpr float kLabelInset = tokens::spacing::s6; // D-114: inside the section card
+constexpr float kTitleInset = tokens::spacing::s2; // the section title, a little in from the card's edge
+constexpr float kLabelGap = tokens::spacing::s5;   // a label ends this far before its control
+constexpr float kBottomRoom = tokens::spacing::s5; // D-114: room under the last card
+// The changed row's bar: on the card's left edge, a spacing step in from the row's top and bottom.
+constexpr float kMarkX = tokens::spacing::s2;
+constexpr float kMarkWidth = 3.0f;
+constexpr float kMarkInsetY = tokens::spacing::s4;
 } // namespace
+
+void FormView::paintSectionTitle(Canvas& canvas, RectF area, std::wstring_view title) {
+    canvas.drawText(title, {area.x, area.bottom() - kSectionBelow - kSectionLine, std::max(area.width, 0.0f), kSectionLine},
+                    TypeStyle::Section, Color::TextPrimary);
+}
 
 FormView::FormView(float labelWidth) : m_labelWidth(labelWidth) {
     clear();
@@ -23,6 +34,7 @@ void FormView::clear() {
     m_rows.clear();
     m_offset = 0;
     m_pinned = -1;
+    m_tipRow = -1;
     m_scroll = &add<ScrollBar>();
     m_scroll->onScroll = [this](float offset) { setOffset(offset, /*pinned=*/false); };
     layout();
@@ -95,7 +107,7 @@ float heightOf(bool control, bool hidden) {
 } // namespace
 
 float FormView::contentHeight() const {
-    float height = sectionCount() > 0 ? 12.0f : 0.0f; // D-114: room under the last card
+    float height = sectionCount() > 0 ? kBottomRoom : 0.0f; // D-114: room under the last card
     for (const auto& row : m_rows) {
         height += heightOf(row.control != nullptr, row.hidden);
     }
@@ -144,7 +156,12 @@ void FormView::setOffset(float offset, bool pinned) {
     if (!pinned) {
         m_pinned = -1;
     }
+    // Scrolling moves the rows, nothing else: each control keeps the width it was last measured
+    // to. Measuring every row again (a dropdown measures all its items) for each wheel step or
+    // dragged pixel was most of the cost of scrolling a long form (audit UI-02).
+    m_scrolling = true;
     layout();
+    m_scrolling = false;
     invalidate();
     if (onScroll) {
         onScroll();
@@ -160,6 +177,14 @@ void FormView::layout() {
     for (const auto& row : m_rows) {
         if (!row.control) {
             y += heightOf(false, row.hidden);
+            continue;
+        }
+        if (m_scrolling) {
+            if (!row.hidden) {
+                const RectF placed = row.control->bounds(); // laid out when the row was added / shown
+                row.control->setBounds({x, y + kRowPad, placed.width, kControl});
+                y += kRow;
+            }
             continue;
         }
         row.control->setVisible(!row.hidden);
@@ -186,13 +211,18 @@ void FormView::paint(Canvas& canvas) {
         if (row.hidden) {
             continue;
         }
+        if (y >= b.bottom()) {
+            break; // everything from here on is below the view (audit UI-02)
+        }
         if (!row.control) {
-            canvas.drawText(row.label, {b.x + 4, y + kSection - 26, b.width, 20}, TypeStyle::BodySemi, Color::TextPrimary);
+            if (y + kSection > b.y) {
+                paintSectionTitle(canvas, {b.x + kTitleInset, y, b.width - kTitleInset, kSection}, row.label);
+            }
             y += kSection;
             continue;
         }
         // D-114: the card of this run of rows (drawn at its first row) and a hairline above every other.
-        const float cardWidth = b.width - (m_scroll && m_scroll->needed() ? ScrollBar::kWidth + 4 : 0.0f);
+        const float card = cardWidth();
         const std::size_t at = static_cast<std::size_t>(&row - m_rows.data());
         std::size_t previous = at;
         while (previous > 0 && m_rows[previous - 1].hidden) {
@@ -204,33 +234,95 @@ void FormView::paint(Canvas& canvas) {
             for (std::size_t i = at; i < m_rows.size() && m_rows[i].control; ++i) {
                 height += m_rows[i].hidden ? 0.0f : kRow;
             }
-            canvas.fillRoundRect({b.x, y, cardWidth, height}, tokens::radius::r3, Color::BgRaised);
-        } else {
-            canvas.hairlineH(b.x + kLabelInset, y, cardWidth - 2 * kLabelInset, Color::LineSubtle);
+            canvas.fillRoundRect({b.x, y, card, height}, tokens::radius::r3, Color::BgRaised);
         }
-        const float labelRoom = m_labelWidth - 12 - kLabelInset - (row.marked ? kMark + 8 : 0.0f);
-        const float labelWidth = std::min(std::ceil(canvas.text().measure(row.label, TypeStyle::Body)) + 1, labelRoom);
+        if (y + kRow <= b.y) {
+            y += kRow; // scrolled above the view: its card (drawn above, it may reach in) is all that shows
+            continue;
+        }
+        if (!first) {
+            canvas.hairlineH(b.x + kLabelInset, y, card - 2 * kLabelInset, Color::LineSubtle);
+        }
+        const float labelWidth = std::min(std::ceil(canvas.text().measure(row.label, TypeStyle::Body)) + 1, labelRoom());
         canvas.drawText(row.label, {b.x + kLabelInset, y, labelWidth, kRow}, TypeStyle::Body, Color::TextPrimary);
         if (row.marked) {
-            // The reference tool's "Değiştirilen satırlar: Kenar çubuğu" — on the card's left edge.
-            canvas.fillRoundRect({b.x + 4, y + 7, 3.0f, kRow - 14}, 1.5f, Color::AccentBase);
-            canvas.fillEllipse({b.x + kLabelInset + labelWidth + 8 + kMark / 2, y + kRow / 2}, kMark / 2, Color::AccentBase);
+            // The reference tool's "Değiştirilen satırlar: Kenar çubuğu" — on the card's left edge. With the
+            // row's hint ("değiştirilecek") that is the whole signal: the dot after the label is gone
+            // (2026-11-10 polish: three marks for one change were two too many).
+            canvas.fillRoundRect({b.x + kMarkX, y + kMarkInsetY, kMarkWidth, kRow - 2 * kMarkInsetY}, kMarkWidth / 2,
+                                 Color::AccentBase);
         }
         if (!row.hint.empty()) {
-            const float hx = row.control->bounds().right() + kHintGap;
-            canvas.drawText(row.hint, {hx, y, std::max(b.right() - hx, 0.0f), kRow}, TypeStyle::Caption, row.hintColor);
+            // One line, ending in "…" (the text styles trim) where the card's inner padding starts:
+            // a long hint used to run on to the card's edge, or under the scroll bar.
+            if (const RectF hint = hintBox(*row.control, y); hint.width > 0) {
+                canvas.drawText(row.hint, hint, TypeStyle::Caption, row.hintColor);
+            }
         }
         y += kRow;
     }
     canvas.popClip();
 }
 
-bool FormView::onWheel(PointF /*p*/, float lines) {
+float FormView::cardWidth() const {
+    return bounds().width - (m_scroll && m_scroll->needed() ? ScrollBar::kWidth + 4 : 0.0f);
+}
+
+RectF FormView::hintBox(const Widget& control, float rowY) const {
+    const float x = control.bounds().right() + kHintGap;
+    const float right = bounds().x + cardWidth() - kLabelInset; // the label's inset, mirrored
+    return {x, rowY, std::max(right - x, 0.0f), kRow};
+}
+
+RectF FormView::hintRect(const Widget& control) const {
+    return hintBox(control, control.bounds().y - kRowPad);
+}
+
+bool FormView::onWheel(PointF p, float lines) {
     if (!m_scroll || !m_scroll->needed()) {
         return false;
     }
     setOffset(m_offset - lines * kRow, /*pinned=*/false);
+    onPointerMove(p); // the label under the pointer changed
     return true;
+}
+
+float FormView::labelRoom() const noexcept {
+    return m_labelWidth - kLabelGap - kLabelInset;
+}
+
+void FormView::onPointerMove(PointF p) {
+    const RectF b = bounds();
+    int found = -1;
+    RectF label{};
+    float y = b.y - m_offset;
+    for (std::size_t i = 0; i < m_rows.size() && found < 0; ++i) {
+        const Row& row = m_rows[i];
+        const float h = heightOf(row.control != nullptr, row.hidden);
+        if (row.control && h > 0 && p.y >= y && p.y < y + h && p.x >= b.x + kLabelInset && p.x < b.x + kLabelInset + labelRoom() &&
+            textWidth(row.label, TypeStyle::Body) + 1 > labelRoom()) { // measured on a move, not while painting
+            found = static_cast<int>(i);
+            label = {b.x + kLabelInset, y, labelRoom(), h};
+        }
+        y += h;
+    }
+    if (found != m_tipRow) {
+        m_tipRow = found;
+        m_tipRect = label;
+        setTooltip(found >= 0 ? m_rows[static_cast<std::size_t>(found)].label : std::wstring{});
+    }
+}
+
+void FormView::onHoverChanged(bool hovered) {
+    if (!hovered && m_tipRow >= 0) {
+        m_tipRow = -1;
+        setTooltip({});
+    }
+    invalidate();
+}
+
+RectF FormView::tooltipAnchor() const {
+    return m_tipRow >= 0 ? m_tipRect : bounds();
 }
 
 void FormView::reveal(const Widget& control) {

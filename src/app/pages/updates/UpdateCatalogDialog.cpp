@@ -70,6 +70,9 @@ UpdateCatalogDialog makeUpdateCatalogDialog(const Localization& strings, Languag
             return;
         }
         (*checked)[static_cast<std::size_t>(row)] = !(*checked)[static_cast<std::size_t>(row)];
+        if ((*checked)[static_cast<std::size_t>(row)]) {
+            table->revealCheck(row); // the user's tick draws in
+        }
         update();
         table->refresh();
     };
@@ -94,10 +97,12 @@ UpdateCatalogDialog makeUpdateCatalogDialog(const Localization& strings, Languag
         switch (column) {
         case kName: {
             if (blocked) {
-                canvas.pushOpacity(ui::tokens::opacity::disabled);
+                // Bounded by the cell, which holds the check: an unbounded layer is window-sized (audit UI-04).
+                canvas.pushOpacity(ui::tokens::opacity::disabled, rect);
             }
             ui::Checkbox::paintBox(canvas, {rect.x, rect.y + (rect.height - ui::Checkbox::kBox) / 2},
-                                   (*checked)[index] ? ui::CheckState::On : ui::CheckState::Off, cell.hovered && !blocked);
+                                   (*checked)[index] ? ui::CheckState::On : ui::CheckState::Off, cell.hovered && !blocked,
+                                   cell.checkReveal);
             if (blocked) {
                 canvas.popOpacity();
             }

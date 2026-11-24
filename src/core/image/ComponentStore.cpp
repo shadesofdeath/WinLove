@@ -301,26 +301,70 @@ void ComponentStoreIndex::addStoreComponent(std::string_view identity, std::uint
 std::vector<StoreShare> ComponentStoreIndex::shareStore(const std::vector<std::vector<std::wstring>>& patterns) const {
     struct Rule {
         int specificity = 0;
-        std::wstring pattern;
+        std::wstring pattern;   // lower case
         std::size_t owner = 0;
+        std::size_t fields = 0; // its '|' count: how many fields of a match it is compared with
     };
     std::vector<Rule> rules;
     for (std::size_t i = 0; i < patterns.size(); ++i) {
         for (const auto& pattern : patterns[i]) {
             if (!pattern.empty()) {
-                rules.push_back({storePatternSpecificity(pattern), lower(pattern), i});
+                rules.push_back({storePatternSpecificity(pattern), lower(pattern), i,
+                                 static_cast<std::size_t>(std::ranges::count(pattern, L'|'))});
             }
         }
     }
     std::ranges::stable_sort(rules, [](const Rule& a, const Rule& b) { return a.specificity > b.specificity; });
+    // The first rule (in this order) that storePatternMatches wins. Asked rule by rule that is
+    // 36 000 components × ~600 patterns, each with a copy of the pattern (audit IMG-06); the same
+    // answer comes from one look-up for the patterns without '*' (they match by equality) and a
+    // walk over the starred ones that come before it.
+    std::unordered_map<std::wstring_view, std::size_t> exact; // pattern → the first rule with it
+    std::vector<std::size_t> exactFields;                     // the field counts those patterns have
+    std::vector<std::size_t> starred;                         // the other rules, in order
+    for (std::size_t i = 0; i < rules.size(); ++i) {
+        if (rules[i].pattern.find(L'*') != std::wstring::npos) {
+            starred.push_back(i);
+            continue;
+        }
+        exact.try_emplace(std::wstring_view(rules[i].pattern), i);
+        if (std::ranges::find(exactFields, rules[i].fields) == exactFields.end()) {
+            exactFields.push_back(rules[i].fields);
+        }
+    }
     std::vector<StoreShare> shares(patterns.size());
     std::vector<std::set<std::wstring>> names64(patterns.size());
     std::vector<std::set<std::wstring>> names32(patterns.size());
+    std::vector<std::size_t> bars;
     for (const auto& component : m_store) {
-        const auto rule = std::ranges::find_if(rules, [&](const Rule& r) { return storePatternMatches(r.pattern, component.identity.match); });
-        if (rule == rules.end()) {
+        const std::wstring_view match = component.identity.match;
+        bars.clear();
+        for (std::size_t at = 0; at < match.size(); ++at) {
+            if (match[at] == L'|') {
+                bars.push_back(at);
+            }
+        }
+        // What a pattern of `fields` '|' is compared with (storePatternMatches' cut).
+        const auto upTo = [&](std::size_t fields) { return match.substr(0, fields < bars.size() ? bars[fields] : match.size()); };
+        std::size_t found = rules.size();
+        for (const std::size_t fields : exactFields) {
+            if (const auto hit = exact.find(upTo(fields)); hit != exact.end()) {
+                found = std::min(found, hit->second);
+            }
+        }
+        for (const std::size_t i : starred) {
+            if (i >= found) {
+                break;
+            }
+            if (glob(rules[i].pattern, upTo(rules[i].fields))) {
+                found = i;
+                break;
+            }
+        }
+        if (found == rules.size()) {
             continue;
         }
+        const Rule* const rule = &rules[found];
         StoreShare& share = shares[rule->owner];
         if (component.identity.bits32) {
             share.bytes32 += component.bytes;

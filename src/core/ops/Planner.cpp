@@ -54,7 +54,10 @@ Phase phaseOf(const Operation& op) {
         if (doc.is_object() && doc.contains("driverClasses") && doc["driverClasses"].is_array() && !doc["driverClasses"].empty()) {
             return Phase::DeepRemove;
         }
-        if (doc.is_object() && doc.value("afterUpdates", false)) {
+        // Read by type: value() throws on "afterUpdates": 1, and this runs on the UI thread with a
+        // preset's own text.
+        if (const auto after = doc.is_object() ? doc.find("afterUpdates") : doc.end();
+            after != doc.end() && after->is_boolean() && after->get<bool>()) {
             return Phase::DeepRemove; // D-063: deletes what a later cumulative update needs
         }
     }

@@ -255,8 +255,19 @@ std::string updateGuardToJson(const UpdateGuardPlan& plan) {
     return doc.dump(1);
 }
 
+static Result<UpdateGuardPlan> updateGuardFromDocument(const Json& doc);
+
 Result<UpdateGuardPlan> updateGuardFromJson(std::string_view json) {
     const Json doc = Json::parse(json, nullptr, /*allow_exceptions=*/false);
+    // value() throws on a key of another type ("start": "4"): that is a file this is not.
+    try {
+        return updateGuardFromDocument(doc);
+    } catch (const Json::exception&) {
+        return fail(ErrorCode::InvalidArgument, L"not an update guard file");
+    }
+}
+
+static Result<UpdateGuardPlan> updateGuardFromDocument(const Json& doc) {
     if (!doc.is_object() || doc.value("format", std::string()) != "winlove.updateguard") {
         return fail(ErrorCode::InvalidArgument, L"not an update guard file");
     }

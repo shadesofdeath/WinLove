@@ -2,6 +2,7 @@
 
 #include "base/Log.h"
 #include "base/Text.h"
+#include "base/Utf8.h"
 #include "core/net/Http.h"
 #include "core/system/Hash.h"
 #include "core/updates/UupLanguages.h" // trustedUupUrl
@@ -9,6 +10,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <exception>
 #include <format>
 #include <mutex>
 #include <optional>
@@ -126,7 +128,7 @@ Result<void> downloadFiles(std::vector<File> files, const std::filesystem::path&
         stopAll.cancel();
     };
 
-    auto work = [&](std::size_t slot) {
+    auto downloadSome = [&](std::size_t slot) {
         const CancelToken cancel = stopAll;
         for (std::size_t i = next++; i < files.size() && !stopped(); i = next++) {
             const File& file = files[i];
@@ -135,10 +137,30 @@ Result<void> downloadFiles(std::vector<File> files, const std::filesystem::path&
             std::filesystem::create_directories(target.parent_path(), dirEc);
             if (std::filesystem::exists(target, dirEc)) {
                 auto ok = matches(target, file, cancel);
+                if (!ok && ok.error().code != ErrorCode::Cancelled && !stopped()) {
+                    // Unreadable for a moment (an antivirus scan, the indexer): once more, a second later.
+                    log::warn("uup", std::format(L"{}: not verified ({}); once more", file.name, describe(ok.error())));
+                    for (int waited = 0; waited < 10 && !stopped(); ++waited) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    }
+                    if (!stopped()) {
+                        ok = matches(target, file, cancel);
+                    }
+                }
                 if (ok && *ok) {
                     finished += file.size;
                     report(L"verify");
                     continue;
+                }
+                if (!ok && (ok.error().code == ErrorCode::Cancelled || stopped())) {
+                    // Stopped while hashing: a whole file must never be deleted for that (audit
+                    // OPS-02) — only one whose hash is known to differ, or that cannot be read.
+                    return;
+                }
+                if (!ok) {
+                    // Still unreadable: downloaded again, as it always was, not the whole set ended.
+                    log::warn("uup", std::format(L"{}: still not readable ({}); downloading it again", file.name,
+                                                 describe(ok.error())));
                 }
                 std::filesystem::remove(target, dirEc);
             }
@@ -234,7 +256,33 @@ Result<void> downloadFiles(std::vector<File> files, const std::filesystem::path&
             }
         }
     };
+    // An exception that leaves a thread's function ends the process: it becomes the download's
+    // error instead (audit OPS-14).
+    auto work = [&](std::size_t slot) {
+        try {
+            downloadSome(slot);
+        } catch (const std::exception& e) {
+            setError(Error{ErrorCode::Unknown, L"the download failed", utf8::toWide(e.what())});
+        } catch (...) {
+            setError(Error{ErrorCode::Unknown, L"the download failed", folder.wstring()});
+        }
+    };
     {
+        // The caller's cancel reaches every connection at once: a connection sees it only when it
+        // gets bytes, and one waiting on a dead network gets none (audit OPS-07; stopAll wakes it).
+        std::jthread relay([&] {
+            const HANDLE events[] = {task.cancel.event(), stopAll.event()};
+            if (WaitForMultipleObjects(2, events, FALSE, INFINITE) == WAIT_OBJECT_0) {
+                stopAll.cancel();
+            }
+        });
+        // Destroyed after the workers have joined and before the relay: lets the relay go.
+        // (stopAll has no reader after this scope.)
+        struct Release {
+            CancelToken token; // a copy shares the state
+            ~Release() { token.cancel(); }
+        };
+        const Release release{stopAll};
         std::vector<std::jthread> threads;
         for (int w = 0; w < workers; ++w) {
             threads.emplace_back(work, static_cast<std::size_t>(w));

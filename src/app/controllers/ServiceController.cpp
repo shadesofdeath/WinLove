@@ -72,6 +72,12 @@ void ServiceController::load(bool force) {
                 if (!mounted || mounted->mountDir != mountDir) {
                     return;
                 }
+                // Only the read the state still waits for (as LanguageController::load): a list given
+                // meanwhile is not overwritten by an older answer.
+                if (const auto& now = m_state.serviceList();
+                    !now || now->status != AppState::ServiceList::Status::Loading || now->mountDir != mountDir) {
+                    return;
+                }
                 if (!result) {
                     log::error("app", describe(result.error()));
                     m_state.setServiceList(

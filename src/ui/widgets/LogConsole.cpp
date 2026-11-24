@@ -5,7 +5,9 @@
 #include "ui/widget/Host.h"
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
+#include <cstddef>
 #include <cwctype>
 
 namespace wl::ui {
@@ -89,8 +91,46 @@ void LogConsole::append(std::span<const LogLine> lines) {
     if (!m_autoScroll) {
         m_unseen += lines.size();
     }
+    if (m_lineLimit > 0 && m_lines.size() > m_lineLimit) {
+        dropFront(m_lines.size() - m_lineLimit); // lays out and invalidates
+        return;
+    }
     layout();
     invalidate();
+}
+
+void LogConsole::dropFront(std::size_t count) {
+    count = std::min(count, m_lines.size());
+    if (count == 0) {
+        return;
+    }
+    m_lines.erase(m_lines.begin(), m_lines.begin() + static_cast<std::ptrdiff_t>(count));
+    // Everything that counts rows moves up with them: the same lines stay selected and, while not
+    // following, in view.
+    const int shift = static_cast<int>(std::min<std::size_t>(count, static_cast<std::size_t>(INT_MAX)));
+    if (m_selFrom >= 0) {
+        if (m_selTo < shift) {
+            m_anchor = m_selFrom = m_selTo = -1; // the whole selection was dropped
+            m_dragging = false;
+        } else {
+            m_selFrom = std::max(m_selFrom - shift, 0);
+            m_selTo -= shift;
+            m_anchor = m_anchor < 0 ? -1 : std::max(m_anchor - shift, 0);
+        }
+    } else {
+        m_anchor = -1;
+    }
+    m_offset = std::max(m_offset - static_cast<float>(count) * kRow, 0.0f);
+    m_unseen = std::min(m_unseen, m_lines.size());
+    layout();
+    invalidate();
+}
+
+void LogConsole::setLineLimit(std::size_t limit) {
+    m_lineLimit = limit;
+    if (m_lineLimit > 0 && m_lines.size() > m_lineLimit) {
+        dropFront(m_lines.size() - m_lineLimit);
+    }
 }
 
 void LogConsole::setHighlight(std::wstring needle) {
@@ -306,14 +346,33 @@ void LogConsole::paint(Canvas& canvas) {
         canvas.drawText(line.source, {sourceX, y, messageX - sourceX - 4, kRow}, TypeStyle::Mono, Color::TextSecondary);
         if (!m_needle.empty()) {
             const std::wstring hay = lowered(line.message);
-            for (std::size_t at = hay.find(m_needle); at != std::wstring::npos; at = hay.find(m_needle, at + 1)) {
-                const float x0 = messageX + canvas.text().measure(std::wstring_view(line.message).substr(0, at), TypeStyle::Mono);
-                const float x1 = messageX + canvas.text().measure(
-                                                std::wstring_view(line.message).substr(0, at + m_needle.size()), TypeStyle::Mono);
-                if (x0 > right) {
-                    break;
+            std::size_t at = hay.find(m_needle);
+            if (at != std::wstring::npos) {
+                // One layout for the line, asked where each match starts and ends. It used to be
+                // two layouts per match, each of the line from its start: a one-letter search made
+                // thousands of them per frame (audit UI-05).
+                const auto shaped = canvas.text().layout(line.message, TypeStyle::Mono, 100000.0f, kRow, TextAlign::Leading);
+                auto xOf = [&](std::size_t index) -> float {
+                    index = std::min(index, line.message.size());
+                    FLOAT x = 0;
+                    FLOAT top = 0;
+                    DWRITE_HIT_TEST_METRICS metrics{};
+                    // The leading edge of `index` = the trailing edge of the character before it
+                    // (valid at the end of the text too).
+                    if (index > 0 && shaped &&
+                        SUCCEEDED((*shaped)->HitTestTextPosition(static_cast<UINT32>(index - 1), TRUE, &x, &top, &metrics))) {
+                        return messageX + x;
+                    }
+                    return messageX + ch * static_cast<float>(index); // the mono advance
+                };
+                for (; at != std::wstring::npos; at = hay.find(m_needle, at + 1)) {
+                    const float x0 = xOf(at);
+                    if (x0 > right) {
+                        break;
+                    }
+                    const float x1 = xOf(at + m_needle.size());
+                    canvas.fillRect({x0, y + 2, std::min(x1, right) - x0, kRow - 4}, Color::AccentSubtle);
                 }
-                canvas.fillRect({x0, y + 2, std::min(x1, right) - x0, kRow - 4}, Color::AccentSubtle);
             }
         }
         canvas.drawText(line.message, {messageX, y, right - messageX, kRow}, TypeStyle::Mono,

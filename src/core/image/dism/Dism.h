@@ -4,8 +4,10 @@
 // entry point returns ErrorCode::AccessDenied up front when not elevated, with a clear message.
 #include "core/tasks/Task.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -33,6 +35,9 @@ struct MountInfo {
     int index = 0;
     bool readOnly = false;
     DismMountStatus status = DismMountStatus::Ok;
+    // wimgapi's WIM_MOUNT_FLAG_* bits as WIMGetMountedImageInfo gave them (wimMountedImages only; 0
+    // from DISM's list) — what the fast list's status was read from, for `wlcli mounts --fast`.
+    std::uint32_t wimFlags = 0;
 };
 
 struct PackageEntry {
@@ -154,9 +159,17 @@ public:
     // True after a mutation returned DISMAPI_S_RELOAD_IMAGE_SESSION_REQUIRED; reload() before the next one.
     [[nodiscard]] bool reloadRequired() const noexcept { return m_reloadRequired; }
     [[nodiscard]] Result<void> reload();
+    // The error of the last reload() that failed — also one a DISM call made by itself after
+    // suspend() — until a reload() succeeds. A run of steps stops on it (ops::Applier, A20): the
+    // reopening fails inside a step now, where the step's own error could not tell it apart.
+    [[nodiscard]] const std::optional<Error>& lost() const noexcept { return m_lost; }
+    // False between suspend() and the next DISM call (or reload()): nothing of DISM holds the image.
+    [[nodiscard]] bool open() const noexcept { return m_session != 0; }
     // Closes the session (the image stays mounted) for work DISM must not be part of: editing the
-    // image's hives, running dism.exe on the same image. reload() opens it again; until then
-    // reloadRequired() is true.
+    // image's hives, running dism.exe on the same image. The next DISM call of this session opens it
+    // again by itself (reload() does it at once); until then reloadRequired() is true. A closed
+    // session costs nothing and holds nothing: a run of steps that only edit hives or delete files
+    // never opens DISM in between (D-131: the reopening was ~1.4 s a time, up to five times a step).
     void suspend();
 
 private:
@@ -164,10 +177,12 @@ private:
     DismSession(Dism& dism, unsigned session, std::filesystem::path path)
         : m_dism(dism), m_session(session), m_path(std::move(path)) {}
     void noteReload(long hr) noexcept;
+    [[nodiscard]] Result<void> ensureOpen(); // reload() when suspended
     Dism& m_dism;
     unsigned m_session;
     std::filesystem::path m_path;
     bool m_reloadRequired = false;
+    std::optional<Error> m_lost;
 };
 
 } // namespace wl::core

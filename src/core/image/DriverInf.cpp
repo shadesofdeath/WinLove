@@ -46,6 +46,8 @@ DriverInf parseInfText(const std::wstring& text, const std::filesystem::path& pa
     std::map<std::wstring, std::map<std::wstring, std::wstring>> sections;
     std::vector<std::wstring> manufacturerValues;
     std::vector<std::pair<std::wstring, std::wstring>> lineKeys; // (section, key as written), in order
+    std::vector<std::wstring> lineValues;                        // the value of each of them
+    std::wstring ifTypeValue;                                    // D-134: an AddReg line's "*IfType" data
     std::wstring section;
     std::wistringstream lines(text);
     std::wstring line;
@@ -70,12 +72,23 @@ DriverInf parseInfText(const std::wstring& text, const std::filesystem::path& pa
         }
         const auto eq = t.find(L'=');
         if (eq == std::wstring::npos) {
+            // D-134: "HKR, Ndi\Interfaces, ..." / "HKR,, *IfType, 0x00010001, 71" — the last field.
+            if (ifTypeValue.empty() && text::lower(t).find(L"*iftype") != std::wstring::npos) {
+                const auto comma = t.rfind(L',');
+                if (comma != std::wstring::npos) {
+                    ifTypeValue = trim(std::wstring_view(t).substr(comma + 1));
+                }
+            }
             continue;
         }
         const std::wstring key = text::lower(trim(std::wstring_view(t).substr(0, eq)));
         const std::wstring value = trim(std::wstring_view(t).substr(eq + 1));
+        if (key == L"*iftype" && ifTypeValue.empty()) {
+            ifTypeValue = value; // NetAdapterCx INFs: "*IfType = 71" in a section of its own
+        }
         sections[section][key] = value;
         lineKeys.emplace_back(section, trim(std::wstring_view(t).substr(0, eq)));
+        lineValues.push_back(value);
         if (section == L"manufacturer") {
             manufacturerValues.push_back(value);
         }
@@ -95,7 +108,13 @@ DriverInf parseInfText(const std::wstring& text, const std::filesystem::path& pa
     inf.className = resolve(version[L"class"]);
     inf.classGuid = resolve(version[L"classguid"]);
     inf.provider = resolve(version[L"provider"]);
-    inf.catalog = resolve(version.contains(L"catalogfile") ? version[L"catalogfile"] : version[L"catalogfile.ntamd64"]);
+    // CatalogFile, else the first per-architecture one (CatalogFile.NTamd64 / .NTarm64 / .NTx86).
+    for (const wchar_t* key : {L"catalogfile", L"catalogfile.ntamd64", L"catalogfile.ntarm64", L"catalogfile.ntx86"}) {
+        if (const auto it = version.find(key); it != version.end() && !it->second.empty()) {
+            inf.catalog = resolve(it->second);
+            break;
+        }
+    }
     // DriverVer = mm/dd/yyyy[,x.y.z.w]
     const std::wstring driverVer = resolve(version[L"driverver"]);
     const auto comma = driverVer.find(L',');
@@ -133,10 +152,25 @@ DriverInf parseInfText(const std::wstring& text, const std::filesystem::path& pa
             models.emplace_back(base + L"." + decoration, decoration);
         }
     }
-    for (const auto& [name, key] : lineKeys) {
+    for (std::size_t at = 0; at < lineKeys.size(); ++at) {
+        const auto& [name, key] = lineKeys[at];
         const auto model = std::ranges::find(models, name, &std::pair<std::wstring, std::wstring>::first);
         if (model == models.end()) {
             continue;
+        }
+        // D-134: "%Dev% = Install, PCI\VEN_…[, compatible IDs…]" — every ID after the install section.
+        {
+            std::wstringstream fields(lineValues[at]);
+            std::wstring field;
+            std::getline(fields, field, L','); // the install section
+            while (std::getline(fields, field, L',')) {
+                std::wstring id = unquote(trim(field));
+                if (!id.empty() && std::ranges::none_of(inf.hardwareIds, [&](const std::wstring& known) {
+                        return text::iequals(known, id);
+                    })) {
+                    inf.hardwareIds.push_back(std::move(id));
+                }
+            }
         }
         std::wstring device = resolve(key);
         if (device.empty()) {
@@ -152,7 +186,36 @@ DriverInf parseInfText(const std::wstring& text, const std::filesystem::path& pa
     if (!manufacturerValues.empty() && inf.architectures.empty()) {
         inf.architectures.emplace_back(L"x86");
     }
+    if (!ifTypeValue.empty()) {
+        const std::wstring number = resolve(ifTypeValue);
+        inf.ifType = static_cast<int>(std::wcstol(number.c_str(), nullptr, 0)); // "71" or "0x47"
+    }
     return inf;
+}
+
+SetupRole setupRole(const DriverInf& inf) {
+    const std::wstring cls = text::lower(inf.className);
+    if (cls == L"scsiadapter" || cls == L"hdc") {
+        return SetupRole::Storage;
+    }
+    if (cls != L"net") {
+        return SetupRole::None;
+    }
+    constexpr int kIfTypeWifi = 71; // IF_TYPE_IEEE80211
+    if (inf.ifType == kIfTypeWifi) {
+        return SetupRole::Wireless;
+    }
+    // A card Windows PE finds is enumerated by a bus; "*VMnetAdapter1", "ROOT\…", "{GUID}\…" are
+    // adapters some software creates on the PC it runs on.
+    static constexpr std::wstring_view kBuses[] = {L"pci\\", L"usb\\", L"sd\\", L"sdio\\", L"acpi\\", L"vmbus\\", L"pcmcia\\"};
+    const bool onBus = std::ranges::any_of(inf.hardwareIds, [](const std::wstring& id) {
+        const std::wstring lower = text::lower(id);
+        return std::ranges::any_of(kBuses, [&](std::wstring_view bus) { return lower.starts_with(bus); });
+    });
+    if (!inf.hardwareIds.empty() && !onBus) {
+        return SetupRole::Virtual;
+    }
+    return SetupRole::Network;
 }
 
 std::vector<std::wstring> DriverInf::devicesFor(std::wstring_view arch) const {

@@ -5,12 +5,12 @@
 #include "app/Localization.h"
 #include "core/unattend/Welcome.h"
 #include "core/image/UdfImage.h"
+#include "support/UiThread.h"
 
 #include <doctest.h>
 
 #include <filesystem>
 #include <fstream>
-#include <mutex>
 #include <sstream>
 
 using namespace wl;
@@ -158,13 +158,9 @@ TEST_CASE("unattend → ISO: answers given on the page are autounattend.xml in t
         o.accountName = L"berkay";
     });
 
-    std::mutex mutex;
-    std::vector<std::function<void()>> posted;
+    test::UiThread ui{test::UiThread::Mode::Queued};
     std::vector<Error> failures;
-    IsoController iso{f.state, IsoController::Events{[&](std::function<void()> fn) {
-                                                        std::scoped_lock lock(mutex);
-                                                        posted.push_back(std::move(fn));
-                                                    },
+    IsoController iso{f.state, IsoController::Events{ui.post(),
                                                     [&](const Error& error) { failures.push_back(error); },
                                                     {}}};
     REQUIRE_FALSE(iso.blocker());
@@ -176,12 +172,7 @@ TEST_CASE("unattend → ISO: answers given on the page are autounattend.xml in t
     request.openFolder = false;
     iso.start(request);
     f.state.engine().drain();
-    {
-        std::scoped_lock lock(mutex);
-        for (auto& fn : posted) {
-            fn();
-        }
-    }
+    ui.run();
     REQUIRE(failures.empty());
     REQUIRE(f.state.isoRun().has_value());
     REQUIRE(f.state.isoRun()->result.has_value());
@@ -223,7 +214,8 @@ TEST_CASE("ISO: the requirement bypasses go into a patched copy of boot.wim, the
     source.path = media;
     f.state.setSource(std::move(source));
 
-    IsoController iso{f.state, IsoController::Events{[](std::function<void()> fn) { fn(); }, {}, {}}};
+    test::UiThread ui;
+    IsoController iso{f.state, IsoController::Events{ui.post(), {}, {}}};
     std::vector<std::wstring> asked;       // the LabConfig values of each patch
     bool askedLegacy = false;              // and whether it boots into the previous Setup (D-074)
     std::filesystem::path patchedFile;
@@ -247,7 +239,7 @@ TEST_CASE("ISO: the requirement bypasses go into a patched copy of boot.wim, the
         request.openFolder = false;
         request.bootBypass = bootBypass;
         iso.start(request);
-        f.state.engine().drain();
+        ui.settle(f.state.engine());
         REQUIRE(f.state.isoRun().has_value());
         REQUIRE(f.state.isoRun()->result.has_value());
         auto image = core::UdfImage::open(request.output);
@@ -302,7 +294,7 @@ TEST_CASE("ISO: the requirement bypasses go into a patched copy of boot.wim, the
     request.sha256 = false;
     request.openFolder = false;
     iso.start(request);
-    f.state.engine().drain();
+    ui.settle(f.state.engine());
     REQUIRE(f.state.isoRun().has_value());
     CHECK_FALSE(f.state.isoRun()->result.has_value());
     REQUIRE(f.state.isoRun()->error.has_value());
@@ -333,7 +325,8 @@ TEST_CASE("USB: the stick gets what the ISO would — answer file at the root, p
     f.controller.setIncludeInIso(true);
 
     std::filesystem::path finishedAt;
-    IsoController iso{f.state, IsoController::Events{[](std::function<void()> fn) { fn(); },
+    test::UiThread ui;
+    IsoController iso{f.state, IsoController::Events{ui.post(),
                                                      {},
                                                      [&](const core::IsoResult&, const std::filesystem::path& output,
                                                          bool) { finishedAt = output; },
@@ -357,7 +350,7 @@ TEST_CASE("USB: the stick gets what the ISO would — answer file at the root, p
     request.usb = IsoController::Request::UsbTarget{3, L"7|SanDisk|Ultra|42|32000000000", L"SanDisk Ultra",
                                                     core::UsbScheme::GptUefi};
     iso.start(request);
-    f.state.engine().drain();
+    ui.settle(f.state.engine());
 
     REQUIRE(written.has_value());
     CHECK(written->disk == 3);
@@ -389,7 +382,8 @@ TEST_CASE("unattend controller: the ISO never gets an invalid file") {
     CHECK(bytes.find("<ComputerName>LAB-01</ComputerName>") != std::string::npos);
     CHECK(bytes.find("processorArchitecture=\"arm64\"") != std::string::npos);
 
-    IsoController iso{f.state, IsoController::Events{[](std::function<void()> fn) { fn(); }, {}, {}}};
+    test::UiThread ui;
+    IsoController iso{f.state, IsoController::Events{ui.post(), {}, {}}};
     CHECK_FALSE(iso.blocker());
     f.controller.edit([](core::UnattendOptions& o) { o.computerName = L"THIS NAME IS NOT VALID"; });
     REQUIRE(iso.blocker());

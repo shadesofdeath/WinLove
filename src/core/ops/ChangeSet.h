@@ -11,8 +11,10 @@
 #include "base/Result.h"
 
 #include <cstdint>
+#include <deque>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -78,6 +80,10 @@ public:
     void addAll(std::vector<Operation> ops);
     std::size_t removeAll(const std::vector<std::pair<OpKind, std::wstring>>& slots);
     void clear();
+    // Between the two, every change is one undo step (the first takes the snapshot): a category's
+    // check box that queues 300 rows is one action to undo, and one copy of the queue, not 300.
+    void beginGroup() noexcept { ++m_group; }
+    void endGroup() noexcept;
 
     [[nodiscard]] const std::vector<Operation>& operations() const noexcept { return m_ops; }
     [[nodiscard]] std::size_t size() const noexcept { return m_ops.size(); }
@@ -85,6 +91,9 @@ public:
     [[nodiscard]] const Operation* find(OpKind kind, std::wstring_view target) const;
     [[nodiscard]] std::size_t count(OpKind kind) const;
     [[nodiscard]] std::int64_t estimatedSizeDelta() const;
+    // The operations alone: a copy for a run or a preset has no use for the undo history, which
+    // holds up to 200 earlier states of the whole queue.
+    [[nodiscard]] ChangeSet withoutHistory() const;
     // Bumped on every change: cheap "did anything change?" for UI badges.
     [[nodiscard]] std::uint64_t version() const noexcept { return m_version; }
 
@@ -97,12 +106,23 @@ public:
     [[nodiscard]] static Result<ChangeSet> fromJson(std::string_view json);
 
 private:
+    static constexpr std::size_t kNone = static_cast<std::size_t>(-1);
     void snapshot();
+    void trimHistory();
     void addOne(Operation op);
-    bool removeOne(OpKind kind, std::wstring_view target);
+    void reindex();
+    // The first operation in this slot (kNone: none), skipping those marked in `skip`.
+    [[nodiscard]] std::size_t indexOf(OpKind kind, std::wstring_view target, const std::vector<bool>* skip = nullptr) const;
     std::vector<Operation> m_ops;
-    std::vector<std::vector<Operation>> m_undo;
-    std::vector<std::vector<Operation>> m_redo;
+    // Slot → position in m_ops. Pages ask find() for every row they draw; with a preset of 900
+    // steps a linear scan with a case-insensitive compare per step was the cost of a frame. The
+    // key is coarse (ASCII lower-cased, anything else one placeholder); iequals decides.
+    std::unordered_multimap<std::wstring, std::size_t> m_index;
+    std::deque<std::vector<Operation>> m_undo;
+    std::deque<std::vector<Operation>> m_redo;
+    std::size_t m_undoBytes = 0; // of m_undo, roughly (see trimHistory)
+    int m_group = 0;             // beginGroup() depth
+    bool m_groupSaved = false;   // this group's snapshot is taken
     std::uint64_t m_version = 0;
 };
 

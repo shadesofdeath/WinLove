@@ -55,7 +55,8 @@ bool takesWhatItKeeps(const CompatGuard& guard, const ComponentRecipe& recipe) {
 }
 
 CompatBlock blockWith(const Operation& op, std::span<const CompatGuard> active, const AppxNeeds& needs,
-                      const std::vector<std::wstring>& removed) {
+                      const std::vector<std::wstring>& removed, const ComponentRecipe* given = nullptr,
+                      std::optional<ComponentRecipe>* kept = nullptr) {
     CompatBlock block;
     switch (op.kind) {
     case OpKind::RemoveAppx: {
@@ -80,7 +81,10 @@ CompatBlock blockWith(const Operation& op, std::span<const CompatGuard> active, 
         if (id.size() > 3 && id.ends_with(L":32")) {
             id.resize(id.size() - 3);
         }
-        std::optional<ComponentRecipe> recipe; // read once, when a guard needs it
+        // Read once, when a guard needs it; `kept` is the caller's slot for this operation, so a
+        // caller that asks again (compatConflicts, every pass) does not parse it again (audit OPS-10).
+        std::optional<ComponentRecipe> own;
+        std::optional<ComponentRecipe>& recipe = kept ? *kept : own;
         for (const auto& guard : active) {
             if (contains(guard.components, op.target) || contains(guard.components, id)) {
                 block.guards.push_back(guard.id);
@@ -89,11 +93,11 @@ CompatBlock blockWith(const Operation& op, std::span<const CompatGuard> active, 
             if (op.kind != OpKind::RemoveComponent || guard.always || (guard.services.empty() && guard.appx.empty())) {
                 continue;
             }
-            if (!recipe) {
+            if (!recipe && !given) {
                 auto parsed = componentRecipeFromJson(utf8::fromWide(op.value));
                 recipe = parsed ? std::move(*parsed) : ComponentRecipe{};
             }
-            if (takesWhatItKeeps(guard, *recipe)) {
+            if (takesWhatItKeeps(guard, given ? *given : *recipe)) {
                 block.guards.push_back(guard.id);
             }
         }
@@ -133,12 +137,23 @@ CompatBlock compatBlock(const Operation& op, std::span<const CompatGuard> active
     return blockWith(op, active, needs, removedApps(queue));
 }
 
+std::vector<std::wstring> compatRemovedApps(const ChangeSet& queue) {
+    return removedApps(queue);
+}
+
+CompatBlock compatBlock(const Operation& op, std::span<const CompatGuard> active, const AppxNeeds& needs,
+                        const std::vector<std::wstring>& removed, const ComponentRecipe* recipe) {
+    return blockWith(op, active, needs, removed, recipe);
+}
+
 std::vector<CompatConflict> compatConflicts(const ChangeSet& queue, std::span<const CompatGuard> active, const AppxNeeds& needs) {
     std::vector<CompatConflict> out;
     // Apps leave together with the runtimes only they needed; one that stays keeps them. Repeated
     // until nothing changes: a runtime freed only by an app that is itself blocked stays blocked.
     std::vector<std::wstring> removed = removedApps(queue);
     std::vector<bool> blocked(queue.operations().size(), false);
+    // One slot per operation: a component's recipe is parsed at most once for all passes below.
+    std::vector<std::optional<ComponentRecipe>> recipes(queue.operations().size());
     for (bool changed = true; changed;) {
         changed = false;
         for (std::size_t i = 0; i < queue.operations().size(); ++i) {
@@ -146,7 +161,7 @@ std::vector<CompatConflict> compatConflicts(const ChangeSet& queue, std::span<co
             if (blocked[i]) {
                 continue;
             }
-            if (auto block = blockWith(op, active, needs, removed); !block.empty()) {
+            if (auto block = blockWith(op, active, needs, removed, nullptr, &recipes[i]); !block.empty()) {
                 blocked[i] = true;
                 changed = true;
                 if (op.kind == OpKind::RemoveAppx) {
@@ -159,7 +174,7 @@ std::vector<CompatConflict> compatConflicts(const ChangeSet& queue, std::span<co
     for (std::size_t i = 0; i < queue.operations().size(); ++i) {
         if (blocked[i]) {
             const auto& op = queue.operations()[i];
-            out.push_back({op, blockWith(op, active, needs, removed)});
+            out.push_back({op, blockWith(op, active, needs, removed, nullptr, &recipes[i])});
         }
     }
     return out;

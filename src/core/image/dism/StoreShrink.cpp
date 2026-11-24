@@ -301,6 +301,16 @@ Result<StoreShrinkPlan> planStoreShrink(const std::filesystem::path& mountDir, b
 }
 
 Result<StoreShrinkPlan> shrinkComponentStore(const std::filesystem::path& mountDir, const TaskContext& task) {
+    const auto store = mountDir / L"Windows" / L"WinSxS";
+    // Pending servicing (a feature turned on or off in this run, .NET 3.5) finishes at the first
+    // boot from the payload in WinSxS: without it setup would fail. Asked before the measuring
+    // (~6 s) and before anything is touched; CBS_E_PENDING, as DISM's own store cleanup answers,
+    // so the run is saved all the same (unchangedByFailure; report 2026-11-13, Windows 10 19045).
+    if (std::error_code ec; std::filesystem::exists(store / L"pending.xml", ec)) {
+        return fail(ErrorCode::Unsupported,
+                    L"the image has pending servicing operations (WinSxS\\pending.xml): they need the store at the first boot",
+                    store.wstring(), static_cast<std::int32_t>(0x800F0806));
+    }
     // Measured first: once a folder is gone, what its files shared is no longer visible.
     auto plan = planStoreShrink(mountDir, /*measure=*/true,
                                 TaskContext{task.cancel, [&](double f, std::wstring_view s) { task.report(0.3 * f, s); }});
@@ -308,14 +318,6 @@ Result<StoreShrinkPlan> shrinkComponentStore(const std::filesystem::path& mountD
         return plan;
     }
     // A store that would keep nothing it needs (an unknown layout) is not touched.
-    const auto store = mountDir / L"Windows" / L"WinSxS";
-    // Pending servicing (a feature enabled in this run, .NET 3.5) finishes at the first boot from
-    // the payload in WinSxS: without it setup would fail.
-    if (std::filesystem::exists(store / L"pending.xml")) {
-        return fail(ErrorCode::Unsupported,
-                    L"the image has pending servicing operations (WinSxS\\pending.xml): they need the store at the first boot",
-                    store.wstring());
-    }
     const bool hasStack = std::ranges::any_of(topFolders(store), [](const std::wstring& n) {
         return keptInShrunkStore(n) && text::lower(n).find(L"servicingstack") != std::wstring::npos;
     });

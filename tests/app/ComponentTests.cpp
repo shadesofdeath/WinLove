@@ -10,6 +10,7 @@
 
 #include "base/Utf8.h"
 #include "core/ops/Planner.h"
+#include "support/UiThread.h"
 
 #include <doctest.h>
 
@@ -71,7 +72,8 @@ TEST_CASE("ComponentController groups apps by the reference tool's categories, c
     AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
     auto system = ComponentCatalog::parse(readFile(std::filesystem::path(WL_SOURCE_DIR) / L"resources/catalog/components.json"));
     REQUIRE(system);
-    ComponentController controller(state, shippedCatalog(), Language::Turkish, [](std::function<void()> fn) { fn(); },
+    test::UiThread ui;
+    ComponentController controller(state, shippedCatalog(), Language::Turkish, ui.post(),
                                    std::move(*system));
     state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});
     state.setAppxList(AppState::AppxList{AppState::AppxList::Status::Ready, L"C:\\m",
@@ -338,7 +340,8 @@ TEST_CASE("components catalog: the shipped file parses, every recipe is one the 
 
 TEST_CASE("ComponentController: system components the image has, the cleanup, and their queue operations") {
     AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
-    ComponentController controller(state, shippedCatalog(), Language::Turkish, [](std::function<void()> fn) { fn(); },
+    test::UiThread ui;
+    ComponentController controller(state, shippedCatalog(), Language::Turkish, ui.post(),
                                    shippedComponents());
     state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});
     // Known before the app list arrives: the controller has nothing to read itself.
@@ -458,7 +461,8 @@ TEST_CASE("ComponentController: system components the image has, the cleanup, an
 
 TEST_CASE("ComponentController: the apps DISM refuses are picked like any other (D-038)") {
     AppState state{scratch(L"recent-refused.json"), scratch(L"settings-refused.json")};
-    ComponentController controller(state, shippedCatalog(), Language::Turkish, [](std::function<void()> fn) { fn(); });
+    test::UiThread ui;
+    ComponentController controller(state, shippedCatalog(), Language::Turkish, ui.post());
     core::SourceInfo source;
     source.path = scratch(L"refused");
     core::ImageInfo image;
@@ -489,7 +493,8 @@ TEST_CASE("ComponentController: the apps DISM refuses are picked like any other 
 
 TEST_CASE("ComponentController: a preset's saved recipes are replaced by the catalog's current ones (D-076)") {
     AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
-    ComponentController controller(state, shippedCatalog(), Language::Turkish, [](std::function<void()> fn) { fn(); },
+    test::UiThread ui;
+    ComponentController controller(state, shippedCatalog(), Language::Turkish, ui.post(),
                                    shippedComponents());
     // As the user's preset of 2026-10-06 carried them: Outlook without the InboxApps spare
     // package, telemetry still removing the TroubleShooting package.
@@ -516,7 +521,8 @@ TEST_CASE("ComponentController: a preset's saved recipes are replaced by the cat
 
 TEST_CASE("ComponentController: a preset's app removals get this image's version of the app (audit A4)") {
     AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
-    ComponentController controller(state, shippedCatalog(), Language::Turkish, [](std::function<void()> fn) { fn(); },
+    test::UiThread ui;
+    ComponentController controller(state, shippedCatalog(), Language::Turkish, ui.post(),
                                    shippedComponents());
     state.setAppxList(AppState::AppxList{AppState::AppxList::Status::Ready, L"C:/m",
                                          {makeApp(L"Microsoft.GamingApp", 400), makeApp(L"Microsoft.WindowsStore", 50)},
@@ -558,7 +564,8 @@ TEST_CASE("ComponentController: the reference tool's dependency tree from the st
     CHECK(catalog->find("ts")->recipe.services == std::vector<std::wstring>{L"Schedule"});
 
     AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
-    ComponentController controller(state, shippedCatalog(), Language::Turkish, [](std::function<void()> fn) { fn(); },
+    test::UiThread ui;
+    ComponentController controller(state, shippedCatalog(), Language::Turkish, ui.post(),
                                    std::move(*catalog));
     state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});
     AppState::SystemComponents system{L"C:\\m", {}};

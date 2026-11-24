@@ -74,9 +74,15 @@ void forEachExplorerWindow(F&& fn) {
 // tree. With FILE_FLAG_OPEN_REPARSE_POINT the link itself is changed, and the ACE is not
 // inheritable; children get their own call when removeEntry reaches them.
 bool takeOwnership(const std::filesystem::path& path) {
-    (void)enablePrivilege(SE_TAKE_OWNERSHIP_NAME);
-    (void)enablePrivilege(SE_RESTORE_NAME);
-    (void)enablePrivilege(SE_BACKUP_NAME);
+    // Once per process, not per file (audit ENG-06): each is a token open and an LSA lookup, and
+    // removing a component comes here for every protected file. A privilege stays enabled.
+    static const bool privileges = [] {
+        (void)enablePrivilege(SE_TAKE_OWNERSHIP_NAME);
+        (void)enablePrivilege(SE_RESTORE_NAME);
+        (void)enablePrivilege(SE_BACKUP_NAME);
+        return true;
+    }();
+    (void)privileges;
     BYTE sidBuffer[SECURITY_MAX_SID_SIZE]{};
     DWORD sidSize = sizeof(sidBuffer);
     if (!CreateWellKnownSid(WinBuiltinAdministratorsSid, nullptr, sidBuffer, &sidSize)) {
@@ -121,7 +127,12 @@ DWORD removeEntry(const std::filesystem::path& path) {
         return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND ? ERROR_SUCCESS : error;
     }
     const bool directory = (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    // Whether the status is this entry's own or came up from a child. A child has already had its
+    // own second try; taking this folder as well and walking it again cannot free it — it only
+    // tried a stuck leaf 2^depth times and rewrote the ACL of every folder above it (audit ENG-06).
+    bool own = true;
     auto attempt = [&]() -> DWORD {
+        own = true;
         if (directory) {
             if (!isReparsePoint(path)) {
                 // Non-throwing iteration: entries may vanish or lock mid-walk.
@@ -136,6 +147,7 @@ DWORD removeEntry(const std::filesystem::path& path) {
                 }
                 for (const auto& child : children) {
                     if (const DWORD status = removeEntry(child); status != ERROR_SUCCESS) {
+                        own = false;
                         return status;
                     }
                 }
@@ -145,7 +157,7 @@ DWORD removeEntry(const std::filesystem::path& path) {
         return DeleteFileW(path.c_str()) ? ERROR_SUCCESS : GetLastError();
     };
     DWORD status = attempt();
-    if (status == ERROR_ACCESS_DENIED && takeOwnership(path)) {
+    if (status == ERROR_ACCESS_DENIED && own && takeOwnership(path)) {
         SetFileAttributesW(path.c_str(), FILE_ATTRIBUTE_NORMAL);
         status = attempt();
     }

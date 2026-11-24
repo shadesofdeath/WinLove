@@ -6,6 +6,7 @@
 #include <doctest.h>
 
 #include <filesystem>
+#include <fstream>
 
 using namespace wl;
 using namespace wl::core;
@@ -59,6 +60,20 @@ TEST_CASE("store shrink: only a mounted Windows image's own store is touched") {
     CHECK_FALSE(planStoreShrink(dir, false, {}).has_value()); // no registry hives: not an image
     CHECK_FALSE(shrinkComponentStore(dir, {}).has_value());
     CHECK_FALSE(planStoreShrink(dir / L"missing", false, {}).has_value());
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("store shrink: pending servicing is refused first, with CBS_E_PENDING, nothing touched (report 2026-11-13)") {
+    const auto dir = std::filesystem::temp_directory_path() / L"wl-store-pending-test";
+    std::filesystem::remove_all(dir);
+    const auto store = dir / L"Windows" / L"WinSxS";
+    const auto component = store / L"amd64_microsoft-windows-shell32_31bf3856ad364e35_10.0.19041.1_none_1a2b3c4d5e6f7081";
+    std::filesystem::create_directories(component);
+    { std::ofstream(store / L"pending.xml") << "<PendingTransaction/>"; }
+    const auto refused = shrinkComponentStore(dir, {});
+    REQUIRE_FALSE(refused.has_value());
+    CHECK(static_cast<std::uint32_t>(refused.error().hresult) == 0x800F0806u); // the save goes on (Applier)
+    CHECK(std::filesystem::exists(component));
     std::filesystem::remove_all(dir);
 }
 

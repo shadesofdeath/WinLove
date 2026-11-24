@@ -3,6 +3,7 @@
 #include "app/shell/PaletteIndex.h"
 #include "base/Text.h"
 #include "support/TestGraphics.h"
+#include "support/UiThread.h"
 #include "ui/widget/Host.h"
 
 #include <doctest.h>
@@ -60,7 +61,8 @@ core::OptionalFeature feature(const wchar_t* name, const wchar_t* display) {
 struct Fixture {
     Localization strings = *Localization::fromJson(resource(L"resources/strings/tr.json"));
     AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
-    std::function<void(std::function<void()>)> post = [](std::function<void()> fn) { fn(); };
+    test::UiThread ui; // the lists' reads end on the engine thread: their answers wait for this thread
+    std::function<void(std::function<void()>)> post = ui.post();
     ImageSettingsController settings{state, *ImageSettingsCatalog::parse(resource(L"resources/catalog/settings.json"))};
     ComponentController components{state, *AppxCatalog::parse(resource(L"resources/catalog/appx.json")), Language::Turkish,
                                    post};

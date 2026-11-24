@@ -14,21 +14,42 @@ namespace size = ui::tokens::size;
 
 namespace {
 
-// Measured on the reference tool at 175 % (D-109), in DIP: the caption text 8 in, the icon at 18, the label at
-// 44, the chosen row 23 high and 7 in from the card's sides, 10 between groups, 6 under the last.
+// D-109 (the reference tool at 175 %), in DIP: the caption text 8 in, the icon at 18, the label at 44, the
+// chosen fill 7 in from the card's sides, 10 between groups. D-136: the fill follows the item's
+// height (a spacing step less, so two neighbouring fills never touch), the last item keeps the
+// card's inner padding under it.
 constexpr float kCaptionX = 8.0f;
 constexpr float kIconX = 18.0f;
 constexpr float kLabelX = 44.0f;
 constexpr float kCountRight = 14.0f;
 constexpr float kFillInset = 7.0f;
-constexpr float kFillHeight = 23.0f;
+constexpr float kFillHeight = size::navItem - ui::tokens::spacing::s2;
+// D-137: the chosen item's accent bar, inside the fill's left edge (TableView's chosen row has one too).
+constexpr float kMarkWidth = 3.0f;
+constexpr float kMarkInsetY = 8.0f;
 constexpr float kGroupGap = 10.0f;
-constexpr float kBottom = 6.0f;
+constexpr float kBottom = size::panelPad;
 constexpr float kCompactGroupGap = 8.0f;
+// The count badge: as high as the item's icon (so the two frame the row alike), the digits 4 in.
+constexpr float kBadgeHeight = size::icon;
+constexpr float kBadgePadX = ui::tokens::spacing::s2;
+constexpr float kBadgeGap = ui::tokens::spacing::s4; // between the label's room and the badge
+constexpr int kBadgeMost = 999;
+
+// The chosen item's fill: inset in its row.
+RectF fillOf(RectF row) {
+    return {row.x + kFillInset, row.y + std::round((row.height - kFillHeight) / 2), std::max(row.width - 2 * kFillInset, 0.0f),
+            kFillHeight};
+}
+
+ui::Ink faded(Color color, float opacity) {
+    return ui::Ink(color, color, 0.0f, opacity);
+}
 
 } // namespace
 
-NavPanel::NavPanel() : m_counts(static_cast<std::size_t>(PageId::Count), 0) {
+NavPanel::NavPanel()
+    : m_counts(static_cast<std::size_t>(PageId::Count), 0), m_badges(static_cast<std::size_t>(PageId::Count)) {
     setFocusable(true);
     setAccessible(ui::AccessRole::TabItem, L"");
     m_bar = &add<ui::ScrollBar>();
@@ -36,8 +57,19 @@ NavPanel::NavPanel() : m_counts(static_cast<std::size_t>(PageId::Count), 0) {
     m_bar->onScroll = [this](float offset) { scrollTo(offset); };
 }
 
+std::wstring NavPanel::badgeText(int count) {
+    if (count <= 0) {
+        return {};
+    }
+    return count > kBadgeMost ? std::to_wstring(kBadgeMost) + L"+" : std::to_wstring(count);
+}
+
 float NavPanel::maxScroll() const {
     return std::max(preferredHeight() - bounds().height, 0.0f);
+}
+
+ui::PointF NavPanel::origin() const {
+    return {bounds().x, bounds().y - m_scroll};
 }
 
 void NavPanel::scrollTo(float offset) {
@@ -74,12 +106,19 @@ bool NavPanel::onWheel(ui::PointF p, float lines) {
 
 void NavPanel::setGroups(std::vector<Group> groups) {
     m_groups = std::move(groups);
+    // Other rows altogether (another menu of the title bar): nothing slides or fades across.
     m_hover = -1;
+    m_hoverFade.snap(-1);
+    m_move.stop();
     layout(); // the scroll range follows the rows
     invalidate();
 }
 
 void NavPanel::setActive(PageId page) {
+    if (page != m_active) {
+        m_move.stop(); // chosen by code (a shortcut, the palette): the fill is simply there
+    }
+    // The same item again (the shell showing the page this panel's own click chose) lets the slide go on.
     m_active = page;
     if (const int i = indexOf(page); i >= 0) {
         setAccessible(ui::AccessRole::TabItem, itemAt(m_items[static_cast<std::size_t>(i)]).label);
@@ -92,7 +131,20 @@ void NavPanel::setCount(PageId page, int n) {
     const auto i = static_cast<std::size_t>(page);
     if (i < m_counts.size() && m_counts[i] != n) {
         m_counts[i] = n;
+        Badge& badge = m_badges[i];
+        badge.text = badgeText(n);
+        badge.width = badge.text.empty() ? 0.0f
+                                         : std::max(kBadgeHeight, textWidth(badge.text, TypeStyle::Badge) + 2 * kBadgePadX);
         invalidate();
+    }
+}
+
+void NavPanel::measureBadges() {
+    // Counts set before the panel had a host (the shell's first page) were measured as nothing.
+    for (Badge& badge : m_badges) {
+        if (!badge.text.empty()) {
+            badge.width = std::max(kBadgeHeight, textWidth(badge.text, TypeStyle::Badge) + 2 * kBadgePadX);
+        }
     }
 }
 
@@ -104,6 +156,7 @@ int NavPanel::count(PageId page) const {
 void NavPanel::setCompact(bool compact) {
     if (compact != m_compact) {
         m_compact = compact;
+        m_move.stop();
         layout();
         invalidate();
     }
@@ -145,6 +198,7 @@ void NavPanel::place() {
 
 void NavPanel::layout() {
     const RectF b = bounds();
+    measureBadges();
     m_scroll = std::clamp(m_scroll, 0.0f, maxScroll());
     m_bar->setRange(preferredHeight(), b.height);
     m_bar->setOffset(m_scroll);
@@ -167,9 +221,36 @@ int NavPanel::indexOf(PageId page) const {
     return -1;
 }
 
+RectF NavPanel::badgeRect(const Placed& placed) const {
+    const Item& item = itemAt(placed);
+    const auto i = static_cast<std::size_t>(item.page);
+    if (m_compact || !item.counted || i >= m_badges.size() || m_badges[i].text.empty()) {
+        return {};
+    }
+    const RectF r = placed.rect;
+    const float w = m_badges[i].width;
+    return {r.right() - kCountRight - w, r.y + std::round((r.height - kBadgeHeight) / 2), w, kBadgeHeight};
+}
+
+RectF NavPanel::badgeRect(PageId page) const {
+    const int i = indexOf(page);
+    return i < 0 ? RectF{} : badgeRect(m_items[static_cast<std::size_t>(i)]);
+}
+
+RectF NavPanel::labelRect(PageId page) const {
+    const int i = indexOf(page);
+    if (i < 0) {
+        return {};
+    }
+    const RectF r = m_items[static_cast<std::size_t>(i)].rect;
+    const RectF badge = badgeRect(m_items[static_cast<std::size_t>(i)]);
+    const float right = badge.width > 0 ? badge.x - kBadgeGap : r.right() - kCountRight;
+    return {r.x + kLabelX, r.y, std::max(right - r.x - kLabelX, 0.0f), r.height};
+}
+
 void NavPanel::paint(ui::Canvas& canvas) {
     const RectF b = bounds();
-    canvas.fillRoundRect(b, ui::tokens::radius::r3, Color::BgChrome);
+    canvas.raisedCard(b, ui::tokens::radius::r3, Color::BgChrome); // D-136: raised like the page card
     canvas.pushClip(b); // rows scrolled out of the card are not drawn over the window
     if (!m_compact) {
         for (const auto& caption : m_captions) {
@@ -182,19 +263,33 @@ void NavPanel::paint(ui::Canvas& canvas) {
             canvas.hairlineH(b.x + 10, c.y - kCompactGroupGap / 2, b.width - 20, Color::LineStrong);
         }
     }
+    const int active = indexOf(m_active);
+    const bool moving = m_move.moving() && active >= 0;
+    const int from = m_move.from();
+    const float t = m_move.progress();
+    // Hover fills first (they fade), then the chosen fill — sliding over them to a new item.
+    for (std::size_t i = 0; i < m_items.size(); ++i) {
+        const int index = static_cast<int>(i);
+        if (index == active && !moving) {
+            continue; // the chosen item at rest shows its own fill only
+        }
+        if (const float hot = m_hoverFade.amount(index); hot > 0) {
+            canvas.fillRoundRect(fillOf(m_items[i].rect), ui::tokens::radius::r2, faded(Color::BgHover, hot));
+        }
+    }
+    if (active >= 0) {
+        // D-137: the chosen item is a selection as a table's chosen row is — the selection fill and a
+        // short accent bar on its left (was the pressed grey); the bar rides with the fill.
+        const RectF to = fillOf(m_items[static_cast<std::size_t>(active)].rect);
+        const RectF fill = moving ? m_move.at(to, origin()) : to;
+        canvas.fillRoundRect(fill, ui::tokens::radius::r2, Color::AccentSubtle);
+        canvas.fillRoundRect({fill.x, fill.y + kMarkInsetY, kMarkWidth, std::max(fill.height - 2 * kMarkInsetY, 0.0f)},
+                             kMarkWidth / 2, Color::AccentBase);
+    }
     for (std::size_t i = 0; i < m_items.size(); ++i) {
         const Placed& placed = m_items[i];
         const Item& item = itemAt(placed);
         const RectF r = placed.rect;
-        const bool active = item.page == m_active;
-        const bool hot = static_cast<int>(i) == m_hover;
-        const RectF fill{r.x + kFillInset, r.y + std::round((r.height - kFillHeight) / 2), std::max(r.width - 2 * kFillInset, 0.0f),
-                         kFillHeight};
-        if (active) {
-            canvas.fillRoundRect(fill, ui::tokens::radius::r2, Color::BgPressed);
-        } else if (hot) {
-            canvas.fillRoundRect(fill, ui::tokens::radius::r2, Color::BgHover);
-        }
         const float iconX = m_compact ? r.x + std::round((r.width - size::icon) / 2) : r.x + kIconX;
         canvas.drawIcon(item.icon, {iconX, r.y + std::round((r.height - size::icon) / 2)},
                         item.finish ? Color::StatusSuccess : Color::AccentBase);
@@ -202,16 +297,48 @@ void NavPanel::paint(ui::Canvas& canvas) {
             continue;
         }
         float right = r.right() - kCountRight;
-        if (const int n = count(item.page); item.counted && n > 0) {
-            const std::wstring text = std::to_wstring(n);
-            const float w = std::ceil(canvas.text().measure(text, TypeStyle::Counter)) + 1;
-            canvas.drawText(text, {right - w, r.y, w, r.height}, TypeStyle::Counter, Color::TextSecondary);
-            right -= w + 8;
+        if (const RectF badge = badgeRect(placed); badge.width > 0) {
+            // Accent-tinted at rest, filled on the chosen item; the two trade places as the fill slides.
+            const int index = static_cast<int>(i);
+            const float chosen = index == active ? (moving ? t : 1.0f) : (moving && index == from ? 1.0f - t : 0.0f);
+            // D-137: at rest the selection fill (the accent text reads on it at >= 4.6:1; a 20 % accent
+            // over the light card read at ~4.2).
+            canvas.fillRoundRect(badge, ui::tokens::radius::badge, ui::Ink(Color::AccentSubtle, Color::AccentBase, chosen));
+            canvas.drawText(m_badges[static_cast<std::size_t>(item.page)].text, badge, TypeStyle::Badge,
+                            ui::Ink(Color::AccentText, Color::TextOnAccent, chosen), ui::TextAlign::Center);
+            right = badge.x - kBadgeGap;
         }
         canvas.drawText(item.label, {r.x + kLabelX, r.y, std::max(right - r.x - kLabelX, 0.0f), r.height}, TypeStyle::Body,
                         Color::TextPrimary);
     }
     canvas.popClip();
+}
+
+bool NavPanel::tick(double now) {
+    const bool hover = m_hoverFade.tick(now);
+    const bool move = m_move.tick(now);
+    invalidate();
+    return hover || move;
+}
+
+void NavPanel::hoverTo(int index) {
+    if (index == m_hover) {
+        return;
+    }
+    m_hover = index;
+    // Compact: every item says its name; D-136: a label cut to "…" by its count badge says it whole.
+    std::wstring tip;
+    if (index >= 0) {
+        const Item& item = itemAt(m_items[static_cast<std::size_t>(index)]);
+        if (m_compact || textWidth(item.label, TypeStyle::Body) > labelRect(item.page).width) {
+            tip = item.label;
+        }
+    }
+    setTooltip(std::move(tip));
+    if (m_hoverFade.set(index)) {
+        animate();
+    }
+    invalidate();
 }
 
 void NavPanel::onPointerMove(ui::PointF p) {
@@ -222,16 +349,12 @@ void NavPanel::onPointerMove(ui::PointF p) {
             hover = static_cast<int>(i);
         }
     }
-    if (hover != m_hover) {
-        m_hover = hover;
-        setTooltip(m_compact && hover >= 0 ? itemAt(m_items[static_cast<std::size_t>(hover)]).label : std::wstring{});
-        invalidate();
-    }
+    hoverTo(hover);
 }
 
 void NavPanel::onHoverChanged(bool hovered) {
-    if (!hovered && m_hover >= 0) {
-        m_hover = -1;
+    if (!hovered) {
+        hoverTo(-1); // no pointer move arrives after the pointer has left the card
     }
     invalidate();
 }
@@ -245,6 +368,15 @@ void NavPanel::select(int index) {
         return;
     }
     const PageId page = itemAt(m_items[static_cast<std::size_t>(index)]).page;
+    if (const int current = indexOf(m_active); current >= 0 && current != index) {
+        // From where the fill is now: a choice made while it still slides goes on from there.
+        const RectF now = m_move.at(fillOf(m_items[static_cast<std::size_t>(current)].rect), origin());
+        if (m_move.start(current, now, origin())) {
+            animate();
+        }
+    }
+    m_active = page; // the shell's setActive(page) that follows keeps the slide
+    invalidate();
     if (onSelect) {
         auto handler = onSelect; // the shell rebuilds the page (and may rebuild these groups)
         handler(page);
@@ -274,13 +406,17 @@ bool NavPanel::onKeyDown(const ui::KeyEvent& key) {
     return true;
 }
 
+RectF NavPanel::tooltipAnchor() const {
+    return m_hover >= 0 && m_hover < static_cast<int>(m_items.size()) ? fillOf(m_items[static_cast<std::size_t>(m_hover)].rect)
+                                                                         : bounds();
+}
+
 RectF NavPanel::focusRect() const {
     const int i = indexOf(m_active);
     if (i < 0) {
         return bounds();
     }
-    const RectF r = m_items[static_cast<std::size_t>(i)].rect;
-    return {r.x + kFillInset, r.y + std::round((r.height - kFillHeight) / 2), r.width - 2 * kFillInset, kFillHeight};
+    return fillOf(m_items[static_cast<std::size_t>(i)].rect);
 }
 
 } // namespace wl::app

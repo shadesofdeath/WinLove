@@ -48,6 +48,7 @@ void ProgramsController::load(bool refresh) {
     }
     // The open index holds index.db: a refresh replaces the file.
     m_index.reset();
+    m_lists = {};
     m_status = Status::Loading;
     m_state.notifyPrograms();
     const auto folder = cacheFolder();
@@ -66,6 +67,7 @@ void ProgramsController::load(bool refresh) {
                 if (index) {
                     m_count = index->count();
                     m_index = std::move(*index);
+                    m_lists = {};
                     m_status = Status::Ready;
                     log::info("programs", std::format(L"winget index: {} packages", m_count));
                     fetchNext();
@@ -93,17 +95,21 @@ std::vector<ProgramsController::Category> ProgramsController::categories() const
     if (!m_index) {
         return out;
     }
+    if (m_lists.categories) {
+        return *m_lists.categories;
+    }
     for (std::size_t i = 0; i < m_catalog.categories().size(); ++i) {
         const auto& category = m_catalog.categories()[i];
         Category c{category.name(m_language), {}, 0};
         for (const auto& id : category.programs) {
-            if (auto package = m_index->find(id)) {
-                c.programs.push_back(std::move(*package));
+            if (auto found = package(id)) {
+                c.programs.push_back(std::move(*found));
             }
         }
         c.more = moreIn(i).size();
         out.push_back(std::move(c));
     }
+    m_lists.categories = out;
     return out;
 }
 
@@ -111,16 +117,26 @@ std::vector<core::WingetPackage> ProgramsController::moreIn(std::size_t index) c
     if (!m_index || index >= m_catalog.categories().size()) {
         return {};
     }
+    if (const auto kept = m_lists.more.find(index); kept != m_lists.more.end()) {
+        return kept->second;
+    }
     const auto& category = m_catalog.categories()[index];
     auto tagged = m_index->tagged(category.tags, kTaggedLimit);
     std::erase_if(tagged, [&](const core::WingetPackage& p) {
         return std::ranges::any_of(category.programs, [&](const std::wstring& id) { return text::iequals(id, p.id); });
     });
+    m_lists.more.emplace(index, tagged);
     return tagged;
 }
 
 std::vector<core::WingetPackage> ProgramsController::everything() const {
-    return m_index ? m_index->all(kEverythingLimit) : std::vector<core::WingetPackage>{};
+    if (!m_index) {
+        return {};
+    }
+    if (!m_lists.everything) {
+        m_lists.everything = m_index->all(kEverythingLimit);
+    }
+    return *m_lists.everything;
 }
 
 std::vector<ProgramsController::Bundle> ProgramsController::bundles() const {
@@ -128,17 +144,21 @@ std::vector<ProgramsController::Bundle> ProgramsController::bundles() const {
     if (!m_index) {
         return out;
     }
+    if (m_lists.bundles) {
+        return *m_lists.bundles;
+    }
     for (const auto& bundle : m_catalog.bundles()) {
         Bundle b{bundle.id, bundle.name(m_language), bundle.description(m_language), {}};
         for (const auto& id : bundle.programs) {
-            if (auto package = m_index->find(id); package && !listed(b.programs, package->id)) {
-                b.programs.push_back(std::move(*package));
+            if (auto found = package(id); found && !listed(b.programs, found->id)) {
+                b.programs.push_back(std::move(*found));
             }
         }
         if (!b.programs.empty()) {
             out.push_back(std::move(b));
         }
     }
+    m_lists.bundles = out;
     return out;
 }
 
@@ -201,7 +221,15 @@ std::vector<core::WingetPackage> ProgramsController::search(std::wstring_view te
 }
 
 std::optional<core::WingetPackage> ProgramsController::package(std::wstring_view id) const {
-    return m_index ? m_index->find(id) : std::nullopt;
+    if (!m_index) {
+        return std::nullopt;
+    }
+    // The index has no index on lower(id): each lookup read the whole table.
+    auto [kept, fresh] = m_lists.packages.try_emplace(key(id));
+    if (fresh) {
+        kept->second = m_index->find(id);
+    }
+    return kept->second;
 }
 
 bool ProgramsController::picked(std::wstring_view id) const {
@@ -271,7 +299,7 @@ void ProgramsController::fetchNext() {
         if (m_details.contains(k) || m_failed.contains(k)) {
             continue;
         }
-        auto found = m_index->find(k);
+        auto found = package(k); // the kept answer: find() reads the whole table (audit CTL-08)
         const std::wstring hash = m_index->versionDataHash(k);
         if (!found) {
             m_failed.insert(k);
@@ -364,8 +392,13 @@ Result<void> ProgramsController::preview() const {
     plan.programTexts = windowTexts();
     auto json = nlohmann::json::parse(core::programsJson(plan));
     json["dryRun"] = true;
-    const auto folder = std::filesystem::temp_directory_path() / L"WinLove" / L"programs-preview";
+    // The error_code form: a broken %TEMP% is a failed preview, not an exception on the UI thread (audit CTL-19).
     std::error_code ec;
+    const auto temp = std::filesystem::temp_directory_path(ec);
+    if (ec) {
+        return fail(ErrorCode::IoError, L"the temporary folder is not available", L"%TEMP%", ec.value());
+    }
+    const auto folder = temp / L"WinLove" / L"programs-preview";
     std::filesystem::create_directories(folder, ec);
     if (auto r = writeFileAtomic(folder / L"programs.ps1", core::scripts::kPrograms); !r) {
         return r;

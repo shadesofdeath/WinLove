@@ -38,6 +38,9 @@ public:
     bool replaceValue(std::size_t entry, core::RegistryWrite write, bool afterSetup);
     void toggle(std::size_t entry);
     void remove(std::size_t entry);
+    // D-152: the page's Sıfırla — every entry is switched off (its operations leave the queue, one
+    // undo step); the entries stay listed, as a switched-off one does, so Geri al brings them back on.
+    void resetChanges();
 
     [[nodiscard]] static core::ops::Operation operationFor(const core::RegistryWrite& write, core::ops::Risk risk,
                                                            core::ops::OpKind kind = core::ops::OpKind::SetRegistryValue);

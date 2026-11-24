@@ -6,6 +6,7 @@
 #include "app/controllers/ImageSettingsController.h"
 #include "app/pages/ApplyPage.h"
 #include "app/pages/apply/RiskConfirm.h"
+#include "support/UiThread.h"
 
 #include <doctest.h>
 
@@ -78,7 +79,8 @@ TEST_CASE("Apply page mode: no mount, empty queue, summary, running, done") {
 
 TEST_CASE("ApplyController: high-risk list and canStart") {
     AppState state{scratch(L"recent2.json"), scratch(L"settings2.json")};
-    ApplyController controller(state, {[](std::function<void()> fn) { fn(); }, {}, {}, {}});
+    test::UiThread ui;
+    ApplyController controller(state, {ui.post(), {}, {}, {}});
     CHECK_FALSE(controller.canStart()); // nothing mounted
     state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});
     CHECK_FALSE(controller.canStart()); // empty queue
@@ -93,7 +95,8 @@ TEST_CASE("ApplyController: Uygula waits for a download that will queue packages
     // Started during a 5 GB cumulative update's download, a run left the update out and the ISO had
     // none; queued while the run held the queue, the download was dropped (AppState::queue).
     AppState state{scratch(L"recent3.json"), scratch(L"settings3.json")};
-    ApplyController controller(state, {[](std::function<void()> fn) { fn(); }, {}, {}, {}});
+    test::UiThread ui;
+    ApplyController controller(state, {ui.post(), {}, {}, {}});
     state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});
     state.queue(Operation{OpKind::EnableFeature, L"WSL"});
     CHECK(controller.canStart());
@@ -141,7 +144,8 @@ TEST_CASE("risk confirm rows: removals with their size, a high-risk setting once
     REQUIRE(defender != catalog.settings().end());
     state.queueMany(ImageSettingsController::operationsFor(*defender, 0));
 
-    const auto risky = ApplyController(state, {[](std::function<void()> fn) { fn(); }, {}, {}, {}}).highRisk();
+    test::UiThread ui;
+    const auto risky = ApplyController(state, {ui.post(), {}, {}, {}}).highRisk();
     REQUIRE(risky.size() > 2);
     const auto items = RiskConfirm::itemsFor(state, catalog, strings, Language::English, risky);
     REQUIRE(items.size() == 2); // the removal, and Defender once — not one row per registry value
@@ -245,6 +249,24 @@ TEST_CASE("a component store cleanup refused for pending operations is skipped, 
     report.results.push_back(StepResult{{Phase::Cleanup, Operation{OpKind::CleanupImage, L"component-store"}},
                                         fail(ErrorCode::IoError, L"component store cleanup failed", L"", 0x2)});
     CHECK(report.failures() == 3);
+    CHECK(report.holdingFailures() == 2);
+}
+
+TEST_CASE("a WinSxS shrink refused for pending operations is skipped, not a reason to hold the save (report 2026-11-13)") {
+    using core::ops::StepResult;
+    const auto pending = static_cast<std::int32_t>(0x800F0806);
+    core::ops::ApplyReport report;
+    report.completed = true;
+    report.results.push_back(StepResult{{Phase::Features, Operation{OpKind::DisableFeature, L"WindowsMediaPlayer"}}, {}});
+    report.results.push_back(StepResult{{Phase::Shrink, Operation{OpKind::ShrinkStore, L"component-store-shrink"}},
+                                        fail(ErrorCode::Unsupported, L"pending servicing operations", L"", pending)});
+    CHECK(report.failures() == 1);
+    CHECK(report.holdingFailures() == 0); // Windows 10 report: the image was held for this one
+    // A shrink that stopped while removing folders changed the store: it holds.
+    report.results.push_back(StepResult{{Phase::Shrink, Operation{OpKind::ShrinkStore, L"component-store-shrink"}},
+                                        fail(ErrorCode::IoError, L"remove", L"", static_cast<std::int32_t>(0x80070005))});
+    report.results.push_back(StepResult{{Phase::Shrink, Operation{OpKind::ShrinkStore, L"component-store-shrink"}},
+                                        fail(ErrorCode::Unsupported, L"no servicing stack found", L"")});
     CHECK(report.holdingFailures() == 2);
 }
 

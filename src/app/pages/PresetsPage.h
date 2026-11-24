@@ -54,6 +54,7 @@ private:
     std::vector<std::size_t> m_counts; // changes per preset (list column)
     std::vector<PresetController::DiffRow> m_rows;
     PresetController::DiffSummary m_summary;
+    std::wstring m_summaryText; // "+3 eklendi · −1 kaldırıldı · ~2 değişti", with the rows
 };
 
 } // namespace wl::app

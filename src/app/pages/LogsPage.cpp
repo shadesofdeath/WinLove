@@ -21,8 +21,7 @@ constexpr float kGap = 10.0f;
 constexpr float kConsoleGap = 12.0f;
 
 std::wstring clockTime(std::chrono::system_clock::time_point t) {
-    const auto local = std::chrono::zoned_time(std::chrono::current_zone(), t).get_local_time();
-    return std::format(L"{:%H:%M:%S}", std::chrono::floor<std::chrono::seconds>(local));
+    return log::clockText(t, false);
 }
 } // namespace
 
@@ -107,9 +106,10 @@ bool LogsPage::passes(const log::Entry& entry) const {
     return m_needle.empty() || wl::text::fold(entry.message).find(m_needle) != std::wstring::npos;
 }
 
-void LogsPage::updateSources() {
+void LogsPage::updateSources(std::size_t from) {
     bool added = false;
-    for (const auto& e : m_entries) {
+    for (std::size_t i = from; i < m_entries.size(); ++i) {
+        const auto& e = m_entries[i];
         if (std::ranges::find(m_sources, e.source) == m_sources.end()) {
             m_sources.push_back(e.source);
             added = true;
@@ -155,22 +155,39 @@ void LogsPage::poll() {
     if (fresh.empty()) {
         return;
     }
-    std::vector<ui::LogLine> lines;
+    const std::size_t before = m_entries.size(); // the new ones start here
     for (auto& e : fresh) {
-        if (passes(e)) {
-            lines.push_back(toLine(e));
-        }
         m_entries.push_back(std::move(e));
     }
+    std::size_t firstNew = before; // where the new ones start once the cap has cut
     // Same cap as the ring buffer: the page never holds more than the process keeps.
     constexpr std::size_t kMax = 20000;
     if (m_entries.size() > kMax) {
-        m_entries.erase(m_entries.begin(), m_entries.begin() + static_cast<std::ptrdiff_t>(m_entries.size() - kMax));
-        updateSources();
-        rebuild();
-        return;
+        // Only the overflow goes, from the console too (audit PG-09): rebuilding it formatted all
+        // 20,000 rows again and lost the selection and the scroll position. The console holds
+        // exactly the entries that pass, in order (any filter change rebuilds it), so its lines to
+        // drop are the dropped entries shown before this poll; dropped new ones were never shown.
+        const std::size_t cut = m_entries.size() - kMax;
+        std::size_t shown = 0;
+        for (std::size_t i = 0; i < std::min(cut, before); ++i) {
+            if (passes(m_entries[i])) {
+                ++shown;
+            }
+        }
+        m_entries.erase(m_entries.begin(), m_entries.begin() + static_cast<std::ptrdiff_t>(cut));
+        m_console->dropFront(shown);
+        if (m_console->lineCount() == 0) {
+            m_lastTime.clear(); // as rebuild(): no visible line, no time
+        }
+        firstNew = before > cut ? before - cut : 0;
     }
-    updateSources();
+    std::vector<ui::LogLine> lines;
+    for (std::size_t i = firstNew; i < m_entries.size(); ++i) {
+        if (passes(m_entries[i])) {
+            lines.push_back(toLine(m_entries[i]));
+        }
+    }
+    updateSources(firstNew);
     if (!lines.empty()) {
         m_lastTime = lines.back().time;
         m_console->append(lines);
@@ -221,9 +238,14 @@ void LogsPage::layout() {
 void LogsPage::paint(ui::Canvas& canvas) {
     // Counter on the right of the toolbar: "1.284 satır · son 14:22:20".
     const RectF b = bounds();
-    const std::wstring counter =
-        m_strings.format(Str::LogsLines, {{L"n", formatCount(m_console->lineCount(), m_language)},
-                                          {L"t", m_lastTime.empty() ? L"—" : m_lastTime}});
+    if (const std::size_t count = m_console->lineCount(); !m_counterKnown || count != m_counterLines || m_lastTime != m_counterTime) {
+        m_counterKnown = true;
+        m_counterLines = count;
+        m_counterTime = m_lastTime;
+        m_counter = m_strings.format(Str::LogsLines, {{L"n", formatCount(count, m_language)},
+                                                      {L"t", m_lastTime.empty() ? L"—" : m_lastTime}});
+    }
+    const std::wstring& counter = m_counter;
     const float left = m_follow->bounds().right() + kGap;
     canvas.drawText(counter, {left, b.y + kToolbarTop, std::max(b.right() - left, 0.0f), kToolbar}, TypeStyle::Caption,
                     Color::TextSecondary, ui::TextAlign::Trailing);

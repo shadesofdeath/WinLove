@@ -61,17 +61,22 @@ Result<DismExeRun> runDismExe(DismSession& session, std::wstring_view arguments,
 
     DismExeRun run;
     session.suspend(); // dism.exe opens its own session on the image: ours must not be in the way
-    auto exit = runProcess(line, [&](std::string_view chunk) {
-        if (onPercent) {
-            if (const auto percent = lastDismPercent(chunk)) {
-                onPercent(*percent);
+    // It services the mounted image: if WinLove dies it finishes on its own, as it always did
+    // (cut in the middle of /Add-Package or /Set-Edition it would leave the image half serviced).
+    auto exit = runProcess(
+        line,
+        [&](std::string_view chunk) {
+            if (onPercent) {
+                if (const auto percent = lastDismPercent(chunk)) {
+                    onPercent(*percent);
+                }
             }
-        }
-        run.output.append(chunk);
-        if (run.output.size() > 65536) {
-            run.output.erase(0, run.output.size() - 32768);
-        }
-    });
+            run.output.append(chunk);
+            if (run.output.size() > 65536) {
+                run.output.erase(0, run.output.size() - 32768);
+            }
+        },
+        nullptr, ProcessLife::Outlives);
     auto reopened = session.reload();
     if (!exit) {
         return std::unexpected(exit.error());

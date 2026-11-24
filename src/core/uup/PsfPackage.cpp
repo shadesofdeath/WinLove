@@ -19,6 +19,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <exception>
 #include <format>
 #include <fstream>
 #include <mutex>
@@ -266,6 +267,22 @@ Result<void> expandPsf(const std::filesystem::path& psf, const std::vector<PsfEn
             }
         }
     }
+    {
+        // The index is data from the package: an entry past the end of the payload is refused here,
+        // before a worker sizes its buffer by it (audit OPS-14). A payload that cannot be opened is
+        // the workers' error to report, as before.
+        const Handle probe(CreateFileW(longPath(psf).c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                                       FILE_ATTRIBUTE_NORMAL, nullptr));
+        LARGE_INTEGER size{};
+        if (probe.valid() && GetFileSizeEx(probe.get(), &size)) {
+            const auto bytes = static_cast<std::uint64_t>(size.QuadPart);
+            for (const auto& e : entries) {
+                if (e.offset > bytes || e.length > bytes - e.offset) {
+                    return fail(ErrorCode::ParseError, L"the package's file index points outside its payload", e.name);
+                }
+            }
+        }
+    }
     log::info("uup", std::format(L"expand {} file(s), {} bytes of {} -> {}", entries.size(), total, psf.wstring(),
                                  folder.wstring()));
     if (!ensureFolder(folder)) {
@@ -286,7 +303,7 @@ Result<void> expandPsf(const std::filesystem::path& psf, const std::vector<PsfEn
         }
         stop = true;
     };
-    auto work = [&] {
+    auto expandSome = [&] {
         Handle in(CreateFileW(longPath(psf).c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                               FILE_FLAG_SEQUENTIAL_SCAN, nullptr));
         if (!in.valid()) {
@@ -381,6 +398,17 @@ Result<void> expandPsf(const std::filesystem::path& psf, const std::vector<PsfEn
             }
         }
     };
+    // An exception that leaves a thread's function ends the process, in the middle of an Apply with
+    // the image mounted: it becomes this expansion's error instead (audit OPS-14).
+    auto work = [&] {
+        try {
+            expandSome();
+        } catch (const std::exception& e) {
+            setError(Error{ErrorCode::Unknown, L"expanding the update failed", utf8::toWide(e.what())});
+        } catch (...) {
+            setError(Error{ErrorCode::Unknown, L"expanding the update failed", folder.wstring()});
+        }
+    };
     {
         std::vector<std::jthread> threads;
         const unsigned count = std::clamp(std::thread::hardware_concurrency(), 1u, 8u);
@@ -417,9 +445,11 @@ Result<std::filesystem::path> expandUpdatePackage(const std::filesystem::path& c
     std::filesystem::path index = folder / L"express.psf.cix.xml";
     if (!std::filesystem::is_regular_file(index, ec)) {
         index.clear();
-        for (const auto& item : std::filesystem::directory_iterator(folder, ec)) {
-            if (text::lower(item.path().filename().wstring()).ends_with(L".psf.cix.xml")) {
-                index = item.path();
+        // increment(ec): a range-for's ++ throws when the walk fails half way (audit OPS-13).
+        for (auto it = std::filesystem::directory_iterator(folder, ec);
+             !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+            if (text::lower(it->path().filename().wstring()).ends_with(L".psf.cix.xml")) {
+                index = it->path();
                 break;
             }
         }
@@ -463,10 +493,11 @@ std::vector<std::filesystem::path> checkpointsBeside(const std::filesystem::path
     std::error_code ec;
     const std::wstring self = text::lower(msu.filename().wstring());
     for (const auto kb : kCheckpointKbs) {
-        for (const auto& item : std::filesystem::directory_iterator(msu.parent_path(), ec)) {
-            const std::wstring name = text::lower(item.path().filename().wstring());
+        for (auto it = std::filesystem::directory_iterator(msu.parent_path(), ec);
+             !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+            const std::wstring name = text::lower(it->path().filename().wstring());
             if (name != self && name.ends_with(L".msu") && name.find(kb) != std::wstring::npos) {
-                found.push_back(item.path());
+                found.push_back(it->path());
             }
         }
     }
@@ -499,7 +530,11 @@ Result<ExpandedMsu> expandMsu(const std::filesystem::path& msu, const std::files
         return std::unexpected(r.error());
     }
     std::filesystem::path container;
-    for (const auto& item : std::filesystem::directory_iterator(unpacked, ec)) {
+    // The walk has its own error code: the body's `ec` (a missing .psf, a rename) must not end it.
+    std::error_code walk;
+    for (auto it = std::filesystem::directory_iterator(unpacked, walk);
+         !walk && it != std::filesystem::directory_iterator(); it.increment(walk)) {
+        const std::filesystem::directory_entry& item = *it;
         const std::wstring name = text::lower(item.path().filename().wstring());
         auto psf = item.path();
         psf.replace_extension(L".psf");

@@ -5,6 +5,7 @@
 #include "base/Utf8.h"
 #include "core/image/ImageFiles.h"
 #include "core/image/RegistryEdit.h"
+#include "support/UiThread.h"
 
 #include <doctest.h>
 #include <json.hpp>
@@ -29,7 +30,8 @@ std::filesystem::path scratch(const wchar_t* name) {
 struct Fixture {
     std::filesystem::path dir = scratch(L"state");
     AppState state{dir / L"recent.json", dir / L"settings.json"};
-    StartPinsController controller{state, [](std::function<void()> f) { f(); }};
+    test::UiThread ui;
+    StartPinsController controller{state, ui.post()};
     Fixture() { state.setMounted(MountedImage{L"C:\\", L"C:\\w\\install.wim", 1, L"Pro"}); }
 };
 
@@ -219,7 +221,8 @@ TEST_CASE("taskbar pins: Microsoft's layout that replaces the default pins, read
 
 TEST_CASE("taskbar pins controller: modes, File Explorer first, users may unpin; Start stays its own (D-083)") {
     Fixture f;
-    StartPinsController taskbar(f.state, [](std::function<void()> fn) { fn(); }, StartPinsController::Surface::Taskbar, &f.controller);
+    test::UiThread ui;
+    StartPinsController taskbar(f.state, ui.post(), StartPinsController::Surface::Taskbar, &f.controller);
     CHECK(taskbar.surface() == StartPinsController::Surface::Taskbar);
     CHECK(taskbar.mode() == StartPinsController::Mode::Windows);
 

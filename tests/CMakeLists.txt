@@ -2,15 +2,30 @@
 # in Faz 2.6 and need an elevated shell plus build\lab (docs/TESTING.md).
 add_executable(wl_tests
     main.cpp
+    PerfBench.cpp
     support/TestGraphics.cpp
     base/ResultTests.cpp
     base/ScriptTests.cpp
+    base/MarkdownTests.cpp
     core/AppxRemovalTests.cpp
+    core/AuditFixTests.cpp
+    core/EngineAuditTests.cpp
+    core/ImageAuditTests.cpp
+    core/OpsAuditTests.cpp
+    ui/UiAuditTests.cpp
+    app/ShellAuditTests.cpp
+    app/ShellPolishTests.cpp
+    app/PagesPolishTests.cpp
+    app/SourcePolishTests.cpp
+    app/ControllerAuditTests.cpp
+    app/MountAdoptionTests.cpp
+    app/WorkStateTests.cpp
     core/ChangeSetTests.cpp
     core/CompatTests.cpp
     core/CoreHelpersTests.cpp
     core/ComponentStoreTests.cpp
     core/DriverTests.cpp
+    core/BootImageDriverTests.cpp
     core/InventoryTests.cpp
     core/StoreShrinkTests.cpp
     core/UpdateGuardTests.cpp
@@ -25,6 +40,7 @@ add_executable(wl_tests
     core/ImageEditionTests.cpp
     core/ImageFilesTests.cpp
     core/ImageFormatTests.cpp
+    core/VirtualDiskTests.cpp
     core/IsoTests.cpp
     core/PostSetupTests.cpp
     core/UnattendTests.cpp
@@ -33,21 +49,30 @@ add_executable(wl_tests
     core/UpdateCatalogTests.cpp
     core/UupCatalogTests.cpp
     core/UupConvertTests.cpp
+    core/EsdCatalogTests.cpp
     core/PsfPackageTests.cpp
     core/UupAppsTests.cpp
     core/InstalledProgramsTests.cpp
     core/LanguageFilesTests.cpp
     core/MsStoreTests.cpp
+    core/ReleaseCheckTests.cpp
+    core/SelfUpdateTests.cpp
     core/UsbMediaTests.cpp
     core/ImageExtrasTests.cpp
     core/BrandingTests.cpp
     core/WimEditTests.cpp
     core/WimVerifyTests.cpp
     core/WingetTests.cpp
+    ui/DpiTests.cpp
     ui/TokensTests.cpp
+    ui/PaletteTests.cpp
+    ui/AccentTests.cpp
+    ui/ProgressRingTests.cpp
     ui/IconsTests.cpp
     ui/RenderTests.cpp
+    ui/RestyleTests.cpp
     ui/WidgetTests.cpp
+    ui/MarkdownViewTests.cpp
     app/AnswerStoreTests.cpp
     app/ApplyTests.cpp
     app/CompatTests.cpp
@@ -72,7 +97,15 @@ add_executable(wl_tests
     app/UpdateCatalogControllerTests.cpp
     app/WindowsDownloadTests.cpp
     app/NewPagesTests.cpp
+    app/ResetTests.cpp
+    app/OverviewTests.cpp
+    app/VhdSourceTests.cpp
+    app/DetailCardTests.cpp
+    app/UpdateCheckTests.cpp
+    app/SelfUpdateAppTests.cpp
+    app/AutoIsoTests.cpp
     app/BrandingControllerTests.cpp
+    app/BootDriversTests.cpp
     app/IconTests.cpp)
 wl_configure_target(wl_tests)
 target_include_directories(wl_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

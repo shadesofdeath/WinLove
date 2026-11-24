@@ -47,9 +47,15 @@ Result<SecureBoot2023> prepareSecureBoot2023(const std::filesystem::path& mediaI
     std::filesystem::remove_all(scratch, ec);
     std::filesystem::create_directories(scratch, ec);
     SecureBoot2023 out;
+    // boot.wim's edition opened once: every file below used to read its lookup table and metadata
+    // again (some 25 times, audit ENG-08).
+    auto edition = WimEdition::open(**wim, 1);
+    if (!edition) {
+        return std::unexpected(edition.error());
+    }
     // Copies `inWim` (boot.wim image 1) to scratch\<name> and puts it at `onMedia` in the ISO.
     auto take = [&](std::wstring_view inWim, const std::wstring& onMedia, bool required) -> Result<bool> {
-        auto data = wimFileData(**wim, 1, inWim);
+        auto data = edition->data(inWim);
         if (!data) {
             if (data.error().code == ErrorCode::NotFound && !required) {
                 return false;
@@ -91,15 +97,14 @@ Result<SecureBoot2023> prepareSecureBoot2023(const std::filesystem::path& mediaI
         return std::unexpected(r.error());
     }
     // Fonts: <name>_EX.ttf → <name>.ttf (the console font has no _EX one and stays).
-    auto fonts = wimFolderNames(**wim, 1, kFontsEx);
-    if (fonts) {
-        for (const auto& name : *fonts) {
+    {
+        for (const auto& name : edition->names(kFontsEx)) {
             if (!text::iendsWith(name, L"_EX.ttf")) {
                 continue;
             }
             const std::wstring plain = name.substr(0, name.size() - 7) + L".ttf";
             const std::filesystem::path font = scratch / L"fonts";
-            auto data = wimFileData(**wim, 1, std::wstring(kFontsEx) + L"\\" + name);
+            auto data = edition->data(std::wstring(kFontsEx) + L"\\" + name);
             if (!data) {
                 return std::unexpected(data.error());
             }

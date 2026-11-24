@@ -18,6 +18,11 @@ TaskRunner::~TaskRunner() {
         for (auto& job : m_jobs) {
             job.token.cancel(); // queued jobs report Cancelled instead of running
         }
+        // The running job as well: without it a hash of a 6 GB ISO or a driver export went on to
+        // its end with the window gone, the process (and its one-instance mutex) with it.
+        if (m_running) {
+            m_running->cancel();
+        }
     }
     m_wake.notify_all();
     if (m_thread.joinable()) {
@@ -32,12 +37,18 @@ bool TaskRunner::onEngineThread() const noexcept {
 void TaskRunner::post(std::function<void()> job, CancelToken token) {
     {
         std::scoped_lock lock(m_mutex);
+        if (m_stopping) {
+            token.cancel(); // queued by a job while the runner goes away: reports Cancelled like the rest
+        }
         m_jobs.push_back({std::move(job), std::move(token)});
     }
     m_wake.notify_one();
 }
 
 void TaskRunner::drain() {
+    if (onEngineThread()) {
+        return; // a job waiting for its own end would never wake (audit ENG-16)
+    }
     std::unique_lock lock(m_mutex);
     m_idle.wait(lock, [this] { return m_jobs.empty() && !m_busy; });
 }
@@ -55,6 +66,7 @@ void TaskRunner::loop() {
             }
             job = std::move(m_jobs.front());
             m_jobs.pop_front();
+            m_running = job.token;
             m_busy = true;
         }
         try {
@@ -62,9 +74,13 @@ void TaskRunner::loop() {
         } catch (const std::exception& e) {
             // Engine code reports through Result; an exception here is a bug — log, keep the thread alive.
             log::error("task", L"unhandled exception in engine job: " + utf8::toWide(e.what()));
+        } catch (...) {
+            // `done` may throw anything; the thread must outlive it (audit ENG-16).
+            log::error("task", L"unhandled exception in engine job");
         }
         {
             std::scoped_lock lock(m_mutex);
+            m_running.reset();
             m_busy = false;
         }
         m_idle.notify_all();

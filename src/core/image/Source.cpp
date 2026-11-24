@@ -107,10 +107,12 @@ Result<SourceInfo> openSource(const std::filesystem::path& input) {
         break;
     }
     case ImageFormat::Folder: {
-        // Extracted setup media: <folder>\sources\install.wim|esd|swm
+        // Extracted setup media: <folder>\sources\install.wim|esd|swm. nativePath turns the
+        // candidate's '/' into '\': under a "\\?\" folder (DISM names another tool's mount so)
+        // Windows does not, and "…\sources/install.wim" was never found (2026-11-11).
         std::optional<std::filesystem::path> found;
         for (const auto* candidate : kInstallCandidates) {
-            const auto file = path / candidate;
+            const auto file = nativePath(path / candidate);
             if (std::filesystem::is_regular_file(file, ec)) {
                 info.installImage = candidate;
                 found = file;
@@ -131,7 +133,7 @@ Result<SourceInfo> openSource(const std::filesystem::path& input) {
         }
         raiseEnablementBuilds(**file, *wim);
         info.install = std::move(*wim);
-        if (auto boot = DiskFile::open(path / L"sources/boot.wim")) {
+        if (auto boot = DiskFile::open(nativePath(path / L"sources" / L"boot.wim"))) {
             if (auto bootWim = readWim(**boot)) {
                 info.boot = std::move(*bootWim);
             }
@@ -140,16 +142,50 @@ Result<SourceInfo> openSource(const std::filesystem::path& input) {
     }
     case ImageFormat::Vhd:
     case ImageFormat::Vhdx:
-        return fail(ErrorCode::Unsupported, L"VHD/VHDX sources arrive with a later step", path.wstring());
+        // D-141: the installed Windows on the disk, read from its registry (VirtualDisk.h).
+        return openVirtualDiskSource(path);
     case ImageFormat::Unknown:
-        return fail(ErrorCode::Unsupported, L"unknown source type (expected .iso .wim .esd .swm)", path.wstring());
+        return fail(ErrorCode::Unsupported, L"unknown source type (expected .iso .wim .esd .swm .vhd .vhdx)", path.wstring());
     }
     log::info("source", std::format(L"opened {} ({}, {} images in {})", path.wstring(), formatName(info.format),
                                     info.install.images.size(), info.installImage));
     return info;
 }
 
+std::filesystem::path sourceForMountedImage(const std::filesystem::path& imagePath) {
+    const std::filesystem::path image = withoutLongPathPrefix(nativePath(imagePath));
+    const std::filesystem::path sources = image.parent_path();
+    const std::wstring name = image.filename().wstring();
+    const bool installImage = _wcsicmp(name.c_str(), L"install.wim") == 0 || _wcsicmp(name.c_str(), L"install.esd") == 0 ||
+                              _wcsicmp(name.c_str(), L"install.swm") == 0;
+    if (!installImage || _wcsicmp(sources.filename().c_str(), L"sources") != 0) {
+        return image;
+    }
+    const std::filesystem::path folder = sources.parent_path();
+    std::error_code ec;
+    const bool setupMedia = std::filesystem::is_regular_file(folder / L"setup.exe", ec) ||
+                            std::filesystem::is_regular_file(sources / L"boot.wim", ec);
+    return setupMedia ? folder : image;
+}
+
+Result<SourceInfo> openMountedImageSource(const std::filesystem::path& imagePath) {
+    const std::filesystem::path image = withoutLongPathPrefix(nativePath(imagePath));
+    const std::filesystem::path source = sourceForMountedImage(image);
+    if (source != image) {
+        if (auto folder = openSource(source)) {
+            return folder;
+        } else {
+            log::warn("source", L"the setup folder of a mounted image did not open (" + describe(folder.error()) +
+                                    L"); reading the image file itself");
+        }
+    }
+    return openSource(image);
+}
+
 Result<std::shared_ptr<const ByteSource>> openInstallImage(const SourceInfo& source) {
+    if (isVirtualDiskFormat(source.format)) {
+        return fail(ErrorCode::Unsupported, L"a virtual disk has no install image (WIM) to read", source.path.wstring());
+    }
     if (source.format == ImageFormat::Iso) {
         auto iso = UdfImage::open(source.path);
         if (!iso) {
@@ -163,6 +199,28 @@ Result<std::shared_ptr<const ByteSource>> openInstallImage(const SourceInfo& sou
     }
     auto file = DiskFile::open(source.format == ImageFormat::Folder ? nativePath(source.path / source.installImage)
                                                                     : nativePath(source.path));
+    if (!file) {
+        return std::unexpected(file.error());
+    }
+    return std::shared_ptr<const ByteSource>(std::move(*file));
+}
+
+Result<std::shared_ptr<const ByteSource>> openBootImage(const SourceInfo& source) {
+    if (source.format == ImageFormat::Iso) {
+        auto iso = UdfImage::open(source.path);
+        if (!iso) {
+            return std::unexpected(iso.error());
+        }
+        auto node = iso->find(L"sources/boot.wim");
+        if (!node) {
+            return std::unexpected(node.error());
+        }
+        return iso->openFile(std::move(*node));
+    }
+    if (source.format != ImageFormat::Folder) {
+        return fail(ErrorCode::NotFound, L"the source has no setup files (sources\\boot.wim)", source.path.wstring());
+    }
+    auto file = DiskFile::open(nativePath(source.path / L"sources" / L"boot.wim"));
     if (!file) {
         return std::unexpected(file.error());
     }

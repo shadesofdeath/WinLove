@@ -5,6 +5,7 @@
 #include "app/pages/PageBits.h"
 #include "app/pages/languages/LanguageAddDialog.h"
 #include "ui/anim/Tween.h"
+#include "ui/widgets/ProgressRing.h"
 
 #include <algorithm>
 #include <format>
@@ -18,8 +19,8 @@ using ui::tokens::TypeStyle;
 
 namespace {
 constexpr float kTop = 0.0f;
-constexpr float kSection = 40.0f;
-constexpr float kRow = 24.0f; // D-109: the reference tool density
+constexpr float kSection = ui::FormView::kSection; // the forms' title block (paintFormSection)
+constexpr float kRow = ui::tokens::size::control + ui::tokens::spacing::s2; // D-136: a control and a little air
 constexpr float kLabelWidth = 220.0f;
 constexpr float kFieldWidth = 420.0f;
 constexpr float kStrip = 52.0f;
@@ -37,7 +38,7 @@ std::wstring languageList(const std::vector<std::wstring>& tags) {
 }
 } // namespace
 
-// D-061: the lookup / download of "Dil ekle…", above the list: spinner, what is happening,
+// D-061: the lookup / download of "Dil ekle…", above the list: progress ring (D-142), what is happening,
 // bytes, a 2px bar and "Durdur" (the .part files stay; the next download resumes).
 class LanguagesPage::FetchStrip : public ui::Widget {
 public:
@@ -54,13 +55,18 @@ public:
 
     void start() {
         m_now = ui::nowMs();
+        m_ring.start(m_now);
         animate();
     }
-    [[nodiscard]] float tickIntervalMs() const override { return 100.0f; } // spinner and ETA
+    [[nodiscard]] float tickIntervalMs() const override { return m_ring.tickMs(100.0f); } // the ring's pace, else the ETA's
     bool tick(double now) override {
         m_now = now;
         invalidate();
-        return visible() && m_state.languageFetch().has_value();
+        const bool on = visible() && m_state.languageFetch().has_value();
+        if (!on) {
+            m_ring.stop();
+        }
+        return on;
     }
     void layout() override {
         const RectF b = bounds();
@@ -74,9 +80,8 @@ public:
         }
         const RectF b = bounds();
         canvas.fillRect(b, Color::BgPanel);
-        const float angle = static_cast<float>(static_cast<int>(m_now / 100.0) % 8) * 45.0f;
-        canvas.drawIcon(ui::icons::Icon::Spinner, {b.x + 17, b.y + 12}, Color::AccentBase, ui::IconVariant::Regular16, 0,
-                        ui::reducedMotion() ? 0.0f : angle);
+        // D-142: the progress ring, centred where the 16 DIP spinner icon was.
+        ui::paintRing(canvas, ui::ringBox({b.x + 25, b.y + 20}, ui::tokens::size::ringLarge), m_ring.pose(m_now));
         const float x = b.x + 40;
         const float width = std::max(m_stop->bounds().x - x - 16, 0.0f);
         using Stage = AppState::LanguageFetch::Stage;
@@ -109,6 +114,7 @@ private:
     Language m_language;
     ui::Button* m_stop = nullptr;
     double m_now = 0;
+    ui::RingClock m_ring;
 };
 
 LanguagesPage::LanguagesPage(AppState& state, LanguageController& controller, const Localization& strings, Language language,
@@ -120,14 +126,18 @@ LanguagesPage::LanguagesPage(AppState& state, LanguageController& controller, co
             m_intents.stopFetch();
         }
     };
+    // The parts column takes what is left (its own "…" when the room is short): with the language as
+    // the flexible one, the fixed columns overran the card at 1200 DIP and "Boyut" was cut off.
+    m_summaryLine = &add<SummaryLine>();
     m_table = &add<ui::TableView>(std::vector<ui::TableColumn>{
-        {strings.get(Str::LanguagesLanguage), 0},
-        {strings.get(Str::LanguagesColState), 242},
-        {strings.get(Str::LanguagesColParts), 344},
-        {strings.get(Str::LanguagesColComponents), 138, ui::TextAlign::Trailing},
-        {strings.get(Str::CommonSize), 110, ui::TextAlign::Trailing},
+        {strings.get(Str::LanguagesLanguage), 220},
+        {strings.get(Str::LanguagesColState), 180},
+        {strings.get(Str::LanguagesColParts), 0},
+        {strings.get(Str::LanguagesColComponents), 110, ui::TextAlign::Trailing},
+        {strings.get(Str::CommonSize), 100, ui::TextAlign::Trailing},
     });
     m_table->setAccessible(ui::AccessRole::Group, strings.get(Str::LanguagesList));
+    m_table->onSelect = [this](int) { detailChanged(); };
     m_table->paintCell = [this](ui::Canvas& c, int row, int column, RectF rect, ui::TableView::CellState cell) {
         paintCell(c, row, column, rect, cell.selected);
     };
@@ -167,12 +177,22 @@ LanguagesPage::LanguagesPage(AppState& state, LanguageController& controller, co
     };
     setAccessible(ui::AccessRole::Group, strings.get(Str::LanguagesTitle));
     m_subscription = m_state.subscribe([this](AppState::Change change) {
+        if (change == AppState::Change::LanguageFetch &&
+            m_fetch->visible() == (m_state.mounted().has_value() && m_state.languageFetch().has_value())) {
+            // Download progress, up to a thousand steps a file (audit PG-10): the strip reads the
+            // state itself; nothing else on the page depends on it. Each step used to build the
+            // list and the five dropdowns again (~2,000 strings) and close the one that was open.
+            invalidate();
+            return;
+        }
         if (change == AppState::Change::Mount || change == AppState::Change::Intl || change == AppState::Change::Queue ||
             change == AppState::Change::LanguageFetch || change == AppState::Change::Source) {
             refresh();
         }
     });
-    m_controller.load();
+    // Opening the page again tries a read that failed before (refresh() never does: see load()).
+    const auto& intl = m_state.imageIntl();
+    m_controller.load(/*force=*/intl && intl->status == AppState::ImageIntl::Status::Failed);
     refresh();
 }
 
@@ -215,6 +235,11 @@ void LanguagesPage::rebuildDropdowns() {
                 selected = static_cast<int>(m_values[field].size()) - 1;
             }
         }
+        if (items == m_shown[field]) {
+            m_fields[field]->setSelected(selected);
+            return;
+        }
+        m_shown[field] = items;
         m_fields[field]->setItems(std::move(items), selected);
     };
     std::vector<IntlChoice> ui;
@@ -281,11 +306,33 @@ void LanguagesPage::refresh() {
         m_controller.load();
     }
     m_rows = mounted ? m_controller.rows() : std::vector<LanguageRow>{};
+    // Each row's name from Windows once per refresh, not per row per frame (GetLocaleInfoEx in paint).
+    m_names.clear();
+    std::size_t adding = 0;
+    std::uint64_t bytes = 0;
+    for (const auto& r : m_rows) {
+        m_names.push_back(LanguageController::localeName(r.language));
+        adding += !r.queued.empty() || r.componentsQueued > 0 ? 1 : 0;
+        bytes += r.queuedBytes;
+    }
+    // D-139: "3 dil · 1 eklenecek · 1,2 GB" at the right of the list's title.
+    std::vector<SummaryPart> parts;
+    if (!m_rows.empty()) {
+        parts.push_back({m_strings.format(Str::LanguagesSummary, {{L"n", formatCount(m_rows.size(), m_language)}})});
+    }
+    if (adding > 0) {
+        parts.push_back({bytes > 0 ? m_strings.format(Str::LanguagesSummaryAdd, {{L"n", formatCount(adding, m_language)}, {L"size", formatBytes(bytes, m_language)}})
+                                   : m_strings.format(Str::LanguagesSummaryAddN, {{L"n", formatCount(adding, m_language)}}),
+                         SummaryPart::Tone::Change});
+    }
+    m_summaryLine->set(std::move(parts));
+    m_summaryLine->setVisible(mounted);
     m_table->setRowCount(static_cast<int>(m_rows.size()));
     m_table->refresh();
     rebuildDropdowns();
     layout();
     invalidate();
+    detailChanged();
 }
 
 void LanguagesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rect, bool selected) {
@@ -304,7 +351,7 @@ void LanguagesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rec
             canvas.strokeRoundRect({rect.x + 1.5f, cy - 2.5f, 5, 5}, 2.5f, Color::TextTertiary, 1.0f);
         }
         const float x = rect.x + 16;
-        const std::wstring name = LanguageController::localeName(r.language);
+        const std::wstring& name = m_names[static_cast<std::size_t>(row)];
         const TypeStyle style = selected || r.ui ? TypeStyle::BodyStrong : TypeStyle::Body;
         const float nameW = std::min(std::max(rect.right() - x, 0.0f), std::ceil(canvas.text().measure(name, style)));
         canvas.drawText(name, {x, rect.y, nameW, rect.height}, style, Color::TextPrimary);
@@ -315,7 +362,7 @@ void LanguagesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rec
     case kState: {
         const Str state = r.inImage ? (adding ? Str::LanguagesStateMore : r.ui ? Str::LanguagesStateUi : Str::LanguagesStateImage)
                                     : Str::LanguagesStateQueued;
-        canvas.drawText(m_strings.get(state), rect, TypeStyle::Caption, adding ? Color::AccentBase : Color::TextSecondary);
+        canvas.drawText(m_strings.get(state), rect, TypeStyle::Caption, adding ? Color::AccentText : Color::TextSecondary);
         break;
     }
     case kParts: {
@@ -334,7 +381,7 @@ void LanguagesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rec
                 canvas.drawText(L"…", {x, rect.y, 12, rect.height}, TypeStyle::Caption, Color::TextTertiary);
                 break;
             }
-            canvas.drawText(text, {x, rect.y, w, rect.height}, TypeStyle::Caption, queued ? Color::AccentBase : Color::TextSecondary);
+            canvas.drawText(text, {x, rect.y, w, rect.height}, TypeStyle::Caption, queued ? Color::AccentText : Color::TextSecondary);
             x += w;
             first = false;
         }
@@ -349,7 +396,7 @@ void LanguagesPage::paintCell(ui::Canvas& canvas, int row, int column, RectF rec
             text += (text.empty() ? L"+" : L" +") + std::to_wstring(r.componentsQueued);
         }
         canvas.drawText(text.empty() ? L"—" : text, rect, TypeStyle::Mono,
-                        r.componentsQueued > 0 ? Color::AccentBase : Color::TextSecondary, ui::TextAlign::Trailing);
+                        r.componentsQueued > 0 ? Color::AccentText : Color::TextSecondary, ui::TextAlign::Trailing);
         break;
     }
     case kSize:
@@ -369,18 +416,24 @@ void LanguagesPage::layout() {
         m_fetch->setBounds({b.x, y, b.width, kStrip});
         y += kStrip + 12;
     }
-    y += kSection; // DİLLER
+    // DİLLER, with the summary at the title's right (on the title's line).
+    m_summaryLine->setBounds({b.x + kLabelWidth, y + kSection - ui::FormView::kSectionBelow - kHeaderRow + 4, std::max(b.width - kLabelWidth, 0.0f),
+                              kHeaderRow});
+    y += kSection;
     const int rows = std::clamp(static_cast<int>(m_rows.size()), 1, kMaxTableRows);
     const float tableH = ui::TableView::kHeader + ui::TableView::kRow * static_cast<float>(rows) + 1;
     m_table->setBounds({b.x, y, b.width, tableH});
+    fitColumns(*m_table, b.width, detailShown(), {kComponents, kSize}, ui::TableView::kFlexMin);
     y += tableH + 4 + 16 + 8; // the hint line
     if (m_lcu->visible()) {
         m_lcu->setBounds({b.x, y, b.width, kInfo});
         y += kInfo + 8;
     }
     y += kSection; // BÖLGE VE DİL
+    // D-139: beside the detail card the page is narrower than the label and the field together.
+    const float fieldW = std::min(kFieldWidth, std::max(b.width - kLabelWidth, 160.0f));
     for (auto* f : m_fields) {
-        f->setBounds({b.x + kLabelWidth, y + (kRow - ui::tokens::size::control) / 2, kFieldWidth, ui::tokens::size::control});
+        f->setBounds({b.x + kLabelWidth, y + (kRow - ui::tokens::size::control) / 2, fieldW, ui::tokens::size::control});
         y += kRow;
     }
     m_contentHeight = m_state.mounted() ? y + 12 - b.y : 0.0f;
@@ -414,6 +467,51 @@ void LanguagesPage::paint(ui::Canvas& canvas) {
         y += kRow;
     }
     canvas.drawText(m_strings.get(Str::LanguagesRegionHint), {b.x, y + 4, b.width, 20}, TypeStyle::Caption, Color::TextTertiary);
+}
+
+} // namespace wl::app
+
+namespace wl::app {
+
+DetailModel LanguagesPage::detail() const {
+    DetailModel model;
+    const int row = m_table->selected();
+    if (!m_table->visible() || row < 0 || row >= static_cast<int>(m_rows.size()) || static_cast<std::size_t>(row) >= m_names.size()) {
+        return model;
+    }
+    const auto& r = m_rows[static_cast<std::size_t>(row)];
+    const bool adding = !r.queued.empty() || r.componentsQueued > 0;
+    model.icon = ui::icons::Icon::LanguageGlobe;
+    model.title = m_names[static_cast<std::size_t>(row)];
+    model.identity = r.language;
+    const Str state = r.inImage ? (adding ? Str::LanguagesStateMore : r.ui ? Str::LanguagesStateUi : Str::LanguagesStateImage)
+                                : Str::LanguagesStateQueued;
+    model.state = {adding ? ui::icons::Icon::QueueClock : ui::icons::Icon::Check, m_strings.get(state), adding ? DetailTone::Change : DetailTone::Quiet};
+    model.facts.push_back({m_strings.get(Str::LanguagesInImageFact), r.installed.empty() ? std::wstring(L"—") : languagePartsText(m_strings, r.installed)});
+    if (!r.queued.empty()) {
+        model.facts.push_back({m_strings.get(Str::LanguagesQueuedFact), languagePartsText(m_strings, r.queued), DetailTone::Change});
+    }
+    std::wstring components = r.componentsInImage > 0 ? std::to_wstring(r.componentsInImage) : std::wstring();
+    if (r.componentsQueued > 0) {
+        components += (components.empty() ? L"+" : L" +") + std::to_wstring(r.componentsQueued);
+    }
+    model.facts.push_back({m_strings.get(Str::LanguagesColComponents), components.empty() ? std::wstring(L"—") : components,
+                           r.componentsQueued > 0 ? DetailTone::Change : DetailTone::Normal, true});
+    if (r.queuedBytes > 0) {
+        model.facts.push_back({m_strings.get(Str::CommonSize), formatBytes(r.queuedBytes, m_language), DetailTone::Normal, true});
+    }
+    if (adding) {
+        model.actions.push_back({kActionRemove, m_strings.get(Str::LanguagesDequeue)});
+    }
+    return model;
+}
+
+void LanguagesPage::detailAction(int id) {
+    const int row = m_table->selected();
+    if (id == kActionRemove && row >= 0 && row < static_cast<int>(m_rows.size())) {
+        const std::wstring language = m_rows[static_cast<std::size_t>(row)].language; // a copy: the queue notifies
+        m_controller.unqueueLanguage(language); // the row's Delete
+    }
 }
 
 } // namespace wl::app

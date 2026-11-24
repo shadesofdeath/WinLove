@@ -1,0 +1,347 @@
+<!-- D-149: trimmed products.xml of Windows Update's products.cab, 2026-11-11 (catalog 2.1, 26300.9711) -->
+<MCT>
+  <Catalogs>
+    <Catalog version="2.1">
+      <PublishedMedia id="" release="">
+        <Files>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd</FileName>
+            <LanguageCode>en-us</LanguageCode>
+            <Language>English (United States)</Language>
+            <Edition>Professional</Edition>
+            <Architecture>x64</Architecture>
+            <Size>6338662255</Size>
+            <Sha256>a7217f5e14eaf61b967b740d289a95093f430b116e1b64fbe41fd98dcd19f139</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/1fa2fb16-757a-4c59-8371-1924cdf38384/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd</FileName>
+            <LanguageCode>en-us</LanguageCode>
+            <Language>English (United States)</Language>
+            <Edition>ProfessionalWorkstation</Edition>
+            <Architecture>x64</Architecture>
+            <Size>6338662255</Size>
+            <Sha256>a7217f5e14eaf61b967b740d289a95093f430b116e1b64fbe41fd98dcd19f139</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/1fa2fb16-757a-4c59-8371-1924cdf38384/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd</FileName>
+            <LanguageCode>en-us</LanguageCode>
+            <Language>English (United States)</Language>
+            <Edition>Core</Edition>
+            <Architecture>x64</Architecture>
+            <Size>6338662255</Size>
+            <Sha256>a7217f5e14eaf61b967b740d289a95093f430b116e1b64fbe41fd98dcd19f139</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/1fa2fb16-757a-4c59-8371-1924cdf38384/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd</FileName>
+            <LanguageCode>en-us</LanguageCode>
+            <Language>English (United States)</Language>
+            <Edition>CoreSingleLanguage</Edition>
+            <Architecture>x64</Architecture>
+            <Size>6338662255</Size>
+            <Sha256>a7217f5e14eaf61b967b740d289a95093f430b116e1b64fbe41fd98dcd19f139</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/1fa2fb16-757a-4c59-8371-1924cdf38384/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd</FileName>
+            <LanguageCode>en-us</LanguageCode>
+            <Language>English (United States)</Language>
+            <Edition>Education</Edition>
+            <Architecture>x64</Architecture>
+            <Size>6338662255</Size>
+            <Sha256>a7217f5e14eaf61b967b740d289a95093f430b116e1b64fbe41fd98dcd19f139</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/1fa2fb16-757a-4c59-8371-1924cdf38384/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Türkiye)</Language>
+            <Edition>Professional</Edition>
+            <Architecture>x64</Architecture>
+            <Size>6096708340</Size>
+            <Sha256>b0a405780d4cbd8f5871a3ee8b058cc6e0a958252004d4296916f9bf503026d4</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/a9cf9946-b2f2-4a52-bffa-32276d24fcea/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Türkiye)</Language>
+            <Edition>ProfessionalWorkstation</Edition>
+            <Architecture>x64</Architecture>
+            <Size>6096708340</Size>
+            <Sha256>b0a405780d4cbd8f5871a3ee8b058cc6e0a958252004d4296916f9bf503026d4</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/a9cf9946-b2f2-4a52-bffa-32276d24fcea/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Türkiye)</Language>
+            <Edition>Core</Edition>
+            <Architecture>x64</Architecture>
+            <Size>6096708340</Size>
+            <Sha256>b0a405780d4cbd8f5871a3ee8b058cc6e0a958252004d4296916f9bf503026d4</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/a9cf9946-b2f2-4a52-bffa-32276d24fcea/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Türkiye)</Language>
+            <Edition>CoreSingleLanguage</Edition>
+            <Architecture>x64</Architecture>
+            <Size>6096708340</Size>
+            <Sha256>b0a405780d4cbd8f5871a3ee8b058cc6e0a958252004d4296916f9bf503026d4</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/a9cf9946-b2f2-4a52-bffa-32276d24fcea/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Türkiye)</Language>
+            <Edition>Education</Edition>
+            <Architecture>x64</Architecture>
+            <Size>6096708340</Size>
+            <Sha256>b0a405780d4cbd8f5871a3ee8b058cc6e0a958252004d4296916f9bf503026d4</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/a9cf9946-b2f2-4a52-bffa-32276d24fcea/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>False</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Türkiye)</Language>
+            <Edition>Professional</Edition>
+            <Architecture>ARM64</Architecture>
+            <Size>6110777222</Size>
+            <Sha256>610b07f4a53342805435eca0edabe9b11b2f2b602600d631f728fd0310eeef9a</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/e1130140-0e47-44bb-9417-e62f0a92aed4/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>True</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Türkiye)</Language>
+            <Edition>ProfessionalWorkstation</Edition>
+            <Architecture>ARM64</Architecture>
+            <Size>6110777222</Size>
+            <Sha256>610b07f4a53342805435eca0edabe9b11b2f2b602600d631f728fd0310eeef9a</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/e1130140-0e47-44bb-9417-e62f0a92aed4/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>True</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Türkiye)</Language>
+            <Edition>Core</Edition>
+            <Architecture>ARM64</Architecture>
+            <Size>6110777222</Size>
+            <Sha256>610b07f4a53342805435eca0edabe9b11b2f2b602600d631f728fd0310eeef9a</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/e1130140-0e47-44bb-9417-e62f0a92aed4/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>True</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Türkiye)</Language>
+            <Edition>CoreSingleLanguage</Edition>
+            <Architecture>ARM64</Architecture>
+            <Size>6110777222</Size>
+            <Sha256>610b07f4a53342805435eca0edabe9b11b2f2b602600d631f728fd0310eeef9a</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/e1130140-0e47-44bb-9417-e62f0a92aed4/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>True</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Türkiye)</Language>
+            <Edition>Education</Edition>
+            <Architecture>ARM64</Architecture>
+            <Size>6110777222</Size>
+            <Sha256>610b07f4a53342805435eca0edabe9b11b2f2b602600d631f728fd0310eeef9a</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/e1130140-0e47-44bb-9417-e62f0a92aed4/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>True</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd</FileName>
+            <LanguageCode>en-us</LanguageCode>
+            <Language>English (United States)</Language>
+            <Edition>Professional</Edition>
+            <Architecture>ARM64</Architecture>
+            <Size>6169241382</Size>
+            <Sha256>0ae7c7ea490afa7a40c008ab7bc5ddb457a5a8d3940de2bb136baf44c8569b05</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/49f603e3-5946-46e9-90ad-a4398ffa4149/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>True</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd</FileName>
+            <LanguageCode>en-us</LanguageCode>
+            <Language>English (United States)</Language>
+            <Edition>ProfessionalWorkstation</Edition>
+            <Architecture>ARM64</Architecture>
+            <Size>6169241382</Size>
+            <Sha256>0ae7c7ea490afa7a40c008ab7bc5ddb457a5a8d3940de2bb136baf44c8569b05</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/49f603e3-5946-46e9-90ad-a4398ffa4149/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>True</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd</FileName>
+            <LanguageCode>en-us</LanguageCode>
+            <Language>English (United States)</Language>
+            <Edition>Core</Edition>
+            <Architecture>ARM64</Architecture>
+            <Size>6169241382</Size>
+            <Sha256>0ae7c7ea490afa7a40c008ab7bc5ddb457a5a8d3940de2bb136baf44c8569b05</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/49f603e3-5946-46e9-90ad-a4398ffa4149/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>True</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd</FileName>
+            <LanguageCode>en-us</LanguageCode>
+            <Language>English (United States)</Language>
+            <Edition>CoreSingleLanguage</Edition>
+            <Architecture>ARM64</Architecture>
+            <Size>6169241382</Size>
+            <Sha256>0ae7c7ea490afa7a40c008ab7bc5ddb457a5a8d3940de2bb136baf44c8569b05</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/49f603e3-5946-46e9-90ad-a4398ffa4149/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>True</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd</FileName>
+            <LanguageCode>en-us</LanguageCode>
+            <Language>English (United States)</Language>
+            <Edition>Education</Edition>
+            <Architecture>ARM64</Architecture>
+            <Size>6169241382</Size>
+            <Sha256>0ae7c7ea490afa7a40c008ab7bc5ddb457a5a8d3940de2bb136baf44c8569b05</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/49f603e3-5946-46e9-90ad-a4398ffa4149/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%CLIENT%</Edition_Loc>
+            <IsRetailOnly>True</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTBUSINESS_VOL_A64FRE_en-us.esd</FileName>
+            <LanguageCode>en-us</LanguageCode>
+            <Language>English (United States)</Language>
+            <Edition>Enterprise</Edition>
+            <Architecture>ARM64</Architecture>
+            <Size>6131833380</Size>
+            <Sha256>016eae1cdcdd33bfe83c05dc623d4e0332b17ad025f5a0b0c331ad3fba58ff6f</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/529a52dc-0bb4-4f79-accb-79c4f8deab52/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTBUSINESS_VOL_A64FRE_en-us.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%ENTERPRISE%</Edition_Loc>
+            <IsRetailOnly>True</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTBUSINESS_VOL_x64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Türkiye)</Language>
+            <Edition>Enterprise</Edition>
+            <Architecture>x64</Architecture>
+            <Size>6033627682</Size>
+            <Sha256>18cbee44562134e4862aec539c74054e4675e4c83bab452446fcdd6813e65b4f</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/976fde11-0c97-4957-a8a1-ee0b365dd9b2/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTBUSINESS_VOL_x64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%ENTERPRISE%</Edition_Loc>
+            <IsRetailOnly>True</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTBUSINESS_VOL_x64FRE_en-us.esd</FileName>
+            <LanguageCode>en-us</LanguageCode>
+            <Language>English (United States)</Language>
+            <Edition>Enterprise</Edition>
+            <Architecture>x64</Architecture>
+            <Size>6207041105</Size>
+            <Sha256>b61eddda20bfe6702c67bb93b93b5bc8b7c3b06824e1e3d2cf65c38ef935911f</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/ebb7ccf6-f454-4acf-aafc-f1adcbb3796a/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTBUSINESS_VOL_x64FRE_en-us.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%ENTERPRISE%</Edition_Loc>
+            <IsRetailOnly>True</IsRetailOnly>
+          </File>
+          <File id="">
+            <FileName>26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTBUSINESS_VOL_A64FRE_tr-tr.esd</FileName>
+            <LanguageCode>tr-tr</LanguageCode>
+            <Language>Turkish (Türkiye)</Language>
+            <Edition>Enterprise</Edition>
+            <Architecture>ARM64</Architecture>
+            <Size>6006020681</Size>
+            <Sha256>38177d29e6d84e0b194cca14907830a13aafee936db61227729545e8051f2c7f</Sha256>
+            <FilePath>http://dl.delivery.mp.microsoft.com/filestreamingservice/files/37124d38-0673-42e1-b465-186db0c1c208/26300.9711.261011-1601.26h2_ge_release_svc_refresh_CLIENTBUSINESS_VOL_A64FRE_tr-tr.esd</FilePath>
+            <Key />
+            <Architecture_Loc>%ARCH_64%</Architecture_Loc>
+            <Edition_Loc>%ENTERPRISE%</Edition_Loc>
+            <IsRetailOnly>True</IsRetailOnly>
+          </File>
+        </Files>
+      </PublishedMedia>
+    </Catalog>
+  </Catalogs>
+</MCT>

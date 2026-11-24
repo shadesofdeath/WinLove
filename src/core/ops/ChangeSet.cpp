@@ -48,11 +48,27 @@ constexpr std::array<std::pair<OpKind, const char*>, 29> kKinds = {{
 
 constexpr std::array<const char*, 3> kRisks = {"low", "medium", "high"};
 constexpr std::size_t kUndoDepth = 200;
+// The history keeps whole earlier queues. Most are small (a 900-step preset is ~0.3 MB), but with
+// the welcome queued every state carries its script (~0.5 MB as UTF-16): 200 of them were 100 MB
+// and more. Past this the oldest states go first; the newest always stays.
+constexpr std::size_t kUndoBytes = 64u * 1024 * 1024;
 
-// Enable/Disable of one feature are inverses: queuing both means "leave it as it is".
-bool inverse(OpKind a, OpKind b) {
-    return (a == OpKind::DisableFeature && b == OpKind::EnableFeature) ||
-           (a == OpKind::EnableFeature && b == OpKind::DisableFeature);
+std::size_t bytesOf(const std::vector<Operation>& ops) {
+    std::size_t bytes = ops.capacity() * sizeof(Operation);
+    for (const auto& op : ops) {
+        bytes += (op.target.capacity() + op.value.capacity()) * sizeof(wchar_t);
+    }
+    return bytes;
+}
+
+std::wstring slotKey(OpKind kind, std::wstring_view target) {
+    std::wstring key;
+    key.reserve(target.size() + 1);
+    key.push_back(static_cast<wchar_t>(L'A' + static_cast<int>(kind)));
+    for (const wchar_t c : target) {
+        key.push_back(c >= L'A' && c <= L'Z' ? static_cast<wchar_t>(c + 32) : c < 128 ? c : static_cast<wchar_t>(1));
+    }
+    return key;
 }
 
 } // namespace
@@ -79,13 +95,60 @@ Result<OpKind> opKindFromKey(std::string_view key) {
     return fail(ErrorCode::ParseError, L"unknown operation kind", utf8::toWide(key));
 }
 
-void ChangeSet::snapshot() {
-    m_undo.push_back(m_ops);
-    if (m_undo.size() > kUndoDepth) {
-        m_undo.erase(m_undo.begin());
+void ChangeSet::endGroup() noexcept {
+    if (m_group > 0 && --m_group == 0) {
+        m_groupSaved = false;
     }
+}
+
+void ChangeSet::snapshot() {
+    if (m_group > 0) {
+        if (m_groupSaved) {
+            ++m_version; // the state before the group is already in the history
+            return;
+        }
+        m_groupSaved = true;
+    }
+    m_undo.push_back(m_ops);
+    m_undoBytes += bytesOf(m_undo.back());
+    trimHistory();
     m_redo.clear();
     ++m_version;
+}
+
+void ChangeSet::trimHistory() {
+    while (m_undo.size() > kUndoDepth || (m_undoBytes > kUndoBytes && m_undo.size() > 1)) {
+        m_undoBytes -= std::min(m_undoBytes, bytesOf(m_undo.front()));
+        m_undo.pop_front();
+    }
+}
+
+ChangeSet ChangeSet::withoutHistory() const {
+    ChangeSet copy;
+    copy.m_ops = m_ops;
+    copy.m_index = m_index;
+    copy.m_version = m_version;
+    return copy;
+}
+
+void ChangeSet::reindex() {
+    m_index.clear();
+    m_index.reserve(m_ops.size());
+    for (std::size_t i = 0; i < m_ops.size(); ++i) {
+        m_index.emplace(slotKey(m_ops[i].kind, m_ops[i].target), i);
+    }
+}
+
+std::size_t ChangeSet::indexOf(OpKind kind, std::wstring_view target, const std::vector<bool>* skip) const {
+    std::size_t first = kNone;
+    const auto [begin, end] = m_index.equal_range(slotKey(kind, target));
+    for (auto it = begin; it != end; ++it) {
+        const std::size_t i = it->second;
+        if (i < first && !(skip && (*skip)[i]) && m_ops[i].kind == kind && text::iequals(m_ops[i].target, target)) {
+            first = i;
+        }
+    }
+    return first;
 }
 
 void ChangeSet::add(Operation op) {
@@ -104,50 +167,59 @@ void ChangeSet::addAll(std::vector<Operation> ops) {
 }
 
 std::size_t ChangeSet::removeAll(const std::vector<std::pair<OpKind, std::wstring>>& slots) {
-    const bool any = std::ranges::any_of(slots, [&](const auto& s) { return find(s.first, s.second) != nullptr; });
-    if (!any) {
+    // Marked first, taken out in one pass: one erase per slot moved the rest of the queue each time.
+    std::vector<bool> gone(m_ops.size(), false);
+    std::size_t removed = 0;
+    for (const auto& [kind, target] : slots) {
+        if (const std::size_t i = indexOf(kind, target, &gone); i != kNone) {
+            gone[i] = true;
+            ++removed;
+        }
+    }
+    if (removed == 0) {
         return 0;
     }
     snapshot();
-    std::size_t removed = 0;
-    for (const auto& [kind, target] : slots) {
-        removed += removeOne(kind, target) ? 1 : 0;
+    std::size_t kept = 0;
+    for (std::size_t i = 0; i < m_ops.size(); ++i) {
+        if (!gone[i]) {
+            if (kept != i) {
+                m_ops[kept] = std::move(m_ops[i]);
+            }
+            ++kept;
+        }
     }
+    m_ops.resize(kept, Operation{OpKind::RemovePackage, {}, {}});
+    reindex();
     return removed;
 }
 
 void ChangeSet::addOne(Operation op) {
-    const auto opposite = std::ranges::find_if(m_ops, [&](const Operation& o) {
-        return inverse(o.kind, op.kind) && text::iequals(o.target, op.target);
-    });
-    if (opposite != m_ops.end()) {
-        m_ops.erase(opposite);
-        return;
+    // Enable/Disable of one feature are inverses: queuing both means "leave it as it is".
+    if (op.kind == OpKind::DisableFeature || op.kind == OpKind::EnableFeature) {
+        const OpKind other = op.kind == OpKind::DisableFeature ? OpKind::EnableFeature : OpKind::DisableFeature;
+        if (const std::size_t opposite = indexOf(other, op.target); opposite != kNone) {
+            m_ops.erase(m_ops.begin() + static_cast<std::ptrdiff_t>(opposite));
+            reindex();
+            return;
+        }
     }
-    const auto same = std::ranges::find_if(m_ops, [&](const Operation& o) { return o.sameSlot(op); });
-    if (same != m_ops.end()) {
-        *same = std::move(op);
+    if (const std::size_t same = indexOf(op.kind, op.target); same != kNone) {
+        m_ops[same] = std::move(op);
     } else {
+        m_index.emplace(slotKey(op.kind, op.target), m_ops.size());
         m_ops.push_back(std::move(op));
     }
 }
 
 bool ChangeSet::remove(OpKind kind, std::wstring_view target) {
-    if (!find(kind, target)) {
+    const std::size_t i = indexOf(kind, target);
+    if (i == kNone) {
         return false;
     }
     snapshot();
-    return removeOne(kind, target);
-}
-
-bool ChangeSet::removeOne(OpKind kind, std::wstring_view target) {
-    const auto it = std::ranges::find_if(m_ops, [&](const Operation& o) {
-        return o.kind == kind && text::iequals(o.target, target);
-    });
-    if (it == m_ops.end()) {
-        return false;
-    }
-    m_ops.erase(it);
+    m_ops.erase(m_ops.begin() + static_cast<std::ptrdiff_t>(i));
+    reindex();
     return true;
 }
 
@@ -155,14 +227,13 @@ void ChangeSet::clear() {
     if (!m_ops.empty()) {
         snapshot();
         m_ops.clear();
+        m_index.clear();
     }
 }
 
 const Operation* ChangeSet::find(OpKind kind, std::wstring_view target) const {
-    const auto it = std::ranges::find_if(m_ops, [&](const Operation& o) {
-        return o.kind == kind && text::iequals(o.target, target);
-    });
-    return it == m_ops.end() ? nullptr : &*it;
+    const std::size_t i = indexOf(kind, target);
+    return i == kNone ? nullptr : &m_ops[i];
 }
 
 std::size_t ChangeSet::count(OpKind kind) const {
@@ -184,6 +255,8 @@ bool ChangeSet::undo() {
     m_redo.push_back(std::move(m_ops));
     m_ops = std::move(m_undo.back());
     m_undo.pop_back();
+    m_undoBytes -= std::min(m_undoBytes, bytesOf(m_ops));
+    reindex();
     ++m_version;
     return true;
 }
@@ -193,8 +266,10 @@ bool ChangeSet::redo() {
         return false;
     }
     m_undo.push_back(std::move(m_ops));
+    m_undoBytes += bytesOf(m_undo.back());
     m_ops = std::move(m_redo.back());
     m_redo.pop_back();
+    reindex();
     ++m_version;
     return true;
 }
@@ -270,6 +345,7 @@ Result<ChangeSet> ChangeSet::fromJson(std::string_view text) {
     }
     ChangeSet set;
     set.m_ops = std::move(*ops); // loaded as-is: not an undoable edit
+    set.reindex();
     return set;
 }
 

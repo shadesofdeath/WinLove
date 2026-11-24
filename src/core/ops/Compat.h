@@ -15,6 +15,10 @@
 #include <string>
 #include <vector>
 
+namespace wl::core {
+struct ComponentRecipe;
+}
+
 namespace wl::core::ops {
 
 struct CompatGuard {
@@ -44,6 +48,13 @@ struct CompatBlock {
 // hold their runtimes). Empty when nothing does.
 [[nodiscard]] CompatBlock compatBlock(const Operation& op, std::span<const CompatGuard> active, const AppxNeeds& needs,
                                       const ChangeSet& queue);
+
+// The same for many operations against one queue (a page asks for every row it shows): the apps the
+// queue removes are read once (compatRemovedApps), and a RemoveComponent whose recipe the caller
+// has at hand passes it instead of having op.value parsed for every guard question.
+[[nodiscard]] std::vector<std::wstring> compatRemovedApps(const ChangeSet& queue);
+[[nodiscard]] CompatBlock compatBlock(const Operation& op, std::span<const CompatGuard> active, const AppxNeeds& needs,
+                                      const std::vector<std::wstring>& removedApps, const ComponentRecipe* recipe = nullptr);
 
 // The operations of `queue` something keeps out, in queue order (index + why). After a guard is
 // switched on or an app is taken back off the queue, these leave it.

@@ -32,6 +32,9 @@ struct ApplyJobOptions {
     // changed languages, Setup's list of them is written again from the image before the commit
     // (dism /Gen-LangINI), so "Language to install" offers the added ones. Empty: not touched.
     std::filesystem::path setupFolder;
+    // D-141: how the image is saved and let go at the end instead of a WIM commit + unmount — a VHD
+    // mounted through its changes disk is detached and merged (unmountVirtualDisk). Empty: a WIM.
+    std::function<Result<void>(const TaskContext&)> saveImage;
 };
 
 struct ApplyJobCallbacks {

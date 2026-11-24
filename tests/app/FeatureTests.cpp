@@ -2,6 +2,7 @@
 #include "app/controllers/FeatureController.h"
 #include "app/pages/FeaturesPage.h"
 #include "core/image/dism/OptionalFeatures.h"
+#include "support/UiThread.h"
 
 #include <doctest.h>
 
@@ -32,7 +33,8 @@ OptionalFeature capability(std::wstring name, S state, std::uint64_t size) {
 
 struct Fixture {
     AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
-    FeatureController controller{state, [](std::function<void()> fn) { fn(); }};
+    test::UiThread ui;
+    FeatureController controller{state, ui.post()};
 
     Fixture() {
         state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});

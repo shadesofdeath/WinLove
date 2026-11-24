@@ -51,7 +51,7 @@ ProgramInspector::ProgramInspector(const Localization& strings, Language languag
 void ProgramInspector::paintLetter(ui::Canvas& canvas, RectF box, std::wstring_view name, bool large) {
     canvas.fillRoundRect(box, ui::tokens::radius::r2, Color::AccentSubtle);
     const wchar_t first = name.empty() ? L'?' : static_cast<wchar_t>(std::towupper(name.front()));
-    canvas.drawText(std::wstring(1, first), box, large ? TypeStyle::Title : TypeStyle::Caption, Color::AccentBase,
+    canvas.drawText(std::wstring(1, first), box, large ? TypeStyle::Title : TypeStyle::Caption, Color::AccentText,
                     ui::TextAlign::Center);
 }
 
@@ -62,6 +62,28 @@ void ProgramInspector::set(std::optional<core::WingetPackage> package, const cor
     m_icon = std::move(icon);
     m_picked = picked;
     m_failed = failed;
+    // The panel is drawn with every frame of the page (each pointer move over the list next to
+    // it): the joined texts are put together here, once per program (audit SUB-06).
+    m_publisher.clear();
+    m_installer.clear();
+    m_architectures.clear();
+    m_tags.clear();
+    if (m_package) {
+        m_publisher = m_details && !m_details->publisher.empty() ? m_details->publisher : publisherOf(m_package->id);
+    }
+    if (m_details) {
+        std::vector<std::wstring> scopes;
+        for (const auto& scope : m_details->scopes) {
+            scopes.push_back(text::iequals(scope, L"user") ? m_strings.get(Str::ProgramsScopeUser)
+                                                           : m_strings.get(Str::ProgramsScopeMachine));
+        }
+        m_installer = joined(m_details->installerTypes, L", ");
+        if (!scopes.empty()) {
+            m_installer += L" · " + joined(scopes, L", ");
+        }
+        m_architectures = joined(m_details->architectures, L", ");
+        m_tags = joined(m_details->tags, L" · ");
+    }
     m_toggle->setText(m_strings.get(picked ? Str::ProgramsRemove : Str::ProgramsAdd));
     m_toggle->setVisible(m_package.has_value());
     m_homepage->setVisible(m_details && text::istartsWith(m_details->homepage, L"https://"));
@@ -80,8 +102,9 @@ void ProgramInspector::layout() {
 
 void ProgramInspector::paint(ui::Canvas& canvas) {
     const RectF b = bounds();
-    // D-114: a card like the others (rounded, no seam), not a strip glued to the window edge.
-    canvas.fillRoundRect(b, ui::tokens::radius::r3, Color::BgPanel);
+    // D-114: a card like the others (rounded, no seam), not a strip glued to the window edge; D-136:
+    // raised like the page card beside it.
+    canvas.raisedCard(b, ui::tokens::radius::r3, Color::BgPanel);
     if (!m_package) {
         return;
     }
@@ -97,9 +120,8 @@ void ProgramInspector::paint(ui::Canvas& canvas) {
     }
     const float tx = x + kIcon + 10;
     const std::wstring& name = d && !d->name.empty() ? d->name : package.name;
-    const std::wstring publisher = d && !d->publisher.empty() ? d->publisher : publisherOf(package.id);
     canvas.drawText(name, {tx, y, b.right() - kPadding - tx, 16}, TypeStyle::BodyStrong, Color::TextPrimary);
-    canvas.drawText(publisher, {tx, y + 16, b.right() - kPadding - tx, 16}, TypeStyle::Caption, Color::TextSecondary);
+    canvas.drawText(m_publisher,{tx, y + 16, b.right() - kPadding - tx, 16}, TypeStyle::Caption, Color::TextSecondary);
     y += kIcon + 8;
     canvas.drawText(package.id, {x, y, width, 16}, TypeStyle::Mono, Color::TextTertiary);
     y += 24;
@@ -139,21 +161,12 @@ void ProgramInspector::paint(ui::Canvas& canvas) {
     row(Str::ProgramsVersion, d && !d->version.empty() ? d->version : package.version, TypeStyle::Mono);
     if (d) {
         row(Str::ProgramsLicense, d->license);
-        std::vector<std::wstring> scopes;
-        for (const auto& scope : d->scopes) {
-            scopes.push_back(text::iequals(scope, L"user") ? m_strings.get(Str::ProgramsScopeUser)
-                                                           : m_strings.get(Str::ProgramsScopeMachine));
-        }
-        std::wstring installer = joined(d->installerTypes, L", ");
-        if (!scopes.empty()) {
-            installer += L" · " + joined(scopes, L", ");
-        }
-        row(Str::ProgramsInstaller, installer);
-        row(Str::ProgramsArchitecture, joined(d->architectures, L", "));
+        row(Str::ProgramsInstaller, m_installer);
+        row(Str::ProgramsArchitecture, m_architectures);
         if (!d->tags.empty()) {
             y += 4;
             section(Str::ProgramsTags);
-            const std::wstring tags = joined(d->tags, L" · ");
+            const std::wstring& tags = m_tags;
             const float bottom = m_toggle->bounds().y - 12;
             const float h = std::max(0.0f, std::min(std::ceil(canvas.text().measureWrapped(tags, TypeStyle::Caption, width)),
                                                      bottom - y));

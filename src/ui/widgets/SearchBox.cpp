@@ -88,9 +88,44 @@ std::wstring SearchBox::displayText() const {
     return m_password ? std::wstring(m_text.size(), L'•') : m_text;
 }
 
+IDWriteTextLayout* SearchBox::shapedText() const {
+    if (!host()) {
+        return nullptr;
+    }
+    const TextStyles* styles = &host()->text();
+    // A password shows one bullet per character: the same length is the same text.
+    const bool same = m_shaped && m_shapedWith == styles && m_shapedPassword == m_password &&
+                      (m_password ? m_shapedText.size() == m_text.size() : m_shapedText == m_text);
+    if (!same) {
+        m_shapedText = displayText();
+        m_shapedWith = styles;
+        m_shapedPassword = m_password;
+        auto shaped = styles->layout(m_shapedText, TypeStyle::Body, 100000.0f, TextStyles::spec(TypeStyle::Body).lineHeight,
+                                     TextAlign::Leading);
+        m_shaped.Reset();
+        if (shaped) {
+            m_shaped = *shaped;
+        }
+    }
+    return m_shaped.Get();
+}
+
 float SearchBox::offsetOf(std::size_t index) const {
     if (!host() || index == 0) {
         return 0.0f;
+    }
+    // One layout of the text, kept until the text changes and asked for positions. Measuring the
+    // text up to `index` anew for every question (four or five per frame, one per character for a
+    // click) froze the window on a long pasted text (audit UI-06 / D7).
+    if (IDWriteTextLayout* shaped = shapedText()) {
+        index = std::min(index, m_shapedText.size());
+        FLOAT x = 0;
+        FLOAT y = 0;
+        DWRITE_HIT_TEST_METRICS metrics{};
+        // The trailing edge of the character before: valid at the end of the text too.
+        if (index > 0 && SUCCEEDED(shaped->HitTestTextPosition(static_cast<UINT32>(index - 1), TRUE, &x, &y, &metrics))) {
+            return x;
+        }
     }
     const std::wstring shown = displayText();
     return host()->text().measure(std::wstring_view(shown).substr(0, index), TypeStyle::Body);
@@ -98,6 +133,17 @@ float SearchBox::offsetOf(std::size_t index) const {
 
 std::size_t SearchBox::indexAt(float x) const {
     const float local = x - textRect().x + m_scroll;
+    if (IDWriteTextLayout* shaped = shapedText()) {
+        BOOL trailing = FALSE;
+        BOOL inside = FALSE;
+        DWRITE_HIT_TEST_METRICS metrics{};
+        if (SUCCEEDED(shaped->HitTestPoint(local, TextStyles::spec(TypeStyle::Body).lineHeight / 2, &trailing, &inside, &metrics))) {
+            // The nearer edge of the character under the point (its end when the point is in its
+            // trailing half); a point outside the text gives its first or last edge.
+            const std::size_t index = static_cast<std::size_t>(metrics.textPosition) + (trailing ? metrics.length : 0u);
+            return std::min(index, m_text.size());
+        }
+    }
     std::size_t best = 0;
     float bestDistance = std::abs(local);
     for (std::size_t i = 1; i <= m_text.size(); ++i) {
@@ -133,6 +179,15 @@ void SearchBox::changed() {
 void SearchBox::replaceSelection(std::wstring_view with) {
     const std::size_t from = std::min(m_anchor, m_caret);
     const std::size_t to = std::max(m_anchor, m_caret);
+    // What is typed or pasted stops at the limit a caller set, if any (setMaxLength).
+    const std::size_t kept = m_text.size() - (to - from);
+    std::size_t room = m_maxLength > kept ? m_maxLength - kept : 0;
+    if (with.size() > room) {
+        if (room > 0 && IS_HIGH_SURROGATE(with[room - 1])) {
+            --room; // never half a surrogate pair
+        }
+        with = with.substr(0, room);
+    }
     m_text.replace(from, to - from, with);
     m_caret = m_anchor = from + with.size();
     changed();
@@ -322,8 +377,14 @@ void SearchBox::paint(Canvas& canvas) {
 
     const RectF area = textRect();
     if (m_text.empty()) {
-        canvas.drawText(m_placeholder, area, TypeStyle::Body, Color::TextTertiary);
-        if (!m_bare && !m_hintKeys.empty() && !focused()) {
+        const bool hint = !m_bare && !m_hintKeys.empty() && !focused();
+        // D-139: a narrow box (beside the detail card) cuts its placeholder before the key hint, not under it.
+        RectF room = area;
+        if (hint) {
+            room.width = std::max(b.right() - kPadding - Kbd::keysWidth(canvas.text(), m_hintKeys) - kIconGap - room.x, 0.0f);
+        }
+        canvas.drawText(m_placeholder, room, TypeStyle::Body, Color::TextTertiary);
+        if (hint) {
             Kbd::paintKeys(canvas, m_hintKeys, b.right() - kPadding, b.y + b.height / 2);
         }
     } else if (!m_plain && !m_bare) {

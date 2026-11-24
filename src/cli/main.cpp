@@ -3,11 +3,14 @@
 // and parsed by integration tests and tools.
 #include "base/File.h"
 #include "base/Log.h"
+#include "base/Path.h"
 #include "base/Utf8.h"
 #include "base/Text.h"
 #include "core/iso/SecureBoot2023.h"
 #include "core/programs/InstalledPrograms.h"
 #include "core/programs/OfflinePrograms.h"
+#include "core/esd/EsdCatalog.h"
+#include "core/esd/EsdConvert.h"
 #include "core/uup/PsfPackage.h"
 #include "core/uup/UupApps.h"
 #include "core/uup/UupCatalog.h"
@@ -42,6 +45,8 @@
 #include "core/image/Source.h"
 #include "core/image/UdfImage.h"
 #include "core/image/BootImage.h"
+#include "core/image/DriverInf.h"
+#include "core/image/MediaDrivers.h"
 #include "core/image/SetupMedia.h"
 #include "core/image/icons/IconPatch.h"
 #include "core/image/icons/IconSource.h"
@@ -54,6 +59,8 @@
 #include "core/image/dism/MountHealth.h"
 #include "core/image/dism/OptionalFeatures.h"
 #include "core/iso/IsoBuilder.h"
+#include "core/net/ReleaseCheck.h"
+#include "core/net/SelfUpdate.h"
 #include "core/ops/ApplyJob.h"
 #include "core/ops/Compat.h"
 #include "core/image/wim/WimGapi.h"
@@ -75,12 +82,15 @@
 #include <chrono>
 #include <cstdio>
 #include <cwctype>
+#include <filesystem>
 #include <iostream>
 #include <sstream>
 #include <format>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -114,13 +124,47 @@ int reportError(const Error& error) {
     return error.code == ErrorCode::Cancelled ? 130 : 2;
 }
 
+// Set when the command has returned (wmain): what a console-close handler waits for.
+HANDLE g_finished = nullptr;
+
 BOOL WINAPI onConsoleCtrl(DWORD type) {
     if (type == CTRL_C_EVENT || type == CTRL_BREAK_EVENT) {
         g_cancel.cancel(); // long operations stop at the next chunk and clean up
         return TRUE;
     }
+    if (type == CTRL_CLOSE_EVENT || type == CTRL_LOGOFF_EVENT || type == CTRL_SHUTDOWN_EVENT) {
+        // The console window closed / the session ends (audit CLI-06): Windows ends the process as
+        // soon as this handler returns, or after its own limit (about 5 s for a closed console).
+        // Until then the command gets the same chance as with Ctrl+C: stop at the next chunk and
+        // clean up, instead of being cut off in the middle of a step with no word to the engine.
+        g_cancel.cancel();
+        if (g_finished) {
+            WaitForSingleObject(g_finished, 20000);
+        }
+        return FALSE;
+    }
     return FALSE;
 }
+
+// A scratch folder of one command, removed when the command ends, however it ends (audit CLI-05:
+// the error returns left them behind). Only ever a folder the command itself fills.
+class ScratchFolder {
+public:
+    ScratchFolder(std::filesystem::path folder, bool armed) : m_folder(std::move(folder)), m_armed(armed) {}
+    ~ScratchFolder() {
+        if (m_armed && !m_folder.empty()) {
+            std::error_code ec;
+            std::filesystem::remove_all(m_folder, ec);
+        }
+    }
+    ScratchFolder(const ScratchFolder&) = delete;
+    ScratchFolder& operator=(const ScratchFolder&) = delete;
+    void arm() noexcept { m_armed = true; }
+
+private:
+    std::filesystem::path m_folder;
+    bool m_armed;
+};
 
 std::string narrow(std::wstring_view text) {
     return utf8::fromWide(text);
@@ -193,7 +237,37 @@ int cmdInfo(const std::wstring& path, bool asJson) {
         if (source->boot) {
             out["boot"] = wimJson(*source->boot);
         }
+        if (source->disk) {
+            const auto& d = *source->disk;
+            out["disk"] = {{"virtualSize", d.virtualSize}, {"fileSize", d.fileSize}, {"dynamic", d.dynamic},
+                           {"differencing", d.differencing}, {"parent", narrow(d.parent.wstring())},
+                           {"volumeSize", d.volumeSize}, {"volumeFree", d.volumeFree}, {"volumeLabel", narrow(d.volumeLabel)},
+                           {"volumes", d.volumes}};
+            if (!source->install.images.empty()) {
+                out["install"]["images"][0]["spBuild"] = source->install.images.front().spBuild;
+            }
+        }
         printJson(out);
+        return 0;
+    }
+    if (source->disk) {
+        // D-141: one installed Windows on a virtual disk.
+        const auto& d = *source->disk;
+        print(std::format(L"{}  [{}{}]\n", source->path.wstring(), core::formatName(source->format),
+                          d.differencing ? L", differencing" : d.dynamic ? L", dynamic" : L", fixed"));
+        print(std::format(L"  disk {} (file {}), {} volume(s); Windows volume {} ({} used, {} free){}\n\n", gib(d.virtualSize),
+                          gib(d.fileSize), d.volumes, gib(d.volumeSize), gib(d.volumeSize - std::min(d.volumeFree, d.volumeSize)),
+                          gib(d.volumeFree), d.volumeLabel.empty() ? L"" : L" \"" + d.volumeLabel + L"\""));
+        for (const auto& image : source->install.images) {
+            std::wstring languages;
+            for (const auto& l : image.languages) {
+                languages += (languages.empty() ? L"" : L",") + l;
+            }
+            print(std::format(L"  {:>2}  {:<42} {:<6} {:<26} {}  ({}; edition {}, {})\n", image.index, image.name,
+                              core::architectureName(image.architecture),
+                              core::releaseSummary(image.build, image.spBuild, core::architectureName(image.architecture)),
+                              image.versionString(), languages, image.editionId, image.installationType));
+        }
         return 0;
     }
     const auto& h = source->install.header;
@@ -323,7 +397,34 @@ Result<std::unique_ptr<core::DismSession>> openImageSession(const std::wstring& 
     return (*d)->openSession(dir);
 }
 
-int cmdMount(const std::wstring& wim, const std::wstring& index, const std::wstring& dir, bool readOnly) {
+// D-141: a VHD / VHDX "mount": a changes disk over it, attached, its Windows volume on `dir`.
+int cmdMountVirtualDisk(const std::wstring& vhd, const std::wstring& index, const std::wstring& dir, bool readOnly,
+                        const std::wstring& work) {
+    if (parseIndex(index) != 1) {
+        return reportError(Error{ErrorCode::InvalidArgument, L"a virtual disk holds one Windows: index 1", index});
+    }
+    if (readOnly) {
+        return reportError(Error{ErrorCode::Unsupported, L"--readonly: a virtual disk is mounted through its changes disk "
+                                                         L"(discard leaves it as it was)", vhd});
+    }
+    const std::filesystem::path folder = nativePath(dir);
+    const std::filesystem::path workFolder = work.empty() ? folder.parent_path() : nativePath(work);
+    const auto started = std::chrono::steady_clock::now();
+    auto record = core::mountVirtualDisk(vhd, folder, workFolder, L"wlcli", progressTask(L"mount"));
+    if (!record) {
+        print(L"\n");
+        return reportError(record.error());
+    }
+    print(std::format(L"\n  mounted {} at {}\n  changes disk: {}\n  volume: {}\n  record: {}\n  ({} ms)\n", record->vhd.wstring(),
+                      record->folder.wstring(), record->child.wstring(), record->volume, core::vhdRecordFile().wstring(),
+                      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count()));
+    return 0;
+}
+
+int cmdMount(const std::wstring& wim, const std::wstring& index, const std::wstring& dir, bool readOnly, const std::wstring& work) {
+    if (core::isVirtualDiskPath(wim)) {
+        return cmdMountVirtualDisk(wim, index, dir, readOnly, work);
+    }
     auto d = dism();
     if (!d) {
         return reportError(d.error());
@@ -338,6 +439,20 @@ int cmdMount(const std::wstring& wim, const std::wstring& index, const std::wstr
 }
 
 int cmdUnmount(const std::wstring& dir, bool commit) {
+    if (core::vhdRecordForFolder(dir)) {
+        // D-141: WinLove's own virtual disk mount — detach; --commit merges, --discard deletes the changes.
+        const auto started = std::chrono::steady_clock::now();
+        auto outcome = core::unmountVirtualDisk(dir, commit, progressTask(commit ? L"merge" : L"discard"));
+        if (!outcome) {
+            print(L"\n");
+            return reportError(outcome.error());
+        }
+        print(std::format(L"\n  detached {} ({}; {} of changes{}) ({} ms)\n", dir,
+                          outcome->merged ? L"changes merged into the disk" : outcome->discarded ? L"changes discarded" : L"nothing to save",
+                          gib(outcome->changeBytes), outcome->locked ? L"" : L"; the volume could not be locked first",
+                          std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count()));
+        return 0;
+    }
     auto d = dism();
     if (!d) {
         return reportError(d.error());
@@ -360,8 +475,21 @@ int cmdMounts(bool asJson) {
     if (!checks) {
         return reportError(checks.error());
     }
+    // D-141: WinLove's own virtual disk mounts (only what its record names; nothing else is looked at).
+    const auto disks = core::inspectVhdMounts();
     if (asJson) {
         json out = json::array();
+        for (const auto& v : disks) {
+            out.push_back({{"kind", "vhd"},
+                           {"mountPath", narrow(v.record.folder.wstring())},
+                           {"imagePath", narrow(v.record.vhd.wstring())},
+                           {"changesDisk", narrow(v.record.child.wstring())},
+                           {"changesBytes", v.childSize},
+                           {"volume", narrow(v.record.volume)},
+                           {"index", 1},
+                           {"state", narrow(core::vhdMountStateName(v.state))},
+                           {"action", narrow(core::vhdActionName(v.action))}});
+        }
         for (const auto& c : *checks) {
             json hives = stringArray(c.loadedHives);
             out.push_back({{"mountPath", narrow(c.folder.wstring())},
@@ -377,8 +505,14 @@ int cmdMounts(bool asJson) {
         printJson(out);
         return 0;
     }
-    if (checks->empty()) {
+    if (checks->empty() && disks.empty()) {
         print(L"  no mounted images\n");
+    }
+    for (const auto& v : disks) {
+        print(std::format(L"  {}  <- {} [virtual disk]\n    state: {}  action: {}  changes: {} in {}\n    volume: {}\n",
+                          v.record.folder.wstring(), v.record.vhd.wstring(), core::vhdMountStateName(v.state),
+                          core::vhdActionName(v.action), gib(v.childSize), v.record.child.wstring(),
+                          v.record.volume.empty() ? L"-" : v.record.volume));
     }
     for (const auto& c : *checks) {
         print(std::format(L"  {}  <- {} [{}]\n    state: {}  (dism: {}{})  action: {}\n", c.folder.wstring(),
@@ -393,8 +527,106 @@ int cmdMounts(bool asJson) {
     return 0;
 }
 
+// 2026-11-11: wimgapi's own list (WIMGetMountedImageInfo, no DISM session) with its raw flags — what
+// the Kaynak page shows first, before DISM's reading arrives.
+int cmdMountsFast(bool asJson) {
+    auto checks = wl::core::inspectMountsFast();
+    if (!checks) {
+        return reportError(checks.error());
+    }
+    json out = json::array();
+    for (const auto& c : *checks) {
+        const std::uint32_t flags = c.record ? c.record->wimFlags : 0;
+        if (asJson) {
+            out.push_back({{"mountPath", narrow(c.folder.wstring())},
+                           {"imagePath", narrow(c.record ? c.record->imagePath.wstring() : L"")},
+                           {"index", c.record ? c.record->index : 0},
+                           {"wimFlags", flags},
+                           {"state", narrow(wl::core::mountStateName(c.state))}});
+        } else {
+            print(std::format(L"  {}  <- {} [{}]\n    state: {}  wimgapi flags: 0x{:08X}\n", c.folder.wstring(),
+                              c.record ? c.record->imagePath.wstring() : L"-", c.record ? c.record->index : 0,
+                              wl::core::mountStateName(c.state), flags));
+        }
+    }
+    if (asJson) {
+        printJson(out);
+    } else if (checks->empty()) {
+        print(L"  no mounted images\n");
+    }
+    return 0;
+}
+
+// 2026-11-11: take over an image mounted elsewhere (another tool, dism.exe, an earlier run) the way
+// the app's Kaynak page does — DISM's record of the folder; a remount when DISM asks for one;
+// refused (nothing changed) when it is invalid, its image is gone or nothing is mounted there —,
+// then the source its image opens as and a DISM session on the folder. Nothing in the image changes.
+int cmdAdopt(const std::wstring& dir, bool asJson) {
+    auto d = dism();
+    if (!d) {
+        return reportError(d.error());
+    }
+    auto found = wl::core::inspectMount(**d, dir);
+    if (!found) {
+        return reportError(found.error());
+    }
+    const auto step = wl::core::adoptionStep(found->state);
+    print(std::format(L"  {}: {} -> {}\n", found->folder.wstring(), wl::core::mountStateName(found->state),
+                      step == wl::core::AdoptStep::Use ? L"use" : step == wl::core::AdoptStep::Remount ? L"remount, then use" : L"refused"));
+    const auto started = std::chrono::steady_clock::now();
+    auto adopted = wl::core::adoptMount(**d, *found, core::TaskContext{g_cancel, {}});
+    if (!adopted) {
+        return reportError(adopted.error());
+    }
+    const auto& record = *adopted->record;
+    auto source = core::openMountedImageSource(record.imagePath);
+    if (!source) {
+        return reportError(source.error());
+    }
+    std::wstring edition = L"#" + std::to_wstring(record.index);
+    for (const auto& image : source->install.images) {
+        if (image.index == record.index) {
+            edition = image.name;
+        }
+    }
+    auto session = (*d)->openSession(record.mountPath);
+    if (!session) {
+        return reportError(session.error());
+    }
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
+    if (asJson) {
+        printJson({{"mountPath", narrow(record.mountPath.wstring())},
+                   {"imagePath", narrow(record.imagePath.wstring())},
+                   {"index", record.index},
+                   {"readOnly", record.readOnly},
+                   {"stateBefore", narrow(wl::core::mountStateName(found->state))},
+                   {"remounted", step == wl::core::AdoptStep::Remount},
+                   {"source", narrow(source->path.wstring())},
+                   {"sourceFormat", narrow(core::formatName(source->format))},
+                   {"edition", narrow(edition)},
+                   {"editions", source->install.images.size()},
+                   {"session", true},
+                   {"ms", ms}});
+        return 0;
+    }
+    print(std::format(L"  image:   {} [{}]{}\n  source:  {} ({}, {} edition(s))\n  edition: {}\n  session: open ({} ms)\n",
+                      record.imagePath.wstring(), record.index, record.readOnly ? L", read-only" : L"", source->path.wstring(),
+                      core::formatName(source->format), source->install.images.size(), edition, ms));
+    return 0;
+}
+
 // Inspect one folder and carry out the recommended action (MountHealth.h).
 int cmdRepair(const std::wstring& dir) {
+    if (const auto vhd = core::inspectVhdMount(dir)) {
+        // D-141: only WinLove's own record is acted on (remount / forget); DISM is not involved.
+        print(std::format(L"  {}: {} -> {}\n", dir, core::vhdMountStateName(vhd->state), core::vhdActionName(vhd->action)));
+        auto after = core::repairVirtualDisk(*vhd, core::TaskContext{g_cancel, {}});
+        if (!after) {
+            return reportError(after.error());
+        }
+        print(std::format(L"  now: {}\n", core::vhdMountStateName(after->state)));
+        return 0;
+    }
     auto d = dism();
     if (!d) {
         return reportError(d.error());
@@ -742,6 +974,10 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
         // Silently skipped before: the further editions are applied after a commit, from that WIM.
         return reportError(Error{ErrorCode::InvalidArgument, L"--also needs --commit and --wim=<file>", also});
     }
+    if (!also.empty() && parseIndexList(also).empty()) {
+        // "--also=abc" went to no edition and still ended with 0 (audit CLI-04); said before anything runs.
+        return reportError(Error{ErrorCode::InvalidArgument, L"--also takes edition indexes: 2,3", also});
+    }
     auto set = loadChangeSet(changeSetPath);
     if (!set) {
         return reportError(set.error());
@@ -780,6 +1016,20 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
     if (!source.empty()) {
         options.apply.featureSources.push_back(source);
     }
+    if (core::vhdRecordForFolder(mountDir)) {
+        // D-141: a virtual disk is saved by merging its changes disk into it (and detached).
+        if (!also.empty()) {
+            return reportError(Error{ErrorCode::InvalidArgument, L"--also: a virtual disk holds one Windows", also});
+        }
+        options.saveImage = [mountDir](const core::TaskContext& t) -> Result<void> {
+            auto r = core::unmountVirtualDisk(mountDir, /*commit=*/true, t);
+            if (!r) {
+                return std::unexpected(r.error());
+            }
+            print(std::format(L"  virtual disk detached, {} of changes merged into it\n", gib(r->changeBytes)));
+            return {};
+        };
+    }
     core::ops::ApplyJobCallbacks callbacks;
     callbacks.steps.stepStarted = [&](std::size_t i, const core::ops::PlanStep& step) {
         print(std::format(L"  [{}/{}] {} {}\n", i + 1, p.steps.size(), utf8::toWide(core::ops::opKindKey(step.operation.kind)),
@@ -795,7 +1045,11 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
         callbacks.beforeCommit = [&mountDir] {
             print(L"  paused before saving: " + mountDir + L" - Enter saves, \"keep\" leaves it mounted\n");
             std::string line;
-            std::getline(std::cin, line);
+            // No answer (stdin closed, Ctrl+C while waiting) keeps the image mounted and unsaved:
+            // that side can still be undone.
+            if (!std::getline(std::cin, line) || g_cancel.cancelled()) {
+                return false;
+            }
             return line.find("keep") == std::string::npos;
         };
     }
@@ -813,6 +1067,12 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
                                                        : std::wstring(L"skipped");
     print(std::format(L"  {} of {} step(s) ran, {} failed{}; commit: {} ({} ms)\n", report.results.size(), p.steps.size(),
                       report.failures(), report.completed ? L"" : L" (stopped)", commitText, job->elapsed.count()));
+    if (core::ops::runStop(report) == core::ops::RunStop::SessionLost) {
+        // D-131: not a cancel — DISM's session could not be opened again after a step, so the run
+        // ended there (the app's stopped card says the same). Exit 3, as for any run that stopped.
+        print(L"  stopped: DISM's session could not be opened again - " + describe(*report.sessionLost) +
+              L"; the later steps did not run, the image is still mounted and not saved\n");
+    }
     if (job->langIniWritten) {
         print(L"  Setup's language list (sources\\lang.ini) written from the image\n");
     }
@@ -835,11 +1095,283 @@ int cmdApply(const std::wstring& changeSetPath, const std::wstring& mountDir, bo
         }
         if (auto rewritten = core::optimizeWim(wim, core::TaskContext{g_cancel, {}}); !rewritten) {
             reportError(rewritten.error());
+            result = 3; // the editions are saved, the WIM is not the one promised (audit CLI-04)
         } else {
             print(L"  WIM rewritten without the commits' leftovers\n");
         }
     }
     return result;
+}
+
+// D-140: is there a newer WinLove on GitHub? One GET of api.github.com's release list with the
+// User-Agent "WinLove/<version>" and GitHub's Accept header — no admin, no image, nothing downloaded
+// but the list. --verbose prints the request's headers as sent; --save keeps the answer (a recorded
+// sample for the unit tests); --current compares another version than this build's. Exit 0 when the
+// check worked (whatever it found), 2 when it did not, 130 when cancelled.
+std::string isoDate(std::int64_t seconds) {
+    if (seconds <= 0) {
+        return {};
+    }
+    const std::chrono::sys_days day{std::chrono::floor<std::chrono::days>(std::chrono::sys_seconds{std::chrono::seconds{seconds}})};
+    const std::chrono::year_month_day ymd{day};
+    return std::format("{:04}-{:02}-{:02}", static_cast<int>(ymd.year()), static_cast<unsigned>(ymd.month()),
+                       static_cast<unsigned>(ymd.day()));
+}
+
+int cmdUpdateCheck(bool asJson, bool verbose, const std::wstring& save, const std::wstring& current) {
+    static constexpr const char* kFailures[] = {"cancelled", "network", "rate-limit", "http", "bad-answer"};
+    static constexpr const char* kVerdicts[] = {"current", "available", "unknown", "none"};
+    static constexpr const wchar_t* kVerdictText[] = {L"up to date", L"a newer release is out",
+                                                      L"cannot compare (a version could not be read)", L"GitHub lists no release"};
+    core::ReleaseCheckOptions options;
+    options.userAgent = L"WinLove/" WL_VERSION_STRING;
+    options.keepRequestHeaders = verbose;
+    const std::wstring running = current.empty() ? std::wstring(L"" WL_VERSION_LABEL) : current;
+    auto answer = core::checkLatestRelease(running, options, g_cancel);
+    if (!answer) {
+        const auto failure = core::releaseFailure(answer.error());
+        const char* name = kFailures[static_cast<std::size_t>(failure)];
+        if (asJson) {
+            printJson({{"ok", false}, {"failure", name}, {"message", narrow(describe(answer.error()))}});
+        } else {
+            print(std::format(L"  update check failed ({}): {}\n", utf8::toWide(name), describe(answer.error())));
+        }
+        return failure == core::ReleaseFailure::Cancelled ? 130 : 2;
+    }
+    if (!save.empty()) {
+        std::ofstream out(std::filesystem::path(save), std::ios::binary);
+        out.write(answer->raw.data(), static_cast<std::streamsize>(answer->raw.size()));
+        if (!out) {
+            return reportError(Error{ErrorCode::IoError, L"cannot write the answer", save});
+        }
+    }
+    const auto& c = answer->check;
+    if (asJson) {
+        json doc{{"ok", true},
+                 {"current", narrow(c.current)},
+                 {"verdict", kVerdicts[static_cast<std::size_t>(c.verdict)]},
+                 {"releases", c.releasesListed},
+                 {"rateLimitRemaining", narrow(answer->rateLimitRemaining)}};
+        if (c.latest) {
+            const auto& r = *c.latest;
+            doc["latest"] = {{"tag", narrow(r.tag)},
+                             {"name", narrow(r.name)},
+                             {"url", narrow(r.url)},
+                             {"published", isoDate(r.published)},
+                             {"prerelease", r.prerelease},
+                             {"comparable", r.version.has_value()},
+                             {"notes", narrow(r.notes)}};
+        }
+        printJson(doc);
+        return 0;
+    }
+    print(L"  running   " + c.current + L"\n");
+    if (c.latest) {
+        const auto& r = *c.latest;
+        print(std::format(L"  latest    {}{}  ({}{})\n", r.tag, r.name.empty() ? std::wstring() : L"  \"" + r.name + L"\"",
+                          r.prerelease ? L"pre-release, " : L"", utf8::toWide(isoDate(r.published))));
+        print(L"  page      " + r.url + L"\n");
+    }
+    print(std::format(L"  verdict   {} ({} release(s) listed)\n", kVerdictText[static_cast<std::size_t>(c.verdict)], c.releasesListed));
+    if (c.latest && !c.latest->notes.empty()) {
+        std::wstring notes = c.latest->notes;
+        for (std::size_t at = 0; (at = notes.find(L'\n', at)) != std::wstring::npos; at += 11) {
+            notes.replace(at, 1, L"\n          ");
+        }
+        print(L"  notes     " + notes + L"\n");
+    }
+    if (!answer->rateLimitRemaining.empty()) {
+        print(L"  GitHub    " + answer->rateLimitRemaining + L" unauthenticated request(s) left this hour\n");
+    }
+    if (verbose && !answer->sentHeaders.empty()) {
+        print(L"  sent (request headers as WinHTTP sent them):\n" + answer->sentHeaders + L"\n");
+    }
+    return 0;
+}
+
+// D-145: the self-update's steps on a COPY of WinLove.exe (what "Yükle" does, without a window):
+// pick the release's asset (from a saved release list, or an address / a local file given), download
+// it next to the exe as "<exe>.new", verify it (size, GitHub's SHA-256, PE x64 GUI, the version
+// resource against the release), then swap: "<exe>" -> "<exe>.old", "<exe>.new" -> "<exe>".
+// --fail-at=verify|swap takes the failure path on purpose (verify: the download is thrown away, the exe
+// untouched; swap: the old exe is put back). Never starts the exe. Exit 0 installed, 2 no download /
+// no asset, 3 the file is not the release's, 4 the swap failed (rolled back), 1 usage.
+json exeFactsJson(const core::ExeFacts& f) {
+    return json{{"size", f.size},
+                {"sha256", narrow(f.sha256)},
+                {"pe", f.pe},
+                {"machine", std::format("0x{:04X}", f.machine)},
+                {"pe32Plus", f.pe32Plus},
+                {"subsystem", f.subsystem},
+                {"productVersion", narrow(f.productVersion)},
+                {"fileVersion", narrow(f.fileVersion)}};
+}
+
+void printFacts(const wchar_t* label, const std::filesystem::path& file) {
+    auto facts = core::readExeFacts(file, /*hash=*/true);
+    if (!facts) {
+        print(std::format(L"  {:<9} {}  (cannot read: {})\n", label, file.wstring(), describe(facts.error())));
+        return;
+    }
+    print(std::format(L"  {:<9} {}\n            {} bytes · product {} · file {} · sha256 {}\n", label, file.wstring(), facts->size,
+                      facts->productVersion.empty() ? std::wstring(L"-") : facts->productVersion,
+                      facts->fileVersion.empty() ? std::wstring(L"-") : facts->fileVersion, facts->sha256));
+}
+
+int cmdUpdateInstall(const std::wstring& exeArg, const std::wstring& assetArg, const std::wstring& releasesFile, const std::wstring& tag,
+                     const std::wstring& sha, std::uint64_t size, const std::wstring& failAt, bool asJson) {
+    if (exeArg.empty() || (assetArg.empty() && releasesFile.empty())) {
+        print(L"  usage: wlcli update-install --exe=<WinLove.exe copy> (--asset=<file|https URL> | --releases=<releases.json>) "
+              L"[--tag=<tag>] [--expect=<sha256>] [--bytes=<size>] [--fail-at=verify|swap] [--json]\n");
+        return 1;
+    }
+    const std::filesystem::path exe = std::filesystem::absolute(exeArg);
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(exe, ec)) {
+        return reportError(Error{ErrorCode::NotFound, L"the exe to update is not there", exe.wstring()});
+    }
+    if (auto writable = core::checkFolderWritable(exe.parent_path()); !writable) {
+        return reportError(writable.error());
+    }
+    // What to install and what it must be.
+    core::ReleaseAsset asset;
+    core::UpdateExpectation expect;
+    std::wstring releaseTag = tag;
+    if (!releasesFile.empty()) {
+        std::ifstream in(std::filesystem::path(releasesFile), std::ios::binary);
+        const std::string raw((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        auto releases = core::parseReleases(raw);
+        if (!releases) {
+            return reportError(releases.error());
+        }
+        const core::Release* pick = nullptr;
+        for (const auto& r : *releases) {
+            if (!tag.empty() ? r.tag == tag : (!pick || (r.version && (!pick->version || *pick->version < *r.version)))) {
+                pick = &r;
+                if (!tag.empty()) {
+                    break;
+                }
+            }
+        }
+        if (!pick) {
+            return reportError(Error{ErrorCode::NotFound, L"no such release in the list", tag});
+        }
+        const auto chosen = core::pickUpdateAsset(*pick);
+        if (!chosen) {
+            print(L"  release " + pick->tag + L" has no WinLove.exe for x64 (the app offers the release page)\n");
+            return 2;
+        }
+        asset = *chosen;
+        releaseTag = pick->tag;
+        expect.version = pick->version;
+    } else {
+        asset.name = std::filesystem::path(assetArg).filename().wstring();
+        asset.url = assetArg;
+        asset.size = size;
+        expect.version = tag.empty() ? std::nullopt : core::parseAppVersion(tag);
+    }
+    if (!sha.empty()) {
+        asset.sha256 = core::normalizeSha256(sha);
+    }
+    expect.size = asset.size;
+    expect.sha256 = asset.sha256;
+    print(std::format(L"  asset     {} ({} bytes){}\n            {}\n", asset.name, asset.size,
+                      releaseTag.empty() ? std::wstring() : L" of " + releaseTag, asset.url));
+    print(L"  expects   " + (expect.sha256.empty() ? std::wstring(L"no published SHA-256") : L"sha256 " + expect.sha256) +
+          (expect.version ? std::wstring(L" · the version of ") + (releaseTag.empty() ? tag : releaseTag) : std::wstring(L" · any version")) +
+          L"\n");
+    printFacts(L"before", exe);
+
+    // 1. Into "<exe>.new": downloaded, or copied from a local file.
+    const core::UpdatePaths paths = core::updatePaths(exe);
+    const bool remote = text::istartsWith(assetArg, L"https://") || !releasesFile.empty();
+    if (remote) {
+        auto got = core::downloadUpdate(asset, exe, L"WinLove/" WL_VERSION_STRING, progressTask(L"download"));
+        print(L"\n");
+        if (!got) {
+            if (asJson) {
+                printJson({{"ok", false}, {"step", "download"}, {"message", narrow(describe(got.error()))}});
+            } else {
+                print(L"  download failed: " + describe(got.error()) + L"\n");
+            }
+            return 2;
+        }
+    } else {
+        std::filesystem::copy_file(assetArg, paths.staged, std::filesystem::copy_options::overwrite_existing, ec);
+        if (ec) {
+            return reportError(Error{ErrorCode::IoError, L"cannot copy the file next to the exe", paths.staged.wstring(), ec.value()});
+        }
+    }
+    // 2. Verify.
+    auto verdict = core::verifyUpdateFile(paths.staged, expect, progressTask(L"verify"));
+    print(L"\n");
+    if (verdict && failAt == L"verify") {
+        verdict->failure = core::VerifyFailure::Hash; // the lab's simulated failure
+        verdict->detail = L"simulated (--fail-at=verify)";
+    }
+    if (!verdict || verdict->failure) {
+        const std::wstring why = !verdict ? describe(verdict.error())
+                                          : std::wstring(core::verifyFailureName(*verdict->failure)) + L": " + verdict->detail;
+        std::filesystem::remove(paths.staged, ec); // not this release's file: it goes
+        if (asJson) {
+            printJson({{"ok", false}, {"step", "verify"}, {"message", narrow(why)}, {"stagedRemoved", !ec}});
+        } else {
+            print(L"  verify failed: " + why + L"\n  the download was removed; " + exe.filename().wstring() + L" is untouched\n");
+            printFacts(L"after", exe);
+        }
+        return 3;
+    }
+    print(L"  verified  " + verdict->facts.productVersion + L" · x64 GUI · " +
+          (expect.sha256.empty() ? std::wstring(L"size") : std::wstring(L"size + sha256")) + L" as listed\n");
+    // 3. Swap.
+    core::SwapHooks hooks;
+    if (failAt == L"swap") {
+        hooks.afterBackup = []() -> Result<void> { return fail(ErrorCode::IoError, L"simulated (--fail-at=swap)"); };
+    }
+    if (auto swapped = core::swapInUpdate(exe, paths.staged, hooks); !swapped) {
+        if (asJson) {
+            printJson({{"ok", false}, {"step", "swap"}, {"message", narrow(describe(swapped.error()))},
+                       {"backupLeft", std::filesystem::exists(paths.backup, ec)}, {"stagedLeft", std::filesystem::exists(paths.staged, ec)}});
+        } else {
+            print(L"  swap failed (rolled back): " + describe(swapped.error()) + L"\n");
+            printFacts(L"after", exe);
+            print(std::format(L"  {}.old {}\n", exe.filename().wstring(), std::filesystem::exists(paths.backup, ec) ? L"present" : L"absent"));
+        }
+        return 4;
+    }
+    if (asJson) {
+        auto now = core::readExeFacts(exe, true);
+        auto old = core::readExeFacts(paths.backup, true);
+        printJson({{"ok", true},
+                   {"exe", narrow(exe.wstring())},
+                   {"installed", now ? exeFactsJson(*now) : json()},
+                   {"backup", narrow(paths.backup.wstring())},
+                   {"old", old ? exeFactsJson(*old) : json()}});
+        return 0;
+    }
+    printFacts(L"after", exe);
+    printFacts(L"old", paths.backup);
+    print(L"  installed: the next start runs the new file; the old one stays as " + paths.backup.filename().wstring() +
+          L" until then (update-rollback puts it back)\n");
+    return 0;
+}
+
+int cmdUpdateRollback(const std::wstring& exeArg) {
+    if (exeArg.empty()) {
+        print(L"  usage: wlcli update-rollback --exe=<WinLove.exe copy>\n");
+        return 1;
+    }
+    const std::filesystem::path exe = std::filesystem::absolute(exeArg);
+    printFacts(L"before", exe);
+    if (auto back = core::rollbackUpdate(exe); !back) {
+        return reportError(back.error());
+    }
+    printFacts(L"after", exe);
+    std::error_code ec;
+    const auto paths = core::updatePaths(exe);
+    print(std::format(L"  {}.old {} · {}.new {}\n", exe.filename().wstring(), std::filesystem::exists(paths.backup, ec) ? L"present" : L"absent",
+                      exe.filename().wstring(), std::filesystem::exists(paths.staged, ec) ? L"present" : L"absent"));
+    return 0;
 }
 
 // D-104: winget download a program for offline install; prints the installer and how to run it.
@@ -1241,15 +1773,18 @@ int cmdAppend(const std::wstring& sourcePath, const std::wstring& destination, c
     }
     bool extracted = false;
     const auto scratch = std::filesystem::path(destination).parent_path() / L"append.tmp";
+    // Also on the error returns (a half extracted install.wim is gigabytes, audit CLI-05) — but a
+    // folder that was there before this run goes only when the image was extracted into it, as before.
+    std::error_code ec;
+    ScratchFolder cleanup(scratch, !std::filesystem::exists(scratch, ec));
     auto file = core::installImageFile(*source, scratch, extracted, progressTask(L"extract"));
     if (!file) {
         return reportError(file.error());
     }
-    auto r = core::exportImages(*file, list, destination, *compression, progressTask(L"append"));
-    std::error_code ec;
     if (extracted) {
-        std::filesystem::remove_all(scratch, ec);
+        cleanup.arm();
     }
+    auto r = core::exportImages(*file, list, destination, *compression, progressTask(L"append"));
     print(L"\n");
     if (!r) {
         return reportError(r.error());
@@ -1494,6 +2029,36 @@ int cmdAppxRemove(const std::wstring& dir, const std::wstring& package, bool nat
 // Setup's own image (sources\boot.wim): LabConfig bypasses and drivers, mounted in `mountDir`,
 // committed (BootImage.h). `bypass`: "tpm,secureboot,ram,cpu,storage" or "all"; `legacySetup`: the
 // media boots into the previous Setup (24H2+, D-074).
+// "--bypass=tpm,secureboot,ram,cpu,storage|all" into a patch; an error names a word it does not know.
+std::optional<Error> parseBypass(const std::wstring& bypass, core::BootPatch& patch) {
+    std::wstringstream parts(bypass);
+    for (std::wstring part; !bypass.empty() && std::getline(parts, part, L',');) {
+        const bool all = part == L"all";
+        if (!all && part != L"tpm" && part != L"secureboot" && part != L"ram" && part != L"cpu" && part != L"storage") {
+            return Error{ErrorCode::InvalidArgument, L"--bypass takes tpm,secureboot,ram,cpu,storage or all", part};
+        }
+        patch.bypassTpm = patch.bypassTpm || all || part == L"tpm";
+        patch.bypassSecureBoot = patch.bypassSecureBoot || all || part == L"secureboot";
+        patch.bypassRam = patch.bypassRam || all || part == L"ram";
+        patch.bypassCpu = patch.bypassCpu || all || part == L"cpu";
+        patch.bypassStorage = patch.bypassStorage || all || part == L"storage";
+    }
+    return std::nullopt;
+}
+
+// D-134: what happened to each driver of a boot patch (the UI's ISO report says the same).
+void printBootDrivers(const core::BootPatchReport& report) {
+    for (const auto& inf : report.driversAdded) {
+        print(L"  driver added: " + inf.wstring() + L"\n");
+    }
+    for (const auto& inf : report.driversPresent) {
+        print(L"  driver already in the image: " + inf.wstring() + L"\n");
+    }
+    for (const auto& refused : report.driversRefused) {
+        print(L"  driver not added: " + core::describe(refused) + L"\n");
+    }
+}
+
 int cmdBootPatch(const std::wstring& bootWim, const std::wstring& mountDir, const std::wstring& bypass,
                  const std::vector<std::wstring>& drivers, bool legacySetup, const std::wstring& lcu,
                  const std::wstring& setupFiles) {
@@ -1501,17 +2066,8 @@ int cmdBootPatch(const std::wstring& bootWim, const std::wstring& mountDir, cons
     patch.legacySetup = legacySetup;
     patch.lcu = lcu;
     patch.setupFilesTo = setupFiles;
-    std::wstringstream parts(bypass);
-    for (std::wstring part; !bypass.empty() && std::getline(parts, part, L',');) {
-        const bool all = part == L"all";
-        if (!all && part != L"tpm" && part != L"secureboot" && part != L"ram" && part != L"cpu" && part != L"storage") {
-            return reportError(Error{ErrorCode::InvalidArgument, L"--bypass takes tpm,secureboot,ram,cpu,storage or all", part});
-        }
-        patch.bypassTpm = patch.bypassTpm || all || part == L"tpm";
-        patch.bypassSecureBoot = patch.bypassSecureBoot || all || part == L"secureboot";
-        patch.bypassRam = patch.bypassRam || all || part == L"ram";
-        patch.bypassCpu = patch.bypassCpu || all || part == L"cpu";
-        patch.bypassStorage = patch.bypassStorage || all || part == L"storage";
+    if (auto bad = parseBypass(bypass, patch)) {
+        return reportError(*bad);
     }
     for (const auto& driver : drivers) {
         patch.drivers.emplace_back(driver);
@@ -1530,11 +2086,9 @@ int cmdBootPatch(const std::wstring& bootWim, const std::wstring& mountDir, cons
         return reportError(report.error());
     }
     print(std::format(L"  boot image index {} patched: {} LabConfig value(s), {} driver(s) added{}\n", report->index,
-                      patch.labConfigValues().size(), report->driversAdded,
+                      patch.labConfigValues().size(), report->driversAdded.size(),
                       legacySetup ? L", boots into the previous Setup" : L""));
-    for (const auto& refused : report->driversRefused) {
-        print(std::format(L"  driver not added: {}\n", refused));
-    }
+    printBootDrivers(*report);
     if (!patch.lcu.empty()) {
         print(std::format(L"  cumulative update in {} image(s); Setup image {} -> {}\n", report->updated, report->versionBefore,
                           report->versionAfter));
@@ -1626,7 +2180,9 @@ int cmdUnattend(const std::wstring& file, bool welcome) {
     const auto problems = core::validateUnattend(*options);
     for (const auto problem : problems) {
         static constexpr const wchar_t* kNames[] = {L"computer name", L"account name", L"product key",
-                                                   L"automatic logon needs a local account"};
+                                                   L"automatic logon needs a local account", L"extra account name",
+                                                   L"disk id (0-63)"};
+        static_assert(std::size(kNames) == static_cast<std::size_t>(core::UnattendProblem::DiskId) + 1);
         print(std::format(L"problem: {}\n", kNames[static_cast<std::size_t>(problem)]));
     }
     return problems.empty() ? 0 : 1;
@@ -1842,11 +2398,14 @@ int cmdIconPatch(const std::wstring& file, const std::vector<std::wstring>& spec
         return reportError(replacements.error());
     }
     const auto started = std::chrono::steady_clock::now();
-    auto pe = core::PeImage::parse(*bytes);
-    if (!pe) {
-        return reportError(pe.error());
-    }
-    auto fitted = core::fitIconReplacements(*pe, *replacements);
+    // As the engine does it (patchImageIcons): the parsed copy goes before the patch parses its own.
+    auto fitted = [&]() -> Result<std::vector<core::IconReplacement>> {
+        auto pe = core::PeImage::parse(*bytes);
+        if (!pe) {
+            return std::unexpected(pe.error());
+        }
+        return core::fitIconReplacements(*pe, *replacements);
+    }();
     if (!fitted) {
         return reportError(fitted.error());
     }
@@ -1903,6 +2462,7 @@ int cmdIconPack(const std::wstring& source, const std::wstring& out, const std::
         return 0;
     }
     int failures = 0;
+    int patchedFiles = 0;
     for (const auto& file : pack->files) {
         const auto target = std::filesystem::path(from) / file.target;
         auto bytes = readFileBytes(target);
@@ -1928,7 +2488,8 @@ int cmdIconPack(const std::wstring& source, const std::wstring& out, const std::
         for (const auto& entry : std::filesystem::directory_iterator(packDir / file.target, ec)) {
             const std::wstring stem = entry.path().stem().wstring();
             const bool digits = !stem.empty() && std::ranges::all_of(stem, [](wchar_t c) { return c >= L'0' && c <= L'9'; });
-            const core::ResourceKey key = digits ? core::ResourceKey{static_cast<std::uint16_t>(std::stoul(stem)), {}} : core::ResourceKey{0, stem};
+            // iconKey: a number above 65535 is a name, not another group's number cut to 16 bits.
+            const core::ResourceKey key = digits ? iconKey(stem) : core::ResourceKey{0, stem};
             if (std::ranges::find(existing, key) == existing.end()) {
                 ++missing;
                 continue;
@@ -1966,8 +2527,17 @@ int cmdIconPack(const std::wstring& source, const std::wstring& out, const std::
                           file.target, replacements.size(), missing, bytes->size(), patched->size(), ms, check->groups,
                           check->images, check->failed));
         failures += check->failed > 0 ? 1 : 0;
+        ++patchedFiles;
     }
-    return failures == 0 ? 0 : 3;
+    if (failures != 0) {
+        return 3;
+    }
+    if (patchedFiles == 0) {
+        // Every target missing, unreadable or refused: nothing was patched, not a success (audit CLI-04).
+        print(std::format(L"error: none of the pack's {} file(s) could be patched from {}\n", pack->files.size(), from));
+        return 1;
+    }
+    return 0;
 }
 
 int cmdIconVerify(const std::wstring& file) {
@@ -2122,11 +2692,13 @@ int cmdCatalog(const std::wstring& buildText, const std::wstring& arch, const st
         return 0;
     }
     int failures = 0;
+    int picked = 0;
     for (const auto& o : *offers) {
         if (!onlyKb.empty() ? _wcsicmp(onlyKb.c_str(), o.entry.kb.c_str()) != 0
                             : (!o.recommended && !preview) || o.olderThanImage) {
             continue;
         }
+        ++picked;
         const auto task = progressTask(o.entry.kb.c_str());
         auto got = core::downloadCatalogUpdate(o.entry, downloadDir, task);
         print(L"\n");
@@ -2139,6 +2711,13 @@ int cmdCatalog(const std::wstring& buildText, const std::wstring& arch, const st
         for (const auto& p : got->prerequisites) {
             print(L"    + " + p.wstring() + L"\n");
         }
+    }
+    if (picked == 0) {
+        // A wrong --kb, or only previews / updates older than the image: the folder got nothing,
+        // which a script must not read as "downloaded" (audit CLI-04).
+        print(onlyKb.empty() ? std::wstring(L"error: no update to download (only previews, or the image is newer)\n")
+                             : L"error: no offer is " + onlyKb + L"\n");
+        return 1;
     }
     return failures == 0 ? 0 : 1;
 }
@@ -2253,6 +2832,106 @@ int cmdDrivers(const std::wstring& mountDir, const std::wstring& remove, bool as
                           e.provider, e.version, e.date, e.bootCritical ? L"  [boot critical]" : L""));
     }
     print(std::format(L"\n  {} third-party driver(s)\n", list->size()));
+    return 0;
+}
+
+const wchar_t* setupRoleName(core::SetupRole role) {
+    switch (role) {
+    case core::SetupRole::Storage: return L"storage";
+    case core::SetupRole::Network: return L"network";
+    case core::SetupRole::Wireless: return L"wireless";
+    case core::SetupRole::Virtual: return L"virtual";
+    default: return L"-";
+    }
+}
+
+core::Architecture architectureFrom(const std::wstring& name) {
+    if (name == L"x64" || name == L"amd64") {
+        return core::Architecture::X64;
+    }
+    if (name == L"arm64") {
+        return core::Architecture::Arm64;
+    }
+    if (name == L"x86") {
+        return core::Architecture::X86;
+    }
+    return core::Architecture::Unknown;
+}
+
+// D-134: the INFs of a folder as the Drivers page lists them; "pick" = what its boot tab ticks
+// when "Bu bilgisayardan al" brings this PC's drivers (storage + wired network, of the media's
+// architecture); "no" = a row that tab dims (another architecture).
+int cmdDriverScan(const std::wstring& folder, const std::wstring& archName, bool asJson) {
+    const core::Architecture arch = architectureFrom(archName.empty() ? L"x64" : archName);
+    const auto infs = core::scanDrivers(folder);
+    json out = json::array();
+    for (const auto& inf : infs) {
+        const auto role = core::setupRole(inf);
+        const bool fits = core::fitsArchitecture(inf, arch);
+        const wchar_t* setup = !fits ? L"no" : core::setupUseful(role) ? L"pick" : L"-";
+        if (asJson) {
+            out.push_back({{"inf", narrow(inf.path.wstring())}, {"class", narrow(inf.className)}, {"provider", narrow(inf.provider)},
+                           {"version", narrow(inf.version)}, {"catalog", narrow(inf.catalog)},
+                           {"architectures", stringArray(inf.architectures)}, {"role", narrow(setupRoleName(role))},
+                           {"ifType", inf.ifType}, {"setup", narrow(setup)}, {"size", inf.size}});
+            continue;
+        }
+        std::wstring archs;
+        for (const auto& a : inf.architectures) {
+            archs += (archs.empty() ? L"" : L",") + a;
+        }
+        print(std::format(L"  {:<5} {:<9} {:<14} {:<12} {:<26} {}\n", setup, setupRoleName(role), inf.className,
+                          archs.empty() ? L"any" : archs, inf.path.filename().wstring(), inf.provider));
+    }
+    if (asJson) {
+        printJson(out);
+        return 0;
+    }
+    print(std::format(L"\n  {} INF(s); setup media architecture {}\n", infs.size(), core::architectureName(arch)));
+    return 0;
+}
+
+// D-134: the third-party drivers a setup medium already carries (boot.wim's Setup image, the install
+// image's editions), from the WIM file lists: no mount, no admin; an ISO is read in place.
+int cmdMediaDrivers(const std::wstring& path, bool asJson) {
+    auto source = core::openSource(path);
+    if (!source) {
+        return reportError(source.error());
+    }
+    auto media = core::readMediaDrivers(*source);
+    if (!media) {
+        return reportError(media.error());
+    }
+    auto list = [&](const std::vector<core::WimDriver>& drivers) {
+        json out = json::array();
+        for (const auto& d : drivers) {
+            out.push_back({{"publishedName", narrow(d.publishedName)}, {"originalName", narrow(d.originalName)},
+                           {"class", narrow(d.inf.className)}, {"provider", narrow(d.inf.provider)}, {"version", narrow(d.inf.version)},
+                           {"date", narrow(d.inf.date)}, {"role", narrow(setupRoleName(core::setupRole(d.inf)))}});
+        }
+        return out;
+    };
+    if (asJson) {
+        printJson(json{{"bootIndex", media->bootIndex}, {"architecture", narrow(core::architectureName(media->architecture))},
+                       {"boot", list(media->boot)}, {"install", list(media->install)}, {"installRead", media->installRead}});
+        return 0;
+    }
+    auto show = [](const std::vector<core::WimDriver>& drivers) {
+        for (const auto& d : drivers) {
+            print(std::format(L"    {:<10} {:<26} {:<14} {:<24} {}\n", d.publishedName, d.originalName.empty() ? L"?" : d.originalName,
+                              d.inf.className, d.inf.provider, d.inf.version));
+        }
+    };
+    if (media->bootIndex > 0) {
+        print(std::format(L"  boot.wim, Setup's image (index {}, {}): {} third-party driver(s)\n", media->bootIndex,
+                          core::architectureName(media->architecture), media->boot.size()));
+        show(media->boot);
+    } else {
+        print(L"  no boot.wim (not a setup medium)\n");
+    }
+    print(media->installRead ? std::format(L"  install image, all editions: {} third-party driver(s)\n", media->install.size())
+                             : std::wstring(L"  install image: not read (ESD or unreadable)\n"));
+    show(media->install);
     return 0;
 }
 
@@ -2699,11 +3378,54 @@ int cmdLanguages(const std::wstring& folder) {
 
 // P06: bootable ISO from a setup folder (IMAPI2FS, no admin).
 int cmdIso(const std::wstring& folder, const std::wstring& output, const std::wstring& label, const std::wstring& boot,
-           bool sha, bool noPrompt, const std::wstring& setupDu, const std::wstring& bootFiles, bool secureBoot2023) {
+           bool sha, bool noPrompt, const std::wstring& setupDu, const std::wstring& bootFiles, bool secureBoot2023,
+           const std::wstring& bootBypass, const std::vector<std::wstring>& bootDrivers, bool legacySetup) {
     core::IsoOptions options;
+    // D-038 / D-134, as ISO Oluştur does it: Setup's own image (sources\boot.wim) patched in a copy
+    // next to the output — requirement bypasses, drivers, the previous Setup — which takes the
+    // folder's file's place in the ISO; the folder is not changed. Needs an elevated shell (DISM).
+    core::BootPatch bootPatch;
+    bootPatch.legacySetup = legacySetup;
+    if (auto bad = parseBypass(bootBypass, bootPatch)) {
+        return reportError(*bad);
+    }
+    for (const auto& inf : bootDrivers) {
+        bootPatch.drivers.emplace_back(inf);
+    }
+    const std::filesystem::path bootFolder = std::filesystem::path(output).wstring() + L".boot";
+    ScratchFolder bootCleanup(bootFolder, !bootPatch.empty());
+    int exitCode = 0;
+    if (!bootPatch.empty()) {
+        const std::filesystem::path original = std::filesystem::path(folder) / L"sources" / L"boot.wim";
+        const std::filesystem::path copy = bootFolder / L"boot.wim";
+        std::error_code ec;
+        std::filesystem::create_directories(bootFolder / L"mount", ec);
+        std::filesystem::copy_file(original, copy, std::filesystem::copy_options::overwrite_existing, ec);
+        if (ec) {
+            return reportError(Error{ErrorCode::IoError, L"cannot copy boot.wim", original.wstring(), ec.value()});
+        }
+        std::filesystem::permissions(copy, std::filesystem::perms::owner_write, std::filesystem::perm_options::add, ec);
+        auto d = dism();
+        if (!d) {
+            return reportError(d.error());
+        }
+        auto patched = core::patchBootImage(**d, copy, bootFolder / L"mount", bootPatch, progressTask(L"boot"));
+        print(L"\n");
+        if (!patched) {
+            return reportError(patched.error());
+        }
+        print(std::format(L"  boot.wim index {}: {} requirement check(s) off, {} driver(s) added{}\n", patched->index,
+                          bootPatch.labConfigValues().size(), patched->driversAdded.size(),
+                          legacySetup ? L", previous Setup" : L""));
+        printBootDrivers(*patched);
+        exitCode = patched->driversRefused.empty() ? 0 : 3; // the ISO is still made: the report names the driver
+        options.replacedFiles.push_back({L"sources\\boot.wim", copy});
+    }
     // D-080: the setup folder's own files brought up to date (Setup dynamic update, then setup.exe,
     // setuphost.exe and the boot manager from an updated boot.wim: boot-patch --setup-files=).
     const std::filesystem::path duFolder = std::filesystem::path(output).wstring() + L".setupdu";
+    // What this run expands goes on the error returns too (audit CLI-05), after buildIso read it.
+    ScratchFolder duCleanup(duFolder, !setupDu.empty());
     if (!setupDu.empty() || !bootFiles.empty()) {
         if (!setupDu.empty()) {
             auto expanded = core::expandSetupDynamicUpdate(setupDu, duFolder, {});
@@ -2729,6 +3451,7 @@ int cmdIso(const std::wstring& folder, const std::wstring& output, const std::ws
     options.noPrompt = noPrompt;
     // D-094: the boot manager signed by Windows UEFI CA 2023, last (over the media refresh's).
     const auto sbFolder = std::filesystem::path(output).parent_path() / L"sb2023.tmp";
+    ScratchFolder sbCleanup(sbFolder, secureBoot2023);
     if (secureBoot2023) {
         std::filesystem::path bootWim; // the refreshed one when --boot-files brought one
         for (const auto& r : options.replacedFiles) {
@@ -2760,7 +3483,7 @@ int cmdIso(const std::wstring& folder, const std::wstring& output, const std::ws
     std::error_code ec;
     std::filesystem::remove_all(duFolder, ec);
     std::filesystem::remove_all(sbFolder, ec);
-    return 0;
+    return exitCode;
 }
 
 // D-094: does this PC's firmware trust the 2023 boot manager?
@@ -2770,6 +3493,246 @@ int cmdSecureBootDb() {
                   : *trusts ? L"  db has Windows UEFI CA 2023: 2023 media starts here\n"
                             : L"  db has no Windows UEFI CA 2023: only 2011 media starts here\n");
     return trusts ? (*trusts ? 0 : 2) : 1;
+}
+
+// ---- D-149: Microsoft's official ESD catalog (the Media Creation Tool's) --------------------
+
+std::wstring esdGb(std::uint64_t bytes) {
+    return std::format(L"{:.2f} GB", static_cast<double>(bytes) / 1e9);
+}
+
+// wlcli esd-catalog [--os=10|11] [--lang=tr-tr] [--arch=x64] [--edition=Professional] [--json]
+// wlcli esd-download [--os=11] --lang=tr-tr [--arch=x64] [--edition=Professional[,Core]] --out=<dir>
+//                    [--iso=<file.iso>] [--work=<dir>] [--esd] [--netfx3] [--resetbase]
+// wlcli esd-convert <a.esd>[,<b.esd>] <out.iso | media folder> [--edition=…] [--work=<dir>] [--esd] [--netfx3] [--resetbase]
+int cmdEsd(const std::vector<std::wstring>& raw) {
+    const std::wstring command = raw.front();
+    std::wstring os = L"11", lang, arch = L"x64", editionText, out, iso, work;
+    bool asJson = false, esdOut = false, netFx3 = false, resetBase = false;
+    std::vector<std::wstring> words;
+    for (std::size_t i = 1; i < raw.size(); ++i) {
+        const std::wstring& a = raw[i];
+        auto value = [&](std::wstring_view key) { return a.substr(key.size()); };
+        if (a.starts_with(L"--os=")) {
+            os = value(L"--os=");
+        } else if (a.starts_with(L"--lang=")) {
+            lang = wl::text::lower(value(L"--lang="));
+        } else if (a.starts_with(L"--arch=")) {
+            arch = wl::text::lower(value(L"--arch="));
+        } else if (a.starts_with(L"--edition=")) {
+            editionText = value(L"--edition=");
+        } else if (a.starts_with(L"--out=")) {
+            out = value(L"--out=");
+        } else if (a.starts_with(L"--iso=")) {
+            iso = value(L"--iso=");
+        } else if (a.starts_with(L"--work=")) {
+            work = value(L"--work=");
+        } else if (a == L"--json") {
+            asJson = true;
+        } else if (a == L"--esd") {
+            esdOut = true;
+        } else if (a == L"--netfx3") {
+            netFx3 = true;
+        } else if (a == L"--resetbase") {
+            resetBase = true;
+        } else if (a.starts_with(L"--")) {
+            print(L"unknown option: " + a + L"\n");
+            return 2;
+        } else {
+            words.push_back(a);
+        }
+    }
+    auto split = [](const std::wstring& text) {
+        std::vector<std::wstring> list;
+        std::wstring cur;
+        for (const wchar_t c : text + L",") {
+            if (c == L',') {
+                if (!cur.empty()) {
+                    list.push_back(cur);
+                }
+                cur.clear();
+            } else {
+                cur += c;
+            }
+        }
+        return list;
+    };
+    const std::vector<std::wstring> editions = split(editionText);
+    const std::wstring agent = L"WinLove/" WL_VERSION_STRING;
+    const auto product = os == L"10" ? core::esd::Product::Windows10 : core::esd::Product::Windows11;
+    auto stepTask = [](const wchar_t* label) {
+        auto last = std::make_shared<std::wstring>();
+        auto lastPercent = std::make_shared<int>(-1);
+        auto started = std::make_shared<std::chrono::steady_clock::time_point>(std::chrono::steady_clock::now());
+        return core::TaskContext{g_cancel, [label, last, lastPercent, started](double f, std::wstring_view stage) {
+                                     const int percent = static_cast<int>(f * 100);
+                                     if (percent != *lastPercent || stage != *last) {
+                                         if (stage != *last && !last->empty()) {
+                                             const auto s = std::chrono::duration_cast<std::chrono::seconds>(
+                                                 std::chrono::steady_clock::now() - *started).count();
+                                             print(std::format(L"\n  [{} done after {} s]\n", *last, s));
+                                         }
+                                         *lastPercent = percent;
+                                         *last = stage;
+                                         print(std::format(L"\r  {} {:>3}%  {:<12}", label, percent, stage));
+                                     }
+                                 }};
+    };
+    auto convert = [&](std::vector<std::filesystem::path> esds, const std::filesystem::path& target) -> int {
+        if (!core::isElevated()) {
+            print(L"error: the conversion needs an elevated process (wimgapi apply, DISM)\n");
+            return 2;
+        }
+        auto d = dism();
+        if (!d) {
+            return reportError(d.error());
+        }
+        core::esd::ConvertOptions options;
+        options.esds = std::move(esds);
+        options.editions = editions;
+        const bool toIso = wl::text::iendsWith(target.wstring(), L".iso");
+        options.workFolder = work.empty() ? target.parent_path() / L"esd-work" : std::filesystem::path(work);
+        options.mediaFolder = toIso ? target.parent_path() / L"esd-media" : target;
+        options.output = toIso ? target : std::filesystem::path();
+        options.netFx3 = netFx3;
+        options.resetBase = resetBase;
+        options.compression = esdOut ? core::WimCompression::Lzms : core::WimCompression::Lzx;
+        const auto t0 = std::chrono::steady_clock::now();
+        auto r = core::esd::convertEsd(**d, options, stepTask(L"convert"));
+        print(L"\n");
+        if (!r) {
+            return reportError(r.error());
+        }
+        const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count();
+        print(std::format(L"  {} {}\n  label {}  version {}  {} s\n", r->iso.empty() ? L"media" : L"iso",
+                          r->iso.empty() ? r->media.wstring() : r->iso.wstring(), r->label, r->version, seconds));
+        if (r->bytes) {
+            print(std::format(L"  {} bytes\n", r->bytes));
+        }
+        for (const auto& e : r->editions) {
+            print(L"  edition " + e + L"\n");
+        }
+        for (const auto& w : r->warnings) {
+            print(L"  warning " + w + L"\n");
+        }
+        return 0;
+    };
+
+    if (command == L"esd-convert") {
+        if (words.size() != 2) {
+            print(L"usage: wlcli esd-convert <a.esd>[,<b.esd>] <out.iso | media folder> [--edition=…] [--work=<dir>] [--esd] [--netfx3] [--resetbase]\n");
+            return 2;
+        }
+        std::vector<std::filesystem::path> esds;
+        for (const auto& f : split(words[0])) {
+            esds.emplace_back(f);
+        }
+        return convert(std::move(esds), words[1]);
+    }
+
+    const auto t0 = std::chrono::steady_clock::now();
+    auto catalog = core::esd::fetchCatalog(product, agent, g_cancel);
+    if (!catalog) {
+        return reportError(catalog.error());
+    }
+    const auto fetchMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    if (command == L"esd-catalog") {
+        // One line per file (several editions share one ESD), filtered.
+        struct Row {
+            const core::esd::Entry* entry;
+            std::vector<std::wstring> editions;
+        };
+        std::vector<Row> rows;
+        for (const auto& e : catalog->entries) {
+            if ((!lang.empty() && e.language != lang) || (!arch.empty() && arch != L"all" && e.architecture != core::esd::catalogArchitecture(arch))) {
+                continue;
+            }
+            if (!editions.empty() && std::ranges::none_of(editions, [&](const std::wstring& w) { return wl::text::iequals(w, e.edition); })) {
+                continue;
+            }
+            auto it = std::ranges::find_if(rows, [&](const Row& r) { return wl::text::iequals(r.entry->fileName, e.fileName); });
+            if (it == rows.end()) {
+                rows.push_back({&e, {e.edition}});
+            } else {
+                it->editions.push_back(e.edition);
+            }
+        }
+        if (asJson) {
+            json j;
+            j["product"] = os == L"10" ? "Windows 10" : "Windows 11";
+            j["catalogVersion"] = utf8::fromWide(catalog->version);
+            j["source"] = utf8::fromWide(catalog->source);
+            j["build"] = utf8::fromWide(catalog->build());
+            j["entries"] = catalog->entries.size();
+            j["files"] = json::array();
+            for (const auto& r : rows) {
+                json f;
+                f["fileName"] = utf8::fromWide(r.entry->fileName);
+                f["language"] = utf8::fromWide(r.entry->language);
+                f["architecture"] = utf8::fromWide(r.entry->architecture);
+                f["build"] = utf8::fromWide(r.entry->build);
+                f["stamp"] = utf8::fromWide(r.entry->stamp);
+                f["size"] = r.entry->size;
+                f["sha256"] = utf8::fromWide(r.entry->sha256);
+                f["sha1"] = utf8::fromWide(r.entry->sha1);
+                f["url"] = utf8::fromWide(r.entry->url);
+                f["retailOnly"] = r.entry->retailOnly;
+                json eds = json::array();
+                for (const auto& e : r.editions) {
+                    eds.push_back(utf8::fromWide(e));
+                }
+                f["editions"] = eds;
+                j["files"].push_back(f);
+            }
+            printJson(j);
+            return 0;
+        }
+        print(std::format(L"  {} catalog {} ({} entries, {} ms): build {}\n  from {}\n", os == L"10" ? L"Windows 10" : L"Windows 11",
+                          catalog->version, catalog->entries.size(), fetchMs, catalog->build(), catalog->source));
+        for (const auto& r : rows) {
+            std::wstring eds;
+            for (const auto& e : r.editions) {
+                eds += (eds.empty() ? L"" : L",") + e;
+            }
+            print(std::format(L"  {:<6} {:<6} {:>9}  {} {}\n         {}\n         {}\n", r.entry->language, r.entry->architecture,
+                              esdGb(r.entry->size), r.entry->sha256.empty() ? L"sha1" : L"sha256",
+                              r.entry->sha256.empty() ? r.entry->sha1 : r.entry->sha256, r.entry->fileName, eds));
+        }
+        print(std::format(L"  {} file(s)\n", rows.size()));
+        return 0;
+    }
+    if (command == L"esd-download") {
+        if (lang.empty() || out.empty()) {
+            print(L"usage: wlcli esd-download [--os=11] --lang=tr-tr [--arch=x64] [--edition=Professional[,Core]] --out=<dir> [--iso=<file.iso>]\n");
+            return 2;
+        }
+        const std::vector<std::wstring> wanted = editions.empty() ? std::vector<std::wstring>{L"Professional"} : editions;
+        const auto pick = core::esd::pickFiles(*catalog, lang, arch, wanted);
+        if (!pick.missing.empty() || pick.files.empty()) {
+            print(L"error: not in the catalog: " + (pick.missing.empty() ? lang : pick.missing.front()) + L"\n");
+            return 2;
+        }
+        for (const auto& f : pick.files) {
+            print(std::format(L"  {}\n  {} bytes  {} {}\n", f.fileName, f.size, f.sha256.empty() ? L"SHA-1" : L"SHA-256",
+                              f.sha256.empty() ? f.sha1 : f.sha256));
+        }
+        const auto t1 = std::chrono::steady_clock::now();
+        auto saved = core::esd::downloadFiles(pick.files, out, agent, stepTask(L"esd"));
+        print(L"\n");
+        if (!saved) {
+            return reportError(saved.error());
+        }
+        const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t1).count();
+        for (const auto& p : *saved) {
+            print(L"  verified " + p.wstring() + L"\n");
+        }
+        print(std::format(L"  download + verify: {} s\n", seconds));
+        if (iso.empty()) {
+            return 0;
+        }
+        return convert(*saved, iso);
+    }
+    return 2;
 }
 
 // ---- D-093: Windows from Microsoft's update servers (UUP) ------------------------------------
@@ -2964,6 +3927,8 @@ int cmdUup(std::vector<std::wstring> args) {
     if (sub == L"apps" && (words.size() == 5 || words.size() == 6)) {
         // apps <AggregatedMetadata.cab> <edition[,edition]> <amd64|arm64> [<id> = match against the set's app files]
         const auto scratch = std::filesystem::temp_directory_path() / std::format(L"wl-apps-{}", GetCurrentProcessId());
+        // readAppCompDb removes it only when it got to the end (audit CLI-05).
+        ScratchFolder cleanup(scratch, true);
         auto all = core::uup::readAppCompDb(words[2], scratch);
         if (!all) {
             return reportError(all.error());
@@ -3101,12 +4066,27 @@ void printUsage() {
           L"  wlcli elevated                            Print whether this process is elevated\n"
           L"\n  Needs an elevated shell (DISM):\n"
           L"  wlcli mount <wim> <index> <dir> [--readonly]\n"
-          L"  wlcli unmount <dir> --commit|--discard\n"
-          L"  wlcli mounts | cleanup\n"
+          L"  wlcli mount <vhd|vhdx> 1 <dir> [--changes-dir=<folder>]   (D-141: a changes disk <stem>.winlove-changes.vhdx\n"
+          L"                                      in that folder (default: <dir>'s parent) over the disk, attached without a drive\n"
+          L"                                      letter; its Windows volume becomes <dir>. The disk itself is not written)\n"
+          L"  wlcli unmount <dir> --commit|--discard   (a VHD: --commit merges the changes into the disk, --discard deletes them)\n"
+          L"  wlcli mounts | cleanup              (mounts also lists WinLove's own virtual disk mounts)\n"
+          L"  wlcli mounts --fast [--json]        (wimgapi's list with its raw WIM_MOUNT_FLAG_* bits; no DISM session)\n"
+          L"  wlcli adopt <dir> [--json]          (take over an image mounted elsewhere: remount if DISM asks, refuse an\n"
+          L"                                      invalid one untouched; the source it opens as; a DISM session on <dir>)\n"
           L"  wlcli repair <dir>                  (inspect a mount folder and do what it needs: remount / discard / clean)\n"
+          L"  wlcli info <vhd|vhdx> [--json]      (D-141: the installed Windows on the disk; attached read only for a moment)\n"
+          L"        --vhd-records=<file>          (where WinLove's virtual disk mounts are recorded; default\n"
+          L"                                      %LOCALAPPDATA%\\WinLove\\vhd-mounts.json)\n"
           L"  wlcli packages|features|capabilities <mountdir>\n"
           L"  wlcli iso <setup-folder> <out.iso> [--label=X] [--boot=both|uefi|bios] [--sha256] [--no-prompt] [--setup-du=<cab>] [--boot-files=<dir>] [--secureboot2023]\n"
-          L"  wlcli secureboot-db                       Does this PC's UEFI db trust Windows UEFI CA 2023? (elevated)\n"
+          L"         [--boot-driver=<inf>]... [--bypass=tpm,...|all] [--legacy-setup]   (D-134: a copy of boot.wim patched as the\n"
+          L"                                      ISO page does; admin; exit 3 when a driver did not go in - the ISO is still made)\n"
+          L"  wlcli media-drivers <iso|folder|wim> [--json]   (D-134: third-party drivers already in boot.wim's Setup image and\n"
+          L"                                      in the install image, from their file lists; no mount, no admin)\n"
+          L"  wlcli driver-scan <folder> [--arch=x64|arm64|x86] [--json]   (INFs as the Drivers page lists them: class, arch,\n"
+          L"                                      setup role; \"setup: pick\" = what its boot tab ticks from this PC's drivers)\n"
+          L"  wlcli secureboot-db                     Does this PC's UEFI db trust Windows UEFI CA 2023? (elevated)\n"
           L"  wlcli unattend <answer.xml> [--welcome]   (read an answer file; print it as WinLove writes it, P13; D-084)\n"
           L"  wlcli welcome <changes.json> [--strings=<tr.json>] [--auto=<answers.json>]   (the welcome into an image, D-084)\n"
           L"  wlcli postsetup <plan.json> <mountdir>   (write post-setup scripts and payloads into the image, P14)\n"
@@ -3136,6 +4116,11 @@ void printUsage() {
           L"  wlcli uup-languages <build>[.<rev>] [--arch=x64] [--lang=en-us,...] [--parts=pack,basic,fonts,handwriting,ocr,\n"
           L"                                      tts,speech,components] [--packages-of=<mountdir>] [--download=<folder>] [--json]\n"
           L"                                      (the build's language files from Windows Update, via uupdump.net; D-061)\n"
+          L"  wlcli esd-catalog [--os=10|11] [--lang=tr-tr] [--arch=x64|arm64|x86|all] [--edition=Professional] [--json]\n"
+          L"                                      (Microsoft's official ESD catalog, the Media Creation Tool's; D-149)\n"
+          L"  wlcli esd-download [--os=11] --lang=tr-tr [--arch=x64] [--edition=Professional[,Core]] --out=<dir>\n"
+          L"                     [--iso=<file.iso>] [--work=<dir>] [--esd] [--netfx3] [--resetbase]   (download + SHA check; ISO: admin)\n"
+          L"  wlcli esd-convert <a.esd>[,<b.esd>] <out.iso|media folder> [--edition=…] [--work=<dir>] [--esd] [--netfx3] [--resetbase]  (admin)\n"
           L"  wlcli store-search <name> [--json]          (Microsoft Store apps; D-066)\n"
           L"  wlcli programs-index [--cache=<folder>] [--refresh]   (winget's signed index; D-078)\n"
           L"  wlcli programs-search <text> [--limit=20] [--cache=<folder>] [--json]   (the whole winget repository)\n"
@@ -3197,6 +4182,14 @@ void printUsage() {
           L"  wlcli psf-expand <KB….wim> <folder>     An LCU's container + .psf as the folder CBS installs (update.mum; admin)\n"
           L"  wlcli set-info <wim> <index> <name> [<description>] [--flags=<EditionId>]\n"
           L"  wlcli host-check                          This PC's DISM / wimgapi files (exit 3: a problem)\n"
+          L"  wlcli update-check [--json] [--verbose] [--save=<file>] [--current=<version>]\n"
+          L"                                      Is there a newer WinLove on GitHub? (D-140: one GET of api.github.com's\n"
+          L"                                      release list; --verbose: the request's headers; exit 2: no answer)\n"
+          L"  wlcli update-install --exe=<WinLove.exe copy> (--asset=<file|https URL> | --releases=<releases.json>)\n"
+          L"         [--tag=<tag>] [--expect=<sha256>] [--bytes=<size>] [--fail-at=verify|swap] [--json]\n"
+          L"                                      D-145: download / verify / swap a release's WinLove.exe into a copy\n"
+          L"                                      (\"<exe>.old\" kept; never started; exit 3: not the release's file, 4: swap undone)\n"
+          L"  wlcli update-rollback --exe=<WinLove.exe copy>   Put \"<exe>.old\" back (the new file goes to \"<exe>.new\")\n"
           L"  wlcli wimgapi <wim|esd>                   The wimgapi.dll that reads it; an ESD's solid resources\n"
           L"  wlcli version | help\n"
           L"\n"
@@ -3204,10 +4197,40 @@ void printUsage() {
           L"         --wimgapi=<dll> (in place of System32's), --dism=adk (the Windows ADK's DISM)\n");
 }
 
+int runCommand(int argc, wchar_t** argv);
+
 } // namespace
 
 int wmain(int argc, wchar_t** argv) {
+    // An exception out of a command (a user's JSON with a wrongly typed field, a file system
+    // error) is an error line and exit code 2, not abort() — whose code 3 a lab script reads as
+    // "the image is damaged".
+    g_finished = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    int code = 2;
+    try {
+        code = runCommand(argc, argv);
+    } catch (const std::exception& e) {
+        print(L"error: " + utf8::toWide(e.what()) + L"\n");
+        code = 2;
+    }
+    // The command's own clean-up is done: a console-close handler waiting for it may let go.
+    if (g_finished) {
+        SetEvent(g_finished);
+    }
+    return code;
+}
+
+namespace {
+
+int runCommand(int argc, wchar_t** argv) {
     SetConsoleCtrlHandler(onConsoleCtrl, TRUE);
+    // D-149: its own options (--lang=, --arch=, --json would be taken by the common ones below).
+    if (argc > 1) {
+        const std::wstring_view first = argv[1];
+        if (first == L"esd-catalog" || first == L"esd-download" || first == L"esd-convert") {
+            return cmdEsd(std::vector<std::wstring>(argv + 1, argv + argc));
+        }
+    }
     std::vector<std::wstring> args;
     bool asJson = false;
     bool readOnly = false;
@@ -3226,7 +4249,9 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring autoFile;      // welcome --auto= (the lab)
     std::wstring bypass;
     std::vector<std::wstring> drivers;
+    std::vector<std::wstring> bootDrivers; // iso --boot-driver= (D-134)
     bool native = false;
+    bool fastList = false; // mounts --fast (2026-11-11)
     bool legacySetup = false;
     std::wstring boot;
     bool sha = false;
@@ -3276,6 +4301,16 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring packagesOf;
     std::wstring setupFolder;
     std::wstring compatFile; // D-120: apply --compat=<compat.json>
+    bool verbose = false;          // --verbose (update-check: also the request's headers)
+    std::wstring savePath;         // update-check --save=<file> (D-140)
+    std::wstring currentVersion;   // update-check --current=<version> (D-140)
+    std::wstring changesDir;       // mount <vhd> --changes-dir=<folder> (D-141)
+    std::wstring updateExe;        // update-install / update-rollback --exe= (D-145)
+    std::wstring updateAsset;      // update-install --asset=<file|URL>
+    std::wstring releasesFile;     // update-install --releases=<saved release list>
+    std::wstring releaseTag;       // update-install --tag=<tag>
+    std::uint64_t assetBytes = 0;  // update-install --bytes=<size>
+    std::wstring failAt;           // update-install --fail-at=verify|swap (the lab's failure paths)
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view a = argv[i];
         if (a == L"--json") {
@@ -3284,6 +4319,8 @@ int wmain(int argc, wchar_t** argv) {
             references.emplace_back(std::wstring(a.substr(6)));
         } else if (a.starts_with(L"--compress=")) {
             compress = std::wstring(a.substr(11));
+        } else if (a == L"--fast") {
+            fastList = true;
         } else if (a == L"--native") {
             native = true;
         } else if (a == L"--legacy-setup") {
@@ -3292,6 +4329,8 @@ int wmain(int argc, wchar_t** argv) {
             bypass = std::wstring(a.substr(9));
         } else if (a.starts_with(L"--driver=")) {
             drivers.emplace_back(a.substr(9));
+        } else if (a.starts_with(L"--boot-driver=")) {
+            bootDrivers.emplace_back(a.substr(14));
         } else if (a.starts_with(L"--flags=")) {
             flags = std::wstring(a.substr(8));
         } else if (a.starts_with(L"--set=")) {
@@ -3413,6 +4452,27 @@ int wmain(int argc, wchar_t** argv) {
             restoreIcons = true;
         } else if (a == L"--verbose") {
             log::addSink(log::makeStdoutSink());
+            verbose = true;
+        } else if (a.starts_with(L"--save=")) {
+            savePath = std::wstring(a.substr(7));
+        } else if (a.starts_with(L"--changes-dir=")) {
+            changesDir = std::wstring(a.substr(14));
+        } else if (a.starts_with(L"--vhd-records=")) {
+            core::setVhdRecordFile(std::filesystem::path(std::wstring(a.substr(14))));
+        } else if (a.starts_with(L"--current=")) {
+            currentVersion = std::wstring(a.substr(10));
+        } else if (a.starts_with(L"--exe=")) {
+            updateExe = std::wstring(a.substr(6));
+        } else if (a.starts_with(L"--asset=")) {
+            updateAsset = std::wstring(a.substr(8));
+        } else if (a.starts_with(L"--releases=")) {
+            releasesFile = std::wstring(a.substr(11));
+        } else if (a.starts_with(L"--tag=")) {
+            releaseTag = std::wstring(a.substr(6));
+        } else if (a.starts_with(L"--bytes=")) {
+            assetBytes = std::wcstoull(std::wstring(a.substr(8)).c_str(), nullptr, 10);
+        } else if (a.starts_with(L"--fail-at=")) {
+            failAt = std::wstring(a.substr(10));
         } else if (a.starts_with(L"--wimgapi=")) {
             core::forceWimgapi(std::filesystem::path(std::wstring(a.substr(10))));
         } else if (a == L"--dism=adk") {
@@ -3436,6 +4496,15 @@ int wmain(int argc, wchar_t** argv) {
         print(L"" WL_VERSION_STRING L"\n");
         return 0;
     }
+    if (command == L"update-check" && args.size() == 1) {
+        return cmdUpdateCheck(asJson, verbose, savePath, currentVersion);
+    }
+    if (command == L"update-install" && args.size() == 1) {
+        return cmdUpdateInstall(updateExe, updateAsset, releasesFile, releaseTag, expectHash, assetBytes, failAt, asJson);
+    }
+    if (command == L"update-rollback" && args.size() == 1) {
+        return cmdUpdateRollback(updateExe);
+    }
     if (command == L"inventory-recipe" && args.size() == 3) {
         return cmdInventoryRecipe(args[1], args[2]);
     }
@@ -3455,7 +4524,7 @@ int wmain(int argc, wchar_t** argv) {
         return cmdExtract(args[1], args[2], args[3]);
     }
     if (command == L"mount" && args.size() == 4) {
-        return cmdMount(args[1], args[2], args[3], readOnly);
+        return cmdMount(args[1], args[2], args[3], readOnly, changesDir);
     }
     if (command == L"unmount" && args.size() == 2 && commit >= 0) {
         return cmdUnmount(args[1], commit == 1);
@@ -3510,7 +4579,10 @@ int wmain(int argc, wchar_t** argv) {
                         compatFile, updateGuard);
     }
     if (command == L"mounts") {
-        return cmdMounts(asJson);
+        return fastList ? cmdMountsFast(asJson) : cmdMounts(asJson);
+    }
+    if (command == L"adopt" && args.size() == 2) {
+        return cmdAdopt(args[1], asJson);
     }
     if (command == L"cleanup") {
         return cmdCleanup();
@@ -3552,7 +4624,8 @@ int wmain(int argc, wchar_t** argv) {
         return cmdAppx(args[1], asJson);
     }
     if (command == L"iso" && args.size() == 3) {
-        return cmdIso(args[1], args[2], label, boot, sha, noPrompt, setupDuPath, bootFilesPath, secureBoot2023);
+        return cmdIso(args[1], args[2], label, boot, sha, noPrompt, setupDuPath, bootFilesPath, secureBoot2023, bypass, bootDrivers,
+                      legacySetup);
     }
     if (command == L"secureboot-db" && args.size() == 1) {
         return cmdSecureBootDb();
@@ -3574,6 +4647,12 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (command == L"export-host-drivers" && args.size() == 2) {
         return cmdExportHostDrivers(args[1]);
+    }
+    if (command == L"driver-scan" && args.size() == 2) {
+        return cmdDriverScan(args[1], arch, asJson);
+    }
+    if (command == L"media-drivers" && args.size() == 2) {
+        return cmdMediaDrivers(args[1], asJson);
     }
     if (command == L"intl" && args.size() == 2) {
         return cmdIntl(args[1], serviceSet, asJson);
@@ -3717,3 +4796,5 @@ int wmain(int argc, wchar_t** argv) {
     printUsage();
     return 1;
 }
+
+} // namespace

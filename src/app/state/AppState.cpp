@@ -2,6 +2,8 @@
 
 #include "app/state/AnswerStore.h"
 #include "base/File.h"
+#include "base/Path.h"
+#include "base/Text.h"
 #include "base/Utf8.h"
 #include "core/image/HostsFile.h"
 
@@ -12,6 +14,13 @@
 #include <format>
 
 namespace wl::app {
+
+std::vector<int> operationRows(const EngineOperation& op) {
+    if (!op.indexes.empty()) {
+        return op.indexes;
+    }
+    return op.index > 0 ? std::vector<int>{op.index} : std::vector<int>{};
+}
 
 AppState::AppState(std::filesystem::path recentFile, std::filesystem::path settingsFile, std::filesystem::path answersFile)
     : m_settings(AppSettings::load(settingsFile)), m_settingsFile(settingsFile), m_answersFile(std::move(answersFile)),
@@ -33,7 +42,15 @@ AppState::~AppState() {
 
 void AppState::setSource(core::SourceInfo source) {
     m_recent.touch(source);
+    // The ISO options' label and previous-Setup choice were this source's (the same one read again
+    // after Uygula keeps them); another source starts from its own.
+    if (!m_isoChoices.source.empty() && !text::iequals(m_isoChoices.source.native(), source.path.native())) {
+        m_isoChoices.label.reset();
+        m_isoChoices.legacySetup.reset();
+        m_isoChoices.source.clear();
+    }
     m_source = std::move(source);
+    m_mediaDrivers.reset(); // D-134: read again for this source (after Uygula the image has changed)
     // Default selection: the first edition, so the inspector has something to show.
     m_selected = m_source->install.images.empty() ? std::nullopt : std::optional<int>(m_source->install.images.front().index);
     m_selection = m_selected ? std::vector<int>{*m_selected} : std::vector<int>{};
@@ -44,6 +61,7 @@ void AppState::setSource(core::SourceInfo source) {
 
 void AppState::clearSource() {
     m_source.reset();
+    m_mediaDrivers.reset();
     m_selected.reset();
     m_selection.clear();
     notify(Change::Source);
@@ -89,6 +107,7 @@ void AppState::setMounted(std::optional<MountedImage> mounted) {
                            m_mounted->imagePath == mounted->imagePath && m_mounted->index == mounted->index;
     m_mounted = std::move(mounted);
     if (!sameImage) {
+        ++m_mountSerial; // what a run left mounted is no longer the mounted image
         // Queue and feature list belong to the image that was mounted.
         m_features.reset();
         m_appx.reset();
@@ -112,6 +131,58 @@ void AppState::setMounted(std::optional<MountedImage> mounted) {
         notify(Change::ImageValues);
     }
     notify(Change::Mount);
+}
+
+bool AppState::isOwnMountFolder(const std::filesystem::path& folder) const {
+    const auto plain = [](const std::filesystem::path& p) {
+        std::wstring s = withoutLongPathPrefix(nativePath(p)).wstring();
+        while (s.size() > 3 && (s.back() == L'\\' || s.back() == L'/')) {
+            s.pop_back();
+        }
+        return s;
+    };
+    const std::wstring mine = plain(folder);
+    for (const auto& own : {m_settings.mountDirectory(), AppSettings::legacyMountDirectory(), m_settings.vhdMountDirectory()}) {
+        if (_wcsicmp(plain(own).c_str(), mine.c_str()) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool AppState::mountedElsewhere() const {
+    return m_mounted && !isOwnMountFolder(m_mounted->mountDir);
+}
+
+bool AppState::runLeftImageMounted() const {
+    if (!m_apply || m_apply->stage != ApplyRun::Stage::Done || !m_mounted || m_apply->mountSerial != m_mountSerial) {
+        return false;
+    }
+    // Saved runs unmounted their image (committed); a run that never started has no result.
+    return !m_apply->result || !m_apply->result->committed;
+}
+
+void AppState::beginRunClose(bool commit) {
+    if (!runLeftImageMounted()) {
+        return;
+    }
+    m_apply->closing = ApplyRun::Closing{commit, ApplyRun::Closing::State::Running, std::nullopt};
+    notify(Change::Apply);
+}
+
+void AppState::endRunClose(const std::optional<Error>& error, bool cancelled) {
+    if (!m_apply || !m_apply->closing || m_apply->closing->state != ApplyRun::Closing::State::Running) {
+        return;
+    }
+    if (cancelled) {
+        m_apply->closing.reset(); // the image stays as the run left it
+    } else if (error) {
+        m_apply->closing->state = ApplyRun::Closing::State::Failed;
+        m_apply->closing->error = error;
+    } else {
+        m_apply->closing->state = ApplyRun::Closing::State::Done;
+    }
+    notify(Change::Apply);
 }
 
 bool AppState::queueLocked() const noexcept {
@@ -174,14 +245,15 @@ void AppState::unqueueIf(const std::function<bool(const core::ops::Operation&)>&
     if (queueLocked()) {
         return;
     }
-    const auto ops = m_changes.operations(); // copy: remove() edits the list
-    bool any = false;
-    for (const auto& op : ops) {
+    // One batch, one undo step (D-152): removed one by one, a page's Sıfırla was as many steps as it
+    // took rows out, and Geri al brought back only the last.
+    std::vector<std::pair<core::ops::OpKind, std::wstring>> slots;
+    for (const auto& op : m_changes.operations()) {
         if (which(op)) {
-            any = m_changes.remove(op.kind, op.target) || any;
+            slots.emplace_back(op.kind, op.target);
         }
     }
-    if (any) {
+    if (!slots.empty() && m_changes.removeAll(slots) > 0) {
         notify(Change::Queue);
     }
 }
@@ -198,6 +270,15 @@ void AppState::setMediaUpdate(MediaUpdate update) {
     notify(Change::Iso);
 }
 
+void AppState::setIsoChoices(IsoChoices choices) {
+    choices.source = m_source ? m_source->path : std::filesystem::path();
+    if (choices == m_isoChoices) {
+        return;
+    }
+    m_isoChoices = std::move(choices);
+    notify(Change::Iso);
+}
+
 void AppState::setBootDriver(const std::filesystem::path& inf, bool on) {
     if (isBootDriver(inf) == on) {
         return;
@@ -210,13 +291,45 @@ void AppState::setBootDriver(const std::filesystem::path& inf, bool on) {
     notify(Change::Drivers);
 }
 
+void AppState::setBootDrivers(const std::vector<std::filesystem::path>& infs, bool on) {
+    bool changed = false;
+    for (const auto& inf : infs) {
+        if (isBootDriver(inf) == on) {
+            continue;
+        }
+        changed = true;
+        if (on) {
+            m_bootDrivers.push_back(inf);
+        } else {
+            std::erase(m_bootDrivers, inf);
+        }
+    }
+    if (changed) {
+        notify(Change::Drivers);
+    }
+}
+
+void AppState::setMediaDrivers(std::optional<MediaDrivers> drivers) {
+    m_mediaDrivers = std::move(drivers);
+    notify(Change::Drivers);
+}
+
 void AppState::addDriverScan(const std::filesystem::path& folder, std::vector<core::DriverInf> infs) {
     if (std::ranges::find(m_drivers.folders, folder) == m_drivers.folders.end()) {
         m_drivers.folders.push_back(folder);
     }
+    // A set of the paths already listed: comparing each new INF with the whole list was n² path
+    // comparisons on the UI thread — a driver pack folder has tens of thousands (audit APP-08).
+    auto keyOf = [](const std::filesystem::path& path) {
+        std::wstring key = path.lexically_normal().native();
+        for (auto& c : key) {
+            c = static_cast<wchar_t>(std::towlower(c));
+        }
+        return key;
+    };
+    m_drivers.infs.reserve(m_drivers.infs.size() + infs.size());
     for (auto& inf : infs) {
-        const bool known = std::ranges::any_of(m_drivers.infs, [&](const core::DriverInf& d) { return d.path == inf.path; });
-        if (!known) {
+        if (m_driverPaths.insert(keyOf(inf.path)).second) {
             m_drivers.infs.push_back(std::move(inf));
         }
     }
@@ -270,6 +383,22 @@ void AppState::setWindowsDownloadNotice(std::optional<WindowsDownloadNotice> not
 void AppState::setStoreFetch(std::optional<StoreFetch> fetch) {
     m_storeFetch = std::move(fetch);
     notify(Change::StoreFetch);
+}
+
+void AppState::setAppUpdate(AppUpdate update) {
+    m_appUpdate = std::move(update);
+    notify(Change::AppUpdate);
+}
+
+void AppState::markAppUpdateToastShown() {
+    m_appUpdate.toastShown = true;
+}
+
+void AppState::dismissAppUpdateNotice() {
+    if (m_appUpdate.notice) {
+        m_appUpdate.notice = false;
+        notify(Change::AppUpdate);
+    }
 }
 
 void AppState::setSystemMounts(std::optional<SystemMounts> mounts) {
@@ -439,7 +568,7 @@ void AppState::forgetRecent(const std::filesystem::path& path) {
 
 std::size_t AppState::subscribe(Listener listener) {
     const std::size_t id = m_nextId++;
-    m_listeners.emplace_back(id, std::move(listener));
+    m_listeners.emplace_back(id, std::make_shared<const Listener>(std::move(listener)));
     return id;
 }
 
@@ -465,11 +594,13 @@ void AppState::saveQueue() const {
         return;
     }
     using Json = nlohmann::json;
-    const Json doc{{"version", 1},
-                   {"image", utf8::fromWide(m_mounted->imagePath.wstring())},
-                   {"index", m_mounted->index},
-                   {"changes", Json::parse(m_changes.toJson())}};
-    if (auto written = writeFileAtomic(m_queueFile, doc.dump(1)); !written) {
+    // The change set's own text goes in as it is: parsing it back to dump it again was two more
+    // passes over a queue that can be megabytes (an imported hosts list, the welcome script).
+    std::string doc = "{\"version\":1,\"image\":" + Json(utf8::fromWide(m_mounted->imagePath.wstring())).dump() +
+                      ",\"index\":" + std::to_string(m_mounted->index) + ",\"changes\":";
+    doc += m_changes.toJson();
+    doc += "}";
+    if (auto written = writeFileAtomic(m_queueFile, doc); !written) {
         log::warn("app", L"could not keep the queue: " + describe(written.error()));
     }
 }
@@ -527,14 +658,41 @@ std::size_t AppState::restoreQueue(std::optional<core::ops::ChangeSet> saved) {
     return restored;
 }
 
+AppState::QueueBatch::QueueBatch(AppState& state) : m_state(state) {
+    if (m_state.m_queueBatch++ == 0) {
+        m_state.m_changes.beginGroup();
+    }
+}
+
+AppState::QueueBatch::~QueueBatch() {
+    if (--m_state.m_queueBatch == 0) {
+        m_state.m_changes.endGroup();
+        if (std::exchange(m_state.m_queueBatchDirty, false)) {
+            m_state.notify(Change::Queue);
+        }
+    }
+}
+
 void AppState::notify(Change change) {
+    ++m_revision;
     if (change == Change::Queue) {
+        if (m_queueBatch > 0) {
+            m_queueBatchDirty = true;
+            return;
+        }
         saveQueue();
     }
-    // Copy: a listener may unsubscribe (page switch) while we iterate.
+    // Copy: a listener may unsubscribe (page switch) while we iterate. The copy shares the
+    // functions, so one that unsubscribes itself stays alive until it returns.
     const auto listeners = m_listeners;
-    for (const auto& [id, listener] : listeners) {
-        listener(change);
+    for (std::size_t i = 0; i < listeners.size(); ++i) {
+        const std::size_t id = listeners[i].first;
+        // One that an earlier listener of this round unsubscribed (it destroyed the page that
+        // listens) is not called on what is left of it (audit APP-16). The first one is still there.
+        if (i > 0 && std::ranges::none_of(m_listeners, [id](const auto& entry) { return entry.first == id; })) {
+            continue;
+        }
+        (*listeners[i].second)(change);
     }
 }
 

@@ -20,8 +20,9 @@ namespace wl::core {
 [[nodiscard]] std::uint64_t treeBytes(const std::filesystem::path& path);
 
 // `fresh` (complete) takes the place of `original` under the name `destination` (often the same
-// path; .wim → .esd changes it). The original is renamed to "<original>.old" first and only
-// deleted once `fresh` is in place; on failure it is renamed back and `fresh` is removed.
+// path; .wim → .esd changes it). Under the same name it is one replacing rename. Otherwise (or
+// when that is refused) the original is renamed to "<original>.old" first and only deleted once
+// `fresh` is in place; on failure it is renamed back and `fresh` is removed.
 [[nodiscard]] Result<void> swapIntoPlace(const std::filesystem::path& original, const std::filesystem::path& fresh,
                                          const std::filesystem::path& destination);
 

@@ -16,12 +16,26 @@ namespace wl::app {
 
 namespace {
 
+// A fixed local disk: asking it about a file answers at once.
+bool onFixedDrive(const std::filesystem::path& path) {
+    const std::filesystem::path root = path.root_path();
+    return !root.empty() && GetDriveTypeW(root.c_str()) == DRIVE_FIXED;
+}
+
 bool samePath(const std::filesystem::path& a, const std::filesystem::path& b) {
-    std::error_code ec;
-    if (std::filesystem::equivalent(a, b, ec)) {
+    // The spelling first: the entries are written normalised, so this settles nearly every pair
+    // without touching a disk.
+    if (_wcsicmp(a.lexically_normal().c_str(), b.lexically_normal().c_str()) == 0) {
         return true;
     }
-    return _wcsicmp(a.lexically_normal().c_str(), b.lexically_normal().c_str()) == 0;
+    // equivalent() opens both files: an entry on a share that is gone or on a pulled / sleeping
+    // drive made every open and every "remove from list" wait for its timeout on the UI thread
+    // (audit APP-09). Only two spellings on the same fixed disk are worth asking about.
+    if (_wcsicmp(a.root_name().c_str(), b.root_name().c_str()) != 0 || !onFixedDrive(a)) {
+        return false;
+    }
+    std::error_code ec;
+    return std::filesystem::equivalent(a, b, ec);
 }
 
 std::int64_t toUnix(std::chrono::system_clock::time_point t) {

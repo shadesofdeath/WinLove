@@ -4,7 +4,8 @@
 //    right away (file associations, "Open with", drag onto the exe)
 //  - offscreen: WinLove.exe --render=<file.png> [options] draws one frame without a window,
 //    for visual checks against WinLove-UI-Handoff/04_screens. Options:
-//      --theme=dark|light|hc  --accent=blue|copper|sea|pomegranate|olive  --lang=tr|en  --scale=1.5  --size=1440x900
+//      --theme=dark|light|hc|black  --accent=blue|copper|sea|pomegranate|olive|#RRGGBB (D-143)  --lang=tr|en
+//      --scale=1.5  --size=1440x900
 //      --page=<key>           (source, images, …, settings, about, gallery)
 //      --nav-collapsed        --maximized (restore glyph)
 //      --hover-at=x,y         --press-at=x,y   --tooltip-at=x,y   (DIPs; simulate the pointer)
@@ -21,23 +22,51 @@
 //      --font=inter|geist|segoe   (the type family, as in the settings; D-092)
 //      --test-device-lost     (windowed: the first frame takes the device-loss path a GPU reset takes)
 //      --select=N[,M…]        (select edition N on the Images page; more: marked as well)
-//      --operation=mount|prepare|read|verify --progress=0.38   (render: show the operation strip)
+//      --operation=mount|prepare|read|verify|delete|export|rename|duplicate|move|unmount|prepare-delete --progress=0.38
+//                             (render: the operation strip and the rows' Durum words; --select=N,M: the rows of a
+//                              delete / export of several editions)
 //      --verified=sound|damaged   (render: the result of "Doğrula" on the Images page)
 //      --demo-upgrade=dialog|queued   (render, with a source: the edition upgrade of the Images page)
 //      --demo-<page>          (render: sample state for a page; see LaunchOptions)
 //      --demo-no-winre        (render, with a source: the ISO page as when an edition has no WinRE, D-074)
 //      --demo-aio             (render, with a source: the ISO page as when the media cannot install an edition, D-077)
 //      --demo-catalog=dialog|download   (render, with --demo-updates: the update catalog, D-046)
+//      --demo-overview[=unread|running|paused|done|held]   (render, with or without a source: a mounted
+//                             image with its lists read and a rich queue — Görüntü › Özet, or --page=apply; D-138)
 //      --switch-lang=tr|en    (render: rebuild the UI in another language, as the settings page does)
 //      --palette[=query]      (render: open the command palette, optionally with text typed)
 //      --keys=down,enter,…    (render: press these keys in order — up down left right enter esc del tab)
+//      --toast-timeout        (render: the toast's own timer fires before the frame — a demo's toast has gone, D-139)
+//      --click-after-load=x,y (render: a click after the workers' results landed — a row of Programlar's index, D-139)
+//      --settle=<ms>[,<quiet>] (render: wait up to that long for the workers — network included — before each
+//                             click-after-load and the frame; done when nothing was posted for <quiet> ms, 3000)
+//      --demo-vhd[=closed|confirm|mounted|unmount|done|iso]   (render: a VHDX source, D-141; nothing is attached)
+//      --demo-update[=available|current|failed|checking]   (render: the update check's answer, D-140 — About's card;
+//                             "available" also the notice: one toast and the status bar segment on any other page;
+//                             D-145: downloading|verifying|ready|install-failed — "Yükle" under way / done / refused;
+//                             updated — the instance a swap started, its "updated" toast and card)
+//      --demo-changelog[=<releases.json>]   (render, D-145: the changelog window alone, from a saved GitHub answer;
+//                             default tests\integration\fixtures\changelog-sample.json next to the build)
+//      --auto-iso             (render, D-144: "Bitince ISO oluştur" on, ISO folder D:\ISO; with --demo-overview=iso-running|
+//                             iso-done|iso-failed|iso-cancelled|iso-skipped the run's ISO in that state)
+//      --iso-choices          (render, D-144 addendum: ISO Oluştur's options changed — UEFI only, label WINLOVE_TR, ESD,
+//                             no key prompt, UEFI CA 2023 — on the ISO page and the Apply row alike)
+//      --iso-options          (render, D-144 addendum: the Apply row's "ISO seçenekleri…" dialog open)
+//      --updated-from=<version>   (windowed, D-145: started by a self-update — the old exe goes, one toast)
+//      --keys=…               also pgdn, pgup, home, end
+//      --anim-time=<ms>       (render, D-142: every progress ring shows its pose that many ms after it appeared —
+//                             frames of the animation without a window; default: the still ring)
+//      --demo-accent-picker   (render, D-143: Ayarlar with the accent colour picker open)
+#include "app/ChangelogWindow.h"
 #include "app/Localization.h"
+#include "app/controllers/UpdateController.h"
 #include "app/pages/PageInfo.h"
 #include "app/shell/Shell.h"
 #include "app/state/AppState.h"
 #include "ui/platform/DropTarget.h"
 #include "ui/platform/Window.h"
 #include "ui/render/Graphics.h"
+#include "ui/render/OffscreenTarget.h"
 #include "ui/render/SwapChainTarget.h"
 #include "ui/widget/Host.h"
 
@@ -57,7 +86,9 @@ struct LaunchOptions {
     Language language = Language::Turkish;
     bool themeGiven = false;    // --theme= / --lang= on the command line win over settings.json
     std::optional<UiFont> font; // --font=inter|geist|segoe (D-092); else settings.json
-    std::optional<ui::Accent> accent; // --accent=
+    std::optional<std::uint32_t> accent; // --accent= (0xRRGGBB, D-143)
+    std::optional<double> animTime;      // --anim-time=<ms> (D-142)
+    bool demoAccentPicker = false;       // --demo-accent-picker (D-143)
     bool languageGiven = false;
     std::optional<std::filesystem::path> renderTo;
     float scale = 1.0f;
@@ -73,6 +104,7 @@ struct LaunchOptions {
     std::wstring demoStoreShare; // D-113, with --demo-components: a `wlcli store-share` file (a real image's split)
     bool demoCompat = false;     // with --demo-components: the Uyumluluk dialog open (D-082)
     std::wstring demoToast;      // --demo-toast=title|message: a toast over the page (wrapping, 2026-11-09)
+    bool toastTimeout = false;   // --toast-timeout: the toast's timer fires before the frame (D-139: the card's foot shows)
     bool demoAppMenu = false;    // --demo-app-menu: the ≡ menu open (its icons, 2026-11-09)
     bool demoRegistry = false;   // render: fake mount + typed values and an imported .reg (D-067)
     bool demoRegistryDialog = false; // --demo-registry=dialog: the first value open in "Değeri düzenle"
@@ -82,12 +114,20 @@ struct LaunchOptions {
     std::optional<std::wstring> demoFiles; // render: fake mount + queued files ("where": the destination dialog) (D-051)
     int demoDownload = -1;     // render: D-093 Windows indir — 0 list, 1 a build picked, 2 downloading, 3 converting,
                                // 4 the app picker, 5 a Windows 10 build (apps in the image), 6 the last run
-                               // failed, 7 the ISO came with warnings, 8 with a hotpatch LCU's baseline
+                               // failed, 7 the ISO came with warnings, 8 with a hotpatch LCU's baseline;
+                               // D-149 (official ESD): 9 esd (chosen), 10 uup-only (not in the catalog),
+                               // 11 esd-info ("Fark ne?" open), 12 esd-downloading, 13 esd-verifying,
+                               // 14 esd-converting, 15 esd-failed
     bool demoHosts = false;    // render: fake mount, telemetry list in the image, ads queued, imported entries (D-049)
     bool demoBranding = false; // render: Kişiselleştirme with OEM text, pictures and fonts queued (D-056)
     std::wstring demoTool; // render, with a source: recompress | split | duplicate | capture | hash | append (D-058)
     bool demoWifi = false; // render: Kurulum Sonrası › Wi-Fi ağı ekle dialog (D-056)
-    bool demoBootDrivers = false; // render, with --demo-drivers: Sürücüler › Kurulum ortamı
+    // render: Sürücüler › Kurulum ortamı (D-056, D-134). "" (with --demo-drivers): a selection, the medium's
+    // boot.wim packages, an ARM64 row dimmed; "host": "Bu bilgisayardan al" from that tab (storage + wired
+    // network ticked); "storage-only" (with --demo-drivers): a storage driver ticked for boot.wim only (the
+    // warning); "iso": the ISO page with boot drivers, one storage driver only in boot.wim; "iso-done": the
+    // ISO built, two drivers refused; "iso-running" (D-142): the build under way (its progress ring).
+    std::optional<std::wstring> demoBootDrivers;
     bool demoEditions = false; // render, with a source: Apply summary with two other editions ticked (D-055)
     // render: fake 25H2 Pro mount with Turkish, English queued from Windows Update and a display language (D-053 / D-061);
     // "dialog": the "Dil ekle" check list; "fetch": a download running.
@@ -99,10 +139,18 @@ struct LaunchOptions {
     bool demoIconsRedirect = false; // --demo-icons=redirect: the "Masaüstü ve Gezgin" tab
     bool demoIcons = false; // render: the Simgeler page with a few icons assigned (D-065)
     bool demoMounts = false; // render: images mounted on this PC by other tools, on the Kaynak page (D-064)
+    // 2026-11-11, --demo-mounts=<variant>: taking one over — "adopting" | "remounting" (the work on Kaynak),
+    // "failed" (DISM marks it invalid: the reason, nothing touched), "adopted" (Sürümler: whose folder it is),
+    // "overview" (Özet), "unmount" (the unmount question for another tool's folder). "" = the list.
+    std::wstring demoMountsVariant;
     std::optional<std::wstring> demoApps; // render: fake mount + the lab's Terminal package ("defaults": second tab) (D-050)
     bool demoImageDrivers = false; // render: fake mount + the image's third-party drivers, one queued for removal (D-052)
     bool demoTweaks = false;     // render: fake mount + the selections of screen 10
     bool demoImageValues = false; // render (with --demo-tweaks): the image already has a few (D-045)
+    // D-146, with --demo-tweaks: --demo-tweak-template=a,b applies these templates in order (as Şablon ▾ does:
+    // the toast of the last one stays); --demo-tweak-filter=id shows one in the filter ("Şablon (…)").
+    std::vector<std::string> demoTweakTemplates;
+    std::string demoTweakFilter;
     bool demoUnattended = false; // render: the answers of screen 11
     bool demoWelcome = false;    // --demo-unattended=welcome: with WinLove's welcome on (D-084)
     bool demoPostSetup = false;  // render: fake mount + the steps of screen 12
@@ -117,13 +165,31 @@ struct LaunchOptions {
     bool demoNoWinre = false;     // render (with a source): ISO page, edition 1 has no WinRE (D-074)
     bool demoAio = false;         // render (with a source): ISO page, edition 2 cannot be installed by the media (D-077)
     std::wstring demoCatalog;     // render (with --demo-updates): "dialog" | "download" — the update catalog (D-046)
+    // render (D-138): "ready" — the source's first edition (or a sample) mounted, every list read, a queue
+    // across the navigation; "unread" — mounted, the lists being read; "running" / "paused" / "done" / "held" —
+    // that queue's Uygula run in that state. Shown on Özet (or --page=).
+    std::optional<std::wstring> demoOverview;
+    std::optional<std::wstring> demoUpdate; // D-140: "available" | "current" | "failed" | "checking"; D-145: below
+    std::optional<std::wstring> demoChangelog; // D-145: a saved releases answer ("": the test fixture)
+    bool autoIso = false;                      // D-144 (render): "Bitince ISO oluştur" on
+    bool isoChoices = false;                   // D-144 addendum (render): the ISO options changed
+    bool isoOptions = false;                   // D-144 addendum (render): their dialog open
+    std::wstring updatedFrom;                  // D-145 (windowed): the version a self-update replaced
+    // D-141: a VHDX source (made up, nothing is attached): "closed" (Sürümler) | "confirm" (the mount question) |
+    // "mounted" (Özet, lists read) | "unmount" (the unmount question) | "done" (a saved run) | "iso" (ISO Oluştur).
+    std::optional<std::wstring> demoVhd;
     std::wstring demoApply;    // render (with --demo-features): "running" | "paused" | "done" | "skipped" | "held" — fake Uygula run; "confirm" — the risk dialog, 40 rows
+                               // 2026-11-11: "stopped" (stopped half way, still mounted), then a save / discard of it started
+                               // from anywhere: "discarding" | "saving" (running, 40 %), "discarded" | "saved" (done), "closefailed"
     bool maximized = false;
     bool testDeviceLost = false; // windowed: the first frame is treated as a lost device (audit A6)
     std::optional<ui::PointF> hoverAt;
     std::optional<ui::PointF> contextAt; // --context-at=x,y: right click (context menu)
     std::optional<ui::PointF> pressAt;
     std::vector<ui::PointF> clickAt; // --click-at=x,y (repeatable): full click, e.g. open a dropdown
+    std::vector<ui::PointF> clickAfterLoad; // --click-after-load=x,y: the same, after the workers' results (D-139)
+    int settleMs = 0;                       // --settle=<ms>[,<quiet ms>]: render waits for the workers (live pages)
+    int settleQuietMs = 3000;               // …until nothing was posted for this long
     std::optional<ui::PointF> tooltipAt;
     int tabPresses = 0;
     std::optional<std::filesystem::path> recentFile;
@@ -160,6 +226,21 @@ private:
     [[nodiscard]] int renderOffscreen();
     void paint();
     void applyTheme();
+    void demoOverview(); // --demo-overview (D-138)
+    // The same over `imagePath` mounted on `mountDir` (D-141: a VHD's demo uses it too).
+    void demoOverview(const std::wstring& variant, const std::filesystem::path& imagePath, const std::filesystem::path& mountDir);
+    void demoVhd();      // --demo-vhd (D-141)
+    void demoAdoption(const std::wstring& variant); // --demo-mounts=<variant> (2026-11-11)
+    void demoRunClose(const std::wstring& variant); // --demo-apply=stopped|discarding|… (2026-11-11)
+    void demoUpdate();   // --demo-update (D-140)
+    [[nodiscard]] int renderChangelog(ui::OffscreenTarget& target); // --demo-changelog (D-145)
+    void demoAutoIso(AppState::ApplyRun& run, const std::wstring& variant); // --demo-overview=iso-* (D-144)
+    void openChangelog(); // D-145: the changelog window (one; brought to the front when open)
+    void removeOldExe();  // D-145: "<exe>.old" a self-update left, once the old process is gone
+    static constexpr UINT kOldExeTimer = 10;
+    int m_oldExeTries = 0;
+    static constexpr UINT kUpdateCheckTimer = 9;       // D-140: the startup check, once
+    static constexpr UINT kUpdateCheckDelayMs = 4000;
     // P16: settings.json changed (or Windows' own theme did): theme, motion, language.
     void applySettings();
     void rebuildUi(bool newFamilies = false); // a new language: strings and every widget again; AppState stays
@@ -184,11 +265,16 @@ private:
     std::vector<std::function<void()>> m_posted;
     // After m_window: destroyed first, so the engine thread's last posts still find the window.
     std::unique_ptr<AppState> m_state;
+    // D-140, windowed only (renders and tests never check): after m_state, so it goes first.
+    std::unique_ptr<UpdateController> m_updates;
+    // D-145: after m_state (it listens to it) and m_graphics (its text styles): it goes before them.
+    std::unique_ptr<ChangelogWindow> m_changelog;
     ui::DropTarget* m_dropTarget = nullptr;
     std::unique_ptr<ui::SwapChainTarget> m_target;
     std::unique_ptr<ui::Host> m_host;
     Shell* m_shell = nullptr;
     bool m_simulateDeviceLoss = false; // --test-device-lost: the next frame takes the GPU-reset path
+    std::uint32_t m_accentShown = ui::kDefaultAccent; // D-143: the saved accent the window's frame shows
 };
 
 } // namespace wl::app

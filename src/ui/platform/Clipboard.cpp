@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <cstring>
+#include <cwchar>
 
 namespace wl::ui {
 
@@ -36,7 +37,10 @@ std::wstring clipboardText() {
     }
     if (HANDLE data = GetClipboardData(CF_UNICODETEXT)) {
         if (const auto* source = static_cast<const wchar_t*>(GlobalLock(data))) {
-            text = source;
+            // The clipboard is outside input: another program may have put the text there without
+            // its terminator, so the block's size bounds the read (audit UI-11).
+            const std::size_t capacity = GlobalSize(data) / sizeof(wchar_t);
+            text.assign(source, wcsnlen(source, capacity));
             GlobalUnlock(data);
         }
     }

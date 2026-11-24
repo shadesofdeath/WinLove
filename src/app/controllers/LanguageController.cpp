@@ -49,10 +49,19 @@ std::wstring regString(HKEY key, const wchar_t* name) {
 } // namespace
 
 LanguageController::LanguageController(AppState& state, std::function<void(std::function<void()>)> postToUi)
-    : m_state(state), m_post(std::move(postToUi)) {}
+    : m_state(state), m_post(std::move(postToUi)) {
+    // Audit CTL-18: index() knows its list by address and size, and a list read again (the same
+    // number of packages, other packages) can land at the same address. Every new list is told.
+    m_subscription = m_state.subscribe([this](AppState::Change change) {
+        if (change == AppState::Change::Intl || change == AppState::Change::Mount) {
+            m_index = PackageIndex{};
+        }
+    });
+}
 
 LanguageController::~LanguageController() {
     *m_alive = false;
+    m_state.unsubscribe(m_subscription);
 }
 
 void LanguageController::load(bool force) {
@@ -61,8 +70,8 @@ void LanguageController::load(bool force) {
         return;
     }
     const auto& current = m_state.imageIntl();
-    if (!force && current && current->mountDir == mounted->mountDir && current->status != AppState::ImageIntl::Status::Failed) {
-        return;
+    if (!force && current && current->mountDir == mounted->mountDir) {
+        return; // read, being read, or failed: only `force` (or another mount) reads again
     }
     const std::filesystem::path mountDir = mounted->mountDir;
     m_state.setImageIntl(AppState::ImageIntl{AppState::ImageIntl::Status::Loading, mountDir, {}, {}, {}});
@@ -106,6 +115,12 @@ void LanguageController::load(bool force) {
                 }
                 const auto& mounted = m_state.mounted();
                 if (!mounted || mounted->mountDir != mountDir) {
+                    return;
+                }
+                // Only the read the state still waits for: a newer one (or settings given meanwhile)
+                // is not overwritten by an older answer.
+                if (const auto& now = m_state.imageIntl();
+                    !now || now->status != AppState::ImageIntl::Status::Loading || now->mountDir != mountDir) {
                     return;
                 }
                 if (!result) {

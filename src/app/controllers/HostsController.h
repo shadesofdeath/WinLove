@@ -38,7 +38,7 @@ public:
     int applyRecommended();
 
     // The user's own entries: queued, else the image's "custom" section.
-    [[nodiscard]] std::vector<core::HostEntry> customEntries() const;
+    [[nodiscard]] const std::vector<core::HostEntry>& customEntries() const;
     [[nodiscard]] bool customInImage() const;
     // Adds the entries of a hosts-format text to the custom section (duplicates by name dropped;
     // localhost lines never). Returns how many were new.
@@ -52,8 +52,24 @@ private:
     [[nodiscard]] const core::ops::Operation* queuedSection(std::wstring_view id) const;
     void setSection(std::wstring_view id, std::wstring entries, core::ops::Risk risk);
 
+    [[nodiscard]] bool onNow(const HostsList& list) const;
+    [[nodiscard]] bool inImageNow(const HostsList& list) const;
+
     AppState& m_state;
     std::vector<HostsList> m_lists;
+    // What the page draws from, kept while the state stands still: it asked for the custom section
+    // (parsed from the queue's text) for every column of its row, every frame, and for each list's
+    // text again to compare — with an imported block list of 100,000 lines, five parses a frame.
+    struct Derived {
+        std::uint64_t revision = ~std::uint64_t{0};
+        std::uint64_t queueVersion = ~std::uint64_t{0};
+        std::vector<core::HostEntry> custom;
+        std::vector<char> on;      // per m_lists entry
+        std::vector<char> inImage; // per m_lists entry
+        std::size_t total = 0;
+    };
+    mutable Derived m_derived; // UI thread only, like the controller
+    [[nodiscard]] const Derived& derived() const;
 };
 
 } // namespace wl::app

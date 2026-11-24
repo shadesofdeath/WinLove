@@ -43,10 +43,8 @@ std::wstring widen(std::string_view text) {
     return {text.begin(), text.end()}; // catalog ids and page keys are ASCII
 }
 
-} // namespace
-
-PaletteMatch matchPalette(std::wstring_view name, std::wstring_view extra, std::wstring_view query) {
-    const std::wstring q = text::fold(trimmed(query));
+// `q`: the query, trimmed and folded — once per search, not once per item (audit APP-12).
+PaletteMatch matchFolded(std::wstring_view name, std::wstring_view extra, const std::wstring& q) {
     if (q.empty()) {
         return {};
     }
@@ -93,6 +91,12 @@ PaletteMatch matchPalette(std::wstring_view name, std::wstring_view extra, std::
     }
     mark.rank = allInName ? 3 : 4;
     return mark;
+}
+
+} // namespace
+
+PaletteMatch matchPalette(std::wstring_view name, std::wstring_view extra, std::wstring_view query) {
+    return matchFolded(name, extra, text::fold(trimmed(query)));
 }
 
 PaletteItem PaletteIndex::commandItem(PaletteCommand command) const {
@@ -171,6 +175,7 @@ PaletteResults PaletteIndex::search(std::wstring_view query) const {
         }
         return out;
     };
+    const std::wstring folded = text::fold(trimmed(query)); // once for every item below (audit APP-12)
     const bool searching = !trimmed(query).empty();
     PaletteResults out;
 
@@ -186,7 +191,7 @@ PaletteResults PaletteIndex::search(std::wstring_view query) const {
             PaletteItem item = commandItem(command);
             if (!searching) {
                 found.push_back({std::move(item), 0});
-            } else if (const PaletteMatch match = matchPalette(item.name, {}, query)) {
+            } else if (const PaletteMatch match = matchFolded(item.name, {}, folded)) {
                 item.markAt = match.at;
                 item.markLength = match.length;
                 found.push_back({std::move(item), match.rank});
@@ -199,9 +204,16 @@ PaletteResults PaletteIndex::search(std::wstring_view query) const {
     }
 
     // ---- results ----
+    // The name is matched first and `fill` makes the rest of the item only for a match: with an
+    // image mounted there are a few thousand candidates per key stroke, and the caption of each
+    // (formatted sizes, a look into the queue) was built before knowing whether it would be shown
+    // (audit APP-12).
     std::vector<Scored> found;
-    auto consider = [&](PaletteItem item, std::wstring_view extra) {
-        if (const PaletteMatch match = matchPalette(item.name, extra, query)) {
+    auto consider = [&](std::wstring name, std::wstring_view extra, const auto& fill) {
+        if (const PaletteMatch match = matchFolded(name, extra, folded)) {
+            PaletteItem item;
+            item.name = std::move(name);
+            fill(item);
             item.markAt = match.at;
             item.markLength = match.length;
             found.push_back({std::move(item), match.rank});
@@ -212,17 +224,16 @@ PaletteResults PaletteIndex::search(std::wstring_view query) const {
         if (page.id == PageId::Gallery) {
             continue; // developer page
         }
-        PaletteItem item;
-        item.kind = PaletteItem::Kind::Page;
-        item.icon = page.icon;
-        item.page = page.id;
-        item.name = s(page.navLabel);
-        item.detail = s(Str::PalettePages) + std::wstring(kSeparator) + s(Str::PaletteGo);
         std::wstring extra = widen(page.key) + L' ' + s(page.title);
         if (page.description) {
             extra += L' ' + s(*page.description);
         }
-        consider(std::move(item), extra);
+        consider(s(page.navLabel), extra, [&](PaletteItem& item) {
+            item.kind = PaletteItem::Kind::Page;
+            item.icon = page.icon;
+            item.page = page.id;
+            item.detail = s(Str::PalettePages) + std::wstring(kSeparator) + s(Str::PaletteGo);
+        });
     }
 
     // The mounted image's own things; the P12 form is for a mounted image too.
@@ -234,75 +245,75 @@ PaletteResults PaletteIndex::search(std::wstring_view query) const {
                 continue;
             }
             const auto tab = std::ranges::find(catalog.tabs(), section->tab, &ImageSettingTab::id);
-            PaletteItem item;
-            item.kind = PaletteItem::Kind::Setting;
-            item.icon = Icon::TweaksSliders;
-            item.page = PageId::Tweaks;
-            item.id = widen(setting.id);
-            item.name = setting.label.get(m.language);
-            item.detail = s(Str::NavTweaks);
             std::wstring extra = section->title.get(m.language);
             if (tab != catalog.tabs().end()) {
-                item.detail += std::wstring(kSeparator) + tab->title.get(m.language);
                 extra += L' ' + tab->title.get(m.language);
             }
-            if (m.settings.current(setting) != setting.defaultOption) {
-                item.detail += std::wstring(kSeparator) + s(Str::ComponentsQueued);
-            }
-            consider(std::move(item), extra);
+            consider(setting.label.get(m.language), extra, [&](PaletteItem& item) {
+                item.kind = PaletteItem::Kind::Setting;
+                item.icon = Icon::TweaksSliders;
+                item.page = PageId::Tweaks;
+                item.id = widen(setting.id);
+                item.detail = s(Str::NavTweaks);
+                if (tab != catalog.tabs().end()) {
+                    item.detail += std::wstring(kSeparator) + tab->title.get(m.language);
+                }
+                if (m.settings.current(setting) != setting.defaultOption) {
+                    item.detail += std::wstring(kSeparator) + s(Str::ComponentsQueued);
+                }
+            });
         }
 
         for (const auto& group : m.components.groups()) {
             for (const auto& component : group.items) {
-                PaletteItem item;
-                item.kind = PaletteItem::Kind::Component;
-                item.icon = Icon::AppxPackage;
-                item.page = PageId::Components;
-                item.id = component.packageName;
-                item.name = component.name;
-                item.detail = s(Str::NavComponents) + std::wstring(kSeparator) +
-                              (m.components.queued(component)
-                                   ? s(Str::PaletteQueuedForRemoval)
-                                   : m.strings.format(Str::PaletteRiskOf, {{L"risk", s(riskText(component.risk))}}));
-                if (component.size > 0) {
-                    item.detail += std::wstring(kSeparator) + formatBytes(component.size, m.language);
-                }
-                consider(std::move(item), component.identity + L' ' + group.name);
+                consider(component.name, component.identity + L' ' + group.name, [&](PaletteItem& item) {
+                    item.kind = PaletteItem::Kind::Component;
+                    item.icon = Icon::AppxPackage;
+                    item.page = PageId::Components;
+                    item.id = component.packageName;
+                    item.detail = s(Str::NavComponents) + std::wstring(kSeparator) +
+                                  (m.components.queued(component)
+                                       ? s(Str::PaletteQueuedForRemoval)
+                                       : m.strings.format(Str::PaletteRiskOf, {{L"risk", s(riskText(component.risk))}}));
+                    if (component.size > 0) {
+                        item.detail += std::wstring(kSeparator) + formatBytes(component.size, m.language);
+                    }
+                });
             }
         }
 
         if (const auto& features = m.state.optionalFeatures();
             features && features->status == AppState::OptionalFeatures::Status::Ready) {
             for (const auto& feature : features->items) {
-                PaletteItem item;
-                item.kind = PaletteItem::Kind::Feature;
-                item.icon = Icon::PuzzleFeatures;
-                item.page = PageId::Features;
-                item.id = feature.name;
-                item.name = feature.displayName.empty() ? feature.name : feature.displayName;
-                item.detail = s(Str::NavFeatures) + std::wstring(kSeparator) +
-                              s(FeaturesPage::statusName(m.features.status(feature)));
-                consider(std::move(item), feature.name);
+                consider(feature.displayName.empty() ? feature.name : feature.displayName, feature.name,
+                         [&](PaletteItem& item) {
+                             item.kind = PaletteItem::Kind::Feature;
+                             item.icon = Icon::PuzzleFeatures;
+                             item.page = PageId::Features;
+                             item.id = feature.name;
+                             item.detail = s(Str::NavFeatures) + std::wstring(kSeparator) +
+                                           s(FeaturesPage::statusName(m.features.status(feature)));
+                         });
             }
         }
 
         if (const auto& services = m.state.serviceList();
             services && services->status == AppState::ServiceList::Status::Ready) {
             for (const auto& service : services->items) {
-                PaletteItem item;
-                item.kind = PaletteItem::Kind::Service;
-                item.icon = Icon::ServicesGear;
-                item.page = PageId::Services;
-                item.id = service.name;
-                item.name = service.displayName.empty() || service.displayName == service.name
-                                ? service.name
-                                : service.name + L" — " + service.displayName;
-                item.detail = s(Str::NavServices) + std::wstring(kSeparator) +
-                              s(ServicesPage::startName(m.services.target(service)));
-                if (m.services.changed(service)) {
-                    item.detail += std::wstring(kSeparator) + s(Str::ComponentsQueued);
-                }
-                consider(std::move(item), {});
+                consider(service.displayName.empty() || service.displayName == service.name
+                             ? service.name
+                             : service.name + L" — " + service.displayName,
+                         {}, [&](PaletteItem& item) {
+                             item.kind = PaletteItem::Kind::Service;
+                             item.icon = Icon::ServicesGear;
+                             item.page = PageId::Services;
+                             item.id = service.name;
+                             item.detail = s(Str::NavServices) + std::wstring(kSeparator) +
+                                           s(ServicesPage::startName(m.services.target(service)));
+                             if (m.services.changed(service)) {
+                                 item.detail += std::wstring(kSeparator) + s(Str::ComponentsQueued);
+                             }
+                         });
             }
         }
     }

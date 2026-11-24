@@ -12,6 +12,7 @@ IDR_FONT_GEIST_REGULAR RCDATA "../../resources/fonts/Geist-Regular.ttf"
 IDR_FONT_GEIST_MEDIUM RCDATA "../../resources/fonts/Geist-Medium.ttf"
 IDR_FONT_GEIST_SEMIBOLD RCDATA "../../resources/fonts/Geist-SemiBold.ttf"
 IDR_FONT_GEIST_MONO RCDATA "../../resources/fonts/GeistMono-Regular.ttf"
+IDR_FONT_BRAND_SEMIBOLD RCDATA "../../resources/fonts/IBMPlexSans-SemiBold.ttf"
 
 IDR_STRINGS_TR RCDATA "../../resources/strings/tr.json"
 IDR_STRINGS_EN RCDATA "../../resources/strings/en.json"
@@ -27,8 +28,8 @@ IDR_CATALOG_PROGRAMS RCDATA "../../resources/catalog/programs.json"
 IDR_CATALOG_COMPAT RCDATA "../../resources/catalog/compat.json"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,3,0,0
- PRODUCTVERSION 1,3,0,0
+ FILEVERSION 1,4,0,0
+ PRODUCTVERSION 1,4,0,0
  FILEOS VOS_NT_WINDOWS32
  FILETYPE VFT_APP
 BEGIN
@@ -38,8 +39,8 @@ BEGIN
         BEGIN
             VALUE "FileDescription", "WinLove - Windows image customization"
             VALUE "ProductName", "WinLove"
-            VALUE "FileVersion", "1.3.0"
-            VALUE "ProductVersion", "1.3.0 Beta"
+            VALUE "FileVersion", "1.4.0"
+            VALUE "ProductVersion", "1.4.0 Beta"
             VALUE "OriginalFilename", "WinLove.exe"
         END
     END

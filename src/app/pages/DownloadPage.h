@@ -6,11 +6,14 @@
 // shows the stage, a bar, bytes and the time left, and "Durdur".
 #include "app/Localization.h"
 #include "app/controllers/WindowsDownloadController.h"
+#include "app/shell/PageView.h"
 #include "app/state/AppState.h"
 #include "ui/widgets/Button.h"
 #include "ui/widgets/Checkbox.h"
 #include "ui/widgets/Dropdown.h"
 #include "ui/widgets/EmptyState.h"
+#include "ui/widgets/PillGroup.h"
+#include "ui/widgets/ProgressRing.h"
 #include "ui/widgets/SearchBox.h"
 #include "ui/widgets/TableView.h"
 
@@ -19,7 +22,9 @@
 
 namespace wl::app {
 
-class DownloadPage : public ui::Widget {
+// 2026-11-10: a body that scrolls when the panel is taller than the room (at 700 DIP the panel's
+// "İndir ve ISO oluştur" was below the card's edge, out of reach).
+class DownloadPage : public ui::Widget, public ScrollableBody {
 public:
     struct Intents {
         // The ISO's path from a save dialog; nullopt = cancelled.
@@ -40,14 +45,20 @@ public:
                   const core::uup::FileSet& files);
     void setApps(const std::wstring& id, const std::wstring& language, const std::vector<std::wstring>& editions,
                  std::vector<core::uup::AppFeature> apps);
+    // D-149: Microsoft's official ESD catalog of a product (or why it did not come).
+    void setEsdCatalog(core::esd::Product product, Result<core::esd::Catalog> catalog);
 
     void layout() override;
     void paint(ui::Canvas& canvas) override;
-    [[nodiscard]] float tickIntervalMs() const override { return 250.0f; } // ETA while a job runs
+    [[nodiscard]] float contentHeight() const override { return m_contentHeight; }
+    // While a job runs: the progress ring's pace (D-142), else the ETA's.
+    [[nodiscard]] float tickIntervalMs() const override { return m_ring.tickMs(250.0f); }
     bool tick(double now) override;
 
     // --render demos: a list, a selection, a running job.
     void demo(int what);
+    // The list asked for again (the ribbon's "Yenile", and the empty state's after a failure).
+    void reload() { loadBuilds(); }
 
 private:
     class Panel;
@@ -60,6 +71,9 @@ private:
     void requestApps();    // the picker's list for the selection
     void updateAppList();  // the panel's Store apps state from what arrived
     void updatePanel();
+    void updateChoice();   // D-149: which source the selection gets (core::esd::chooseSource)
+    void refreshOutput();  // the ISO's name for the source (an ESD has a build of its own)
+    [[nodiscard]] bool newestOfRelease(const core::uup::Build& build) const;
     [[nodiscard]] const core::uup::Build* selectedBuild() const;
     void paintCell(ui::Canvas& canvas, int row, int column, ui::RectF rect);
 
@@ -76,16 +90,20 @@ private:
     std::optional<bool> m_appSet;              // the selection's files say it has an app set (appxPresent)
     bool m_appsArrived = false;                // the picker's list came back (empty when it failed)
     bool m_loading = true;
+    std::optional<core::esd::Catalog> m_esd[2]; // D-149: the official catalogs (index: Product)
+    bool m_esdFailed[2] = {false, false};
     std::optional<Error> m_listError;
 
     ui::SearchBox* m_search = nullptr;
     ui::Dropdown* m_product = nullptr; // Windows 11 / Windows 10 / all
     ui::Dropdown* m_kind = nullptr;
     ui::Dropdown* m_arch = nullptr;
-    ui::Button* m_refresh = nullptr;
     ui::TableView* m_table = nullptr;
     ui::EmptyState* m_empty = nullptr;
     Panel* m_panel = nullptr;
+    float m_contentHeight = 0; // the panel's height (layout()); the list takes what the room gives
+    bool m_inLayout = false;
+    ui::RingClock m_ring; // D-142: the job line's progress ring
 };
 
 } // namespace wl::app

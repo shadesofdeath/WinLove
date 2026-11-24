@@ -5,6 +5,7 @@
 #include <windowsx.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 
 namespace wl::ui {
@@ -13,6 +14,7 @@ namespace {
 
 constexpr wchar_t kClassName[] = L"WinLove.Window";
 constexpr UINT kPostMessage = WM_APP + 1;
+std::atomic<int> g_postHolds{0}; // PostHold objects alive (UI thread; atomic for the reader in post paths)
 
 bool isCaptionButton(WPARAM hit) {
     return hit == HTMINBUTTON || hit == HTMAXBUTTON || hit == HTCLOSE;
@@ -46,30 +48,79 @@ Window::~Window() {
         SetWindowLongPtrW(m_hwnd, GWLP_USERDATA, 0);
         DestroyWindow(m_hwnd);
     }
+    for (HICON icon : {m_smallIcon, m_bigIcon}) {
+        if (icon) {
+            DestroyIcon(icon);
+        }
+    }
+}
+
+void Window::setIcons(UINT dpi) {
+    if (!m_iconResource || !m_hwnd) {
+        return;
+    }
+    // LoadImageW picks the .ico's closest image at the asked size (user32; LoadIconWithScaleDown
+    // would tie the exe to comctl32 v6).
+    const HINSTANCE instance = GetModuleHandleW(nullptr);
+    auto load = [&](int metricX, int metricY) {
+        return static_cast<HICON>(LoadImageW(instance, m_iconResource, IMAGE_ICON, GetSystemMetricsForDpi(metricX, dpi),
+                                             GetSystemMetricsForDpi(metricY, dpi), LR_DEFAULTCOLOR));
+    };
+    HICON smallIcon = load(SM_CXSMICON, SM_CYSMICON);
+    HICON bigIcon = load(SM_CXICON, SM_CYICON);
+    if (smallIcon) {
+        SendMessageW(m_hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(smallIcon));
+        if (m_smallIcon) {
+            DestroyIcon(m_smallIcon);
+        }
+        m_smallIcon = smallIcon;
+    }
+    if (bigIcon) {
+        SendMessageW(m_hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(bigIcon));
+        if (m_bigIcon) {
+            DestroyIcon(m_bigIcon);
+        }
+        m_bigIcon = bigIcon;
+    }
+}
+
+SizeF Window::doubleClickArea() const {
+    const UINT dpi = m_hwnd ? GetDpiForWindow(m_hwnd) : 96;
+    return {static_cast<float>(GetSystemMetricsForDpi(SM_CXDOUBLECLK, dpi)) / m_scale,
+            static_cast<float>(GetSystemMetricsForDpi(SM_CYDOUBLECLK, dpi)) / m_scale};
 }
 
 Result<void> Window::create(const wchar_t* title, SizeF initialSize, SizeF minimumSize, WindowCallbacks callbacks,
                             const WindowAppearance& appearance) {
     m_callbacks = std::move(callbacks);
     m_minimum = minimumSize;
+    m_iconResource = appearance.iconResource;
     const HINSTANCE instance = GetModuleHandleW(nullptr);
 
-    static const bool registered = [&] {
-        WNDCLASSEXW wc{sizeof(wc)};
-        wc.lpfnWndProc = &Window::windowProc;
-        wc.hInstance = instance;
-        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-        wc.hIcon = appearance.icon;
-        wc.lpszClassName = kClassName;
-        return RegisterClassExW(&wc) != 0;
-    }();
-    if (!registered) {
-        return fail(ErrorCode::Unknown, L"RegisterClassExW failed", L"Window::create",
-                    static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
+    m_quitOnClose = appearance.quitOnClose;
+    const wchar_t* className = appearance.className ? appearance.className : kClassName;
+    // Each class once per process (D-145: the changelog window has its own).
+    static std::mutex registerGuard;
+    static std::vector<std::wstring> registeredClasses;
+    {
+        std::scoped_lock lock(registerGuard);
+        if (std::ranges::find(registeredClasses, std::wstring(className)) == registeredClasses.end()) {
+            WNDCLASSEXW wc{sizeof(wc)};
+            wc.lpfnWndProc = &Window::windowProc;
+            wc.hInstance = instance;
+            wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+            wc.hIcon = appearance.icon;
+            wc.lpszClassName = className;
+            if (RegisterClassExW(&wc) == 0) {
+                return fail(ErrorCode::Unknown, L"RegisterClassExW failed", L"Window::create",
+                            static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
+            }
+            registeredClasses.emplace_back(className);
+        }
     }
 
-    m_hwnd = CreateWindowExW(0, kClassName, title, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-                             CW_USEDEFAULT, nullptr, nullptr, instance, this);
+    m_hwnd = CreateWindowExW(0, className, title, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                             CW_USEDEFAULT, appearance.owner, nullptr, instance, this);
     if (!m_hwnd) {
         return fail(ErrorCode::Unknown, L"CreateWindowExW failed", L"Window::create",
                     static_cast<std::int32_t>(HRESULT_FROM_WIN32(GetLastError())));
@@ -82,6 +133,7 @@ Result<void> Window::create(const wchar_t* title, SizeF initialSize, SizeF minim
     const DWM_WINDOW_CORNER_PREFERENCE corners = DWMWCP_ROUND;
     DwmSetWindowAttribute(m_hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corners, sizeof(corners));
     m_background = CreateSolidBrush(appearance.background);
+    setIcons(GetDpiForWindow(m_hwnd));
 
     // Initial size in DIPs, clamped to 90% of the monitor work area, centered.
     MONITORINFO monitor{sizeof(monitor)};
@@ -91,11 +143,25 @@ Result<void> Window::create(const wchar_t* title, SizeF initialSize, SizeF minim
     const int workH = work.bottom - work.top;
     // D-114: the whole window, frame and status bar included, stays inside the work area (above the
     // taskbar) — on a small or zoomed screen 90 % of it, never the asked size beyond it.
-    const int width = std::min(static_cast<int>(std::lround(initialSize.width * m_scale)), workW * 9 / 10);
-    const int height = std::min(static_cast<int>(std::lround(initialSize.height * m_scale)), workH * 9 / 10);
+    // The asked size is the client area's (--size=1440x900 gives a 1440×900 DIP client); the
+    // invisible side and bottom frame come on top of it.
+    const int frame = frameThicknessPx();
+    const int width =
+        std::min(static_cast<int>(std::lround(initialSize.width * m_scale)) + 2 * frame, workW * 9 / 10);
+    const int height = std::min(static_cast<int>(std::lround(initialSize.height * m_scale)) + frame, workH * 9 / 10);
     SetWindowPos(m_hwnd, nullptr, work.left + (workW - width) / 2, work.top + (workH - height) / 2, width, height,
                  SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     updateSize();
+    // What was posted before there was a window (jobs started while the interface was built) had
+    // no message to ride on and waited for the next post() (audit UI-03).
+    bool waiting = false;
+    {
+        std::scoped_lock lock(m_postMutex);
+        waiting = !m_posted.empty();
+    }
+    if (waiting) {
+        PostMessageW(m_hwnd, kPostMessage, 0, 0);
+    }
     return {};
 }
 
@@ -131,6 +197,11 @@ int Window::runMessageLoop() {
 }
 
 void Window::invalidate() {
+    // The interface is built before the window exists, and InvalidateRect(NULL) means "redraw every
+    // window of the desktop" (audit UI-03). The first WM_PAINT comes by itself.
+    if (!m_hwnd) {
+        return;
+    }
     InvalidateRect(m_hwnd, nullptr, FALSE);
 }
 
@@ -143,7 +214,29 @@ void Window::toggleMaximize() {
 }
 
 void Window::close() {
-    PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
+    if (m_hwnd) {
+        PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
+    }
+}
+
+void Window::bringToFront() {
+    if (!m_hwnd) {
+        return;
+    }
+    if (IsIconic(m_hwnd)) {
+        ShowWindow(m_hwnd, SW_RESTORE);
+    }
+    SetForegroundWindow(m_hwnd);
+}
+
+PostHold::PostHold(HWND window) noexcept : m_window(window) {
+    ++g_postHolds;
+}
+
+PostHold::~PostHold() {
+    if (--g_postHolds == 0 && m_window) {
+        PostMessageW(m_window, kPostMessage, 0, 0); // run what waited
+    }
 }
 
 void Window::post(std::function<void()> fn) {
@@ -157,10 +250,17 @@ void Window::post(std::function<void()> fn) {
 }
 
 void Window::setTimer(UINT id, UINT ms) {
+    // Without a window SetTimer makes a thread timer under a new id that nothing can stop.
+    if (!m_hwnd) {
+        return;
+    }
     SetTimer(m_hwnd, id, ms, nullptr);
 }
 
 void Window::stopTimer(UINT id) {
+    if (!m_hwnd) {
+        return;
+    }
     KillTimer(m_hwnd, id);
 }
 
@@ -319,6 +419,7 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_DPICHANGED: {
         m_dpiScale = static_cast<float>(HIWORD(wParam)) / 96.0f;
         m_scale = m_dpiScale * m_zoom;
+        setIcons(HIWORD(wParam)); // the taskbar / Alt+Tab icon at the new DPI
         const auto* suggested = reinterpret_cast<const RECT*>(lParam);
         SetWindowPos(m_hwnd, nullptr, suggested->left, suggested->top, suggested->right - suggested->left,
                      suggested->bottom - suggested->top, SWP_NOZORDER | SWP_NOACTIVATE);
@@ -411,6 +512,14 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
             m_callbacks.keyDown({static_cast<UINT>(wParam), down(VK_CONTROL), down(VK_SHIFT), true});
             return 0;
         }
+        // F10 is a system key even without Alt: Shift+F10 (the context menu of the focused widget,
+        // Host::onKeyDown) never arrived as WM_KEYDOWN (audit D10). Plain F10 stays with Windows.
+        if (wParam == VK_F10 && (GetKeyState(VK_SHIFT) & 0x8000) != 0 && (GetKeyState(VK_MENU) & 0x8000) == 0 &&
+            m_callbacks.keyDown) {
+            m_callbacks.keyDown({static_cast<UINT>(wParam), (GetKeyState(VK_CONTROL) & 0x8000) != 0, true, false,
+                                 (lParam & 0x40000000) != 0});
+            return 0;
+        }
         break;
     case WM_KEYDOWN:
         if (m_callbacks.keyDown) {
@@ -419,15 +528,35 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         return 0;
     case kPostMessage: {
-        std::deque<std::function<void()>> batch;
+        if (g_postHolds.load() > 0) {
+            return 0; // a system dialog is open: PostHold posts again when it closes
+        }
+        // One at a time, each taken from the shared queue right before it runs: an item that opens
+        // a nested message loop (a message box) lets that loop continue with the next ones in
+        // order. Taken as a whole batch, the older items waited here while newer posts ran inside
+        // the nested loop — "finished" before the progress posted ahead of it (audit UI-08).
+        // At most what was queued on entry: a worker that keeps posting must not starve input.
+        std::size_t budget = 0;
         {
             std::scoped_lock lock(m_postMutex);
-            batch.swap(m_posted);
+            budget = m_posted.size();
         }
-        for (auto& fn : batch) {
+        for (; budget > 0; --budget) {
+            if (g_postHolds.load() > 0) {
+                return 0; // the item just run opened a hold: PostHold posts again when it ends
+            }
+            std::function<void()> fn;
+            {
+                std::scoped_lock lock(m_postMutex);
+                if (m_posted.empty()) {
+                    break; // a nested loop ran them
+                }
+                fn = std::move(m_posted.front());
+                m_posted.pop_front();
+            }
             fn();
         }
-        return 0;
+        return 0; // what was posted meanwhile brought its own message
     }
     case WM_TIMER:
         if (m_callbacks.timer) {
@@ -504,8 +633,25 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
             DeleteObject(m_background);
             m_background = nullptr;
         }
-        PostQuitMessage(0);
+        if (m_quitOnClose) {
+            PostQuitMessage(0);
+        }
         return 0;
+    case WM_NCDESTROY: {
+        // D-145: a second window's handle is dead from here on; its owner hears of it (and lets go of
+        // this object later, never inside the window procedure). The main window keeps its old
+        // handle value as it always did (what runs after the message loop reads it).
+        if (m_quitOnClose) {
+            break;
+        }
+        const HWND hwnd = m_hwnd;
+        m_hwnd = nullptr;
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+        if (auto destroyed = m_callbacks.destroyed) {
+            destroyed();
+        }
+        return DefWindowProcW(hwnd, message, wParam, lParam);
+    }
     default:
         break;
     }

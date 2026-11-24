@@ -21,13 +21,18 @@ FetchStrip::FetchStrip(const Localization& strings, std::function<std::optional<
 
 void FetchStrip::start() {
     m_now = ui::nowMs();
+    m_ring.start(m_now);
     animate();
 }
 
 bool FetchStrip::tick(double now) {
     m_now = now;
     invalidate();
-    return visible() && m_status && m_status().has_value();
+    const bool on = visible() && m_status && m_status().has_value();
+    if (!on) {
+        m_ring.stop();
+    }
+    return on;
 }
 
 void FetchStrip::layout() {
@@ -43,9 +48,8 @@ void FetchStrip::paint(ui::Canvas& canvas) {
     }
     const RectF b = bounds();
     canvas.fillRect(b, Color::BgPanel);
-    const float angle = static_cast<float>(static_cast<int>(m_now / 100.0) % 8) * 45.0f;
-    canvas.drawIcon(ui::icons::Icon::Spinner, {b.x + 17, b.y + 12}, Color::AccentBase, ui::IconVariant::Regular16, 0,
-                    ui::reducedMotion() ? 0.0f : angle);
+    // D-142: the progress ring, centred where the 16 DIP spinner icon was.
+    ui::paintRing(canvas, ui::ringBox({b.x + 25, b.y + 20}, ui::tokens::size::ringLarge), m_ring.pose(m_now));
     const float x = b.x + 40;
     const float width = std::max(m_stop->bounds().x - x - 16, 0.0f);
     canvas.drawText(status->title, {x, b.y + 10, width, 16}, TypeStyle::BodyStrong, Color::TextPrimary);

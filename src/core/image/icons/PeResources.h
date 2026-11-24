@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace wl::core {
@@ -99,6 +100,8 @@ public:
     [[nodiscard]] Result<std::string> build() const;
 
     [[nodiscard]] const std::string& bytes() const noexcept { return m_bytes; }
+    // The file out of an image that is done with: a .mun is tens of megabytes, a copy counts.
+    [[nodiscard]] std::string takeBytes() && noexcept { return std::move(m_bytes); }
 
 private:
     std::string m_bytes;

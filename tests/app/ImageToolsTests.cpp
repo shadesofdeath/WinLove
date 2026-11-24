@@ -4,11 +4,11 @@
 #include "app/controllers/ImageController.h"
 #include "app/pages/images/EditionSelection.h"
 #include "core/system/Hash.h"
+#include "support/UiThread.h"
 
 #include <doctest.h>
 
 #include <filesystem>
-#include <mutex>
 
 using namespace wl;
 using namespace wl::app;
@@ -44,16 +44,12 @@ core::SourceInfo source(core::ImageFormat format, const wchar_t* installImage, b
 
 struct Fixture {
     AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
-    std::mutex mutex;
-    std::vector<std::function<void()>> posted;
+    test::UiThread ui{test::UiThread::Mode::Queued}; // engine thread → "UI thread" (the test)
     std::vector<Str> refused;
 
     ImageController controller{state,
                                ImageController::Events{
-                                   [this](std::function<void()> fn) {
-                                       std::scoped_lock lock(mutex);
-                                       posted.push_back(std::move(fn));
-                                   },
+                                   ui.post(),
                                    [](ImageController::Failure, const Error&) {},
                                    [](Str, std::wstring) {},
                                    [this](Str why) { refused.push_back(why); },

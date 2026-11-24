@@ -12,6 +12,8 @@
 #define IDR_FONT_GEIST_MEDIUM 106
 #define IDR_FONT_GEIST_SEMIBOLD 107
 #define IDR_FONT_GEIST_MONO 108
+// D-147: the wordmark in the title bar (the brand's typeface, one weight).
+#define IDR_FONT_BRAND_SEMIBOLD 109
 
 #define IDR_STRINGS_TR 201
 #define IDR_STRINGS_EN 202

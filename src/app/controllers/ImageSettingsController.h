@@ -33,9 +33,28 @@ public:
     [[nodiscard]] static int optionIn(const core::ops::ChangeSet& changes, const ImageSetting& setting);
     // Queues `option` (the default option just removes the setting's operations).
     void select(const ImageSetting& setting, int option);
-    // "Önerilenleri uygula": every setting with a recommended option, as one queue edit.
-    // Returns how many settings changed.
-    int applyRecommended();
+    // D-146 "Şablon ▾", as Bileşenler's (D-110): gives every setting of the template its option, as one
+    // queue edit (one undo step). Like a component template it adds to what is chosen and resets
+    // nothing: a setting the queue already changed (current != image) is left as the user set it.
+    struct TemplateResult {
+        int changed = 0; // settings the template set now
+        int already = 0; // already at the template's option
+        int kept = 0;    // changed by the user to another option: left alone
+        std::vector<const ImageSetting*> risky; // of the changed ones, those the catalog marks medium / high
+    };
+    TemplateResult applyTemplate(const ImageSettingTemplate& preset);
+    // The same count without touching the queue (the page's preview line).
+    [[nodiscard]] TemplateResult previewTemplate(const ImageSettingTemplate& preset) const;
+    // The option `preset` gives `setting`; -1 when it does not list it.
+    [[nodiscard]] static int templateOption(const ImageSettingsCatalog& catalog, const ImageSettingTemplate& preset,
+                                            const ImageSetting& setting);
+    // "Sıfırla": every setting back to what the image has (the queued edits of the form out, typed
+    // values cleared), as one queue edit. Returns how many settings it took back.
+    int resetChanges();
+    // D-152: the same for some settings only (a tab's "Bu sekmeyi sıfırla", the rows a filter shows).
+    int resetSettings(const std::vector<const ImageSetting*>& settings);
+    // The settings of one tab (catalog order).
+    [[nodiscard]] std::vector<const ImageSetting*> settingsOfTab(std::string_view tab) const;
     // D-095: the option this PC itself has (its own registry; settings with services or files, and
     // options made only of deletions, are not judged: the default comes back).
     [[nodiscard]] int thisPcOption(const ImageSetting& setting) const;

@@ -6,7 +6,9 @@
 #include "app/state/AppSettings.h"
 #include "app/state/RecentSources.h"
 #include "base/Log.h"
+#include "core/image/BootImage.h"
 #include "core/image/DriverInf.h"
+#include "core/image/MediaDrivers.h"
 #include "core/image/Source.h"
 #include "core/image/dism/Appx.h"
 #include "core/image/dism/Dism.h"
@@ -20,6 +22,7 @@
 #include "core/image/SystemComponents.h"
 #include "core/image/dism/OptionalFeatures.h"
 #include "core/iso/IsoBuilder.h"
+#include "core/net/ReleaseCheck.h"
 #include "core/ops/ApplyJob.h"
 #include "core/ops/ChangeSet.h"
 #include "core/tasks/TaskRunner.h"
@@ -27,8 +30,11 @@
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace wl::app {
@@ -47,7 +53,13 @@ struct EngineOperation {
     // Reading: the mounted image's lists are read for the pages (PreloadController, D-027).
     // Verifying: every stream of the install image is read and checked (nothing is written).
     // Editions: the editions the mounted image can become are read (dism.exe, a few seconds).
-    enum class Kind : std::uint8_t { Preparing, Mounting, Unmounting, Exporting, Deleting, Cleaning, Reading, Renaming, Verifying, Editions, Health };
+    // 2026-11-11: Adopting — an image mounted elsewhere is taken over (its source read); Remounting —
+    // DISM asked for a remount first (DismRemountImage, no progress of its own); Duplicating / Moving —
+    // an edition copied to the end of the WIM / moved one place (were "Exporting": the row said so).
+    enum class Kind : std::uint8_t {
+        Preparing, Mounting, Unmounting, Exporting, Deleting, Cleaning, Reading, Renaming, Verifying, Editions, Health,
+        Adopting, Remounting, Duplicating, Moving
+    };
     Kind kind;
     std::wstring edition;      // "Windows 11 Pro"
     std::filesystem::path path; // mount dir, work dir or export target (shown in the strip)
@@ -56,11 +68,21 @@ struct EngineOperation {
     double startedMs = 0;      // ui::nowMs() at start, for the ETA
     core::CancelToken cancel;
     int stage = 0;             // Reading: 0 features, 1 apps, 2 services
+    // 2026-11-11: the editions the work is about when there are several (a delete or an export of
+    // the marked ones); empty: `index` alone (0: none of them).
+    std::vector<int> indexes;
+    // Preparing: what the ISO's work copy is made for (a delete, a rename, a mount …): the row says
+    // that, not "Bağlanıyor" (the owner's report: a delete's row said it was mounting).
+    std::optional<Kind> purpose;
 };
+
+// 2026-11-11: what an edition's Durum cell says while `op` runs, and the editions it is about (the
+// Images page; a pure function, tested). Nothing for work that is not about one edition.
+[[nodiscard]] std::vector<int> operationRows(const EngineOperation& op);
 
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch, Intl, LanguageFetch, SystemMounts, StoreFetch, Programs, Host, WindowsDownload };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch, Intl, LanguageFetch, SystemMounts, StoreFetch, Programs, Host, WindowsDownload, AppUpdate };
     using Listener = std::function<void(Change)>;
 
     // `answersFile`: where the answer file being edited is kept between runs (AnswerStore.h).
@@ -97,6 +119,14 @@ public:
 
     [[nodiscard]] const std::optional<MountedImage>& mounted() const noexcept { return m_mounted; }
     void setMounted(std::optional<MountedImage> mounted);
+    // 2026-11-11: the mounted image sits in a folder that is not one of WinLove's own (its mount
+    // folder, the one before 2026-09-28, its VHD folder): taken over from another tool or dism.exe.
+    // Saving and discarding act on that folder alone; the pages say whose it is.
+    [[nodiscard]] bool mountedElsewhere() const;
+    [[nodiscard]] bool isOwnMountFolder(const std::filesystem::path& folder) const;
+    // Bumped when a different image (or none) becomes the mounted one: what a run left mounted is
+    // still that run's while the serial it noted is the current one.
+    [[nodiscard]] std::uint64_t mountSerial() const noexcept { return m_mountSerial; }
 
     // The change queue (D-003): nothing touches the image until "Uygula". Cleared when the
     // mounted image changes (the queue belongs to that image). Kept on disk on every change
@@ -111,10 +141,28 @@ public:
     // then merge it back: what is queued now keeps its slot, the rest comes back.
     [[nodiscard]] std::optional<core::ops::ChangeSet> savedQueue(const MountedImage& mounted) const;
     std::size_t restoreQueue(std::optional<core::ops::ChangeSet> saved);
+    // Bumped by every change told to the listeners (before they hear of it): with changes().version()
+    // a cheap key for what a controller derives from the state and keeps between calls.
+    [[nodiscard]] std::uint64_t revision() const noexcept { return m_revision; }
     void queue(core::ops::Operation op);
     bool unqueue(core::ops::OpKind kind, std::wstring_view target);
     void unqueueIf(const std::function<bool(const core::ops::Operation&)>& which);
     void queueMany(std::vector<core::ops::Operation> ops);
+    // While one lives, queue changes are applied at once but told (Change::Queue, queue.json) once,
+    // when the last one goes; the whole is one undo step. For code that queues row by row in a
+    // loop (a category's check box, a folder of updates, the steps Uygula finished): each row used
+    // to copy the queue, write queue.json and run every listener.
+    class QueueBatch {
+    public:
+        explicit QueueBatch(AppState& state);
+        ~QueueBatch();
+        QueueBatch(const QueueBatch&) = delete;
+        QueueBatch& operator=(const QueueBatch&) = delete;
+
+    private:
+        AppState& m_state;
+    };
+    [[nodiscard]] QueueBatch batchQueue() { return QueueBatch(*this); }
     void unqueueMany(const std::vector<std::pair<core::ops::OpKind, std::wstring>>& slots);
     // While Uygula runs the queue is frozen: edits would be lost (commit clears it) or undone
     // by the post-run cleanup. Pages call the mutators freely; they are ignored then.
@@ -252,6 +300,38 @@ public:
     [[nodiscard]] const std::vector<std::filesystem::path>& bootDrivers() const noexcept { return m_bootDrivers; }
     [[nodiscard]] bool isBootDriver(const std::filesystem::path& inf) const;
     void setBootDriver(const std::filesystem::path& inf, bool on);
+    // D-134: several at once ("Bu bilgisayardan al" on the boot tab), one Change::Drivers.
+    void setBootDrivers(const std::vector<std::filesystem::path>& infs, bool on);
+
+    // D-134: the third-party drivers the open setup media already carries — boot.wim's Setup image and
+    // the install image's editions — read from their file lists (ImageDriverController::loadMedia) when
+    // the Drivers page's boot tab or the ISO page first needs them; dropped with the source (a re-read
+    // source after Uygula reads them again). Change::Drivers.
+    struct MediaDrivers {
+        enum class Status : std::uint8_t { Loading, Ready, Failed };
+        Status status = Status::Loading;
+        std::filesystem::path source;
+        core::MediaDrivers drivers;
+        Error error;
+    };
+    [[nodiscard]] const std::optional<MediaDrivers>& mediaDrivers() const noexcept { return m_mediaDrivers; }
+    void setMediaDrivers(std::optional<MediaDrivers> drivers);
+
+    // D-124: downloads that came in when nothing could be queued (no mount, an Apply running),
+    // kept for the next mount of the same source. The shell fills and empties it; it lives here
+    // because the shell is built again on a language / type family change, and what it held went
+    // with it after the toast had said "queued at the next mount" (audit APP-03).
+    struct HeldDownloads {
+        std::filesystem::path source;
+        std::vector<std::filesystem::path> updates;
+        std::vector<std::filesystem::path> safeOs;
+        std::vector<std::filesystem::path> languages;
+        std::wstring uiLanguage;
+        std::vector<std::filesystem::path> apps;
+        [[nodiscard]] std::size_t count() const { return updates.size() + safeOs.size() + languages.size() + apps.size(); }
+    };
+    [[nodiscard]] HeldDownloads& heldDownloads() noexcept { return m_heldDownloads; }
+    [[nodiscard]] const HeldDownloads& heldDownloads() const noexcept { return m_heldDownloads; } // D-138: the overview
 
     // D-080: what brings the setup media itself up to date when the ISO / USB is made — the
     // cumulative update for boot.wim and the Setup dynamic update for sources\ — as the update
@@ -265,6 +345,28 @@ public:
     };
     [[nodiscard]] const MediaUpdate& mediaUpdate() const noexcept { return m_mediaUpdate; }
     void setMediaUpdate(MediaUpdate update);
+
+    // D-144 addendum: ISO Oluştur's options — the one set the ISO page and the Apply page's "ISO
+    // seçenekleri…" both show and change, and "Bitince ISO oluştur" builds with (IsoController::
+    // defaultRequest). The file and its folder are not here (the page's fields / the Apply row's
+    // "Değiştir…"); the media update's box is MediaUpdate::enabled. For this run of the app (a page
+    // built again keeps them); the label and the previous-Setup choice belong to the source they were
+    // made for (another source starts from its own). Change::Iso.
+    struct IsoChoices {
+        std::optional<std::wstring> label; // nullopt: the source's (IsoController::defaultLabel)
+        core::BootMode boot = core::BootMode::UefiAndBios;
+        std::uint8_t repack = 0; // IsoController::Repack
+        bool noPrompt = false;
+        bool bootBypass = true;
+        std::optional<bool> legacySetup; // nullopt: on by itself when a 24H2+ edition has no WinRE (D-074)
+        bool secureBoot2023 = false;
+        bool sha256 = true;
+        bool openFolder = true; // the ISO page's "Bitince klasörü aç" ("Bitince ISO oluştur" never opens it)
+        std::filesystem::path source; // whose label / previous-Setup choice these are
+        [[nodiscard]] bool operator==(const IsoChoices&) const = default;
+    };
+    [[nodiscard]] const IsoChoices& isoChoices() const noexcept { return m_isoChoices; }
+    void setIsoChoices(IsoChoices choices); // `source` is set to the open source's path
 
     // P13: the answer file being edited (kept across pages, sources and — with an answers file —
     // runs of the app); written to the root of the next ISO when `includeInIso` is on.
@@ -307,11 +409,47 @@ public:
         // ChangeSet::version() as the run left the queue: a held or stopped run (failed steps still
         // queued) stays on the Apply page with its reasons until the queue is changed.
         std::uint64_t queueVersionAtEnd = 0;
+        std::uint64_t mountSerial = 0; // AppState::mountSerial() when the run started
+        // 2026-11-11 (the owner: stopped, then "Kaydetmeden çöz" — the status bar filled, the Apply page
+        // still said "Durduruldu"): the save or discard of the image a finished run left mounted
+        // (stopped / held / kept / failed), started from anywhere — Kaydet, Çöz, the unmount dialog.
+        struct Closing {
+            bool commit = false;
+            enum class State : std::uint8_t { Running, Done, Failed } state = State::Running;
+            std::optional<Error> error; // Failed
+        };
+        std::optional<Closing> closing;
+        // D-144: "Bitince ISO oluştur" — chosen before the run (the file it writes known then). The ISO
+        // starts when the run has saved the image; else it says why not. While it builds, the progress
+        // is the ISO run's (AppState::isoRun, `afterApply`); its end is copied here, so the card keeps
+        // it when another ISO is made later.
+        struct AutoIso {
+            std::filesystem::path output;
+            enum class State : std::uint8_t { Waiting, Running, Done, Failed, Cancelled, NotStarted } state = State::Waiting;
+            // NotStarted: why. RunFailed — the run could not start or saving failed; Stopped — stopped
+            // before the end (or DISM's session was lost); NotSaved — a step failed and nothing was
+            // saved (held), or the run was stopped at the pause (kept); Edition — a further edition
+            // was not saved; Blocked — ISO Oluştur refused the source / the answer file (`blocker`);
+            // Welcome — the welcome's script is not in the edition Setup installs.
+            enum class Skip : std::uint8_t { None, RunFailed, Stopped, NotSaved, Edition, Blocked, Welcome } skip = Skip::None;
+            int blocker = -1; // IsoController::Blocker when Blocked
+            std::uint64_t bytes = 0;  // Done: the ISO's size
+            std::optional<Error> error; // Failed
+        };
+        std::optional<AutoIso> autoIso;
     };
     [[nodiscard]] const std::optional<ApplyRun>& applyRun() const noexcept { return m_apply; }
     [[nodiscard]] std::optional<ApplyRun>& applyRunMutable() noexcept { return m_apply; }
     void setApplyRun(std::optional<ApplyRun> run);
     void notifyApply() { notify(Change::Apply); }
+    // The finished run whose image is the one mounted now, unsaved (a save / discard of it is the
+    // run's ending): stopped, held, kept, failed — not one that saved (that unmounted it already).
+    [[nodiscard]] bool runLeftImageMounted() const;
+    // The ImageController's unmount of the mounted image: when runLeftImageMounted(), the run's
+    // card follows it (Change::Apply). begin → Running; end with no error → Done, with one →
+    // Failed; a cancelled unmount (the image stays as it was) forgets it.
+    void beginRunClose(bool commit);
+    void endRunClose(const std::optional<Error>& error, bool cancelled = false);
 
     // P06: the running / last ISO build (IsoController).
     struct IsoRun {
@@ -324,6 +462,11 @@ public:
         std::optional<core::IsoResult> result;
         std::optional<Error> error;
         core::CancelToken cancel;
+        // D-134: what became of the boot.wim drivers (a refused one does not stop the build: it is named).
+        std::vector<std::filesystem::path> bootDriversAdded;
+        std::vector<std::filesystem::path> bootDriversPresent;
+        std::vector<core::DriverRefusal> bootDriversRefused;
+        bool afterApply = false; // D-144: started by "Bitince ISO oluştur", not on the ISO page
     };
     [[nodiscard]] const std::optional<IsoRun>& isoRun() const noexcept { return m_iso; }
     [[nodiscard]] std::optional<IsoRun>& isoRunMutable() noexcept { return m_iso; }
@@ -347,8 +490,10 @@ public:
     // D-093: "Windows indir" — a UUP set being downloaded from Microsoft and turned into an ISO
     // (WindowsDownloadController). Change::WindowsDownload.
     struct WindowsDownload {
-        enum class Stage : std::uint8_t { Preparing, Downloading, Converting };
+        // D-149: Verifying — the official ESD's hash being checked (one file of ~6 GB: half a minute).
+        enum class Stage : std::uint8_t { Preparing, Downloading, Converting, Verifying };
         Stage stage = Stage::Preparing;
+        bool esd = false;            // D-149: from Microsoft's official ESD catalog (else a UUP set)
         std::wstring title;          // "Windows 11, version 26H2 (26300.9550)"
         std::wstring step;           // the converter's stage key ("references", "export", "cleanup" …)
         double fraction = 0;         // of the stage
@@ -422,6 +567,47 @@ public:
     [[nodiscard]] const std::optional<core::HostDismReport>& hostDism() const noexcept { return m_hostDism; }
     void setHostDism(core::HostDismReport report);
 
+    // D-140: is a newer WinLove out (UpdateController; GitHub's release list, notify only)? Kept here
+    // so a shell built again (a new language) still knows. Change::AppUpdate.
+    struct AppUpdate {
+        enum class Phase : std::uint8_t { Idle, Checking, Done, Failed };
+        Phase phase = Phase::Idle;
+        std::optional<core::ReleaseCheck> result; // Done
+        Error error;                               // Failed
+        std::int64_t at = 0;                       // when it ended (seconds since 1970)
+        bool manual = false;                       // "Şimdi denetle" (the About page shows it all; no notice)
+        // A newer release to announce: the status bar's segment shows while this is set (until the
+        // About page has been seen); `toastShown` once its one toast went up.
+        bool notice = false;
+        bool toastShown = false;
+        // D-145: "Yükle" — the newer release's WinLove.exe downloaded, checked and put in place of this
+        // one (core/net/SelfUpdate); Ready: the swap is done, the restart waits for the user.
+        struct Install {
+            enum class Stage : std::uint8_t { Downloading, Verifying, Ready, Failed };
+            Stage stage = Stage::Downloading;
+            // Failed / refused: why. NoAsset — the release has no WinLove.exe for x64; Mounted / Busy —
+            // an image is mounted / work runs (an update restarts WinLove); NotWritable — the program's
+            // folder cannot be written to; Download / Verify / Swap / Restart — that step failed (the
+            // old exe is back in place for Swap and Restart); Cancelled — the user stopped it.
+            enum class Why : std::uint8_t { None, NoAsset, Mounted, Busy, NotWritable, Download, Verify, Swap, Restart, Cancelled };
+            Why why = Why::None;
+            std::wstring tag;  // the release
+            std::wstring name; // its title
+            std::uint64_t done = 0;  // bytes downloaded
+            std::uint64_t total = 0; // of
+            std::wstring detail;     // what differed (Verify), the error's words otherwise
+            core::CancelToken cancel;
+        };
+        std::optional<Install> install;
+        // This instance replaced that version (--updated-from): one notice, and the About card says it.
+        std::wstring updatedFrom;
+        bool updatedShown = false;
+    };
+    [[nodiscard]] const AppUpdate& appUpdate() const noexcept { return m_appUpdate; }
+    void setAppUpdate(AppUpdate update);
+    void markAppUpdateToastShown(); // quietly: the toast is the only one who asks
+    void dismissAppUpdateNotice();  // the About page was shown / the notice was followed
+
     // Last inspection of the WinLove mount folder (MountHealth.h); empty until first checked.
     [[nodiscard]] const std::optional<core::MountCheck>& mountFolder() const noexcept { return m_mountFolder; }
     void setMountFolder(std::optional<core::MountCheck> check);
@@ -449,14 +635,16 @@ public:
 private:
     void notify(Change change);
     void saveQueue() const;
+    std::uint64_t m_revision = 0;
+    int m_queueBatch = 0;          // QueueBatch objects alive
+    bool m_queueBatchDirty = false; // a Change::Queue waits for the last of them
 
-    core::TaskRunner m_engine;
-    core::TaskRunner m_reader;
     AppSettings m_settings;
     std::optional<core::SourceInfo> m_source;
     std::optional<int> m_selected;
     std::vector<int> m_selection;
     std::optional<MountedImage> m_mounted;
+    std::uint64_t m_mountSerial = 0;
     std::optional<EngineOperation> m_operation;
     std::optional<core::MountCheck> m_mountFolder;
     core::ops::ChangeSet m_changes;
@@ -471,8 +659,12 @@ private:
     std::optional<ImageIntl> m_imageIntl;
     std::vector<RegImport> m_regImports;
     DriverScan m_drivers;
+    std::unordered_set<std::wstring> m_driverPaths; // m_drivers.infs' paths, lower case: addDriverScan's "already listed"
+    HeldDownloads m_heldDownloads;
     std::vector<std::filesystem::path> m_bootDrivers;
+    std::optional<MediaDrivers> m_mediaDrivers;
     MediaUpdate m_mediaUpdate;
+    IsoChoices m_isoChoices;
     Unattend m_unattend;
     std::optional<IsoRun> m_iso;
     std::optional<UpdateFetch> m_updateFetch;
@@ -481,6 +673,7 @@ private:
     std::optional<LanguageFetch> m_languageFetch;
     std::optional<SystemMounts> m_systemMounts;
     std::optional<core::HostDismReport> m_hostDism;
+    AppUpdate m_appUpdate;
     std::optional<StoreFetch> m_storeFetch;
     std::filesystem::path m_settingsFile;
     std::filesystem::path m_answersFile;
@@ -488,8 +681,14 @@ private:
     std::shared_ptr<log::RingBufferSink> m_logBuffer = std::make_shared<log::RingBufferSink>();
     std::uint64_t m_logCleared = 0;
     RecentSources m_recent;
-    std::vector<std::pair<std::size_t, Listener>> m_listeners;
+    // Shared: notify() calls from a copy of the list, and a copy of each function was made per
+    // listener per change.
+    std::vector<std::pair<std::size_t, std::shared_ptr<const Listener>>> m_listeners;
     std::size_t m_nextId = 1;
+    // Last, so they go first (audit APP-17): the destructor of a runner stops and joins its thread,
+    // and a job still on it may read the members above until then.
+    core::TaskRunner m_engine;
+    core::TaskRunner m_reader;
 };
 
 } // namespace wl::app

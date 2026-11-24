@@ -150,7 +150,10 @@ StoreDialog makeStoreDialog(const Localization& strings, std::wstring architectu
     picker->onSelectionChanged = [picker, primary] { primary->setEnabled(picker->selected() != nullptr); };
     picker->onActivate = [primary] {
         if (primary->enabled() && primary->onInvoke) {
-            primary->onInvoke();
+            // A copy runs: the handler closes the dialog, which destroys the button and the
+            // handler it owns (with the `shared` it captured) while it is still running.
+            const auto invoke = primary->onInvoke;
+            invoke();
         }
     };
     raw->onCancel = shared->close;

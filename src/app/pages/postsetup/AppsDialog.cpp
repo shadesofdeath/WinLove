@@ -70,6 +70,9 @@ AppsDialog makeCatalogDialog(const Localization& strings, CatalogDialogSpec spec
             return;
         }
         (*checked)[static_cast<std::size_t>(row)] = !(*checked)[static_cast<std::size_t>(row)];
+        if ((*checked)[static_cast<std::size_t>(row)]) {
+            table->revealCheck(row); // the user's tick draws in
+        }
         update();
         table->refresh();
     };
@@ -92,10 +95,12 @@ AppsDialog makeCatalogDialog(const Localization& strings, CatalogDialogSpec spec
         switch (column) {
         case kName: {
             if (has) {
-                canvas.pushOpacity(ui::tokens::opacity::disabled);
+                // Bounded by the cell, which holds the check: an unbounded layer is window-sized (audit UI-04).
+                canvas.pushOpacity(ui::tokens::opacity::disabled, rect);
             }
             ui::Checkbox::paintBox(canvas, {rect.x, rect.y + (rect.height - ui::Checkbox::kBox) / 2},
-                                   has || (*checked)[index] ? ui::CheckState::On : ui::CheckState::Off, cell.hovered && !has);
+                                   has || (*checked)[index] ? ui::CheckState::On : ui::CheckState::Off, cell.hovered && !has,
+                                   has ? 1.0f : cell.checkReveal);
             if (has) {
                 canvas.popOpacity();
             }

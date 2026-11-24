@@ -23,8 +23,14 @@ std::mutex g_scanLock;
 std::uint64_t g_scanCount = 0; // scopes ever opened
 std::uint64_t g_scanOpen = 0;  // the open one's number
 int g_scanDepth = 0;
+std::vector<void (*)()> g_scanReleases;
 
 } // namespace
+
+void releaseAtScanEnd(void (*release)()) {
+    const std::scoped_lock guard(g_scanLock);
+    g_scanReleases.push_back(release);
+}
 
 ImageScanScope::ImageScanScope() {
     const std::scoped_lock guard(g_scanLock);
@@ -34,9 +40,17 @@ ImageScanScope::ImageScanScope() {
 }
 
 ImageScanScope::~ImageScanScope() {
-    const std::scoped_lock guard(g_scanLock);
-    if (--g_scanDepth == 0) {
-        g_scanOpen = 0;
+    std::vector<void (*)()> releases;
+    {
+        const std::scoped_lock guard(g_scanLock);
+        if (--g_scanDepth == 0) {
+            g_scanOpen = 0;
+            releases = g_scanReleases;
+        }
+    }
+    // Outside the lock: a cache takes its own lock first and asks for the scan number under it.
+    for (const auto release : releases) {
+        release();
     }
 }
 
@@ -827,6 +841,12 @@ static Result<ApiSetSchema> schemaOf(const std::filesystem::path& mountDir) {
     };
     static std::mutex lock;
     static Kept kept;
+    static const bool registered = (releaseAtScanEnd([] {
+                                        const std::scoped_lock guard(lock);
+                                        kept = Kept{};
+                                    }),
+                                    true);
+    (void)registered;
     const FileStamp stamp = fileStamp(file);
     const std::wstring name = lower(file.wstring());
     const std::scoped_lock guard(lock);
@@ -849,6 +869,12 @@ Result<std::vector<BootDriver>> findBootDrivers(const std::filesystem::path& mou
     };
     static std::mutex lock;
     static Kept kept;
+    static const bool registered = (releaseAtScanEnd([] {
+                                        const std::scoped_lock guard(lock);
+                                        kept = Kept{};
+                                    }),
+                                    true);
+    (void)registered;
     const FileStamp stamp = fileStamp(mountDir / L"Windows" / L"System32" / L"config" / L"SYSTEM");
     const std::wstring root = lower(mountDir.wstring());
     const std::scoped_lock guard(lock);
@@ -1051,6 +1077,12 @@ Result<std::map<std::wstring, std::wstring>> keptBootFiles(const std::filesystem
     };
     static std::mutex lock;
     static Kept kept;
+    static const bool registered = (releaseAtScanEnd([] {
+                                        const std::scoped_lock guard(lock);
+                                        kept = Kept{};
+                                    }),
+                                    true);
+    (void)registered;
     const FileStamp stamp = fileStamp(mountDir / L"Windows" / L"System32" / L"config" / L"SYSTEM");
     const std::wstring root = lower(mountDir.wstring());
     const std::scoped_lock guard(lock);
@@ -1169,6 +1201,10 @@ Result<std::map<std::wstring, std::wstring>> keptImportedFiles(const std::filesy
         const std::vector<std::wstring> where = startsWith(module.path, L"windows\\syswow64\\")
                                                     ? std::vector<std::wstring>{L"windows\\syswow64\\", folder}
                                                     : std::vector<std::wstring>{L"windows\\system32\\", L"windows\\system32\\drivers\\", folder};
+        // Many API sets of one module resolve to the same DLL (kernelbase.dll dozens of times): each
+        // file once, its first mention (audit IMG-05). The answer is the same: for one importer only
+        // its first entry for a file is ever looked at, and the order of first mentions is kept.
+        std::set<std::wstring> mentioned;
         for (const bool delayed : {false, true}) {
             for (const auto& dll : delayed ? lists.delayed : lists.imports) {
                 for (const auto& host : importHosts(*schema, dll)) {
@@ -1176,7 +1212,7 @@ Result<std::map<std::wstring, std::wstring>> keptImportedFiles(const std::filesy
                         continue;
                     }
                     for (const auto& dir : where) {
-                        if (std::wstring candidate = dir + host; candidate != module.path) {
+                        if (std::wstring candidate = dir + host; candidate != module.path && mentioned.insert(candidate).second) {
                             targets->emplace_back(std::move(candidate), delayed);
                         }
                     }
@@ -1199,6 +1235,12 @@ Result<std::map<std::wstring, std::wstring>> keptImportedFiles(const std::filesy
     };
     static std::mutex resolvedLock;
     static Resolutions resolved;
+    static const bool registered = (releaseAtScanEnd([] {
+                                        const std::scoped_lock guard(resolvedLock);
+                                        resolved = Resolutions{};
+                                    }),
+                                    true);
+    (void)registered;
     const std::uint64_t scan = imageScanGeneration();
     std::unique_lock resolvedGuard(resolvedLock, std::defer_lock);
     if (scan != 0) {

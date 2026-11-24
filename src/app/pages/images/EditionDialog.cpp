@@ -9,8 +9,8 @@ namespace wl::app {
 
 namespace {
 constexpr float kWidth = 520.0f;
-constexpr float kLabelWidth = 96.0f;
-constexpr float kFieldWidth = 376.0f;
+constexpr float kLabelWidth = 120.0f; // D-136: "Hedef sürüm", "Açıklama" at 13 px
+constexpr float kFieldWidth = 352.0f;
 } // namespace
 
 EditionDialog makeEditionDialog(const Localization& strings, std::wstring body, std::vector<EditionChoice> choices,

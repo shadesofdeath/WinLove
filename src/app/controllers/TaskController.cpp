@@ -128,6 +128,7 @@ void TaskController::toggle(const TaskEntry& task) {
             slots.emplace_back(op.kind, op.target);
         }
     }
+    const auto batch = m_state.batchQueue(); // out and in again: one notification, one undo step
     m_state.unqueueMany(slots);
     const bool wantOff = !nowOff;
     if (wantOff != image) {
@@ -195,6 +196,7 @@ void TaskController::queueCreatedTasks(const std::vector<core::CreatedTask>& tas
             slots.emplace_back(op.kind, op.target);
         }
     }
+    const auto batch = m_state.batchQueue(); // out and in again: one notification, one undo step
     m_state.unqueueMany(slots);
     const bool imageHasAny =
         m_state.mounted() && !core::readCreatedTasks(m_state.mounted()->mountDir).empty();
@@ -233,6 +235,11 @@ void TaskController::clearCreatedTasks() {
 
 int TaskController::changedCount() const {
     return static_cast<int>(m_state.changes().count(OpKind::SetTaskState) + m_state.changes().count(OpKind::CreateTask));
+}
+
+void TaskController::resetChanges() {
+    // Back to what the image has: an earlier run's tasks.cmd and created tasks show again.
+    m_state.unqueueIf([](const Operation& op) { return op.kind == OpKind::SetTaskState || op.kind == OpKind::CreateTask; });
 }
 
 } // namespace wl::app

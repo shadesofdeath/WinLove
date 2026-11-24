@@ -5,10 +5,13 @@
 #include "app/state/AppState.h"
 #include "base/Utf8.h"
 #include "support/TestGraphics.h"
+#include "support/UiThread.h"
 #include "ui/widget/Host.h"
 
 #include <doctest.h>
 #include <json.hpp>
+
+#include <windows.h>
 
 #include <chrono>
 #include <filesystem>
@@ -72,13 +75,46 @@ TEST_CASE("formatBytes uses the UI language's decimal separator") {
     CHECK(formatBytes(1536, Language::Turkish) == L"1,50 KB");
 }
 
+namespace {
+
+// A wall-clock time of this machine's time zone as the instant the formatter is given: the test no
+// longer depends on when it runs (the old one took now(), and "now - 1 min" was yesterday in the
+// first minute after midnight).
+std::chrono::system_clock::time_point localTime(WORD year, WORD month, WORD day, WORD hour, WORD minute, WORD second = 0) {
+    SYSTEMTIME local{};
+    local.wYear = year;
+    local.wMonth = month;
+    local.wDay = day;
+    local.wHour = hour;
+    local.wMinute = minute;
+    local.wSecond = second;
+    SYSTEMTIME utc{};
+    REQUIRE(TzSpecificLocalTimeToSystemTime(nullptr, &local, &utc));
+    FILETIME ft{};
+    REQUIRE(SystemTimeToFileTime(&utc, &ft));
+    const auto ticks = (static_cast<std::int64_t>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime; // 100 ns since 1601
+    constexpr std::int64_t kEpochDiff = 116444736000000000LL;                                  // 1601 → 1970
+    return std::chrono::system_clock::time_point(std::chrono::duration_cast<std::chrono::system_clock::duration>(
+        std::chrono::duration<std::int64_t, std::ratio<1, 10'000'000>>(ticks - kEpochDiff)));
+}
+
+} // namespace
+
 TEST_CASE("formatRecentTime: today, days ago, older dates") {
-    const auto now = std::chrono::system_clock::now();
-    CHECK(formatRecentTime(now - 1min, Language::Turkish, turkish(), now).starts_with(L"bugün "));
+    // Mid-June, noon: no daylight-saving change within the 40 days before it in any zone that has one
+    // in spring or autumn.
+    const auto now = localTime(2026, 6, 15, 12, 0);
+    CHECK(formatRecentTime(now - 1min, Language::Turkish, turkish(), now) == L"bugün 11:59");
     CHECK(formatRecentTime(now - 72h, Language::Turkish, turkish(), now) == L"3 gün önce");
     const auto older = formatRecentTime(now - 24h * 40, Language::Turkish, turkish(), now);
     CHECK_FALSE(older.empty());
     CHECK(older.find(L"önce") == std::wstring::npos);
+    CHECK(older.find(L"2026") == std::wstring::npos); // the same year: no year
+    CHECK(formatRecentTime(now - 24h * 400, Language::Turkish, turkish(), now).find(L"2025") != std::wstring::npos);
+    // Across midnight, as the old test ran by chance: a minute after midnight, a minute before is yesterday.
+    const auto midnight = localTime(2026, 6, 15, 0, 0, 30);
+    CHECK(formatRecentTime(midnight - 1min, Language::Turkish, turkish(), midnight) == L"1 gün önce");
+    CHECK(formatRecentTime(midnight - 10s, Language::Turkish, turkish(), midnight) == L"bugün 00:00");
 }
 
 TEST_CASE("RecentSources: newest first, de-duplicated, capped at 10, persisted") {
@@ -116,10 +152,10 @@ TEST_CASE("RecentSources: a corrupt file is treated as empty, not fatal") {
 TEST_CASE("Source flow: opening the ISO fills AppState and switches to Images" * doctest::skip(!haveIso())) {
     const auto recentFile = tempFile(L"winlove-test-recent-flow.json");
     AppState state(recentFile);
-    std::vector<std::function<void()>> posted;
+    test::UiThread ui{test::UiThread::Mode::Queued}; // the reader thread's posts wait for this thread
     Shell::Services services;
     services.minimize = services.toggleMaximize = services.close = services.toggleTheme = [] {};
-    services.postToUi = [&](std::function<void()> fn) { posted.push_back(std::move(fn)); };
+    services.postToUi = ui.post();
 
     ui::Host host(ui::HostServices{[] {}, nullptr, nullptr, test::graphics().text.get()});
     auto shell = std::make_unique<Shell>(turkish(), Language::Turkish, state, services);
@@ -129,8 +165,8 @@ TEST_CASE("Source flow: opening the ISO fills AppState and switches to Images" *
 
     raw->openSource(isoPath());
     state.reader().drain();          // reader thread finished openSource
-    REQUIRE(posted.size() == 1);     // result handed to the "UI thread"
-    posted.front()();                // run it as the message loop would
+    REQUIRE(ui.pending() == 1);      // result handed to the "UI thread"
+    ui.run();                        // run it as the message loop would
 
     REQUIRE(state.source().has_value());
     CHECK(state.source()->install.images.size() == 6);
@@ -143,8 +179,8 @@ TEST_CASE("Source flow: opening the ISO fills AppState and switches to Images" *
     raw->showPage(PageId::Source);
     raw->openSource(L"C:\\does\\not\\exist.iso");
     state.reader().drain();
-    REQUIRE(posted.size() == 2);
-    posted.back()();
+    REQUIRE(ui.pending() == 1);
+    ui.run();
     CHECK(raw->currentPage() == PageId::Source);
     CHECK(state.source()->install.images.size() == 6);
     std::filesystem::remove(recentFile);
@@ -154,7 +190,8 @@ TEST_CASE("Shell drag rules: source types accepted, anything else refused") {
     const auto recentFile = tempFile(L"winlove-test-recent-drag.json");
     AppState state(recentFile);
     Shell::Services services;
-    services.postToUi = [](std::function<void()> fn) { fn(); };
+    test::UiThread ui;
+    services.postToUi = ui.post();
     Shell shell(turkish(), Language::Turkish, state, services);
     CHECK(shell.dragEnter({L"C:\\x\\Win.iso"}));
     CHECK(shell.dragEnter({L"C:\\x\\install.ESD"}));

@@ -6,10 +6,12 @@
 #include "app/controllers/LanguageController.h"
 #include "app/controllers/TaskController.h"
 #include "core/updates/UupLanguages.h"
+#include "support/UiThread.h"
 
 #include <doctest.h>
 #include <json.hpp>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -216,7 +218,8 @@ TEST_CASE("apps page: default associations merge, the browser pick, removing row
 
 TEST_CASE("languages page: packs of the image's architecture, the display languages, the queued settings") {
     Fixture f;
-    LanguageController languages(f.state, [](std::function<void()> fn) { fn(); });
+    test::UiThread ui;
+    LanguageController languages(f.state, ui.post());
     std::vector<core::LanguagePackFile> found;
     for (const wchar_t* name : {LR"(D:\m\Microsoft-Windows-Client-Language-Pack_x64_de-de.cab)",
                                 LR"(D:\m\Microsoft-Windows-Client-Language-Pack_arm64_de-de.cab)",
@@ -275,7 +278,8 @@ TEST_CASE("languages page (D-061): rows, picking from Windows Update, dependenci
     source.install.images = {pro};
     f.state.setSource(std::move(source));
     f.state.setMounted(MountedImage{kMount, L"C:\\w\\install.wim", 1, L"Pro"});
-    LanguageController languages(f.state, [](std::function<void()> fn) { fn(); });
+    test::UiThread ui;
+    LanguageController languages(f.state, ui.post());
 
     core::ImageIntl intl;
     intl.current.uiLanguage = L"tr-TR";
@@ -398,4 +402,54 @@ TEST_CASE("languages page (D-061): rows, picking from Windows Update, dependenci
     CHECK(languages.queuedPacks().size() == 3);
     languages.unqueueLanguage(L"ja-JP");
     CHECK(languages.queuedPacks().empty());
+}
+
+TEST_CASE("audit PG-04: a queue batch is told once and is one undo step") {
+    Fixture f;
+    int told = 0;
+    const auto id = f.state.subscribe([&](AppState::Change change) { told += change == AppState::Change::Queue ? 1 : 0; });
+    {
+        const auto batch = f.state.batchQueue();
+        for (int i = 0; i < 100; ++i) {
+            f.state.queue(Operation{OpKind::RemoveCapability, L"cap" + std::to_wstring(i)});
+            CHECK(f.state.changes().size() == static_cast<std::size_t>(i) + 1); // applied at once
+        }
+        {
+            const auto inner = f.state.batchQueue(); // nested: still one
+            f.state.unqueue(OpKind::RemoveCapability, L"cap0");
+        }
+        CHECK(told == 0);
+    }
+    CHECK(told == 1);
+    CHECK(f.state.changes().size() == 99);
+    CHECK(f.state.undoQueue());
+    CHECK(f.state.changes().empty());
+    {
+        const auto batch = f.state.batchQueue(); // nothing changed: nothing told
+    }
+    f.state.queue(Operation{OpKind::RemoveCapability, L"single"});
+    CHECK(told == 3); // the undo and the single change
+    f.state.unsubscribe(id);
+}
+
+TEST_CASE("audit CTL-03: a block list of tens of thousands of lines imports at once and reads from a cache") {
+    Fixture f;
+    HostsController hosts(f.state, shipped(L"hosts.json"));
+    std::wstring text;
+    for (int i = 0; i < 40000; ++i) {
+        text += L"0.0.0.0 host" + std::to_wstring(i % 30000) + L".example.com\n"; // 10,000 of them twice
+    }
+    const auto started = std::chrono::steady_clock::now();
+    CHECK(hosts.importText(text) == 30000);
+    CHECK(hosts.importText(text) == 0);
+    const auto took = std::chrono::steady_clock::now() - started;
+    CHECK(took < std::chrono::seconds(20)); // it was minutes: every line against every line
+    const auto* first = &hosts.customEntries();
+    CHECK(first->size() == 30000);
+    CHECK(&hosts.customEntries() == first); // not parsed again while nothing changed
+    CHECK(hosts.totalEntries() == 30000);
+    hosts.toggle(hosts.lists()[0]);
+    CHECK(hosts.totalEntries() == 30000 + hosts.lists()[0].entries.size());
+    hosts.clearCustom();
+    CHECK(hosts.customEntries().empty());
 }

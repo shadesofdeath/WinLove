@@ -3,6 +3,7 @@
 #include "core/image/dism/Edition.h"
 
 #include "base/Log.h"
+#include "core/image/VirtualDisk.h"
 #include "core/image/dism/Dism.h"
 #include "core/system/Privileges.h"
 #include "ui/anim/Tween.h"
@@ -13,11 +14,26 @@
 #include <format>
 #include <utility>
 
+#include <windows.h>
+
 namespace wl::app {
 
 using core::ops::Operation;
 using core::ops::Risk;
 using Run = AppState::ApplyRun;
+
+namespace {
+
+// The running exe's link stamp (its PE header): two builds under one version label tell apart in
+// a user's log (report 2026-11-13 came from the first 1.3.0 Beta asset, the one before D-127).
+std::uint32_t buildStamp() noexcept {
+    const auto* base = reinterpret_cast<const std::byte*>(GetModuleHandleW(nullptr));
+    const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+    const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+    return nt->FileHeader.TimeDateStamp;
+}
+
+} // namespace
 
 ApplyController::ApplyController(AppState& state, Events events) : m_state(state), m_events(std::move(events)) {}
 
@@ -73,7 +89,9 @@ std::vector<ApplyController::Edition> ApplyController::otherEditions() const {
     std::vector<Edition> list;
     const auto& mounted = m_state.mounted();
     const auto& source = m_state.source();
-    if (!mounted || !source || mounted->readOnly) {
+    // An image taken over from another tool: its folder is that tool's, not one to mount further
+    // editions of the WIM into (2026-11-11).
+    if (!mounted || !source || mounted->readOnly || m_state.mountedElsewhere()) {
         return list;
     }
     for (const auto& image : source->install.images) {
@@ -102,13 +120,14 @@ void ApplyController::start() {
     }
     const MountedImage mounted = *m_state.mounted();
     Run run;
-    run.changes = m_state.changes();
+    run.changes = m_state.changes().withoutHistory();
     run.plan = core::ops::plan(run.changes);
     run.groups = core::ops::groups(run.plan);
     run.stepState.assign(run.plan.steps.size(), 0);
     run.startedMs = ui::nowMs();
     run.logVersion = m_state.logBuffer() ? m_state.logBuffer()->version() : 0;
     run.edition = mounted.edition;
+    run.mountSerial = m_state.mountSerial(); // the image this run leaves mounted, if it does
     for (const auto& e : otherEditions()) {
         if (std::ranges::find(m_extra, e.index) != m_extra.end()) {
             run.extras.push_back({e.index, e.name});
@@ -126,6 +145,11 @@ void ApplyController::start() {
     core::ops::ApplyJobOptions options;
     // No "[DELETED]" leftovers of the commit in the file — once, after the last edition.
     options.optimizeWim = run.extras.empty() ? mounted.imagePath : std::filesystem::path();
+    if (m_state.mountedElsewhere()) {
+        // 2026-11-11: an image taken over from another tool — only DISM's commit of that mount; its
+        // WIM is not rewritten (replaced) under the tool that keeps it.
+        options.optimizeWim.clear();
+    }
     if (const auto* edition = run.changes.find(core::ops::OpKind::SetEdition, L"edition")) {
         // The commit records the new edition id; the name the edition is listed under is ours to set.
         if (const auto& source = m_state.source()) {
@@ -147,11 +171,23 @@ void ApplyController::start() {
         options.apply.featureSources.push_back(sxs);
     }
     options.apply.updateGuard = m_state.settings().updateGuard; // D-125
+    if (core::isVirtualDiskPath(mounted.imagePath)) {
+        // D-141: a virtual disk is saved by merging its changes disk into it and detaching it — no
+        // WIM to rewrite or rename, no setup folder, no payload folder next to it.
+        options.optimizeWim.clear();
+        options.editionTexts.reset();
+        options.setupFolder.clear();
+        options.apply.featureSources.clear();
+        options.saveImage = [dir = mounted.mountDir](const core::TaskContext& t) -> Result<void> {
+            auto r = core::unmountVirtualDisk(dir, /*commit=*/true, t);
+            return r ? Result<void>{} : std::unexpected(r.error());
+        };
+    }
     const core::CancelToken cancel = run.cancel;
     const core::ops::ApplyPlan plan = run.plan;
     m_state.setApplyRun(std::move(run));
-    log::info("apply", std::format(L"apply started: {} change(s) on {} [{}]", plan.steps.size(),
-                                   mounted.imagePath.wstring(), mounted.index));
+    log::info("apply", std::format(L"apply started: {} change(s) on {} [{}] (WinLove {}, build {:08X})", plan.steps.size(),
+                                   mounted.imagePath.wstring(), mounted.index, L"" WL_VERSION_LABEL, buildStamp()));
 
     auto post = m_events.postToUi;
     std::weak_ptr<bool> alive = m_alive;
@@ -304,10 +340,21 @@ void ApplyController::start() {
                 run->fraction = 1.0;
                 // The image is still mounted but may have changed: the cached lists (features,
                 // apps, services) no longer describe it, so pages must read them again.
+                // Every list read from the image (audit CTL-13): the system components, the inventory
+                // (drivers, languages, fonts …), the driver list and the languages stayed as they
+                // were — removed rows were on offer again and failed the next run. They are read
+                // "once per mount" by their mount folder, which is the same: only dropping them
+                // brings a new read. After the app list, so the components wait for it as on a
+                // new mount. (The image's values are read again by ImageValuesController; the icon
+                // and Start lists by their controllers, on Change::Apply.)
                 auto invalidateLists = [this] {
                     m_state.setOptionalFeatures(std::nullopt);
                     m_state.setAppxList(std::nullopt);
                     m_state.setServiceList(std::nullopt);
+                    m_state.setSystemComponents(std::nullopt);
+                    m_state.setImageInventory(std::nullopt);
+                    m_state.setImageDrivers(std::nullopt);
+                    m_state.setImageIntl(std::nullopt);
                 };
                 if (!result) {
                     invalidateLists();
@@ -319,11 +366,15 @@ void ApplyController::start() {
                 }
                 auto& outcome = *result;
                 // Steps that ran are in the image now: take them out of the queue.
+                // In one go: a notification, a queue.json and a copy of the queue per step made
+                // the end of an 850-step run 850 of each.
+                std::vector<std::pair<core::ops::OpKind, std::wstring>> ran;
                 for (const auto& r : outcome.job.report.results) {
                     if (r.outcome) {
-                        m_state.unqueue(r.step.operation.kind, r.step.operation.target);
+                        ran.emplace_back(r.step.operation.kind, r.step.operation.target);
                     }
                 }
+                m_state.unqueueMany(ran);
                 run->queueVersionAtEnd = m_state.changes().version();
                 if (outcome.source) {
                     for (const auto& image : outcome.source->install.images) {

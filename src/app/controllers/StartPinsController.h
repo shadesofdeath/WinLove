@@ -74,6 +74,8 @@ private:
     std::optional<std::vector<core::StartApp>> m_apps;
     bool m_loading = false;
     bool m_customChosen = false; // "Custom" with no pins yet looks like "Empty" in the queue
+    // The Apply run's stage at the last Change::Apply (none: no run): the list goes only as it ends.
+    std::optional<AppState::ApplyRun::Stage> m_applyStage;
 };
 
 } // namespace wl::app

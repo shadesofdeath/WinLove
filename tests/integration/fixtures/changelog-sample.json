@@ -1,0 +1,119 @@
+[
+ {
+  "url": "https://api.github.com/repos/shadesofdeath/WinLove/releases/1",
+  "html_url": "https://github.com/shadesofdeath/WinLove/releases/tag/v1.5.0-beta",
+  "tag_name": "v1.5.0-beta",
+  "name": "WinLove 1.5.0 Beta (taslak)",
+  "draft": true,
+  "prerelease": true,
+  "created_at": "2026-11-11T08:00:00Z",
+  "published_at": null,
+  "body": "Taslak: gösterilmez.",
+  "assets": []
+ },
+ {
+  "url": "https://api.github.com/repos/shadesofdeath/WinLove/releases/2",
+  "html_url": "https://github.com/shadesofdeath/WinLove/releases/tag/v1.4.0-beta",
+  "tag_name": "v1.4.0-beta",
+  "name": "WinLove 1.4.0 Beta",
+  "draft": false,
+  "prerelease": true,
+  "created_at": "2026-11-10T09:00:00Z",
+  "published_at": "2026-11-10T09:30:00Z",
+  "body": "**WinLove 1.4.0 Beta** — Uygula bitince ISO ve uygulamanın içinden güncelleme / An ISO right after Apply and updates from inside the app.\n\n[Türkçe](#türkçe) · [English](#english)\n\n> ⚠️ **Beta:** Değişiklikleri önce bir *sanal makinede* dene.\n> > İç içe alıntı: imajın yedeğini tut.\n\n## Türkçe\n\n### Yeni\n- **Bitince ISO oluştur:** Uygula imajı kaydedince kurulum ISO'su kendiliğinden yazılır.\n  - ISO Oluştur'un ayarlarıyla (`UEFI + BIOS`, SHA-256);\n  - durdurulan ya da *kaydedilmeyen* bir uygulamadan sonra ISO yapılmaz, nedeni yazılır.\n- **Güncellemeyi yükle:** yeni sürüm indirilir, ~~elle~~ denetlenir ve yerine konur.\n  1. GitHub'ın verdiği **SHA-256** ile karşılaştırılır,\n  2. x64 program ve sürüm bilgisi okunur,\n  3. eski dosya `WinLove.exe.old` olarak kalır.\n- ***Değişiklikler penceresi:*** sürüm notları Markdown olarak, ayrı pencerede.\n\n### Komut satırı\n```powershell\nwlcli update-install --exe=D:\\Lab\\WinLove.exe --releases=releases.json\nwlcli update-rollback --exe=D:\\Lab\\WinLove.exe\n```\n\n| Adım | Ne yapılır | Süre |\n|:-----|:----------:|-----:|\n| İndir | `WinLove.exe.new` | ~10 sn |\n| Denetle | boyut + SHA-256 + sürüm | < 1 sn |\n| Değiştir | iki yeniden adlandırma | anında |\n\n---\n\n![Ekran görüntüsü](https://example.com/screenshot.png)\n\n<!-- bu yorum görünmez -->\nAyrıntılar: [CHANGELOG.md](https://github.com/shadesofdeath/WinLove/blob/main/CHANGELOG.md) · https://github.com/shadesofdeath/WinLove/issues\n\n## English\n\n### New\n- **Create the ISO when done:** once Apply saves the image, the setup ISO is written.\n- **Install the update:** downloaded, *checked* and swapped in; the old file stays as `WinLove.exe.old`.\n",
+  "assets": [
+   {
+    "name": "WinLove.exe",
+    "content_type": "application/x-msdownload",
+    "state": "uploaded",
+    "size": 11534336,
+    "digest": "sha256:9b1e04c2a4f1b0d6e8c3a7f5b2d9e4c1a6f3b8d0e7c5a2f9b4d1e8c3a6f0b7d2",
+    "browser_download_url": "https://github.com/shadesofdeath/WinLove/releases/download/v1.4.0-beta/WinLove.exe"
+   }
+  ]
+ },
+ {
+  "url": "https://api.github.com/repos/shadesofdeath/WinLove/releases/3",
+  "html_url": "https://github.com/shadesofdeath/WinLove/releases/tag/v1.3.1-beta",
+  "tag_name": "v1.3.1-beta",
+  "name": "WinLove 1.3.1 Beta",
+  "draft": false,
+  "prerelease": true,
+  "created_at": "2026-11-09T20:00:00Z",
+  "published_at": "2026-11-09T20:10:00Z",
+  "body": "Küçük düzeltmeler / Small fixes.\n\n- Uygula'nın sonuç kartında *atlanan* adımların nedenleri tam metin.\n- The result card shows the full reason of *skipped* steps.\n",
+  "assets": [
+   {
+    "name": "WinLove.exe",
+    "content_type": "application/x-msdownload",
+    "state": "uploaded",
+    "size": 11300000,
+    "digest": null,
+    "browser_download_url": "https://github.com/shadesofdeath/WinLove/releases/download/v1.3.1-beta/WinLove.exe"
+   }
+  ]
+ },
+ {
+  "url": "https://api.github.com/repos/shadesofdeath/WinLove/releases/438873318",
+  "html_url": "https://github.com/shadesofdeath/WinLove/releases/tag/v1.3.0-beta",
+  "tag_name": "v1.3.0-beta",
+  "name": "WinLove 1.3.0 Beta",
+  "draft": false,
+  "prerelease": true,
+  "created_at": "2026-11-09T11:37:01Z",
+  "published_at": "2026-11-09T08:15:28Z",
+  "body": "**WinLove 1.3.0 Beta** — Yeni arayüz, yeni kurulum ekranları, yeni bileşen modeli, uyumluluk korumaları, etki raporu ve güncellemelere karşı koruma; çok daha hızlı bileşen kaldırma; bileşen kaldırılan imaja güncelleme artık giriyor / New interface, new setup screens, a new component model, compatibility guards, an impact report and a guard against updates; much faster component removal; updates now get into an image with components removed.\n\n[Türkçe](#türkçe) · [English](#english)\n\n> ⚠️ **Beta:** Değişiklikleri önce bir sanal makinede dene, asıl imajının yedeğini tut. WinLove yalnızca çevrimdışı imajlarla çalışır; çalışan sistemine dokunmaz.\n> Try changes in a virtual machine first and keep a backup of your image. WinLove works on offline images only; it never touches the running system.\n\n## Türkçe\n\n### Yeni\n- **Yeni arayüz:** yeni gezinme düzeni, renkli ikonlar, saf siyah tema, pencere kenarında vurgu rengi. Uygulama tam ekran açılır.\n- **Yeni bileşen modeli:**\n  - kategori ağacı ve şablonlar;\n  - gerçek boyutlar, 32 bit satırları, bağımlılık ağacı;\n  - kaldırma modu;\n  - imajın kendi sürücüleri, dilleri, klavyeleri ve yazı tipleri.\n- **31 uyumluluk koruması:** Windows özellikleri ve uygulamalar (Office, Discord, NVIDIA …) için.\n- **Etki raporu:** Uygula, kuyruğun bozacağı özellikleri listeler. \"Korumayı aç\" derseniz o adımlar kuyruktan çıkar.\n- **Güncellemelere karşı koru (isteğe bağlı):** kurulu Windows'ta, bir güncellemenin geri açtığı hizmeti, ayarı, görevi ve uygulamayı düzeltir. Sizin kendi değiştirdiklerinize dokunmaz.\n- **Yeni kurulum ekranları:** WinLove'un kurulum sihirbazı Windows'a benzemeyen kendi görünümüyle: vurgu renginde akan arka plan, numaralı adımlar, her sayfada canlı bir sahne, hazırlanırken yüzde halkası. Ekran kartı olmayan bilgisayarda (sanal makine, sürücüsü kurulmamış ilk açılış) da akıcı çalışır.\n- **Bileşen kaldırma çok daha hızlı:** derin kaldırma adımları imajı her seferinde baştan taramıyor. Ölçümde adım başına ~12 saniyeden ~1,7 saniyeye indi.\n- **Katılımsız** üst menüde. WinLove kurulum ekranı canlı önizlenir.\n- **Ayarlar:**\n  - DISM motoru seçimi;\n  - ESD için iş parçacığı sayısı;\n  - ön ayar, ISO'nun köküne de yazılır.\n\n### Düzeltmeler\n- **Bileşen kaldırınca toplu güncelleştirme ISO'ya girmiyordu (0x80073712).** Artık önce güncellemeler kurulur, kaldırmalar ondan sonra yapılır. (Test: 25H2 imajında 374 bileşenlik ön ayar + Eylül toplu güncelleştirmesi → imaj 26200.8037'den 26200.9457'ye çıktı, bileşen deposu sağlam.)\n- **Güncelleme inerken Uygula başlatılınca güncelleme düşüyordu.** Artık Uygula indirmeyi bekler; bekleyen indirmeler de kaybolmaz.\n- **Ağır ön ayarlarla kurulan Windows açılmıyordu, OOBE döngüye giriyordu ya da explorer çöküyordu.** Düzeldi.\n- **Uygula, kalıcı yetenekler (0x800F0825) ve küçültülmüş imaj (0x800F0830) yüzünden imajı kaydetmiyordu.** Artık kaydediyor.\n- **Bazı bileşen kaldırmaları 0x800703EE ile düşüyor, imaj kaydedilmiyordu.** Windows'un servis yığını, imaj bağlamasının henüz diske yazmadığı paket dosyalarını reddediyordu. WinLove artık bu dosyaları diske yazıp kaldırmayı bir kez daha deniyor.\n- Sol menü kayıyor, bildirimler tam metni gösteriyor, \"İsteğe bağlı özellikler\" sekmesi tıklanıyor; Uygula sürerken adım listesindeki yazılar üst üste binmiyor.\n\nAyrıntılar: [CHANGELOG.md](https://github.com/shadesofdeath/WinLove/blob/main/CHANGELOG.md)\n\n## English\n\n### New\n- **New interface:** new navigation, coloured icons, a pure black theme, the accent colour on the window border. The app starts maximized.\n- **New component model:**\n  - category tree and templates;\n  - real sizes, 32-bit rows, a dependency tree;\n  - removal mode;\n  - the image's own drivers, languages, keyboards and fonts.\n- **31 compatibility guards:** for Windows features and for apps (Office, Discord, NVIDIA …).\n- **Impact report:** Apply lists the features the queue would break. \"Turn the guard on\" takes those steps out of the queue.\n- **Guard against updates (optional):** on the installed Windows, it puts back a service, setting, task or app an update turned back. What you changed yourself is left alone.\n- **New setup screens:** WinLove's setup wizard in a look of its own, not Windows': a flowing background in the accent colour, numbered steps, a live scene on every page, a percentage ring while it prepares. It runs smoothly on a PC without a graphics card too (a virtual machine, a first start before the display driver).\n- **Much faster component removal:** deep removal steps no longer scan the image from scratch each time. Measured: from ~12 seconds per step to ~1.7.\n- **Unattended** is in the top menu. WinLove's setup screens are previewed live.\n- **Settings:**\n  - DISM engine choice;\n  - the number of threads for ESD;\n  - the preset is also written to the root of the ISO.\n\n### Fixes\n- **With components removed, the cumulative update did not get into the ISO (0x80073712).** Now the updates go in first and the removals follow. (Tested: a 374-component preset plus the September cumulative update on a 25H2 image → 26200.8037 became 26200.9457, component store healthy.)\n- **Starting Apply while an update was downloading dropped the update.** Now Apply waits for the download, and held downloads are not lost.\n- **With heavy presets the installed Windows did not boot, OOBE looped or explorer crashed.** Fixed.\n- **Apply did not save the image because of permanent capabilities (0x800F0825) or a shrunk image (0x800F0830).** It now saves it.\n- **Some component removals failed with 0x800703EE and the image was not saved.** Windows' servicing stack refused package files the image mount had not written to disk yet. WinLove now writes them out and tries the removal once more.\n- The side menu scrolls, notices show their whole text, the \"Optional features\" tab is clickable, and the step list no longer overlaps while Apply runs.\n\nDetails: [CHANGELOG.md](https://github.com/shadesofdeath/WinLove/blob/main/CHANGELOG.md#english)\n\nSHA-256 (WinLove.exe): `32a1e589f17f500cef30b1e14b9db7878d9903da49477510711ad11fcbb3763b`\n",
+  "assets": [
+   {
+    "name": "WinLove.exe",
+    "content_type": "application/x-msdownload",
+    "state": "uploaded",
+    "size": 11211264,
+    "digest": "sha256:32a1e589f17f500cef30b1e14b9db7878d9903da49477510711ad11fcbb3763b",
+    "browser_download_url": "https://github.com/shadesofdeath/WinLove/releases/download/v1.3.0-beta/WinLove.exe"
+   }
+  ]
+ },
+ {
+  "url": "https://api.github.com/repos/shadesofdeath/WinLove/releases/409281450",
+  "html_url": "https://github.com/shadesofdeath/WinLove/releases/tag/v1.2.3-beta",
+  "tag_name": "v1.2.3-beta",
+  "name": "WinLove 1.2.3 Beta",
+  "draft": false,
+  "prerelease": true,
+  "created_at": "2026-10-11T00:02:39Z",
+  "published_at": "2026-10-11T00:03:03Z",
+  "body": "**WinLove 1.2.3 Beta** — Windows indir en güncel Windows 11 (25H2, 26200.9448) için yine ISO veriyor, x64 ve ARM64; Uygula 0x800F0806'da kaydediyor / Download Windows makes the ISO again for the latest Windows 11 (25H2, 26200.9448), x64 and ARM64; Apply saves past 0x800F0806.\n\n[Türkçe](#türkçe) · [English](#english)\n\n> ⚠️ **Beta:** Değişiklikleri önce bir sanal makinede dene, asıl imajının yedeğini tut. WinLove yalnızca çevrimdışı imajlarla çalışır; çalışan sistemine dokunmaz.\n> Try changes in a virtual machine first and keep a backup of your image. WinLove works on offline images only; it never touches the running system.\n\n## Türkçe\n\n1.2.2 Beta'dan bu yana gelenler:\n\n### Düzeltmeler\n\n- **Windows indir: en güncel Windows 11 (25H2, 26200.9448) güncellemelerle ISO vermiyordu — x64'te de, ARM64'te de.** Bu derlemenin toplu güncelleştirmesi (KB5129241) bir hotpatch paketi; Microsoft'un güncelleme aracı onu çevrimdışı imaja almıyor (\"Hotpatching is not supported\", 0x800F8012). WinLove artık paketi kendisi açıyor (her dosya SHA-256 ile doğrulanır) ve servis yığınını, checkpoint'i, toplu güncelleştirmeyi doğrudan imaja ekliyor. Hotpatch'in kendisi çevrimdışı imaja girmez: ISO onun dayandığı toplu güncelleştirmeyle (26200.9445) çıkar, sayfa bunu yazar; kalan küçük fark kurulumdan sonra Windows Update'ten gelir. (Sanal makinede denendi: ISO kuruldu, sistem 26200.9445.)\n- **Güncellemeler, WinRE ve boot.wim güncellemesi:** aynı paket oralarda da aynı yolla ekleniyor (checkpoint, MSU'nun yanındaki klasörden alınır).\n- **ARM64 ISO:** ARM64 kurulum medyası Microsoft'unki gibi yalnız UEFI ile açılan bir ISO olur. ISO Oluştur, BIOS önyükleme dosyası olmayan bir klasörden de ISO yapar (yalnız UEFI).\n- **Uygula: \"1 adım başarısız, imaj kaydedilmedi\" (0x800F0806).** Bir özellik açma / kapama ilk açılışa iş bıraktığında Windows bileşen deposu temizliğini yapmaz; imaj bundan etkilenmez. WinLove bunu hata sayıp bütün değişiklikleri kaydetmeden bağlı bırakıyordu. Artık imaj kaydediliyor, sonuç \"1 işlem atlandı\" diyor.\n- **Windows indir: yarım kalan bağlama.** Uygulama dönüştürme sırasında kapanır ya da çökerse kalan bağlı imaj, bir sonraki açılışta ve yeni dönüştürmenin başında atılıyor (yeniden kullanılmıyor).\n- **Windows indir: indirme kesintileri.** Microsoft'un sunucusu bazı dosyalarda bağlantıyı kesiyordu; dosya baştan iniyor, üç denemede iş düşüyordu. Artık kaldığı yerden devam ediyor.\n- **Windows indir: ilerleme çubuğu** bir sürüm yeniden yapıldığında (Windows 10 ESU) geri gitmiyor.\n- **Windows indir: gereksiz uyarı.** Microsoft'un o sette paketini yayınlamadığı bir uygulama (ARM64'te PC Manager) ISO'yu \"uyarılarla\" göstermiyor; Microsoft'un kendi medyasında da yok.\n\n### Kurulum\n`WinLove.exe`'yi indir ve çalıştır — kurulum yok, tek dosya. İmaj bağlamak için yönetici izni ister. Windows 10 / 11 x64.\n\n## English\n\nWhat changed since 1.2.2 Beta:\n\n### Fixes\n\n- **Download Windows: the latest Windows 11 (25H2, 26200.9448) gave no ISO with updates — on x64 and ARM64 alike.** This build's cumulative update (KB5129241) is a hotpatch package; Microsoft's update agent does not take it into an offline image (\"Hotpatching is not supported\", 0x800F8012). WinLove now opens the package itself (every file checked by SHA-256) and adds the servicing stack, the checkpoint and the cumulative update straight into the image. The hotpatch itself cannot go into an offline image: the ISO has the cumulative update it builds on (26200.9445), the page says so, and the small rest comes from Windows Update after setup. (Tried in a virtual machine: the ISO installs, the system is 26200.9445.)\n- **Updates, WinRE and boot.wim updates:** the same package goes in the same way there (the checkpoint comes from the MSU's folder).\n- **ARM64 ISO:** ARM64 setup media become an ISO that boots by UEFI only, like Microsoft's. Create ISO makes an ISO from a folder without the BIOS boot file too (UEFI only).\n- **Apply: \"1 step failed, the image is not saved\" (0x800F0806).** When enabling or disabling a feature leaves work for the first boot, Windows does not clean up the component store; the image is not affected. WinLove counted it as an error and left all the changes unsaved and mounted. Now the image is saved and the result says \"1 operation skipped\".\n- **Download Windows: a half-done mount.** When the app closes or crashes during a conversion, the image left mounted is discarded at the next start and when a new conversion begins (never reused).\n- **Download Windows: dropped downloads.** Microsoft's server cut the connection on some files; the file started over and the job failed after three tries. It now continues where it stopped.\n- **Download Windows: the progress bar** no longer goes back when an edition is made again (Windows 10 ESU).\n- **Download Windows: a needless warning.** An app Microsoft publishes no package of for the set (PC Manager on ARM64) no longer shows the ISO \"with warnings\"; Microsoft's own media do not have it either.\n\n### Install\nDownload `WinLove.exe` and run it — no setup, a single file. It asks for administrator rights to mount images. Windows 10 / 11 x64.\n\n---\n\nSHA-256: `62A942F9358456094642025D3ADEC951581C33FCFB2BE2C3505A760BB5A6DBB8`\n\nHata ya da öneri için bir [issue](https://github.com/shadesofdeath/WinLove/issues) aç · Found a bug or have an idea? Open an [issue](https://github.com/shadesofdeath/WinLove/issues). 💛\n",
+  "assets": [
+   {
+    "name": "WinLove.exe",
+    "content_type": "application/x-msdownload",
+    "state": "uploaded",
+    "size": 10179072,
+    "digest": "sha256:62a942f9358456094642025d3adec951581c33fcfb2be2c3505a760bb5a6dbb8",
+    "browser_download_url": "https://github.com/shadesofdeath/WinLove/releases/download/v1.2.3-beta/WinLove.exe"
+   }
+  ]
+ },
+ {
+  "url": "https://api.github.com/repos/shadesofdeath/WinLove/releases/404052892",
+  "html_url": "https://github.com/shadesofdeath/WinLove/releases/tag/v1.0.0-alpha",
+  "tag_name": "v1.0.0-alpha",
+  "name": "WinLove 1.0 Alpha",
+  "draft": false,
+  "prerelease": true,
+  "created_at": "2026-10-05T19:37:12Z",
+  "published_at": "2026-10-05T19:37:22Z",
+  "body": null,
+  "assets": [
+   {
+    "name": "WinLove.exe",
+    "content_type": "application/x-msdownload",
+    "state": "uploaded",
+    "size": 6994944,
+    "digest": "sha256:f6988d0a57c8a63bdc885353e400ba30104bfbd9a4ab1db09c4d45be0f6b9035",
+    "browser_download_url": "https://github.com/shadesofdeath/WinLove/releases/download/v1.0.0-alpha/WinLove.exe"
+   }
+  ]
+ }
+]

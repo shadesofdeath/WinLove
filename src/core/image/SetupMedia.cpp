@@ -113,6 +113,10 @@ Result<void> stageFromEsd(const std::filesystem::path& esd, const std::filesyste
 
 } // namespace
 
+Result<void> setupMediaFromEsd(const std::filesystem::path& esd, const std::filesystem::path& folder, const TaskContext& task) {
+    return stageFromEsd(esd, folder, task);
+}
+
 int setupMediaBuild(const SourceInfo& source) {
     if (!source.boot) {
         return 0;
@@ -211,20 +215,53 @@ Result<void> replaceSetupMedia(const std::filesystem::path& setupFolder, const s
 
     // 3. The old media goes, the install image and the user's additions stay; the new media comes in.
     task.report(0.85, L"swap");
-    for (const auto& entry : std::filesystem::directory_iterator(setupFolder, ec)) {
-        const auto name = entry.path().filename();
+    // The names first, then the removal: a range-for over the folder throws when a step fails,
+    // past cleanup() (audit IMG-09), and removing while enumerating is not something to lean on.
+    // A folder that cannot be listed stops the swap where the range-for threw, before anything in
+    // that folder is removed.
+    const auto namesIn = [](const std::filesystem::path& folder, std::error_code& listError) {
+        std::vector<std::filesystem::path> names;
+        for (auto it = std::filesystem::directory_iterator(folder, listError);
+             !listError && it != std::filesystem::directory_iterator(); it.increment(listError)) {
+            names.push_back(it->path());
+        }
+        return names;
+    };
+    const auto entries = namesIn(setupFolder, ec);
+    if (ec) {
+        cleanup();
+        return fail(ErrorCode::IoError, L"could not remove the old setup media", setupFolder.wstring());
+    }
+    for (const auto& entry : entries) {
+        const auto name = entry.filename();
+        ec.clear();
         if (text::iequals(name.wstring(), L"sources")) {
-            for (const auto& inner : std::filesystem::directory_iterator(sources, ec)) {
-                if (!keptInSources(inner.path().filename())) {
-                    std::filesystem::remove_all(inner.path(), ec);
+            // Every old entry is tried, as before, and one that stays stops the swap after them (it
+            // used to when it was the last one): an old Setup file left beside the new setup.exe,
+            // one the new media does not overwrite, would go into the ISO or onto the stick.
+            std::error_code first; // the listing's error, else that of the first entry that stayed
+            const auto inner = namesIn(sources, first);
+            if (!first) {
+                for (const auto& old : inner) {
+                    if (keptInSources(old.filename())) {
+                        continue;
+                    }
+                    std::filesystem::remove_all(old, ec);
+                    if (ec) {
+                        log::warn("media", std::format(L"could not remove {} (error {})", old.wstring(), ec.value()));
+                        if (!first) {
+                            first = ec;
+                        }
+                    }
                 }
             }
+            ec = first;
         } else if (!keptAtRoot(name)) {
-            std::filesystem::remove_all(entry.path(), ec);
+            std::filesystem::remove_all(entry, ec);
         }
         if (ec) {
             cleanup();
-            return fail(ErrorCode::IoError, L"could not remove the old setup media", entry.path().wstring());
+            return fail(ErrorCode::IoError, L"could not remove the old setup media", entry.wstring());
         }
     }
     auto copied = copyMedia(staging, setupFolder);

@@ -68,6 +68,9 @@ CompatDialog makeCompatDialog(const Localization& strings, Language language, co
             return;
         }
         (*checked)[static_cast<std::size_t>(guard)] = !(*checked)[static_cast<std::size_t>(guard)];
+        if ((*checked)[static_cast<std::size_t>(guard)]) {
+            table->revealCheck(row); // the user's tick draws in
+        }
         table->refresh();
     };
     table->onCellClick = [toggle](int row, int, ui::PointF) { toggle(row); };
@@ -100,7 +103,7 @@ CompatDialog makeCompatDialog(const Localization& strings, Language language, co
                                 Color::TextSecondary);
             } else {
                 ui::Checkbox::paintBox(canvas, box, (*checked)[index] ? ui::CheckState::On : ui::CheckState::Off,
-                                       cell.hovered);
+                                       cell.hovered, cell.checkReveal);
             }
             const float x = rect.x + ui::Checkbox::kBox + 8;
             canvas.drawText(guard.name(language), {x, rect.y, rect.right() - x, rect.height},

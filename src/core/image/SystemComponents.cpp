@@ -714,21 +714,40 @@ Result<void> removeComponent(DismSession& session, const ComponentRecipe& reques
     }
     // D-116 / D-117: a path that is (or holds) a file Windows needs before it starts stays: a boot
     // driver, a device filter, the loader's own files and every module these import.
-    if (std::ranges::any_of(paths, [](const std::filesystem::path& path) { return !bootFilesUnder(path).empty(); })) {
-        session.suspend(); // offreg reads SYSTEM: DISM must let go of it
-        auto boot = findBootDrivers(mountDir);
-        if (auto reopened = session.reload(); !reopened) {
-            return reopened;
+    // The test below and the three passes inside ask for the same paths' files: each tree is walked
+    // once for them, and a file's name below the image root worked out once (audit IMG-15). Nothing
+    // is removed in between, and neither suspending the session nor reading the boot drivers makes
+    // or drops a module file, so the listing is the one each used to read for itself.
+    struct BootFile {
+        std::filesystem::path file;
+        std::wstring relative; // imageRelativePath
+    };
+    std::map<std::filesystem::path, std::vector<BootFile>> bootFiles;
+    const auto bootFilesOf = [&](const std::filesystem::path& path) -> const std::vector<BootFile>& {
+        const auto [slot, added] = bootFiles.try_emplace(path);
+        if (added) {
+            for (auto& file : bootFilesUnder(path)) {
+                std::wstring relative = imageRelativePath(file, mountDir);
+                slot->second.push_back({std::move(file), std::move(relative)});
+            }
         }
+        return slot->second;
+    };
+    if (std::ranges::any_of(paths, [&](const std::filesystem::path& path) { return !bootFilesOf(path).empty(); })) {
+        // offreg reads SYSTEM: DISM must let go of it. The session stays closed from here on and
+        // opens itself at the next DISM call (D-131): the windows below used to reopen it each
+        // for itself, ~1.4 s a time, with no DISM call in between.
+        session.suspend();
+        auto boot = findBootDrivers(mountDir);
         auto kept = boot ? keptBootFiles(mountDir, *boot, recipe.services) : std::unexpected(boot.error());
         std::erase_if(paths, [&](const std::filesystem::path& path) {
-            for (const auto& file : bootFilesUnder(path)) {
+            for (const auto& [file, relative] : bootFilesOf(path)) {
                 if (!kept) {
                     log::warn("cbs", std::format(L"{}: {} stays, boot files not readable: {}", recipe.title, path.wstring(),
                                                  describe(kept.error())));
                     return true;
                 }
-                if (const auto found = kept->find(imageRelativePath(file, mountDir)); found != kept->end()) {
+                if (const auto found = kept->find(relative); found != kept->end()) {
                     log::warn("cbs", std::format(L"{}: {} stays, Windows needs {} before it starts ({}, D-116/D-117)", recipe.title,
                                                  path.wstring(), file.filename().wstring(), found->second));
                     return true;
@@ -739,19 +758,19 @@ Result<void> removeComponent(DismSession& session, const ComponentRecipe& reques
         // D-118: nor one a module that stays imports or delay-loads (files outside these paths).
         std::vector<std::wstring> going;
         for (const auto& path : paths) {
-            for (const auto& file : bootFilesUnder(path)) {
-                going.push_back(imageRelativePath(file, mountDir));
+            for (const auto& entry : bootFilesOf(path)) {
+                going.push_back(entry.relative);
             }
         }
         auto imported = keptImportedFiles(mountDir, going);
         std::erase_if(paths, [&](const std::filesystem::path& path) {
-            for (const auto& file : bootFilesUnder(path)) {
+            for (const auto& [file, relative] : bootFilesOf(path)) {
                 if (!imported) {
                     log::warn("cbs", std::format(L"{}: {} stays, imports not readable: {}", recipe.title, path.wstring(),
                                                  describe(imported.error())));
                     return true;
                 }
-                if (const auto found = imported->find(imageRelativePath(file, mountDir)); found != imported->end()) {
+                if (const auto found = imported->find(relative); found != imported->end()) {
                     log::warn("cbs", std::format(L"{}: {} stays, a module that stays needs {} ({}, D-118)", recipe.title,
                                                  path.wstring(), file.filename().wstring(), found->second));
                     return true;
@@ -765,9 +784,6 @@ Result<void> removeComponent(DismSession& session, const ComponentRecipe& reques
     if (!recipe.packages.empty() || !recipe.registry.empty()) {
         session.suspend();
         auto edited = editHives(mountDir, recipe);
-        if (auto reopened = session.reload(); !reopened) {
-            return reopened;
-        }
         if (!edited) {
             return std::unexpected(edited.error());
         }
@@ -780,12 +796,9 @@ Result<void> removeComponent(DismSession& session, const ComponentRecipe& reques
         const auto suspended = std::chrono::steady_clock::now();
         auto copies = removeStoreCopies(mountDir, recipe.storeNames, recipe.storeBits, recipe.services, task);
         const auto done = std::chrono::steady_clock::now();
-        if (auto reopened = session.reload(); !reopened) {
-            return reopened;
-        }
         const auto ms = [](auto a, auto b) { return std::chrono::duration_cast<std::chrono::milliseconds>(b - a).count(); };
-        log::debug("perf", std::format(L"{}: DISM let go {} ms, store copies {} ms, DISM back {} ms", recipe.title, ms(started, suspended),
-                                       ms(suspended, done), ms(done, std::chrono::steady_clock::now())));
+        log::debug("perf", std::format(L"{}: DISM let go {} ms, store copies {} ms", recipe.title, ms(started, suspended),
+                                       ms(suspended, done)));
         if (!copies) {
             return std::unexpected(copies.error());
         }
@@ -810,9 +823,6 @@ Result<void> removeComponent(DismSession& session, const ComponentRecipe& reques
             }
             return {};
         }();
-        if (auto reopened = session.reload(); !reopened) {
-            return reopened;
-        }
         if (!deep) {
             return deep;
         }
@@ -843,11 +853,8 @@ Result<void> removeComponent(DismSession& session, const ComponentRecipe& reques
         }
         // Listing the provisioned apps leaves the image's SOFTWARE hive loaded by DISM until the
         // session closes: every later registry step of the run then fails with 0x80070020
-        // (measured: a recipe with "appx" + one HKLM value). A new session lets go of it.
+        // (measured: a recipe with "appx" + one HKLM value). Closing the session lets go of it.
         session.suspend();
-        if (auto reopened = session.reload(); !reopened) {
-            return reopened;
-        }
     }
 
     // Packages: 5 % … 80 % of the step.

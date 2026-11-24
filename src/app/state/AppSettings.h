@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace wl::app {
@@ -50,9 +51,15 @@ struct WindowsDownloadPrefs {
     [[nodiscard]] bool operator==(const WindowsDownloadPrefs&) const = default;
 };
 
+// D-143: settings.json's "accent": "#RRGGBB", or a preset's name as the files before it have it ("blue",
+// "copper", "sea", "pomegranate", "olive"); anything else ("sky" of before D-107, garbage) is Mavi.
+[[nodiscard]] std::uint32_t accentFromText(std::string_view text) noexcept;
+
 struct AppSettings {
     ThemeChoice theme = ThemeChoice::Dark;
-    ui::Accent accent = ui::Accent::Blue;
+    // D-143: the accent colour, 0xRRGGBB (any colour; the five presets of D-137 among them). Saved as "#RRGGBB";
+    // the preset names of older files ("sea", …) load as their colours, anything unreadable as Mavi.
+    std::uint32_t accent = ui::kDefaultAccent;
     bool reduceMotion = false; // true: always; false: follow the Windows "show animations" setting
     Density density = Density::Compact;
     UiFont font = UiFont::SegoeVariable; // D-107: the WinLoveUI package's family
@@ -68,6 +75,9 @@ struct AppSettings {
     std::optional<std::vector<std::wstring>> guardsSeen;
     WindowsDownloadPrefs windowsDownload;
     bool pauseBeforeSave = false; // D-106: Uygula stops before each save for changes by hand in the mount folder
+    // D-144: when a run saves the image, the setup ISO is built right after (ISO Oluştur's first values,
+    // into isoFolder). Off until chosen, as the other run options.
+    bool isoAfterApply = false;
     // 2026-11-09 (D-123, the reference tool's Tool settings): which DISM WinLove loads (read once, at start),
     // how many logical processors an ESD / LZMS export may use (0: as Windows decides), and whether
     // ISO Oluştur writes the last applied preset into the ISO's root.
@@ -77,15 +87,26 @@ struct AppSettings {
     // D-125: Apply ends with the update guard (core/ops/UpdateGuard.h). Off until chosen: it
     // changes the installed Windows after updates, so the user switches it on knowingly.
     bool updateGuard = false;
+    // D-140: at start, at most once a day, ask GitHub whether a newer WinLove is out (notify only).
+    bool checkUpdates = true;
+    std::int64_t updateCheckedAt = 0;   // the last check that got an answer (seconds since 1970, UTC); 0: never
+    std::wstring updateLatestTag;       // the newest release that check found ("v1.3.0-beta")
+    std::wstring updateNotifiedTag;     // the release the notice was shown for: never again for it
 
     [[nodiscard]] bool operator==(const AppSettings&) const = default;
     [[nodiscard]] std::filesystem::path mountDirectory() const {
         return mountFolder.empty() ? workRoot / L"mount" : mountFolder;
     }
-    // Extracted setup media for a source, e.g. ...\WinLove\work\Win11_25H2_Turkish_x64_v2
-    [[nodiscard]] std::filesystem::path workDirectoryFor(const std::filesystem::path& source) const {
-        return workRoot / L"work" / source.stem();
-    }
+    // D-141: a VHD / VHDX's Windows volume goes on <workRoot>\vhd\mount (never the WIM mount folder:
+    // its repair would take a volume mount point for leftovers); the changes disk in <workRoot>\vhd.
+    [[nodiscard]] std::filesystem::path vhdWorkDirectory() const { return workRoot / L"vhd"; }
+    [[nodiscard]] std::filesystem::path vhdMountDirectory() const { return workRoot / L"vhd" / L"mount"; }
+    // Extracted setup media for a source, e.g. ...\WinLove\work\Win11_25H2_Turkish_x64_v2. A name
+    // the media's deepest file would take past 259 characters is cut and tagged (workFolderFor);
+    // a copy already made under the whole name is kept where long paths work on this PC.
+    [[nodiscard]] std::filesystem::path workDirectoryFor(const std::filesystem::path& source) const;
+    // Pure part of it (tests): <root>\<stem> when it fits, else <root>\<cut stem>~<hash of the stem>.
+    [[nodiscard]] static std::filesystem::path workFolderFor(const std::filesystem::path& root, const std::filesystem::path& source);
 
     // True for a folder WinLove itself extracted setup media into: something under <workRoot>\work
     // (or under the work folder of builds before 2026-09-28, C:\WinLove\work). Only such a folder

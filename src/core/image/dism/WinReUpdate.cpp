@@ -107,12 +107,18 @@ Result<WinReUpdateReport> updateWinRe(Dism& dism, const std::filesystem::path& m
         }
         return {};
     }();
+    // The discards get a token of their own: with the run's (cancelled — that is why we are here)
+    // DISM gives the unmount up at once and WinRE stays mounted, failing every later attempt.
     if (!serviced) {
-        (void)dism.unmount(mount, /*commit=*/false, TaskContext{task.cancel, {}});
+        if (auto discarded = dism.unmount(mount, /*commit=*/false, TaskContext{CancelToken{}, {}}); !discarded) {
+            log::warn("winre", L"WinRE left mounted: " + describe(discarded.error()));
+        }
         return std::unexpected(serviced.error());
     }
     if (auto saved = dism.unmount(mount, /*commit=*/true, stage(task, 0.8, 0.88, L"WinRE")); !saved) {
-        (void)dism.unmount(mount, /*commit=*/false, TaskContext{task.cancel, {}});
+        if (auto discarded = dism.unmount(mount, /*commit=*/false, TaskContext{CancelToken{}, {}}); !discarded) {
+            log::warn("winre", L"WinRE left mounted: " + describe(discarded.error()));
+        }
         return std::unexpected(saved.error());
     }
     const std::uint32_t bootIndex = bootIndexOf(copy);

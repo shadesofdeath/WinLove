@@ -40,6 +40,7 @@ Karar: `src/*/generated/*.g.h` commit edilir; build Python olmadan da çalışı
 ## D-011 — Önce HWND flip swapchain, DirectComposition sonra (2026-09-28)
 Bağlam: Tasarım rehberi DComp görsel ağacı öneriyor (panel/dialog animasyonları için). İlk pencere için gereksiz karmaşıklık.
 Karar: Şimdilik tek HWND flip-sequential swapchain, her karede tam çizim (yalnızca `invalidate` ile; boşta 0 CPU ölçüldü). DComp ve dirty-rect, animasyon ve widget invalidation'ı gerektiğinde (Faz 1.4) gelir.
+→ D-135 (2026-11-10 → 11): DComp kökü uygulanıp ölçüldü, sahibinin isteğiyle tamamen kaldırıldı; bu karar geçerli.
 
 ## D-012 — Geçici TitleBar (2026-09-28)
 Karar: `app/shell/TitleBar` widget ağacı olmadan kendini çizip hit-test ediyor ki pencere ve Snap Layouts erken doğrulanabilsin. Faz 1.4'te IconButton/Kbd/SearchTrigger widget'larına bölünecek; davranış (hit-test bölgeleri, hover durumları) korunacak.
@@ -240,6 +241,1409 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 `CryptProtectData` ile (kullanıcı kapsamı) korunur — koruma başarısızsa dosya hiç yazılmaz. Yol `AppState`'e kurucu
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
+
+## D-152 — Her sayfada Sıfırla; Ayarlar'da sekme başına; Ön Ayar'da "Tüm değişiklikleri sıfırla" (2026-11-24)
+Bağlam: Bir kullanıcı (sahibinin aktardığı): ayarları yaptıktan sonra daha önce kaydedilmiş başka bir ön ayarı uygulamak
+istiyor, ama ön ayar kuyruğun **üstüne** ekleniyor (`PresetController::apply` → `queueMany`); önce her şeyi tek tek
+kaldırmak gerekiyor. Sahibi: Özellikler ve Bileşenler'deki Sıfırla gibi Ayarlar'a (Sistem, Güvenlik … her biri için ayrı),
+Zamanlanmış Görevler, Kurulum Sonrası, Sürücüler, Kayıt Defteri ve Güncellemeler'e de Sıfırla. Ayrıca bulunan:
+`AppState::unqueueIf` işlemleri tek tek siliyordu → her silme ayrı geri alma adımıydı; Bileşenler / Özellikler /
+Servisler'in Sıfırla'sından sonra Geri al yalnız son satırı geri getiriyordu.
+Karar:
+- **Kural:** bir sayfanın Sıfırla'sı yalnız o sayfanın kuyruktaki değişikliklerini çıkarır, tek geri alma adımıyla;
+  listeler (taranan sürücü klasörleri, içe aktarılan .reg girdileri) yerinde kalır, işaretsiz. Şeritte en sağda, ayraçtan
+  sonra `Sıfırla` (`Shell::addResetAction`, `common.resetAction`, `Icon::Refresh`).
+  - Zamanlanmış Görevler: `SetTaskState` + `CreateTask` (imajın önceki koşudan gelenleri yine görünür).
+  - Kurulum Sonrası: planın adımları; Programlar sayfasının seçimleri ve planın seçenekleri kalır (plan boşalırsa işlem
+    kuyruktan çıkar).
+  - Sürücüler: `AddDriver` + `RemoveDriver`; boot.wim işaretleri de kalkar (o liste kuyrukta değil: Geri al onu getirmez).
+  - Kayıt Defteri: her girdi kapatılır (değerleri kuyruktan çıkar), girdiler listede kalır → Geri al hepsini yeniden açar.
+  - Güncellemeler: `AddPackage` (dil paketleri hariç: onlar Diller'in).
+- **Ayarlar:** şeritteki `Sıfırla` → `Tümünü sıfırla`; süzgeç satırının sağında `Bu sekmeyi sıfırla` (yalnız gösterilen
+  sekmenin ayarları; arama / "Yalnızca değişenler" / şablon süzgeci açıkken `Gösterilenleri sıfırla`: süzgecin bıraktığı
+  satırlar). Sıfırlanacak bir şey yoksa pasif. "N ayar değişecek" düğmenin soluna kayar, sığmazsa çizilmez; 1100 px'lik en
+  dar pencerede şablon süzgeci 140'a kadar daralır. Motor: `ImageSettingsController::resetSettings(liste)`,
+  `settingsOfTab(tab)`; `resetChanges()` artık hepsiyle `resetSettings`.
+- **Ön Ayar:** şeritte `Tüm değişiklikleri sıfırla`: bütün kuyruk + boot.wim işaretleri, "Geri al"lı bildirim ("{n}
+  değişiklik kuyruktan çıkarıldı"); kuyruk boşsa "Kuyrukta değişiklik yok"; Uygula sürerken hiçbir şey yapmaz. Yanıt
+  dosyası (Katılımsız) dokunulmaz. Ön ayarın kendisi yine üstüne ekler: sıfırla + uygula iki tık, soru yok.
+- **`unqueueIf`:** çıkarılacakları toplayıp `ChangeSet::removeAll` ile tek adımda (bütün mevcut Sıfırla'lar da düzeldi).
+Kanıt: `tests/app/ResetTests.cpp` (6 vaka: her sayfa yalnız kendininkini çıkarır, başka sayfanın işlemi kalır; Görevler
+ve Kayıt Defteri'nde tek Geri al hepsini getirir; dil paketi kalır; bir Ayarlar sekmesi yalnız kendini sıfırlar, sekmeler
+bütün ayarları kapsar). `--render` (koyu, TR / EN): altı şeridin ucu; Ayarlar normal / süzgeçli ("Gösterilenleri
+sıfırla") / düğmeye tıklanmış (Gizlilik rozeti kalkar, satırlar Windows varsayılanı, düğme pasif) / 1100 px.
+Doğrulanmayan: canlı pencerede tıklama.
+
+## D-150 — Kullanıcı raporu 2026-11-13 (Windows 10 Home 19045.7807): pending.xml'de reddedilen WinSxS küçültme kaydı bekletmez; günlükte yapı damgası (2026-11-24)
+Bağlam: Sahibinin aktardığı rapor (`WinLove-apply.log`, `WinLove-rapor-20261113-1024.html`, ön ayarı; 871 adım, Windows 10
+Home 22H2 19045.7807 tr-TR, kullanıcının Windows 10'undaki DISM 10.0.19041.3636). Sonuç "İmaj kaydedilmedi": 3 bekleten
+hata (+ 1 bekletmeyen):
+- `media-streaming` (adım 28) ve `help` (51): her birinde `…-merged-Package` kalktıktan hemen sonra kardeş `…-Package`
+  `0x800703EE`. D-127'nin deseni. Günlükte D-127'nin "written out of the WIM; once more" satırı **yok**; yayındaki
+  `v1.3.0-beta` ekinde (2026-11-09 11:37Z yüklenen, SHA-256 `32a1e589…`) dize var, ilk ekte (08:15Z, D-127'den önce) yok
+  → kullanıcı ilk eki kullanmış. Ek aynı etiketle değiştirildiği için ne sürüm adı ne güncelleme denetimi bunu ayırt ediyor.
+- ResetBase `0x800F0806` → atlandı, bekletmedi (1.2.3'ten beri).
+- `ShrinkStore` (871): `pending.xml` var → `Unsupported`, kodsuz → `unchangedByFailure` false → **bekletti**. Adım hiçbir
+  klasöre dokunmadan dönüyordu; D-127 olsa da imaj kaydedilmeyecekti. Hatanın kendisi güncel kodda da vardı.
+Karar:
+- `shrinkComponentStore`: `pending.xml` reddi ilk iş (ölçümden önce; günlükte ~6 sn idi) ve CBS_E_PENDING `0x800F0806`
+  taşır. `unchangedByFailure`: `ShrinkStore` + `0x800F0806` bekletmez (ResetBase'in kuralı). Yarıda kalan küçültme ve
+  "servis yığını bulunamadı" bekletmeye devam eder. Raporda nedeni `apply.reason.pending` (metin: "açılan ya da kapatılan
+  bir özellik"). ApplyJob'un "saved all the same" satırı küçültmeyi de sayar.
+- Uygula günlüğünün ilk satırı: `(WinLove <etiket>, build <PE bağlama damgası>)` (`ApplyController`): aynı etiketle
+  yeniden yüklenen bir ek kullanıcı günlüğünden ayırt edilir.
+Kanıt:
+- Birim testleri: `a WinSxS shrink refused for pending operations is skipped …`, `store shrink: pending servicing is
+  refused first …` (klasör yerinde kalır, kod 0x800F0806).
+- Yönetici lab'ı `build\lab\w10e3ee` (Windows 10 Home 19041.3803 kopyası, `win10_22h2_tr_consumer.esd` index 4; kullanıcının
+  kendi ön ayarı, yeni `wlcli`):
+  - A: ön ayarın 9 özellik kapatması tek başına → 9/9 ok, `pending.xml` **oluşmadı** (kullanıcınınki başka bir adımdan).
+  - B: 871 adım `--commit` → 0 hata, WinSxS küçültüldü (13.160 klasör, 1,66 GB), kaydedildi; 7 dk. `0x800703EE` çıkmadı.
+    DISM imajın kendi servis yığınını yüklüyor ("Offline servicing, using stack version from …mnt\Windows\WinSxS…",
+    v10.0.19041.3745).
+  - C: önce SSU 19041.7714 (`build\lab\uup\19045.7727-tr-pro`), sonra aynı ön ayar → yeni yığın yüklendi, 872 adım
+    0 hata, kaydedildi. `0x800703EE` yine çıkmadı.
+**Doğrulanmayan:** `0x800703EE` iki yığında da üretilemedi; D-127'nin yeniden denemesi hâlâ gerçek imajda kanıtlanmadı.
+Kullanıcının imajıyla kalan farklar: 7807 toplu güncellemesi entegre medya (aynı paketin birden çok sürümü: `Package
+~7802` + `merged ~4355` + `~.1` artıkları; lab'da hepsi 3636), kullanıcının Windows 10'undaki DISM 19041.3636 (lab'da
+26100.9818), kendi bilgisayarındaki güvenlik yazılımı. Kesin kanıt: aynı medya (19045.7807 resmi ESD, D-149'un
+indiricisiyle ~3,7 GB) ya da kullanıcının güncel ekle yeniden çalıştırması.
+
+## D-151 — Kaynağın çalışma klasörü adı, kurulum medyasının en derin dosyası 260 karakteri aşmayacak kadar kısa (2026-11-24)
+Bağlam: Sahibinin aktardığı kullanıcı raporu: UUP'den indirilen ISO açılmıyor, "işlem başarısız (0x00000000) cannot
+create destination"; dosya adını kısaltan kullanıcıda düzelmiş. ISO açılırken medya `<workRoot>\work\<ISO adı>\` altına
+çıkarılır (`workDirectoryFor`); medyanın en derin dosyası kökün 147 karakter altında
+(`sources\replacementmanifests\microsoft-windows-appx-deployment-server\microsoft.windows.secondarytileexperience_…xml`;
+25H2, 26H2 ve Windows 10 ISO'larında aynı), kopya önce `<ad>.partial` yazar. UUP / resmi ISO adları ~70–75 karakter
+(`26200.9818.261025-0959.25H2_GE_RELEASE_SVC_PROD3_CLIENTMULTI_X64FRE_TR-TR`): `C:\Users\<ad>\AppData\Local\WinLove\work`
+altında ~270 karakter. Manifest `longPathAware` diyor, ama Windows bunu yalnız `LongPathsEnabled = 1` iken geçirir
+(varsayılan kapalı; geliştirme makinesinde açık, bu yüzden burada hiç görülmedi). Hata kodu yoktu, ekranda 0x00000000.
+Karar:
+- `AppSettings::workFolderFor(root, source)` (saf): ad + en derin dosya (147 + `.partial` + 16 pay) 259'a sığıyorsa ad
+  aynen; sığmıyorsa ad kesilir (sondaki `.`, boşluk, `-`, `_` atılır) ve `~` + tam adın küçük harfle FNV-1a'sı (8 onaltılı)
+  eklenir: aynı ad hep aynı klasör, kesimi aynı iki ad ayrı. Örnek: `19045.7807.261013-0444.22H2_RELEASE~xxxxxxxx`.
+- `workDirectoryFor`: uzun yollar bu süreçte açıksa (`RtlAreLongPathsEnabled`) ve tam adla bir klasör zaten varsa o
+  kullanılır (o bilgisayarda çıkarılmış kopya yeniden çıkarılmaz); yoksa `workFolderFor`. Uzun yolsuz bir bilgisayarda
+  önceki başarısız denemenin bıraktığı tam adlı klasör kullanılmaz (içindeki kısmi kopya işe yaramaz).
+- `UdfImage::copyNode`: hedef açılamazsa Windows'un kendi kodu (`HRESULT_FROM_WIN32(GetLastError())`) ve yol 259'u
+  aşıyorsa "the path is N characters long" yazılır; artık 0x00000000 yok.
+Kanıt: birim testi (`settings: a source's work folder leaves the setup media's deepest file under 260 characters`):
+UUP adı kesilir, en derin dosya 259'a sığar, büyük/küçük harf aynı etiketi verir, başka ad başka klasör, kısaltılmış
+klasör hâlâ `isWorkCopy`. **Doğrulanmayan:** hata bu makinede üretilemedi (`LongPathsEnabled = 1`, wlcli de aynı
+manifestle); `LongPathsEnabled = 0` bir bilgisayarda (ya da VM'de) UUP adlı bir ISO'nun açılması denenmedi.
+
+## D-148 — Sahibinin bildirdiği dört hata: başka araçla bağlanmış imajı devralma, işlem kelimeleri, Kuyruk çipleri, durdurulan Uygula'nın kapanışı (2026-11-11; D-064'ü tamamlar)
+Bağlam: Sahibinin 2026-11-11 tarihli 9 maddelik listesinin 1, 2, 3 ve 8. maddeleri (kendi günlüğü
+`WinLove-20261111-091520.log` ve ekran görüntüleriyle). Dört bağımsız hata; kural 6 gereği 1. madde önce wlcli + yönetici
+lab'ında. (Listenin 4 → D-142, 9 → D-143, 6 → D-144, 7 → D-145, 5 → D-146; başlık yazısı D-147.)
+Karar:
+1. **Bağlı imajı devralma** (Kaynak seç › "Bu bilgisayarda bağlı imajlar": başka bir aracın bağladığı imaj açılmıyor,
+   şerit "%0"da kalıyordu).
+   - Neden: DISM ve wimgapi `\\?\` ile bağlanmış bir imajı yine `\\?\` yollarıyla bildirir. `sourceForMountedImage` üst
+     klasörün adı "sources" diye büyükbabayı kurulum klasörü saydı (kurulum dosyasına bakmadan); `openSource(klasör)`
+     adayı `klasör / "sources/install.wim"` diye kurdu ve `\\?\` önekli yolda `/` ayırıcıya çevrilmez → "folder has no
+     sources\install.wim|esd|swm". Devralma ilerlemesiz bir iş olarak "Bağlanıyor %0" gösterdi, DISM'in istediği
+     `DismRemountImage` (~4 sn) da ilerlemesizdi; sonra kaynak okuyucu kuyruğunda 12 sn bekledi: her Kaynak ziyaretinde
+     yenilenen bağlı imaj listesi sağlıksız her bağlama için `blockersOf` (klasörü gezip Restart Manager'a sorma) çalıştırıyordu.
+   - `base/Path.h` `withoutLongPathPrefix`: `\\?\` / `\\?\UNC\` öneki sınırda atılır (düz yol 247 karakteri aşarsa kalır):
+     `Dism::mounts()`, `wimMountedImages()` ve `devicePath` (kovan listesi). Klasöre yol eklemek `nativePath` ile.
+   - `core::sourceForMountedImage` (Source.h): kurulum klasörü yalnız imaj gerçekten kurulum ortamının install imajıysa
+     (`<k>\sources\install.wim|esd|swm` + `<k>\setup.exe` ya da `sources\boot.wim`); değilse WIM dosyasının kendisi.
+     `openMountedImageSource` klasör okunamazsa WIM'e düşer.
+   - Devralma tek motor işi (`ImageController::adoptMount`, `EngineOperation::Kind::Adopting`): DISM kaydı → saf
+     `core::adoptionStep` (Ok → kullan; NeedsRemount → `DismRemountImage`, sonra kullan; Invalid / imaj yok / kalıntı /
+     boş → **hiçbir şeye dokunmadan** red) → kaynağı oku → `Events::adopted` (kaynak + bağlı imaj; okuyucuya ikinci okuma
+     yok). Yeniden bağlarken iş `Remounting`. İlerlemesi olmayan iki iş durum çubuğunda yüzdesiz (`StatusBar::setTask` < 0),
+     satırın Durum hücresi "Devralınıyor / Yeniden bağlanıyor". Her hata işi bitirir; gerekçe Kaynak'taki hata çubuğunda ve
+     bildirimde (`Failure::Adopt`; geçersiz / imaj yok / bağlı değil ayrı metin), liste yeniden okunur.
+   - Bağlı imaj listeleri (`inspectMounts`, `inspectMountsFast`) artık `blockersOf` çalıştırmaz; tarama yalnız tek
+     klasörün karar anında (ör. WinLove'un kendi bağlama klasörü).
+   - **Başka araca ait bağlama** (`AppState::mountedElsewhere()`: WinLove'un bağlama / eski / VHD klasörü değil):
+     Sürümler'de bilgi çubuğu ("Başka bir araçla bağlanmış imaj … Kaydet ve çöz yalnızca bu bağlamaya işler"), Özet'te
+     "Başka bir araçla bağlı · <klasör>", çözme sorusunda ek paragraf. Kaydet / çöz yalnız o klasörü işler; o aracın WIM'i
+     kayıttan sonra yeniden yazılmaz (`optimizeWim` atlanır, Uygula'da da); diğer sürümlere uygulama (D-055) o klasörde
+     sunulmaz.
+   - wlcli: `adopt <klasör> [--json]` ve `mounts --fast [--json]` (wimgapi listesi + ham `WIM_MOUNT_FLAG_*`).
+   - Referans aracın ikilisine bakıldı: paketlenmiş, dizgilerde DISM / wimgapi bağlama adları yok; çalışan sürecine
+     bağlanmak sahibinin bağlamasına dokunma riski taşıdığı için yapılmadı. Bu yüzden belgelenmiş DISM sırası izlendi
+     (ENGINE saha notu); Invalid için yıkıcı bir şey önerilmez.
+2. **Sürümler'in Durum sütunu** (silinen sürüm "Bağlanıyor…" diyordu): ISO kaynakta silme önce çalışma kopyasını hazırlar
+   (`Preparing`) ve sayfa `Mounting || Preparing` için "Bağlanıyor" yazıyordu; silmenin kendisi "—" gösteriyordu.
+   `EngineOperation` → `purpose` (kopya adımı neyin için) ve `indexes` (işin sürümleri); yeni türler `Duplicating`,
+   `Moving` (önceki "Exporting"), `Adopting`, `Remounting`. `operationRowWord`: Bağlanıyor · Siliniyor · Dışa aktarılıyor ·
+   Adlandırılıyor · Çözülüyor · Kopyalanıyor · Taşınıyor · Hazırlanıyor · Okunuyor · Denetleniyor · Doğrulanıyor.
+   `EditionTable::setWorkingRows` işin bütün satırlarına yazar; iş bitince satırlar eski hâline döner (Bağlı / Bağlanamadı /
+   —); "Bağlanamadı" yalnız bir bağlama (ya da bağlama için kopya) başarısızsa. Durum sütunu 76 → 116 px.
+3. **Özet › Kuyruk** ("2 değişiklik" ama sol taraf boş, tam vurgu çubuk, bozuk risk simgesi): kart gezinti rozetlerinin
+   sayfa birimindeki sayılarını gösteriyordu; karşılama açıkken her bağlamada giren iki `WriteFile` (D-084) ve sürüm
+   yükseltmesi (`SetEdition`) hiçbir grupta sayılmıyordu. Boyut değişmeyince çubuk tamamen vurguyla doluyordu; "Yüksek
+   riskli işlem yok" tek çubuklu `RiskLow` glifini üçüncül renkte çiziyordu. Şimdi `pages/overview/QueueChips`: her işlem
+   onu kuyruğa koyan sayfaya (`queuePageOf`: türe göre; paylaşılan türlerde sayfaların sahiplendiği yuvalar — Kayıt
+   Defteri'nin kendi girdileri, karşılamanın dosyaları, küçültmenin güncelleme ilkesi; sahipsiz kayıt / dosya Ayarlar'ın)
+   ve o sayfanın sekmesine sayılır; Görüntü (Başlat) ve yeni "Kurulum › Katılımsız" grubu dahil, hiçbir sekmede olmayan
+   "Diğer"e. Çiplerin toplamı = "N değişiklik". Sol tarafta bir şey yoksa sağ sütun kartın tamamını alır. Boyut
+   değişmiyorsa çubuk yalnız nötr iz (`paintSizeBar`; Uygula'nın plan kartında da). Risk satırı: yoksa başarı renginde
+   `SuccessCircle` + ikincil metin, varsa `RiskHigh` hata renginde. Gezinti ve kutucuk rozetleri eskisi gibi sayfanın
+   kendi biriminde (dil, ayar…); kartın çipleri işlem sayısı.
+4. **Durdurulan Uygula'dan sonra kaydet / çöz** (sayfa çözüldükten sonra da "Durduruldu" diyordu): sayfanın modu yalnız
+   `ApplyRun`'dan ve bağlı imajdan türüyordu; çözme ayrı bir motor işi (`Unmounting`) ve `ApplyRun`'a bir şey yazmıyordu.
+   `ApplyRun::closing` {commit, Running / Done / Failed, hata} ve `ApplyRun::mountSerial`; `AppState::runLeftImageMounted /
+   beginRunClose / endRunClose` (yalnız bağlı imaj çalıştırmanın bıraktığıysa — kaydetmiş çalıştırmada ya da sonradan
+   bağlanan imajda devreye girmez). `ImageController::unmount` (WIM ve VHD) başında `beginRunClose`, sonunda `endRunClose`
+   (hata → Failed + gerekçe; iptal → unutulur); kayıtta kaynak yeniden okunur (`sizeAfter`). `RunSummary::Close` (Saving /
+   Discarding / Saved / Discarded / SaveFailed / DiscardFailed); `ApplyPage::modeKey` kapanışı da içerir → Shell sayfayı
+   yeniden kurar. Sonuç kartı: "İmaj kaydediliyor… / Değişiklikler atılıyor…" + motorun yüzdesiyle ölçer → "Kaydedildi ve
+   çözüldü" (sıradaki: ISO) / "İmaj çözüldü, değişiklikler atıldı" (sıradaki: Görüntü'ye git) / "Kaydedilemedi /
+   Çözülemedi" + gerekçe ("İmaj hâlâ bağlı; yeniden deneyebilirsin", Kaydet…). Özet'in çalışma kartı da aynısını söyler;
+   kapanış sürerken sıradaki adım "Bekle".
+- Render: `--demo-mounts=adopting|remounting|failed|adopted|overview|unmount`,
+  `--demo-apply=stopped|discarding|discarded|saving|saved|closefailed`,
+  `--operation=delete|export|rename|duplicate|move|unmount|prepare-delete [--select=…]` (kaynakla),
+  `--demo-unattended=welcome --demo-overview=unread --page=overview`; hepsi render_diff envanterinde.
+Sonuç:
+- Doğrulanan (birim): `tests/app/MountAdoptionTests.cpp` (Ok / NeedsRemount / Invalid / imaj yok / kalıntı; `\\?\` ve UNC
+  öneki; "Sources" büyük harf; kurulum klasörü dışındaki WIM; setup.exe / boot.wim ile kurulum klasörü; `\\?\` altındaki
+  bozuk install.wim'in artık "folder has no sources" vermemesi; WinLove'un kendi klasörü / başkasınınki),
+  `tests/app/WorkStateTests.cpp` ("editions: each long work…"), Özet çipleri (her `OpKind`'dan bir işlemle toplam = kuyruk;
+  karşılamanın iki dosyası → Kurulum › Katılımsız; paylaşılan türler), Uygula kapanışı (durduruldu → atılıyor → atıldı;
+  → kaydediliyor → kaydedildi + sıradaki ISO; hata gerekçesi; iptal; kaydetmiş çalıştırmada ve sonradan bağlanan imajda
+  devreye girmemesi; sayfa başlıkları her adımda).
+- Doğrulanan (yönetici lab'ı, iki kez; `build\lab\fixes\lab-adopt.ps1`, günlükler `lab-adopt-run1.log`, `lab-adopt.log`):
+  lab WIM'inin kopyası çevresinde kurulum dosyası olmayan bir `…\Sources\install.wim`; dism.exe ile `\\?\` yollarıyla index
+  4 bağlandı → `wlcli mounts --json` düz yollar, `--fast` bayraklar 257 (0x101 MOUNTED | READWRITE) → `wlcli adopt
+  \\?\…\mnt`: "ok -> use", kaynak WIM'in kendisi (6 sürüm), "Windows 11 Pro", DISM oturumu ~0,7–2 sn → boş klasör
+  reddedildi ("not an image", dokunulmadı) → özellikler 137, provisioned appx 47 okundu → tek kayıt değeri uygulandı ve
+  `reg-check` ile imajda okundu → `wlcli unmount <düz yol> --discard` → bağlama tablosu başlangıçtakiyle aynı. Bu, D-064'ün
+  "görülmeyen"ini ve `inspectMountsFast`'ı (D-136 eki) gerçek bir bağlamada motor yolundan kanıtlar. Sahibinin bağlama
+  tablosu oturum boyunca değişmedi (yalnız referans aracın kendi bağlaması: index 2, RW, Ok).
+- Render önce / sonra `build\lab\fixes\final\` (b1 devralma: liste, devralınıyor, yeniden bağlanıyor, reddedildi,
+  Sürümler, Özet, çözme sorusu; b2 Durum sütunu "Bağlanıyor" → "Siliniyor" + kopya, iki sürüm silme, dışa aktarma,
+  yeniden adlandırma; b3 Kuyruk: "Kurulum · Katılımsız 2", nötr çubuk, ✓ simgesi, zengin kuyruk; b4 kapanış: durduruldu,
+  atılıyor %40, atıldı, kaydediliyor, kaydedildi, çözülemedi, Özet).
+- Doğrulanmayan: NeedsRemount'un gerçek imajda devralınması (üretmek WIM filtresini koparmayı — `fltmc unload wimmount`,
+  wimserv'i durdurmak — gerektirir, sahibinin diğer aracının bağlamasını da etkilerdi; yalnız birim testi); devralmanın,
+  ISO kaynakta silmenin ve gerçek bir Uygula'yı durdurup çözmenin pencereli uygulamada izlenmesi (pencere açılmadı; motor
+  yolu wlcli ile, durum geçişleri birim testinde, gösterim render ile; çözme ve silme motoru değişmedi).
+
+## D-147 — Başlık çubuğu yalnız "WinLove" der, markanın yazı tipiyle (2026-11-11; D-133'ün "başlıkta imajın adı"nı geçersiz kılar)
+Bağlam: Sahibi: başlık "daha efektif, güzel, farklı fontta" olsun; ISO / WIM adı gibi bilgiler orada görünmesin.
+Karar:
+- Ortadaki başlık her zaman uygulamanın adı (`Str::AppName`); açık imajın adı / dosyası (D-133, "Windows 11 Pro ·
+  install.wim") kaldırıldı — imaj durum çubuğunda ve sayfalarda zaten adlanıyor. `windowTitle()`, `TitleBar::setTitle()`
+  ve `title.image` metni (tr / en) silindi. İşletim sisteminin pencere başlığı (görev çubuğu / Alt-Tab) zaten sabit
+  "WinLove" idi, değişmedi.
+- Yazı: markanın kendi yazı tipi (`WinLove-UI-Handoff/00_brand/brand-guidelines.md`: "Wordmark: IBM Plex Sans"), yalnız
+  SemiBold, OFL 1.1: `resources/fonts/IBMPlexSans-SemiBold.ttf` + `IBMPlexSans-OFL.txt`, exe'ye RCDATA olarak gömülü
+  (diğer fontlar gibi). Arayüz yazı tipi ayarı (Inter / Geist / Segoe UI Variable) markayı etkilemez. Hakkında'nın fontlar
+  ve lisans metni ile README'nin lisans satırı IBM Plex Sans'ı da sayar.
+- Tokenlar (tokens.json 5.0.0, sürüm artırılmadı): `typography.family.brand` / `brandFallback` (Segoe UI),
+  `typography.styles.wordmark` (15 / 20, 600, harf aralığı +0,2); `FontRole::Brand` (gen_tokens.py), `FontFamilies.brand`.
+- Renk: "Win" metin rengi, "Love" vurgunun okunur tonu (`accent.text`: koyu #74A3EA, açık #2462C7; özel vurguda onun tonu,
+  D-143). Pencere etkin değilken tek renk, soluk (text.tertiary, eskisi gibi). Yüksek karşıtlıkta (uygulama ya da Windows)
+  yalnız metin rengi. Sığmayan dar pencerede tek renk + "…" (eskisi gibi). Ayrım noktası koddaki sabit "Love" değil,
+  adın ikinci büyük harfi.
+- D-109 / D-136'dan sapma: başlıkta arayüz yazı tipi dışında bir yazı tipi (yalnız marka için).
+Sonuç:
+- Doğrulanan: Debug `build.ps1 -Test` geçti; Release `-Test` ikinci koşuda geçti (ilk koşu 0xC0000374 ile düştü — STATUS
+  "Bilinen"; bu değişiklikle ilişkisi ne kanıtlandı ne dışlandı: temel sürümle karşılaştırma yapılmadı).
+  `tests/app/ShellPolishTests.cpp`, `tests/support/TestGraphics.cpp` güncellendi. Render `build\lab\wordmark\final\`
+  (Özet koyu / açık / saf siyah / yüksek karşıtlık, bağlı demo imajla; Kaynak koyu; 2× başlık ve büyütülmüş marka
+  kırpımları): bağlı imajda başlık yalnız "WinLove".
+- Doğrulanmayan: canlı pencerede etkin / etkin değil geçişi; Windows'un yüksek karşıtlık temaları.
+
+## D-146 — Ayarlar'a hazır şablonlar: Şablon ▾ (2026-11-11; "Önerilenleri uygula"yı ve ayar başına `recommended`'ı kaldırır)
+Bağlam: Sahibinin listesi madde 5: Ayarlar (imaj) sayfasına Bileşenler'deki gibi hazır şablonlar. Bileşenler'in
+şablonları (`Tier`: Gizlilik ⊂ Genel ⊂ Hafif; `ComponentController::applyTemplate`) yalnız RemoveAppx / RemoveComponent
+ekler, kuyruktakini ve uyumluluk korumasının tuttuğunu atlar, hiçbir şeyi çıkarmaz; geri alınabilir toast, satırda şablon
+rengi, "Tümü ▾" süzgeci. Ayar, servis, görev kuyruğa girmez. Ayarlar'da tek düğme vardı: "Önerilenleri uygula" (49 ayarın
+`recommended` işareti); kullanıcının seçimini eziyordu ve küme herkes için güvenli değildi (workplace-join,
+removable-twice, wpbt, game-dvr ilkesi…).
+Karar:
+- **Veri:** `resources/catalog/settings.json` sonunda `"templates"`: `{id, tr, en, desc_tr, desc_en, settings: {ayar id:
+  seçenek id}}` (aç / kapa için "on" / "off"). Bilinmeyen ayar / seçenek, Windows varsayılanı ya da metin / dosya ayarı
+  içeren seçim yüklenirken atlanıp loglanır; seçimi kalmayan ya da kimliği tekrarlanan şablon atlanır. Ayar başına
+  `recommended` işaretleri (49 satır) kaldırıldı.
+- **Model:** `ImageSettingTemplate` (`ImageSettingsCatalog.h`), `ImageSettingsController::applyTemplate / previewTemplate /
+  templateOption / resetChanges`; `applyRecommended` kaldırıldı.
+- **Etkileşim (Bileşenler gibi "ekler, sıfırlamaz"):** şablon, imajdaki hâlinde duran her ayarını kendi seçeneğine alır;
+  kuyrukta zaten değiştirilmiş ayara (kullanıcının ya da önceki bir şablonun) dokunmaz. İmajın kendi değeri (D-045) seçim
+  sayılmaz, şablon onu değiştirir. Bir şablon = tek kuyruk düzenlemesi = tek geri alma adımı. Şablonlar birbiriyle
+  çelişmez (ortak ayara aynı seçenek; birim testi) → hangi sırayla uygulanırsa uygulansın birleşimleri.
+- **Arayüz (Bileşenler'in düzeni):** şerit `Bu bilgisayardan al · Şablon ▾ | Geri al · Yinele | Sıfırla`. Toast: "{n} ayar
+  şablona göre ayarlandı (Gizlilik)" + şablonun açıklaması + "{k} ayar senin seçtiğin gibi bırakıldı." + "Orta riskli: …"
+  (değişen orta riskli ayarların adları) + "Geri al". Süzgeç satırında "Tümü ▾ / Şablon (…)": şablonun ayarları bütün
+  sekmelerden ("Sekme › Bölüm"), satırda "şablonda: Kapalı", formun üstünde bilgi çubuğu (ad, kime göre, "{n} ayar · {k}
+  tanesi değişecek", **Şablonu uygula**, kapat = Tümü). Uygulanınca satırlar her zamanki "değiştirilecek" vurgusu, sekme ve
+  gezinti rozetleri. **Sıfırla:** formun bütün ayarlarını imajdaki hâline döndürür (yazılan metin / resim de), tek adım, onay
+  yok (Bileşenler'inki gibi); durum kuyruktan türediği için Servisler'de / Kayıt Defteri'nde aynı değeri yazan işlem de
+  çıkar (P12'nin bilinen modeli).
+- **Altı şablon** (ayar sayısı): **Dengeli** 24 — herkes için: reklam, öneri, gereksiz veri paylaşımı kapanır, hiçbir
+  Windows özelliği bozulmaz (yalnız düşük riskli kayıt değerleri; servis / dosya yok); **Gizlilik** 59 — Dengeli'nin veri /
+  reklam kısmı + telemetri servisleri, yazma / konuşma verisi, eşitleme, uygulama izinleri, aramada web / geçmiş, Copilot,
+  Recall ve uygulamalardaki yapay zekâ, uygulama telemetrileri (tek orta riskli: `diagtrack-service`); **Sade ve sessiz**
+  29 — reklamsız, önerisiz, ipucusuz Başlat / görev çubuğu / kilit ekranı (tema, hizalama gibi zevk ayarlarına dokunmaz);
+  **Performans** 12 — başlangıç gecikmesi, menü gecikmesi, NTFS son erişim, bakım uyandırma, görsel efektler…; **Oyun** 12
+  — ön plan önceliği, GPU zamanlaması, pencereli oyun iyileştirmeleri, MMCSS, ham fare, oyunu bölen kısayollar; **İş
+  bilgisayarı** 26 — tüketici içeriği kapanır, ağ ve oturum sıkılaşır (restrict-anonymous, LLMNR), etki alanı / yönetim /
+  yazdırma çalışır, telemetri kuruluşa kalır. **Hiçbir şablonda:** yüksek riskli ayar, geri dönüşü olmayan servis / kayıt
+  silme seçeneği, Windows Update / Mağaza güncellemesi / Defender / SmartScreen / UAC / ağ / yazdırma / erişilebilirlik /
+  oturum / kamera-mikrofon / sayfa dosyası (testteki `never` listesi). "Herkes için bozmaz" kuralına uymadığı için bilerek
+  dışarıda kalanlar: Dengeli'de web-search, widgets, onedrive-kfm, workplace-join, removable-twice, folder-type-discovery,
+  game-dvr, wpbt / vendor-apps; Gizlilik'te location, find-my-device, camera / microphone, tarayıcı telemetrisi; Oyun'da
+  memory-integrity / vbs, xbox-services, game-bar / game-mode. Ayar listeleri katalogda; ayar ayar gerekçe tablosu
+  `build\lab\tweakpresets\NOTES.md` §3'te (depoda değil).
+- `tools/lab_settings_d067.ps1` 93. satır `recommended`'a bakıyordu; artık açılır listede hep son seçeneği dener (lab yine
+  her ayarı varsayılan dışı hâliyle uygular).
+- Render: `--demo-tweaks --demo-tweak-template=balanced,privacy` (sırayla uygular, son toast kalır),
+  `--demo-tweak-filter=<id>` (süzgeç o şablonda); menü açık kare `--click-at` ile.
+- Yapılmayan öneriler (sayfa dışı): Gizlilik için telemetri görevleri, WerSvc / lfsvc / MapsBroker / RetailDemo servisleri,
+  Hosts'un telemetri listesi, Bileşenler'in Gizlilik şablonu; Performans / Oyun için güç planı; İş için RemoteRegistry.
+  `templates` yapısı ileride görev / servis / hosts kimliklerine genişletilebilir (çapraz sayfa şablonu).
+Sonuç:
+- Doğrulanan: Debug + Release `build.ps1 -Test`: 644 vaka / 22.613 denetim (10 atlanan); D-146'nın 8 vakası 2.813 denetim
+  (çelişmezlik, `never` listesi, ekler / sıfırlamaz, geri alma, Sıfırla, yükleme redleri). Render
+  `build\lab\tweakpresets\final\` (koyu / açık × tr / en: temel, Dengeli + Gizlilik, Oyun, süzgeç; menü açık koyu tr ve açık
+  en). render_diff (önce = `build\lab\autoiso-opts\before\WinLove.exe`): 336 aynı / 14 farklı; bu işin farkları Ayarlar'ın
+  şeridi ve süzgeç satırı, diğerleri bilinen gürültü (`--demo-icons`, log saati, Uygula çalışıyor) ve D-144 ekinin "ISO
+  seçenekleri…" satırı.
+- Doğrulanmayan: canlı pencerede menü / toast / Geri al / Sıfırla; şablonların kurulan Windows'taki etkileri (VM yok;
+  değerlerin imaja yazılması D-067 lab'ında ayar ayar kanıtlı).
+- Bilinen (önceden vardı): alt sekme etiketi "Ayarlar · 6" sayfa açılırken yazılıyor, kuyruk değişince güncellenmiyor
+  (Bileşenler'de de aynı).
+
+## D-145 — Güncellemeyi uygulamanın içinden yükle + Markdown'lı Değişiklikler penceresi (2026-11-11; D-140'ın "hiçbir şey indirmez" kuralını yalnız "Yükle"ye basınca gevşetir)
+Bağlam: Sahibinin listesi madde 7: "güncelleme uyarısında Değişiklik günlüğünü de releases'den bulsun md düzgün formatta
+inceleyebilsin … Yükle ve Değişiklikleri gör butonu olacak; basınca ayrı pencerede sade ve düzenli biçimde listeleyecek …
+Markdown destekler şekilde göstersin." Gerçek yayın düzeni (GitHub API, 2026-11-11 11:50, tek GET, belirteçsiz; yanıt
+`build\lab\autoupd\releases.json`): 9 yayın, hepsi ön sürüm, taslak yok; **her birinde tek ek** `WinLove.exe`
+(`application/x-msdownload`, `state: uploaded`, 6,99 MB … 11,21 MB, `…/releases/download/<etiket>/WinLove.exe`) ve her
+ekte GitHub'ın kendi `digest` alanı (`sha256:<64 hex>`); zip / `.sha256` eki / başka mimari yok. Gövdeler Markdown (kalın,
+`##` / `###`, iç içe madde, `>` alıntı + emoji, `[Türkçe](#türkçe)` çapaları, satır içi kod).
+Karar:
+- **Ek seçimi** (`core::pickUpdateAsset`): adı tam `WinLove.exe` (harf duyarsız); yoksa adı `winlove` ile başlayan, `x64` /
+  `amd64` içeren, `arm64` içermeyen `.exe`. Ayrıca `state: uploaded`, 1 bayt – 512 MB, adres projenin yayın indirmesi.
+  Yoksa yükleme yapılmaz, "İndirme sayfasını aç".
+- **İndirme** (`core::downloadUpdate`): `<exe>.new` (exe'nin yanında: aynı birim → takas iki yeniden adlandırma), `.part` +
+  kaldığı yerden devam (var olan `httpDownload`, isteğe bağlı `HttpOptions`: `User-Agent: WinLove/1.3.0`, çerez yok).
+  Yönlendirmenin vardığı adres `*.githubusercontent.com` (https) ya da projenin indirme yolu değilse bir bayt yazılmadan
+  red (`trustedAssetUrl`). Gönderilen: yalnız o GET (+ GitHub'ın gördüğü IP).
+- **Denetim** (`core::verifyUpdateFile`, sırayla): boyut = API'nin boyutu; SHA-256 = API'nin `digest`'i (varsa — bugün
+  hepsinde var); PE ("MZ" … "PE\0\0", çalıştırılabilir, DLL değil); makine 0x8664 + PE32+; alt sistem 2 (GUI);
+  ProductVersion = etiketin sürümü (`parseAppVersion`; "1.3.0 Beta" = "v1.3.0-beta"). Ayrı bir `.sha256` eki indirilmez.
+- **Takas** (`core::swapInUpdate`): önceki güncellemeden kalan `<exe>.old` silinir — silinemiyorsa (hâlâ kullanımda) hiçbir
+  şey değişmeden durur; `<exe>` → `<exe>.old` (çalışırken izinli); `<exe>.new` → `<exe>`; ikinci adım başarısızsa birincisi
+  geri alınır. `core::rollbackUpdate`: yeni exe `<exe>.new`'e, `.old` geri `<exe>`'ye.
+- **Akış** (`UpdateController`, kendi iş parçacığında; arayüz ve DISM motoru beklemez): Yükle → redler (bağlı imaj;
+  Uygula / ISO / motor işi / indirme sürerken; klasör yazılamıyor) → indiriliyor (kartta ölçer + %, durum çubuğunda
+  "Güncelleme indiriliyor · %42", **Vazgeç**) → denetleniyor → takas → **hazır** (bildirim + kartta **Yeniden başlat**;
+  durum çubuğu da). Yeniden başlat: yeni exe `CreateProcess` ile (aynı çalışma klasörü, "runas" yok) `--relaunched
+  "--updated-from=1.3.0 Beta"` (+ bu süreç yönetici değilse `--no-elevate`: güncelleme yüzünden UAC istenmez), sonra pencere
+  `confirmClose` yolundan kapanır. Başlatılamazsa takas geri alınır, kart nedenini söyler. Yeni örnek: tek bildirim "WinLove
+  güncellendi: 1.3.0 Beta → x", Hakkında kartı aynı; `<exe>.old` silinir (eski süreç çıkana dek 2 sn arayla 10 deneme; her
+  açılışta bir kez daha).
+- **Hatalar** kartta ve bildirimde düz sözlerle (`Install::Why`): ek yok / bağlı imaj / iş sürüyor / klasör yazılamıyor /
+  indirilemedi (yarım dosya kalır, yeniden deneme kaldığı yerden) / dosya bu sürümün değil (silindi) / yerine konamadı
+  (eski exe yerinde) / yeni sürüm başlatılamadı (eski geri kondu) / durduruldu (yarım dosya silindi). Ek yok, klasör,
+  denetim, takas, başlatma hatalarında **İndirme sayfasını aç** (yalnız `html_url`, D-140'ın güvenli adres kuralı);
+  diğerlerinde **Yeniden dene**.
+- **Bildirim:** D-140'ın tek tostu iki düğmeli: **Yükle** (dolu) · **Değişiklikleri gör** (tostun altında kendi satırında;
+  tek düğmeli tostlar eskisi gibi). Durum çubuğu bölümüne tıklama bir menü: Yükle · Değişiklikleri gör · Hakkında'da göster
+  (indirme sürerken Hakkında, hazırsa yeniden başlatma). **Hakkında kartı:** yeni sürüm varken [Yükle] [Değişiklikleri gör]
+  [Şimdi denetle]; "Sürüm sayfasını aç" artık yalnız yüklenemeyen durumda "İndirme sayfasını aç"; güncelken de
+  [Değişiklikleri gör].
+- **Değişiklikler penceresi** (`App` → `ChangelogWindow`, içerik `app/shell/Changelog` `ChangelogView`): ayrı üst düzey
+  pencere, aynı `ui::Window` (kendi sınıfı `WinLove.Changelog` — tek örnek denetimi ana pencereyi sınıfıyla bulur; ana
+  pencereye ait: üstünde durur, onunla küçülür; kapanınca ileti döngüsü bitmez — `WindowAppearance::className / owner /
+  quitOnClose`, `WindowCallbacks::destroyed`), aynı grafik / tema / vurgu / DPI / yakınlaştırma, kendi başlık çubuğu
+  ("WinLove — Değişiklikler" + küçült / büyüt / kapat), yeniden boyutlanır, Esc kapatır, tek pencere (ikinci "Değişiklikleri
+  gör" öne getirir), dil / yazı tipi değişince kapanır, tema değişince çerçevesi güncellenir. İçerik: "Değişiklikler", "Bu
+  bilgisayarda 1.3.0 Beta · 2 yeni sürüm"; sağda [Sürüm sayfasını aç] [Yükle]; çalışan sürümden yeni her yayın (en yenisi
+  önce), sonra "Önceki sürümler" altında son 3 eski yayın (çalışan sürüm "Bu sürüm" etiketiyle); her biri bir kartta: ad,
+  "v1.4.0-beta · 1 gün önce yayımlandı", etiketler (Yeni / Bu sürüm / Ön sürüm), gövde Markdown. **Ek istek yok:** gövdeler
+  D-140'ın tek yanıtında (`Release::body` ≤ 128 K karakter; `ReleaseCheck::releases` sürüme göre sıralı; `changelogParts`).
+- **Markdown:** ayrıştırıcı `base/Markdown` (saf metin; ui ve core kullanabilir), görünüm `ui/widgets/MarkdownView`. ATX ve
+  setext başlıklar; yumuşak satır sonu birleşir, iki boşluk / `\` / `<br>` kırar; kalın, italik, ikisi, üstü çizili, `kod`;
+  çitli ve girintili kod blokları; iç içe alıntı; iç içe madde / numaralı listeler (gevşek / sıkı, tembel devam); yatay
+  çizgi; GitHub tabloları (sığmazsa sütunlar daralır, satırlar sarar); bağlantılar (tıklanınca yalnız `http(s)://`
+  tarayıcıda; `#çapa` aynı yayındaki başlığa kayar), `<otomatik>` ve çıplak `https://` / `www.` adresleri; görsel yalnız alt
+  metni (hiçbir şey indirilmez); HTML yorumu gizli, diğer HTML metin; yaygın HTML varlıkları. Düşmanca girdide çökmez,
+  doğrusal kalır: iç içelik 12'de metne döner, etiket araması 2000 karakter, ters tırnak araması önbellekli, girdi 512 K'da
+  kesilir. Metin seçilebilir (sürükle, çift tık paragraf, Ctrl+A / Ctrl+C), tekerlek / klavye ile kayar; düzen `layout()`'ta,
+  `paint()` yalnız çizer; renk aralıkları için `Canvas::drawTextLayout` (renkli yazı tipleri renkli).
+- **wlcli:** `update-install --exe=<kopya> (--asset=<dosya|https> | --releases=<kayıtlı yanıt>) [--tag=] [--expect=<sha256>]
+  [--bytes=] [--fail-at=verify|swap] [--json]` (çıkış 0 yüklendi, 2 indirme / ek yok, 3 dosya bu sürümün değil, 4 takas geri
+  alındı) ve `update-rollback --exe=`. Exe'yi asla başlatmaz.
+- Render: `--demo-update=downloading|verifying|ready|install-failed|updated`, `--demo-changelog[=<yanıt.json>]` (varsayılan
+  `tests\integration\fixtures\changelog-sample.json`: gerçek yanıttan üç yayın + her Markdown yapısını kullanan iki
+  uydurma yeni yayın + bir taslak); `--keys=` artık `pgdn,pgup,home,end` da alır; render_diff envanterinde.
+- 65 yeni metin anahtarı (`appUpdate.self.*` 30, `changelog.*` 12 ve D-144'ünkiler; tr + en). Yeni token yok, yeni üçüncü
+  parti yok. `Shell.cpp` Debug'da COFF bölüm sınırını aştı: yalnız o dosyaya `/bigobj`.
+- **Hakkında'daki söz** ("kimseye bir şey göndermez") değiştirilmedi (sahibinin kararı açık, STATUS). Yeni ağ trafiği yalnız
+  kullanıcının "Yükle"ye basmasıyla ve yalnız o dosyanın GET'i; telemetri yok.
+Sonuç:
+- Doğrulanan (birim): `tests/base/MarkdownTests.cpp` (10 vaka: her yapı, vurgu kenar durumları, bozuk bağlantılar,
+  varlıklar, CRLF / CR, BOM, sekme, 20 000 sözcüklük satır, 5000 iç içe alıntı, 400 seviye liste, 20 000 `[`, girdi sınırı,
+  çapa anahtarları), `tests/core/SelfUpdateTests.cpp` (6: gerçek yanıttaki ekler ve `digest`, gövdeler, ek seçimi ve 10
+  kötü adres, derlenen WinLove.exe'nin PE / sürüm bilgisi, boyut / SHA-256 / sürüm / PE değil / ARM64 / konsol programı
+  redleri, takas, iki ad arası hata → geri alma, kullanımdaki `.old` → hiçbir şey değişmez, yabancı adrese indirme reddi),
+  `tests/app/SelfUpdateAppTests.cpp` (8: akış sahte yükleyiciyle, yeniden başlatma komut satırı, redler, her hata, iptal,
+  başlatma hatasında geri alma, hazırken imaj bağlanınca bekleme, Hakkında kartının her hâli, durum çubuğu, pencerenin
+  bölümleri + Esc, iki düğmeli tost), `tests/ui/MarkdownViewTests.cpp` (1). Debug + Release `build.ps1 -Test`: 633 vaka /
+  20.085 denetim (10 atlanan).
+- Doğrulanan (lab, `build\lab\update\selfupdate\lab.ps1` → `lab.log`; yalnız kopyalar, yönetici yok, `dist\` ve çalışan
+  WinLove'a dokunulmadı): yerel dosyayla takas (çıkış 0; exe yeni, `.old` eski), `update-rollback` (0; exe yine eski),
+  `--fail-at=verify` (3; exe değişmedi, `.new` silindi), etiket / dosya sürüm uyuşmazlığı (3), `--fail-at=swap` (4; exe
+  değişmedi, `.new` duruyor), exe **çalışırken** takas ve geri alma (ikisi 0, süreç canlı kaldı), **gerçek ek**: GitHub'dan
+  v1.3.0-beta `WinLove.exe`, 11.211.264 bayt, SHA-256 = API'nin `digest`'i, x64 GUI, ProductVersion "1.3.0 Beta"; takas edildi.
+- render_diff (`build\lab\autoupd\diff.log`): 286 aynı, 34 farklı, 30 "başarısız" (eski exe'nin tanımadığı yeni bayraklar);
+  34 farkın hepsi açıklandı (D-144'ün satırı / bandı, Hakkında, iki düğmeli tost, durum çubuğu menüsü, "Boş alan").
+  Görüntüler `build\lab\autoupd\final\` (toast-*, status-*, about-*, changelog-*).
+- Doğrulanmayan: canlı pencere hiç açılmadı — Değişiklikler penceresinin gerçek açılışı / taşıma / boyutlandırma / DPI
+  değişimi / Esc / tek örnek / sahip pencereyle küçülme / tema değişimi; bağlantının tarayıcıda açılması; farede metin
+  seçimi (yalnız simülasyon); iki düğmeli tostun ve durum çubuğu menüsünün tıklanması; uygulamanın içinden gerçek "Yükle" →
+  "Yeniden başlat" → `--updated-from` ile açılan yeni örnek ve `.old`'un silinmesi (çekirdek adımlar wlcli lab'ında gerçek
+  dosyalarla; `CreateProcess` + pencere kapatma zinciri yalnız sahte yükleyiciyle birim testinde); `Program Files`'ta
+  yönetici olarak çalışan WinLove'un güncellenmesi; yazılamayan klasör (yalnız birim testi); proxy / kesilen bağlantı;
+  başka sürümden kalmış `.new.part` (bilinen: ilk deneme boyut / SHA-256'da düşer, dosya silinir, ikinci deneme temiz
+  başlar); gerçekten daha yeni bir yayın (yok; demo ve fixture ile); ekran okuyucu.
+
+## D-144 — Uygula bitince ISO oluştur; ISO seçenekleri Uygula'dan da seçilir (2026-11-11)
+Bağlam: Sahibinin listesi madde 6: "Uygula sayfasında kullanıcı isterse uygula işlemi bitince durum başarılıysa otomatik iso
+oluşturmayı da seçebilmeli. Şuan bitmesini bekliyor sonra kullanıcı iso sayfasına girip tekrar iso oluştur demek zorunda
+kalıyor." Aynı gün ek: "Uygula sayfasına ISO oluştur ekledin ama kullanıcı ISO oluşturma seçeneklerini seçemiyor." (ilk
+hâlde otomatik ISO hep ISO Oluştur'un ilk değerleriyle yapılıyordu; sayfadaki seçimler sayfanın widget'larındaydı ve sayfa
+yeniden kurulunca kayboluyordu).
+Karar:
+- **Yer:** Uygula › özet, "Kaydetmeden önce" ve "Kurulumdan sonra" satırlarının altında üçüncü satır **Bitince**: [ ] **ISO
+  oluştur** · yazılacak dosya (`D:\ISO\x64-9448_WinLove.iso`) · **Değiştir…** (dosya kaydetme diyaloğu) · **ISO
+  seçenekleri…** (`ButtonKind::Subtle`, `TweaksSliders` simgesi; ikisi seçenek açık ve kullanılabilirken görünür). Altında
+  tek satır özet (Caption, text.secondary): "UEFI + BIOS · etiket CPRA_X64FRE_TR-TR_DV9 · SHA-256"; değiştirilmişse ör.
+  "Yalnızca UEFI · etiket WINLOVE_TR · ESD · tuş istemi yok · UEFI CA 2023". Yapılamayacak kaynakta seçenek pasif, dosyanın
+  yerinde kısa neden (turuncu): "kaynak açık değil", "tek bir WIM / ESD dosyasından ISO yapılmaz", "sanal diskten ISO
+  yapılmaz", "yanıt dosyasında Kurulum'un reddedeceği bir değer var". Kural ISO Oluştur'unki: `IsoController::sourceBlocker`
+  (yeni; `blocker()` bundan türedi, sırası ve sonucu aynı) — bağlı imaj ve süren Uygula sayılmaz.
+- **Hatırlanan:** `AppSettings::isoAfterApply` (settings.json `"isoAfterApply"`, varsayılan kapalı) — aynı satırlardaki
+  `pauseBeforeSave` ve `updateGuard` gibi. Ön ayara değil: ön ayar imajın içeriğini taşır; ISO'nun yazılıp yazılmayacağı ve
+  nereye yazılacağı bu bilgisayarın iş akışı (yol makineye özgü).
+- **Dosya:** klasör ISO Oluştur'unki (`AppSettings::isoFolder`, boşsa Masaüstü), ad ISO Oluştur'un varsayılanı `"<kaynak
+  adı>_WinLove.iso"`. "Değiştir…" klasörü `isoFolder`'a yazar (ISO sayfası da onu açar), adı yalnız bu kaynak için bellekte
+  tutar. Hiçbir klasör oluşturulmaz (motor seçilen klasöre `.part` → yerine taşıma ile yazar).
+- **Ne zaman başlar:** Uygula'nın bitişinde (`ApplyController::Events::finished` — imaj kaydedilip çözüldükten, kaynak
+  yeniden okunduktan sonra) **çalıştırma imajı kaydettiyse**: bütün adımlar tamam ya da atlananlarla kaydedilmiş.
+  Başlamaz ve nedeni kartta yazar: başlatılamadı / kaydedilemedi ("uygulama tamamlanamadı"), Durdur ya da DISM oturumu
+  kaybı ("durduruldu"), bir adım başarısız olup imaj kaydedilmedi (held) ya da duraklatmada Durdur (kept) ("imaj
+  kaydedilmedi"), D-055'te diğer sürümlerden biri kaydedilemedi, kayıttan sonra ISO Oluştur reddetti (ör. yanıt dosyası
+  bozuldu), D-084 karşılama betiği kurulacak sürümde yok (ISO sayfasının `startIso` denetimi). "Dur: bağlı klasörü elle
+  düzenleyeceğim" (D-106) seçiliyken **Kaydet ve devam et** imajı kaydeder → ISO başlar (kullanıcı elle düzenlemeyi bitirip
+  kaydetmeyi seçti); duraklatmada **Durdur** → ISO yok, nedeni yazılı. Bu bir yorum; "duraklatma seçiliyse hiç ISO yapma"
+  istenirse `autoIsoSkip`'e tek satır (sahibine soru, STATUS).
+- **Motor:** tek ISO motoru `IsoController::start` (yeni motor yok). İstek `IsoController::defaultRequest`, aşağıdaki ortak
+  seçeneklerden kurulur; otomatik ISO'ya özgü olanlar: `workCopy = Keep` (ISO kaynağında az önce kaydedilen çalışma
+  kopyası), önceki kurulum kullanıcı seçmediyse D-074 kuralı motor iş parçacığında, yapımdan hemen önce (`legacySetupAuto`;
+  `editionsWithoutWinre`, `mediaOpensPreviousSetup`), `openFolder = false` (uzun bir Uygula'nın sonunda Gezgin
+  kendiliğinden açılmaz; kartta **Klasörde göster**), `afterApply = true` (`AppState::IsoRun::afterApply`). Sıkıştırma
+  `canRepack` değilse motor "Olduğu gibi"ye düşürür.
+- **ISO seçenekleri tek kaynak:** `AppState::IsoChoices` (`isoChoices()` / `setIsoChoices()`, `Change::Iso`): birim etiketi
+  (`optional`; yoksa kaynağınki, `IsoController::chosenLabel`), önyükleme modu, install.wim sıkıştırma, "tuşa basın" istemi
+  yok, gereksinim atlamaları boot.wim'e, önceki kurulum (`optional`; yoksa D-074 kuralı), Secure Boot 2023, SHA-256,
+  "Bitince klasörü aç" (yalnız ISO sayfası). Ortam güncellemesi kutusu paylaşılan `MediaUpdate::enabled`'da kaldı; dosya adı
+  / klasör burada değil. **Ömür:** uygulamanın oturumu (sayfa yeniden kurulunca, dil değişince korunur; settings.json'a
+  yazılmaz — önceden de yazılmıyordu). Etiket ve önceki kurulum kaynağa aittir: Uygula sonrası aynı kaynağın yeniden
+  okunması korur, başka kaynak açılınca ikisi sıfırlanır (`AppState::setSource`); mod, sıkıştırma, kutular kalır.
+- **Ortak bileşen** `app/pages/iso/IsoOptions.{h,cpp}`: `IsoOptionControls` denetimleri bir sahibin çocuğu olarak kurar, her
+  değişiklik hemen `setIsoChoices`'a, `sync(running)` durumdan geri okur (değer, etkin / pasif, ipuçları; D-074 / D-077 /
+  D-080 / D-094 kuralları sayfadan buraya taşındı); ipuçları, ISO sayfası özet kartının üç satırı ve WinRE okuması
+  (`editionsWithoutWinre`, okuyucu iş parçacığı) da burada. **ISO sayfası** bu bileşeni kullanır (yerleşim, sıra, klavye
+  sırası, çizim aynı); `IsoPage::request()` yine denetimlerden okur. **ISO seçenekleri iletişim kutusu**
+  (`makeIsoOptionsDialog`, `Shell::showIsoOptions`): 760 geniş, başlık + bir cümle ("ISO Oluştur sayfasıyla aynı
+  ayarlardır… Dosyanın yeri Uygula'daki satırda."), ISO sayfasının satırları (etiket 190 px · denetim · ipucu; D-136
+  ölçüleri), değişiklik anında geçerli (taslak yok), Tamam / Esc / dışarı tıklama kapatır, ISO yapılırken pasif. Özet satırı
+  saf `isoChoicesSummary(state, strings)`: yalnız varsayılandan farklı ya da hep bilinmesi gerekenler (mod, etiket,
+  yeniden paketlenebiliyorsa sıkıştırma, istem yok, atlamaların boot.wim'e yazılmaması — yalnız yanıt dosyası bir denetimi
+  atlıyorsa, elle seçilmiş önceki kurulum, ortam güncellemesi, UEFI CA 2023, SHA-256); `Change::Iso`'yu dinler.
+  `IsoController::canRepack(const AppState&)` statik sürüm eklendi.
+- **Durum** `AppState::ApplyRun::autoIso` (Waiting / Running / Done / Failed / Cancelled / NotStarted + neden): koşuyla
+  birlikte yaşar, dil değişince yeniden kurulan kabuk kaybetmez. İlerleme ISO koşusundan (`isoRun`), bitişi koşuya
+  kopyalanır; sonradan ISO sayfasında yapılan başka bir ISO bu kartı değiştirmez. Mantık `app/controllers/AutoIsoController`
+  (+ saf `autoIsoSkip`).
+- **Görünüm:** çalışırken adım listesinin son satırı "ISO oluştur · imaj kaydedilince · <dosya>"; sonuç kartında ISO bandı
+  (`ResultCard::Texts::iso`): halka (D-142) + "ISO oluşturuluyor · ISO yazılıyor" + ölçer + %42 + **ISO'yu durdur** → ✓ "ISO
+  hazır: <dosya> · 5,96 GB" + **Klasörde göster** (kartın dolu düğmesi; "ISO Oluştur" ikincil) / ⛔ "ISO oluşturulamadı:
+  <neden>" / iptal / ⓘ "ISO oluşturulmadı: <neden>"; bant değişince sayfa yeniden kurulur (`modeKey`). Özet'in çalışma
+  kartı: "ISO oluşturuluyor · %42" (halka, ISO'nun ölçeri) → "Tamamlandı · ISO hazır"; sıradaki adım "İlerlemeyi gör" / yeni
+  `Next::IsoReady` ("ISO hazır: … Önce bir sanal makinede dene, sonra USB'ye yaz." · **Klasörde göster**). Durum çubuğu:
+  "Uygulanıyor · ardından ISO" / "Uygulandı · ISO oluşturuluyor".
+- Render: `--auto-iso` (seçenek açık, ISO klasörü sabit `D:\ISO` — her makinede aynı kare),
+  `--demo-overview=iso-running|iso-done|iso-failed|iso-cancelled|iso-skipped` (+ `--page=apply`), `--iso-choices`
+  (değiştirilmiş seçenekler: Yalnızca UEFI, WINLOVE_TR, ESD, istem yok, UEFI CA 2023), `--iso-options` (iletişim kutusu
+  açık); render_diff envanterinde. Metinler (tr + en): `apply.autoIso.*` (25 + `options`, `optionsHint`),
+  `overview.runIso / runIsoDone / nextIsoReady`, `status.applyingThenIso / buildingAfterApply`, `isoChoices.*` (14). Yeni token yok.
+Sonuç:
+- Doğrulanan (birim, `tests/app/AutoIsoTests.cpp`, 11 vaka / 149 doğrulama): `autoIsoSkip` her sonuçla (başarılı, atlamalı
+  ama kaydedilmiş, başlatılamadı, kaydedilemedi, durduruldu, held, kept, diğer sürüm kaydedilemedi); seçenek / dosya / ISO
+  sayfasıyla aynı ilk değerler / "Değiştir…" / kaynak değişince ad; VHD / WIM / kaynaksız → kullanılamaz; başarı → ISO
+  bir kez başlar, ilerleme koşuyu değiştirmez, bitişi kopyalanır, sonraki ISO kartı değiştirmez; ISO hatası / iptal;
+  kayıttan sonra ISO Oluştur reddi ve karşılama eksikliği; motor kapıda reddederse "sürüyor"da kalmaz; Uygula'da seçilen
+  seçeneklerin (etiket, mod, ESD, istem, SHA kapalı, Secure Boot, önceki kurulum, ortam güncellemesi kapalı) koşu
+  bitince `IsoController::start`'a giden istekte olması; dokunulmamış önceki kurulum → kural; özet metni tr / en; ISO
+  sayfası ↔ iletişim kutusu iki yönlü; yeniden kurulan sayfa seçenekleri korur; aynı kaynak etiketi korur, başka kaynak
+  sıfırlar; Uygula sayfası her aşamada penceresiz kurulur; Özet'in sıradaki adımı (`IsoReady`, `WatchRun`, `BuildIso`).
+  Debug + Release `build.ps1 -Test` geçti (Release'te 13 koşudan birinde bilinen 0xC0000374, STATUS "Bilinen").
+- Render: `build\lab\autoupd\final\` (apply-option-*, apply-running-iso-waits, apply-iso-*, overview-iso-*) ve
+  `build\lab\autoiso-opts\final\` (apply-option-off/on/changed, apply-options-dialog(-changed), iso-page(-changed)); koyu +
+  açık, tr + en. render_diff: ISO sayfasının bütün durumları (USB, WinRE yok, ortam güncellemesi, AIO, Secure Boot…) bileşene
+  taşınmadan sonra birebir aynı; farklar açıklandı (yeni satır, ISO bandı, Özet'in ISO hâli, log saati).
+- Doğrulanmayan: gerçek imajla Uygula + otomatik ISO (yönetici lab'ı yapılmadı; mantık ISO motorunun lab'da kanıtlı yolunu
+  çağırıyor, istekteki alanlar ISO sayfasının zaten kullandıkları); canlı pencerede seçenek / "Değiştir…" diyaloğu / "ISO
+  seçenekleri…" / "ISO'yu durdur" / "Klasörde göster"; ISO kaynağında `editionsWithoutWinre`'nin çalışma kopyasını mı özgün
+  ISO'yu mu okuduğu (ISO sayfasıyla aynı davranış; WinRE'yi kaldıran bir ön ayardan sonra ölçülmedi); D-055 ile gerçek koşu.
+
+## D-143 — Serbest vurgu rengi (2026-11-11; D-137'nin beş sabit vurgusunu genişletir)
+Bağlam: Sahibinin listesi madde 9: "Ayarlarda sabit renkler yerine color palette koy özgür seçebilsin kullanıcı." D-137'den
+beri beş sabit vurgu vardı (Mavi, Bakır, Deniz, Nar, Zeytin), tabloları `build\lab\identity\derive.py` ile türetilmişti.
+Karar:
+- Vurgu artık herhangi bir renk (0xRRGGBB). `ui/theme/Palette`: `setAccentColor(rgb)`, `accentColor()`, `deriveAccent(rgb)`
+  (kurallar), `accentTokens(rgb)` (hazır renk → D-137 tablosu, başka renk → kurallar), `parseHexColor` / `hexColor`,
+  seçicinin `toHsv` / `fromHsv`'si, `presetColor` / `presetOf`. `setAccent(Accent)` (beş hazır renk) duruyor. Mavi
+  (#3070D9, varsayılan) tokenların kendisi; yüksek karşıtlık kendi renklerinde.
+- Kurallar (hesap HLS + OKLCH; `Palette.cpp` başındaki yorum):
+  - **Dolgu** (`accent.base`): seçilen renk. Üstünde beyaz yazı >= 4,6:1 olmalı: daha açık bir renk OKLab açıklığı
+    düşürülerek koyulaştırılır (ton ve kroma korunur; kroma yalnız sRGB'ye sığmak için azalır). Koyu temalarda dolgu koyu
+    kartta işaret olarak (sekme alt çizgisi, anahtar, onay kutusu) >= 3:1 görünmeli: daha koyu bir renk koyu ve saf siyah
+    temalar için aynı yolla açılır. İki sınır arasında her zaman yer var (bağıl parlaklık ~0,163–0,178). Örnek: #4B0082
+    açıkta aynı, koyuda #8B55CC; #F5E663 → #827600 (her temada); #0F766E açıkta aynı, koyuda #1D7E75.
+  - **Üzerine gelme / basılı:** dolgu %8 / %16 siyaha doğru (D-137 gibi).
+  - **Seçim dolgusu** (`accent.subtle`): dolgu kartın üstünde %20 (koyu) / %10 (açık) / %24 (saf siyah); üzerine gelme
+    dolgusuna 6 seviyeden yakınsa (griler) %2'lik adımlarla artar (en çok %50).
+  - **Okunur ton** (`accent.text`; koyu temalarda odak halkası da): dolgu HLS açıklığında 0,01'lik adımlarla açılır (açık
+    temada koyulaşır), sayfa, çerçeve, kart, grup, menü, giriş, kartın üzerine gelme dolgusu ve seçim dolgusunun hepsinde
+    >= 4,6:1 olana dek (derive.py'nin yöntemi, yuvarlaması birebir). Seçilen renkten daha renkli çıkarsa (OKLCH kroma)
+    kroması seçilen rengin kromasına indirilir ve adımlama sürer — D-137'nin Deniz ile Zeytin'e elle yaptığı yumuşatmanın
+    kuralı. Açık temada odak = dolgu. Saf siyahın okunur tonu koyununki. Vurgu üstü yazı beyaz.
+- **Beş hazır renk:** kurallar D-137 tablolarının 30 değerinin 26'sını birebir verir; Deniz'in ve Zeytin'in koyu / saf siyah
+  okunur tonu + odağı (#52AFA8 / #8DAA5E; tabloda #4FB1AA / #93AD5F) elle yumuşatılmıştı, fark OKLab'da 0,006 / 0,012
+  (fark edilme eşiği ~0,02'nin altında). Hazır renk seçilince tablo kullanılır → mevcut kullanıcı için hiçbir şey değişmez.
+- **Kalıcılık:** settings.json `"accent": "#RRGGBB"`. Eski dosyalar: `"blue"`, `"copper"`, `"sea"`, `"pomegranate"`,
+  `"olive"` kendi renklerine; bilinmeyen / bozuk / yanlış tipte (`"sky"`, `"#12345"`, sayı) → Mavi; `"design" < 2` (D-107
+  öncesi) → Mavi. `AppSettings::accent` artık `std::uint32_t` (`accentFromText()`).
+- **Ayarlar › Vurgu rengi:** beş hazır renk tek tıkla (←/→ ile de), altıncı yuvarlak "Özel renk" (seçili değilken ton
+  yelpazesi, seçiliyken o renk), yanında ad ya da "Özel renk · #RRGGBB". Tıklama / Enter / Boşluk → satırın altında açılan
+  panel (`ui::ColorPickerPopup`; menü gibi gölgeli, köşe `radius.menu`, iç boşluk `size.panelPad`): doygunluk × parlaklık
+  alanı (232 × 120), ton çubuğu, dolgunun bu temadaki hâli + beyaz "Aa" örneği, `#RRGGBB` kutusu, gerekirse not ("Beyaz
+  yazı okunur kalsın diye dolgu koyulaştırıldı." / "Koyu temada seçimler görünsün diye dolgu açıldı."). Sürüklerken bütün
+  arayüz canlı boyanır (yalnız `ui::setAccentColor`, kaydedilmez); bırakma / Enter / ok tuşu / hazır renk kaydeder; Esc
+  açıldığı renge döner; dışarı tıklamak olduğu gibi kapatır. Kutu yalnız tam 6 hane yazılınca önizler (#RGB yalnız Enter
+  ile). Pencerenin 1 px vurgu çerçevesi (`App::applyTheme`) kaydedilince güncellenir.
+- Canlı uygulama: bütün vurgu fırçaları çizim anında çözülür (`colorArgb`), önbellekte vurgu rengi yok. İkon tonları
+  (`ui/render/IconTone.cpp`, D-114) kendi anlamsal paletinden; vurgu mürekkebiyle çizilen ikonlar yeni rengi kendiliğinden
+  alır. "Varsayılanlara dön" vurguyu eskisi gibi sıfırlamaz (değiştirilmedi).
+- Render: `--accent=` artık `#RRGGBB` de alır; `--demo-accent-picker` (Ayarlar, seçici açık). Canvas'a `fillLinearGradient`.
+Sonuç:
+- Doğrulanan: `tests/ui/AccentTests.cpp` — hazır renk eşitliği (26 + 4), Mavi = tokenlar; 960'tan fazla renk (saf sarı,
+  beyaz, siyah, griler, açık sarı, koyu mor, camgöbeği, sayfa renkleri, 24 ton × 3 doygunluk × 4 parlaklık, 600 sabit
+  tohumlu rastgele) üç temada PaletteTests'in bütün kuralları (metin 1 / 2 seçimde >= 4,5, metin 3 >= 3; vurgu metni her
+  yüzeyde >= 4,5; beyaz yazı dolgu / üzerine gelme / basılıda >= 4,5; dolgu sayfa / çerçeve / kartta >= 3; odak >= 3;
+  seçim karttan >= 8, üzerine gelmeden >= 6 seviye; yüksek karşıtlık değişmiyor); ton korunması (sarı < 4°, mor < 6°); hex
+  ayrıştırma; HSV gidiş-dönüş (<= 1 seviye); seçici etkileşimi (sürükleme önizler, bırakma kaydeder, ton çubuğu, kutuya
+  yazma, Esc, dışarı tıklama, oklar). `tests/app/SettingsTests.cpp`: `#RRGGBB` kaydı, eski adlar, bozuk değerler.
+  `deriveAccent` ~48 µs / renk (Release). Testler D-142 ile birlikte: Debug + Release 599 vaka / 19.407 denetim.
+- Render `build\lab\ring\final\accent-*` (seçici açık: koyu tr #4B0082, açık tr #F5E663, koyu en #F5E663, açık en #0F766E;
+  üç özel renk × Özellikler / Uygula / Ayarlar × koyu / açık, + Uygula saf siyah). render_diff'te varsayılan Mavi'de bütün
+  renkler piksel piksel aynı (hazır renk eşitliğinin render düzeyindeki kanıtı); fark yalnız Ayarlar'ın vurgu satırı ve galeri.
+- Doğrulanmayan: gerçek pencerede sürükleme akıcılığı, fare yakalama ve pencere çerçevesinin renk değişimi; ekran okuyucu
+  (UIA) adları; Windows yüksek karşıtlık temasında seçicinin görünümü.
+
+## D-142 — WinLove'un ilerleme halkası (2026-11-11; D-135'in iptalinden sonra sahibinin istediği tek hareket)
+Bağlam: Sahibinin listesi madde 4: "Uygulamamızın bütün sayfalarında yer alan bütün progressringleri daha güzel animasyonlu
+farklı bir şekilde yap." Her "çalışıyor" göstergesi `Icon::Spinner` ikonuydu: 8 dilimlik ikon her 100 ms'de 45° (kademeli;
+İndir sayfasında 250 ms) döndürülüyordu; ISO Oluştur, Özet'in çalışma kartı, Uygula'nın baş kartı ve adım listesinde hiç
+dönmüyordu. Genel hareket sistemi (D-135) iptal olduğu için yalnız bu halka yazıldı; DirectComposition / hareket
+altyapısı yok.
+Karar:
+- **Tek bileşen** `ui/widgets/ProgressRing.{h,cpp}` (ui katmanı): `paintRing(canvas, kutu, poz, mürekkep)` (herhangi bir
+  widget'ın `paint`'inde), `RingClock` (kendi tick'i olan şeritler / kartlar için: başlangıç zamanı + kare aralığı),
+  `ProgressRing` widget'ı (kendi tick'i; yalnız çiziliyorken döner).
+- **Belirsiz kip:** yay kafası yarım çevrimde 250° öne koşar, kuyruk ikinci yarıda yetişir (`motion.easings.ring`
+  cubic-bezier(0.4, 0, 0.2, 1)); yay 20°'den (nokta değil, kısa çizgi) 270°'ye uzar, kısalır; halka ayrıca her
+  `motion.ringTurn` (2000 ms) bir tur döner. Bir çevrim `motion.ringCycle` 1500 ms; her çevrim öncekinden 160° ileride
+  başlar, poz 13,5 sn'de bir tam tekrarlar. Poz zamanın fonksiyonu (`ringPose(geçen ms)`): geç gelen kare sıçramaz, kare
+  sayısına bağlı değil. **Belirli kip** (`ringValuePose`: yüzde, saat 12'den saat yönünde; widget'ta değer `motion.base` ile
+  kayar) galeride ve API'de hazır; uygulamada yüzde her yerde zaten yanındaki çubukta ve sayıda yazdığı için halka
+  belirsiz kaldı (aynı sayıyı iki kez göstermemek, uzun adımda donmuş görünmemek için).
+- **Görünüm:** `accent.text` (her temada >= 4,5:1; özel vurguda da) yuvarlak uçlu yay, altında aynı mürekkebin
+  `opacity.ringTrack` (%20) iz halkası. Yüksek karşıtlık: 1 fiziksel piksel `line.strong` iz + sistemin vurgu rengindeki yay.
+  Kutunun köşesi fiziksel piksel ızgarasına, çap ve çizgi kalınlığı tam piksele yuvarlanır (`size.ringStroke` 2 → 1×: 2 px,
+  1,25×: 3, 1,5×: 3, 2×: 4; `ringStrokeLarge` 2,5 → 3 / 3 / 4 / 5 px).
+- **Boyutlar:** `size.ring` 16 (satır içi: Uygula adım listesi, ISO Oluştur ilerleme satırı, Özet çalışma kartı, Windows
+  indir iş satırı), `size.ringLarge` 20 (şeritler ve baş kart: Sürümler işlem şeridi, Diller / Güncellemeler / ortak indirme
+  şeridi, Uygula baş kartı); 20'likler eski 16'lık ikonun merkezine oturtuldu (yerleşim kaymadı).
+- **Kare temposu:** pencere her karede **bütünüyle** yeniden çiziliyor (D-011: `InvalidateRect(hwnd, nullptr)` →
+  `WM_PAINT` → `App::paint` → `Present(1,0)`, kirli dikdörtgen yok; ARCHITECTURE §3, AUDIT D4 / D5 açık). Yalnız halkanın
+  alanını çizmek flip-model'de `Present1` + kirli dikdörtgen + önceki karenin korunmasını ister; doğruluğu pencere açmadan
+  doğrulanamadığı için yapılmadı (ayrı iş önerisi, AUDIT D4 / D5). Mevcut `tickIntervalMs` kullanıldı: halka dönerken sahibi
+  widget `motion.ringFrame` 25 ms ister (Windows'un varsayılan 15,6 ms zamanlayıcı çözünürlüğünde ~31–40 ms → ≈ 25–32
+  kare/sn). Halka yokken / görünmezken kare istenmez: widget son tick'ten beri çizilmediyse (gizli sayfa, kırpılmış kaydırma
+  alanı) tick'i bırakır, çizilince uyanır; şerit iş bitince eski temposuna (100 / 250 ms) döner. Hareketi azalt (Windows'un
+  "animasyonları göster"i kapalı ya da uygulamanın "Hareketi azalt"ı): duran yay (saat 12'den 270°), halka için kare yok.
+- `--render`: varsayılan karede duran yay (`forceInstantMotion`, deterministik); `--anim-time=<ms>` her halkayı o anki
+  pozuyla çizer → pencere açmadan kare dizisi. Yeni `--demo-boot-drivers=iso-running` (ISO yazılıyor %42; ISO sayfasındaki
+  halka).
+- `Icon::Spinner`'ın bütün kullanımları halkaya geçti (`grep Icon::Spinner src` boş; ikon Icons.g.h'de kalıyor):
+  `pages/images/OperationStrip`, `pages/FetchStrip`, `LanguagesPage::FetchStrip`, `UpdatesPage::FetchStrip`, `DownloadPage`
+  (halka artık başlığın satırında — eski ikon çubuğun başına biniyordu), `IsoPage` (artık dönüyor), `ApplyPage` (adım
+  listesindeki çalışan satır), `apply/ApplyCards` `RunHeader` (`Texts::icon` artık `optional`: boş = halka), `OverviewPage`.
+  Kurulum sihirbazı (D-126) ve `programs.ps1`'in kendi WPF halkaları dokunulmadı. Galeri: 16 / 20 belirsiz, %0 / 25 / 60 /
+  100 belirli.
+- Tokenlar (tokens.json 5.0.0, sürüm artırılmadı): `size.ring` 16, `size.ringLarge` 20, `size.ringStroke` 2,
+  `size.ringStrokeLarge` 2,5, `motion.durations.ringCycle` 1500, `ringTurn` 2000, `ringFrame` 25, `motion.easings.ring`
+  [0.4, 0, 0.2, 1], `opacity.ringTrack` 0,2. Açılar (250° atlama, 20° en kısa, 270° duran yay) hareketin geometrisi:
+  `ProgressRing.cpp`'de adlı sabitler. Canvas'a `strokeCircle`, `strokeArc` (tek yay segmentli path geometry, her çizimde).
+Sonuç:
+- Doğrulanan: `tests/ui/ProgressRingTests.cpp` — 20 sn boyunca 1 ms adımlarla poz sıçramasız (1 ms'de < 1,5°), yay hep
+  20–270°, 10 saat sonra da sonlu; belirli / duran poz; `RingClock` (hareketi azalt → duran poz ve kendi tempo,
+  `--anim-time`, ikinci iş fazı korur); widget (dönerken 25 ms'lik zamanlayıcı, gizlenince bir kare sonra kare istemiyor,
+  yeniden çizilince uyanıyor, durunca ve hareketi azaltta kare yok); 1 / 1,25 / 1,5 / 2× ölçekte sol kenar pikseli >= %85
+  dolu. Bir halkanın kaydı + çizimi ~5 µs (Release, offscreen, `wl_tests -tc="perf: ring*" --no-skip`). Debug + Release
+  `build.ps1 -Test`: 599 vaka / 19.407 denetim (10 atlanan; D-143 ile birlikte).
+- render_diff (önce `build\lab\ring\before\`, sonra `after\`, aynı derinlikte; 300 kare): 275 aynı, 23 farklı, 2 atlanan
+  (`--demo-store=dialog`). Farklar: Sürümler işlem şeridi (10), Özet çalışma kartı (4), Uygula çalışıyor (2), Ayarlar'ın
+  vurgu satırı (4, D-143), galeri (2), "Boş alan" (1). Envanterde görünmeyen halka yerleri ayrıca render edildi (Diller
+  şeridi, Windows indir iş satırı, ISO ilerleme satırı). Bütün halka yerleri koyu / açık / yüksek karşıtlık / 1–2× bakıldı;
+  kare şeritleri ve GIF'ler `build\lab\ring\final\ring-*`.
+- Doğrulanmayan: gerçek pencerede CPU / GPU maliyeti ve gerçek kare temposu (pencere açılmadı). Halka dönerken pencere 25
+  ms'de bir baştan çiziliyor (eski şeritlerde 100 ms'de bir, ISO / Uygula / Özet'te hiç): uzun bir Uygula'da (30+ dk) eski
+  şeritlere göre ~3–4 kat daha çok tam pencere çizimi; tam pencere çiziminin süresi ölçülmedi. Önerilen ölçüm: Uygula
+  sürerken Görev Yöneticisi'nde WinLove.exe CPU'su, `ringFrame` 25 → 33 / 40 ile karşılaştırma. Windows'un yüksek karşıtlık
+  temalarında (sistem renkleriyle) gerçek görünüm yalnız tokenlarla render edildi.
+
+## D-141 — VHD / VHDX kaynağı: fark diskiyle bağla, kaydet = birleştir, kaydetmeden çöz = dosya değişmez (2026-11-11)
+Bağlam: CLAUDE.md ürünü "ISO/WIM/ESD/VHD" diye tanıtıyordu ama VHD hiç yoktu: `ImageFormat::Vhd / Vhdx` ve uzantı
+tanıma vardı (birim testiyle), `openSource` "VHD/VHDX sources arrive with a later step" ile reddediyordu; arayüzde,
+metinlerde, wlcli'de hiçbir şey yoktu (yalnız `usb-write --allow-virtual`'ın laboratuvar VHDX'i). İstenen: kurulu (ya da
+uygulanmış, hiç açılmamış) bir Windows taşıyan .vhd / .vhdx'i kaynak olarak açmak, bağlamak, Uygula ile değiştirmek —
+D-021'e uygun: yalnız çevrimdışı disk, çalışan sistem değil. Sahibinin seçtiği üç özellikten biri (koordinatörün
+sırasıyla 6. iş). Kural 6: önce motor + wlcli + gerçek diskte laboratuvar, sonra arayüz. Zorluk: VHD'de "kaydetmeden
+çöz"ün ucuz bir karşılığı yok (değişiklikler yerinde yazılır).
+Karar:
+- **Kaydetme / atma anlamı (en önemli karar): fark diski.** "Bağla", kullanıcının dosyasının üstüne WinLove'un kendi
+  fark diskini oluşturur (`<çalışma klasörü>\vhd\<ad>.winlove-changes.vhdx`; VHD'nin çocuğu VHD) ve **çocuğu** bağlar
+  (virtdisk.dll, `PERMANENT_LIFETIME | NO_DRIVE_LETTER`). Her yazma çocuğa gider; kullanıcının dosyası yalnız okunur.
+  **Kaydet** = kovanlar boşaltılır, birim kilitlenip ayrılır, çocuk ayrılır, ayrıldığı **doğrulanınca** çevrimdışı
+  `MergeVirtualDisk` (v1, derinlik 1; olmazsa v2) ile kullanıcının dosyasına işlenir, çocuk silinir. **Kaydetmeden çöz** =
+  ayır + çocuğu sil: dosya bir bayt bile değişmez (laboratuvarda SHA-256 ile kanıtlı). Birleştirme olmazsa hiçbir şey
+  kaybolmaz: çocuk ve kayıt kalır ("bağlı değil" → yeniden bağlanabilir ya da atılabilir). "Yerinde, geri alınamaz"
+  tasarımı gerekmedi.
+- **Görüntü kökü:** bağlı diskin birimleri `IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS` ile disk numarasına göre bulunur (yalnız
+  o diskin birimlerine bakılır), Windows birimi = `Windows\System32\config\SYSTEM` taşıyan en büyük NTFS birim
+  (`chooseWindowsVolume`, saf). Birim boş bir klasöre **birim bağlama noktası** olarak konur (`SetVolumeMountPointW`); o
+  klasör DISM'in açtığı imaj köküdür (`DismOpenSession`, `dism.exe /Image:`), bağlı bir WIM'in klasörü gibi — sayfaların,
+  kovanların, Uygula'nın kodu değişmedi. Windows yine de harf verirse yalnız o birimin harfi (GUID'iyle) kaldırılır.
+  Uygulamada klasör `<çalışma kökü>\vhd\mount` (WIM'in `mount` klasörü **değil**: onun onarımı içi dolu, DISM kaydı
+  olmayan klasörü "artık" sayıp temizlerdi), wlcli'de verilen klasör.
+- **Kaynak bilgisi:** disk yalnız okumalık ve kalıcı olmayan biçimde bağlanır (süreç ölürse kendiliğinden ayrılır),
+  kovanlar offreg ile okunur (sisteme kovan yüklenmez), ayrılır: `CurrentVersion` (EditionID, CurrentBuildNumber, UBR,
+  DisplayVersion, InstallationType), `Session Manager\Environment\PROCESSOR_ARCHITECTURE`, `Control\MUI\UILanguages`,
+  `Nls\Language\InstallLanguage`; birimin dolu / boş alanı. Ad EditionID'den (`editionDisplayName`; laboratuvar:
+  uygulanmış Pro imajının ProductName'i "Windows 10 Enterprise"), sunucu / bilinmeyen kimlikte ProductName (22000+ "10"
+  → "11"). Tek sürüm (index 1), `SourceInfo::disk` (sanal boyut, dosya boyutu, dinamik / sabit / fark, birim).
+  WinLove'un kendi bağladığı disk klasöründen okunur.
+- **Kayıt ve çökme güvenliği:** her bağlama, disk oluşturulmadan **önce** `%LOCALAPPDATA%\WinLove\vhd-mounts.json`'a
+  yazılır (diskin yolu, çocuk, klasör, birim GUID'i, zaman, kim), ayrılınca silinir; son kayıt gidince dosya da gider.
+  Sonraki açılış (uygulama `adoptExistingMount`, wlcli `mounts / repair / unmount`) **yalnız kaydın adlandırdığı**
+  çocuğa, klasöre, birime bakar — hiçbir diski tahminle ayırmaz, hiçbir şeyi listeleyip temizlemez. Durumlar (saf
+  `classifyVhdMount`): Ok; NotAttached (yeniden başlatma bütün sanal diskleri ayırır) ve NoMountPoint → **Remount**
+  (değişiklikler korunur, WIM'in "needs remount"u gibi); ChildMissing → kaydı unut (boş klasörü sil; içinde dosya olan
+  klasöre dokunma); DiskMissing (takılı olmayan sürücü) → hiçbir şey silinmez. Bağlılık sorusu üç durumlu: yanıt yoksa
+  hiçbir şey ayrılmaz, birleştirilmez, silinmez. Kaydı olmayan bir çocuk dosyası yoldaysa bağlama reddedilir (silinmez,
+  yeniden kullanılmaz).
+- **Ne olmaz (yetenekler, saf `sourceCapabilities`):** sürüm listesinin WIM'e ait işleri (sil, yeniden adlandır,
+  çoğalt, sırala, ekle, dışa aktar), doğrulama (WIM akışları), Araçlar (sıkıştır / böl / birleştir / ESD), ISO / USB
+  (kurulum dosyası yok) → düğmeler pasif, ipucu nedenini söyler (`images.vhdNoWim`, `iso.blockVirtualDisk`). Uygula: WIM
+  yeniden yazımı (`optimizeWim`), sürüm metinleri, `lang.ini`, `sources\sxs` yok; kaydetme `ApplyJobOptions::saveImage`
+  ile (birleştir + ayır). Diğer sürümlere uygulama (D-055) yok.
+- **Motor:** `core/image/VirtualDisk.{h,cpp}` (virtdisk.lib bağlandı; katman: yalnız core), `Source.cpp` VHD dalı,
+  `MountHealth` (`hivesLoadedFromDevice`, `unloadHives`: kovanlar bağlama noktası klasörüyle değil birimin aygıt yoluyla
+  görünür; başka bir aracın DISM üzerinden bağladığı VHD'nin adı için `openSource` çağrılmaz — okumak onu bağlamaya
+  çalışırdı), `ApplyJob::saveImage`.
+- **wlcli:** `info <vhd|vhdx> [--json]` (disk + Windows), `mount <vhd> 1 <klasör> [--changes-dir=<klasör>]`,
+  `unmount <klasör> --commit|--discard` (birleştir / sil), `mounts` (VHD kayıtları da: `kind: "vhd"`, durum, eylem,
+  değişiklik baytı), `repair <klasör>` (yalnız kayıt: remount / unut), `apply … [--commit]` (kaydetme = birleştirme),
+  `--vhd-records=<dosya>` (laboratuvar kendi kayıt dosyasını kullanır).
+- **Arayüz** (yeni token yok, yeni ikon yok, şerit tasarımı aynı, hareket yok): Kaynak sayfası filtresi / bırakma kuralı
+  / ipucu .vhd · .vhdx; son kullanılanlarda disk ikonu (`DiskPartition`); "Bağla" önce **sorar**: "… doğrudan yazılmaz:
+  WinLove değişiklikleri kendi değişiklik diskinde tutar (<yol>). Kaydet ve çöz … işler; Kaydetmeden çöz … siler ve dosya
+  hiç değişmeden kalır. Disk sürücü harfi almadan bağlanır." (Vazgeç · Bağla); Sürümler'in yan kartında WIM satırları
+  (dal, sysprep, tarihler, dosya / klasör sayısı, sıkıştırma, bölüm) yerine **Sanal disk** bölümü (tür · dinamik, disk
+  boyutu, dosya boyutu, Windows bölümü · boş, "kaydedince diske işlenir"); Özet'te "VHDX · dinamik · 40 GB · … ·
+  kaydedilene dek dosya değişmez", "Sürüm i / n" yok; çöz diyaloğu ve bekleyen / başarısız kuyruklu hâlleri "sanal diske
+  işler / değişiklik diski silinir" der; Uygula bitince "Değişiklikler sanal diske işlendi ve disk ayrıldı", işlem satırı
+  "Sanal diske işle ve ayır", sonuç kartında ISO yerine Rapor (ana) · Preset · Log; Özet'in sıradaki adımı "… disk
+  ayrıldı. Yeni değişiklikler için diski yeniden bağla." + Bağla; ISO Oluştur "Sanal diskten ISO yapılmaz: içinde kurulum
+  dosyaları (boot.wim, setup) yok."; bildirimler "Değişiklikler sanal diske işlendi, disk ayrıldı" / "Değişiklikler
+  silindi, disk ayrıldı: dosyası değişmedi". Açılışta kayıttaki disk geri yüklenir (bağlı değilse yeniden bağlanır).
+  Render: `--demo-vhd[=closed|confirm|mounted|unmount|done|iso]` (uydurma kaynak, hiçbir şey bağlanmaz; render'ın son
+  kullanılanlar listesine girmez), `tools/render_diff.py` envanterinde.
+- 24 yeni metin anahtarı (tr + en, aynı yer tutucular) + 3 değişen değer (`source.desc`, `source.dropHint`,
+  `images.addFile`: VHD / VHDX eklendi).
+Sonuç:
+- Doğrulanan (laboratuvar `tools\lab_vhd.ps1`, yönetici, `build\lab\vhd`, 2026-11-11 08:40–09:05): 40 GB dinamik
+  `golden.vhdx` (GPT + NTFS, `dism /Apply-Image` lab WIM'i index 4 = Pro 26200.8037, 87 sn; disk yalnız kendi dosya
+  yolundan, numarası / türü / boşluğu / boyutu / konumu denetlenerek biçimlendi). Taze kopyada: `info` (Windows 11 Pro ·
+  26200.8037 · x64 · tr-TR, 2,3 sn, sonra bağlı değil); `mount` 0,1–0,7 sn (çocuk bağlı, klasör bağlama noktası, harf
+  yok); 7 okuma komutu (özellik 550, paket 195, yetenek 1774, appx 505 satır, sürücü `[]`, servis 264, isteğe bağlı
+  özellik 1562); 10 adımlı karışık küme (özellik, CBS bileşeni, 2 appx, 2 depo tarifi, HKLM + HKCU değeri, servis, işaret
+  değeri) 10 / 10, 38 sn; discard 0,5 sn → yeniden bağlayınca işaret yok, dosya yerinde; `apply` 4. adımda öldürüldü →
+  taze `wlcli mounts` kendi diskini kayıttan buldu, `unmount --discard` öldürülenin bıraktığı 2 DISM kovanını aygıt
+  yolundan boşaltıp ayırdı; yeniden başlatma benzetimi (çocuk kendi yolundan ayrıldı) → `not attached / remount` →
+  `repair` yeniden bağladı, okundu; bunların hepsinden sonra kullanıcının dosyasının **SHA-256'sı aynı**. `apply --commit`
+  41 sn (çevrimdışı birleştirme 364 ms, 522 MB) → yeniden bağlayınca 10 değişikliğin hepsi diskte, **ScanHealth temiz**
+  (54 sn). `.vhd` biçimi: 6 GB WinPE diski, `.vhd` çocuk, `apply --commit` (birleştirme 127 ms) → kalıcı. Her aşamanın
+  başında ve sonunda `dism /Get-MountedImageInfo` aynı (yalnız başka bir aracın "needs remount" bağlaması, dokunulmadı),
+  hiçbir temizlik komutu çalışmadı; sonunda hiçbir sanal disk bağlı değil, kayıt / klasör / çocuk yok.
+- Birim testleri: `tests/core/VirtualDiskTests.cpp` (10 vaka / 111 denetim: uzantı, birim seçimi, disk numarası, çocuk
+  yolu, ad ve mimari, yetenekler, durum / eylem tablosu, kayıt dosyası gidiş-dönüş + bozuk / şüpheli kayıtlar, klasör /
+  diskle bulma, çocuğu olmayan kaydı unutma — içinde dosya olan klasöre dokunmadan —, kaydı olmayan klasörün
+  çözülmemesi, olmayan diskin hiçbir şey yazmadan reddi), `tests/app/VhdSourceTests.cpp` (4 vaka / 36 denetim: Görüntü
+  denetleyicisinin redleri ve nedenleri, dışa aktarmanın motora gitmeden reddi, ISO engeli, Özet'in disk bilgisi ve
+  "kaydedildi" sonrası adımı, klasörlerin WIM klasöründen ayrı olması). Debug + Release `build.ps1 -Test` geçiyor (her
+  ikisinde 570 vaka / 18.068 denetim, 9 atlanan). Görüntüler `build\lab\vhd\final\` (tr) ve `final-en\` (koyu + açık;
+  ara kareler `r1..r3`).
+- Regresyon (`tools/render_diff.py`, önce = bu işten önceki Debug exe `build\lab\vhd\before\`, sonra = yenisi,
+  x64-9448.iso ile; 264 kare, iki tema): 188 aynı, 60 farklı, 16 "başarısız" (+ 2 kare iki exe'de de açılmayan
+  `--demo-store=dialog`). 16 başarısızın hepsi eski exe'nin tanımadığı `--demo-vhd*` (8 durum × 2 tema; eski exe 1 ile
+  çıkıyor). 60 farkın 12'si Kaynak sayfası (`--page=source` ve onun 5 demosu × 2 tema): sayfa açıklaması ve bırakma
+  ipucu artık VHD / VHDX'i söylüyor (bilerek; her karede aynı 10.222 piksel, 649–1464 × 173–329; ikisinde ayrıca "Boş
+  alan"); 40'ı yalnız durum çubuğundaki "Boş alan" rakamı; 4'ü log satırlarının saati (`--demo-logs`, Uygula çalışıyor /
+  duraklatıldı); 4'ü `--demo-icons` (eski exe başka derinlikte durduğu için demo marka ikonu bulunmuyor; D-137'de
+  açıklanan). Başka hiçbir sayfa / demo / diyalog değişmedi. Kareler `build\lab\vhd\diff\`, liste
+  `build\lab\vhd\diff_log.txt`.
+- Bulunup düzeltilen (laboratuvarın ilk koşusu): bağlı bir diskte yalnız GET_INFO isteyen v1 açılış 0x80070005 ile
+  reddediliyor; motor bunu "bağlı değil" sanıp discard'da ayırmadı, kaydette v2 birleştirmeyi **bağlı diskte** çalıştırdı
+  (çevrimiçi birleştirme başarılı oldu, kullanıcının dosyası bağlı kaldı; betiğin güvenlik ağı kendi dosya yolundan
+  ayırdı, kopya silindi). Şimdi: kendi çocuğu ATTACH_RW | GET_INFO | DETACH ile açılır (bağlıyken de yanıt verir),
+  bağlılık üç durumlu, birleştirme yalnız ayırma doğrulandıktan sonra. İkinci koşu baştan sona geçti (ENGINE saha notu).
+- Doğrulanmayan: açılmış / kullanılmış bir Windows'un diski (yalnız uygulanmış, hiç açılmamış imaj); BitLocker; birden çok
+  Windows birimi, MBR, sabit boyutlu disk; kullanıcının diski zaten fark diskiyse; gerçek yeniden başlatma ve birleştirme
+  sırasında güç kesilmesi; NTFS olmayan çalışma kökü; uygulamanın kendisi pencerede (bağla / kaydet / çöz / açılışta geri
+  yükleme yalnız birim testiyle ve `--render` ile — pencerede tıklanmadı); render'da pasif şerit düğmesinin ipucu karesi
+  (render yolu pasif düğmenin ipucunu çizmiyor — var olan Doğrula'nınki de; metinler birim testinde); bağlıyken WinPE'de
+  yalnız kayıt adımı olan plan (DISM SOFTWARE'i tutuyor, 0x80070020 — WIM'de de aynı, sanala özgü değil; ENGINE saha notu).
+
+## D-140 — Güncelleme denetimi: yalnız haber verir, tek HTTPS GET, günde en çok bir kez (2026-11-11)
+Bağlam: WinLove GitHub'da yayımlanıyor (`shadesofdeath/WinLove`); bugüne kadarki dokuz yayının hepsi ön sürüm (etiketler
+`v1.0.0-alpha` … `v1.3.0-beta`, adları "WinLove 1.3.0 Beta"; ilkinin adı "WinLove 1.0 Alpha"). Uygulamanın kendi sürümü
+CMake'te `WL_VERSION_LABEL` = "1.3.0 Beta" (`WL_VERSION_STRING` = "1.3.0"). Kullanıcı yeni bir sürümü ancak GitHub'a
+bakarak öğreniyordu. Sahibinin seçtiği üç özellikten biri (koordinatörün sırasıyla 5. iş). İstenen: yalnız haber vermek
+— hiçbir şey indirilmez, kurulmaz; çevrimdışı olmak olağan bir durum; asla diyalog yok, aynı sürüm için asla ikinci kez
+haber yok.
+Karar:
+- **Ağa giden (tamamı):** tek bir HTTPS GET — `https://api.github.com/repos/shadesofdeath/WinLove/releases?per_page=20`.
+  İsteğin başlıkları (WinHTTP'nin kendi gönderdiği hâliyle, `wlcli update-check --verbose` ile okundu): `User-Agent:
+  WinLove/1.3.0`, `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, `Connection: Keep-Alive`
+  (+ HTTP/1.1'in `Host: api.github.com`'u). Gövde yok, çerez yok (`WINHTTP_DISABLE_COOKIES`), hesap / belirteç yok;
+  makine adı, kullanıcı adı, Windows sürümü, imaj, ayar, kuyruk — hiçbiri gönderilmez. GitHub, her HTTPS isteğinde olduğu
+  gibi bağlantının IP adresini görür; Windows'un sistem proxy'si (var olan paylaşılan WinHTTP oturumu) kullanılır.
+  Yanıttan yalnız etiket, ad, taslak / ön sürüm bayrağı, yayım tarihi, `html_url` ve gövdenin ilk satırları okunur;
+  hiçbir şey diske yazılmaz (yalnız ayarlara: son denetim zamanı ve iki etiket, aşağıda). Hiçbir dosya indirilmez.
+- **Motor** (`core/net/ReleaseCheck`; `core/net/Http`'ye istek başına seçenekler: User-Agent, ek başlıklar, zaman aşımı,
+  çerezsiz, gönderilen başlıkları okuma, gövde sınırı — eski çağrılar değişmedi): aşama başına 6 sn zaman aşımı, 4 MB
+  gövde sınırı, iptal belirteci (WinHTTP isteği kapatılır). Sürüm karşılaştırması saf fonksiyon (`parseAppVersion`,
+  `compareAppVersions`): `v1.3.0-beta`, `1.3.0 Beta`, `WinLove 1.3.0 Beta`, `v1.0.0-alpha`, `1.4.0`, `v1.4.0-rc.2`,
+  `1.4.0 RC 2`, `1.3` (= 1.3.0); alpha < beta < rc < sürüm; aşamanın sayısı ("beta.2"). Başka her biçim
+  (`v1.3.0-preview`, `2.0.0.1`, bir tarih, "latest") "karşılaştırılamaz": asla yanlış "yeni sürüm var" denmez. Yanıt:
+  taslaklar atlanır, ön sürümler sayılır (hepsi ön sürüm); en yeni = en yüksek sürüm (eşitse sonra yayımlanan); sürüm
+  önce etiketten, olmazsa addan. Sonuç: `Current` / `Available` / `Unknown` (bir sürüm okunamadı — en son listelenen
+  yalnız adıyla gösterilir) / `None` (hiç yayın yok). Tarayıcıda açılacak adres yalnız
+  `https://github.com/shadesofdeath/WinLove/releases/…` altındaysa yanıttan alınır, değilse projenin sürüm listesi
+  (`releasePageUrl`). Notlar: gövdenin ilk ≤ 4 satırı düz metin (başlıklar, çizgiler, yalnız bağlantıdan oluşan satır,
+  kod, tablo, HTML çıkar; bağlantının metni kalır; madde "• "), ≤ 600 karakter. Hata sınıfları (`releaseFailure`):
+  bağlantı (çevrimdışı, DNS, zaman aşımı, TLS) · GitHub'ın saatlik sınırı (403 / 429) · başka HTTP durumu · okunamayan
+  yanıt · iptal.
+- **wlcli:** `wlcli update-check [--json] [--verbose] [--save=<dosya>] [--current=<sürüm>]` — çıkış 0 (denetlendi, ne
+  bulduysa), 2 (yanıt yok), 130 (iptal). `--verbose` gönderilen başlıkları basar, `--save` yanıtı saklar (birim
+  testlerinin kaydı buradan), `--current` başka bir sürümü karşılaştırır.
+- **Ayar:** Ayarlar › yeni bölüm "WinLove güncellemeleri" › "Güncellemeleri denetle" (`AppSettings::checkUpdates`,
+  **varsayılan açık**; ipucu: "Günde en çok bir kez GitHub'a bakar; hiçbir veri gönderilmez, hiçbir şey indirilmez";
+  "Varsayılanlara dön" onu da açar). settings.json'a ayrıca `updateCheckedAt` (yanıt alınan son denetim, UTC saniye),
+  `updateLatestTag` (o denetimin bulduğu en yeni etiket), `updateNotifiedTag` (haber verilen sürüm).
+- **Sıklık:** `UpdateController` (`app/controllers`) yalnız `App::runWindowed`'da kurulur; kendi `TaskRunner`'ı var (UI
+  iş parçacığı değil, DISM motorunun ya da okuyucunun arkasında beklemez, açılışı geciktirmez). Pencere açıldıktan 4 sn
+  sonra bir kez (pencere zamanlayıcısı 9): ayar açıksa ve son yanıt ≥ 24 sa önceyse — ya da hiç yoksa, ya da
+  "gelecekten"se (saat 1 sa'ten fazla geri alınmış) — denetler (`updateCheckDue`). Hata sessiz: bildirim yok, Hakkında
+  nedenini yazar; son yanıt zamanı değişmez, bir sonraki açılış yeniden dener. "Şimdi denetle" her zaman denetler (ayar
+  kapalıyken de).
+- **Bildirim:** açılış denetimi yeni bir sürüm bulursa ve etiketi `updateNotifiedTag` değilse (`updateNoticeDue`): tek bir
+  bildirim (Toast, Bilgi; "Yeni WinLove sürümü: WinLove 1.4.0 Beta" · "2 gün önce GitHub'da yayımlandı. Hiçbir şey
+  indirilmedi." · **Göster** → Hakkında) ve durum çubuğunda vurgu renginde, ikonlu bir bölüm ("Yeni sürüm: …", tıklanınca
+  Hakkında). Etiket o anda `updateNotifiedTag`'e yazılır: aynı sürüm bir daha asla duyurulmaz (uygulama hemen kapansa
+  da). Hakkında sayfası görülünce durum çubuğu bölümü kalkar. Bildirim AppState'te (`AppUpdate::notice` / `toastShown`):
+  dil değişince yeniden kurulan kabuk ikinci bir bildirim göstermez. Diyalog yok. "Şimdi denetle" ile bulunan sürüm
+  sayfada zaten görüldüğü için duyurulmaz (etiketi yine yazılır).
+- **Hakkında:** kahraman kartının altında "Güncellemeler" kartı (D-114'ün kart dili): durumun ikonu, başlık, tek satır
+  olgu; sağda "Şimdi denetle" (Secondary, denetlenirken pasif) ve yeni sürüm varken sayfanın tek dolu düğmesi **Sürüm
+  sayfasını aç** (tarayıcıda, Shell'in var olan `ShellExecuteW` yardımcısıyla; yalnız `https://`); altında sürüm
+  notlarının ilk satırları. Durumlar: "Güncellemeler henüz denetlenmedi" / "Son denetim: …" (son bilinen sürüm · açılışta
+  günde en fazla bir kez / açılışta denetleme kapalı) / "Denetleniyor…" / "WinLove güncel" (en son sürüm · yayım · son
+  denetim) / "Yeni sürüm var: …" / "Sürümler karşılaştırılamadı" / "GitHub'da yayımlanmış sürüm yok" / "Denetlenemedi" +
+  neden (bağlantı · saatlik sınır · HTTP n · okunamayan yanıt). Metinler AppState bildiriminde kurulur (`updateCardView`,
+  saf fonksiyon), notların yüksekliği layout'ta ölçülür (genişliğe göre önbellekli), `paint()` yalnız çizer.
+- **Render ve testler ağa çıkamaz:** denetleyiciyi yalnız pencereli çalışma kurar; render'da
+  `Shell::Services::checkForUpdates` boş (düğme bir şey yapmaz); testler kendi fetch / saat fonksiyonlarını verir.
+  Render durumları: `--demo-update[=available|current|failed|checking]` (`available` ayrıca Hakkında dışındaki sayfada
+  bildirimi ve durum çubuğunu gösterir); `tools/render_diff.py` envanterinde.
+- 58 yeni metin anahtarı (tr + en, aynı yer tutucular; mevcut hiçbir değer değişmedi): `appUpdate.*` 26,
+  `settings.updates / checkUpdates / checkUpdatesHint`, ve D-139 ekinin 29'u. Yeni token yok, yeni üçüncü parti yok
+  (nlohmann/json zaten vardı). Yeni dosyalar: `src/core/net/ReleaseCheck.{h,cpp}`,
+  `src/app/controllers/UpdateController.{h,cpp}`, `tests/core/ReleaseCheckTests.cpp`, `tests/app/UpdateCheckTests.cpp`.
+- **Aynı turdaki küçük işler** (gece listesinin 7. maddesi):
+  - `tests/app/SourceTests.cpp` "formatRecentTime" saatten bağımsız: `now()` yerine bu makinenin saat diliminde sabit bir
+    an (2026-06-15 12:00, `TzSpecificLocalTimeToSystemTime`) ve tam beklentiler ("bugün 11:59", "3 gün önce", aynı yıl
+    yılsız, 400 gün önce yıllı); gece yarısını geçen durum ayrıca: 00:00:30'da bir dakika önce = "1 gün önce", 10 sn önce
+    = "bugün 00:00". Zayıflatılmadı, atlanmadı (önce gece yarısını geçen koşuda düşebiliyordu).
+  - `wlcli apply`: `ApplyReport::sessionLost` (D-131) varsa özet satırından sonra "stopped: DISM's session could not be
+    opened again - <hata>; the later steps did not run, the image is still mounted and not saved". Özet satırı ve
+    "(stopped)" aynı (lab betikleri `commit: held` vb. okuyor); çıkış kodu, durdurulan her çalışmada olduğu gibi 3
+    (`apply`'ın JSON çıktısı yok). Sınıflandırma core'da: `core::ops::runStop(report)` → None / SessionLost / Stopped
+    (birim testi). Gerçek bir oturum kaybıyla çalıştırılmadı (imaj bağlanmadı).
+  - Hosts, Dosyalar, Kurulum Sonrası'nın ayrıntı kartı ve işaretleri: D-139'un eki.
+  - Takas zinciri tampon sayısı (2 → 3): **yapılmadı** — ölçmek canlı pencere ister (bu işte pencere açılmadı).
+Sonuç:
+- Doğrulanan: `wlcli update-check --verbose --save=build\lab\update\releases.json` gerçek GitHub'a (2026-11-11 04:25):
+  9 yayın, en yeni `v1.3.0-beta` "WinLove 1.3.0 Beta" (ön sürüm, 2026-11-09), çalışan 1.3.0 Beta → "up to date", sayfa
+  `…/releases/tag/v1.3.0-beta`, saatlik kalan istek 59; gönderilen başlıklar yukarıdaki dört satır. `wlcli update-check
+  --json --current=1.2.3-beta` → `"verdict": "available"` (gerçek veriyle "yeni sürüm" yolu). Birim testleri:
+  `tests/core/ReleaseCheckTests.cpp` (8 vaka: gerçek ve tuhaf 35 etiket, 13 sıralama çifti, kaydedilmiş gerçek yanıt —
+  tarih, notlar, sayfa, beş sürüm için hüküm —, taslaklar / sürümle en yeni / eşitlik / okunamayan etiketler, boş liste
+  ve 6 bozuk yanıt + yanlış tipli girdiler, notlar, tarih ayrıştırma, güvenli adres (8 kötü adres), hata sınıfları;
+  `runStop`), `tests/app/UpdateCheckTests.cpp` (6 vaka: 24 sa kuralı enjekte saatle — hiç / 23 sa / 24 sa / saat geri /
+  kapalı —, aynı etikete ikinci bildirim yok, ayarların gidiş-dönüşü ve bozuk ayarlar, denetleyici sahte fetch ile —
+  açılış denetimi, aynı gün yok, ertesi gün aynı sürüm bildirimsiz, daha yeni sürüm bildirimli, çevrimdışı sessiz ve zaman
+  değişmez, ayar kapalıyken açılış yok / "Şimdi denetle" var —, Hakkında'nın 11 durumu ve düğmeleri, Ayarlar anahtarı,
+  kabukta tek bildirim + durum çubuğu + Hakkında'da kalkması, kabuğun kendi başına ağa çıkamaması). Debug + Release
+  `build.ps1 -Test` geçiyor (her ikisinde 556 vaka / 17.921 denetim). Görüntüler: Hakkında'nın beş durumu (koyu, açıkta
+  "yeni sürüm"), bildirim, Ayarlar, D-139 ekinin üç sayfası (`build\lab\update\final\`; ara kareler `r1..r4`; 1100x700
+  @1,0 ve İngilizce de bakıldı).
+- Regresyon (`tools/render_diff.py`, önce = bu işten önceki Debug exe, sonra = yenisi, x64-9448.iso ile; 248 kare, iki
+  tema): 177 aynı, 61 farklı, 10 "başarısız" (+ 2 kare iki exe'de de açılmayan `--demo-store=dialog`). 10 başarısızın
+  hepsi eski exe'nin tanımadığı `--demo-update*` (5 durum × 2 tema; eski exe 1 ile çıkıyor). 61 farkın 41'i yalnız durum
+  çubuğundaki "Boş alan" rakamı (bilinen gürültü; render sırasında derleme diske yazıyordu). Kalan 20: Ayarlar ve Ayarlar
+  + ≡ menüsü (4; yalnız formun kaydırma çubuğu — yeni bölümle içerik uzadı, x 2045–2053), Hakkında (2; kahraman kartının
+  altı: yeni kart, gerisi aşağı kaydı), Hosts / Dosyalar / Kurulum Sonrası demoları ve satırı seçili hâlleri (12; işaret
+  sütunu, ayrıntı kartı, kartın yanında daralan / gizlenen sütunlar), Kurulum Sonrası + Wi-Fi diyaloğu (2; fark yalnız
+  perdenin arkasındaki sayfada — diyaloğun içi aynı, `diffbox` ile denetlendi). Başka hiçbir sayfa / demo / diyalog
+  değişmedi. Kareler `build\lab\update\diff\`, liste `build\lab\update\diff_log.txt`. Son exe ile bu karşılaştırmadaki
+  "sonra" exe'si arasında yalnız kullanılmayan bir metnin silinmesi var (iki karede piksel farkı yalnız "Boş alan").
+- Doğrulanmayan: canlı pencere (yalnız `--render`): açılıştan 4 sn sonraki gerçek denetim, gerçek pencerede bildirimin
+  zamanlayıcısı, "Sürüm sayfasını aç"ın tarayıcıyı açması, "Şimdi denetle"nin pencerede tıklanması; gerçekten çevrimdışı
+  / proxy arkasında / TLS hatası / GitHub saatlik sınırı (bunlar yalnız enjekte hatalarla test edildi; sınıflandırma
+  `releaseFailure`'ın birim testinde); gerçekten daha yeni bir yayın (henüz yok — `--current` ve demo ile); GitHub
+  yanıtının 20'den fazla yayına çıktığı gün (ilk sayfa yeter: en yeni her zaman ilk sayfada).
+- **Açık, sahibinin kararı:** Hakkında'nın "Hiçbir kullanım verisi toplamaz, kimseye bir şey göndermez" cümlesi
+  (`about.freeBody`, D-072'nin sözü) değiştirilmedi. Denetim veri göndermez, yalnız sürüm listesini okur; ama artık
+  varsayılan olarak bir istek yapılıyor ve bu sahibine söylenmeli. Seçenekler: cümleyi yumuşatmak (denetimi ve
+  kapatılabildiğini söylesin) ya da denetimi varsayılan kapalı yapmak (STATUS).
+→ D-145 (2026-11-11): "hiçbir şey indirilmez" kuralı yalnız kullanıcı "Yükle"ye basınca gevşedi (ek indirilir, SHA-256 +
+PE + sürümle denetlenir, takas edilir); tost iki düğmeli, Hakkında'da "Sürüm sayfasını aç" yerine Yükle · Değişiklikleri
+gör; gövdeler Markdown penceresinde. Söz cümlesi hâlâ değişmedi; karar sahibinde (STATUS).
+
+## D-139 — Çalışma sayfaları: ortak başlık, ayrıntı kartı, durum dili (2026-11-11; D-110 / D-111'in sütun başlığı yerini geçersiz kılar)
+Bağlam: Özet ve Uygula ekranları (D-138) yeni görsel dili kurmuştu; kullanıcının asıl vakit geçirdiği yoğun sayfalar
+(Bileşenler ~1.300 satır, Servisler, Kayıt Defteri, Özellikler, Sürücüler, Görevler, Güncellemeler, Uygulamalar,
+Programlar, Diller …) hâlâ çıplak tablolardı. Her sayfanın özeti başka yerde ve başka biçimdeydi (Servisler'de araç
+çubuğunun sağında, Kayıt Defteri'nde bölüm başlığının sağında, Sürücüler › İmajdaki'nde solda Body yazıyla, Bileşenler'de
+hiç yok); birkaçı özeti her karede `paint()` içinde biçimlendiriyordu (Servisler, Sürücüler, Programlar), Güncellemeler
+bir paketin dosyasını ilk çiziminde okuyordu. Satırın ayrıntısı yalnız ipucunda ya da tablonun altındaki tek satırdaydı;
+yan kart yalnız Programlar'da vardı (Bileşenler'inki D-110'dan beri kullanılmıyordu). Durum işaretleri sayfadan sayfaya
+değişiyordu: "kaldırılacak", "önerilen", "önyükleme için kritik" adların sonuna eklenmiş sözcüklerdi; risk bir sayfada
+sözcüklü bir sütun, ötekinde yoktu. Sahibi: "yarışır kıvama gelsin", hareket işi yok, şeridin tasarımı aynı, soru yok
+(koordinatörün sırasıyla 4. iş).
+Karar (tek desen, bütün çalışma sayfalarında):
+- **Başlık bölgesi** (`pages/PageHeader` — `SummaryLine`): sayfa kartının içinde, en üstteki kontrol satırı; solda
+  sayfanın süzgeç / arama kontrolleri (süzgeci olmayan sayfada listenin başlığı: "Özel kayıtlar", "Kuyruktaki paketler",
+  "Diller", "Dosyalar"), **sağda canlı özet**. Biçim: önce listenin ne olduğu sessizce (text.tertiary: "63 bileşen · 5,11
+  GB", "214 servis", "9 / 10 açık", "18 / 38 görev kapalı"), sonra Uygula'nın ne yapacağı vurgunun okunur tonunda
+  (accent.text: "3 kaldırılacak · 650 MB", "1 devre dışı bırakılacak", "2 değişecek"), sorun uyarı renginde ("1 uyumsuz",
+  "1 bağımlılık eksik"); parçalar " · " ile. Metinler sayfanın zaten dinlediği AppState bildirimlerinde kurulur,
+  genişlikler `layout()`'ta ölçülür, `paint()` yalnız çizer. Satır kısa kalınca önce sessiz parça düşer, sonra parça kısa
+  biçimine geçer ("2 değişecek"), sonra "…" ile kesilir. Bileşenler ve Özellikler'in sütun başlıkları süzgeç satırından
+  tablonun kendi başlık satırına indi (özet o satırın sağında; D-110 / D-111'in referans araç görünümü burada bırakıldı).
+- **Ayrıntı kartı** (`pages/DetailCard` — `DetailModel`, `DetailCard`, `DetailSource`): yan panellerin genişliğinde
+  (size::inspector), sayfa kartının yanında, sayfanın seçili satırı için. Sayfa yalnız modeli verir (zaten bildiği
+  veriden; yeni okuma yok, katalog içeriği yazılmadı): 32'lik kutucuk (satırın ikonu / programın kendi ikonu / baş harf),
+  ad (iki satıra kadar), sessiz alt satır, kimlik (mono: paket adı, servis anahtarı, yol); **durum satırı** (işaretlerin
+  sözcüklü hâli: "Uygula'da kaldırılacak" vurguda, "Uyumluluk koruyor", "Kaldırılamaz", "İmajda kalır"); bir iki cümle
+  açıklama (katalog notu, imajın servis açıklaması, özelliğin açıklaması, programın manifest metni); "Ayrıntılar" altında
+  etiket / değer satırları (boyut, imajda, Uygula'da, risk noktası ve sözcüğü, şablon, hesap, yol …); notlar (koruyan
+  bekçinin `CompatController::explain` sözleri + "Bileşenler › Uyumluluk'tan değiştirilebilir", kalıcı kilidin nedeni,
+  risk / uyumsuzluk uyarısı); bölümler (İçerik, Bağlı olduğu, Bunu kullananlar, Cihazlar, Bağımlılıklar, .reg'in
+  değerleri) kalan yere sığdığı kadar + "+n daha"; altta satırın eylemleri sessiz düğmeler olarak (Secondary; satırın
+  tıklama / Space / Delete / menü eylemlerinin aynısı — aynı fonksiyonu çağırır). Seçim yoksa sayfanın ikonu + "Bir satır
+  seç". Sayfa listesi boşken (bağlı imaj yok, okunuyor, okunamadı) kart çizilmez. Shell kartı `DetailSource` olan her
+  sayfaya kendisi ekler (`Shell::attachDetailCard`); Programlar'ın ProgramInspector'ı bu karta taşındı (aynı içerik + "Bir
+  satır seç"; `ProgramInspector::paintLetter` satırların küçük harf kutucuğu için duruyor). Seçim, klavye, çift tık ve sağ
+  tık davranışı aynı.
+- **Kırılma noktası** (`detailCardFits`): kart, sayfa kartı yanında en az `kDetailMinPageCard` = 600 DIP kalıyorsa
+  görünür → gezinti açıkken pencere >= 1180 DIP (1207: sayfa kartı 627 kalır, kart var; en küçük pencere 1100: 519
+  kalırdı, kart yok — tablolar sıkışmasın; gezinti daraltılınca 1100'de de görünür). Kart yanındayken tablo, kartın zaten
+  söylediği sütunları sırayla bırakır (`fitColumns`; yalnız sığmayınca: Servisler'de Ad, Kayıt Defteri'nde Değer / Kapsam,
+  Özellikler'de Açıklama, Sürücüler'de Sağlayıcı / Sürüm / Tarih, Görevler'de Kategori, Güncellemeler'de KB / Tür / Boyut,
+  Uygulamalar'da Yayıncı / Mimari / Sürüm, Programlar'da Kimlik, Diller'de Bileşen dilleri / Boyut), ad sütunu 200'e kadar
+  daralabilir; kart yokken her sütun eskisi gibi. Tablonun altındaki tek satırlık ayrıntı (Görevler, Uygulamalar,
+  Sürücüler › İmajdaki) kart yanındayken çizilmez, yokken yerinde. `ui::TableView`: `TableColumn::hidden`,
+  `setColumnHidden`, `minimumWidth`, hücreye özgü ipucu `cellTooltip` (sayfadan bağımsız; ui imaj bilmez).
+- **Durum dili** (`PageBits.h` — `RowMarks`, `paintMarks`, `marksTooltip`): adın hemen sağında, kendi dar sütununda, her
+  işaret kendi yuvasında (alt alta hizalı):
+
+  | İşaret | Çizim | Anlamı | İpucu / kart |
+  |---|---|---|---|
+  | Kuyrukta | QueueClock, accent.text | Uygula'da değişecek | sayfanın sözü: "Uygula'da kaldırılacak", "Uygula'da: Devre dışı" |
+  | Korunuyor | ShieldCheck, text.tertiary | bir uyumluluk bekçisi tutuyor (Uyumluluk'tan kaldırılabilir) | "Uyumluluk koruyor: " + bekçinin sözü |
+  | Kilitli | Lock, text.tertiary | burada değiştirilemez (kalıcı yetenek, zorunlu bileşen) | "Değiştirilemez: " + neden |
+  | Risk | 6 px nokta: status.warning (Dikkat) / status.error (Riskli); güvenlide yok | değiştirmenin riski | "Risk: Riskli — not" |
+  | Önerilen | PresetBookmark, text.tertiary | şablon / katalog öneriyor (Görevler) | "Önerilen" |
+
+  Onay kutusunun kendisinin "kuyrukta" demek olduğu listelerde (Kayıt Defteri, Sürücüler › Eklenecek / Kurulum ortamı)
+  saat işareti tekrarlanmaz. Riskin sözcüklü sütunu (Servisler, Görevler) noktaya indi; sözcük ipucunda ve kartta.
+  Bileşenler'de risk noktası yalnız kataloğun bildiği öğede (envanterden gelen sürücü / yazı tipi "orta" varsayılanıyla
+  1.300 satırı noktalamasın). Grup satırları (Bileşenler / Özellikler kategorileri, Sürücüler sınıfları, Programlar
+  grupları) yarı kalın (BodySemi; eskiden BodyStrong = 400 olduğundan aslında kalın değildi), "n/m" ve boyut sağda; ağaç
+  girintisi her sayfada 16 (`kTreeIndent`). Bir ad ya da kategori kesilince tamamı ipucunda.
+- **Boş / okunuyor / hata:** okunurken EmptyState'te dönmeyen Spinner glifi yerine sayfanın kendi ikonu ve sessiz satır
+  (Bileşenler, Servisler, Özellikler, Sürücüler › İmajdaki, Programlar); hata durumları zaten nedenini ve "Yeniden
+  dene"yi veriyordu (dokunulmadı).
+- Kodda ayrıca: Kayıt Defteri ve Güncellemeler satır metinlerini `refresh()`'te önbelleğe alır (paint'te biçimlendirme,
+  ölçüm ve Güncellemeler'de dosya okuma kalktı); Kayıt Defteri'nin satır silme ✕'i kendi dar sütununda; `SearchBox` dar
+  kutuda yer tutucuyu tuş ipucunun altına değil önüne keser; Diller'in bölge alanları dar kartta taşmaz. **Hata
+  düzeltmesi:** Bileşenler'de bir bileşen seçiliyken imaj ayrılınca (ya da gruplar küçülünce) `rebuildRows()` eski
+  satırın indisleriyle yeni grup listesini okuyordu (Debug'da "vector subscript out of range", Release'te tanımsız
+  davranış) — seçimin anahtarı artık gruplar değişmeden önce okunuyor (yeni birim testi yakaladı). Render:
+  `--toast-timeout` (demo bildirimi kartın altını örtmesin), `--click-after-load=x,y` (Programlar'ın dizini okunduktan
+  sonra satır seçmek); ikisi ve seçili satırlı sayfa durumları `tools/render_diff.py` envanterinde.
+- Yeni token yok. 106 yeni metin anahtarı (tr + en, aynı yer tutucular; `detail.*`, `marks.*` ve sayfa grupları altında);
+  mevcut hiçbir değer değişmedi (eski exe'nin gömülü metinleriyle karşılaştırıldı — çalışma sırasında üç anahtar
+  çakışması yakalanıp geri alındı).
+
+| Sayfa | 1 başlık / özet | 2 ayrıntı kartı | 3 gruplama + durum dili | 4 durum sütunu, hizalı sayılar, kesme | 5 boş / okunuyor / hata |
+|---|---|---|---|---|---|
+| Bileşenler | ✓ | ✓ (bileşen + kategori / düğüm) | ✓ | ✓ | ✓ |
+| Servisler | ✓ (paint'ten çıktı) | ✓ (açıklama, hesap, dosya, bağlı olduğu / kullananlar, bekçi) | ✓ (düz liste: işaretler) | ✓ (Risk sütunu → nokta) | ✓ |
+| Kayıt Defteri | ✓ (başlık + özet) | ✓ (değer / .reg'in değerleri; Düzenle · Aç-Kapat · Kaldır) | kısmen (düz liste, işaret gerekmiyor; ✕ kendi sütununda) | ✓ (".reg · n değer" addan çıktı; metinler önbellekte) | aynı (zaten tutarlı) |
+| Özellikler | ✓ | ✓ (öğe + kategori / dil grubu) | ✓ | ✓ (başlıklar tabloya, açıklama kartta) | ✓ |
+| Sürücüler (3 sekme) | ✓ (üç sekmede aynı yer; paint'ten çıktı) | ✓ (INF, sınıf, boot.wim'dekiler, imajdaki sürücü) | ✓ İmajdaki; Eklenecek / Kurulum ortamı kısmen (rol sözcüğü hücrenin sağında hizalı kaldı) | ✓ İmajdaki ("kaldırılacak" / "kritik" / oemN addan çıktı) | ✓ |
+| Görevler | ✓ | ✓ | ✓ ("önerilen" işaret oldu, risk noktası) | ✓ | aynı |
+| Güncellemeler | ✓ (başlık + özet + uyumsuz uyarısı) | ✓ | — (sıralı düz liste; Durum sütunu zaten ikon + söz) | ✓ (paint'te dosya okuma kalktı) | aynı |
+| Uygulamalar | ✓ (sekme satırının sağında) | ✓ (Eklenecek; Varsayılan sekmesinde kart yok) | — | ✓ (paket dosyası addan çıktı) | aynı |
+| Programlar | ✓ (paint'ten çıktı) | ✓ (ProgramInspector → ortak kart) | ✓ (grup satırı yarı kalın) | kısmen | ✓ |
+| Diller | ✓ (başlık + özet) | ✓ | — | kısmen | aynı (okunuyor / hata satırı zaten vardı) |
+| Hosts | ✓ (SummaryLine) | ✗ → ek'te ✓ | ✗ → ek'te işaret sütunu | ✗ → ek'te Risk sütunu → nokta | aynı |
+| Dosyalar | ✓ (başlık + özet; alttaki satır kalktı) | ✗ → ek'te ✓ | ✗ | ✗ → ek'te risk yuvası (Risk sözcük sütunu kalktı) | aynı |
+| Kurulum Sonrası | ✓ (SummaryLine, paint'ten çıktı) | ✗ → ek'te ✓ | ✗ (adımların riski / kendi durumu yok) | ✗ | aynı |
+
+Ek (2026-11-11, D-140 ile aynı turda): eksik üç sayfa (davranış aynı; kart düğmeleri satırın kendi tıklama / tuş
+eylemini çağırır):
+- **Hosts:** işaret sütunu (kuyrukta saat · risk noktası · önerilen; Risk sözcük sütunu kalktı, sözcüğü ipucunda ve
+  kartta); ayrıntı kartı: açıklama, durum ("Uygula'da hosts dosyasına yazılacak" / "…kaldırılacak" / "İmajın hosts
+  dosyasında var" / "Seçili değil"), Girdi, Durum, Risk, Önerilen ve **engellenen alan adları** (tablo yalnız sayıyı
+  veriyordu; kalan yere sığdığı kadar + "+n daha"); düğme Engelle / Engeli kaldır, içe aktarılan satırda İçe aktar… /
+  Girdileri temizle. Satır durumları `refresh()`'te önbelleğe alındı (paint kuyruğa sormaz). Kart yanındayken tablonun
+  altındaki satır çizilmez.
+- **Dosyalar:** Risk sözcük sütunu → Kaynak'tan sonra yalnız risk yuvalı işaret sütunu (`paintRiskMark`; liste kuyruğun
+  kendisi, her satıra saat koymak bir şey söylemezdi), ipucu "Risk: Riskli — Windows ya da Program Files altına
+  yazılıyor…"; kart: ad, Klasör / Dosya · boyut, "Uygula'da imaja kopyalanacak", kaynağın tam yolu ve kurulan Windows'taki
+  yeri (sarılı metin; tablo yolu kesiyor), İmajdaki yer / Boyut / Tür / Risk, riskliyse uyarı notu; düğme "Kuyruktan
+  çıkar" (= Delete). Kart yanındayken gerekirse Boyut sütunu kartın.
+- **Kurulum Sonrası:** kart: adım adı ve türü, "İlk oturumda n. adım olarak çalışacak" / "Kurulum sonunda …", komutun
+  tamamı (tablo kesiyor) / kopyalamanın kaynak → hedefi / winget kimliği, Tür / Sıra / Çalıştırma / Bekle / Hata olursa,
+  Wi-Fi'de yalnız ağ adı (profil anahtar içerir, gösterilmez), geçersiz adımda hata notu; düğmeler Düzenle (= Enter) ·
+  Bitmesini bekle / Beklemeden geç (yalnız komut; = "Bekle" etiketinin tıklaması) · Sil (= Delete). Adımların riski ve
+  kendi durumu yok (hepsi plan): işaret sütunu eklenmedi. Kart yanındayken Kaynak, gerekirse Tür sütunu kartın.
+- Boş durumlar diğer sayfalarla aynı (kart, tablo görünürken "Bir satır seç"; bağlı imaj yokken kart yok). Testler:
+  `DetailCardTests.cpp`'ye üç vaka. 29 yeni metin (hosts 11, files 6, postsetup 12). Regresyonu D-140'ın Sonuç'unda.
+Sonuç:
+- Doğrulanan: Debug + Release `build.ps1 -Test` geçiyor; yeni `tests/app/DetailCardTests.cpp` (9 vaka): kırılma noktası
+  (1207 → kart, 1100 → yok, sınırın iki yanı), `fitColumns` (sırayla bırakma, gizli sütunun genişliği, kartsız hepsi
+  geri), `SummaryLine` (sessiz parçanın düşmesi, kısa biçim, boş parça), Bileşenler / Servisler / Kayıt Defteri /
+  Özellikler / Görevler'in kart modeli (seçim yok · düz satır · kuyruktaki satır · bekçinin tuttuğu satır / kapalı değer;
+  kart düğmesinin satırın kendi eylemini yapması; birleşik özetlerin metni; imaj ayrılınca kartın düşmesi), işaret
+  sözlüğü. `PagesPolishTests`'te iki denetim yeni yerlere çekildi (başlıklar artık tablonun başlık satırında, işaret
+  sütunu sütun indislerini bir kaydırdı). Görüntüler: her sayfa koyu + açık 1207x700 @1,75, en küçük pencere 1100x700
+  @1,0 (kart yok, tablolar eski düzende), saf siyah render edilip bakıldı (`build\lab\dense\r1..r6`, son kareler
+  `build\lab\dense\final\`).
+- Regresyon (`tools/render_diff.py`, önce = bu işten önceki Debug exe, sonra = yenisi, x64-9448.iso ile): 232 kare (iki
+  tema): 153 aynı, 75 farklı, 4 "başarısız" (+ 2 kare iki exe'de de açılmayan `--demo-store=dialog`). 4 başarısızın hepsi
+  eski exe'nin tanımadığı yeni durumlar (`--toast-timeout`, `--click-after-load`; eski exe 1 ile çıkıyor). 75 farkın 64'ü
+  bu işin sayfaları (yan kart, başlık satırı, işaret sütunu, grup satırları; diyaloglu durumlarda — Uyumluluk, Değeri
+  düzenle, Görev oluştur, Dil ekle, güncelleme kataloğu — farklar yalnız diyaloğun arkasındaki sayfada, diyalog aynı), 4'ü
+  `--demo-apply=running|paused` (sayfa verilmeyince Özellikler'i gösterir), 5'i durum çubuğundaki "Boş alan" rakamı, 2'si
+  Uygula demosunun log satırlarındaki saat (ikisi de bilinen gürültü). Başka hiçbir sayfa / demo / diyalog değişmedi.
+  Kareler `build\lab\dense\diff\`, liste `build\lab\dense\diff_log.txt`.
+- Doğrulanmayan: canlı pencere (yalnız `--render`): kart düğmelerine gerçek tıklama, klavyeyle gezinirken kartın
+  güncellenmesi, pencere boyutu değişirken kartın açılıp kapanması; gerçek bağlı imajda ~1.300 satırlı Bileşenler (özet
+  her kuyruk bildiriminde bütün bileşenleri mevcut bayrak önbelleğiyle bir kez gezer — ölçülmedi); yüksek karşıtlık
+  temaları; Programlar'da ayrıntıların ağdan gelmesi (render'da "Ayrıntılar yükleniyor…" kaldı).
+
+## D-138 — İmaj özeti ve Uygula ekranı (2026-11-11)
+Bağlam: Bir imaj açılınca kullanıcı sürüm tablosuna, oradan da yoğun tablolara düşüyordu; hiçbir ekran "neredeyim"
+demiyordu (bu imaj ne, içinde ne var, kuyrukta ne var, ne kadar küçülecek, sırada ne var). Uygula ekranı ise ürünün en
+görünür anı olduğu hâlde özetinde çoğu "0 –" olan 7 sayaç, ayrı bir süre InfoBar'ı; çalışırken 2 px bir çizgi ve iki
+satırlık liste; bitince bir InfoBar ve 6 sayaçtan ibaretti. Sahibi: "arayüz yarışır kıvama gelsin", hareket işi yok,
+şeridin tasarımı aynı; soru sorulmadan, render'a bakılarak (koordinatörün sırasıyla 2. ve 3. iş). Sayfa ayrıntıları
+`docs/pages/02-images.md` §2b ve `05-apply.md`.
+Karar:
+- **Yer:** Görüntü kartına üçüncü sekme **Özet** (`PageId::Overview`, `--page=overview`): Kaynak seç · Sürümler · Özet.
+  İmaj açılınca yine Sürümler gelir (alışılan tablo yerinde, kendiliğinden sayfa değişmez); Özet, Görüntü'nün son açılan
+  alt sayfası olarak hatırlanır; durum çubuğunun imaj bölümü (kaynak açıkken) ve komut paleti oraya götürür. Şerit
+  Sürümler'inkiyle aynı (`Shell::addImageActions`), yan kart yok.
+- **Ne gösterir** (`pages/overview/OverviewModel` — `buildOverview(AppState, OverviewInputs)` saf fonksiyon;
+  `OverviewInputs` = Shell'in denetleyicilerinin zaten bildiği: nav sayıları, `CompatController::impact()` / `onCount()`,
+  `ApplyController::highRisk()` + plan tahmini, `ComponentController::groups()`, `canMount` / `isPackedSource`): kimlik
+  kartı (ad, rozet, sürüm · build · sürüm kimliği · mimari · dil · boyut; dosya · sıkıştırma · dosya boyutu · sürüm i / n
+  · kaynak; bağlama klasörü) + **Sıradaki adım** cümlesi ve sayfanın tek dolu düğmesi (Kaynak seç / Bağla / ESD → WIM /
+  Bileşenler / Uygula'ya geç / İlerlemeyi gör / Sonuca bak / ISO Oluştur; iş sürerken düğme yok); uygulama kartı
+  (çalışırken ya da son çalışma hâlâ haberken); **İmajda ne var** — 7 kutucuk (bileşenler kategorileriyle, sağlanan
+  uygulamalar, özellikler, üçüncü parti sürücüler, diller, servisler, kuyruktaki güncellemeler), her biri sayfasına;
+  **Kuyruk** — gezintinin gruplarıyla çipler, boyut önce → ≈ sonra + çubuk, süre, yüksek riskli adımlar, uyumluluk
+  raporu, bağlanınca kuyruğa girecek indirmeler.
+- **Okunmamış liste:** "henüz okunmadı" / "okunuyor…" / "okunamadı" / "bağlanınca okunur"; dönen gösterge, uydurma sayı
+  ve özet için liste okuması yok (yeni motor çağrısı yok). Diller kaynak açıkken bile WIM XML'inden bilinir.
+- **Çizim kuralı:** model ve metinler AppState bildirimlerinde (pahalı girdiler parça parça: `OverviewPage::Part`),
+  genişlikler `layout()`'ta; `paint()` yalnız hazır metinleri çizer.
+- **Uygula ekranı** (davranış ve akış aynı; şerit eylemleri ve bağlantıları değişmedi): her modun başında bir baş kartı
+  (`pages/apply/ApplyCards`) ve ekranın tek dolu düğmesi orada. Özet: plan kartı (değişiklik · aşama, imaj, uyku notu,
+  boyut önce → sonra + çubuk + kazanç, süre aralığı, **Uygula · n**); plan tablosuna "Boyut etkisi" sütunu ve grubun
+  yüksek riskli adım sayısı; 7 sayaçlı şerit ve süre InfoBar'ı kalktı. Çalışıyor: aşama + adım + büyük yüzde, "9 / 40 adım
+  · geçen · kalan", 6 px ölçer, tamam / atlandı / bekliyor; kart yüksekliği sabit, liste + log yerinde (geçen süre
+  saniyede bir, sayfanın mevcut 250 ms zamanlayıcısıyla). Duraklatıldı: neden + üç seçim kartın içinde, kalan süre tahmini
+  yok. Bitti: sonuç kartı (durum şeridi, sonuç cümlesi, süre, ne olduğu düz sözlerle, boyut önce → sonra + çubuk, kazanç,
+  adımlar, sıradaki adım: ISO Oluştur / Kaydet… / Görüntü'ye git + rapor / preset / log) ve altında mevcut sonuç tablosu +
+  atlanan adımların nedenleri. D-131'in `sessionLost`'u durdurulan çalışmanın kartında söyleniyor (wlcli tarafı D-140'ın
+  küçük işlerinde).
+- Ortak sayılar: `pages/apply/RunSummary` (`summarizeRun`, `planRows`, `planSeconds`). Yeni çizim yardımcıları:
+  `PageBits.h` `paintSizeBar` (önce → sonra çubuğu), `paintMeter` (yuvarlak ölçer). Yeni token yok (`sizeBar` D-137'de
+  vardı). Erişimci: `AppState::heldDownloads() const`.
+- Render durumları: `--demo-overview[=unread|running|paused|done|held]` (kaynak yoluyla ya da yolsuz; `--page=apply` ile
+  Uygula ekranları), render_diff envanterinde.
+Sonuç:
+- Doğrulanan: Debug + Release `build.ps1 -Test` geçiyor (yeni `tests/app/OverviewTests.cpp`: 12 vaka, 181 denetim — kaynak
+  yok / açık ama bağlı değil / bağlanıyor / bağlı ama listeler okunmamış / okunmuş / kuyruk ve boyut farkı / uyumluluk
+  raporu / çalışıyor / bitti — kaydedildi, bekletildi, kuyruk değişince düşer; çalışma özeti her sonuçla; plan satırları;
+  iki sayfa her modda pencere olmadan kurulur). Görüntüler koyu + açık, 1207x700 @1,75, 1100x700 @1,0 ve saf siyahta
+  render edilip bakıldı (`build\lab\overview\r1..r3`, son kareler `build\lab\overview\final\`).
+- Regresyon (`tools/render_diff.py`, önce = bu işten önceki Debug exe, sonra = yenisi, x64-9448.iso ile; 208 kare): 149
+  aynı, 25 farklı, 34 "başarısız". 34'ün hepsi eski exe'nin tanımadığı yeni durumlar (`--page=overview`,
+  `--demo-overview*`; eski exe 1 ile çıkıyor). 25 farkın 12'si Sürümler sayfasının kartındaki yeni "Özet" sekmesi (her
+  karede aynı 333 piksel, 695–741 × 226–246), 8'i Uygula'nın bitti / atlandı / bekletildi karelerinin yeni sonuç kartı ve
+  onay dialoğunun arkasındaki yeni özet (dialog aynı), 5'i durum çubuğundaki "Boş alan" rakamı (bilinen gürültü). Başka
+  hiçbir sayfa / demo / diyalog değişmedi. (Çalışıyor / duraklatıldı demoları sayfa verilmeyince Özellikler'i gösterir: o
+  yüzden aynı; yeni çalışma kartı `--demo-overview=running|paused --page=apply` karelerinde.)
+- Doğrulanmayan: canlı pencere (yalnız `--render`): kutucuk / çip tıklaması, klavye ile gezinme, kaydırma; gerçek bir
+  Uygula çalışması (demo durumları elle kurulmuş `ApplyRun`); bağlı bir imajda `ComponentController::groups()`'un özet
+  açıkken her bileşen bildiriminde maliyeti (~1.300 öğe, ölçülmedi); Windows'un yüksek karşıtlık temaları.
+→ 2026-11-11: Kuyruk çipleri artık işlem sayısı, işlemi koyan sayfanın sekmesinde (Kurulum › Katılımsız, Diğer dahil),
+boyut değişmeyince nötr çubuk, durdurulan çalışmadan sonra kaydet / çöz kartta görünür (D-148); sonuç kartında ve çalışma
+kartında otomatik ISO bandı, yeni sıradaki adım `IsoReady` (D-144); dönen gösterge D-142'nin halkası.
+
+## D-137 — WinLove'un kendi renkleri (2026-11-11; D-109'un renklerini geçersiz kılar)
+Bağlam: D-136'dan sonra yazı, yoğunluk ve köşeler WinLove'undu ama renkler hâlâ referans aracın ölçülen grileri ve
+Windows'un vurgusuydu (#4CC2FF siyah yazılı) — uygulamanın "kopya" gibi görünmesinin en büyük nedeni. Kodda da roller
+karışmıştı: koyu temada `bg.input` = `bg.raised` (#333333), form kartındaki açılır listeler ve metin kutuları
+görünmüyordu; durum çubuğu kart rengindeydi; seçili gezinti öğesi gri (bg.pressed), seçili tablo satırı mavide gri
+(#3E3E3E), diğer vurgularda renkli; açılır menünün üzerine gelinen satırı menüden bir ton farklıydı; açma / kapama
+düğmesinin topu koyu temada siyahtı; 16 yerde metin vurgunun dolgu renginde yazılıyordu (Bakır / Deniz / Nar / Zeytin'de
+koyu zeminde ~3:1). Sahibi 2026-11-11 gece: "Arayüzü sana bırakıyorum, [referans araçla] yarışır kıvama gelsin" ve "Bana
+bir şey sorma, sabaha her şey bitmiş olsun": koordinatör kararı (onay kapısı yok, hareket işi yok, şeridin tasarımı aynı;
+her görünür adım render'la raporlandı). Koordinatörün sırası: 1 kimlik ve renk (bu kayıt), 2 imaj özeti, 3 Uygula ekranı
+(D-138), 4 yoğun sayfalar (D-139), sonra güncelleme denetimi (D-140) ve VHD / VHDX (D-141).
+Karar: `design/tokens.json` 5.0.0 — hafif soğuk (arduvaz) eğilimli nötr yüzeyler; sayfa en derin katman, çerçeve (başlık
+çubuğu, şerit, durum çubuğu, gezinti kartı) ve içerik kartı onun üstünde; giriş alanı koyu temalarda içe gömük, basma
+düğmesi yeni `bg.control` ile her yüzeyden açık; vurgu her temada tek dolgu + beyaz yazı (Mavi de artık diğer dördü gibi);
+`accent.text` / `accent.focus` vurgunun okunur tonu, `accent.subtle` seçim dolgusu (vurgu, kartın üstünde %20 / %10 /
+%24).
+
+| Koyu | Eski | Yeni | Neden |
+|---|---|---|---|
+| Sayfa (bg.base) | #202020 | #17191C | daha derin zemin; kartlar onun üstünde |
+| Başlık + durum çubuğu (bg.titleBar; durum çubuğu bg.panel'di) | #202020 / #2B2B2B | #1C1E22 | ikisi de çerçeve |
+| Şerit + gezinti kartı (bg.chrome) | #262626 | #1F2125 | çerçeve tonu |
+| İçerik kartı (bg.panel) | #2B2B2B | #25282C | içerik; gezintiden bir ton açık |
+| Kart içi grup (bg.raised) | #333333 | #2D3035 | gruplar karttan ayrı |
+| Menü / diyalog / ipucu (bg.overlay) | #2C2C2C | #2A2D32 | kenar + gölgeyle yüzer |
+| Basma düğmesi (bg.control, yeni) | (bg.input #333333) | #34383D | düğme alandan ayrıldı |
+| Giriş alanı (bg.input) | #333333 | #1B1D21 | içe gömük: alan alan gibi okunur |
+| Basılı (bg.pressed) | #3A3A3A | #3B3F45 | |
+| Seçim (accent.subtle) | #3E3E3E | #27364F | gri değil, vurgunun tonu |
+| Çizgi ince / güçlü | #353535 / #474747 | #34373C / #484C53 | kart kenarı görünür, ağır değil |
+| Metin 1 / 2 / 3 / pasif | #FFFFFF / #B8B8B8 / #858585 / #5C5C5C | #ECEEF1 / #B1B6BE / #8A9099 / #62676F | saf beyaz yerine yumuşak |
+| Vurgu dolgusu (accent.base) | #4CC2FF (siyah yazı) | #3070D9 (beyaz yazı) | WinLove mavisi, neon değil |
+| Vurgu metni / odak | #4CC2FF / #4CC2FF | #74A3EA / #74A3EA | her yüzeyde >= 4,6:1 |
+| Başarı / uyarı / hata / bilgi | #39B54A / #F4D534 / #F54137 / #4CC2FF | #57C27C / #E2AC45 / #F27B72 / #6FA8F2 | tek aile; limon sarısı yerine kehribar |
+| Durum dolguları | #253A28 / #3D3720 / #442726 / #1F3A47 | #24392F / #3D3322 / #432B2C / #253650 | |
+| Şablon (gizlilik / genel / hafif / önerilmez) | #39B54A / #3C7BA7 / #F4D534 / #F54137 | #57C27C / #5E95DA / #E2AC45 / #F27B72 | anlam aynı, tonlar durum renkleriyle bir |
+| İkon mavi / amber / yeşil / kırmızı / mor / camgöbeği / arduvaz | #4CC2FF / #FFB13B / #5FD068 / #FF6B5E / #B794F6 / #3DD6C6 / #A9B7C6 | #6CA6F0 / #E9AA48 / #5FC27F / #EF766B / #A996EE / #47C2B5 / #A3ADBA | biraz sakin, durum renkleriyle uyumlu |
+| Boyut çubuğu (sizeBar) | (kullanılmıyordu) | #2F343C | Bileşenler'in boyut çubuğu seçimden ayrı |
+
+| Açık | Eski | Yeni | Neden |
+|---|---|---|---|
+| Sayfa | #EEEEEE | #ECEEF1 | en derin katman |
+| Başlık + durum çubuğu | #E6E6E6 / #FBFBFB | #F3F4F6 | çerçeve |
+| Şerit + gezinti kartı | #F5F5F5 | #F7F8FA | |
+| İçerik kartı | #FBFBFB | #FFFFFF | temiz beyaz kart |
+| Kart içi grup | #F0F0F0 | #F5F6F8 | |
+| Menü / diyalog | #FBFBFB | #FFFFFF | |
+| Basma düğmesi (yeni) | — | #FFFFFF | |
+| Giriş alanı | #FFFFFF | #FFFFFF | gruptan beyaz, kenarla |
+| Basılı | #E3E3E3 | #E6E9ED | |
+| Üzerine gelme | #0000000A | #1C2A400D | soğuk, nötr |
+| Seçim | #E3E3E3 | #EAF1FB | gri değil, vurgunun tonu |
+| Çizgi ince / güçlü | #E3E3E3 / #CFCFCF | #E1E4E8 / #C9CED5 | |
+| Metin 1 / 2 / 3 / pasif | #1B1B1B / #525252 / #858585 / #B5B5B5 | #1A1D21 / #4A515B / #6B727C / #A0A6AF | üçüncül metin daha okunur |
+| Vurgu dolgusu | #0067C0 | #3070D9 | iki temada aynı dolgu |
+| Vurgu metni / odak | #0058CD / #0058CD | #2462C7 / #3070D9 | |
+| Başarı / uyarı / hata / bilgi | #0F7B0F / #9D5D00 / #C42B1C / #0058CD | #1A7535 / #8F5A00 / #C3352B / #2361C6 | |
+| Durum dolguları | #DFF6DD / #FFF4CE / #FDE7E9 / #E3EEFA | #E7F4EA / #FCF1DC / #FCEAE8 / #E7EFFC | |
+| Şablon | #39B54A / #0058CD / #F4D534 / #F54137 | #2E9A4E / #3B76CF / #B57F0E / #CF3B33 | sarı beyazda okunmuyordu |
+| İkonlar | #0067C0 / #C77700 / #1F8A2E / #C42B1C / #7A4FCF / #00837A / #5A6B7D | #2A66C9 / #B86E00 / #1F7F3A / #C8392D / #6D4FC6 / #0D7C70 / #5B6676 | |
+| Diyalog perdesi | #00000066 | #0F172A59 | kirli gri yerine soğuk, hafif |
+
+| Saf siyah | Eski | Yeni |
+|---|---|---|
+| Sayfa | #000000 | #000000 |
+| Başlık + durum / şerit + gezinti | #000000 / #0D0D0D / #080808 | #08090A / #0A0B0D |
+| Kart / grup / menü | #0D0D0D / #171717 / #0F0F0F | #101114 / #181A1D / #16181B |
+| Düğme (yeni) / basılı / giriş | — / #1F1F1F / #161616 | #1E2125 / #25282C / #060708 |
+| Seçim | #1C2630 | #182843 |
+| Çizgi ince / güçlü | #1E1E1E / #303030 | #222428 / #383B41 |
+| Metin, vurgu, durum, ikon, şablon | koyuyla aynı (eski) | koyuyla aynı (yeni); durum dolguları #13261C / #2A2213 / #2E1A1B / #142238 |
+
+Yüksek karşıtlık kendi setinde kalır; yalnız seçim dolgusu tam camgöbeğinden (#1AEBFF, üstünde beyaz yazı) koyu
+#00363D'ye indi ve `bg.control` (#000000) eklendi. Vurgu seçenekleri (`ui/theme/Palette.cpp`): Mavi #3070D9, Bakır
+#AF5F29, Deniz #147971 → #177F77, Nar #C13C5C → #C64262 (ikisi koyu kartta 3:1 işaret olsun diye bir ton açık), Zeytin
+#5F7A2E; üzerine gelme %8, basma %16 koyulaşır (beyaz yazı korunur); her vurgu için koyu / açık okunur ton ve seçim
+dolgusu, saf siyah için ayrı seçim dolgusu (`build\lab\identity\derive.py` ile türetildi).
+
+Vurgunun kullanımı (her yerde aynı): seçili şey = `accent.subtle` dolgusu + vurgu işareti (gezinti öğesi: yeni 3 DIP sol
+çubuk; tablo satırı: mevcut 2 px çubuk; sekme: alt çizgi; bölümlü seçim: dolgu). Sayfanın / diyaloğun tek ana eylemi dolu
+vurgu düğmesi, gerisi sessiz. İlerleme, odak halkası (okunur ton), bağlantılar, sayaçlar ve "değiştirilecek" yazıları
+`accent.text`; işaretli onay kutusu ve açık anahtar vurguda (Bileşenler / Özellikler'in "kalır" ağaç işareti nötr kalır).
+Kodda düzeltilen yanlış token kullanımları: `StatusBar` (bg.panel → bg.titleBar), `Button` Secondary (bg.input →
+bg.control), `MenuPopup` ve komut paleti satırı (bg.raised → bg.hover), `Checkbox::paintBox` (açıkken accent.text),
+`NavPanel` (seçim bg.pressed → accent.subtle + çubuk; sayaç rozeti %20 vurgu → accent.subtle), `RadioGroup` (iz bg.raised
+→ bg.input, seçili bg.panel → accent.subtle), Bileşenler boyut çubuğu (accent.subtle→accent.hover yerine
+sizeBar→accent.text), Simgeler listesi / ızgarası (üzerine gelme bg.panel = görünmüyordu → bg.hover, seçim bg.raised →
+accent.subtle), Başlat sabitleri ızgarası (bg.pressed / bg.raised → bg.hover / accent.subtle), vurgu dolgusuyla yazılan 16
+metin → accent.text (Sürücüler, Hosts, Görevler, Simgeler ×3, Diller ×3, Programlar ×3, Kayıt Defteri, Kaynak, Ayarlar,
+Katılımsız XML); `refreshSystemContrast` yeni / çerçeve tokenlarını da Windows renklerine bağlar.
+Sonuç:
+- Doğrulanan: Debug + Release `build.ps1 -Test` geçiyor; yeni `tests/ui/PaletteTests.cpp` (5 vaka, 1360 denetim): her
+  temada ve her vurguyla metin 1 / 2 her yüzeyde (sayfa, çerçeve, kart, grup, menü, giriş, düğme, basılı, seçim, üzerine
+  gelme, dört durum dolgusu) >= 4,5:1, metin 3 >= 3:1; vurgu metni ve durum kelimeleri >= 4,5:1; beyaz yazı vurgu dolgusu
+  / üzerine gelme / basmada >= 4,5:1; vurgu işareti sayfa, gezinti ve kartta >= 3:1; ikon ve şablon renkleri >= 3:1; seçim,
+  üzerine gelme ve kart birbirinden ayrı; pasif metin >= 2,2:1. En düşükler: koyu metin 3 basılıda 3,29, açık 3,99; vurgu
+  metni 4,67; durum kelimesi 4,67; beyaz-üstü-vurgu 4,68 (Bakır). `TokensTests` yeni değerlere çekildi. Bütün envanter
+  (sayfalar, demo durumları, diyaloglar, menüler) koyu + açık, saf siyah / yüksek karşıtlık ve beş vurgunun her biri iki
+  sayfada render edilip bakıldı.
+- Geometri: `render_diff` 174 karenin hepsinde renk farkı; `build\lab\identity\geometry.py` (eski ve yeni karenin tek
+  renkli bölgeleri birbirine tek renkle eşlenmeli; kayan kenar iki yönde de tutarsız piksel bırakır; ayrıca kaybolan /
+  yeni kenarlar) 172 karede 0 tutarsız piksel; kalan 2 kare (Simgeler demosu) eski exe'nin başka klasörde durmasından
+  (demo marka ikonunu exe'ye göre arar) — iki exe aynı derinlikte render edilince 0. Kaybolan kenarlar yalnız yuvarlak
+  köşelerde tek piksellik kenar yumuşatma çakışmaları ve durum çubuğundaki "Boş alan" rakamı (canlı veri; eski exe'nin
+  kendisiyle karşılaştırmasında da değişiyor). Yeni kenarlar: gezinti çubuğu (bilerek eklendi) ve eskiden aynı griyi
+  paylaşan tokenların ayrışması (tablo başlık çizgisi ile seçili satır, giriş ile grup).
+- Doğrulanmayan: canlı pencere (yalnız `--render`); pencere çerçevesinin 1 px vurgu kenarı (DWM, sahibinin isteği; artık
+  yeni vurgu); Windows'un yüksek karşıtlık temaları açıkken; gerçek ekranlarda / farklı gama ve gece ışığında algı.
+  Görüntüler: `build\lab\identity\final\` (önce / sonra çiftleri).
+→ D-143 (2026-11-11): vurgu artık herhangi bir renk (Ayarlar › "Özel renk", kurallarla türetilir); beş hazır renk bu
+tablolarla kalır, mevcut kullanıcı için değişen yok. D-142 ilerleme halkası `accent.text` ile çizer.
+
+## D-136 — Yeni görünüm: 13 px yazı, ferah satırlar, yuvarlak köşeler, yükseltilmiş kartlar (2026-11-10; D-109'un ölçülerini geçersiz kılar)
+Bağlam: D-109'un 12 px / 23,5 yoğunluğu ve D-133 cilası sahibine "değişmemiş gibi" geldi; daha cesur iki yön seçti
+(kartlar / yüzeyler; tipografi / yoğunluk). Ayrı bir kopyada (`build\lab\preview\`) iki varyant render edildi; sahibi önce /
+sonra karelerinde A'yı onayladı ("2-4 iyi"). Bu kayıt D-133'ün "karar yok" maddesini kapatır.
+Karar: renkler D-109'da kalır (sonra D-137); yazı, yoğunluk, köşe, boşluk, kart yüksekliği WinLove'un kendisi
+(`tokens.json` 4.0.0): body 12/16 → 13/18; section 12/16/400 → 14/19/600; display / title / panel 15 → 17, 14 → 15, 12 →
+14; control 24 → 28; tableRow / row / tableHead 23,5 / 24 → 28; listRow 28 → 32; tab 26 → 30; navItem 28 → 32; titleBar 34
+→ 36; statusBar 22 → 26; r1 / r2 / r3 2 / 4 / 6 → 3 / 6 / 10; button, badge 4 → 6; menu 4 → 8; contentPad 16 → 20; panelPad
+8 → 12; checkbox 13 → 14; toggle 38×18/12 → 40×20/14; yeni `elevation.card`. Şerit 50'de ve aynı tasarımda kalır.
+Kodda: `Canvas::raisedCard` (önbellekli dokuz parçalı gölge + 1 fiziksel piksel `line.subtle` çerçeve; koyu temada kartı
+çerçeve ayırır); sekme şeritleri taşınca kayar (`ui/widgets/StripScroll`); form / liste / InfoBar / bildirim / palet
+ölçüleri token'lardan; tek bölüm başlığı `FormView::paintSectionTitle`; tablo sütunları ad sütununa yer bırakır
+(`TableColumn::minWidth`, `setFlexMin`), kesilen hücre / etiket ipucunda tam. CLAUDE.md kural 3–4 buna göre güncellendi.
+Ek — sahibinin aynı gece bu işin ajanına doğrudan yazdığı beş istek (2026-11-11; aynı `dist`'e girdi):
+1. İmaj açıkken Kaynak seç'e geri dönüş: Görüntü kartında "Kaynak seç · Sürümler" sekmeleri (`Shell.cpp`:
+   `workspaceTabs`, `attachSubNav`); D-138 üçüncüsünü (Özet) ekledi.
+2. Başlık çubuğu menülerinde ikon (`TitleBar`).
+3. Bağlı imajlar listesinin gecikmesi: liste önce wimgapi'den (`core::wimMountedImages`, `inspectMountsFast`;
+   `ImageController::scanSystemMounts`), DISM okuması arkadan (D-064'ün listesi). **Yeni motor yolu gerçek bağlı imajla
+   denenmedi (kural 6): lab bekliyor.**
+4. Windows indir'de "Seç…" gecikmesi: Mağaza uygulama listesi ayrı runner'da (`WindowsDownloadController::m_appLists`).
+   Süre ölçülmedi.
+5. Katılımsız'da fare tekerleği: sayfa bütün olarak kayıyor (`UnattendedPage`, `ScrollableBody`). Canlı pencerede
+   denenmedi.
+Sonuç:
+- Doğrulanan: bütün sayfa, demo durumu, diyalog ve menü koyu + açık, 1207x700 @1,75 ve 1100x700 @1,0'da render edilip
+  bakıldı (384 kare); Debug + Release testleri geçiyor (yeni `tests/ui/RestyleTests.cpp`).
+- Doğrulanmayan: canlı pencere, gerçek yoğunluk ayarı (Rahat / Geniş yalnız ölçek yaklaşımıyla), aygıt kaybında gölge
+  önbelleği, WARP maliyeti; beş isteğin hiçbiri pencerede denenmedi.
+- Bilinen: Görüntü yan kartı 700 yükseklikte son 2–3 bilgiyi göstermiyor; Katılımsız'da bir ipucu önizlemenin üstüne
+  düşüyor.
+
+## D-135 — Arayüz hareketi (DirectComposition, Windows Animation Manager, DPI): İPTAL — uygulandı, ölçüldü, sahibinin isteğiyle tamamen kaldırıldı (2026-11-10 → 11)
+Bağlam: Sahibi (2026-11-10): "DirectComposition, Windows Animation Manager, DPI Awareness API da kullan akıcı güzel
+animasyonları olsun arayüzün." D-011'den beri tek HWND flip swap chain'e her karede bütün pencere çiziliyor, bütün
+hareketler arayüz iş parçacığında. Plan ve taslak kayıt `docs/MOTION-PLAN.md` (§7 aşamalar, §9.1 taslak): aşama 0
+ölçüm düzeneği, 1 compositor kök (aynı pikseller, kapatma anahtarı), 1b DPI cilası, 2–4 yüzen katmanlar, sayfa /
+diyalog / menü / bildirim geçişleri, Windows Animation Manager, kalan hareket dili.
+Karar ve olan:
+- Aşama 0 + 1 + 1b bir alt ajanda uygulandı ve ölçüldü (`build\lab\motion\`: kare günlükleri, `render_diff` 174 / 174
+  aynı): sayfa geçişi kare aralığı 8,3 → 4,2 ms; ekran kartı belleği +11,5 MB; açılış +10 ms; durgun pikseller aynı.
+  Aşama 2–4 hiç başlamadı.
+- 2026-11-11 gece sahibi: "bunu iptal et, animasyon istemiyorum", ardından "tamamen sil" → **iptal**. Alt ajan kendi
+  değişikliklerini elle geri aldı. `MOTION-PLAN.md`'nin başındaki nota göre aşama 1b'den yalnız küçük, bağımsız DPI
+  düzeltmeleri kaldı: pencere simgesinin DPI'ya göre yüklenmesi, `--size`'ın istemci alanı olması, çift tık alanının
+  DPI'ya göre olması.
+- D-133'ün küçük widget hareketleri (kayan sekme çizgisi, kendini çizen tik, üzerine gelme solması) yerinde: sahibi onlar
+  için bir şey demedi.
+Sonuç:
+- Tutulmamasının nedeni sahibinin kararı, sayılar değil: ölçüm geçişte kare aralığını yarıya indirmişti; bedeli ekran
+  kartı belleğinde +11,5 MB ve açılışta +10 ms idi.
+- D-011 geçerli kalır. `MOTION-PLAN.md` rafa kalkmış plan olarak duruyor; §9.2'nin "değişecek satırları" uygulanmadı
+  (CLAUDE.md'nin "Arayüz" satırı, ARCHITECTURE'ın render akışı, ROADMAP aynı).
+- Doğrulanan (geri alma): 2026-11-11'de `src/` altında DirectComposition ya da kare günlüğü izi yok (`dcomp`,
+  `IDComposition`, `Compositor`, `FrameLog`, `composition=` aramaları boş). Ölçüm sayıları alt ajanın raporundan;
+  PERF-BASELINE'a tablo olarak girmedi.
+→ D-142 (2026-11-11): sahibinin ayrıca istediği tek hareket, ilerleme halkası; DirectComposition / hareket altyapısı
+olmadan, var olan `tickIntervalMs` ile (dönerken 25 ms, hareketi azaltta duran yay). İptal geçerli.
+
+## D-134 — Kurulum ortamına (boot.wim) sürücü: önce elenir, DISM'in listesiyle doğrulanır, depolama imaja da (2026-11-10; D-056'nın boot.wim sürücülerini genişletir)
+Bağlam: Sürücüler › "Kurulum ortamı (boot.wim)" sekmesi vardı (D-056), sürücü yolu hiç denenmemişti. Kodda: sürücüler
+ISO'daki "atlamaları boot.wim'e de yaz" kutusuna bağlıydı (kutu kapanınca sessizce düşerdi); reddedilen sürücü yalnız
+log'a giderdi; ARM64 INF seçilebilirdi; sekmede sınıf tıklaması yeniden kurulan satırları gezerdi (çökme riski). Lab:
+DISM yalnız NTarm64 modelli INF'i ve kataloğu uyuşmayan ağ sürücüsünü x64 boot.wim'e "imzasız" diye sessizce ekler;
+imzasız depolama sürücüsünü 0x80070032 ile reddeder; aynı paketi ikinci kez eklemez ama başarı döner. Sahibinin seçtiği
+üç özellikten biri. Sayfa ayrıntıları `docs/pages/09-drivers.md`.
+Karar:
+- Motor (`core/image/BootImage`): `checkBootDriver` (dosya, mimari, katalog) DISM'den önce; her paketten önce / sonra
+  `DismGetDrivers` farkı → eklendi / zaten var / imzasız (`DismRemoveDriver` ile geri). Rapor `driversAdded / Present /
+  Refused`. Yalnız index 2 (medya onu açar).
+- `core/image/MediaDrivers`: medyadaki üçüncü parti sürücüler bağlamadan okunur; `DriverInf::setupRole`: depolama / ağ /
+  kablosuz / sanal.
+- ISO / USB: sürücüler atlama kutusundan bağımsız; özette "Ortam sürücüleri"; yalnız boot.wim'e giden depolama
+  sürücüsüne uyarı; reddedilen sürücü bitiş bandında adı ve nedeniyle, ISO yine üretilir.
+- Sürücüler › Kurulum ortamı: "boot.wim'de olanlar" grubu; rol etiketi; başka mimari / zaten var soluk ve ipuçlu; "Bu
+  bilgisayardan al" depolama + kablolu ağı işaretler; imaj bağlıyken depolama sürücüsü imaj kuyruğuna da girer.
+- CLI: `wlcli iso --boot-driver / --bypass / --legacy-setup`, `media-drivers`, `driver-scan`.
+- Kapsam dışı: WinRE (install.wim içindeki Winre.wim) sürücüleri; ForceUnsigned.
+Sonuç:
+- Doğrulanan: `tools\lab_boot_drivers.ps1` ALL PASSED (pvscsi, Intel VMD, Realtek GbE index 2'de; 4 yanlış INF elendi;
+  verify 13.894 akış). `-Vm`: sürücüsüz boot.wim ile kurulumun disk listesi boş; aynı kopyaya `wlcli iso --boot-driver`
+  ile pvscsi → kurulum ~10 dk, masaüstü. Kanıtlar `build\lab\bootdrv\out\`, görüntüler `build\lab\bootdrv\shots\`.
+- Doğrulanmayan: gerçek VMD / RAID makinesi; ağ sürücüsünün WinPE'de ağı açması; USB yolu (yalnız birim testi); arayüz
+  pencerede tıklanmadı.
+
+## D-133 — Arayüz cilası: hareket, kabuk, sayfa düzeltmeleri, Kaynak sayfası; D-109'dan sapmalar (2026-11-10)
+Bağlam: Kullanıcı (2026-11-10): "tüm arayüzü oldukça güzel kaliteli bir tasarıma kavuştur". Şerit için üç taslağa baktı
+ve şeridin olduğu gibi kalmasını seçti. Kullanıcı bilgisayar başında değildi, onayı devretti ("sen hallet benim yerime
+herşeyi") ve işin alt ajanlarla yapılmasını istedi. Dört aşama; her aşama derlendi ve render edildi.
+Karar:
+1. **Widget çatısı (`ui`):** `anim/ItemMotion` (`ItemHover`: öğe hover dolgusu söner-yanar; `SelectionMove`: seçim
+   göstergesi yeni öğeye kayar). Sekme alt çizgisi yeni seçime kayar; işaret kutusunun tiki kendini çizer (koddan
+   konan tik doğrudan görünür); tablo satırının hover'ı söner-yanar, odak halkası satırın içinde; form ipucu kartın
+   dolgusunda biter, sığmazsa `…`. Anında harekette (Windows animasyonları kapalı, `--render`) son durum çizilir.
+2. **Kabuk:** gezintide sayfa başına kuyruk sayısı rozeti (vurgu tonunda; yeni token `opacity.accentTint` = 0,2;
+   üç haneden sonra "999+"). Durum çubuğu tıklanabilir bölümler: bağlı imaj (→ Görüntü), kuyruktaki değişiklikler ve
+   tahmini kazanç (→ Uygula); söyleyecek bir şeyi olmayan bölüm çizilmez, boş alan hep görünür. Başlık açık imajı
+   yazar ("Windows 11 Pro · install.wim"; imaj yoksa uygulamanın adı). Eylemi olmayan sayfada şerit bandı çizilmez
+   (kartlar yine aynı yükseklikte başlar). Öğe başına tooltip'ler düzeldi (`Widget::tooltipAnchor`,
+   `Host::tooltipChanged`; AUDIT'in "kapsam dışı gözlem" notundaki tablo satırı tooltip'leri dahil; canlı denenmedi).
+   Windows indir'in "Yenile"si şeride taşındı.
+3. **Sayfalar:** sütun başlıkları sütunlarıyla hizalı; ağaç kategori satırları "n/m" ve toplam boyutu yazar; Ayarlar'ın
+   üçlü değişiklik işareti çubuk + metne indi; boş durumlar tutarlı (bağlı imaj yoksa boş durum gövdenin tamamını
+   alır); kendini çizen tik 8 sayfada ve 4 diyalogda; Hakkında, Başlat menüsü ve Uygula şerit eylemleri aldı. Diller,
+   Kayıt Defteri ve Uygulamalar'da kartı taşan sütunlar, ISO ve Presetler'de kesilen etiketler, büyük harfli başlıklar
+   giderildi; bölüm başlığı stili tek (`paintFormSection`). Windows indir kaydırılabilir oldu: en küçük pencere
+   yüksekliğinde "İndir ve ISO oluştur" düğmesine ulaşılamıyordu.
+4. **Kaynak sayfası** (`docs/pages/01-source.md`): bırakma alanı tek kompakt satır (`pages/source/DropRow`); "Son
+   kullanılanlar" tek sütunlu liste (iki satırlık satırlar), görünür kaldır düğmesi (×), klavye (→ ile ×'e, Enter /
+   Boşluk / Delete); bölüm başlıkları diğer sayfalardaki gibi.
+D-109'dan sapmalar (kullanıcının isteğiyle; referans araçta yok): durum çubuğu bölümleri, başlıkta imajın adı, vurgu
+renkli gezinti rozetleri, eylemsiz sayfada bant olmaması, Kaynak sayfasının düzeni (D-091'in kartlarından da ayrılır).
+Şerit referans araçtaki gibi kaldı (kullanıcının seçimi).
+→ D-147 (2026-11-11): başlıkta imajın adı kaldırıldı; başlık her zaman "WinLove", markanın yazı tipiyle (IBM Plex Sans
+SemiBold, "Love" vurgu tonunda).
+Sonuç:
+- Doğrulanan: Debug + Release derleniyor, birim testleri geçiyor (yeni: `tests/ui/UiAuditTests.cpp`'deki "polish"
+  testleri, `tests/app/ShellPolishTests.cpp`, `PagesPolishTests.cpp`, `SourcePolishTests.cpp`); her aşama durgun
+  render karesiyle görüldü; `dist\WinLove.exe` (2026-11-10 22:06) bunları içeriyor.
+- Doğrulanmayan: hareketler canlı bir pencerede hiç izlenmedi (render anında hareketle durgun kare çizer); uygulama
+  içinde tıklama turu yapılmadı (durum çubuğu bölümleri, rozetler, Kaynak listesinde kaldırma / klavye); kare hızı
+  ölçülmedi; tasarımı kullanıcı onaylamadı.
+- Açık, **karar yok:** kullanıcı sonucu görünce "değişmemiş gibi" dedi ve daha cesur iki yön seçti: kartlar / yüzeyler
+  ve tipografi / yoğunluk. Ağacın bir kopyasında önizleme hazırlanıyor; seçilen yön D-109'u daha da değiştirecekse yeni
+  bir kayıt olur.
+  → D-136 ile karara bağlandı (A varyantı; renkler sonra D-137). Buradaki widget hareketleri D-135'in iptalinden
+  etkilenmedi.
+
+## D-132 — Denetimin ikinci turu: operatörün ve sonraki oturumun bilmesi gereken davranış değişiklikleri (2026-11-10)
+Bağlam: Kullanıcı: "yapmadıkların varsa onları da yap … sen hallet". Denetimin (`docs/AUDIT-2026-11-10.md`) kalan
+bulguları sekiz parçada düzeltildi, parçalar arası yapıştırma yapıldı, sonra bağımsız bir ikinci okuma (altı bulgu) ve
+düzeltmeleri, en son yönetici laboratuvarı (`build\lab\r2\REPORT.md`). Bulgu bulgu durum AUDIT'in başındaki tabloda;
+DISM oturumu D-131'de, çocuk süreçler D-130'da. Bu kayıt, D-129'un "Loglar sayfası 20.000 sınırında 18.000'e iner"
+maddesini geçersiz kılar.
+Karar (görünen ya da betiği etkileyen değişiklikler):
+- **Günlükler:** açılışta `%LOCALAPPDATA%\WinLove\logs`'ta en yeni 50 oturum logu kalır (`base/Log.cpp`
+  `kSessionLogsKept`): yalnız klasörün doğrudan içindeki, adı tam `WinLove-YYYYMMDD-HHMMSS.log` olan normal dosyalar;
+  wlcli ve `--render` de oturum logu açtığı için sayılır; açık (başka bir WinLove'un yazdığı) dosya silinemez, kalır;
+  listeleme yarıda hata verirse hiçbir şey silinmez. `dism.log` 32 MiB'ı aşınca `DismInitialize`'dan önce
+  `dism.old.log` olur (öncekinin üstüne). Loglar sayfası tam 20.000 satırda keser (yalnız taşan satırlar düşer, pay
+  yok); Uygula konsolu 20.000 satırla sınırlı.
+- **Arayüz:** Shift+F10 bağlam menüsünü açar (`WM_SYSKEYDOWN`'da iletiliyor; düz F10 Windows'ta kalır).
+  `SearchBox::setMaxLength` var, varsayılan sınırsız (ilk hâlindeki 32.767 kayıt değeri verisini sessizce kesiyordu).
+  Ayarlar'da dil / yazı tipi, bağlı imajın listelerinden biri okunurken ve sürücü dışa / uygulama içe aktarımı
+  sürerken kilitli (mevcut kilit ipucuyla); bekleyen indirmeler arayüz yeniden kurulunca kaybolmaz. Diller'de indirme
+  ilerlemesi açık listeyi kapatmaz. Uygula bitince bileşen, envanter, sürücü ve dil listeleri de yeniden okunur; Başlat
+  uygulama listesi yalnız koşu Done'a geçerken bırakılır. Önceki WinLove kapanırken (mutex var, pencere yok) yeni açılış
+  10 sn'ye kadar bekler (yeni ileti yok). Çökme dökümü `terminate`, purecall, geçersiz parametre ve `SIGABRT`'de de
+  yazılır. Hosts içe aktarma 64 MB'tan büyük dosyanın ilk 64 MB'ını okur (sonuç eskisiyle aynı).
+- **Diller'in %100 CPU döngüsü** (eskiden beri açıklanamıyordu; `--demo-languages` bu yüzden ölçülemiyordu): başarısız
+  okuma sayfayı yeniliyor, sayfanın yenilemesi okumayı yeniden başlatıyordu. Artık başarısız okuma `force` ya da başka
+  bir bağlama gelene dek yeniden başlamaz ve yalnız durumun beklediği yanıt yazılır (`LanguageController`; aynı koruma
+  `ServiceController`'da). Test: `tests/app/PagesPolishTests.cpp`.
+- **Ağ:** süreç ömürlü tek WinHTTP oturumu (zaman aşımı / TLS bir kez; çerez kabı istekler arasında ortak, önce her
+  istek temiz oturumdu). İptal beklemedeki WinHTTP çağrısını keser (istek tutamacı iptal olayında kapanır); UUP
+  indirmesinde iptal bütün işçilere hemen gider. Beklenen boy verilmemişse yanıtın `Content-Length`'i beklenir: gövde
+  kısa biterse `.part` kalır ve "download ended at X of Y" hatası döner (önce tam sayılıyordu; karmasız indirmeler —
+  katalog güncellemeleri, winget dizini — etkilenir), yeniden başlatınca kaldığı yerden sürer; devam isteğine 416 gelirse
+  `.part` silinir. UUP'de var olan dosyanın karması okunamazsa ~1 sn sonra bir kez daha, yine olmazsa silinip yeniden
+  indirilir. Windows indir'in liste istekleri yenisi gelince öncekini iptal eder; dönüştürme başarılıysa UUP klasörü
+  motor işinin sonunda silinir.
+- **Ayrıştırıcı sınırları** (bu dosyalar artık reddedilir): PE'de `SizeOfHeaders` dosyadan büyük ya da `FileAlignment`
+  > 64 KiB → yamalanamaz (okunur); kaynak verisi toplamı dosyanın 2 katını ya da yaprak sayısı 65.536'yı aşarsa
+  ayrıştırılmaz. WIM'de lookup tablosu 256 MiB'ı (≈5,3 milyon akış) aşarsa "okunamıyor"; `wimFileData` 4 GiB üstü tek
+  dosyayı okumaz; doğrulama işçisindeki istisna / bellek yetmezliği "hasarlı" olarak raporlanır. `.psf`'i aşan girdi
+  arabellek ayrılmadan `ParseError`.
+- **İmaj ve kurulum medyası:** kurulum medyası değiştirilirken `sources\` içinde silinemeyen her eski girdi loglanır ve
+  herhangi biri işi durdurur (önce yalnız sonuncusu); kök listelenemezse hiçbir şey silinmeden durulur. Var ama
+  okunamayan `hosts` / `SetupComplete.cmd` artık hata (üzerine yazılmaz). Ek sürümler (D-055) `mountSafely` ile
+  bağlanır; aynı sürüm zaten bağlıysa hata döner, mount olduğu gibi kalır. Kilitli dosyada zorla silme: ayrıcalıklar
+  süreç başına bir kez, çocuktan gelen erişim reddinde üst klasör yeniden sahiplenilmez. Bağlama klasörü junction /
+  SUBST / 8.3 adıyla verilmişse kurulu kopyaların bağlantı adları gerçek yolla eşlenir; SUBST altındaki kovanlar
+  görülür, kovan boşaltma erişim reddinde 3 × 200 ms yeniden denenir.
+- **wlcli** (lab betikleri bunu bilmeli): `apply --also`'da `optimizeWim` hatası çıkış 3 (önce 0), geçerli dizin
+  içermeyen `--also=abc` iş başlamadan çıkış 2 — `tools/lab_features.ps1` (`--also=2`) `optimizeWim` hatasında artık
+  kırmızı; `catalog --download` hiçbir teklif seçmediyse hata satırı + çıkış 1; `icon-pack --source` hiçbir dosya
+  yamalamadıysa hata satırı + çıkış 1 (hata varsa yine 3); `reg <mount>`'ta `[unsupported]` hâlâ çıkış 0. Konsol
+  kapatma / oturum kapatma / kapanış da iptal eder, işleyici komut dönene kadar en çok 20 sn bekler. `iso`, `append`,
+  `uup apps` geçici klasörlerini hata ve iptalde de siler.
+Sonuç:
+- Doğrulanan: Debug + Release, birim testleri (yeni dosyalar AUDIT'in durum tablosunun başında); yönetici
+  laboratuvarında aynı 30 adım eski ve yeni `wlcli` ile aynı sonucu verdi (D-131); `tools/render_diff.py` ile 2. turdan
+  önceki ve sonraki ikili 174 durgun karede karşılaştırıldı, bir gerileme bulundu ve düzeltildi (Dil ekle diyaloğunda
+  boyutlar).
+- Doğrulanmayan: ağ yolları (WinHTTP oturumu, iptal, `Content-Length`), kilitli dosya, junction / SUBST bağlama yolu,
+  kurulum medyası değiştirme, `wlcli` çıkış kodları, konsol kapatma; hiçbiri çalıştırılarak denenmedi.
+
+## D-131 — DISM oturumu tembel açılır: kapanan oturum bir sonraki DISM çağrısına kadar kapalı kalır (2026-11-10)
+Bağlam: Denetim IMG-01 (`docs/AUDIT-2026-11-10.md`). `removeComponent` içinde DISM oturumu beş ayrı yerde askıya
+alınıp hemen yeniden açılıyordu (açılış dosyası denetimi, `editHives`, `removeStoreCopies`, derin sürücü kaldırma, AppX
+sonrası), Applier adım sonunda bir kez daha; aralarında oturumu kullanan çağrı yoktu. D-128'in lab ölçümünde yeniden
+açma ~1,4 sn. Bu kayıt birinci turun sonunda taslak olarak yazıldı ("uygulanmadı": oturumun yaşam döngüsüne dokunduğu ve yalnız
+laboratuvarda doğrulanabileceği için); aynı gün uygulandı ve laboratuvarda ölçüldü.
+Karar (uygulandı):
+- `DismSession::suspend()` oturumu kapatır ve kapalı bırakır. Oturumu kullanan her üye önce `ensureOpen()` çağırır
+  (kapalıysa `reload()`); `open()` o an açık olup olmadığını söyler. Kapalı oturum kovan tutmaz ve maliyeti yoktur:
+  art arda gelen kovan / dosya adımları arasında DISM hiç açılmaz.
+- `removeComponent`'teki beş pencerenin ardındaki `reload()`'lar kaldırıldı; `suspend()`'ler yerinde, sıraları aynı.
+  `runDismExe` ve yerel AppX kaldırma eskisi gibi hemen yeniden açar.
+- Applier adım sonunda yalnız DISM yeni oturum istediyse (`reloadRequired()` ve oturum açıkken) ya da adım oturumu
+  açamadıysa bir kez daha yeniden açar.
+- **Oturum açılamazsa koşu durur** (bağımsız incelemenin 1. bulgusu, aynı gün): `reload()` başarısız olunca hata
+  `lost()`'ta kalır (başarılı bir `reload()` temizler). Applier o adımı her adım gibi raporlar, `report.sessionLost`'u
+  doldurur ve döner (`completed = false`); böylece ne ana sürüm ne `applyToEdition`'daki ek sürümler kaydedilir.
+  `lost()` olmadan koşu "N adım başarısız" diye sürüyor, ek sürüm yarım hâliyle commit edilebiliyordu.
+- D-127'nin yolu değişmedi: `0x800703EE`'de yer tutucular diske indirilir, DISM isterse oturum yeniden açılır, paket
+  bir kez daha denenir.
+Sonuç:
+- Lab (`build\lab\r2\REPORT.md`, 2026-11-10): 26200.8037 Pro'nun dışa aktarılmış kopyası, her koşu taze kopyada; aynı
+  30 adım (18 depo kopyası, CBS paketli ve appx'li tarifler, kayıt / servis adımları karışık); eski (commit `1259c1e`)
+  ve yeni `wlcli`. İkisi de 30 / 30, ScanHealth temiz, Uygula sonrası yüklü kovan yok; kalan dosya (59.316), servis
+  anahtarı (682), CBS (3.403) ve appx (43) kayıtları birebir aynı; 18 adımda "store copies removed" sayımları aynı.
+  **Depo kopyası adımı medyan 1,360 → 0,508 sn** (18 adımın toplamı 31,0 → 15,9 sn), Uygula 152,4 → 126,0 sn. Yeni
+  ikilide adım süresi adımın kendi işi kadar (`perf store copies` satırı; çoğu açılış analizi, ~0,4 sn): DISM'in payı
+  kalmadı.
+- Taslağın kabul ölçütü: "< 0,5 sn" kıl payı tutmadı (0,508 sn), kalan süre DISM değil açılış analizi (IMG-02,
+  atlandı). "CheckHealth temiz": ScanHealth temiz. "D-127 yolu yeniden denenmiş": hayır, `0x800703EE` oluşmadı.
+- Doğrulanmayan: oturumun yeniden açılamaması (`lost()`; `DismSession` birim testte kurulamıyor: dismapi + yönetici +
+  bağlı imaj ister), SSU'nun istediği yeniden yükleme, D-127 yolu, arayüzden Uygula. Her ikili bir kez koştu.
+- Bilinen: oturum açılamazsa, durulan adımın DISM'den önceki işleri (kovan düzenleme, depo kopyaları, derin sürücü
+  kaldırma) yapılmış olur; eskiden ilk yeniden açma düşünce bunlar hiç çalışmazdı. Uygula sayfası ve `wlcli`
+  `sessionLost`'u ayrıca göstermiyor: "iptal" gibi okunur (AUDIT-2026-10 A20'nin görünen yarısı).
+  → Gösterilmemesi kapandı: Uygula'da D-138 (durdurulan çalışmanın kartı), `wlcli apply`'da D-140'ın küçük işleri
+  (gerçek bir oturum kaybıyla hâlâ denenmedi).
+
+## D-130 — Çocuk süreçler kill-on-close job'da; servis yapan araçlar dışında; iptal yalnız zararsız iki araçta (2026-11-10)
+Bağlam: Denetim ENG-02 · OPS-05 · ENG-07 · CLI-06. `runProcess` iptal belirteci almıyor, süreci sonuna dek bekliyor ve
+job object'e koymuyordu: Durdur bu adımlarda etkisizdi, takılan çocuk motoru ve kapanışı kilitliyordu, WinLove ölürse
+çocuk bağlı imajın kovanlarını tutarak çalışmaya devam edebiliyordu; eşzamanlı iki çağrı birbirinin borusunu
+kalıtıyordu. Birinci turun sonunda taslak olarak yazıldı (Durdur'un görünen davranışı araç araç karar istediği için); aynı gün
+uygulandı, kapsamı bağımsız incelemeden sonra daraltıldı.
+Karar (uygulandı, `core/system/Process.{h,cpp}`):
+- `ProcessLife::EndsWithUs` (varsayılan): araç askıda başlar, `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` bayraklı bir job'a
+  atanır, sonra sürdürülür; araç çalışırken WinLove ölürse araç ve başlattıkları ölür. Araç kendiliğinden bitince sınır
+  kaldırılır: bilerek geride bıraktığı süreçler eskisi gibi yaşar. Job'a atanamazsa (WinLove iç içe job kabul etmeyen
+  bir job'da çalışıyorsa) eskisi gibi job'sız.
+- `ProcessLife::Outlives` (job yok): bağlı imajda dism.exe (`runDismExe`: `/Cleanup-Image`, `/Add-Package`,
+  `/Set-Edition` …) ve USB yazımında diskpart / bootsect (`UsbMedia` `runLogged`). Bunları işin ortasında öldürmek
+  bekleyen işlemli imaj ya da yarım hazırlanmış disk bırakır; bitmelerine izin vermek daha az zararlı. İlk uygulamada
+  bunlar da job'daydı; bağımsız inceleme "WinLove çökerse servis yapan dism.exe ortada ölür" dedi, aynı gün ayrıldı.
+- Job'da kalanlar: expand.exe (UUP, medya yenileme), tar (simge paketi), powercfg `/export`, pnputil `/export-driver`,
+  winget, `dism /Online /Export-DefaultAppAssociations` (imaja yazmaz).
+- İptal (`const CancelToken*`, isteğe bağlı): verilirse boru yoklanır (25 ms), iptalde bütün job sonlandırılır, sonuç
+  `Cancelled`; başlamadan iptal edilmişse araç hiç başlamaz. **Belirteç yalnız iki yerde verilir:** `winget download`
+  (Programlar'ın çevrimdışı indirmesi; yarım klasörü sonraki deneme boşaltır) ve `pnputil /export-driver` (bu PC'nin
+  sürücülerini dışa aktarma). `Outlives` ile verilen belirteç programlama hatasıdır: loglanıp yok sayılır.
+- Kalıtım: boru uçları kalıtılamaz açılır, yalnız yazma ucu `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` ile çocuğa verilir
+  (ENG-07); liste kurulamazsa eski davranış.
+- `wlcli`: konsol kapatma / oturum kapatma / kapanış da iptal eder, işleyici komut dönene kadar en çok 20 sn bekler
+  (CLI-06).
+Sonuç:
+- Durdur'un görünen davranışı yalnız winget indirmesinde ve sürücü dışa aktarımında değişti (artık hemen keser); dism.exe
+  adımları eskisi gibi "adım bitince durur". Belirteçli yolda çıktı en çok 25 ms gecikir.
+- Doğrulanan: birim testleri (`tests/core/EngineAuditTests.cpp`: çıktı ve çıkış kodu tam gelir; iptal edilen belirteç
+  aracı keser; `Outlives`'a verilen belirteç yok sayılır, araç sonuna kadar çalışır). Lab (`build\lab\r2`): `wlcli
+  health check|scan` (dism.exe, job dışında) ve `export-host-associations` (job içinde) eski ve yeni ikilide aynı sonuç;
+  her komuttan sonra lab'ın başlattığı dism / DismHost süreci ve yüklü kovan kalmadı.
+- Doğrulanmayan: WinLove ölünce job'daki çocuğun ölmesi, arayüzden Durdur (winget indirme, sürücü dışa aktarma), USB
+  yazımı.
+
+## D-129 — Kararlılık / hız / bellek turu: ne değişti, neyin bedeli ödendi (2026-11-10)
+Bağlam: Kullanıcı kapsamlı bir denetim + optimizasyon turu istedi, planı görüp "Hepsini uygula" dedi. Bulgular
+`docs/AUDIT-2026-11-10.md` (132 bulgu, sonunda durum tablosu), ölçümler `docs/PERF-BASELINE.md`.
+Kararlar (davranışa dokunanlar):
+- **Kuyruk dizinli** (`ChangeSet`): `find` artık (tür, hedef) dizininden. Anahtar kaba (ASCII küçük harf, gerisi tek
+  yer tutucu), eşleşmeye yine `text::iequals` karar verir: kurallar aynı.
+- **Geri alma geçmişi boyutla da sınırlı** (64 MB; en yeni durum hep kalır). Sıradan kuyrukta 200 adım yine duruyor;
+  karşılama betiği kuyruktayken (~1 MB / durum) en çok ~64 adım geri alınabilir. Bedel bu.
+- **Toplu işaretleme tek adım** (`AppState::QueueBatch`): kategori / sınıf / klasör işaretlemesi artık tek geri alma
+  adımı ve tek bildirim. `AppState.h` zaten "bir adım = bir eylem" diyordu; eski davranış (n adım) hataydı.
+- **`queue.json` biçimi**: içerik aynı, girintisi farklı (değişiklik kümesinin metni olduğu gibi gömülüyor).
+- **`TaskRunner` yıkılırken çalışan işi de iptal eder.** İmaj yazan işler `confirmClose` ile zaten korunuyor;
+  etkilenenler okuma / karma / dışa aktarma işleri.
+- **Modalın sahibi** (`Host::pushModal(..., owner)`): sayfası yok olan menü / diyalog kendiliğinden kapanır. Modal
+  açıkken pencereye bırakılan dosya yok sayılır.
+- **Sistem dosya diyaloğu açıkken** motorun arayüze gönderdikleri bekler (`ui::PostHold`), diyalog kapanınca çalışır:
+  o sürede ilerleme göstergeleri güncellenmez (pencere zaten devre dışı).
+- **Açılış sürücüleri okunamazsa** bileşen kaldırma servis anahtarlarını silmez (dosyalar için kural zaten buydu).
+- **`wlcli apply --pause`**: yanıt okunamazsa (stdin kapalı, Ctrl+C) kaydetmez, bağlı bırakır. Önce kaydediyordu.
+  stdin'siz çalışan lab betikleri `--pause` ile artık bağlı imaj bırakır: betik `--pause` vermemeli.
+- **`wlcli`**: yakalanmayan istisna artık çıkış kodu 2 + hata satırı (önce `abort`, kod 3).
+- **Log saati** `current_zone()` yerine Win32'den; metin aynı (testle sabit).
+- **Loglar sayfası** 20.000 sınırında 18.000'e iner (her yoklamada baştan kurmamak için).
+- **Uygula bitince** kapsama bağlı analiz önbellekleri bırakılır; ikinci bir Uygula bunları zaten yeniden okuyordu.
+Tasarım, metinler ve sayfa akışları değişmedi; yeni bağımlılık yok; iş parçacığı modeli aynı.
+Doğrulanan: 436 birim testi geçiyor (14'ü bu turda eklendi; 5 mikro ölçüm ayrıca, birim koşusunda atlanır), Debug + Release + dist; ölçümler PERF-BASELINE'da.
+Doğrulanmayan: yönetici gerektiren her yol (WinRE iptali, servis anahtarı koruması, önbellek bırakma, Uygula sonu),
+uygulama içi tıklama gerektirenler (Mağaza diyaloğu, dosya diyaloğu sırasında sayfa değişimi, toplu işaretleme),
+iş sırasındaki kare hızı.
 
 ## D-128 — Derin kaldırma adımları imajdan okuduklarını paylaşır: adım başına ~12 sn → ~1,7 sn (2026-11-09)
 Bağlam: Kullanıcı: "bileşen silme kısımları çok yavaş, daha da hızlandırmanın yolu yok mu?" Kullanıcının ön ayarında
@@ -1052,6 +2456,8 @@ Karar:
   Diller 24; ISO 26; Uygula adımları 24; Başlat menüsü, Simgeler 28; komut paleti 34 / 36 / 24.
 Doğrulanmayan: Özellikler sayfasının render'ı — `--demo-features` bu değişiklikten önce de "okunamadı" gösteriyordu
 (ön okuma demo verisinin üstüne yazıyor); sayfa birim testleri ve derleme ile denendi, gerçek imajda bakılmadı.
+→ FormView ve sayfa ölçüleri D-136, Özellikler'in sütun başlıklarının yeri (süzgeç satırından tablonun başlık satırına)
+D-139 ile değişti.
 
 ## D-110 — Bileşenler referans araç mantığıyla: kategori ağacı, şablon renkleri, kaldırma düzeyi (2026-11-07)
 Bağlam: Kullanıcı sayfaların referans araçla "birebir aynı mantıkta" çalışmasını istedi (D-109). Referans aracın Bileşenler
@@ -1082,6 +2488,8 @@ Karar:
   Şerit: Mod · Varsayılan+ | Uyumluluk | Şablon ▾ | Geri al · Yinele | Tümünü genişlet · daralt | Sıfırla.
 Açık (referans araçta olup henüz yok): imajdan okunan sürücü / dil / klavye / yazı tipi satırları (motor + lab kanıtı
 gerekir, kural 6), bağımlılık iç içeliği, ilk girişte Kaldırma modu penceresi.
+→ Satır ölçüsü D-136, şablon ve boyut çubuğu renkleri D-137, sütun başlıklarının yeri ve "sağ denetçi paneli kalktı"
+D-139 ile değişti (başlıklar tablonun kendi satırında; seçili satır için ortak ayrıntı kartı).
 
 ## D-109 — Arayüz v3: referans aracın görünümü ve gezinmesi birebir (2026-11-07; D-107/D-108'in ölçü, renk ve iskeletini geçersiz kılar)
 Bağlam: D-108'den sonra kullanıcı: "Hala çok büyük UI … herşey çok iri butonlar … dark ve light temada çok daha
@@ -1120,6 +2528,8 @@ Karar:
 - Tablolarda satır arası çizgi yok; sürüm satırı tek satır ("Windows 11 Pro   Professional").
 Sonuç: Kabuk ve ortak widget'lar referans araç görünümünde; 387 test geçiyor (tasarıma bağlı beklentiler D-109 değerleriyle).
 Sayfaların iç mantığının referans araca uydurulması (Bileşenler ağacı ve şablonları başta) ayrı adımlar: STATUS.md.
+→ Yazı, yoğunluk, köşe ve ölçüler D-136 (2026-11-10), renkler ve vurgu D-137 (2026-11-11) ile değişti; iskelet ve
+gezinti geçerli.
 
 ## D-108 — Arayüz v2'nin sıkılaştırılması: daha küçük ölçek, tek satır sekme (2026-11-07)
 Bağlam: D-107'den sonra kullanıcı: "UI çok iri ve her sayfada düzen ve yerleşim baya kötü çok karmaşık bir arayüz var.
@@ -1215,6 +2625,9 @@ Karar:
   yeni); denetleyici yok edilirken (pencere kapanışı) kapı "kaydetme" ile açılır, motor kilitlenmez, imaj bağlı kalır.
 - Explorer pencereleri kaydı engellemez (`unmountSafely` onları klasörden çıkarır); dosya tutan başka bir program
   kaydı düşürürse mevcut "kaydedilemedi, imaj bağlı" yolu çalışır.
+→ D-144 (2026-11-11): "Bitince ISO oluştur" açıkken duraklatmada **Kaydet ve devam et** imajı kaydeder ve otomatik ISO
+başlar; **Durdur** → ISO yok (nedeni kartta). Duraklatma seçiliyse ISO'nun hiç yapılmaması gerekip gerekmediği sahibine
+soru (STATUS).
 
 ## D-105 — Simgeler: imaja giren her simge, değiştirdiği grubun boyutlarına tamamlanır (2026-10-10)
 Bağlam: Forumda bir kullanıcı uyardı: tek boyutlu bir simge eklenirse Windows diğer boyutları kendisi büyütüp küçültür.
@@ -1936,6 +3349,9 @@ Karar:
 - Lisanslar dialogu WinLove'un kendi lisansını ve Win11Debloat şablonunu (MIT) da sayar.
 - Bileşenler sayfası: imaj bağlanınca başlayan uygulama okuması, o arada hazır gelmiş listeyi (örnek veri / yeni okuma) "okunamadı" ile
   eziyordu; sonuç artık yalnız liste hâlâ "yükleniyor"ken uygulanır.
+→ D-140 (2026-11-11): Hakkında'ya güncelleme denetimi kartı; denetim varsayılan açık. Sözün "kimseye bir şey göndermez"
+cümlesi değişmedi, sahibinin kararını bekliyor. D-145 (2026-11-11): "Yükle" ile güncellemenin indirilmesi eklendi; cümle
+yine değişmedi.
 
 ## D-070 — Windows'un kendiliğinden kurdukları: OneDrive, Outlook, Teams, Dev Home, Telefon, M365, Copilot (2026-10-05)
 Bağlam: Kullanıcı: "Ne yaparsak yapalım OneDrive ve Outlook bir şekilde kuruluyor ve masaüstüne geliyor; derinlemesine incele,
@@ -2109,8 +3525,14 @@ klasör, sürüm, WIM, durum (hazır / salt okunur / yeniden bağlanacak / bozuk
 tık / Enter: imaj benimsenir (gerekirse remount), kaynağı açılır ve bağlı imaj olur — başlangıçtaki kurtarmayla aynı yol;
 uygulama, kaydetme, ayırma o klasörde yapılır. Delete: onayla kaydetmeden ayırma (bozuk olanlar için onarım yolu). Bir imaj
 açıkken başka birine geçilmez. Kaynak sayfası her açılışta listeyi yeniden okur. `--demo-mounts`.
+→ 2026-11-11: liste önce wimgapi'den (`inspectMountsFast`), DISM okuması arkadan (D-136'nın eki, madde 3; gerçek bağlı
+imajla denenmedi).
 Kanıt: render; motor parçaları (`inspectMounts`, `repairMount`, `unmountSafely`) mevcut lab'larla kanıtlı. **Görülmeyen:** başka
 araçla bağlanmış imajın uygulamada benimsenmesi.
+→ D-148 (2026-11-11): başka araçla `\\?\` yollarıyla bağlanmış imaj açılmıyordu; devralma tek motor işi oldu
+(`adoptionStep`: Ok / NeedsRemount → kullan, gerisi dokunmadan red), liste `blockersOf` çalıştırmıyor, başka araca ait
+bağlamada `optimizeWim` ve D-055 yok. Motor yolu (`wlcli adopt`, `mounts --fast`) yönetici lab'ında gerçek bağlamayla
+kanıtlandı; NeedsRemount yalnız birim testi, pencerede denenmedi.
 
 ## D-063 — Defender'ı kökünden kaldırma; .msu'da DISM API → dism.exe yedeği; D-060'ın LCU sonucu düzeltildi (2026-10-05)
 Bağlam: Kullanıcı: "Defender'ın sadece veri tabanını siliyor, tamamını silmeyi eklemelisin, risk kullanıcıya ait."
@@ -2322,6 +3744,7 @@ her biri tek bağlantı; WinSxS eşi değişmedi; logo 120×120; WinRE kaldırı
 Wi-Fi betiği; DISM `/ScanHealth` "No component store corruption" (117 sn). Birim testleri (5 yeni), render'lar.
 **Görülmeyen:** kurulan sistemde etki (VM), boot.wim'e sürücü eklemenin bu seferki çalıştırması (`tools\lab_boot.ps1 -Driver` bunu
 sınıyor; bu turda çalıştırılmadı).
+→ boot.wim sürücüleri D-134 (2026-11-10) ile genişledi ve lab + VM ile kanıtlandı.
 
 ## D-055 — Kuyruğu WIM'in birden çok sürümüne uygulama (2026-10-01)
 Bağlam: Kullanıcı (ikinci özellik turu, 15. madde) aynı kuyruğun / presetin bir WIM'deki birkaç sürüme uygulanmasını istedi.
@@ -2553,6 +3976,8 @@ Karar (kural 3'ten bilinçli sapma):
 - Aynı gün ayar kataloğuna 38 ayar ve "Sistem" sekmesi daha eklendi (gizlilik, ipuçları, arama, depolama, oturum
   açma, Gezgin gezinti bölmesi, Başlat / görev çubuğu düzeni, güncelleme, UAC / SmartScreen, Num Lock, fare, AutoPlay);
   her yazımın çevrimdışı bir hive'a düştüğü test ediliyor. Kurulan Windows'taki etkileri görülmedi.
+→ Vurgu renkleri D-137 (2026-11-11; Mavi · Bakır · Deniz · Nar · Zeytin, türetilmiş tablolar) ve D-143 (2026-11-11;
+serbest renk, `"accent": "#RRGGBB"`) ile değişti.
 
 ## D-041 — Görev çubuğu, Copilot / Edge / BitLocker / Windows Update ayarları, hazır uygulamalar, rapor, kişiselleştirme (2026-09-30)
 Bağlam: Kullanıcı önerilen listeden 1, 2, 3, 4, 5, 7, 8'i seçti.

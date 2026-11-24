@@ -222,6 +222,35 @@ std::vector<IconGroupInfo> listIconGroups(const ResourceTree& tree) {
     return out;
 }
 
+std::vector<IconGroupData> listIconGroupData(const ResourceTree& tree) {
+    std::vector<IconGroupData> out;
+    const auto* groups = tree.type(kRtGroupIcon);
+    if (!groups) {
+        return out;
+    }
+    const auto* icons = tree.type(kRtIcon);
+    // Named first, then ids, and the first language's images: exactly what listIconGroups lists.
+    for (const bool named : {true, false}) {
+        for (const auto& g : groups->names) {
+            if (g.key.named() != named) {
+                continue;
+            }
+            IconGroupData data;
+            data.key = g.key;
+            if (!g.languages.empty()) {
+                const auto& first = g.languages.front();
+                for (const auto& e : parseGroup(first.data)) {
+                    if (const auto* leaf = iconData(icons, e.id, first.language)) {
+                        data.images.emplace_back(leaf->data);
+                    }
+                }
+            }
+            out.push_back(std::move(data));
+        }
+    }
+    return out;
+}
+
 Result<std::vector<IconImage>> parseIco(std::string_view ico) {
     std::uint16_t reserved = 1;
     std::uint16_t type = 0;

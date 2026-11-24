@@ -147,6 +147,9 @@ bool ImageSettingsController::setValue(const ImageSetting& setting, std::wstring
     }
     std::vector<std::pair<OpKind, std::wstring>> slots;
     collectQueued(setting, slots);
+    // Out and in again is one change (every key typed comes here): one notification, one
+    // queue.json, one undo step — as in the three below.
+    const auto batch = m_state.batchQueue();
     m_state.unqueueMany(slots);
     if (!value.empty()) {
         m_state.queueMany(operationsFor(setting, 1, value));
@@ -333,25 +336,102 @@ void ImageSettingsController::select(const ImageSetting& setting, int option) {
             }
         }
     }
+    const auto batch = m_state.batchQueue();
     m_state.unqueueMany(slots);
     m_state.queueMany(std::move(ops));
 }
 
-int ImageSettingsController::applyRecommended() {
-    std::vector<std::pair<OpKind, std::wstring>> slots;
-    std::vector<Operation> ops;
-    int changed = 0;
-    for (const auto& setting : m_catalog.settings()) {
-        if (setting.recommended < 0 || setting.recommended == current(setting)) {
+ImageSettingsController::TemplateResult ImageSettingsController::previewTemplate(const ImageSettingTemplate& preset) const {
+    TemplateResult result;
+    for (const auto& pick : preset.picks) {
+        if (pick.setting >= m_catalog.settings().size()) {
             continue;
         }
-        ++changed;
-        collectQueued(setting, slots);
-        auto add = operationsFor(setting, setting.recommended);
-        ops.insert(ops.end(), std::make_move_iterator(add.begin()), std::make_move_iterator(add.end()));
+        const ImageSetting& setting = m_catalog.settings()[pick.setting];
+        const int now = current(setting);
+        if (now == pick.option) {
+            ++result.already;
+        } else if (now != imageOption(setting)) {
+            ++result.kept; // the user's own choice: a template adds, it does not reset
+        } else {
+            ++result.changed;
+            if (setting.risk != core::ops::Risk::Low) {
+                result.risky.push_back(&setting);
+            }
+        }
     }
-    m_state.unqueueMany(slots);
-    m_state.queueMany(std::move(ops));
+    return result;
+}
+
+ImageSettingsController::TemplateResult ImageSettingsController::applyTemplate(const ImageSettingTemplate& preset) {
+    const TemplateResult result = previewTemplate(preset);
+    const auto batch = m_state.batchQueue(); // one notification, one queue.json, one undo step
+    for (const auto& pick : preset.picks) {
+        if (pick.setting >= m_catalog.settings().size()) {
+            continue;
+        }
+        const ImageSetting& setting = m_catalog.settings()[pick.setting];
+        const int now = current(setting);
+        if (now != pick.option && now == imageOption(setting)) {
+            select(setting, pick.option); // also takes back what the image's option wrote elsewhere
+        }
+    }
+    return result;
+}
+
+int ImageSettingsController::templateOption(const ImageSettingsCatalog& catalog, const ImageSettingTemplate& preset,
+                                            const ImageSetting& setting) {
+    if (catalog.settings().empty() || &setting < catalog.settings().data() ||
+        &setting >= catalog.settings().data() + catalog.settings().size()) {
+        return -1;
+    }
+    const auto index = static_cast<std::size_t>(&setting - catalog.settings().data());
+    const auto it = std::ranges::find(preset.picks, index, &ImageSettingTemplate::Pick::setting);
+    return it == preset.picks.end() ? -1 : it->option;
+}
+
+int ImageSettingsController::resetChanges() {
+    std::vector<const ImageSetting*> all;
+    all.reserve(m_catalog.settings().size());
+    for (const auto& setting : m_catalog.settings()) {
+        all.push_back(&setting);
+    }
+    return resetSettings(all);
+}
+
+std::vector<const ImageSetting*> ImageSettingsController::settingsOfTab(std::string_view tab) const {
+    std::vector<const ImageSetting*> result;
+    for (const auto& setting : m_catalog.settings()) {
+        const auto section = std::ranges::find(m_catalog.sections(), setting.section, &ImageSettingSection::id);
+        if (section != m_catalog.sections().end() && section->tab == tab) {
+            result.push_back(&setting);
+        }
+    }
+    return result;
+}
+
+int ImageSettingsController::resetSettings(const std::vector<const ImageSetting*>& settings) {
+    int changed = 0;
+    const auto batch = m_state.batchQueue();
+    for (const ImageSetting* each : settings) {
+        if (each == nullptr) {
+            continue;
+        }
+        const ImageSetting& setting = *each;
+        if (takesValue(setting)) {
+            if (!value(setting).empty()) {
+                ++changed;
+                setValue(setting, {});
+            }
+            continue;
+        }
+        if (current(setting) != imageOption(setting)) {
+            ++changed;
+            std::vector<std::pair<OpKind, std::wstring>> slots;
+            collectQueued(setting, slots);
+            m_state.unqueueMany(slots);
+        }
+    }
     return changed;
 }
 
@@ -398,6 +478,7 @@ int ImageSettingsController::takeFromThisPc() {
         auto add = operationsFor(setting, here);
         ops.insert(ops.end(), std::make_move_iterator(add.begin()), std::make_move_iterator(add.end()));
     }
+    const auto batch = m_state.batchQueue();
     m_state.unqueueMany(slots);
     m_state.queueMany(std::move(ops));
     return changed;

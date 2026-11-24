@@ -13,14 +13,17 @@ WinLove, referans araç seviyesinde bir **Windows imaj özelleştirme aracı**d�
 ## Altın kurallar (asla çiğneme)
 1. **Bir sayfa bitmeden diğerine geçilmez.** Sıra ve durum `docs/ROADMAP.md`'de. Bitmiş sayılması için `docs/WORKFLOW.md` → "Bitti Tanımı"nın tamamı karşılanmalı **ve kullanıcı onaylamalı**.
 2. **Katman sınırları:** `base` ← `core` / `ui` ← `app`. `core` UI bilmez; `ui` Windows imajı bilmez; `app` ikisini birleştirir. `tools/check_layers.py` her build'de denetler. (`docs/ARCHITECTURE.md`)
-3. **Tasarımın kaynağı referans aracın ölçülen görünümü** (D-109): değerler `design/tokens.json` 3.0.0'da (renk, yazı, ölçü);
-   referans ekran görüntüleri `C:\Users\shades\Desktop\research\analysis\evidence\screens\design\` (repoya girmez),
+3. **Tasarımın kaynağı `design/tokens.json` 5.0.0:** renkler 2026-11-11'den beri WinLove'un kendi paleti (D-137; önce
+   referans aracın ölçülen grileri, D-109); yazı, yoğunluk, köşe
+   ve boşluklar 2026-11-10'dan beri WinLove'un kendi değerleri (D-136, sahibinin onayıyla); referans ekran görüntüleri `C:\Users\shades\Desktop\research\analysis\evidence\screens\design\` (repoya girmez),
    referans aracın davranış kanıtları `research\README.md` + `docs/`. `design/WinLoveUI/` ve `WinLove-UI-Handoff/` salt okunur
    (yalnız ikonlar / marka). Renk/ölçü/font kodda sabit yazılmaz; `ui/generated/Tokens.g.h` üzerinden gelir. UI metni kodda
    sabit yazılmaz; `resources/strings/{tr,en}.json` → `Str::` enum. `src/*/generated/` elle düzenlenmez. Sapma `docs/DECISIONS.md`'ye yazılır.
-4. **Tasarım dili (D-109, referans araç birebir):** her yerde Segoe UI 12; koyu `#202020` sayfa / `#262626` şerit ve gezinti /
-   `#2B2B2B` kart, açık `#EEEEEE` / `#F5F5F5` / `#FBFBFB`; vurgu Windows'unki (`#4CC2FF` koyu, `#0067C0` açık). Tablo satırı
-   23,5, kontrol 24, gezinti öğesi 28. İskelet: başlık çubuğu (≡ · Görüntü / Ön Ayar / Araçlar · başlık) → şerit (sayfa
+4. **Tasarım dili (D-109 iskelet, D-136 ölçüler, D-137 renkler):** gövde metni Segoe UI 13 (ikincil metin 12, bölüm başlığı 14
+   yarı kalın); koyu `#17191C` sayfa / `#1C1E22` başlık ve durum çubuğu / `#1F2125` şerit ve gezinti /
+   `#25282C` kart, açık `#ECEEF1` / `#F3F4F6` / `#F7F8FA` / `#FFFFFF`; vurgu WinLove mavisi `#3070D9` (iki temada aynı
+   dolgu, üstünde beyaz yazı; okunur tonu `#74A3EA` koyu, `#2462C7` açık). Tablo satırı
+   28, kontrol 28, gezinti öğesi 32, kart köşesi 10, kartlar arası 20; kartlar hafif yükseltilmiş (gölge + 1 px kenar). İskelet: başlık çubuğu (≡ · Görüntü / Ön Ayar / Araçlar · başlık) → şerit (sayfa
    eylemleri, `ButtonKind::Ribbon`) → ipucu satırı → solda gezinti kartı (Başlat · Entegre et · Kaldır · Yapılandır · Bitir)
    | sekme başlıklı sayfa kartı | (yan kart) → durum çubuğu. Satır arası çizgi, iri öğe, büyük harf başlık yok.
    Sayfaların davranışı da referans aracınki gibi olmalı (kullanıcı isteği, 2026-11-07).
@@ -74,4 +77,4 @@ build/x64-debug/bin/wlcli.exe help                                              
 ## Ortam
 - VS 2026 Community (MSVC 14.5x), Windows SDK 10.0.26100, ADK Deployment Tools kurulu, Python 3.14, Git.
 - CMake/Ninja VS ile gelen sürüm (PATH'te değil): `build.ps1` VS Dev ortamını kendisi yükler; Claude Code'dan PowerShell aracıyla çalıştır.
-- Test ISO: `C:\Users\shades\Downloads\Win11_25H2_Turkish_x64_v2.iso` (salt okunur kabul et).
+- Test ISO: `C:\Users\shades\Downloads\Win11_25H2_Turkish_x64_v2.iso` **artık yok** (2026-11-10'da yerinde değildi). Yerine `build\lab\uup\out\x64-9448.iso` (7,4 GB, 26200.9448 Pro tr-tr) ve `build\lab\setup\sources\install.wim` (sürüm 4 = Pro 26200.8037) kullanılıyor; ikisi de salt okunur kabul edilir, işlemler kopyalarında yapılır.

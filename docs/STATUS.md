@@ -3,6 +3,223 @@
 > Her oturumun sonunda güncellenir. En üstte güncel durum; geçmiş en altta kısa satırlar.
 
 ## Güncel
+- **2026-11-24 (devam): Sıfırla düğmeleri (D-152) + 1.4.0 Beta yayını** (sahibi: "düzeltmeleri en son yeni sürüm
+  numarası ile yayınlarsın", önce bir kullanıcının istediği Sıfırla eklensin).
+  - **D-152:** Zamanlanmış Görevler, Kurulum Sonrası, Sürücüler, Kayıt Defteri, Güncellemeler şeridinde `Sıfırla`;
+    Ayarlar'da sekme başına `Bu sekmeyi sıfırla` (süzgeçliyken `Gösterilenleri sıfırla`), şeritte `Tümünü sıfırla`; Ön
+    Ayar'da `Tüm değişiklikleri sıfırla` (Geri al'lı). Ayrıca `unqueueIf` tek geri alma adımı (eski Sıfırla'lardan sonra
+    Geri al yalnız bir satırı getiriyordu).
+  - **Yayın:** sürüm 1.4.0 Beta (1.3.1 değil: 1.3.0'dan beri D-129 … D-152, yeni özellikler); CHANGELOG TR + EN; Hakkında
+    sözü (a) ile kapandı (aşağıda 1. madde). Commit / etiket / GitHub yayını bu girdinin sonunda.
+  - **Kanıtlı:** Debug `build.ps1 -Test` 666 vaka; `ResetTests` 6 vaka; `--render` (TR / EN, koyu) altı şerit + Ayarlar'ın
+    dört hâli (1100 px'de çakışma bulunup düzeltildi).
+  - **Doğrulanmayan:** canlı pencerede tıklama; açık sahip kararları 2–6 (aşağıda) yayını engellemiyor, sürüyor.
+- **2026-11-24: iki kullanıcı raporu (sahibinin aktardığı) — commit yok.** Kararlar D-150, D-151.
+  - **Windows 10 Home 19045.7807, "İmaj kaydedilmedi" (D-150):** 3 bekleten adım. İkisi `0x800703EE` (`media-streaming`,
+    `help`): D-127'nin deseni, kullanıcı `v1.3.0-beta`'nın **ilk** ekini (D-127'siz) kullanmış (günlükte yeniden deneme
+    satırı yok; güncel ekte var). Üçüncüsü güncel kodda da olan hata: `pending.xml` yüzünden reddedilen WinSxS küçültme
+    hiçbir şeye dokunmadığı hâlde kaydı bekletiyordu → `0x800F0806` ile döner, bekletmez; ret ölçümden önce. Uygula
+    günlüğünün ilk satırına sürüm + PE bağlama damgası.
+  - **UUP ISO'su açılmıyor, "cannot create destination (0x00000000)" (D-151):** çalışma klasörü ISO'nun adını alıyordu;
+    ~75 karakterlik UUP adı + medyanın 147 karakterlik en derin dosyası 259'u aşıyor, Windows'ta `LongPathsEnabled` kapalıysa
+    yazılamıyor. → Ad sığacak kadar kesilir + `~<hash>`; hatada Windows'un kodu ve yol uzunluğu yazılır.
+  - **Kanıtlı:** Debug `build.ps1 -Test` ve `build.ps1 -Dist` (Release: 660 vaka / 22.787 denetim, 10 atlanan;
+    `dist\WinLove.exe` 2026-11-24 15:04); hata birim testinde gerçek çıkarma koduyla üretildi ve düzeldi
+    (`wl_tests.exe` long-path manifest'siz). Yönetici lab'ı `build\lab\w10e3ee` (kullanıcının kendi ön ayarı, Win10 Home
+    19041.3803 kopyası): A 9 özellik → `pending.xml` yok; B 871 adım 0 hata, küçültüldü, kaydedildi; C SSU 19041.7714 +
+    aynı ön ayar → 872 adım 0 hata, kaydedildi. Lab'ın bağlaması kalmadı.
+  - **Doğrulanmayan:** `0x800703EE` iki yığında da üretilemedi (D-127 yolu hâlâ gerçek imajda kanıtsız); `LongPathsEnabled = 0`
+    bir bilgisayarda UUP adlı ISO'nun uygulamadan açılması; günlükteki `build` damgası canlı Uygula'da görülmedi.
+  - **Sahibinin kararı bekleyen:** 1.3.0 Beta'nın eki aynı etiketle değiştirildiği için ilk eki indirenler (116 indirmenin
+    bir kısmı) güncelleme bildirimi almıyor → bu düzeltmeler yeni bir sürüm numarasıyla (ör. 1.3.1 Beta) yayınlansın mı?
+  - **Bilinen:** D-149 (resmi ESD indirici) kodda var, DECISIONS'ta kaydı yok (2026-11-11 akşam işi; notları
+    `build\lab\esd\`). D-150 / D-151 numaraları bu yüzden atlamalı.
+  - **Sıradaki somut adım:** kullanıcıdan güncel ekle aynı imajda Uygula'yı yeniden çalıştırması (günlüğün ilk satırında
+    `build` damgası görünecek); sahibi sürüm kararını verince yayın.
+- **Sahibinin 9 maddelik listesi bitti + başlık markası + Uygula'dan ISO seçenekleri (2026-11-11 öğleden sonra) —
+  commit yok** (son commit `1259c1e`; 2026-11-10 → 11 oturumunun bütün işi çalışma ağacında). Kararlar D-142 … D-148.
+  Alt ajanların notları (`build\lab\{fixes,ring,autoupd,autoiso-opts,tweakpresets,wordmark}\NOTES.md`) DECISIONS, ENGINE
+  saha notları, TESTING, ARCHITECTURE ve sayfa belgelerine (01, 02, 05, 06, 12, 16, 17) işlendi; dosyalar `build\`
+  altında duruyor.
+  - **Yapılanlar:**
+    - Madde 1, 2, 3, 8 (D-148): başka araçla `\\?\` yollarıyla bağlanmış imajı devralma (önek sınırda atılır, kurulum
+      klasörü yalnız gerçekten kurulum ortamıysa, tek motor işi `adoptMount` → `adoptionStep`, liste artık `blockersOf`
+      çalıştırmıyor — 12 sn'lik bekleme buradandı, başka araca ait bağlamada `optimizeWim` ve D-055 yok; `wlcli adopt`,
+      `wlcli mounts --fast`); Sürümler'in Durum sütununda işin kendi kelimesi ("Siliniyor", "Hazırlanıyor"…); Özet › Kuyruk
+      çipleri işlem sayısı (Kurulum › Katılımsız, Diğer; nötr çubuk, ✓ simgesi); durdurulan Uygula'dan sonra kaydet / çöz
+      sonuç kartında ve Özet'te izleniyor.
+    - Madde 4 (D-142): WinLove'un ilerleme halkası (`ui/widgets/ProgressRing`), `Icon::Spinner`'ın bütün yerlerinde; ISO,
+      Uygula, Özet'te artık dönüyor; hareketi azaltta duran yay.
+    - Madde 9 (D-143): serbest vurgu rengi (Ayarlar › Özel renk, seçici panel; renk kurallarla türetilir, hazır beş renk
+      D-137 tablolarıyla aynı kalır; settings.json `"accent": "#RRGGBB"`).
+    - Madde 6 (D-144): Uygula › Bitince › ISO oluştur (imaj kaydedilince kendiliğinden, sonuç kartında ISO bandı, Özet'te
+      `IsoReady`); ek: ISO seçenekleri Uygula'dan da (`AppState::IsoChoices`, ortak `IsoOptions` bileşeni, "ISO
+      seçenekleri…" iletişim kutusu, özet satırı).
+    - Madde 7 (D-145): güncellemeyi uygulamanın içinden yükle (indir → boyut / SHA-256 `digest` / PE / sürüm denetimi →
+      `.old` takası → Yeniden başlat; geri alma) ve Markdown'lı Değişiklikler penceresi; `wlcli update-install /
+      update-rollback`.
+    - Madde 5 (D-146): Ayarlar'a altı hazır şablon (Dengeli, Gizlilik, Sade ve sessiz, Performans, Oyun, İş bilgisayarı),
+      Şablon ▾ / Tümü ▾ süzgeci / Geri al · Yinele · Sıfırla; "Önerilenleri uygula" ve `recommended` kalktı.
+    - Ek (D-147): başlık çubuğu yalnız "WinLove", IBM Plex Sans SemiBold (OFL, gömülü), "Love" vurgu tonunda; imaj adı
+      başlıktan kalktı.
+  - **Kanıtlı:**
+    - Debug + Release `build.ps1 -Test` geçiyor; son koşu (D-146) 644 vaka / 22.613 denetim, 10 atlanan (Release'teki
+      aralıklı 0xC0000374 dışında, aşağıda "Bilinen").
+    - Yönetici lab'ı (D-148, `build\lab\fixes\lab-adopt.ps1`, iki koşu): `\\?\` ile bağlanmış gerçek bir imaj `wlcli adopt`
+      ile devralındı, okundu, bir değer yazılıp geri okundu, düz yolla `--discard`; boş klasör dokunulmadan reddedildi.
+      Bu, `inspectMountsFast`'ı da gerçek bağlamada kanıtladı. Sahibinin bağlama tablosu değişmedi.
+    - Kendini güncellemenin çekirdeği kopyalarda (`build\lab\update\selfupdate\lab.ps1`, yönetici yok): takas, geri alma,
+      denetim / takas hataları, çalışan bir exe'de takas, gerçek GitHub eki (11.211.264 bayt, SHA-256 = API'nin `digest`'i).
+    - Arayüz yalnız `--render` ile; her işte `render_diff` önce / sonra, bütün farklar açıklandı (ISO sayfası bileşene
+      taşındıktan sonra birebir aynı; varsayılan Mavi'de renkler piksel piksel aynı). Kareler `build\lab\*\final\`.
+    - `dist\WinLove.exe` 2026-11-11 13:56 = son Release exe (aynı SHA-256); ondan sonra `src/`, `resources/`, `tests/`,
+      `design/`, `tools/` altında değişen dosya yok. `dist\wlcli.exe` 12:50 (sonra motor / CLI kaynağı değişmedi). Bu
+      kopya `build.ps1 -Dist` ile üretildi (Release birim testleri geçti).
+  - **Doğrulanmayan:**
+    - Bu işlerin hiçbiri canlı pencerede tıklanmadı (pencere açılmadı): devralma ve bilgi çubuğu, Durum sütunu, Kuyruk
+      çipleri, kapanış kartı, halka, renk seçici (sürükleme, fare yakalama, pencere çerçevesinin rengi), Bitince satırı /
+      Değiştir… / ISO seçenekleri… / ISO'yu durdur / Klasörde göster, iki düğmeli tost, durum çubuğu menüsü, Değişiklikler
+      penceresi (açılış, boyut, DPI, Esc, tek örnek, bağlantı, fareyle seçim), Şablon ▾ / Sıfırla, başlık markasının etkin
+      değil hâli.
+    - NeedsRemount'un gerçek imajda devralınması (yalnız birim testi); gerçek bir Uygula'yı durdurup çözmek.
+    - Gerçek imajla Uygula + otomatik ISO (yönetici lab'ı yapılmadı); D-055 ile birlikte.
+    - Uygulamanın içinden gerçek Yükle → Yeniden başlat → yeni örnek → `.old`'un silinmesi; `Program Files`'ta yönetici
+      olarak güncelleme; proxy / kesilen bağlantı; gerçekten daha yeni bir yayın (yok).
+    - Halkanın gerçek CPU / GPU maliyeti ve kare temposu.
+    - Şablonların kurulan Windows'taki etkileri (VM yok).
+    - Windows yüksek karşıtlık temalarında seçici, halka ve marka; ekran okuyucu adları.
+    - Aşağıdaki girdinin doğrulanmayanları sürüyor (`inspectMountsFast` dışında).
+  - **Sahibinin kararı bekleyen:**
+    1. ~~Hakkında'daki "kimseye bir şey göndermez" ile varsayılan açık güncelleme denetimi~~ → 2026-11-24, 1.4.0 Beta
+       yayınından önce (a) uygulandı: cümle "yalnız günde en çok bir kez GitHub'daki sürüm listesine bakar (Uygulama
+       ayarları'ndan kapatılabilir)" oldu (uygulama + README); denetim varsayılan açık. Sahibi isterse (b)'ye dönülür.
+    2. "Dur: bağlı klasörü elle düzenleyeceğim" ile duraklayıp **Kaydet ve devam et** seçilince otomatik ISO yine yapılıyor
+       (D-144'ün yorumu; Durdur → yapılmıyor). Böyle mi kalsın, yoksa duraklatma seçiliyse hiç ISO yapılmasın mı?
+    3. ISO seçenekleri oturumluk (uygulama kapanınca ilk değerlere döner; "Bitince ISO oluştur" kutusu ise kalıcı).
+       Etiket ve önceki kurulum hariç `AppSettings`'e yazılsın mı?
+    4. Depodaki metinlerde (README'nin lisans satırı, Hakkında, tokens) "IBM Plex Sans" adının geçmesi uygun mu (D-147)?
+    5. `build\lab\vhd\golden.vhdx` (14,8 GB, D-141 lab'ı) silinsin mi?
+    6. Halka dönerken pencere 25 ms'de bir baştan çiziliyor, CPU ölçülmedi: ölçülsün mü, `ringFrame` 33 / 40 ms'ye mi
+       çekilsin, yalnız halkanın alanını çizmek (AUDIT D4 / D5) ayrı iş olarak mı açılsın?
+  - **Bilinen:**
+    - ~~Release `wl_tests.exe` aralıklı çökmesi (0xC0000374)~~ **giderildi:** neden testlerdeydi (`postToUi` taklidi
+      sonucu motor iş parçacığında çalıştırıyordu; ürün kodu doğru). `tests/support/UiThread.h` + 19 test dosyası;
+      ASan 4/20 → 0/20, Release 5/40 → 0/100. Ayrıntı `build\lab\heap\NOTES.md`, kural TESTING.md.
+    - Ayarlar'ın alt sekme etiketi ("Ayarlar · 6") kuyruk değişince güncellenmiyor (Bileşenler'de de; önceden vardı).
+    - `--demo-store=dialog` iki exe'de de açılmıyor (`LaunchOptions::demoStore` ayrıştırılmıyor; önceden de böyleydi).
+    - Kendini güncelleme: başka bir sürümden kalmış `.new.part` ilk denemede boyut / SHA-256'da düşer, dosya silinir, ikinci
+      deneme temiz başlar.
+    - Aşağıdaki girdinin "Bilinen"leri sürüyor.
+  - **Sıradaki somut adım:** sahibi yukarıdaki altı kararı verir → Release `wl_tests` çökmesinin nedeni bulunur (inceleyen
+    ajanın sonucu) → `build.ps1 -Dist` → `dist\WinLove.exe` ile tıklama turu: Kaynak seç'te başka araçla bağlı bir imajı
+    devral → Özet › Kuyruk → Bitince ISO açıkken bir Uygula (ISO seçenekleri…, bant, Klasörde göster) → bir Uygula'yı
+    Durdur + kaydetmeden çöz → Ayarlar › Şablon ▾ → Uygulama ayarları › Özel renk → Hakkında › Değişiklikleri gör; halka
+    dönerken Görev Yöneticisi'nde CPU. Commit sahibi isteyince.
+- **Uzun oturum 2026-11-10 → 11: denetim + yönetici laboratuvarı, yeni görünüm ve WinLove'un renkleri, Özet / Uygula /
+  çalışma sayfaları, boot.wim sürücüleri, güncelleme denetimi, VHD / VHDX — hiçbir şey commit edilmedi: oturumun bütün
+  işi çalışma ağacında (son commit `1259c1e`).**
+  Sahibinin istekleri sırayla: "ölç → denetle → düzelt → yeniden ölç", planı görünce "Hepsini uygula"; "yapmadıkların
+  varsa onları da yap … sen hallet benim yerime herşeyi" (onayı devretti, iş Opus alt ajanlarıyla); "tüm arayüzü oldukça
+  güzel kaliteli bir tasarıma kavuştur"; gece "Arayüzü sana bırakıyorum, [referans araçla] yarışır kıvama gelsin" ve
+  (~01:45) "Bana bir şey sorma, sabaha her şey bitmiş olsun" — onay kapısı yok, kararları koordinatör verdi, her görünür
+  adım render'la raporlandı. Kararlar D-129 … D-141 (D-135 iptal).
+  - **Yapılanlar:**
+    - **Denetim, iki tur + bağımsız inceleme (D-129 … D-132):** 132 bulgu (`docs/AUDIT-2026-11-10.md`, durum tablosu: 90
+      düzeltildi, 29 kısmen, 13 atlandı); DISM oturumu tembel açılır, açılamazsa koşu durur (D-131); çocuk süreçler
+      kill-on-close job'da, servis yapan araçlar dışında (D-130); operatörün bilmesi gerekenler D-132'de. Diller'in
+      eskiden beri açıklanamayan %100 CPU döngüsü düzeldi. Ölçümler `docs/PERF-BASELINE.md`.
+    - **Yönetici laboratuvarı r2** (`build\lab\r2\REPORT.md`): eski (`1259c1e`) ve yeni `wlcli`, aynı 30 adım, taze
+      26200.8037 Pro kopyaları: ikisi de 30 / 30, ScanHealth temiz, kalan dosya / servis anahtarı / CBS / appx birebir
+      aynı; depo kopyası adımı medyan 1,360 → 0,508 sn, Uygula 152,4 → 126,0 sn.
+    - **Arayüz:** cilası (D-133) → yeni görünüm ölçüleri (D-136, tokens 4.0.0; sahibi iki varyanttan A'yı seçti) ve
+      sahibinin gece beş isteği (D-136'nın eki: Kaynak seç'e dönüş sekmesi, başlık menülerinde ikon, bağlı imaj
+      listesinin gecikmesi, Windows indir'de "Seç…" gecikmesi, Katılımsız'da fare tekerleği) → WinLove'un kendi renkleri
+      (D-137, tokens 5.0.0) → Görüntü › Özet ve Uygula ekranının kartları (D-138) → çalışma sayfalarında ortak başlık,
+      ayrıntı kartı, durum dili (D-139). Şeridin tasarımı her adımda aynı kaldı (sahibinin seçimi).
+    - **Hareket (D-135) iptal:** DirectComposition kökü ve DPI aşamaları uygulanıp ölçüldü; sahibi "animasyon istemiyorum
+      … tamamen sil" dedi, koddan kaldırıldı (yalnız küçük DPI düzeltmeleri kaldı). `docs/MOTION-PLAN.md` rafta.
+    - **Sahibinin seçtiği üç özellik:** boot.wim sürücüleri (D-134: DISM'den önce eleme, DISM'in listesiyle doğrulama,
+      depolama sürücüsü imaja da); güncelleme denetimi (D-140: GitHub'ın sürüm listesine tek HTTPS GET, yalnız haber
+      verir, varsayılan açık, günde en çok bir kez); VHD / VHDX kaynağı (D-141: WinLove'un fark diskiyle bağla, kaydet =
+      birleştir, kaydetmeden çöz = dosya değişmez; önce motor + wlcli + lab, sonra arayüz).
+    - **Küçükler (D-140'ın sonunda):** `SourceTests`'in saate bağlı denetimi sabit bir ana çekildi; `wlcli apply` oturum
+      kaybını (`sessionLost`) yazıyor; Hosts / Dosyalar / Kurulum Sonrası'na ayrıntı kartı (D-139'un eki). Takas zinciri
+      tampon sayısı 2 → 3 yapılmadı.
+    - **Araçlar:** `tools/render_diff.py` (iki ikiliyle bütün sayfalar, RGB karşılaştırma; TESTING 3b),
+      `tools/perf_measure.py` + `tests/PerfBench.cpp`, `tools/lab_boot_drivers.ps1`, `tools/lab_vhd.ps1`; wlcli'ye
+      `update-check`, VHD için `info / mount / unmount / mounts / repair / apply --commit`, `iso --boot-driver`,
+      `media-drivers`, `driver-scan`; render durumları `--demo-overview*`, `--demo-update*`, `--demo-vhd*`,
+      `--demo-boot-drivers*`, `--toast-timeout`, `--click-after-load`.
+  - **Kanıtlı:**
+    - Debug + Release `build.ps1 -Test` geçiyor; son koşu (D-141) 570 vaka / 18.068 denetim, 9 atlanan. Bu oturumda
+      eklenen test dosyaları kayıtların Sonuç'larında.
+    - Motor gerçek imajda / diskte: lab r2 (yukarıda); `tools\lab_boot_drivers.ps1` ALL PASSED ve `-Vm` (sürücüsüz
+      boot.wim ile kurulum diski görmüyor, pvscsi eklenince masaüstü); `tools\lab_vhd.ps1` üç aşama (discard ve kurtarma
+      yollarından sonra kullanıcının dosyasının SHA-256'sı aynı; commit sonrası 10 / 10 değişiklik diskte, ScanHealth
+      temiz; `.vhd` biçimi de); `wlcli update-check` gerçek GitHub'a (9 yayın, 1.3.0 Beta güncel).
+    - Arayüz yalnız durgun `--render` kareleriyle: her iş koyu + açık, 1207x700 @1,75 ve 1100x700 @1,0 (çoğunda saf siyah
+      da); D-137 … D-141'de `render_diff` önce / sonra, her fark açıklandı, beklenmeyen fark yok (D-136'da kareler
+      gözle). Ayrıntı her kaydın Sonuç'unda.
+    - `dist\WinLove.exe` 2026-11-11 09:22 (D-134 … D-141, D-135 geri alınmış hâli).
+  - **Doğrulanmayan:**
+    - Arayüz işlerinin çoğu canlı pencerede hiç tıklanmadı (yalnız `--render`): Özet kutucukları / çipleri, ayrıntı
+      kartı düğmeleri ve klavye, pencere boyutu değişirken kartın açılıp kapanması, güncelleme bildirimi / "Sürüm
+      sayfasını aç" / "Şimdi denetle", VHD bağla / kaydet / çöz / açılışta geri yükleme, Sürücüler › Kurulum ortamı,
+      gece istekleri (Katılımsız tekerleği, "Seç…" gecikmesi). 2026-11-10'dan kalan tıklama turu da yapılmadı (Mağaza
+      diyaloğunda çift tık, dosya diyaloğu açıkken biten iş, toplu işaretleme + Ctrl+Z, modal açıkken bırakma, durum
+      çubuğu bölümleri, Kaynak listesinde kaldırma / klavye). D-133'ün hareketleri canlı izlenmedi, kare hızı ölçülmedi.
+    - Uygulamanın içinden gerçek bir Uygula koşusu yok (Uygula ve Özet demoları elle kurulmuş `ApplyRun`).
+    - Bağlı gerçek imajda ~1.300 satırlı Bileşenler'in ve Özet'in maliyeti ölçülmedi.
+    - boot.wim sürücüleri: gerçek VMD / RAID makinesi, ağ sürücüsünün WinPE'de ağı açması, USB yolu (yalnız birim testi).
+    - Lab'ın tetiklemedikleri: WinRE iptali; D-127 yolu (`0x800703EE` oluşmadı); oturumun yeniden açılamaması (`lost()` /
+      `sessionLost`, wlcli çıktısı dahil); WinLove ölünce job'daki çocuğun ölmesi; SSU'nun istediği yeniden yükleme,
+      kilitli dosyada zorla silme, açılış sürücüleri okunamazken servis anahtarlarının tutulması, junction / SUBST bağlama
+      yolu, Durdur ile iptal, lab r2'de `--commit`. Lab r2'nin her ikilisi bir kez koştu.
+    - ~~Bağlı imaj listesinin wimgapi yolu (`inspectMountsFast`) gerçek bağlı imajla (kural 6: lab bekliyor).~~ →
+      2026-11-11 öğleden sonra D-148'in yönetici lab'ında kanıtlandı (`wlcli mounts --fast`, gerçek `\\?\` bağlaması).
+    - Takas zinciri tampon sayısı 2 → 3: yapılmadı, ölçülmedi (canlı pencere ister).
+    - Güncelleme denetiminin gerçek çevrimdışı / proxy / TLS / saatlik sınır yolları (yalnız enjekte hatalar); gerçekten
+      daha yeni bir yayın.
+    - VHD: kullanılmış bir Windows'un diski, BitLocker, çok birim, MBR, sabit boyutlu disk, zaten fark diski olan disk,
+      gerçek yeniden başlatma, birleştirme sırasında güç kesilmesi.
+    - Ağ yolları (ortak WinHTTP oturumu, iptal, `Content-Length`), `wlcli`'nin yeni çıkış kodları, konsol kapatma (D-132).
+    - Yüksek karşıtlık temaları, gerçek ekranlarda renk algısı, pencere çerçevesinin vurgu kenarı (DWM).
+    - VM'de kurulum yalnız boot.wim sürücüsü için yapıldı (D-134); bu oturumun bileşen / arayüz değişiklikleriyle kurulum
+      yok.
+    - Performans yeniden ölçümü: bkz. PERF-BASELINE.md 'Üçüncü tur'
+  - **Sahibinin kararı bekleyen** (→ yukarıdaki girdide, 1. madde; D-145 ile birlikte): Hakkında'daki söz "Hiçbir kullanım verisi toplamaz, kimseye bir şey göndermez"
+    (`about.freeBody`) ile varsayılan açık güncelleme denetimi (D-140). Denetim veri göndermez (tek GET, yalnız sürüm
+    listesini okur; GitHub her HTTPS isteğindeki gibi IP'yi görür), ama artık varsayılan olarak bir istek yapılıyor.
+    Seçenekler: (a) cümleyi yumuşatmak — günde en çok bir kez sürüm listesine bakıldığını ve Uygulama ayarları'ndan
+    kapatılabildiğini söylesin; (b) denetimi varsayılan kapalı yapmak (cümle olduğu gibi kalır). Metin de varsayılan da
+    henüz değişmedi.
+  - **Bilinen:**
+    - D-131: oturum açılamazsa durulan adımın DISM öncesi işleri (kovan, depo kopyaları, derin sürücü) yapılmış olur.
+    - Bağlı WinPE `.vhd`'sinde (lab notuna göre WIM'de de) yalnız `HKLM\SOFTWARE` adımı olan plan 0x80070020 ile
+      düşüyor: açık DISM oturumu SOFTWARE'i tutuyor (ENGINE saha notu, çözülmedi).
+    - Görüntü yan kartı 700 yükseklikte son 2–3 bilgiyi göstermiyor; Katılımsız'da bir ipucu önizlemenin üstüne düşüyor
+      (D-136; sonradan bakıldığı yazılı değil).
+    - Render yolu pasif şerit düğmesinin ipucunu çizmiyor (VHD'de pasif düğmelerin ipucu metinleri yalnız birim testinde).
+    - Programlar'da ayrıntı kartının ağdan gelen bilgileri render'da "Ayrıntılar yükleniyor…" kalıyor.
+    - `render_diff`'in bilinen gürültüsü: "Boş alan" rakamı, log saatleri, `--demo-icons` (exe'nin klasör derinliği),
+      `--demo-store=dialog` iki exe'de de açılmıyor.
+    - Denetimin kısmen / atlandı satırları (öne çıkanlar: APP-05 / CTL-11 kuyruk yazımı her değişiklikte ve arayüz iş
+      parçacığında, SUB-04 Kaynak listesinde ağ yolu denetimi, SUB-03 simgelerin çizimde yüklenmesi, APP-15, PG-18,
+      UI-10, IMG-08); bağımsız incelemenin not kalan bulgusu: WinHTTP iptal yarışı.
+    - Simge yaması 1. turda %11 yavaşladı (65 ms). Karşılama kuyruktayken geri alma ~64 adıma iner. `wlcli apply
+      --pause` stdin'siz kaydetmez. wlcli çıkış kodları değişti (D-132): `tools/lab_features.ps1` (`--also=2`)
+      `optimizeWim` hatasında artık kırmızı.
+    - Düzeltme: aşağıdaki 2026-11-09 kaydındaki "kullanıcının tuttuğu imaj (`%LOCALAPPDATA%\WinLove\mount`) hâlâ bağlı"
+      doğru değil: lab'da (2026-11-10 19:50 ve 20:40) klasör boş, DISM kaydı yok; D-127 o imajla kanıtlanamaz. DISM'in
+      bildiği tek bağlama başka bir aracın ("needs remount"), dokunulmadı.
+    - CLAUDE.md'deki test ISO'su (`Downloads\Win11_25H2_Turkish_x64_v2.iso`) yok; yerine `build\lab\uup\out\x64-9448.iso`
+      ve `build\lab\setup\sources\install.wim` (CLAUDE.md ve TESTING.md'de).
+    - Bir hata kaydı (2026-11-10): `render_diff`'in ilk sürümü yalnız alfa kanalına bakıyordu, sahibine iki kez
+      yanlışlıkla "174 kare piksel piksel aynı" dendi; aynı gün düzeltildi (PERF-BASELINE "Tarihçe").
+  - **Sıradaki somut adım** (yerini yukarıdaki girdinin adımı aldı; tıklama turu orada genişledi): sahibi Hakkında cümlesi için (a) ya da (b)'yi seçer; ardından `dist\WinLove.exe` ile
+    tıklama turu: Görüntü › Özet → Bileşenler / Servisler / Kayıt Defteri'nde ayrıntı kartı → uygulamanın içinden
+    gerçek bir Uygula → Uygulama ayarları › Güncellemeleri denetle + Hakkında → bir VHDX ile Bağla, Kaydet / Kaydetmeden
+    çöz. Sonra yönetici lab'ında `inspectMountsFast` gerçek bağlı imajla. Commit sahibi isteyince.
 - **1.3.0 Beta güncellendi (2026-11-09, kullanıcı: "commitle … son yayınladığımızı güncelle").** Bu oturumda:
   - **D-126 kurulum ekranları "Aurora":** tasarım tuvalde onaylandı (https://claude.ai/artifact/W88ufVzn6yvHxYz4eZc6DQ),
     `resources/scripts/oobe.ps1` ve uygulamadaki `WelcomeCard` önizlemesi bu görünümde. Kullanıcı "çok donuyor"
@@ -753,6 +970,7 @@
 VS 2026 Community (MSVC 14.50/14.51), Windows SDK 10.0.26100, ADK Deployment Tools, dismapi.dll 10.0.26100, Python 3.14 (fonttools, pillow, playwright), Git. CMake yalnızca VS içinde. C: ~323 GB boş (lab ~7 GB). Ana ekran 144 DPI. PowerShell betik politikası kısıtlı (`-ExecutionPolicy Bypass`). UAC istemiyle yönetici betiği çalıştırılabiliyor.
 
 ## Geçmiş
+- 2026-11-11 — Uzun oturum (2026-11-10 → 11): denetim iki tur + yönetici lab'ı r2 (D-129 … D-133), boot.wim sürücüleri (D-134), yeni görünüm (D-136) ve renkler (D-137), Özet / Uygula (D-138), çalışma sayfaları (D-139), güncelleme denetimi (D-140), VHD / VHDX (D-141); hareket (D-135) iptal. Commit yok.
 - 2026-10-06 — Önceki kurulum (24H2+) seçeneği; WinRE'siz imajda kendiliğinden açılır (D-074).
 - 2026-09-30 — Ön okuma: mount sonrası ikinci ilerleme ile sayfa listeleri önceden okunuyor (D-027).
 - 2026-09-30 — İçe aktarılan .reg dosyaları kurulum sonrası da uygulanıyor; .reg ayrıştırma / kuyruk düzeltmeleri.

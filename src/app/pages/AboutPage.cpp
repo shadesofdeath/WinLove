@@ -1,11 +1,13 @@
 #include "app/pages/AboutPage.h"
 
+#include "app/Format.h"
 #include "app/SystemInfo.h"
 #include "app/pages/PageBits.h"
 #include "ui/widget/Host.h"
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <numbers>
 
@@ -17,8 +19,8 @@ using ui::tokens::TypeStyle;
 
 namespace {
 // D-114 (user: "daha modern, profesyonel"): a hero card (the mark on an accent tile, name,
-// version, what WinLove promises as pills, the two links that matter as buttons), the made-with-
-// love card, then Bağlantılar and Sistem side by side as cards.
+// version, what WinLove promises as pills), the made-with-love card, then Bağlantılar and Sistem
+// side by side as cards. The two links that matter, the licenses and the logs are the ribbon.
 constexpr float kHero = 120.0f;
 constexpr float kTile = 64.0f;
 constexpr float kGap = 12.0f;        // between cards
@@ -32,6 +34,14 @@ constexpr float kRow = 32.0f;
 constexpr float kLabelWidth = 128.0f;
 constexpr float kPill = 24.0f;
 constexpr float kTwoColumns = 760.0f; // narrower: the cards stack
+// D-140: the Güncellemeler card — a band (status icon, title, one detail line, the buttons at its
+// right); a new release's first lines under it.
+constexpr float kUpdateBand = 60.0f;
+constexpr float kUpdateIcon = ui::tokens::size::iconLarge;
+constexpr float kUpdateTitleH = 18.0f;
+constexpr float kUpdateLineH = 16.0f;
+constexpr int kNotesLines = 5;
+constexpr float kButtonGap = 8.0f;
 
 // The flag of Türkiye (Türk Bayrağı Kanunu, 1983): national colors, not theme tokens (D-072).
 constexpr ui::Rgba kFlagRed{0xE3 / 255.0f, 0x0A / 255.0f, 0x17 / 255.0f, 1.0f};
@@ -56,9 +66,195 @@ void paintFlag(ui::Canvas& canvas, ui::PointF topLeft, float g) {
     }
     canvas.fillPolygon(star, kFlagWhite);
 }
+
+std::chrono::system_clock::time_point fromSeconds(std::int64_t seconds) {
+    return std::chrono::system_clock::time_point(std::chrono::seconds(seconds));
+}
+
+Color toneInk(UpdateCardView::Tone tone) {
+    switch (tone) {
+    case UpdateCardView::Tone::Success: return Color::StatusSuccess;
+    case UpdateCardView::Tone::Accent: return Color::AccentText;
+    case UpdateCardView::Tone::Warning: return Color::StatusWarning;
+    case UpdateCardView::Tone::Quiet: break;
+    }
+    return Color::TextTertiary;
+}
 } // namespace
 
-AboutPage::AboutPage(AppState& state, const Localization& strings, Intents intents) : m_state(state), m_strings(strings) {
+namespace {
+UpdateCardView baseCardView(const AppState& state, const Localization& strings, Language language, std::int64_t now);
+} // namespace
+
+// D-145: the check's card, then what "Yükle" is doing over it.
+UpdateCardView updateCardView(const AppState& state, const Localization& strings, Language language, std::int64_t now) {
+    UpdateCardView v = baseCardView(state, strings, language, now);
+    const auto& u = state.appUpdate();
+    v.changelog = !v.checking && u.result && !u.result->releases.empty();
+    v.install = v.available;
+    if (const auto& install = u.install) {
+        using Stage = AppState::AppUpdate::Install::Stage;
+        using Why = AppState::AppUpdate::Install::Why;
+        v.install = false;
+        switch (install->stage) {
+        case Stage::Downloading:
+        case Stage::Verifying: {
+            const bool verifying = install->stage == Stage::Verifying;
+            v.icon = ui::icons::Icon::UpdateDownload;
+            v.tone = UpdateCardView::Tone::Accent;
+            v.title = verifying ? strings.get(Str::AppUpdateSelfVerifyingTitle)
+                                : strings.format(Str::AppUpdateSelfDownloadingTitle, {{L"name", install->name}});
+            v.detail = verifying ? strings.get(Str::AppUpdateSelfVerifyingBody)
+                                 : strings.format(Str::AppUpdateSelfDownloadingBody, {{L"done", formatBytes(install->done, language)},
+                                                                                     {L"total", formatBytes(install->total, language)}});
+            v.installing = true;
+            v.progress = verifying ? 1.0f
+                         : install->total ? std::clamp(static_cast<float>(static_cast<double>(install->done) / static_cast<double>(install->total)), 0.0f, 1.0f)
+                                          : 0.0f;
+            v.progressText = strings.format(Str::ApplyPct, {{L"pct", std::to_wstring(static_cast<int>(v.progress * 100))}});
+            v.notes.clear();
+            break;
+        }
+        case Stage::Ready:
+            v.icon = ui::icons::Icon::SuccessCircle;
+            v.tone = UpdateCardView::Tone::Success;
+            v.title = strings.format(Str::AppUpdateSelfReadyTitle, {{L"name", install->name}});
+            v.detail = strings.format(Str::AppUpdateSelfReadyBody, {{L"file", L"WinLove.exe.old"}});
+            v.restart = true;
+            v.notes.clear();
+            break;
+        case Stage::Failed: {
+            v.icon = ui::icons::Icon::WarningTriangle;
+            v.tone = UpdateCardView::Tone::Warning;
+            v.title = strings.get(Str::AppUpdateSelfFailedTitle);
+            const std::wstring detail = install->detail;
+            switch (install->why) {
+            case Why::NoAsset: v.detail = strings.get(Str::AppUpdateSelfNoAsset); v.openDownload = true; break;
+            case Why::Mounted: v.detail = strings.get(Str::AppUpdateSelfMounted); v.retry = true; break;
+            case Why::Busy: v.detail = strings.get(Str::AppUpdateSelfBusy); v.retry = true; break;
+            case Why::NotWritable:
+                v.detail = strings.format(Str::AppUpdateSelfNotWritable, {{L"detail", detail}});
+                v.openDownload = true;
+                break;
+            case Why::Download: v.detail = strings.format(Str::AppUpdateSelfDownload, {{L"detail", detail}}); v.retry = true; break;
+            case Why::Verify:
+                v.detail = strings.format(Str::AppUpdateSelfVerify, {{L"detail", detail}});
+                v.openDownload = true;
+                break;
+            case Why::Swap: v.detail = strings.format(Str::AppUpdateSelfSwap, {{L"detail", detail}}); v.openDownload = true; break;
+            case Why::Restart:
+                v.detail = strings.format(Str::AppUpdateSelfRestartFailed, {{L"detail", detail}});
+                v.openDownload = true;
+                break;
+            case Why::Cancelled: v.detail = strings.get(Str::AppUpdateSelfCancelled); v.retry = true; break;
+            case Why::None: v.retry = true; break;
+            }
+            v.install = v.retry && v.available;
+            v.retry = v.install;
+            if (v.url.empty() && u.result && u.result->latest) {
+                v.url = core::releasePageUrl(u.result->latest->url);
+            }
+            break;
+        }
+        }
+    }
+    return v;
+}
+
+namespace {
+UpdateCardView baseCardView(const AppState& state, const Localization& strings, Language language, std::int64_t now) {
+    using Phase = AppState::AppUpdate::Phase;
+    const auto& u = state.appUpdate();
+    const AppSettings& settings = state.settings();
+    const auto nowPoint = fromSeconds(now);
+    auto when = [&](std::int64_t seconds) { return formatRecentTime(fromSeconds(seconds), language, strings, nowPoint); };
+    UpdateCardView v;
+    switch (u.phase) {
+    case Phase::Checking:
+        v.icon = ui::icons::Icon::Refresh;
+        v.title = strings.get(Str::AppUpdateChecking);
+        v.detail = strings.get(Str::AppUpdateCheckingBody);
+        v.checking = true;
+        return v;
+    case Phase::Failed: {
+        v.icon = ui::icons::Icon::WarningTriangle;
+        v.tone = UpdateCardView::Tone::Warning;
+        v.title = strings.get(Str::AppUpdateFailedTitle);
+        switch (core::releaseFailure(u.error)) {
+        case core::ReleaseFailure::RateLimit: v.detail = strings.get(Str::AppUpdateFailedRateLimit); break;
+        case core::ReleaseFailure::Http: v.detail = strings.format(Str::AppUpdateFailedHttp, {{L"detail", u.error.message}}); break;
+        case core::ReleaseFailure::BadAnswer: v.detail = strings.get(Str::AppUpdateFailedAnswer); break;
+        case core::ReleaseFailure::Cancelled:
+        case core::ReleaseFailure::Network: v.detail = strings.get(Str::AppUpdateFailedNetwork); break;
+        }
+        return v;
+    }
+    case Phase::Done:
+        if (u.result) {
+            const auto& c = *u.result;
+            const auto* latest = c.latest ? &*c.latest : nullptr;
+            const std::wstring published = latest && latest->published > 0 ? when(latest->published) : std::wstring(L"—");
+            switch (c.verdict) {
+            case core::ReleaseVerdict::Available:
+                if (latest) {
+                    v.icon = ui::icons::Icon::UpdateDownload;
+                    v.tone = UpdateCardView::Tone::Accent;
+                    v.title = strings.format(Str::AppUpdateAvailableTitle, {{L"name", latest->title()}});
+                    v.detail = strings.format(Str::AppUpdateAvailableBody,
+                                              {{L"tag", latest->tag}, {L"date", published}, {L"current", c.current}});
+                    v.notes = latest->notes;
+                    v.available = true;
+                    v.url = core::releasePageUrl(latest->url);
+                    return v;
+                }
+                break;
+            case core::ReleaseVerdict::Current:
+                if (latest) {
+                    v.icon = ui::icons::Icon::SuccessCircle;
+                    v.tone = UpdateCardView::Tone::Success;
+                    v.title = strings.get(Str::AppUpdateCurrentTitle);
+                    v.detail = strings.format(Str::AppUpdateCurrentBody, {{L"tag", latest->tag}, {L"date", published}, {L"when", when(u.at)}});
+                    return v;
+                }
+                break;
+            case core::ReleaseVerdict::Unknown:
+                v.icon = ui::icons::Icon::InfoCircle;
+                v.title = strings.get(Str::AppUpdateUnknownTitle);
+                v.detail = strings.format(Str::AppUpdateUnknownBody,
+                                          {{L"tag", latest ? latest->tag : std::wstring(L"—")}, {L"current", c.current}});
+                return v;
+            case core::ReleaseVerdict::None:
+                v.icon = ui::icons::Icon::InfoCircle;
+                v.title = strings.get(Str::AppUpdateNoneTitle);
+                v.detail = strings.format(Str::AppUpdateLastCheckTitle, {{L"when", when(u.at)}});
+                return v;
+            }
+        }
+        break;
+    case Phase::Idle: break;
+    }
+    // Not asked this session: what the settings remember.
+    if (!u.updatedFrom.empty()) {
+        // D-145: this instance replaced the version it names.
+        v.icon = ui::icons::Icon::SuccessCircle;
+        v.tone = UpdateCardView::Tone::Success;
+        v.title = strings.format(Str::AppUpdateSelfUpdatedTitle, {{L"from", u.updatedFrom}, {L"to", L"" WL_VERSION_LABEL}});
+        v.detail = strings.get(Str::AppUpdateSelfUpdatedBody);
+        return v;
+    }
+    v.icon = ui::icons::Icon::Refresh;
+    v.title = settings.updateCheckedAt > 0 ? strings.format(Str::AppUpdateLastCheckTitle, {{L"when", when(settings.updateCheckedAt)}})
+                                           : strings.get(Str::AppUpdateIdleTitle);
+    v.detail = strings.get(settings.checkUpdates ? Str::AppUpdateAutoOn : Str::AppUpdateAutoOff);
+    if (settings.updateCheckedAt > 0 && !settings.updateLatestTag.empty()) {
+        v.detail = strings.format(Str::AppUpdateLastKnown, {{L"tag", settings.updateLatestTag}}) + L" · " + v.detail;
+    }
+    return v;
+}
+} // namespace
+
+AboutPage::AboutPage(AppState& state, const Localization& strings, Language language, Intents intents)
+    : m_state(state), m_strings(strings), m_language(language) {
     auto link = [&](Str label, const wchar_t* url) {
         auto& button = add<ui::Button>(ui::ButtonKind::Subtle, std::wstring(url).substr(8), ui::icons::Icon::ExternalLink);
         button.onInvoke = [open = intents.openLink, target = std::wstring(url)] {
@@ -67,18 +263,6 @@ AboutPage::AboutPage(AppState& state, const Localization& strings, Intents inten
             }
         };
         m_links.push_back({label, &button});
-    };
-    m_heroProject = &add<ui::Button>(ui::ButtonKind::Primary, strings.get(Str::AboutActionProject), ui::icons::Icon::ExternalLink);
-    m_heroProject->onInvoke = [open = intents.openLink] {
-        if (open) {
-            open(kProjectUrl);
-        }
-    };
-    m_heroIssue = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::AboutActionIssue), ui::icons::Icon::QuestionCircle);
-    m_heroIssue->onInvoke = [open = intents.openLink] {
-        if (open) {
-            open(kIssuesUrl);
-        }
     };
     link(Str::AboutDeveloper, kDeveloperUrl);
     link(Str::AboutProject, kProjectUrl);
@@ -90,19 +274,92 @@ AboutPage::AboutPage(AppState& state, const Localization& strings, Intents inten
         }
     };
     m_links.push_back({Str::AboutLicense, &license});
-
-    m_licenses = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::AboutLicenses), ui::icons::Icon::File);
-    m_licenses->onInvoke = std::move(intents.showLicenses);
-    m_logs = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::AboutOpenLogFolder), ui::icons::Icon::OpenFolder);
-    m_logs->onInvoke = std::move(intents.openLogFolder);
+    for (const Str pill : {Str::AboutPillFree, Str::AboutPillNoAds, Str::AboutPillNoData, Str::AboutPillOpenSource}) {
+        m_pills.push_back({pill, 0.0f}); // measured in layout(), once a host has the fonts
+    }
+    // D-140: the update card's buttons — the check, and the new release's page (the card's one main action).
+    m_releaseButton = &add<ui::Button>(ui::ButtonKind::Primary, strings.get(Str::AppUpdateOpenRelease), ui::icons::Icon::ExternalLink);
+    m_releaseButton->onInvoke = [this, open = intents.openLink] {
+        if (open && !m_update.url.empty()) {
+            open(m_update.url);
+        }
+    };
+    m_checkButton = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::AppUpdateCheckNow), ui::icons::Icon::Refresh);
+    m_checkButton->onInvoke = [check = intents.checkUpdates] {
+        if (check) {
+            check();
+        }
+    };
+    // D-145: install it, see what changed, the download's stop, the restart.
+    auto call = [](std::function<void()> f) {
+        return [f = std::move(f)] {
+            if (f) {
+                f();
+            }
+        };
+    };
+    m_installButton = &add<ui::Button>(ui::ButtonKind::Primary, strings.get(Str::AppUpdateSelfInstall), ui::icons::Icon::UpdateDownload);
+    m_installButton->onInvoke = call(intents.install);
+    m_changelogButton = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::AppUpdateSelfChangelog), ui::icons::Icon::File);
+    m_changelogButton->onInvoke = call(intents.changelog);
+    m_restartButton = &add<ui::Button>(ui::ButtonKind::Primary, strings.get(Str::AppUpdateSelfRestart), ui::icons::Icon::Refresh);
+    m_restartButton->onInvoke = call(intents.restart);
+    m_cancelButton = &add<ui::Button>(ui::ButtonKind::Secondary, strings.get(Str::CommonCancel), ui::icons::Icon::Stop);
+    m_cancelButton->onInvoke = call(intents.cancelInstall);
     setAccessible(ui::AccessRole::Group, strings.get(Str::AboutTitle));
-    // The work folder row follows the settings.
+    // The work folder row follows the settings; the update card the check (and its setting).
     m_subscription = m_state.subscribe([this](AppState::Change change) {
         if (change == AppState::Change::Settings) {
             refresh();
+            refreshUpdate();
+        } else if (change == AppState::Change::AppUpdate) {
+            refreshUpdate();
         }
     });
     refresh();
+    refreshUpdate();
+}
+
+void AboutPage::refreshUpdate() {
+    const auto now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    UpdateCardView view = updateCardView(m_state, m_strings, m_language, now);
+    if (view == m_update && m_checkButton->enabled() == (!view.checking && !view.installing)) {
+        return;
+    }
+    const float before = contentHeight();
+    m_update = std::move(view);
+    m_checkButton->setEnabled(!m_update.checking && !m_update.installing);
+    // D-145: "Yükle" replaces the release page's button; the page stays for what cannot be installed.
+    m_releaseButton->setVisible(m_update.openDownload);
+    m_releaseButton->setText(m_strings.get(Str::AppUpdateSelfOpenDownload));
+    m_installButton->setVisible(m_update.install);
+    m_installButton->setText(m_strings.get(m_update.retry ? Str::AppUpdateSelfRetry : Str::AppUpdateSelfInstall));
+    m_changelogButton->setVisible(m_update.changelog);
+    m_restartButton->setVisible(m_update.restart);
+    m_cancelButton->setVisible(m_update.installing);
+    m_notesWidth = -1.0f;
+    layout();
+    invalidate();
+    contentChanged(*this, before);
+}
+
+float AboutPage::updateTextX(const RectF& card) const {
+    return card.x + kCardPad + kUpdateIcon + 12;
+}
+
+float AboutPage::updateNotesHeight(float width) const {
+    if (m_update.notes.empty()) {
+        return 0.0f;
+    }
+    if (!host()) {
+        return kUpdateLineH * 2;
+    }
+    if (width != m_notesWidth) {
+        m_notesWidth = width;
+        const float measured = std::ceil(host()->text().measureWrapped(m_update.notes, TypeStyle::Small, width));
+        m_notesHeight = std::min(measured, kUpdateLineH * kNotesLines);
+    }
+    return m_notesHeight;
 }
 
 AboutPage::~AboutPage() {
@@ -123,6 +380,7 @@ void AboutPage::refresh() {
         {s(Str::AboutFonts), {s(Str::AboutFontsValue), false}},
         {s(Str::AboutThirdParty), {s(Str::AboutThirdPartyValue), false}},
     };
+    m_rowHeights.clear();
     layout();
     invalidate();
 }
@@ -130,7 +388,11 @@ void AboutPage::refresh() {
 float AboutPage::freeBodyHeight(float width) const {
     // Measured when attached; before that a rough estimate (12px text, about 6.4px per character).
     if (host()) {
-        return std::ceil(host()->text().measureWrapped(m_strings.get(Str::AboutFreeBody), TypeStyle::Body, width));
+        if (width != m_freeBodyWidth) {
+            m_freeBodyWidth = width;
+            m_freeBodyHeight = std::ceil(host()->text().measureWrapped(m_strings.get(Str::AboutFreeBody), TypeStyle::Body, width));
+        }
+        return m_freeBodyHeight;
     }
     const float perLine = std::max(1.0f, std::floor(width / 6.4f));
     const auto chars = static_cast<float>(m_strings.get(Str::AboutFreeBody).size());
@@ -141,10 +403,18 @@ float AboutPage::systemRowHeight(std::size_t row, float cardWidth) const {
     if (row >= m_rows.size() || !host()) {
         return kRow;
     }
-    const auto& [value, mono] = m_rows[row].second;
-    const float width = std::max(cardWidth - 2 * kCardPad - kLabelWidth, 40.0f);
-    const float text = std::ceil(host()->text().measureWrapped(value, mono ? TypeStyle::Mono : TypeStyle::Body, width));
-    return std::max(kRow, text + 14.0f);
+    if (cardWidth != m_rowHeightsWidth || m_rowHeights.size() != m_rows.size()) {
+        m_rowHeightsWidth = cardWidth;
+        m_rowHeights.assign(m_rows.size(), -1.0f);
+    }
+    float& height = m_rowHeights[row];
+    if (height < 0) {
+        const auto& [value, mono] = m_rows[row].second;
+        const float width = std::max(cardWidth - 2 * kCardPad - kLabelWidth, 40.0f);
+        const float text = std::ceil(host()->text().measureWrapped(value, mono ? TypeStyle::Mono : TypeStyle::Body, width));
+        height = std::max(kRow, text + 14.0f);
+    }
+    return height;
 }
 
 float AboutPage::systemRowsHeight(float cardWidth) const {
@@ -164,13 +434,16 @@ AboutPage::Cards AboutPage::cards() const {
     const RectF b = bounds();
     Cards c;
     c.hero = {b.x, b.y, b.width, kHero};
+    // D-140: the update card; a new release's lines under its band.
+    const float notesH = m_update.installing ? kUpdateLineH : updateNotesHeight(std::max(b.right() - kCardPad - updateTextX(b), 40.0f));
+    c.update = {b.x, c.hero.bottom() + kGap, b.width, kUpdateBand + (notesH > 0 ? notesH + kCardPad : 0.0f)};
     const float loveBody = freeBodyHeight(b.width - 2 * kCardPad);
-    c.love = {b.x, c.hero.bottom() + kGap, b.width, kCardPad + kLoveRow + loveBody + kCardPad};
+    c.love = {b.x, c.update.bottom() + kGap, b.width, kCardPad + kLoveRow + loveBody + kCardPad};
     const float linksH = kCardTitle + kRow * static_cast<float>(m_links.size()) + kCardPad;
     const float top = c.love.bottom() + kGap;
     const bool twoColumns = b.width >= kTwoColumns;
     const float systemW = twoColumns ? (b.width - kGap) / 2 : b.width;
-    const float systemH = kCardTitle + systemRowsHeight(systemW) + 8 + ui::tokens::size::control + kCardPad;
+    const float systemH = kCardTitle + systemRowsHeight(systemW) + kCardPad;
     if (twoColumns) {
         c.links = {b.x, top, systemW, std::max(linksH, systemH)};
         c.system = {b.x + systemW + kGap, top, systemW, std::max(linksH, systemH)};
@@ -183,12 +456,11 @@ AboutPage::Cards AboutPage::cards() const {
 
 void AboutPage::layout() {
     const Cards c = cards();
-    // Hero: the two buttons at its right, centred on it.
-    const ui::SizeF issue = m_heroIssue->measure({});
-    const ui::SizeF project = m_heroProject->measure({});
-    const float by = c.hero.y + (c.hero.height - project.height) / 2;
-    m_heroIssue->setBounds({c.hero.right() - kCardPad - issue.width, by, issue.width, issue.height});
-    m_heroProject->setBounds({m_heroIssue->bounds().x - 8 - project.width, by, project.width, project.height});
+    for (Pill& pill : m_pills) {
+        if (pill.width <= 0 && host()) {
+            pill.width = std::ceil(textWidth(m_strings.get(pill.text), TypeStyle::Caption)) + 20;
+        }
+    }
     float y = c.links.y + kCardTitle;
     for (const auto& item : m_links) {
         const ui::SizeF size = item.button->measure({});
@@ -197,11 +469,16 @@ void AboutPage::layout() {
                                 size.height});
         y += kRow;
     }
-    const float buttonsY = c.system.y + kCardTitle + systemRowsHeight(c.system.width) + 8;
-    const ui::SizeF licenses = m_licenses->measure({});
-    m_licenses->setBounds({c.system.x + kCardPad, buttonsY, licenses.width, licenses.height});
-    const ui::SizeF logs = m_logs->measure({});
-    m_logs->setBounds({c.system.x + kCardPad + licenses.width + 8, buttonsY, logs.width, logs.height});
+    // D-140: the update card's buttons at the band's right, the main one (the release page) first.
+    float right = c.update.right() - kCardPad;
+    for (ui::Button* button : {m_checkButton, m_changelogButton, m_cancelButton, m_releaseButton, m_installButton, m_restartButton}) {
+        if (!button->visible()) {
+            continue;
+        }
+        const ui::SizeF size = button->measure({});
+        button->setBounds({right - size.width, c.update.y + (kUpdateBand - size.height) / 2, size.width, size.height});
+        right -= size.width + kButtonGap;
+    }
 }
 
 void AboutPage::paint(ui::Canvas& canvas) {
@@ -214,7 +491,7 @@ void AboutPage::paint(ui::Canvas& canvas) {
     canvas.drawIcon(ui::icons::Icon::BrandMark, {tile.x + (kTile - 36) / 2, tile.y + (kTile - 36) / 2}, Color::TextOnAccent,
                     ui::IconVariant::Regular24, 36.0f);
     const float tx = tile.right() + 18;
-    const float textRoom = std::max(m_heroProject->bounds().x - tx - 12, 0.0f);
+    const float textRoom = std::max(c.hero.right() - kCardPad - tx, 0.0f);
     // Title 30, version 18, 10 apart from the pills (24): the block centred on the card. The pills
     // sat over the version line before (2026-11-09).
     constexpr float kTitleH = 30.0f;
@@ -225,16 +502,53 @@ void AboutPage::paint(ui::Canvas& canvas) {
     canvas.drawText(m_version, {tx, textTop + kTitleH, textRoom, kVersionH}, TypeStyle::Caption, Color::TextSecondary);
     const float pillY = textTop + kTitleH + kVersionH + kPillGap;
     float px = tx;
-    for (const Str pill : {Str::AboutPillFree, Str::AboutPillNoAds, Str::AboutPillNoData, Str::AboutPillOpenSource}) {
-        const std::wstring text = m_strings.get(pill);
-        const float w = std::ceil(canvas.text().measure(text, TypeStyle::Caption)) + 20;
-        if (px + w > tx + textRoom) {
+    for (const Pill& pill : m_pills) {
+        if (px + pill.width > tx + textRoom) {
             break;
         }
-        const RectF r{px, pillY, w, kPill};
+        const RectF r{px, pillY, pill.width, kPill};
         canvas.fillRoundRect(r, kPill / 2, Color::AccentSubtle);
-        canvas.drawText(text, r, TypeStyle::Caption, Color::AccentText, ui::TextAlign::Center);
-        px += w + 6;
+        canvas.drawText(m_strings.get(pill.text), r, TypeStyle::Caption, Color::AccentText, ui::TextAlign::Center);
+        px += pill.width + 6;
+    }
+
+    // D-140: Güncellemeler — the state's icon, what it found, one line of facts; the buttons at the right.
+    canvas.fillRoundRect(c.update, radius, Color::BgRaised);
+    {
+        const Color ink = toneInk(m_update.tone);
+        canvas.drawIcon(m_update.icon, {c.update.x + kCardPad, c.update.y + (kUpdateBand - kUpdateIcon) / 2}, ink,
+                        ui::IconVariant::Regular16, kUpdateIcon);
+        const float ux = updateTextX(c.update);
+        float firstX = c.update.right();
+        for (const ui::Button* button : {m_checkButton, m_changelogButton, m_cancelButton, m_releaseButton, m_installButton, m_restartButton}) {
+            if (button->visible()) {
+                firstX = std::min(firstX, button->bounds().x);
+            }
+        }
+        const float room = std::max(firstX - 16 - ux, 0.0f);
+        const float uy = c.update.y + std::round((kUpdateBand - kUpdateTitleH - kUpdateLineH) / 2);
+        canvas.drawText(m_update.title, {ux, uy, room, kUpdateTitleH}, TypeStyle::BodySemi,
+                        m_update.tone == UpdateCardView::Tone::Accent ? Color::AccentText : Color::TextPrimary);
+        canvas.drawText(m_update.detail, {ux, uy + kUpdateTitleH, room, kUpdateLineH}, TypeStyle::Caption, Color::TextTertiary);
+        if (m_update.installing) {
+            // D-145: the download's meter under the band, its percentage at the right.
+            const float top = c.update.y + kUpdateBand;
+            const float w = std::max(c.update.right() - kCardPad - ux, 40.0f);
+            const float pctW = std::ceil(textWidth(m_update.progressText, TypeStyle::Caption)) + 12;
+            canvas.hairlineH(ux, top, w, Color::LineSubtle);
+            paintMeter(canvas, {ux, top + kCardPad / 2 + 5, std::max(w - pctW, 0.0f), 6}, m_update.progress);
+            canvas.drawText(m_update.progressText, {ux + w - pctW + 12, top + kCardPad / 2, pctW, 16}, TypeStyle::Caption,
+                            Color::TextSecondary);
+        } else if (!m_update.notes.empty()) {
+            const float notesW = std::max(c.update.right() - kCardPad - ux, 40.0f);
+            const float notesH = updateNotesHeight(notesW);
+            const float top = c.update.y + kUpdateBand;
+            canvas.hairlineH(ux, top, notesW, Color::LineSubtle);
+            canvas.pushClip({ux, top + kCardPad / 2, notesW, notesH});
+            canvas.drawTextWrapped(m_update.notes, {ux, top + kCardPad / 2, notesW, notesH + kUpdateLineH}, TypeStyle::Small,
+                                   Color::TextSecondary);
+            canvas.popClip();
+        }
     }
 
     // Made with love in Türkiye, and what that means here.

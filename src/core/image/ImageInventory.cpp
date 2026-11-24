@@ -163,10 +163,11 @@ std::wstring archOfPackage(std::wstring_view package) {
     return L"amd64";
 }
 
-void readDrivers(const fs::path& mountDir, ImageInventory& out) {
+// `system`: the image's SYSTEM hive, read once for all of its readers (audit IMG-10).
+void readDrivers(const fs::path& mountDir, const Result<OffRegKey>& system, ImageInventory& out) {
     const auto config = mountDir / L"Windows" / L"System32" / L"config";
     std::map<std::wstring, std::wstring> classNames; // GUID → the image's description
-    if (auto system = OffRegKey::openHive(config / L"SYSTEM")) {
+    if (system) {
         const auto classes = system->open(controlSet(*system) + L"\\Control\\Class");
         for (const auto& guid : classes.subkeys()) {
             const auto key = classes.open(guid);
@@ -184,11 +185,10 @@ void readDrivers(const fs::path& mountDir, ImageInventory& out) {
     std::map<std::wstring, std::wstring> classInfNames; // GUID → the class INF's description
     const auto repository = mountDir / L"Windows" / L"System32" / L"DriverStore" / L"FileRepository";
     // Two driver databases: DRIVERS holds most packages, SYSTEM the boot-capable ones.
-    for (const wchar_t* file : {L"DRIVERS", L"SYSTEM"}) {
-        auto hive = OffRegKey::openHive(config / file);
+    const auto addPackages = [&](const wchar_t* file, const Result<OffRegKey>& hive) {
         if (!hive) {
             log::warn("inventory", std::wstring(file) + L": " + hive.error().message);
-            continue;
+            return;
         }
         const auto packages = hive->open(L"DriverDatabase\\DriverPackages");
         for (const auto& package : packages.subkeys()) {
@@ -230,10 +230,16 @@ void readDrivers(const fs::path& mountDir, ImageInventory& out) {
             driver.size = treeBytes(folder);
             out.drivers.push_back(std::move(driver));
         }
-    }
+    };
+    addPackages(L"DRIVERS", OffRegKey::openHive(config / L"DRIVERS"));
+    addPackages(L"SYSTEM", system);
     // Every class definition in Windows\INF ([ClassInstall32]: display.inf, disk.inf, c_*.inf …).
+    // Not a range-for: its increment throws on a read error and the whole inventory would come
+    // back empty (audit IMG-09).
     std::error_code ec;
-    for (const auto& entry : fs::directory_iterator(mountDir / L"Windows" / L"INF", fs::directory_options::skip_permission_denied, ec)) {
+    for (auto it = fs::directory_iterator(mountDir / L"Windows" / L"INF", fs::directory_options::skip_permission_denied, ec);
+         !ec && it != fs::directory_iterator(); it.increment(ec)) {
+        const auto& entry = *it;
         if (text::lower(entry.path().extension().wstring()) != L".inf") {
             continue;
         }
@@ -242,7 +248,10 @@ void readDrivers(const fs::path& mountDir, ImageInventory& out) {
             continue;
         }
         const std::wstring content = utf8::decodeText(*bytes);
-        if (text::lower(content).find(L"[classinstall32") == std::wstring::npos) {
+        // Searched in place, with text::lower's folding: no lower-case copy of every INF.
+        constexpr std::wstring_view kClassSection = L"[classinstall32";
+        if (std::search(content.begin(), content.end(), kClassSection.begin(), kClassSection.end(),
+                        [](wchar_t a, wchar_t b) { return static_cast<wchar_t>(std::towlower(a)) == b; }) == content.end()) {
             continue;
         }
         const DriverInf inf = parseInfText(content, entry.path());
@@ -294,7 +303,9 @@ void readLanguages(const fs::path& mountDir, ImageInventory& out) {
     const auto system32 = mountDir / L"Windows" / L"System32";
     std::error_code ec;
     std::map<std::wstring, std::vector<std::wstring>> groups; // group → tags
-    for (const auto& entry : fs::directory_iterator(system32, fs::directory_options::skip_permission_denied, ec)) {
+    for (auto it = fs::directory_iterator(system32, fs::directory_options::skip_permission_denied, ec);
+         !ec && it != fs::directory_iterator(); it.increment(ec)) {
+        const auto& entry = *it;
         if (entry.is_directory(ec) && isLocaleTag(entry.path().filename().wstring())) {
             const std::wstring tag = entry.path().filename().wstring();
             groups[languageGroup(tag)].push_back(tag);
@@ -331,8 +342,7 @@ void readLanguages(const fs::path& mountDir, ImageInventory& out) {
 
 // ---- keyboards ---------------------------------------------------------------------------------
 
-void readKeyboards(const fs::path& mountDir, ImageInventory& out) {
-    auto system = OffRegKey::openHive(mountDir / L"Windows" / L"System32" / L"config" / L"SYSTEM");
+void readKeyboards(const Result<OffRegKey>& system, ImageInventory& out) {
     if (!system) {
         log::warn("inventory", L"SYSTEM: " + system.error().message);
         return;
@@ -364,8 +374,8 @@ void readKeyboards(const fs::path& mountDir, ImageInventory& out) {
 
 // ---- fonts -------------------------------------------------------------------------------------
 
-void readFonts(const fs::path& mountDir, ImageInventory& out) {
-    auto software = OffRegKey::openHive(mountDir / L"Windows" / L"System32" / L"config" / L"SOFTWARE");
+// `software`: the image's SOFTWARE hive (tens of MB), read once for both of its readers (audit IMG-10).
+void readFonts(const fs::path& mountDir, const Result<OffRegKey>& software, ImageInventory& out) {
     if (!software) {
         log::warn("inventory", L"SOFTWARE: " + software.error().message);
         return;
@@ -432,8 +442,7 @@ std::wstring manifestDisplayName(const fs::path& manifest) {
     return name.starts_with(L"ms-resource:") ? std::wstring() : name;
 }
 
-void readSystemApps(const fs::path& mountDir, ImageInventory& out) {
-    auto software = OffRegKey::openHive(mountDir / L"Windows" / L"System32" / L"config" / L"SOFTWARE");
+void readSystemApps(const fs::path& mountDir, const Result<OffRegKey>& software, ImageInventory& out) {
     if (!software) {
         return;
     }
@@ -546,12 +555,20 @@ Result<ImageInventory> readImageInventory(const std::filesystem::path& mountDir)
     if (!present(mountDir / L"Windows" / L"System32" / L"config" / L"SOFTWARE")) {
         return fail(ErrorCode::NotFound, L"no Windows image in this folder", mountDir.wstring());
     }
+    const auto config = mountDir / L"Windows" / L"System32" / L"config";
     ImageInventory inventory;
-    readDrivers(mountDir, inventory);
+    {
+        // Each hive is read into memory once (audit IMG-10); SYSTEM is let go before SOFTWARE comes.
+        const Result<OffRegKey> system = OffRegKey::openHive(config / L"SYSTEM");
+        readDrivers(mountDir, system, inventory);
+        readKeyboards(system, inventory);
+    }
     readLanguages(mountDir, inventory);
-    readKeyboards(mountDir, inventory);
-    readFonts(mountDir, inventory);
-    readSystemApps(mountDir, inventory);
+    {
+        const Result<OffRegKey> software = OffRegKey::openHive(config / L"SOFTWARE");
+        readFonts(mountDir, software, inventory);
+        readSystemApps(mountDir, software, inventory);
+    }
     return inventory;
 }
 

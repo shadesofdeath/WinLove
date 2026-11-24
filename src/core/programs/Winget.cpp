@@ -673,7 +673,11 @@ Result<WingetDetails> parseWingetManifest(std::string_view yaml, std::wstring_vi
 }
 
 bool validWingetId(std::wstring_view id) noexcept {
-    return !id.empty() && id.size() <= 128 && std::ranges::all_of(id, [](wchar_t c) {
+    // The id names a folder in the image (offline programs): "." and ".." would name its parents.
+    if (id.empty() || id.size() > 128 || id.front() == L'.' || id.back() == L'.' || id.find(L"..") != id.npos) {
+        return false;
+    }
+    return std::ranges::all_of(id, [](wchar_t c) {
         return c < 128 && (std::iswalnum(c) != 0 || c == L'.' || c == L'-' || c == L'_' || c == L'+');
     });
 }

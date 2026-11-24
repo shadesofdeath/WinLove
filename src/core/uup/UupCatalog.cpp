@@ -234,8 +234,13 @@ Result<FileSet> parseFiles(std::string_view text) {
     set.updateName = str(*r, "updateName");
     set.build = str(*r, "build");
     set.arch = str(*r, "arch");
-    set.hasUpdates = r->value("hasUpdates", false);
-    set.appxPresent = r->value("appxPresent", false);
+    // By type: value() throws on "hasUpdates": 1 / null (a third-party server's answer).
+    const auto flag = [&](const char* key) {
+        const auto it = r->find(key);
+        return it != r->end() && it->is_boolean() && it->get<bool>();
+    };
+    set.hasUpdates = flag("hasUpdates");
+    set.appxPresent = flag("appxPresent");
     const auto files = r->find("files");
     if (files != r->end() && files->is_object()) {
         for (const auto& [name, f] : files->items()) {

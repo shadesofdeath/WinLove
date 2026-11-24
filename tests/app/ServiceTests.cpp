@@ -1,5 +1,6 @@
 // P10: start-type keys, offline resource paths, dependents, and choice → ChangeSet mapping.
 #include "app/controllers/ServiceController.h"
+#include "support/UiThread.h"
 
 #include <doctest.h>
 
@@ -36,7 +37,8 @@ constexpr std::string_view kCatalog = R"({"format":"winlove.catalog.services","s
 
 struct Fixture {
     AppState state{scratch(L"recent.json"), scratch(L"settings.json")};
-    ServiceController controller{state, kCatalog, [](std::function<void()> fn) { fn(); }};
+    test::UiThread ui;
+    ServiceController controller{state, kCatalog, ui.post()};
 
     Fixture() {
         state.setMounted(MountedImage{L"C:\\m", L"C:\\w\\install.wim", 1, L"Pro"});

@@ -14,6 +14,7 @@
 #include "core/image/Services.h"
 #include "core/ops/ChangeSet.h"
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -66,7 +67,21 @@ struct ImageSetting {
     bool firstLogon = false; // "apply": "firstLogon" → SetRegistryFirstLogon
     std::vector<ImageSettingOption> options; // toggle: [0] off, [1] on · text / file: [0] default, [1] with a value
     int defaultOption = 0;
-    int recommended = -1; // option "Önerilenleri uygula" picks; -1 = leave alone
+};
+
+// D-146: a ready template of the form ("Şablon ▾"), as Bileşenler has (D-110): a named set of
+// settings, each with the option the template gives it (never the Windows default, never a text
+// or file setting). Templates agree with each other: where two list one setting they give it the
+// same option, so applying several is their union in any order (unit-tested).
+struct ImageSettingTemplate {
+    struct Pick {
+        std::size_t setting = 0; // index into ImageSettingsCatalog::settings()
+        int option = 0;
+    };
+    std::string id;
+    LocalizedText title;
+    LocalizedText description; // who it is for, one line
+    std::vector<Pick> picks;   // in the catalog's order
 };
 
 // D-062: what the user types for the page file ↔ the PagingFiles entry. "d: 4096 8192" →
@@ -84,11 +99,17 @@ public:
     [[nodiscard]] const std::vector<ImageSettingTab>& tabs() const noexcept { return m_tabs; }
     [[nodiscard]] const std::vector<ImageSettingSection>& sections() const noexcept { return m_sections; }
     [[nodiscard]] const std::vector<ImageSetting>& settings() const noexcept { return m_settings; }
+    // D-146: "templates": [{id, tr, en, desc_tr, desc_en, settings: {setting id: option id}}]. A pick
+    // naming an unknown setting / option, the default option or a text / file setting is skipped and
+    // logged; a template left without picks (or with an id seen before) is skipped.
+    [[nodiscard]] const std::vector<ImageSettingTemplate>& templates() const noexcept { return m_templates; }
+    [[nodiscard]] const ImageSettingTemplate* findTemplate(std::string_view id) const;
 
 private:
     std::vector<ImageSettingTab> m_tabs;
     std::vector<ImageSettingSection> m_sections;
     std::vector<ImageSetting> m_settings;
+    std::vector<ImageSettingTemplate> m_templates;
 };
 
 } // namespace wl::app
