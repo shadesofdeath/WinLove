@@ -17,9 +17,9 @@
 
 ---
 
-> **1.3.0 Beta.** Değişiklikleri yine önce bir sanal makinede dene; asıl imajının yedeğini tut. Neler değişti:
+> **1.4.0 Beta.** Değişiklikleri yine önce bir sanal makinede dene; asıl imajının yedeğini tut. Neler değişti:
 > [CHANGELOG](CHANGELOG.md).
-> WinLove yalnızca **çevrimdışı imajlarla** çalışır (ISO / WIM / ESD); çalışan sistemine dokunmaz.
+> WinLove yalnızca **çevrimdışı imajlarla** çalışır (ISO / WIM / ESD / VHD); çalışan sistemine dokunmaz.
 
 ![WinLove](docs/screenshots/components.png)
 
@@ -60,8 +60,8 @@
 ## Söz
 
 WinLove tamamen ücretsizdir ve her zaman ücretsiz kalacak: reklam yok, hesap yok, ücretli sürüm yok.
-Hiçbir kullanım verisi toplamaz, kimseye bir şey göndermez. Windows'unu kendi istediği gibi kurmak isteyen
-herkes için, sevgiyle yapıldı.
+Hiçbir kullanım verisi toplamaz; yalnız günde en çok bir kez GitHub'daki sürüm listesine bakar (Uygulama
+ayarları'ndan kapatılabilir). Windows'unu kendi istediği gibi kurmak isteyen herkes için, sevgiyle yapıldı.
 
 ## Derleme
 
@@ -82,7 +82,7 @@ Hata ya da öneri için bir [issue](https://github.com/shadesofdeath/WinLove/iss
 
 ## Lisans
 
-[GNU GPL v3.0](LICENSE). Pakete giren üçüncü taraf bileşenler ve lisansları: Inter, Geist ve JetBrains Mono (OFL 1.1), Lucide simgeleri (ISC)
+[GNU GPL v3.0](LICENSE). Pakete giren üçüncü taraf bileşenler ve lisansları: Inter, Geist, IBM Plex Sans ve JetBrains Mono (OFL 1.1), Lucide simgeleri (ISC)
 (SIL OFL 1.1), nlohmann/json ve pugixml (MIT), Win11Debloat boş Başlat şablonu (MIT) — bkz. `third_party/`.
 
 ---

@@ -6,6 +6,56 @@
 
 ## Türkçe
 
+### 1.4.0 Beta — 2026-11-24
+
+1.3.0 Beta'dan bu yana gelenler:
+
+#### Yeni
+
+- **Sıfırla düğmeleri:**
+  - Zamanlanmış Görevler, Kurulum Sonrası, Sürücüler, Kayıt Defteri ve Güncellemeler şeridinde de Sıfırla var
+    (Bileşenler ve Özellikler'deki gibi); her biri yalnız kendi sayfasının değişikliklerini kaldırır.
+  - Ayarlar'da her sekmenin (Gizlilik, Sistem, Güvenlik …) kendi "Bu sekmeyi sıfırla" düğmesi var; şeritteki "Tümünü
+    sıfırla" bütün sekmeleri sıfırlar.
+  - Ön Ayar sayfasında "Tüm değişiklikleri sıfırla": başka bir ön ayarı, öncekinin üstüne eklemeden uygulamak için.
+  - Hepsi tek "Geri al" ile geri gelir.
+- **Windows indir: Microsoft'un resmi ESD'si.** Windows 11 ve 10, Media Creation Tool'un kataloğundan indirilip ISO'ya
+  çevrilir; UUP seti de seçilebilir.
+- **VHD / VHDX kaynağı:** sanal diskteki Windows doğrudan açılır, bağlanır, Uygula ile değiştirilir. Disk, WinLove'un fark
+  diskiyle korunur: "Kaydet" değişiklikleri diske yazar, "Kaydetmeden çöz" diske hiç dokunmaz.
+- **Güncelleme denetimi ve uygulamanın içinden güncelleme:** yeni sürüm çıkınca WinLove haber verir (günde en çok bir kez;
+  Uygulama ayarları'ndan kapatılabilir). "Yükle" yeni sürümü indirir, doğrular ve yeniden başlatır; "Değişiklikleri gör"
+  sürüm notlarını ayrı bir pencerede gösterir.
+- **Uygula bitince ISO oluştur:** seçilirse imaj kaydedilince ISO kendiliğinden oluşturulur; ISO seçenekleri Uygula'dan da
+  seçilir.
+- **Görüntü › Özet:** açık imajın ne olduğu, içinde ne olduğu, kuyrukta ne olduğu ve ne kadar küçüleceği tek sayfada.
+  Uygula ekranı yenilendi.
+- **Ayarlar'a hazır şablonlar** (Şablon ▾): Dengeli, Gizlilik, Sade ve sessiz, Performans, Oyun, İş bilgisayarı. Şablon
+  yalnız ekler, sizin seçtiğinize dokunmaz.
+- **Kurulum ortamına (boot.wim) sürücü:** depolama ve ağ sürücüleri kurulum ekranına da eklenir; eklenemeyen sürücü
+  nedeniyle gösterilir.
+- **Başka bir araçla bağlanmış imaj** Kaynak sayfasından devralınabilir.
+- **Yeni görünüm:** WinLove'un kendi renkleri, 13 px yazı, ferah satırlar, yuvarlak köşeli kartlar, serbest vurgu rengi
+  (Uygulama ayarları › Özel renk), yoğun sayfalarda ortak başlık ve ayrıntı kartı, ilerleme halkası. Gezintide sayfa
+  başına değişiklik sayısı; durum çubuğunun bölümleri tıklanabilir.
+
+#### Düzeltmeler
+
+- **Adı uzun ISO'lar (ör. UUP'den indirilenler) açılmıyordu: "cannot create destination (0x00000000)".** Windows'ta uzun
+  yollar kapalıyken çalışma klasörünün yolu 260 karakteri aşıyordu. Klasör adı artık sığacak kadar kısaltılıyor; bir hata
+  olursa Windows'un kendi kodu yazılıyor.
+- **"WinSxS'i küçült" seçiliyken imaj kaydedilmiyordu.** İmajda ilk açılışta tamamlanacak bir işlem varsa küçültme
+  doğru olarak atlanıyor ama imajın kaydedilmesini de engelliyordu. Artık atlanıp imaj kaydediliyor (ResetBase'teki gibi).
+- **Bileşen kaldırmada 0x800703EE** (1.3.0 Beta'nın 9 Kasım sabahı yayımlanan ilk dosyasında): düzeltme bu sürümde de
+  var. O dosyayı kullananlar güncellemeli.
+- **Bileşenler, Özellikler ve Servisler'de "Sıfırla"dan sonra "Geri al" yalnız bir satırı geri getiriyordu.** Artık hepsini
+  getiriyor.
+- Uygula günlüğünün ilk satırı WinLove'un sürümünü ve yapı damgasını yazıyor: bir hata bildiriminde hangi sürümün
+  çalıştığı görünür.
+- Kararlılık, hız ve bellek: DISM oturumu yalnız gerektiğinde açılıyor (kaldırma adımları daha hızlı), WinLove kapanınca
+  başlattığı araçlar da kapanıyor, birçok küçük hata giderildi.
+- Hakkında: "kimseye bir şey göndermez" yerine "yalnız günde en çok bir kez GitHub'daki sürüm listesine bakar".
+
 ### 1.3.0 Beta — 2026-11-09
 
 1.2.3 Beta'dan bu yana gelenler:
@@ -286,6 +336,55 @@ WinLove alfadan çıkıp **beta** oldu. 1.0.2 Alpha'dan bu yana gelenler:
 ---
 
 ## English
+
+### 1.4.0 Beta — 2026-11-24
+
+What came since 1.3.0 Beta:
+
+#### New
+
+- **Reset buttons:**
+  - Scheduled Tasks, Post-Setup, Drivers, Registry and Updates have Reset in their ribbon too (as Components and
+    Features do); each takes out only its own page's changes.
+  - In Settings every tab (Privacy, System, Security …) has its own "Reset this tab"; the ribbon's "Reset all" resets
+    every tab.
+  - "Reset all changes" on the Presets page: to apply another preset without the one before on top.
+  - Each comes back with one Undo.
+- **Download Windows: Microsoft's official ESD.** Windows 11 and 10 from the Media Creation Tool's catalog, turned into an
+  ISO; the UUP set can still be chosen.
+- **VHD / VHDX sources:** the Windows on a virtual disk opens, mounts and changes with Apply. The disk is kept safe by
+  WinLove's own differencing disk: "Save" writes the changes into it, "Unmount without saving" leaves it untouched.
+- **Update check and in-app update:** WinLove tells you when a new release is out (at most once a day; can be turned off
+  in App settings). "Install" downloads, verifies and restarts into the new version; "See what's new" shows the release
+  notes in a window of their own.
+- **Create the ISO when Apply ends:** when chosen, the ISO is made as soon as the image is saved; the ISO options can be
+  chosen on Apply too.
+- **Image › Overview:** what the open image is, what it holds, what is queued and how much smaller it gets, on one page.
+  A new Apply screen.
+- **Ready-made templates in Settings** (Template ▾): Balanced, Privacy, Clean and quiet, Performance, Gaming, Work PC. A
+  template only adds; what you chose stays.
+- **Drivers for the setup media (boot.wim):** storage and network drivers go into Setup too; a driver that cannot go in
+  is shown with the reason.
+- **An image mounted by another tool** can be taken over from the Source page.
+- **A new look:** WinLove's own colours, 13 px text, roomier rows, rounded cards, a free accent colour (App settings ›
+  Custom color), a shared header and a detail card on the dense pages, a progress ring. The navigation shows each page's
+  number of changes; the status bar's parts can be clicked.
+
+#### Fixes
+
+- **ISOs with a long name (e.g. downloaded from UUP) did not open: "cannot create destination (0x00000000)".** With long
+  paths off in Windows the work folder's path went past 260 characters. The folder name is now cut to fit; an error now
+  says Windows' own code.
+- **With "Shrink WinSxS" chosen, the image was not saved.** When the image had an operation that finishes at first
+  boot, the shrink was rightly skipped but kept the image from being saved too. Now it is skipped and the image is saved
+  (as ResetBase is).
+- **0x800703EE in component removal** (in the first file of 1.3.0 Beta, published on the morning of 9 November): the fix
+  is in this release too. If you use that file, update.
+- **After Reset on Components, Features and Services, Undo brought back only one row.** Now it brings back all.
+- The first line of the Apply log says WinLove's version and build stamp: a bug report shows which version ran.
+- Stability, speed and memory: DISM's session opens only when needed (faster removal steps), the tools WinLove starts
+  close when it closes, many small fixes.
+- About: "sends nothing to anyone" became "only looks at the release list on GitHub at most once a day".
 
 ### 1.3.0 Beta — 2026-11-09
 
