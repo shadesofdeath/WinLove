@@ -298,6 +298,10 @@ Türkçe adlarıyla; SOFTWARE kovanının kopyasına fiil gizle (`Directory\Back
 sürümler), öğe ekle → geri okumada "(hidden)" ve yeni öğe. Lab 2: uygulama öğeleri yedekleme yetkisiyle — manifestler
 CLSID'yi süslü parantezsiz yazar (ilk koşu 0 öğe), düzeltmeden sonra 4 (Paint, Clipchamp, Not Defteri, Terminal); ad = fiil
 kimliği + paketin kısa adı ("OpenTerminalHere (WindowsTerminal)"); dörtten çok dosya türü "N dosya türü" diye sayılır.
+VM kurulumu (2026-11-24, `tools\lab_vm.ps1 -Tag d156`, install.wim sürüm 4 Pro 26200.8037, ağsız; değişiklik kümesini uygulamanın kendi denetleyicileri üretti: `tests/app/LabChangesetTests.cpp`, 49 adım `wlcli apply` ile 0 hata; ilk oturumda `tools\vm_check_policies_menu.ps1`, 38 denetim geçti): kabuğun kendi fiil listesi (Shell.Application `Verbs()`) bir dosyada "Not Defteri ile aç"ı gösterir; gizlenen
+her öğe bir kez geri açılınca listeye döner ("Sık Kullanılanlara ekle", "Paylaş", "Önceki Sürümleri Geri Yükle") — gizleyen
+WinLove'un yazımı; arka plan öğesinin komutu `%V`; imajın gizlediği "Keşfet" Windows 11 menüsünde görünür, "Terminalde
+aç" ve "Paylaş" yok (VNC görüntüsü). Uygulama öğeleri `Verbs()` listesinde hiç görünmez (Windows 11 menüsüne özgü).
 `tests/core/PolicyMenuTests.cpp` (yazımlar, %V, id, JSON; denetleyici gizle / göster / ekle / kaldır). `--render
 --demo-contextmenu[=add]`.
 
@@ -338,8 +342,12 @@ Kanıt: bu PC'nin şablonları (tr-TR): 3560 ilke, 0,5 sn (Debug). `build\lab\d1
 (kendi küçük ADMX'imiz: isimler, dosyalar arası kategori, sunum; her öğe türünün yazımı; aralık / seçim / zorunlu
 hataları; JSON; Registry.pol biçim / ayrıştırma / birleştirme; gpt.ini başka aracın satırıyla; denetleyici). `--render
 --demo-policies[=options]`.
-Doğrulanmayan: kurulan Windows'ta gpedit'in gösterdiği (VM kurulumu yapılmadı); Home sürümünde Registry.pol'ün işlenmesi
-(kayıt değerleri zaten yazılı: ilke yine geçerli).
+VM kurulumu (2026-11-24, `tools\lab_vm.ps1 -Tag d156`, install.wim sürüm 4 Pro 26200.8037, ağsız; değişiklik kümesini uygulamanın kendi denetleyicileri üretti: `tests/app/LabChangesetTests.cpp`, 49 adım `wlcli apply` ile 0 hata; ilk oturumda `tools\vm_check_policies_menu.ps1`, 38 denetim geçti): dört ilke (AutoUpdateCfg Etkin + seçenek "2", AllowTelemetry Etkin, TS_DISABLE_CONNECTIONS Devre dışı,
+kullanıcıda DisableSearchBoxSuggestions Etkin) kayıtta; elle silinen değerleri `gpupdate /force` Registry.pol'den geri yazdı
+(makine ve kullanıcı); `gpresult /h` dördünü de adıyla ve durumuyla, kaynak "Yerel Grup İlkesi" diye listeler; Group Policy
+günlüğünde uyarı / hata 0. gpedit.msc aynı Registry.pol'ü ve şablonları okur.
+Doğrulanmayan: gpedit.msc penceresinin kendisi (ekranda açılmadı); Home sürümünde Registry.pol'ün işlenmesi (kayıt
+değerleri zaten yazılı: ilke yine geçerli).
 
 ## D-153 — Kaldırılan uygulamanın bıraktığı boşluk aynı kuyruk düzenlemesinde kapanır (2026-11-24)
 Bağlam: Sahibinin seçtiği 3. madde (2026-10-07'den beri "Removing an app fixes what pointed at it" diye bekliyordu).
@@ -364,6 +372,9 @@ Karar:
 - Bileşenler kartında not: "Kaldırılınca WinLove bunu da yapar (Ayarlar / Uygulamalar'da değiştirilebilir):" + satırlar.
 Kanıt: `tests/app/RemovalGapsTests.cpp` (4 vaka: tek Geri al / Yinele, kaldırma çıkınca düzeltme çıkar; kullanıcının
 seçimi kalır; Fotoğraflar 8 ilişkilendirme, kullanıcının .pdf'i kalır; Not Defteri dosyasız / dosyalı; boşluksuz uygulama).
+VM kurulumu (2026-11-24, `tools\lab_vm.ps1 -Tag d156`, install.wim sürüm 4 Pro 26200.8037, ağsız; değişiklik kümesini uygulamanın kendi denetleyicileri üretti: `tests/app/LabChangesetTests.cpp`, 49 adım `wlcli apply` ile 0 hata; ilk oturumda `tools\vm_check_policies_menu.ps1`, 38 denetim geçti): üç uygulama kaldırıldı, düzeltmeleri kuyruğun kendisi ekledi; kurulan Windows'ta
+PrintScreenKeyForSnippingEnabled = 0, .jpg / .png / .gif / .bmp Fotoğraf Görüntüleyicisi ile açılır (AssocQueryString),
+.txt klasik Not Defteri ile (Windows ProgId'i `txtfilelegacy` olarak çözer, komut `system32\NOTEPAD.EXE %1`).
 
 ## D-152 — Her sayfada Sıfırla; Ayarlar'da sekme başına; Ön Ayar'da "Tüm değişiklikleri sıfırla" (2026-11-24)
 Bağlam: Bir kullanıcı (sahibinin aktardığı): ayarları yaptıktan sonra daha önce kaydedilmiş başka bir ön ayarı uygulamak

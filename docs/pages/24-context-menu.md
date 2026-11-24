@@ -40,7 +40,7 @@ kayıtlarından görmek; istenmeyeni gizlemek, imajın gizlediğini göstermek, 
 - [x] Gerçek imajın öğeleri okunur, Türkçe adlarıyla (lab: 54 öğe, 734 ms).
 - [x] Gizle (fiil / uzantı) ve ekle yazımları kovana girer, geri okumada görünür (lab).
 - [x] Windows 11 uygulama öğeleri (yedekleme yetkisiyle): lab 2, 4 öğe (Paint, Clipchamp, Not Defteri, Terminal).
-- [ ] Kurulan Windows'ta menüde görülür / görülmez (VM).
+- [x] Kurulan Windows'ta menüde görülür / görülmez (VM d156: kabuğun fiil listesi + Windows 11 menüsünün görüntüsü).
 
 ## 8. Kullanıcı test senaryosu
 1. İmajı bağla → Ayarlar › Sağ tık menüsü → "Paylaş" ve "Önceki sürümleri geri yükle" → gizle.

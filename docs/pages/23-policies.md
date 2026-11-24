@@ -42,7 +42,8 @@ dışı yapmak. Elle tutulan liste yok: Windows'un yeni build'i yeni ilkelerini 
 ## 7. Kabul kriterleri
 - [x] Gerçek imajın şablonları okunur (lab: 3532 ilke, 662 ms, Türkçe).
 - [x] Etkin / Devre dışı yazımları kovanlara ve Registry.pol'e girer, geri okunur (lab).
-- [ ] Kurulan Windows'ta gpedit.msc ilkeyi ayarlanmış gösterir (VM).
+- [x] Kurulan Windows'ta Grup İlkesi ilkeyi ayarlanmış sayar (VM d156: `gpupdate` Registry.pol'den geri yazar, `gpresult`
+      dört ilkeyi adıyla "Yerel Grup İlkesi" kaynağıyla listeler). gpedit.msc penceresi ekranda açılmadı.
 - [ ] Canlı pencerede: ara, süzgeçler, menü, seçenekler penceresi.
 
 ## 8. Kullanıcı test senaryosu

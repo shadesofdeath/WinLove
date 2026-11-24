@@ -100,6 +100,7 @@ add_executable(wl_tests
     app/NewPagesTests.cpp
     app/ResetTests.cpp
     app/RemovalGapsTests.cpp
+    app/LabChangesetTests.cpp
     app/OverviewTests.cpp
     app/VhdSourceTests.cpp
     app/DetailCardTests.cpp
