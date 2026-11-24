@@ -3,6 +3,32 @@
 > Her oturumun sonunda güncellenir. En üstte güncel durum; geçmiş en altta kısa satırlar.
 
 ## Güncel
+- **2026-11-24 (akşam): sahibinin seçtiği beş öneri — D-153 … D-156 (yayınlanmadı; commit yerel).** Sahibi önerilerden
+  "1,2,3,4,5 bunları yap" dedi.
+  - **1 · Ön ayar sorusu (D-156):** kuyruk doluyken ön ayar yükle → "Yerine koy" (kuyruk + boot.wim işaretleri boşalır,
+    tek Geri al) / "Üstüne ekle" / Vazgeç. `Shell::applyPreset` → `replacePreset`.
+  - **2 · Görev çubuğu (D-156):** durum çubuğunun işi görev çubuğu düğmesinde (`ITaskbarList3`, UIPI filtresiyle); 15 sn'den
+    uzun iş bitince WinLove arkadaysa düğme yanıp söner. Toast yok (AUMID kaydı gerekir).
+  - **3 · Kaldırılan uygulamanın boşluğu (D-153):** `AppState::QueueCompanion` + `RemovalGaps`: Ekran Alıntısı → Print
+    Screen panoya; Fotoğraflar → Fotoğraf Görüntüleyicisi + 8 ilişkilendirme; Not Defteri → .txt klasik (notepad.exe
+    varsa). Aynı Geri al adımı; kullanıcının seçimi kalır; Bileşenler kartında not.
+  - **4 · Grup İlkesi (D-154, P23):** `core/policy/Admx` + `PolicyWrites` (gpedit kuralları, Registry.pol + gpt.ini),
+    `OpKind::SetPolicy`, `PolicyController`, `PoliciesPage` (Ayarlar sekmesinde, Ayarlar'dan sonra), seçenekler penceresi.
+  - **5 · Sağ tık menüsü (D-155, P24):** `core/image/ContextMenu` (offreg + WindowsApps manifestleri yedekleme yetkisiyle),
+    `OpKind::SetContextMenu`, `ContextMenuController`, `ContextMenuPage` (Servisler'den sonra), "Öğe ekle…" penceresi.
+  - `wlcli policies …`, `wlcli context-menu …` (`--set` ile yazar); render: `--demo-policies[=options]`,
+    `--demo-contextmenu[=add]`, `--demo-preset-ask`.
+  - **Kanıtlı:** Debug `build.ps1 -Test` 678 vaka / 22.975 denetim (yeni: `RemovalGapsTests` 4, `PolicyMenuTests` 8);
+    `build\lab\d154` (install.wim sürüm 4 salt okunur bağlandı → çözüldü, bağlama kalmadı): 3532 ilke 662 ms, 54 sağ tık
+    öğesi 734 ms, Türkçe; kovan kopyasına ilke + menü yazımları → `reg-check` 3/3, Registry.pol 11 + 1 girdi, gpt.ini,
+    gizli / eklenen öğeler geri okundu. Lab 2 (yine salt okunur, çözüldü): Windows 11 uygulama öğeleri
+    yedekleme yetkisiyle — ilk koşu 0 (manifestlerde CLSID süslü parantezsiz: düzeltildi, test eklendi), ikinci koşu 4
+    (Paint, Clipchamp, Not Defteri, Terminal), toplam 57 öğe 595 ms.
+    `--render` (koyu, TR): Grup İlkesi, seçenekler penceresi, Sağ tık menüsü, Öğe ekle, ön ayar sorusu.
+  - **Doğrulanmayan:** canlı pencerede tıklama; görev çubuğu ilerlemesi / yanıp sönme (yalnız derlendi); kurulan
+    Windows'ta gpedit'in ilkeyi göstermesi ve sağ tık menüsünün değişmesi (VM); Uygula'nın tam yolu (`SetPolicy` /
+    `SetContextMenu` adımı gerçek Uygula'da koşmadı — aynı fonksiyonlar `wlcli --set` ile koştu).
+  - **Sıradaki somut adım:** sahibi denesin; istenirse VM kurulumu (gpedit + sağ tık), sonra 1.5.0 Beta.
 - **2026-11-24 (devam): Sıfırla düğmeleri (D-152) + 1.4.0 Beta yayını** (sahibi: "düzeltmeleri en son yeni sürüm
   numarası ile yayınlarsın", önce bir kullanıcının istediği Sıfırla eklensin).
   - **D-152:** Zamanlanmış Görevler, Kurulum Sonrası, Sürücüler, Kayıt Defteri, Güncellemeler şeridinde `Sıfırla`;

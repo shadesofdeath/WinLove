@@ -55,6 +55,9 @@ enum class OpKind : std::uint8_t {
     ShrinkStore,           // WinSxS at its smallest, irreversible: target "component-store-shrink" (one slot), value = JSON (StoreShrink.h)
     // 2026-10-09 (D-102):
     CreateTask,            // custom recurring tasks created after setup: target "tasks-create" (one slot), value = JSON (ScheduledTasks.h)
+    // 2026-11-24 (D-154, D-155):
+    SetPolicy,             // a Group Policy: target "machine\<id>" | "user\<id>", value = JSON with the writes (PolicyWrites.h)
+    SetContextMenu,        // a right-click menu entry hidden / shown or our own item: target "entry\<id>" | "add\<id>", value = JSON (ContextMenu.h)
 };
 
 enum class Risk : std::uint8_t { Low, Medium, High };

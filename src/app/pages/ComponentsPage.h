@@ -51,6 +51,8 @@ public:
     [[nodiscard]] std::wstring selectedGroupName() const;
     // D-082: why a row is held (the shell knows the guards' names); empty = not held.
     std::function<std::wstring(const ComponentController::Item&)> explainBlock;
+    // D-153: what removing the item also fixes (RemovalGaps), one line each; empty: nothing.
+    std::function<std::vector<std::wstring>(const ComponentController::Item&)> gapsOf;
 
     void focusSearch();
     // Command palette: drops the filters, opens the component's category and nodes, selects it.

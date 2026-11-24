@@ -12,6 +12,7 @@ add_executable(wl_tests
     core/EngineAuditTests.cpp
     core/ImageAuditTests.cpp
     core/OpsAuditTests.cpp
+    core/PolicyMenuTests.cpp
     ui/UiAuditTests.cpp
     app/ShellAuditTests.cpp
     app/ShellPolishTests.cpp
@@ -98,6 +99,7 @@ add_executable(wl_tests
     app/WindowsDownloadTests.cpp
     app/NewPagesTests.cpp
     app/ResetTests.cpp
+    app/RemovalGapsTests.cpp
     app/OverviewTests.cpp
     app/VhdSourceTests.cpp
     app/DetailCardTests.cpp

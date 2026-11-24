@@ -66,5 +66,7 @@ Sıra gerekçesi: önce imajı açmak, sonra en basit değiştirici sayfa ile **
 
 > **Simgeler (P20, 2026-10-05; D-065 yönlendirme + D-068 dosya yaması):** `.mun` simge dosyalarını okuma, her simgeyi değiştirme, yedek + geri yükleme betiği, paketler. 🟨 test — motor `tools\lab_icons.ps1` (+ `-Lcu`) ve `tools\lab_icons_vm.ps1` (VM önyükleme) ile; spec: `pages/20-icons.md`.
 
+> **Grup İlkesi (P23, D-154) ve Sağ tık menüsü (P24, D-155), 2026-11-24:** Ayarlar sekmesinde; imajın kendi ADMX'leri ve sağ tık kayıtları, elle liste yok. 🟨 test — motor `build\lab\d154` ile kanıtlandı; spec: `pages/23-policies.md`, `pages/24-context-menu.md`.
+
 ## Faz 4 — Sağlamlaştırma ve yayın
 Performans profili, erişilebilirlik (Narrator) turu, installer/portable paket, imzalama, sürüm notları.

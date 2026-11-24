@@ -242,6 +242,129 @@ ile aynı belge (`includeInIso` + XML); parola XML'de yalnız Setup'ın kodlamas
 parametresiyle verilir; testler ve render'lar vermez (kullanıcının yanıtları okunmaz, yazılmaz).
 Presetler parolayı hâlâ korumasız (Base64) taşıyor: taşınabilir dosya olduğu için DPAPI orada işe yaramaz — açık konu.
 
+## D-156 — Ön ayar kuyruğun üstüne mi, yerine mi: sorulur; uzun iş görev çubuğunda (2026-11-24)
+Bağlam: Sahibinin önerilerden seçtiği 1. ve 2. madde. D-152'nin kullanıcısının asıl şikâyeti ön ayarın hep kuyruğun
+**üstüne** eklenmesiydi (`PresetController::apply` → `queueMany`); D-152 bunu "önce Tüm değişiklikleri sıfırla" ile iki
+tıka indirmişti. Uygula / ISO / indirme dakikalar sürüyor; WinLove arkadayken bittiğini gösteren bir şey yoktu.
+Karar:
+- **Ön ayar yükle:** kuyrukta (ya da boot.wim işaretlerinde) bir şey varsa "Kuyrukta {n} değişiklik var" sorusu:
+  `Vazgeç` · `Üstüne ekle` (eskisi gibi) · **`Yerine koy`** (Enter). Yerine koy = kuyruk + boot.wim işaretleri boşalır,
+  ön ayar eklenir; `AppState::batchQueue` içinde, tek geri alma adımı (Geri al ikisini birlikte geri getirir; boot.wim
+  işaretleri kuyrukta olmadığı için onlar geri gelmez, D-152'deki gibi). Kuyruk boşsa, Uygula sürerken ya da ön ayarda
+  işlem yoksa soru yok. Sürükle-bırak ve komut paleti aynı yoldan (`Shell::applyPreset` → `replacePreset`).
+- **Görev çubuğu:** durum çubuğunun gösterdiği iş (Uygula, ISO, mount, Windows indir, güncelleme / dil / Store indirmesi)
+  pencerenin görev çubuğu düğmesinde de ilerler (`ITaskbarList3`; ölçülemeyen iş belirsiz). İş bitince, 15 sn'den uzun
+  sürdüyse ve WinLove önde değilse düğme yanıp söner (`FlashWindowEx`, öne gelince durur). Windows bildirimi (toast)
+  yok: paketlenmemiş bir uygulamanın toast'u için kullanıcının kayıt defterine AUMID yazmak gerekir.
+  - `ui::Window::setTaskbarProgress` / `flashIfInactive`; Explorer'ın "TaskbarButtonCreated" iletisi yönetici
+    WinLove'a UIPI yüzünden gelmez → `ChangeWindowMessageFilterEx` ile açılır; Explorer yeniden başlarsa nesne yenilenir.
+  - `Shell::updateTaskbar` (her `updateStatus` sonunda) → `Services::taskbarProgress` / `flashIfInactive` (App'in
+    penceresi; render ve testlerde boş).
+Kanıt: `--render --demo-preset-ask` (koyu, TR); `tests/app/RemovalGapsTests.cpp` son vaka (boşalt + ön ayar tek batch'te
+= tek Geri al). Görev çubuğu: derlendi; canlı pencerede görülmedi.
+
+## D-155 — Sağ tık menüsü: imajın kendi öğeleri, gizle / göster, kendi komutun (2026-11-24)
+Bağlam: Sahibinin seçtiği 5. madde. Gezgin'in sağ tık menüsünü düzenlemek WinLove'da yalnız birkaç hazır Ayarlar
+seçeneğiydi (klasik menü, "Paylaş" kaldır …). Elle tutulan bir liste istenmiyor (deferred-suggestions): öğeler imajın
+kendisinden okunmalı.
+Karar:
+- **Sayfa:** Yapılandır › Ayarlar sekmesinde `Sağ tık menüsü` (Servisler'den sonra; ikon `MoreVertical`, `PageId::ContextMenu`).
+  Tablo: Öğe · iz · Nerede · Tür (Komut / Kabuk uzantısı / Uygulama / WinLove öğesi) · Durum (göz ikonu; tık, Enter ya da
+  kartın düğmesi gizler / gösterir). Şeritte `Öğe ekle…` + `Sıfırla`. Kart: kayıt yolu ya da CLSID, Nerede, komut, kaynak
+  (DLL / paket), Shift ile mi; not: komut gizlenir silinmez / uzantı her yerde engellenir / Windows 11'de klasik öğeler
+  "Daha fazla seçenek göster" altında.
+- **Okuma (`core/image/ContextMenu`, offreg — yönetici gerekmez):** imajın SOFTWARE\Classes'ında yedi yer: `*`,
+  `AllFilesystemObjects`, `Directory`, `Folder`, `Directory\Background`, `Drive`, `DesktopBackground`.
+  - `shell\<fiil>`: adı MUIVerb ya da varsayılan değer, "@dll,-id" imajın dilinde (`resolveImageText`,
+    `preferImageLanguage` — Services'teki çözücü paylaşıma açıldı), "&" kısayol işareti atılır; komut; Extended;
+    ProgrammaticAccessOnly / LegacyDisable = zaten gizli.
+  - `shellex\ContextMenuHandlers`: CLSID başına tek satır (birden çok yerdeyse yerler birleşir), adı CLSID'nin varsayılan
+    değeri, kaynak InprocServer32.
+  - Windows 11 uygulama öğeleri: `Program Files\WindowsApps\*\AppxManifest.xml` içindeki `FileExplorerContextMenus ›
+    ItemType › Verb (Id, Clsid)`. WindowsApps yöneticiye kapalı → `SE_BACKUP_NAME` + `backupListFolders` /
+    `backupReadFile` (Appx.cpp'nin yolu); paket demeti klasörleri (`_~_`) atlanır.
+  - Gizli mi: fiilde değerler; uzantı / uygulama öğesinde `HKLM\…\Shell Extensions\Blocked\{CLSID}`.
+- **Yazma:** gizle = fiile `ProgrammaticAccessOnly` (boş REG_SZ: menüde yok, program yine çağırabilir); uzantı / uygulama
+  öğesi = `Shell Extensions\Blocked\{CLSID}` (kullanıldığı her yerde). Göster (imajın gizlediği) = o değerlerin silinmesi.
+  Kendi öğe = seçilen yerlerde `…\shell\WinLove.<id>`: varsayılan değer ad, `Icon`, `Extended`, `command` (REG_EXPAND_SZ);
+  arka plan / masaüstünde komuttaki `%1` → `%V`. Nerede seçenekleri: dosyalar ve klasörler, yalnız dosyalar, yalnız
+  klasörler, klasör arka planı ve masaüstü, sürücüler, hepsi. id adın ASCII harf / rakamı ("open-with-vs-code"), aynı ad
+  ikinciye `-2`.
+- **Kuyruk:** `OpKind::SetContextMenu`, hedef `entry\<id>` (gizle / göster; imajın durumuna dönmek işlemi çıkarır) ya da
+  `add\<id>`; değer JSON `{name, item?, writes}` — yazımlar kuyruğa girerken çözülür, Uygula ve ön ayar ADMX / imaj
+  okumadan uygular (Ayarlar fazı, `reg().apply`). Ön ayar karşılaştırmasında öğe adıyla.
+Kanıt: `build\lab\d154` (install.wim sürüm 4, Pro 26200.8037, salt okunur bağlandı, sonra çözüldü): 54 öğe 734 ms'de,
+Türkçe adlarıyla; SOFTWARE kovanının kopyasına fiil gizle (`Directory\Background\shell\cmd`), uzantı gizle (Önceki
+sürümler), öğe ekle → geri okumada "(hidden)" ve yeni öğe. Lab 2: uygulama öğeleri yedekleme yetkisiyle — manifestler
+CLSID'yi süslü parantezsiz yazar (ilk koşu 0 öğe), düzeltmeden sonra 4 (Paint, Clipchamp, Not Defteri, Terminal); ad = fiil
+kimliği + paketin kısa adı ("OpenTerminalHere (WindowsTerminal)"); dörtten çok dosya türü "N dosya türü" diye sayılır.
+`tests/core/PolicyMenuTests.cpp` (yazımlar, %V, id, JSON; denetleyici gizle / göster / ekle / kaldır). `--render
+--demo-contextmenu[=add]`.
+
+## D-154 — Grup İlkesi: imajın kendi yönetim şablonları, gpedit'in yazdığı gibi (2026-11-24)
+Bağlam: Sahibinin seçtiği 4. madde. Ayarlar sayfasının ~200 seçeneği elle tutuluyor; imajın kendisi
+`Windows\PolicyDefinitions`'ta binlerce ilkeyi kendi dilinde tanımlıyor (ADMX + ADML). Hazır profil / elle liste istenmiyor.
+Karar:
+- **Sayfa:** Yapılandır › Ayarlar sekmesinde `Grup İlkesi` (Ayarlar'dan sonra; ikon `ScriptFile`, `PageId::Policies`).
+  Süzgeçler: ara ("/"; ad, ADMX adı, kayıt yolu, kategori yolu), Kapsam (Bilgisayar ve kullanıcı / Bilgisayar /
+  Kullanıcı), kök kategori, Yalnızca değişenler. Tablo: İlke · iz · Kategori (yaprak; ipucunda tam yol) · Kapsam · Durum
+  (Yapılandırılmadı / Etkin / Devre dışı menüsü). "Both" sınıfı ilke gpedit'teki gibi iki satır. Etkin + seçenekli ilke →
+  seçenekler penceresi (gpedit'in sunumu sırasıyla: açılır liste, onay kutusu, sayı / metin kutusu; liste ve çok satırlı
+  metin `;` ile ayrılır); "Etkinleştir" değerleri denetler, hatada pencere açık kalır. Kart: açıklama metni, kapsam,
+  kategori yolu, Uygula'da, desteklenen, şablon (.admx), kayıt yolu, Etkin'in seçenekleri; not: gpedit gösterir, Ayarlar'ın
+  aynı değeri yazan seçeneğiyle ikisi seçiliyse sonra gelen geçerli.
+- **Okuma (`core/policy/Admx`):** `<mount>\Windows\PolicyDefinitions\*.admx`, metinler `<dil>\<ad>.adml` (imajın dili:
+  System32'de kernel32.dll.mui olan klasör; yoksa en-US, yoksa ilk bulunan; dosya başına). Kimlikler
+  `<namespace>:<name>` (dosyalar arası `prefix:ref` → `policyNamespaces`); supportedOn metinleri bütün dosyalar
+  okunduktan sonra bağlanır. Okunamayan dosya atlanır (log). pugixml UTF-8 / UTF-16 dosyaları kendisi çevirir.
+- **Yazımlar (`core/policy/PolicyWrites`) — Group Policy kayıt uzantısının kuralları:** Etkin: valueName → enabledValue
+  (yoksa DWORD 1), enabledList, öğeler (boolean true/falseValue, yoksa 1/0, ve listeleri; decimal DWORD ya da storeAsText
+  REG_SZ; longDecimal QWORD; text REG_SZ / expandable REG_EXPAND_SZ; multiText REG_MULTI_SZ; enum seçilen öğenin değeri +
+  valueList; list girdi başına değer: valuePrefix + 1, 2 … ya da girdinin kendisi, explicitValue "ad=değer"). Devre dışı:
+  disabledValue (yoksa DWORD 0), disabledList, öğelerin değerleri silinir (list hariç: adları girdiler). Yapılandırılmadı =
+  işlem yok. Varsayılanlar sunumdan (defaultItem, defaultChecked, defaultValue, textBox defaultValue). Aralık dışı sayı,
+  sayı olmayan, geçersiz seçim, eksik zorunlu değer → hata, kuyruğa bir şey girmez. Kapsam: Bilgisayar HKLM\, Kullanıcı
+  HKCU\ (imajda varsayılan profil).
+- **Kuyruk:** `OpKind::SetPolicy`, hedef `machine\<id>` / `user\<id>`, değer JSON `{name, state, values, writes}` —
+  yazımlar kuyruğa girerken çözülür: Uygula ve başka build'e uygulanan ön ayar ADMX'e bakmaz. Uygula (Ayarlar fazı):
+  yazımlar kovanlara, sonra **yerel ilke nesnesine**: `Windows\System32\GroupPolicy\{Machine,User}\Registry.pol` (PReg v1;
+  aynı değerin eski girdisi ve "**del." ikizi değiştirilir, silme "**del.<ad>" olur) + `gpt.ini` (Version = kullanıcı << 16 |
+  makine, yazılan tarafın sayacı +1; kayıt CSE'si `{35378EAC…}{D02B1F72/73…}` uzantı listesinin başına; başka araçların
+  satırları kalır). Böylece kurulan Windows'ta gpedit.msc ilkeyi ayarlanmış gösterir ve Group Policy istemcisi her
+  açılışta / oturumda yeniden uygular. Ön ayar karşılaştırmasında ilke adı + Etkin / Devre dışı.
+Kanıt: bu PC'nin şablonları (tr-TR): 3560 ilke, 0,5 sn (Debug). `build\lab\d154`: imajın kendi şablonları 3532 ilke /
+429 kategori, 662 ms, Türkçe; kovan kopyasına AutoUpdateCfg (makine, 11 değer) + NoControlPanel (kullanıcı) Etkin →
+`reg-check` 3/3, Registry.pol makine 11 / kullanıcı 1 girdi geri okundu, gpt.ini `Version=65537`. `tests/core/PolicyMenuTests.cpp`
+(kendi küçük ADMX'imiz: isimler, dosyalar arası kategori, sunum; her öğe türünün yazımı; aralık / seçim / zorunlu
+hataları; JSON; Registry.pol biçim / ayrıştırma / birleştirme; gpt.ini başka aracın satırıyla; denetleyici). `--render
+--demo-policies[=options]`.
+Doğrulanmayan: kurulan Windows'ta gpedit'in gösterdiği (VM kurulumu yapılmadı); Home sürümünde Registry.pol'ün işlenmesi
+(kayıt değerleri zaten yazılı: ilke yine geçerli).
+
+## D-153 — Kaldırılan uygulamanın bıraktığı boşluk aynı kuyruk düzenlemesinde kapanır (2026-11-24)
+Bağlam: Sahibinin seçtiği 3. madde (2026-10-07'den beri "Removing an app fixes what pointed at it" diye bekliyordu).
+Windows 11'de Print Screen Ekran Alıntısı Aracı'nı açar: araç kaldırılınca tuş hiçbir şey yapmaz. Fotoğraflar
+kaldırılınca resimler açılacak uygulama sormadan açılmaz; Not Defteri (Store) kaldırılınca .txt'nin varsayılanı gider.
+Düzeltmeler Ayarlar'da zaten vardı ama kaldırmaya bağlı değildi.
+Karar:
+- **`QueueCompanion` (AppState):** `queue` / `queueMany` / `unqueue` / `unqueueMany` / `unqueueIf` düzenlemeyi
+  `ChangeSet` grubunun içinde yapar, sonra eşlikçi `reconcile(önceki, şimdiki)` aynı grupta kuyruğu düzenler → kaldırma
+  ve düzeltmesi tek Geri al adımı. Geri al / Yinele / geri yüklenen kuyruk eşlikçiyi çalıştırmaz (bütün eski kuyruğu,
+  düzeltmesiyle getirirler). Shell kurar (`RemovalGaps`), yıkılırken bırakır.
+- **`RemovalGaps`:** RemoveAppx hedefinin kimlik adına göre (`Microsoft.ScreenSketch_…` → `Microsoft.ScreenSketch`):
+  - Ekran Alıntısı Aracı → Ayarlar `print-screen` = "Ekranı panoya kopyala";
+  - Fotoğraflar → Ayarlar `photo-viewer` açık + varsayılan uygulamalar .bmp .dib .gif .jfif .jpe .jpeg .jpg .png →
+    `PhotoViewer.FileAssoc.*` (Uygulamalar › Varsayılanlar'ın `SetDefaultApps` XML'ine birleştirilir);
+  - Not Defteri → .txt → `txtfile` (klasik Not Defteri), yalnız imajda `Windows\System32\notepad.exe` varsa.
+  Yalnız boş yuvalar doldurulur: kullanıcının aynı ayar için seçtiği kalır. Kaldırma kuyruktan çıkınca düzeltme de çıkar
+  (değeri hâlâ düzeltmeninkiyse; ilişkilendirmelerde yalnız düzeltmenin girdileri, kullanıcınınkiler kalır). Düzeltmeler
+  sıradan kuyruk işlemleri: Ayarlar / Uygulamalar'da görünür, değiştirilebilir, ön ayara girer. Terminal kaldırılınca
+  düzeltme yok (Windows kendisi konsola döner); Medya Oynatıcı / Filmler ve TV → Windows Media Player şimdilik yok
+  (özelliğin durumuna bağlı).
+- Bileşenler kartında not: "Kaldırılınca WinLove bunu da yapar (Ayarlar / Uygulamalar'da değiştirilebilir):" + satırlar.
+Kanıt: `tests/app/RemovalGapsTests.cpp` (4 vaka: tek Geri al / Yinele, kaldırma çıkınca düzeltme çıkar; kullanıcının
+seçimi kalır; Fotoğraflar 8 ilişkilendirme, kullanıcının .pdf'i kalır; Not Defteri dosyasız / dosyalı; boşluksuz uygulama).
+
 ## D-152 — Her sayfada Sıfırla; Ayarlar'da sekme başına; Ön Ayar'da "Tüm değişiklikleri sıfırla" (2026-11-24)
 Bağlam: Bir kullanıcı (sahibinin aktardığı): ayarları yaptıktan sonra daha önce kaydedilmiş başka bir ön ayarı uygulamak
 istiyor, ama ön ayar kuyruğun **üstüne** ekleniyor (`PresetController::apply` → `queueMany`); önce her şeyi tek tek

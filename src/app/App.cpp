@@ -15,6 +15,8 @@
 #include "core/image/wim/WimGapi.h"
 
 #include "app/pages/DownloadPage.h"
+#include "app/pages/PoliciesPage.h"
+#include "app/pages/ContextMenuPage.h"
 #include "app/pages/AppsPage.h"
 #include "app/controllers/ImageDriverController.h"
 #include "app/pages/DriversPage.h"
@@ -308,6 +310,12 @@ Result<LaunchOptions> parseLaunchOptions(std::span<const std::wstring> args) {
             options.demoHosts = true;
         } else if (a == L"--demo-services") {
             options.demoServices = true;
+        } else if (a.starts_with(L"--demo-policies")) {
+            options.demoPolicies = a.size() > 16 ? std::wstring(a.substr(16)) : std::wstring();
+        } else if (a.starts_with(L"--demo-contextmenu")) {
+            options.demoContextMenu = a.size() > 19 ? std::wstring(a.substr(19)) : std::wstring();
+        } else if (a == L"--demo-preset-ask") {
+            options.demoPresetAsk = true;
         } else if (a == L"--demo-tweaks") {
             options.demoTweaks = true;
         } else if (a == L"--demo-image-values") {
@@ -663,6 +671,9 @@ void App::buildUi(ui::HostServices services) {
             return m_updates ? m_updates->restart() : std::nullopt;
         };
         shellServices.showChangelog = [this] { openChangelog(); };
+        // 2026-11-24: the status bar's task on the taskbar button; a long one flashes it when done.
+        shellServices.taskbarProgress = [this](std::optional<float> fraction) { m_window.setTaskbarProgress(fraction); };
+        shellServices.flashIfInactive = [this] { m_window.flashIfInactive(); };
     }
     shellServices.keepAwake = [this](const std::wstring& reason) {
         if (m_options.renderTo) {
@@ -1538,6 +1549,106 @@ int App::renderOffscreen() {
             hosts.importText(L"0.0.0.0 tracker.example.com\n0.0.0.0 ads.example.net\n127.0.0.1 localhost\n");
             m_shell->showPage(m_options.page.value_or(PageId::Hosts));
         }
+    }
+    if (m_options.demoPolicies) {
+        const std::filesystem::path mountDir = L"C:\\WinLove\\mount";
+        m_state->setMounted(MountedImage{mountDir, L"C:\\WinLove\\work\\sources\\install.wim", 4, L"Windows 11 Pro"});
+        auto catalog = core::policy::readPolicyDefinitions(L"C:\\Windows\\PolicyDefinitions",
+                                                           m_options.language == Language::Turkish ? L"tr-TR" : L"en-US");
+        if (catalog) {
+            m_state->setPolicyList(AppState::PolicyList{AppState::PolicyList::Status::Ready, mountDir,
+                                                        std::make_shared<const core::policy::PolicyCatalog>(std::move(*catalog)), {}});
+        }
+        auto& policies = m_shell->policies();
+        auto rowOf = [&](std::wstring_view id) -> std::optional<PolicyController::Row> {
+            for (const auto& row : policies.rows()) {
+                if (const auto* p = policies.policyOf(row); p && p->id == id) {
+                    return row;
+                }
+            }
+            return std::nullopt;
+        };
+        if (const auto row = rowOf(L"Microsoft.Policies.WindowsUpdate:AutoUpdateCfg")) {
+            (void)policies.set(*row, core::policy::PolicyState::Enabled);
+        }
+        if (const auto row = rowOf(L"Microsoft.Policies.ControlPanel:NoControlPanel")) {
+            (void)policies.set(*row, core::policy::PolicyState::Enabled);
+        }
+        if (const auto row = rowOf(L"Microsoft.Policies.DataCollection:AllowTelemetry")) {
+            (void)policies.set(*row, core::policy::PolicyState::Disabled);
+        }
+        m_shell->showPage(m_options.page.value_or(PageId::Policies));
+        if (auto* page = m_shell->policiesPageForDemo()) {
+            page->search(m_options.language == Language::Turkish ? L"otomatik güncelleştirme" : L"automatic update");
+            page->selectRow(0);
+        }
+        if (*m_options.demoPolicies == L"options") {
+            if (const auto row = rowOf(L"Microsoft.Policies.WindowsUpdate:AutoUpdateCfg")) {
+                m_shell->policyOptionsForDemo(*row);
+            }
+        }
+    }
+    if (m_options.demoContextMenu) {
+        const std::filesystem::path mountDir = L"C:\\WinLove\\mount";
+        m_state->setMounted(MountedImage{mountDir, L"C:\\WinLove\\work\\sources\\install.wim", 4, L"Windows 11 Pro"});
+        using Kind = core::ContextMenuEntry::Kind;
+        auto entry = [](Kind kind, const wchar_t* id, const wchar_t* name, std::vector<std::wstring> places, const wchar_t* source,
+                        bool extended = false, bool hidden = false) {
+            core::ContextMenuEntry e;
+            e.kind = kind;
+            e.id = id;
+            e.name = name;
+            e.places = std::move(places);
+            e.source = source;
+            e.extended = extended;
+            e.hidden = hidden;
+            if (kind != Kind::Verb) {
+                e.clsid = id;
+            }
+            return e;
+        };
+        const bool tr = m_options.language == Language::Turkish;
+        std::vector<core::ContextMenuEntry> items{
+            entry(Kind::Packaged, L"{9F156763-7844-4DC4-B2B1-901F640F5155}", tr ? L"Terminal'de aç" : L"Open in Terminal",
+                  {L"Directory", L"Directory\\Background"}, L"Microsoft.WindowsTerminal"),
+            entry(Kind::Handler, L"{596AB062-B4D2-4215-9F74-E9109B0A8153}", tr ? L"Önceki sürümleri geri yükle" : L"Restore previous versions",
+                  {L"AllFilesystemObjects", L"Directory", L"Drive"}, L"%SystemRoot%\\system32\\twext.dll"),
+            entry(Kind::Handler, L"{E2BF9676-5F8F-435C-97EB-11607A5BEDF7}", tr ? L"Paylaş" : L"Share", {L"AllFilesystemObjects"},
+                  L"%SystemRoot%\\system32\\ntshrui.dll"),
+            entry(Kind::Verb, L"Directory\\Background\\shell\\cmd", tr ? L"Komut penceresini burada aç" : L"Open command window here",
+                  {L"Directory\\Background"}, L"", true),
+            entry(Kind::Verb, L"Drive\\shell\\encrypt-bde-elev", tr ? L"BitLocker'ı aç" : L"Turn on BitLocker", {L"Drive"}, L""),
+            entry(Kind::Handler, L"{09A47860-11B0-4DA5-AFA5-26D86198A780}", tr ? L"Microsoft Defender ile tara" : L"Scan with Microsoft Defender",
+                  {L"*", L"Directory", L"Drive"}, L"X:\\Program Files\\Windows Defender\\shellext.dll"),
+            entry(Kind::Verb, L"*\\shell\\removeproperties", L"removeproperties", {L"*"}, L"", false, true),
+        };
+        items[3].command = L"cmd.exe /s /k pushd \"%V\"";
+        m_state->setContextMenuList(AppState::ContextMenuList{AppState::ContextMenuList::Status::Ready, mountDir, items, {}});
+        auto& menu = m_shell->contextMenu();
+        menu.setHidden(m_state->contextMenuList()->items[2], true);
+        core::ContextMenuItem own;
+        own.name = tr ? L"VS Code ile aç" : L"Open with VS Code";
+        own.command = L"\"C:\\Program Files\\Microsoft VS Code\\Code.exe\" \"%1\"";
+        own.places = {L"*", L"Directory"};
+        (void)menu.addItem(own);
+        m_shell->showPage(m_options.page.value_or(PageId::ContextMenu));
+        if (auto* page = m_shell->contextMenuPageForDemo()) {
+            page->selectRow(3);
+        }
+        if (*m_options.demoContextMenu == L"add") {
+            m_shell->contextMenuAddForDemo();
+        }
+    }
+    if (m_options.demoPresetAsk) {
+        m_state->setMounted(MountedImage{L"C:\\WinLove\\mount", L"C:\\WinLove\\work\\sources\\install.wim", 4, L"Windows 11 Pro"});
+        m_state->queueMany({core::ops::Operation{core::ops::OpKind::DisableFeature, L"Printing-XPSServices-Features"},
+                            core::ops::Operation{core::ops::OpKind::DisableFeature, L"WorkFolders-Client"},
+                            core::ops::Operation{core::ops::OpKind::SetServiceStart, L"DiagTrack", L"disabled"}});
+        Preset preset;
+        preset.name = m_options.language == Language::Turkish ? L"Oyun bilgisayarı" : L"Gaming PC";
+        preset.changes.add(core::ops::Operation{core::ops::OpKind::DisableFeature, L"Recall"});
+        m_shell->showPage(m_options.page.value_or(PageId::Presets));
+        m_shell->applyPresetForDemo(preset);
     }
     if (m_options.demoServices) {
         const std::filesystem::path mountDir = L"C:\\WinLove\\mount";

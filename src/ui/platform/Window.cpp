@@ -2,6 +2,7 @@
 
 #include <dwmapi.h>
 #include <shellapi.h>
+#include <shobjidl_core.h>
 #include <windowsx.h>
 
 #include <algorithm>
@@ -44,6 +45,7 @@ LRESULT hitFromZone(HitZone zone) {
 } // namespace
 
 Window::~Window() {
+    releaseTaskbar();
     if (m_hwnd) {
         SetWindowLongPtrW(m_hwnd, GWLP_USERDATA, 0);
         DestroyWindow(m_hwnd);
@@ -134,6 +136,12 @@ Result<void> Window::create(const wchar_t* title, SizeF initialSize, SizeF minim
     DwmSetWindowAttribute(m_hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corners, sizeof(corners));
     m_background = CreateSolidBrush(appearance.background);
     setIcons(GetDpiForWindow(m_hwnd));
+    // The taskbar button's progress: Explorer says when the button is there. An elevated WinLove
+    // would not hear it from a non-elevated Explorer without the filter (UIPI).
+    m_taskbarCreated = RegisterWindowMessageW(L"TaskbarButtonCreated");
+    if (m_taskbarCreated != 0) {
+        ChangeWindowMessageFilterEx(m_hwnd, m_taskbarCreated, MSGFLT_ALLOW, nullptr);
+    }
 
     // Initial size in DIPs, clamped to 90% of the monitor work area, centered.
     MONITORINFO monitor{sizeof(monitor)};
@@ -217,6 +225,42 @@ void Window::close() {
     if (m_hwnd) {
         PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
     }
+}
+
+void Window::setTaskbarProgress(std::optional<float> fraction) {
+    m_taskbarProgress = fraction;
+    applyTaskbarProgress();
+}
+
+void Window::applyTaskbarProgress() {
+    if (!m_taskbar || !m_hwnd) {
+        return;
+    }
+    if (!m_taskbarProgress) {
+        m_taskbar->SetProgressState(m_hwnd, TBPF_NOPROGRESS);
+    } else if (*m_taskbarProgress < 0.0f) {
+        m_taskbar->SetProgressState(m_hwnd, TBPF_INDETERMINATE);
+    } else {
+        constexpr ULONGLONG kTotal = 1000;
+        const auto done = static_cast<ULONGLONG>(std::lround(std::clamp(*m_taskbarProgress, 0.0f, 1.0f) * kTotal));
+        m_taskbar->SetProgressState(m_hwnd, TBPF_NORMAL);
+        m_taskbar->SetProgressValue(m_hwnd, done, kTotal);
+    }
+}
+
+void Window::releaseTaskbar() {
+    if (m_taskbar) {
+        m_taskbar->Release();
+        m_taskbar = nullptr;
+    }
+}
+
+void Window::flashIfInactive() {
+    if (!m_hwnd || GetForegroundWindow() == m_hwnd) {
+        return;
+    }
+    FLASHWINFO flash{sizeof(flash), m_hwnd, FLASHW_TRAY | FLASHW_TIMERNOFG, 0, 0};
+    FlashWindowEx(&flash);
 }
 
 void Window::bringToFront() {
@@ -358,6 +402,20 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     };
     auto screenPoint = [&] { return toClientDips({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)}); };
 
+    if (m_taskbarCreated != 0 && message == m_taskbarCreated) {
+        // The button exists (again, after an Explorer restart): a new taskbar object, then the progress.
+        releaseTaskbar();
+        ITaskbarList3* taskbar = nullptr;
+        if (SUCCEEDED(CoCreateInstance(__uuidof(TaskbarList), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&taskbar)))) {
+            if (SUCCEEDED(taskbar->HrInit())) {
+                m_taskbar = taskbar;
+                applyTaskbarProgress();
+            } else {
+                taskbar->Release();
+            }
+        }
+        return 0;
+    }
     switch (message) {
     case WM_NCCALCSIZE:
         if (wParam == TRUE) {
@@ -629,6 +687,7 @@ LRESULT Window::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         return TRUE;
     case WM_DESTROY:
+        releaseTaskbar();
         if (m_background) {
             DeleteObject(m_background);
             m_background = nullptr;

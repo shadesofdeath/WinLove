@@ -4,6 +4,8 @@
 #include "base/Log.h"
 #include "base/Utf8.h"
 #include "core/image/BootDrivers.h"
+#include "core/image/ContextMenu.h"
+#include "core/policy/PolicyWrites.h"
 #include "core/image/RegistryEdit.h"
 #include "core/image/Services.h"
 #include "core/image/ImageFiles.h"
@@ -251,6 +253,32 @@ Result<void> runStep(const Operation& op, DismSession& session, const TaskContex
         return setCreatedTasks(session.mountPath(), *tasks);
     }
     case OpKind::SetHosts: return applyHostsSection(session.mountPath(), op.target, op.value);
+    case OpKind::SetPolicy: {
+        // D-154: the writes resolved when queued: into the hives, then into the local Group Policy
+        // object (Registry.pol + gpt.ini) so gpedit on the installed Windows shows the policy set.
+        auto policy = policy::parsePolicyOperation(op.value);
+        if (!policy) {
+            return std::unexpected(policy.error());
+        }
+        for (const auto& write : policy->writes) {
+            if (auto r = reg().apply(write); !r) {
+                return r;
+            }
+        }
+        return policy::recordInGroupPolicy(session.mountPath(), policy->writes);
+    }
+    case OpKind::SetContextMenu: {
+        auto menu = parseContextMenuOperation(op.value);
+        if (!menu) {
+            return std::unexpected(menu.error());
+        }
+        for (const auto& write : menu->writes) {
+            if (auto r = reg().apply(write); !r) {
+                return r;
+            }
+        }
+        return {};
+    }
     case OpKind::SetDns:
         // DNS is a set of registry values of the settings catalog (D-049); the kind is kept
         // for presets written by hand, which have nothing more to say.

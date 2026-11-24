@@ -1059,6 +1059,15 @@ DetailModel ComponentsPage::detail() const {
     if (item.deep || item.kind == Item::Kind::Driver) {
         model.notes.push_back({ui::icons::Icon::WarningTriangle, m_strings.get(Str::ComponentsDeepWarning), DetailTone::Warning});
     }
+    if (gapsOf) {
+        if (const auto lines = gapsOf(item); !lines.empty()) {
+            std::wstring text = m_strings.get(Str::ComponentsGapTitle);
+            for (const auto& line : lines) {
+                text += L"\n" + line;
+            }
+            model.notes.push_back({ui::icons::Icon::Check, std::move(text)});
+        }
+    }
     if (const auto ups = m_controller.dependencies(item); !ups.empty()) {
         DetailList list{m_strings.get(Str::DetailDependsOn)};
         for (const auto& up : ups) {

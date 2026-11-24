@@ -109,6 +109,13 @@ struct LaunchOptions {
     bool demoRegistry = false;   // render: fake mount + typed values and an imported .reg (D-067)
     bool demoRegistryDialog = false; // --demo-registry=dialog: the first value open in "Değeri düzenle"
     bool demoServices = false;   // render: fake mount + sample services (09)
+    // 2026-11-24: --demo-policies[=options] (D-154: this PC's PolicyDefinitions as the image's, three
+    // policies queued; "options": the options dialog of one), --demo-contextmenu[=add] (D-155: sample
+    // entries, one hidden, one item of ours; "add": the Öğe ekle dialog), --demo-preset-ask (the
+    // "Yerine koy / Üstüne ekle" question of a preset loaded over a queue).
+    std::optional<std::wstring> demoPolicies;
+    std::optional<std::wstring> demoContextMenu;
+    bool demoPresetAsk = false;
     bool demoTasks = false;      // render: fake mount, two tasks off in the image, the recommended queued (D-048)
     bool demoTaskCreate = false; // render: the "Görev oluştur" dialog open on the Tasks page (D-102)
     std::optional<std::wstring> demoFiles; // render: fake mount + queued files ("where": the destination dialog) (D-051)

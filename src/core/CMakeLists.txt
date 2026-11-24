@@ -21,6 +21,9 @@ add_library(wl_core STATIC
     image/BootDrivers.cpp
     image/DeepRemoval.cpp
     image/Services.cpp
+    image/ContextMenu.cpp
+    policy/Admx.cpp
+    policy/PolicyWrites.cpp
     image/ScheduledTasks.cpp
     image/HostsFile.cpp
     image/AppxInstall.cpp

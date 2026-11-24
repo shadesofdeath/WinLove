@@ -17,6 +17,8 @@
 #include "app/pages/ComponentsPage.h"
 #include "app/pages/DriversPage.h"
 #include "app/pages/ServicesPage.h"
+#include "app/pages/PoliciesPage.h"
+#include "app/pages/ContextMenuPage.h"
 #include "app/pages/RegistryPage.h"
 #include "app/pages/StartMenuPage.h"
 #include "app/pages/SettingsPage.h"
@@ -75,6 +77,7 @@
 #include "ui/widgets/Dialog.h"
 #include "ui/widgets/Dropdown.h"
 #include "ui/widgets/EmptyState.h"
+#include "ui/widgets/Checkbox.h"
 #include "ui/widgets/FormView.h"
 #include "ui/widgets/SearchBox.h"
 #include "ui/widgets/Toggle.h"
@@ -163,7 +166,9 @@ const std::vector<GroupDef>& workspaceTabs(int workspace) {
         {Str::TabsGroupRemove, {{PageId::Components, {PageId::Components}}}},
         {Str::TabsGroupConfigure,
          {{PageId::Features, {PageId::Features}},
-          {PageId::Tweaks, {PageId::Tweaks, PageId::Services, PageId::StartMenu, PageId::Branding, PageId::Icons}, Str::TabsTweaks},
+          {PageId::Tweaks,
+           {PageId::Tweaks, PageId::Policies, PageId::Services, PageId::ContextMenu, PageId::StartMenu, PageId::Branding, PageId::Icons},
+           Str::TabsTweaks},
           {PageId::Tasks, {PageId::Tasks}}}},
         {Str::TabsGroupFinish, {{PageId::Apply, {PageId::Apply, PageId::Iso}, std::nullopt, false}}},
     };
@@ -306,7 +311,14 @@ Shell::Shell(const Localization& strings, Language language, AppState& state, Se
         }
         m_imageSettings = std::make_unique<ImageSettingsController>(m_state, std::move(*settings));
     }
+    // D-153: a removed app's gap is fixed in the same queue edit (Snipping Tool → Print Screen …).
+    m_removalGaps = std::make_unique<RemovalGaps>(m_imageSettings->catalog(), [this] {
+        return m_state.mounted() ? m_state.mounted()->mountDir : std::filesystem::path();
+    });
+    m_state.setQueueCompanion(m_removalGaps.get());
     m_serviceCtl = std::make_unique<ServiceController>(m_state, embeddedServiceCatalog(), m_services.postToUi);
+    m_policies = std::make_unique<PolicyController>(m_state, m_services.postToUi);
+    m_contextMenu = std::make_unique<ContextMenuController>(m_state, m_services.postToUi);
     m_tasks = std::make_unique<TaskController>(m_state, embeddedTaskCatalog());
     m_hosts = std::make_unique<HostsController>(m_state, embeddedHostsCatalog());
     m_branding = std::make_unique<BrandingController>(m_state);
@@ -966,6 +978,7 @@ bool Shell::requireMount(Str title, Str body) {
 Shell::~Shell() {
     *m_alive = false;
     m_state.unsubscribe(m_subscription);
+    m_state.setQueueCompanion(nullptr); // the state may outlive this shell (renders, tests)
     // A SHA-256 still being read for a dialog that goes with this shell: nobody waits for it any
     // more, and it held the reader thread (and the exit) for the rest of a multi-GB file (audit APP-01).
     if (const auto hash = m_hashCancel.lock()) {
@@ -1268,6 +1281,14 @@ void Shell::saveAnswerFile() {
               m_strings.get(saved ? Str::UnattendedSaved : Str::UnattendedSaveFailed), target->wstring());
 }
 
+PoliciesPage* Shell::policiesPageForDemo() const {
+    return m_page == PageId::Policies ? dynamic_cast<PoliciesPage*>(m_pageBody) : nullptr;
+}
+
+ContextMenuPage* Shell::contextMenuPageForDemo() const {
+    return m_page == PageId::ContextMenu ? dynamic_cast<ContextMenuPage*>(m_pageBody) : nullptr;
+}
+
 ServicesPage* Shell::servicesPage() const {
     return m_page == PageId::Services ? dynamic_cast<ServicesPage*>(m_pageBody) : nullptr;
 }
@@ -1524,8 +1545,49 @@ void Shell::applyPreset(const Preset& preset) {
     }
     Preset current = preset;
     current.changes = core::withCurrentWelcomeScript(m_components->withCurrentRecipes(preset.changes));
-    const std::size_t queued = m_presets->apply(current);
-    showUndoToast(m_strings.format(Str::PresetsLoaded, {{L"n", std::to_wstring(queued)}}), preset.name);
+    // 2026-11-24 (a user: another preset must not land on top of what is queued): with a queue,
+    // ask — replace it (one undo step brings both back) or add on top as before.
+    const std::size_t waiting = m_state.changes().size();
+    const bool boot = !m_state.bootDrivers().empty();
+    if (current.changes.empty() || (waiting == 0 && !boot) || m_state.queueLocked() || !host()) {
+        const std::size_t queued = m_presets->apply(current);
+        showUndoToast(m_strings.format(Str::PresetsLoaded, {{L"n", std::to_wstring(queued)}}), preset.name);
+        return;
+    }
+    auto dialog = std::make_unique<ui::Dialog>(
+        m_strings.format(Str::PresetsLoadAskTitle, {{L"n", std::to_wstring(waiting)}}),
+        m_strings.format(Str::PresetsLoadAskBody, {{L"name", preset.name}}), ui::icons::Icon::PresetBookmark,
+        ui::tokens::Color::TextSecondary, 480.0f);
+    ui::Dialog* raw = dialog.get();
+    raw->onCancel = closer(raw);
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
+    auto shared = std::make_shared<Preset>(std::move(current));
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::PresetsLoadMerge), [this, raw, shared] {
+        host()->popModal(raw);
+        const std::size_t queued = m_presets->apply(*shared);
+        showUndoToast(m_strings.format(Str::PresetsLoaded, {{L"n", std::to_wstring(queued)}}), shared->name);
+    });
+    raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::PresetsLoadReplace), [this, raw, shared] {
+        host()->popModal(raw);
+        replacePreset(*shared);
+    }, /*primary=*/true);
+    pushDialog(std::move(dialog));
+}
+
+std::size_t Shell::replacePreset(const Preset& preset) {
+    std::size_t queued = 0;
+    {
+        // One undo step: emptying the queue and the preset's changes come back together.
+        const auto batch = m_state.batchQueue();
+        m_state.unqueueIf([](const core::ops::Operation&) { return true; });
+        if (!m_state.bootDrivers().empty()) {
+            const std::vector<std::filesystem::path> ticked = m_state.bootDrivers(); // a copy: the call edits the list
+            m_state.setBootDrivers(ticked, false);
+        }
+        queued = m_presets->apply(preset);
+    }
+    showUndoToast(m_strings.format(Str::PresetsReplaced, {{L"n", std::to_wstring(queued)}}), preset.name);
+    return queued;
 }
 
 void Shell::importPreset() {
@@ -1543,6 +1605,165 @@ void Shell::importPreset() {
     if (auto* page = presetsPage()) {
         page->reloadList();
     }
+}
+
+void Shell::policyOptionsDialog(PolicyController::Row row) {
+    // D-154: gpedit's options of one policy — the presentation's controls in order, filled with what is
+    // queued (or the defaults); "Etkinleştir" queues the policy Enabled with them.
+    const auto* policy = m_policies->policyOf(row);
+    if (!policy || !host()) {
+        return;
+    }
+    using core::policy::PolicyElement;
+    using core::policy::PresentationControl;
+    const auto queued = m_policies->choice(row);
+    core::policy::PolicyValues values =
+        queued.state == core::policy::PolicyState::Enabled ? queued.values : core::policy::defaultValues(*policy);
+    auto dialog = std::make_unique<ui::Dialog>(policy->displayName, m_strings.get(Str::PoliciesOptionsBody), ui::icons::Icon::ScriptFile,
+                                               ui::tokens::Color::TextSecondary, 620.0f);
+    ui::Dialog* raw = dialog.get();
+    // One reader per element: what its control holds, as PolicyValues text.
+    auto readers = std::make_shared<std::vector<std::pair<std::wstring, std::function<std::wstring()>>>>();
+    int rows = 0;
+    for (const auto& control : policy->presentation) {
+        rows += control.kind == PresentationControl::Kind::Text || !policy->element(control.refId) ? 0 : 1;
+    }
+    for (const auto& e : policy->elements) {
+        rows += std::ranges::any_of(policy->presentation, [&](const PresentationControl& c) { return c.refId == e.id; }) ? 0 : 1;
+    }
+    const float height = std::min(static_cast<float>(std::max(rows, 1)) * ui::FormView::kRow + 8.0f, 380.0f);
+    auto& form = raw->setContent<ui::FormView>(height, 220.0f);
+    auto joined = [](std::wstring v) {
+        std::ranges::replace(v, L'\n', L';');
+        return v;
+    };
+    auto split = [](std::wstring v) {
+        std::ranges::replace(v, L';', L'\n');
+        return v;
+    };
+    auto addElement = [&](const PolicyElement& e, const std::wstring& label, const PresentationControl* control) {
+        const std::wstring value = values.contains(e.id) ? values.at(e.id) : std::wstring();
+        const std::wstring rowLabel = label.empty() ? e.id : label;
+        switch (e.kind) {
+        case PolicyElement::Kind::Boolean: {
+            auto& box = form.addRow<ui::CheckField>(L"", L"", 0.0f, rowLabel, value == L"1");
+            readers->push_back({e.id, [&box] { return std::wstring(box.checked() ? L"1" : L"0"); }});
+            break;
+        }
+        case PolicyElement::Kind::Enum: {
+            std::vector<std::wstring> items;
+            for (const auto& item : e.items) {
+                items.push_back(item.displayName);
+            }
+            const int selected = std::clamp(_wtoi(value.c_str()), 0, std::max(static_cast<int>(items.size()) - 1, 0));
+            auto& box = form.addRow<ui::Dropdown>(rowLabel, std::wstring(), 340.0f, std::wstring(), std::move(items), selected);
+            readers->push_back({e.id, [&box] { return std::to_wstring(box.selected()); }});
+            break;
+        }
+        case PolicyElement::Kind::List:
+        case PolicyElement::Kind::MultiText: {
+            auto& box = form.addRow<ui::SearchBox>(rowLabel, m_strings.get(e.explicitValue ? Str::PoliciesExplicitHint : Str::PoliciesListHint),
+                                                   340.0f, std::wstring());
+            box.setPlain(true);
+            box.setText(joined(value));
+            readers->push_back({e.id, [&box, split] { return split(box.text()); }});
+            break;
+        }
+        default: { // decimal, longDecimal, text (a combo box's suggestions as its hint)
+            std::wstring hint;
+            if (e.kind == PolicyElement::Kind::Decimal || e.kind == PolicyElement::Kind::LongDecimal) {
+                hint = std::to_wstring(e.minValue) + L" … " + std::to_wstring(e.maxValue);
+            } else if (control && !control->suggestions.empty()) {
+                hint = control->suggestions.front();
+            }
+            auto& box = form.addRow<ui::SearchBox>(rowLabel, std::move(hint), 260.0f, std::wstring());
+            box.setPlain(true);
+            box.setText(value);
+            readers->push_back({e.id, [&box] { return box.text(); }});
+            break;
+        }
+        }
+    };
+    for (const auto& control : policy->presentation) {
+        if (control.kind == PresentationControl::Kind::Text) {
+            continue;
+        }
+        if (const auto* e = policy->element(control.refId)) {
+            addElement(*e, control.label, &control);
+        }
+    }
+    for (const auto& e : policy->elements) {
+        if (std::ranges::none_of(policy->presentation, [&](const PresentationControl& c) { return c.refId == e.id; })) {
+            addElement(e, std::wstring(), nullptr);
+        }
+    }
+    raw->onCancel = closer(raw);
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
+    raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::PoliciesOptionsEnable), [this, raw, row, readers] {
+        core::policy::PolicyValues chosen;
+        for (const auto& [id, read] : *readers) {
+            chosen[id] = read();
+        }
+        if (auto r = m_policies->set(row, core::policy::PolicyState::Enabled, std::move(chosen)); !r) {
+            showToast(ui::InfoKind::Warning, m_strings.get(Str::PoliciesInvalid), r.error().message + L" — " + r.error().context);
+            return; // the dialog stays: the value can be corrected
+        }
+        host()->popModal(raw);
+    }, /*primary=*/true);
+    pushDialog(std::move(dialog));
+}
+
+void Shell::contextMenuAddDialog() {
+    // D-155: our own item — name, command, optional icon, where, Shift only.
+    if (!host()) {
+        return;
+    }
+    if (!requireMount(Str::ContextMenuNoMountTitle, Str::ContextMenuNoMountBody)) {
+        return;
+    }
+    auto dialog = std::make_unique<ui::Dialog>(m_strings.get(Str::ContextMenuAddTitle), m_strings.get(Str::ContextMenuAddBody),
+                                               ui::icons::Icon::MoreVertical, ui::tokens::Color::TextSecondary, 600.0f);
+    ui::Dialog* raw = dialog.get();
+    auto& form = raw->setContent<ui::FormView>(ui::FormView::kRow * 5, 120.0f);
+    auto& name = form.addRow<ui::SearchBox>(m_strings.get(Str::ContextMenuAddName), std::wstring(), 400.0f, std::wstring());
+    name.setPlain(true);
+    auto& command = form.addRow<ui::SearchBox>(m_strings.get(Str::ContextMenuAddCommand), std::wstring(), 400.0f, std::wstring());
+    command.setPlain(true);
+    command.setText(L"notepad.exe \"%1\"");
+    auto& icon = form.addRow<ui::SearchBox>(m_strings.get(Str::ContextMenuAddIcon), m_strings.get(Str::ContextMenuAddIconHint), 260.0f,
+                                            std::wstring());
+    icon.setPlain(true);
+    static const std::vector<std::vector<std::wstring>> kPlaces = {
+        {L"*", L"Directory"},
+        {L"*"},
+        {L"Directory"},
+        {L"Directory\\Background", L"DesktopBackground"},
+        {L"Drive"},
+        {L"*", L"Directory", L"Directory\\Background", L"DesktopBackground", L"Drive"},
+    };
+    std::vector<std::wstring> places{m_strings.get(Str::ContextMenuPlacesFilesFolders), m_strings.get(Str::ContextMenuPlacesFiles),
+                                     m_strings.get(Str::ContextMenuPlacesFolders),      m_strings.get(Str::ContextMenuPlacesBackground),
+                                     m_strings.get(Str::ContextMenuPlacesDrives),       m_strings.get(Str::ContextMenuPlacesEverywhere)};
+    auto& where = form.addRow<ui::Dropdown>(m_strings.get(Str::ContextMenuAddPlaces), std::wstring(), 300.0f, std::wstring(),
+                                            std::move(places), 0);
+    auto& shift = form.addRow<ui::CheckField>(L"", L"", 0.0f, m_strings.get(Str::ContextMenuAddExtended), false);
+    auto create = [this, raw, &name, &command, &icon, &where, &shift] {
+        core::ContextMenuItem item;
+        item.name = name.text();
+        item.command = command.text();
+        item.icon = icon.text();
+        item.places = kPlaces[static_cast<std::size_t>(std::clamp(where.selected(), 0, static_cast<int>(kPlaces.size()) - 1))];
+        item.extended = shift.checked();
+        if (auto r = m_contextMenu->addItem(std::move(item)); !r) {
+            showToast(ui::InfoKind::Warning, m_strings.get(Str::ContextMenuAddFailed), r.error().message);
+            return;
+        }
+        host()->popModal(raw);
+    };
+    raw->onCancel = closer(raw);
+    raw->addButton(ui::ButtonKind::Secondary, m_strings.get(Str::CommonCancel), closer(raw));
+    raw->addButton(ui::ButtonKind::Primary, m_strings.get(Str::ContextMenuAddAction), create, /*primary=*/true);
+    pushDialog(std::move(dialog));
 }
 
 void Shell::addTaskDialog() {
@@ -2520,6 +2741,8 @@ void Shell::updateQueue() {
     setCount(PageId::Drivers, static_cast<int>(changes.count(core::ops::OpKind::AddDriver) +
                                                       changes.count(core::ops::OpKind::RemoveDriver)));
     setCount(PageId::Services, static_cast<int>(changes.count(core::ops::OpKind::SetServiceStart)));
+    setCount(PageId::Policies, m_policies->changedCount());
+    setCount(PageId::ContextMenu, m_contextMenu->changedCount());
     setCount(PageId::Registry, m_registry->checkedCount());
     setCount(PageId::Tweaks, m_imageSettings->changedCount());
     setCount(PageId::StartMenu, m_startPins->changedCount() + m_taskbarPins->changedCount());
@@ -2600,13 +2823,18 @@ void Shell::updateStatus() {
         }
         m_status->setInfo(std::move(info));
     }
+    std::optional<float> task; // what the taskbar button shows too
+    auto setTask = [this, &task](std::optional<std::wstring> label, float fraction) {
+        task = label ? std::optional<float>(fraction) : std::nullopt;
+        m_status->setTask(std::move(label), fraction);
+    };
     const auto& run = m_state.applyRun();
     const auto& iso = m_state.isoRun();
     if (run && run->stage != AppState::ApplyRun::Stage::Done) {
         // D-144: a run that ends with an ISO says so from the start.
-        m_status->setTask(m_strings.get(run->autoIso ? Str::StatusApplyingThenIso : Str::StatusApplying), static_cast<float>(run->fraction));
+        setTask(m_strings.get(run->autoIso ? Str::StatusApplyingThenIso : Str::StatusApplying), static_cast<float>(run->fraction));
     } else if (iso && iso->running) {
-        m_status->setTask(m_strings.get(iso->afterApply ? Str::StatusBuildingAfterApply : Str::StatusBuilding),
+        setTask(m_strings.get(iso->afterApply ? Str::StatusBuildingAfterApply : Str::StatusBuilding),
                           static_cast<float>(iso->fraction));
     } else if (const auto& op = m_state.operation()) {
         const Str label = op->kind == EngineOperation::Kind::Mounting     ? Str::StatusMounting
@@ -2617,19 +2845,38 @@ void Shell::updateStatus() {
                           : op->kind == EngineOperation::Kind::Unmounting ? Str::StatusUnmounting
                                                                           : Str::StatusWorking;
         const bool unmeasured = op->kind == EngineOperation::Kind::Adopting || op->kind == EngineOperation::Kind::Remounting;
-        m_status->setTask(m_strings.get(label), unmeasured ? -1.0f : static_cast<float>(op->fraction));
+        setTask(m_strings.get(label), unmeasured ? -1.0f : static_cast<float>(op->fraction));
     } else if (const auto& windows = m_state.windowsDownload()) {
         // D-093: from any page — the download, then the conversion into an ISO.
         const bool converting = windows->stage == AppState::WindowsDownload::Stage::Converting;
-        m_status->setTask(m_strings.get(converting ? Str::StatusBuilding : Str::StatusDownloading),
+        setTask(m_strings.get(converting ? Str::StatusBuilding : Str::StatusDownloading),
                           static_cast<float>(windows->fraction));
     } else if (const auto download = downloadProgress()) {
         // A download (updates, languages, Store) runs on any page: the status bar says so too.
-        m_status->setTask(m_strings.get(Str::StatusDownloading), *download);
+        setTask(m_strings.get(Str::StatusDownloading), *download);
     } else {
-        m_status->setTask(std::nullopt, 0);
+        setTask(std::nullopt, 0);
     }
+    updateTaskbar(task);
     updateWorkflow();
+}
+
+void Shell::updateTaskbar(std::optional<float> task) {
+    // 2026-11-24: the taskbar button shows the status bar's task; one that ran for a while flashes
+    // the button when it ends, if WinLove is behind other windows (Uygula, ISO, a download, a mount).
+    const auto now = std::chrono::steady_clock::now();
+    if (task && !m_taskStarted) {
+        m_taskStarted = now;
+    } else if (!task && m_taskStarted) {
+        if (now - *m_taskStarted >= kTaskbarFlashAfter && m_services.flashIfInactive) {
+            m_services.flashIfInactive();
+        }
+        m_taskStarted.reset();
+    }
+    if (m_services.taskbarProgress && task != m_taskbarShown) {
+        m_taskbarShown = task;
+        m_services.taskbarProgress(task);
+    }
 }
 
 std::optional<float> Shell::downloadProgress() const {
@@ -3045,6 +3292,15 @@ void Shell::showPage(PageId page) {
             m_pageBody = &body;
             body.explainBlock = [this](const ComponentController::Item& item) {
                 return m_compat->explain(m_components->block(item));
+            };
+            body.gapsOf = [this](const ComponentController::Item& item) {
+                std::vector<std::wstring> lines;
+                if (item.kind == ComponentController::Item::Kind::Appx) {
+                    for (const Str what : m_removalGaps->fixesOf(item.packageName)) {
+                        lines.push_back(m_strings.get(what));
+                    }
+                }
+                return lines;
             };
         } else if (page == PageId::Programs) {
             // D-104: install the picks offline (installers embedded at Apply). Toggles, then redraws
@@ -3505,6 +3761,22 @@ void Shell::showPage(PageId page) {
                 return m_compat->explain(m_compat->block(
                     ServiceController::operationFor(service, core::StartType::Disabled, core::ops::Risk::Low)));
             };
+        } else if (page == PageId::Policies) {
+            addResetAction([this] { m_policies->resetChanges(); }); // D-152's, for D-154
+            m_pageBody = &m_pageView->setBody<PoliciesPage>(
+                m_state, *m_policies, m_strings, m_language,
+                PoliciesPage::Intents{[this] { showPage(PageId::Images); },
+                                      [this](std::wstring title, std::wstring body) {
+                                          showToast(ui::InfoKind::Warning, std::move(title), std::move(body));
+                                      },
+                                      [this](PolicyController::Row row) { policyOptionsDialog(row); }});
+        } else if (page == PageId::ContextMenu) {
+            m_pageView->addAction(ui::ButtonKind::Ribbon, m_strings.get(Str::ContextMenuAdd), ui::icons::Icon::Add).onInvoke =
+                [this] { contextMenuAddDialog(); };
+            addResetAction([this] { m_contextMenu->resetChanges(); });
+            m_pageBody = &m_pageView->setBody<ContextMenuPage>(
+                m_state, *m_contextMenu, m_strings, m_language,
+                ContextMenuPage::Intents{[this] { showPage(PageId::Images); }, [this] { contextMenuAddDialog(); }});
         } else if (page == PageId::Drivers) {
             m_pageView->addAction(ui::ButtonKind::Secondary, m_strings.get(Str::UpdatesScanFolder), ui::icons::Icon::OpenFolder)
                 .onInvoke = [this] { scanDriverFolder(); };

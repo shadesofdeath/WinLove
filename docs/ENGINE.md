@@ -437,3 +437,19 @@ adlandırdığı çocuğa / klasöre / birime bakılır; bağlılık bilinemiyor
   0xA060000) `msdelta.dll` boş kaynağa uygulayamaz (ERROR_INVALID_DATA); `UpdateCompression.dll` (aynı `ApplyDeltaB`)
   uygular. ARM64 26200.9448: checkpoint 115.589 dosya / 1,1 GB (61 sn), temel LCU 288.273 dosya / 3,5 GB (215 sn).
   LCU `.wim`'i LZMS (katı) sıkıştırmalıdır; yanında `…mumx.esd` (26100.9441+) bulunur.
+- [2026-11-24] [ADMX] `Windows\PolicyDefinitions`: 26200.8037 Pro'da 3532 ilke / 429 kategori (makine 1698, kullanıcı 753,
+  ikisi 1081); ADMX'lerin çoğu UTF-8 BOM'lu, birkaçı UTF-16 (pugixml `load_buffer` ikisini de çevirir). Bu PC'de en-US
+  klasöründe yalnız 2 ADML vardı, tr-TR'de 222: dil yedeği dosya başına seçilmeli, klasör başına değil. Kimlikler dosyalar
+  arası `prefix:name` → `<namespace>:<name>`; supportedOn tanımları çoğunlukla Windows.admx'te: metinler en son bağlanır.
+  valueName'li ama enabledValue / disabledValue'suz ilke = DWORD 1 / 0. Bazı ham dizelerde `$(string.X)"` ve `)"` geçer:
+  C++ testlerinde `R"xml(…)xml"` gerekli.
+- [2026-11-24] [Registry.pol] PReg v1: `"PReg"` + DWORD 1, sonra `[anahtar\0;ad\0;tür(4);boyut(4);veri]` (ayırıcılar UTF-16
+  karakter, tür / boyut ham DWORD). Silme `**del.<ad>` (REG_SZ " "). gpt.ini `Version` = kullanıcı << 16 | makine; kayıt CSE
+  çifti makine `{35378EAC…}{D02B1F72…}`, kullanıcı `{35378EAC…}{D02B1F73…}`. Kovan değeri + Registry.pol birlikte: gpedit
+  gösterir, GP istemcisi yeniden uygular.
+- [2026-11-24] [Sağ tık] Gizlemenin iki yolu: fiile `ProgrammaticAccessOnly` (boş REG_SZ; LegacyDisable komutu tümden
+  kapatır), COM uzantısı / Windows 11 uygulama öğesi için `HKLM\…\Shell Extensions\Blocked\{CLSID}`. Uygulama
+  manifestleri CLSID'yi süslü parantezsiz yazar (`9f156763-…`), Blocked anahtarı parantezli ister. WindowsApps yöneticiye
+  kapalı: `SE_BACKUP_NAME` + `FILE_FLAG_BACKUP_SEMANTICS` (`backupListFolders` / `backupReadFile`); std::filesystem orada
+  hiçbir şey göremez. 26200.8037'de imajın sağ tık kayıtları: 53–54 öğe (komutların çoğu MUIVerb'süz: "open", "find"
+  gibi anahtar adıyla görünür).

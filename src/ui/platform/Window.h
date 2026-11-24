@@ -14,7 +14,10 @@
 #include <filesystem>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <vector>
+
+struct ITaskbarList3;
 
 namespace wl::ui {
 
@@ -108,6 +111,11 @@ public:
     void close();
     // D-145: restores a minimised window and brings it to the front (a second "Değişiklikleri gör").
     void bringToFront();
+    // 2026-11-24: the taskbar button's progress (fraction 0…1; < 0 unmeasured; nullopt: none). Kept
+    // until the button exists (Explorer's "TaskbarButtonCreated", also after Explorer restarts).
+    void setTaskbarProgress(std::optional<float> fraction);
+    // Flashes the taskbar button until the window comes to the front, when it is not in front now.
+    void flashIfInactive();
     // Thread-safe: run `fn` on the UI thread (engine results, progress). Dropped after destroy.
     void post(std::function<void()> fn);
     void setTimer(UINT id, UINT ms);
@@ -158,6 +166,11 @@ private:
     std::deque<std::function<void()>> m_posted;
     bool m_wasMaximized = false;
     bool m_quitOnClose = true;
+    UINT m_taskbarCreated = 0;           // RegisterWindowMessage("TaskbarButtonCreated")
+    ITaskbarList3* m_taskbar = nullptr;  // owned (Release in WM_DESTROY / the destructor)
+    std::optional<float> m_taskbarProgress;
+    void applyTaskbarProgress();
+    void releaseTaskbar();
 };
 
 } // namespace wl::ui

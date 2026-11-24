@@ -33,6 +33,8 @@ Phase phaseOf(OpKind kind) noexcept {
     case OpKind::CopyFile:
     case OpKind::SetTaskState:
     case OpKind::CreateTask:
+    case OpKind::SetPolicy:
+    case OpKind::SetContextMenu:
     case OpKind::SetHosts:
     case OpKind::SetDns:
     case OpKind::CopyTree:
@@ -88,6 +90,8 @@ double estimateSeconds(OpKind kind) noexcept {
     case OpKind::SetEdition: return 35.0;      // lab: Home → Pro 28 s
     case OpKind::SetTaskState:
     case OpKind::CreateTask:
+    case OpKind::SetPolicy:
+    case OpKind::SetContextMenu:
     case OpKind::SetHosts:
     case OpKind::SetDns: return 0.3;
     case OpKind::CopyTree: return 5.0;         // plus the copy itself

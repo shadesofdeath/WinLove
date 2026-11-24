@@ -13,6 +13,8 @@
 #include "app/controllers/StartPinsController.h"
 #include "app/controllers/RegistryController.h"
 #include "app/controllers/ServiceController.h"
+#include "app/controllers/PolicyController.h"
+#include "app/controllers/ContextMenuController.h"
 #include "app/controllers/UnattendController.h"
 #include "app/controllers/FeatureController.h"
 #include "app/controllers/IsoController.h"
@@ -21,6 +23,7 @@
 #include "app/controllers/ProgramsController.h"
 #include "app/controllers/ImageController.h"
 #include "app/controllers/ImageSettingsController.h"
+#include "app/controllers/RemovalGaps.h"
 #include "app/controllers/AppsController.h"
 #include "app/controllers/FilesController.h"
 #include "app/controllers/HostsController.h"
@@ -49,6 +52,7 @@
 #include "ui/anim/Tween.h"
 #include "ui/widgets/Toast.h"
 
+#include <chrono>
 #include <windows.h>
 
 #include <filesystem>
@@ -61,6 +65,9 @@ class Dialog;
 }
 
 namespace wl::app {
+
+class PoliciesPage;
+class ContextMenuPage;
 
 class SourcePage;
 class ImagesPage;
@@ -118,6 +125,11 @@ public:
         std::function<void()> cancelUpdate;
         std::function<std::optional<AppState::AppUpdate::Install::Why>()> restartForUpdate;
         std::function<void()> showChangelog;
+        // 2026-11-24: the status bar's task on the taskbar button too (fraction < 0: unmeasured,
+        // nullopt: no task), and a finished long task flashes the button while WinLove is behind
+        // other windows (App's Window; empty in renders and tests).
+        std::function<void(std::optional<float> fraction)> taskbarProgress;
+        std::function<void()> flashIfInactive;
     };
     static constexpr UINT kToastTimer = 2;
     static constexpr UINT kLogTimer = 3; // Loglar: poll the log buffer while the page is shown
@@ -131,6 +143,13 @@ public:
     ComponentController& components() { return *m_components; }
     ServiceController& services() { return *m_serviceCtl; }
     IsoPage* isoPageForDemo() const { return isoPage(); } // render: --demo-usb
+    PolicyController& policies() { return *m_policies; }          // render: --demo-policies
+    ContextMenuController& contextMenu() { return *m_contextMenu; } // render: --demo-contextmenu
+    PoliciesPage* policiesPageForDemo() const;
+    ContextMenuPage* contextMenuPageForDemo() const;
+    void policyOptionsForDemo(PolicyController::Row row) { policyOptionsDialog(row); }
+    void contextMenuAddForDemo() { contextMenuAddDialog(); }
+    void applyPresetForDemo(const Preset& preset) { applyPreset(preset); } // --demo-preset-ask
     DriversPage* driversPageForDemo() const { return driversPage(); } // render: --demo-image-drivers
     // D-051: "Dosya ekle…" / "Klasör ekle…" / a drop on the Dosyalar page → "Nereye?" → queue.
     void addFilesTo(std::vector<std::filesystem::path> sources);
@@ -217,6 +236,7 @@ public:
     // D-091: the status bar's workflow steps from the state; a running download's fraction.
     void updateWorkflow();
     [[nodiscard]] std::optional<float> downloadProgress() const;
+    void updateTaskbar(std::optional<float> task);
     void updateKeepAwake();
     // Toast body after a mount was taken over: the queue that came back with it, if any.
     [[nodiscard]] std::wstring restoredQueueText(std::size_t restored, const std::wstring& otherwise) const;
@@ -340,6 +360,8 @@ private:
     void newPreset();
     void importPreset();
     void applyPreset(const Preset& preset);
+    // "Yerine koy": the queue (and ticked boot drivers) emptied, then the preset — one undo step.
+    std::size_t replacePreset(const Preset& preset);
     // P14: the add dialog for `type`, or the edit dialog of step `index`.
     void editPostSetupStep(core::PostSetupStep::Type type, std::optional<std::size_t> index);
 
@@ -358,6 +380,8 @@ private:
     void startIso();
     void confirmUsbWrite(IsoController::Request request); // D-047: "USB belleği sil ve yaz?"
     void addTaskDialog();    // D-048: "Görev ekle…"
+    void policyOptionsDialog(PolicyController::Row row); // D-154: a policy's options, then Etkin
+    void contextMenuAddDialog();                         // D-155: "Öğe ekle…"
     void createTaskDialog(); // D-102: "Görev oluştur…"
     void importHostsFile();  // D-049: "Hosts dosyası içe aktar…"
 
@@ -457,8 +481,11 @@ private:
     void flushPendingDownloads();
     std::unique_ptr<ComponentController> m_components;
     std::unique_ptr<ServiceController> m_serviceCtl;
+    std::unique_ptr<PolicyController> m_policies;       // D-154
+    std::unique_ptr<ContextMenuController> m_contextMenu; // D-155
     std::unique_ptr<RegistryController> m_registry;
     std::unique_ptr<ImageSettingsController> m_imageSettings; // P12 form
+    std::unique_ptr<RemovalGaps> m_removalGaps; // D-153: the queue's companion
     std::unique_ptr<UnattendController> m_unattend; // P13 answer file
     std::optional<Localization> m_otherStrings;      // the other language's strings (D-084 welcome texts)
     std::unique_ptr<PostSetupController> m_postSetup; // P14 steps
@@ -479,6 +506,10 @@ private:
     std::size_t m_subscription = 0;
     // Engine results arrive later on the UI thread; they check this before touching the shell
     // (it is rebuilt on device loss and destroyed at exit).
+    // updateTaskbar: since when the status bar shows a task, and what the button shows now.
+    static constexpr std::chrono::seconds kTaskbarFlashAfter{15};
+    std::optional<std::chrono::steady_clock::time_point> m_taskStarted;
+    std::optional<float> m_taskbarShown;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     std::weak_ptr<core::CancelToken> m_hashCancel; // verifyHash: the read of the open SHA-256 dialog
     TitleBar* m_titleBar = nullptr;

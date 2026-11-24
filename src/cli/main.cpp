@@ -1,6 +1,8 @@
 // wlcli — drives the image engine without UI (docs/ENGINE.md §4).
 // Every engine capability gets a command here before any page uses it. `--json` output is stable
 // and parsed by integration tests and tools.
+#include "core/image/ContextMenu.h"
+#include "core/policy/PolicyWrites.h"
 #include "base/File.h"
 #include "base/Log.h"
 #include "base/Path.h"
@@ -2163,6 +2165,157 @@ int cmdServices(const std::wstring& dir, const std::wstring& set, bool asJson) {
     return 0;
 }
 
+// D-154: the Administrative Templates of a folder (an image's Windows\PolicyDefinitions, or a mount dir):
+// counts, then the policies whose name / id holds `find`, with the writes Enabled (default options) and
+// Disabled would make. --pol=<file>: prints a Registry.pol file instead.
+// The writes into a mounted image's hives (admin), as Uygula's step does.
+int applyWrites(const std::wstring& dir, const std::vector<core::RegistryWrite>& writes) {
+    core::OfflineRegistry registry(dir);
+    for (const auto& w : writes) {
+        print(std::format(L"  write {}::{} = {}\n", w.key, w.name, core::formatRegValue(w)));
+        if (auto r = registry.apply(w); !r) {
+            return reportError(r.error());
+        }
+    }
+    registry.close();
+    return 0;
+}
+
+int cmdPolicies(const std::wstring& dir, const std::wstring& language, const std::wstring& find, const std::wstring& polFile,
+                const std::wstring& set) {
+    if (!polFile.empty()) {
+        const auto bytes = readFileBytes(polFile);
+        if (!bytes) {
+            return reportError(bytes.error());
+        }
+        auto entries = core::policy::parsePol(*bytes);
+        if (!entries) {
+            return reportError(entries.error());
+        }
+        for (const auto& e : *entries) {
+            print(std::format(L"  [{}] {} (type {}, {} bytes)\n", e.key, e.valueName, e.type, e.data.size()));
+        }
+        return 0;
+    }
+    std::filesystem::path folder = dir;
+    if (std::error_code ec; std::filesystem::exists(folder / L"Windows" / L"PolicyDefinitions", ec)) {
+        folder = folder / L"Windows" / L"PolicyDefinitions";
+    }
+    const std::wstring lang = !language.empty() ? language : core::imageUiLanguage(dir);
+    auto catalog = core::policy::readPolicyDefinitions(folder, lang);
+    if (!catalog) {
+        return reportError(catalog.error());
+    }
+    std::size_t machine = 0, user = 0, both = 0, elements = 0;
+    for (const auto& p : catalog->policies()) {
+        (p.policyClass == core::policy::PolicyClass::Machine ? machine : p.policyClass == core::policy::PolicyClass::User ? user : both)++;
+        elements += p.elements.size();
+    }
+    print(std::format(L"{} policies (machine {}, user {}, both {}), {} elements, {} categories, language {}\n",
+                      catalog->policies().size(), machine, user, both, elements, catalog->categories().size(), lang));
+    if (find.empty()) {
+        return 0;
+    }
+    if (!set.empty()) {
+        // --find=<exact id> --set=enabled|disabled[:user]: the writes into <dir> and its Registry.pol.
+        const auto* policy = catalog->policy(find);
+        if (!policy) {
+            print(L"no policy with the id " + find + L"\n");
+            return 1;
+        }
+        const bool userSide = set.ends_with(L":user") || policy->policyClass == core::policy::PolicyClass::User;
+        const auto state = set.starts_with(L"disabled") ? core::policy::PolicyState::Disabled : core::policy::PolicyState::Enabled;
+        auto writes = core::policy::policyWrites(*policy, userSide, {state, core::policy::defaultValues(*policy)});
+        if (!writes) {
+            return reportError(writes.error());
+        }
+        if (const int r = applyWrites(dir, *writes); r != 0) {
+            return r;
+        }
+        if (auto r = core::policy::recordInGroupPolicy(dir, *writes); !r) {
+            return reportError(r.error());
+        }
+        print(L"recorded in Windows\\System32\\GroupPolicy\n");
+        return 0;
+    }
+    int shown = 0;
+    for (const auto& p : catalog->policies()) {
+        if (wl::text::lower(p.displayName).find(wl::text::lower(find)) == std::wstring::npos &&
+            wl::text::lower(p.id).find(wl::text::lower(find)) == std::wstring::npos) {
+            continue;
+        }
+        if (++shown > 20) {
+            print(L"  …\n");
+            break;
+        }
+        std::wstring path;
+        for (const auto& c : catalog->path(p)) {
+            path += (path.empty() ? L"" : L" > ") + c;
+        }
+        print(std::format(L"\n{}  [{}]\n  {}\n  {}\\{}  ({} elements, supported: {})\n", p.displayName, p.id, path, p.key,
+                          p.valueName, p.elements.size(), p.supportedOn));
+        const bool userSide = p.policyClass == core::policy::PolicyClass::User;
+        for (const auto state : {core::policy::PolicyState::Enabled, core::policy::PolicyState::Disabled}) {
+            core::policy::PolicyChoice choice{state, core::policy::defaultValues(p)};
+            auto writes = core::policy::policyWrites(p, userSide, choice);
+            print(state == core::policy::PolicyState::Enabled ? L"  enabled:\n" : L"  disabled:\n");
+            if (!writes) {
+                print(L"    (" + writes.error().message + L": " + writes.error().context + L")\n");
+                continue;
+            }
+            for (const auto& w : *writes) {
+                print(std::format(L"    {}::{} = {}\n", w.key, w.name, core::formatRegValue(w)));
+            }
+        }
+    }
+    return 0;
+}
+
+// D-155: the right-click menu entries of a mounted image (or a folder with its SOFTWARE hive).
+int cmdContextMenu(const std::wstring& dir, const std::wstring& set) {
+    auto entries = core::readContextMenu(dir);
+    if (!entries) {
+        return reportError(entries.error());
+    }
+    if (set.starts_with(L"hide:")) {
+        const std::wstring id = set.substr(5);
+        const auto it = std::ranges::find_if(*entries, [&](const core::ContextMenuEntry& e) { return wl::text::iequals(e.id, id); });
+        if (it == entries->end()) {
+            print(L"no entry with the id " + id + L"\n");
+            return 1;
+        }
+        return applyWrites(dir, core::contextMenuHideWrites(*it));
+    }
+    if (set.starts_with(L"add:")) {
+        // add:<name>|<command> → files and folders and the folder background.
+        const std::wstring spec = set.substr(4);
+        const auto bar = spec.find(L'|');
+        core::ContextMenuItem item;
+        item.name = spec.substr(0, bar);
+        item.command = bar == std::wstring::npos ? std::wstring() : spec.substr(bar + 1);
+        item.id = core::contextMenuItemId(item.name);
+        item.places = {L"*", L"Directory", L"Directory\\Background"};
+        auto writes = core::contextMenuAddWrites(item);
+        if (!writes) {
+            return reportError(writes.error());
+        }
+        return applyWrites(dir, *writes);
+    }
+    for (const auto& e : *entries) {
+        const wchar_t* kind = e.kind == core::ContextMenuEntry::Kind::Verb      ? L"verb"
+                              : e.kind == core::ContextMenuEntry::Kind::Handler ? L"handler"
+                                                                                : L"packaged";
+        std::wstring places;
+        for (const auto& p : e.places) {
+            places += (places.empty() ? L"" : L", ") + p;
+        }
+        print(std::format(L"  {:<8} {}{}{}  [{}]  {}{}\n", kind, e.name, e.extended ? L" (Shift)" : L"",
+                          e.hidden ? L" (hidden)" : L"", places, e.id, e.source.empty() ? L"" : L"  " + e.source));
+    }
+    print(std::format(L"{} entries\n", entries->size()));
+    return 0;
+}
+
 // P13: read an answer file for the options WinLove knows and print the file it would write.
 int cmdUnattend(const std::wstring& file, bool welcome) {
     const auto bytes = readFileBytes(file);
@@ -4147,6 +4300,8 @@ void printUsage() {
           L"  wlcli reg-check <file.reg> <mountdir> [--json]   (which writes the image already has; read only,\n"
           L"                                      offreg.dll — also works on hive files copied into a folder)\n"
           L"  wlcli services <mountdir> [--set=Name=auto|autoDelayed|manual|disabled]   (P10)\n"
+          L"  wlcli policies <mountdir|PolicyDefinitions> [ll-CC] [--find=text|id --set=enabled|disabled[:user]] [--pol=Registry.pol]   (D-154; --set writes, admin)\n"
+          L"  wlcli context-menu <mountdir> [--set=hide:<id>|add:<name>|<command>]   (D-155; --set writes, admin)\n"
           L"  wlcli appx <mountdir>   (provisioned apps + size, as on P07)\n"
           L"  wlcli cbs <mountdir> [text]   (CBS packages from the image's registry, hidden ones too)\n"
           L"  wlcli component <mountdir> <recipe.json> [--remove]   (P07 system component: probe / remove)\n"
@@ -4243,6 +4398,8 @@ int runCommand(int argc, wchar_t** argv) {
     std::wstring source;
     std::wstring label;
     std::wstring serviceSet;
+    std::wstring policyFind; // D-154
+    std::wstring policyPol;
     std::wstring flags;
     bool welcomeFlag = false;   // unattend --welcome (D-084)
     std::wstring stringsFile;   // welcome --strings=
@@ -4335,6 +4492,10 @@ int runCommand(int argc, wchar_t** argv) {
             flags = std::wstring(a.substr(8));
         } else if (a.starts_with(L"--set=")) {
             serviceSet = std::wstring(a.substr(6));
+        } else if (a.starts_with(L"--find=")) {
+            policyFind = std::wstring(a.substr(7));
+        } else if (a.starts_with(L"--pol=")) {
+            policyPol = std::wstring(a.substr(6));
         } else if (a.starts_with(L"--arch=")) {
             arch = std::wstring(a.substr(7));
         } else if (a.starts_with(L"--download=")) {
@@ -4777,6 +4938,12 @@ int runCommand(int argc, wchar_t** argv) {
     }
     if (command == L"services" && args.size() == 2) {
         return cmdServices(args[1], serviceSet, asJson);
+    }
+    if (command == L"policies" && args.size() >= 2) {
+        return cmdPolicies(args[1], args.size() >= 3 ? args[2] : std::wstring(), policyFind, policyPol, serviceSet);
+    }
+    if (command == L"context-menu" && args.size() == 2) {
+        return cmdContextMenu(args[1], serviceSet);
     }
     if (command == L"optional-features" && args.size() == 2) {
         return cmdOptionalFeatures(args[1], asJson);

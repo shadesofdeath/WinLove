@@ -1,3 +1,5 @@
+#include "core/image/ContextMenu.h"
+#include "core/policy/PolicyWrites.h"
 #include "app/controllers/PresetController.h"
 
 #include "core/image/ScheduledTasks.h"
@@ -235,6 +237,22 @@ std::vector<PresetController::Item> PresetController::items(const Preset& preset
         case OpKind::SetRegistryValue:
         case OpKind::SetRegistryFirstLogon:
             result.push_back({kRegistry, plainKey(op), op.target, op.value, {}});
+            break;
+        case OpKind::SetPolicy: // D-154: one row per policy, its state
+            if (const auto policy = core::policy::parsePolicyOperation(op.value)) {
+                const Str state = policy->choice.state == core::policy::PolicyState::Enabled ? Str::PoliciesStateEnabled
+                                                                                              : Str::PoliciesStateDisabled;
+                result.push_back({kTweaks, L"policy|" + wl::text::lower(op.target), policy->name.empty() ? op.target : policy->name,
+                                  s(state), {}});
+            }
+            break;
+        case OpKind::SetContextMenu: // D-155: an entry hidden / shown, or our own item
+            if (const auto menu = core::parseContextMenuOperation(op.value)) {
+                result.push_back({kTweaks, L"menu|" + wl::text::lower(op.target), menu->name.empty() ? op.target : menu->name,
+                                  s(menu->item ? Str::PresetsValueAdd
+                                    : op.value.find(L"\"-\"") != std::wstring::npos ? Str::ContextMenuShow : Str::ContextMenuHide),
+                                  {}});
+            }
             break;
         case OpKind::SetServiceStart: {
             const auto start = core::startTypeFromKey(op.value);

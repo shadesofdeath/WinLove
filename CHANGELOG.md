@@ -6,6 +6,24 @@
 
 ## Türkçe
 
+### Sonraki sürüm (yayınlanmadı)
+
+#### Yeni
+
+- **Grup İlkesi** (Ayarlar sekmesinde): imajın kendi yönetim şablonlarındaki bütün ilkeler (Windows 11 25H2'de ~3.500),
+  imajın dilinde, aranabilir; Yapılandırılmadı / Etkin / Devre dışı ve gpedit'teki seçenekler. İlke kayıt defterine ve
+  yerel ilke nesnesine yazılır: kurulan Windows'ta gpedit.msc de ayarlanmış gösterir.
+- **Sağ tık menüsü** (Ayarlar sekmesinde): imajın Gezgin sağ tık menüsündeki öğeler (komutlar, kabuk uzantıları, Windows
+  11 uygulama öğeleri) imajın kendi kayıtlarından; gizle, imajın gizlediğini göster ya da kendi komutunu ekle (ad, komut,
+  simge, nerede, yalnız Shift ile).
+- **Ön ayar yüklerken soru:** kuyrukta değişiklik varsa "Yerine koy" (önce kuyruk boşalır) ya da "Üstüne ekle";
+  Geri al ikisini birlikte geri getirir.
+- **Kaldırılan uygulamanın boşluğu kapanır:** Ekran Alıntısı Aracı kaldırılınca Print Screen ekranı panoya kopyalar;
+  Fotoğraflar kaldırılınca resimler klasik Fotoğraf Görüntüleyicisi ile açılır; Not Defteri (Store) kaldırılınca .txt
+  klasik Not Defteri ile açılır. Bileşenler kartı bunu söyler; ayarlar Ayarlar / Uygulamalar'da değiştirilebilir.
+- **Görev çubuğunda ilerleme:** Uygula, ISO, bağlama ve indirmeler görev çubuğu düğmesinde de ilerler; uzun bir iş
+  bittiğinde WinLove arkadaysa düğme yanıp söner.
+
 ### 1.4.0 Beta — 2026-11-24
 
 1.3.0 Beta'dan bu yana gelenler:
@@ -336,6 +354,24 @@ WinLove alfadan çıkıp **beta** oldu. 1.0.2 Alpha'dan bu yana gelenler:
 ---
 
 ## English
+
+### Next release (not published)
+
+#### New
+
+- **Group Policy** (in the Settings tab): every policy of the image's own Administrative Templates (~3,500 on Windows 11
+  25H2), in the image's language, searchable; Not configured / Enabled / Disabled with gpedit's options. A policy is
+  written to the registry and to the local policy object: gpedit.msc on the installed Windows shows it as set.
+- **Context menu** (in the Settings tab): the items of the image's Explorer right-click menus (commands, shell
+  extensions, Windows 11 app items) from its own registrations; hide them, show what the image hides, or add your own
+  command (name, command, icon, where, Shift only).
+- **A question when loading a preset:** with changes queued, "Replace" (the queue is emptied first) or "Add on top";
+  Undo brings both back together.
+- **A removed app's gap is filled:** with the Snipping Tool removed, Print Screen copies the screen to the clipboard; with
+  Photos removed, pictures open with the classic Photo Viewer; with the Store Notepad removed, .txt opens with the
+  classic Notepad. The Components card says so; the settings can be changed in Settings / Apps.
+- **Progress on the taskbar:** Apply, ISO, mounting and downloads also show on the taskbar button; when a long job ends
+  while WinLove is behind other windows, the button flashes.
 
 ### 1.4.0 Beta — 2026-11-24
 

@@ -247,3 +247,19 @@ std::vector<std::wstring> dependentsOf(const std::vector<ServiceEntry>& services
 }
 
 } // namespace wl::core
+
+namespace wl::core {
+
+std::wstring imageUiLanguage(const std::filesystem::path& mountDir) {
+    return imageLanguage(mountDir);
+}
+
+std::wstring resolveImageText(const std::wstring& value, const std::filesystem::path& mountDir) {
+    return resolveText(value, mountDir);
+}
+
+std::shared_ptr<void> preferImageLanguage(const std::filesystem::path& mountDir) {
+    return std::make_shared<PreferredUiLanguage>(imageLanguage(mountDir));
+}
+
+} // namespace wl::core

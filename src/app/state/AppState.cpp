@@ -114,6 +114,8 @@ void AppState::setMounted(std::optional<MountedImage> mounted) {
         m_system.reset();
         m_inventory.reset();
         m_services.reset();
+        m_policies.reset();
+        m_contextMenu.reset();
         m_imageValues.reset();
         m_imageDrivers.reset();
         m_imageIntl.reset();
@@ -205,11 +207,27 @@ bool AppState::redoQueue() {
     return true;
 }
 
+template <class Edit>
+auto AppState::editQueue(Edit&& edit) {
+    if (!m_companion) {
+        return edit();
+    }
+    const std::vector<std::wstring> before = m_companion->watched(m_changes);
+    m_changes.beginGroup();
+    auto result = edit();
+    m_companion->reconcile(m_changes, before);
+    m_changes.endGroup();
+    return result;
+}
+
 void AppState::queue(core::ops::Operation op) {
     if (queueLocked()) {
         return;
     }
-    m_changes.add(std::move(op));
+    editQueue([&] {
+        m_changes.add(std::move(op));
+        return true;
+    });
     notify(Change::Queue);
 }
 
@@ -217,7 +235,10 @@ void AppState::queueMany(std::vector<core::ops::Operation> ops) {
     if (queueLocked() || ops.empty()) {
         return;
     }
-    m_changes.addAll(std::move(ops));
+    editQueue([&] {
+        m_changes.addAll(std::move(ops));
+        return true;
+    });
     notify(Change::Queue);
 }
 
@@ -225,7 +246,7 @@ void AppState::unqueueMany(const std::vector<std::pair<core::ops::OpKind, std::w
     if (queueLocked()) {
         return;
     }
-    if (m_changes.removeAll(slots) > 0) {
+    if (editQueue([&] { return m_changes.removeAll(slots); }) > 0) {
         notify(Change::Queue);
     }
 }
@@ -234,7 +255,7 @@ bool AppState::unqueue(core::ops::OpKind kind, std::wstring_view target) {
     if (queueLocked()) {
         return false;
     }
-    const bool removed = m_changes.remove(kind, target);
+    const bool removed = editQueue([&] { return m_changes.remove(kind, target); });
     if (removed) {
         notify(Change::Queue);
     }
@@ -253,7 +274,7 @@ void AppState::unqueueIf(const std::function<bool(const core::ops::Operation&)>&
             slots.emplace_back(op.kind, op.target);
         }
     }
-    if (!slots.empty() && m_changes.removeAll(slots) > 0) {
+    if (!slots.empty() && editQueue([&] { return m_changes.removeAll(slots); }) > 0) {
         notify(Change::Queue);
     }
 }
@@ -460,6 +481,16 @@ void AppState::setUnattend(Unattend unattend) {
 void AppState::setServiceList(std::optional<ServiceList> list) {
     m_services = std::move(list);
     notify(Change::Services);
+}
+
+void AppState::setPolicyList(std::optional<PolicyList> list) {
+    m_policies = std::move(list);
+    notify(Change::Policies);
+}
+
+void AppState::setContextMenuList(std::optional<ContextMenuList> list) {
+    m_contextMenu = std::move(list);
+    notify(Change::ContextMenu);
 }
 
 void AppState::setImageIntl(std::optional<ImageIntl> intl) {

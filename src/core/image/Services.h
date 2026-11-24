@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -46,5 +47,12 @@ struct ServiceEntry {
 
 // "@%SystemRoot%\system32\x.dll,-101" → "@<mount>\Windows\system32\x.dll,-101" (other text unchanged).
 [[nodiscard]] std::wstring offlineResourcePath(std::wstring_view value, const std::filesystem::path& mountDir);
+
+// The image's UI language ("tr-TR": the System32 folder with kernel32.dll.mui); empty when unknown.
+[[nodiscard]] std::wstring imageUiLanguage(const std::filesystem::path& mountDir);
+// "@file,-id" resolved against the image's files (its language while preferImageLanguage's guard
+// lives on this thread); plain text passes through, an unresolvable reference gives "".
+[[nodiscard]] std::wstring resolveImageText(const std::wstring& value, const std::filesystem::path& mountDir);
+[[nodiscard]] std::shared_ptr<void> preferImageLanguage(const std::filesystem::path& mountDir);
 
 } // namespace wl::core

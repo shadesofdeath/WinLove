@@ -17,6 +17,8 @@
 #include "core/image/dism/MountHealth.h"
 #include "core/image/RegistryEdit.h"
 #include "core/image/Services.h"
+#include "core/image/ContextMenu.h"
+#include "core/policy/Admx.h"
 #include "core/image/ImageInventory.h"
 #include "core/image/ComponentStore.h"
 #include "core/image/SystemComponents.h"
@@ -80,9 +82,19 @@ struct EngineOperation {
 // Images page; a pure function, tested). Nothing for work that is not about one edition.
 [[nodiscard]] std::vector<int> operationRows(const EngineOperation& op);
 
+// D-153: edits that go with other queue edits, in the same undo step — the fix of the gap an app's
+// removal leaves (RemovalGaps). `watched` names what it reacts to in a queue; after an edit,
+// `reconcile` gets the names from before and edits the queue itself (never through AppState).
+class QueueCompanion {
+public:
+    virtual ~QueueCompanion() = default;
+    [[nodiscard]] virtual std::vector<std::wstring> watched(const core::ops::ChangeSet& changes) const = 0;
+    virtual void reconcile(core::ops::ChangeSet& changes, const std::vector<std::wstring>& before) const = 0;
+};
+
 class AppState {
 public:
-    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch, Intl, LanguageFetch, SystemMounts, StoreFetch, Programs, Host, WindowsDownload, AppUpdate };
+    enum class Change : std::uint8_t { Source, Recent, Selection, Mount, Operation, MountFolder, Queue, Features, Apply, Iso, Components, Drivers, Services, Registry, Unattend, Settings, ImageValues, UpdateFetch, Intl, LanguageFetch, SystemMounts, StoreFetch, Programs, Host, WindowsDownload, AppUpdate, Policies, ContextMenu };
     using Listener = std::function<void(Change)>;
 
     // `answersFile`: where the answer file being edited is kept between runs (AnswerStore.h).
@@ -167,6 +179,10 @@ public:
     // While Uygula runs the queue is frozen: edits would be lost (commit clears it) or undone
     // by the post-run cleanup. Pages call the mutators freely; they are ignored then.
     [[nodiscard]] bool queueLocked() const noexcept;
+    // D-153: the queue's companion (Shell's RemovalGaps; none in tests that do not set one). Not
+    // owned; nullptr takes it away. Undo / redo / a restored queue do not run it: they bring back a
+    // whole earlier queue, its fixes with it.
+    void setQueueCompanion(const QueueCompanion* companion) noexcept { m_companion = companion; }
     // Undo / redo of the queue (Ctrl+Z / Ctrl+Y, a toast's "Geri al"): one step is one action — a
     // toggle, a preset, "Önerilenleri uygula". The history starts again with each mounted image.
     bool undoQueue();
@@ -223,6 +239,27 @@ public:
     };
     [[nodiscard]] const std::optional<ServiceList>& serviceList() const noexcept { return m_services; }
     void setServiceList(std::optional<ServiceList> list);
+
+    // D-154 Grup İlkesi: the image's Administrative Templates (PolicyController), read once per mount.
+    struct PolicyList {
+        enum class Status : std::uint8_t { Loading, Ready, Failed };
+        Status status = Status::Loading;
+        std::filesystem::path mountDir;
+        std::shared_ptr<const core::policy::PolicyCatalog> catalog;
+        Error error;
+    };
+    [[nodiscard]] const std::optional<PolicyList>& policyList() const noexcept { return m_policies; }
+    void setPolicyList(std::optional<PolicyList> list);
+    // D-155 Sağ tık menüsü: the image's right-click menu entries (ContextMenuController), once per mount.
+    struct ContextMenuList {
+        enum class Status : std::uint8_t { Loading, Ready, Failed };
+        Status status = Status::Loading;
+        std::filesystem::path mountDir;
+        std::vector<core::ContextMenuEntry> items;
+        Error error;
+    };
+    [[nodiscard]] const std::optional<ContextMenuList>& contextMenuList() const noexcept { return m_contextMenu; }
+    void setContextMenuList(std::optional<ContextMenuList> list);
 
     // D-045: which catalog operations (P11 tweaks, P12 settings) the mounted image already has —
     // read from its hive files and configuration files once per mount (ImageValuesController).
@@ -648,12 +685,18 @@ private:
     std::optional<EngineOperation> m_operation;
     std::optional<core::MountCheck> m_mountFolder;
     core::ops::ChangeSet m_changes;
+    const QueueCompanion* m_companion = nullptr;
+    // An edit of m_changes with the companion's reconcile in the same undo step.
+    template <class Edit>
+    auto editQueue(Edit&& edit);
     std::optional<OptionalFeatures> m_features;
     std::optional<ApplyRun> m_apply;
     std::optional<AppxList> m_appx;
     std::optional<SystemComponents> m_system;
     std::optional<ImageInventory> m_inventory;
     std::optional<ServiceList> m_services;
+    std::optional<PolicyList> m_policies;
+    std::optional<ContextMenuList> m_contextMenu;
     std::optional<ImageValues> m_imageValues;
     std::optional<ImageDrivers> m_imageDrivers;
     std::optional<ImageIntl> m_imageIntl;

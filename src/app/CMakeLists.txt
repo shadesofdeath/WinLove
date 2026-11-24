@@ -14,6 +14,11 @@ add_library(wl_app STATIC
     controllers/CompatController.cpp
     controllers/FeatureController.cpp
     controllers/ServiceController.cpp
+    controllers/RemovalGaps.cpp
+    controllers/PolicyController.cpp
+    controllers/ContextMenuController.cpp
+    pages/PoliciesPage.cpp
+    pages/ContextMenuPage.cpp
     controllers/RegistryController.cpp
     controllers/ImageController.cpp
     controllers/ImageSettingsController.cpp

@@ -43,6 +43,8 @@ PageId queuePageOf(const core::ops::Operation& op, const QueueClaims& claims) {
     case OpKind::AddAppx:
     case OpKind::SetDefaultApps: return PageId::Apps;
     case OpKind::SetServiceStart: return PageId::Services;
+    case OpKind::SetPolicy: return PageId::Policies;
+    case OpKind::SetContextMenu: return PageId::ContextMenu;
     case OpKind::SetPostSetup: return PageId::PostSetup;
     case OpKind::CopyTree: return PageId::Files;
     case OpKind::SetEdition: return PageId::Images;
